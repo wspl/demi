@@ -5,6 +5,7 @@
 //! the backend (`scenarios.md` § Web app contract suite), with a master
 //! account and a provider entry seeded through the web API.
 
+mod account;
 mod echo;
 mod provider;
 
@@ -23,11 +24,9 @@ use tokio::signal::unix::SignalKind;
 use tokio_util::sync::CancellationToken;
 
 use crate::native::{Executable, development_package};
+use account::Account;
 use provider::DevProvider;
 
-/// The master account `xtask dev` seeds.
-const EMAIL: &str = "developer@example.test";
-const PASSWORD: &str = "development";
 /// The one model of the echo entry.
 const MODEL: &str = "echo";
 /// The prefix of every program setting, which no program the command starts
@@ -69,6 +68,8 @@ pub enum Error {
     Seed(String),
     #[error("{0}")]
     DevProvider(String),
+    #[error("{0}")]
+    Account(String),
     #[error("a command program's development release: {0}")]
     Release(#[from] crate::native::Error),
     #[error(transparent)]
@@ -77,11 +78,22 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
+/// What the run seeds through the web API besides the echo entry, read from
+/// the environment before anything is built, so a partial setting stops the
+/// command at once.
+struct Seed {
+    account: Account,
+    provider: Option<DevProvider>,
+}
+
 pub fn run(options: Options) -> Result<(), Error> {
-    let provider =
-        DevProvider::read(|name| std::env::var(name).ok()).map_err(Error::DevProvider)?;
+    let var = |name: &str| std::env::var(name).ok();
+    let seed = Seed {
+        account: Account::read(var).map_err(Error::Account)?,
+        provider: DevProvider::read(var).map_err(Error::DevProvider)?,
+    };
     build()?;
-    crate::interruptible(|cancel| develop(options, provider, cancel))?
+    crate::interruptible(|cancel| develop(options, seed, cancel))?
 }
 
 /// Builds the one Cargo selection, which holds the backend, the scripted
@@ -109,11 +121,11 @@ fn build() -> Result<(), Error> {
 /// directory unless `--keep` keeps it, however the run ended.
 async fn develop(
     options: Options,
-    provider: Option<DevProvider>,
+    seed: Seed,
     cancel: CancellationToken,
 ) -> Result<(), Error> {
     let root = tempfile::Builder::new().prefix("demi-dev-").tempdir()?;
-    let served = serve(&options, provider.as_ref(), root.path(), &cancel).await;
+    let served = serve(&options, &seed, root.path(), &cancel).await;
     let removed = if options.keep {
         println!("Kept the data directory {}", root.keep().display());
         Ok(())
@@ -146,14 +158,14 @@ struct Manager {
 /// Cloud through it as it shuts down.
 async fn serve(
     options: &Options,
-    provider: Option<&DevProvider>,
+    seed: &Seed,
     root: &Path,
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
     let echo = echo::start().await?;
     let mut processes = Processes::default();
     let result = tokio::select! {
-        result = session(options, provider, root, &echo.url, &mut processes) => result,
+        result = session(options, seed, root, &echo.url, &mut processes) => result,
         () = cancel.cancelled() => Ok(()),
     };
     if let Some(backend) = processes.backend.take() {
@@ -169,7 +181,7 @@ async fn serve(
 /// error, when a start or the seeding fails or a process ends by itself.
 async fn session(
     options: &Options,
-    provider: Option<&DevProvider>,
+    seed: &Seed,
     root: &Path,
     echo: &str,
     processes: &mut Processes,
@@ -189,9 +201,9 @@ async fn session(
 
     let http = reqwest::Client::builder().no_proxy().build()?;
     answering(&http, &origin, backend.as_mut()).await?;
-    let cookies = setup(&http, &origin).await?;
+    let cookies = setup(&http, &origin, &seed.account).await?;
     let echo_entry = create_entry(&http, &origin, &cookies, &echo_entry(echo)).await?;
-    let development = match provider {
+    let development = match &seed.provider {
         Some(provider) => {
             let entry = create_entry(&http, &origin, &cookies, &provider.entry()).await?;
             format!(
@@ -203,19 +215,26 @@ async fn session(
     };
     println!(
         "\nThe development backend serves at {origin}\n\
-         \x20 Account: {EMAIL}, password {PASSWORD}\n\
+         \x20 Account: {}, password {}\n\
          \x20 Model:   {MODEL} of the provider entry {echo_entry}, which answers \"Echo: <your message>\"\n\
          {development}\
          \x20 Data:    {}{}\n\
          Start the page in another terminal:\n\
-         \x20 DEMI_BACKEND_URL={origin} DEMI_DEV_EMAIL={EMAIL} DEMI_DEV_PASSWORD={PASSWORD} bun run web:dev\n\
+         \x20 DEMI_BACKEND_URL={origin} {}bun run web:dev\n\
          Ctrl-C stops the backend.\n",
+        seed.account.email,
+        if seed.account.from_env {
+            "from DEMI_DEV_PASSWORD"
+        } else {
+            seed.account.password.as_str()
+        },
         root.display(),
         if options.keep {
             " (kept)"
         } else {
             " (removed when the command ends)"
         },
+        page_account(&seed.account),
     );
 
     tokio::select! {
@@ -378,10 +397,22 @@ async fn answering(
     }
 }
 
+/// The account variables the page's command names: none when `.env` names
+/// the account, since the page reads it from there.
+fn page_account(account: &Account) -> String {
+    if account.from_env {
+        return String::new();
+    }
+    format!(
+        "DEMI_DEV_EMAIL={} DEMI_DEV_PASSWORD={} ",
+        account.email, account.password
+    )
+}
+
 /// Creates the master account, which setup signs in; answers its session's
 /// cookies.
-async fn setup(http: &reqwest::Client, origin: &str) -> Result<String, Error> {
-    let setup = json!({ "email": EMAIL, "password": PASSWORD });
+async fn setup(http: &reqwest::Client, origin: &str, account: &Account) -> Result<String, Error> {
+    let setup = json!({ "email": account.email, "password": account.password });
     let answer = http
         .post(format!("{origin}/api/setup"))
         .header(CONTENT_TYPE, "application/json")
