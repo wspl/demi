@@ -32,7 +32,7 @@ Depth is not capped. A child delegating a slice of its own task spawns exactly
 like the root does; there is no per-depth command stripping. What bounds the
 tree is fan-out (the live-children limit in [Runtime](#runtime)) and the real
 turns each spawn costs. A spawner can still forbid one specific child from
-delegating further, with `--no-subagents` at spawn or a profile that forbids
+delegating further, by spawning it with a [profile](#profiles) that forbids
 spawning. That is an explicit per-child restriction, never derived from depth:
 the child loses `spawn`, `abort`, and `resume`, and keeps `send`, `list`, and
 `show`.
@@ -76,7 +76,7 @@ declares an `agent` group of its own, since the plugin host refuses the name
 `demi` root, "Demi agent runtime commands.", that contains only `agent`.
 
 ```text
-demi agent spawn [--profile <name>] [--description <title>] [--no-subagents] < task-brief.txt
+demi agent spawn [--profile <name>] [--description <title>] < task-brief.txt
 demi agent abort <id>
 demi agent resume <id> < message.txt
 demi agent send <id|parent> < message.txt
@@ -108,10 +108,9 @@ parent's checkpoint before it replaces the archived round.
 
 Prompts and `send` and `resume` messages are read only from stdin: a quoted
 heredoc, a pipe, or input redirection. They have no positional or option form.
-An empty message fails. `--profile` names a [profile](#profiles);
-`--no-subagents` forbids the child from delegating. There is no `--model`
-option: the model and the provider runtime come from the profile or the
-parent.
+An empty message fails. `--profile` names one of the user's
+[profiles](#profiles). There is no `--model` option: the model and the
+provider runtime come from the profile or the parent.
 
 With `--json`, `abort`, `send`, `show`, and `list` return `{ id, aborted }`,
 `{ id, accepted }`, `{ agent }`, and `{ tree }`.
@@ -139,7 +138,10 @@ into this argument:
 > should return.
 
 `--description` is a short UI title that tells concurrent children apart. The
-`--profile` help lists the configured profile names.
+`--profile` help names each profile the node's tree took, in name order, with
+its description, and says that omitting the option inherits the parent's
+model, prompt, Host and commands; when the tree took no profile, it says that
+none is configured ([Profiles](#profiles)).
 
 ## Communication
 
@@ -430,40 +432,85 @@ The field descriptions of `list` and `show` state that they are snapshots, that
 
 ## Profiles
 
-A profile is data a plugin declares in its manifest
-([Profiles](../architecture/plugins.md#profiles)), not configuration a
-command invents. The product gives the agent server every plugin's profiles
-when it starts.
+A profile is a named configuration for a child that the user defines in
+settings. For example, a user who wants cheap searches creates `explore`: the
+description "Use for finding code, call sites and documentation; it reports
+and changes nothing.", a small fast model of another provider entry than the
+one their conversations use, a short system prompt of its own, and no
+spawning. A root that needs every call site of a function runs
+`demi agent spawn --profile explore`: the child runs on that model with that
+prompt, on the conversation's Host with the root's commands, and its
+`demi agent` group has no `spawn`.
 
 | Field | Meaning |
 | --- | --- |
-| Name | The `--profile` value. `default` is reserved: it names no profile, and a plugin that declares a profile named `default` is refused when it is registered, as is a name two plugins declare. |
-| Description | What the profile is for. |
-| Instructions | Optional. Replace the instructions in the child's system prompt ([Sessions and turns](runtime.md#sessions-and-turns)); the runtime's rules for its tools, the command help and the subagent preamble are still supplied. |
-| Commands | Optional. The command paths, such as `demi file`, the child keeps of its parent's commands; every other command of the parent's set is left out. |
+| Name | The `--profile` value: 1 to 40 lowercase letters, digits and hyphens, starting with a letter, unique among the user's profiles. `default` is reserved for the inherit profile below, and no profile can take it. |
+| Description | When the agent should use the profile: one line of 1 to 500 characters, which the `--profile` help shows the model ([Command help](#command-help)). |
+| Model | Inherit, the parent's model selection; or model settings of the user's own: a provider entry of the user's scope, one model of its catalog, a thinking effort and a service tier, with the meanings of a conversation's ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)). The entry may be the parent's or any other. |
+| System prompt | Inherit, the parent's instructions; or replace, text of 1 to 65,536 characters that takes the place of the instructions in the child's system prompt ([Sessions and turns](runtime.md#sessions-and-turns)). The runtime's rules for its tools, the command help and the subagent preamble are still supplied. |
 | Spawning | Whether children of this profile may spawn children of their own. |
-| Model | Optional. A model selection used instead of the parent's; the child still runs on a [runtime fork](../providers/providers.md#runtime-forks-and-closing) of the parent's provider runtime. |
 
-No plugin of this repository declares a profile. Coding tasks spawn children
-without `--profile`, which inherit the parent's coding instructions and its
-ability to edit files.
+A profile does not change the child's commands: every child has its parent's,
+with the `demi agent` group grafted per node
+([Model-facing surface](#model-facing-surface)).
+
+Profiles are the user's own. One list serves all of the user's conversations,
+in both instance modes; it is stored in the control store with the user's
+other settings ([Control records](../backend/storage.md#control-records)), and
+the settings page creates, edits and deletes its profiles
+([Subagent profiles](../product/web-api.md#subagent-profiles)). No plugin
+declares a profile, and with no profile configured, every child inherits.
 
 Omitting `--profile` always selects the unnamed inherit profile: the parent's
 prompt and preamble, model, Host, and commands, which are its profile's when the
-parent was started with one. It exists whether or
-not any profile is declared, and it cannot be configured or replaced. A
-given `--profile` must match a declared name; an unknown name fails and lists
-the available ones. A profile's command narrowing applies to the commands the
-product supplies; the `demi agent` group is grafted after it and cannot be
-narrowed away. The only sanctioned narrowing of `demi agent` is the spawn restriction
-(`--no-subagents`, or a profile that forbids spawning), which removes `spawn`,
-`abort`, and `resume`; communication and reads always remain. The restriction
-persists with the child across restore and resume.
+parent was started with one; its children may spawn. It exists whether or not
+the user has profiles, and it cannot be configured or replaced. A given
+`--profile` must match a profile the tree took; an unknown name fails and
+lists the available ones. Profiles apply to a session's own children; a
+subagent spawning grandchildren resolves names against the same list.
 
-The node assembly supplies every node's provider runtime. A profile may pin a
-model selection; the running command cannot pick a provider. Profiles apply to a
-session's own children; a subagent spawning grandchildren resolves names
-against the same list of profiles.
+**When a change takes effect.** A tree takes the user's profiles when it
+opens, at the moment it takes its commands, and keeps them until it closes
+([A user's plugins](../architecture/plugins.md#a-users-plugins)). The
+`--profile` help is part of the system prompt, which is rendered once, so a
+change in the middle of a conversation would make spawn do something other
+than what the model was told. A profile that the user creates, changes or
+deletes therefore reaches a conversation when its tree next opens: a new
+conversation, a tree restored after it was disposed, or a reload. While a
+conversation's tree is open with profiles that differ from the user's
+current ones, its summary says so and the page offers the reload
+([Reload](../architecture/plugins.md#a-users-plugins)). A child already
+spawned keeps what it was spawned with, across restore and resume
+([Persistence](#persistence)).
+
+**A profile whose model is gone.** At spawn, the backend builds the child's
+model selection from the profile's model settings and the entry's current
+catalog, as it builds a conversation's on a model switch
+([Request parameters](../providers/models.md#request-parameters)). A provider
+entry that is gone or no longer in the user's scope, a model its catalog no
+longer lists, or an effort or a tier the model no longer offers fails the
+spawn before any child is created, with a message that names the profile and
+what is missing, for example:
+
+```text
+profile "explore" cannot run: model "claude-haiku-4-5" is not in the catalog of provider "Work Anthropic"; choose another model for the profile in settings
+```
+
+Nothing falls back to the parent's model. The settings page shows such a
+profile as needing a model; it reads that from the catalog the page already
+holds for the model menu
+([In the web app](../providers/models.md#in-the-web-app)), so the mark is
+derived on the page and never stored.
+
+**Spawn restriction.** A profile that forbids spawning removes `spawn`,
+`abort`, and `resume` from its children's `demi agent` group; communication
+and reads always remain. It is the only narrowing of `demi agent`, and only a
+profile sets it: the inherit profile never does. The restriction persists with
+the child across restore and resume.
+
+**Provider runtime.** The node assembly supplies every node's provider
+runtime, made for the child's model selection
+([Runtime](#runtime)); the running command cannot pick a provider.
 
 ## Child identity
 
@@ -487,8 +534,8 @@ summarize the parent transcript into the child.
 
 The inherit profile carries the parent's system prompt, so the child already
 knows the shell session rules and the registered commands. A named profile that
-only states a role still uses that inherited prompt unless it sets its own
-system prompt.
+inherits the system prompt uses that same prompt; only the profile's
+description, which the parent read, tells the two apart.
 
 The agent server does not inject project instruction files, git status, parent
 memory, or a roster dump. What the context sources tell the parent, such as
@@ -497,7 +544,8 @@ well, before the child's first request, since every node asks them
 ([Context](runtime.md#context)). A profile that replaces the instructions
 keeps the context. Explore-style
 profiles that want a cheap, instruction-light worker replace the prompt; a
-profile is a prompt and a command set, never a restriction the Host enforces.
+profile is a prompt, a model and a spawn permission, never a restriction the
+Host enforces.
 
 Never copied into a child:
 
@@ -534,14 +582,22 @@ A session tree is stored as nodes in one store: the tree store the backend
 supplies for each conversation, over the conversation's database
 ([Storage](../backend/storage.md#conversation-state-and-transactions)). A node
 row carries identity and relationship: the ID, the agent's number, the parent
-ID (none for the root), the description, the profile, the current round and
-when it started, the spawn restriction, and, once closed, its phase, time,
+ID (none for the root), the description, the current round and
+when it started, what the child was spawned with, and, once closed, its phase, time,
 bounded result or failure text, and whether its completion was delivered. Beside it is the node's checkpoint:
 its transcript rows and its state row
 ([Tree store](runtime.md#tree-store)). Parent and child are related by a
 column, never by a key path. Nothing about a node depends on a Host: a Host
 executes, the store remembers, and a node is readable while its target is
 offline.
+
+What a child was spawned with is its profile's name (none for the inherit
+profile), which `list`, `show` and the `subagent` frames name; the
+instructions the profile replaced, or none when the child has its parent's;
+and the spawn restriction. The child's model selection is in its state row,
+as every session's is. Restore and resume rebuild the child from these and
+never read the user's profiles, so a profile that the user changes, renames
+or deletes after the spawn changes no child spawned with it.
 
 ```text
 conversation c1's store (the root node's ID is the conversation's)
@@ -581,8 +637,10 @@ restores its own: a tree restore, with one rule per node.
 - A child that is quiescent closes with its result. Whether it is quiescent is
   read only once its own live children are back, so a child waiting for its
   children keeps waiting.
-- A live child that cannot be rebuilt, for example because no plugin declares
-  its profile any more, is deleted with its subtree.
+- A live child whose provider runtime cannot be built, because its model's
+  provider entry is gone or no longer in the user's scope, closes as `error`
+  with the reason, and its live descendants close with it as an abort closes
+  them ([Abort](#abort)); its parent receives the failed completion.
 
 The root's interrupted turn is its client's to resume: the root records the
 interruption, and the web app offers Resume
@@ -597,6 +655,8 @@ and is deleted only with it, so a revivable ID stays revivable.
 `demi agent resume <id>`, run by the archived child's parent with the message on
 stdin, revives it in one commit: the node row is live again with a fresh spawn
 time, which starts the new round, and the message is queued in the checkpoint.
+A resume whose provider runtime cannot be built fails with the reason and
+leaves the child archived.
 The session rebuilds from the preserved transcript, and the message opens its
 next turn on top of it. The command returns the child ID; the new round
 delivers its completion separately.
@@ -620,14 +680,27 @@ builds one itself; only the node assembly creates a session.
 
 What differs between nodes is configuration: the prompt (a profile's or the
 parent's, with the subagent preamble on top), the model (the profile's or the
-parent's), the commands (the profile's narrowing of the parent's), the spawn
-restriction, and the node's role, which sets its lifecycle policy: a child
-resumes its interrupted turn on restore and closes when it is quiescent; the
-root leaves both to its client. The role is a node option, not a depth.
+parent's) with its provider runtime, the spawn restriction, and the node's
+role, which sets its lifecycle policy: a child resumes its interrupted turn on
+restore and closes when it is quiescent; the root leaves both to its client.
+The role is a node option, not a depth. Every child has its parent's commands.
 
-- The provider runtime is a runtime fork of the parent's
-  ([Runtime forks and closing](../providers/providers.md#runtime-forks-and-closing));
-  the transcript starts empty.
+- The child's provider runtime serves its model selection. When the parent's
+  runtime serves the selection's provider entry, as it does for the inherit
+  profile, the child gets a runtime fork of it
+  ([Runtime forks and closing](../providers/providers.md#runtime-forks-and-closing)).
+  When the selection names another entry, the backend builds the child a
+  runtime for that entry on the user's shard, as it does for a model switch
+  to another provider ([Model switch](runtime.md#model-switch)). Either way the
+  runtime is the child's own: the child's session closes it when the session
+  is disposed, at the child's close and at its tree's disposal, and every request
+  passes inference admission as any session's does
+  ([Inference admission and runtime ownership](../providers/providers.md#inference-admission-and-runtime-ownership)).
+  A child on a provider that runs a process makes the conversation use the
+  user's Cloud as `provider` while it infers
+  ([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)).
+  A model switch changes the root's selection only; a child keeps its own.
+- The transcript starts empty.
 - A node inherits the spawner's cwd. Every node reaches its Host through the
   conversation's host access, because the execution target belongs to the
   conversation ([Resolve a target](../execution/sessions-and-targets.md#resolve-a-target)).
@@ -768,9 +841,8 @@ returned, a child's as well as the root's
 | --- | --- |
 | Command system | Declarations and `rpc` dispatch through the serializable handler interface |
 | Agent runtime | The node assembly, supervision and the agent directory, the `demi agent` group, agent messages, the subagent frames, and the tree store contract |
-| Backend | The tree store over the conversation's database, the conversation's host access for every node, and the plugin host, which supplies the commands, instructions, profiles and context sources |
-| Plugins | No profiles; children inherit by default |
-| `web-ui` | Nested subagent views, receipts, and the agents chip over `ConversationClient` |
+| Backend | The tree store over the conversation's database, the conversation's host access for every node, the plugin host, which supplies the commands and context sources, the product's instructions, the user's profiles with their checks, and each child's model selection and provider runtime |
+| `web-ui` | Nested subagent views, receipts, the agents chip over `ConversationClient`, and the settings section that edits the user's profiles |
 
 [Crates](../architecture/crates-and-packages.md#crates) names the crate that owns
 each part.
@@ -835,17 +907,27 @@ The tree and its commands:
    replays the live tree.
 7. An inherited prompt and a replaced prompt reach the child as
    [Child context](#child-context) describes; an unknown profile is refused
-   with the available names, and a profile named `default` fails at assembly.
-8. The spawn restriction, from `--no-subagents` or a profile, removes `spawn`,
-   `abort`, and `resume`, keeps communication and reads, and survives archive,
-   reopen, and resume.
-9. Descendants inherit the prompt and the model after command narrowing, and
-   a descendant reads the whole output of a command its ancestor ran.
+   with the available names; a profile whose provider entry, model, effort or
+   tier is gone fails the spawn with the profile's name and what is missing,
+   and creates no child.
+8. A profile's spawn restriction removes `spawn`, `abort`, and `resume`,
+   keeps communication and reads, and survives archive, reopen, and resume;
+   the inherit profile's children may spawn.
+9. Descendants inherit the prompt, the model and the commands, and a
+   descendant reads the whole output of a command its ancestor ran.
 10. `resume` continues the preserved transcript.
 11. A spawn under way survives cancellation of its invoking call.
 12. `list` renders the tree with the caller's marker; `show` stays within its
     bounds.
 13. Disposing a parent detaches its live children instead of aborting them.
+14. A profile on the parent's provider entry runs the child on a runtime fork;
+    one on another entry runs it on a runtime built for that entry, which is
+    closed when the child closes and when the tree is disposed. A restored
+    child whose entry is gone closes as `error`, and its parent receives the
+    failed completion.
+15. A profile changed or deleted after a spawn changes nothing in that child
+    across restore and resume. A tree spawns with the profiles it opened with
+    until it is reloaded, and with the user's current ones afterwards.
 
 Persistence:
 
@@ -868,5 +950,8 @@ Product:
 1. The product and the gallery show collapsed and expanded updates, completed,
    failed, and aborted receipts, long content, equal descriptions with distinct
    sender IDs, and reconnect.
-2. No plugin declares a profile, children inherit by
-   default, and the model sees the spawn prompt field's help.
+2. With no profile configured, children inherit, and the model sees the
+   spawn prompt field's help and a `--profile` help that names no profile.
+3. The settings page creates, edits and deletes profiles, refuses a reserved
+   or taken name, and shows a profile whose model is gone as needing a model;
+   the product and the gallery show the same section.

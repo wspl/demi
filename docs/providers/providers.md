@@ -269,7 +269,10 @@ shares what the provider shares (configuration, authentication, quota and
 catalog) and none of the source runtime's execution state: no connection,
 process, pending tool call or continuation. Either one can be closed without
 affecting the other. Compaction runs on a session copy whose runtime is a fork
-([Session copy](../agent/compaction.md#session-copy)).
+([Session copy](../agent/compaction.md#session-copy)), and a subagent whose
+model belongs to its parent's provider entry runs on a fork of its parent's
+runtime; one whose profile names another entry gets a runtime the backend
+builds for that entry ([Runtime](../agent/subagents.md#runtime)).
 
 Closing a runtime releases what outlives a run, such as a kept CLI process.
 Releasing a process on another machine takes time, so closing is an explicit,
