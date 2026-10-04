@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
 
 use crate::conversations::ModelSettings;
+use crate::ids::DeviceId;
 
 /// Who configures providers, fixed for the instance's lifetime
 /// (`product.md` § Instance mode).
@@ -166,6 +167,33 @@ pub struct ShortcutsPatch {
     pub settings: Option<Option<String>>,
 }
 
+/// Where a new project lives: the user's Cloud or one of their devices.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectHostKind {
+    Cloud,
+    Device,
+}
+
+/// Where New project starts (`product.md` § Conversations and projects): the
+/// kind the user last chose and the device last chosen in its device menu,
+/// kept while the Cloud is chosen. A device the user no longer has stays
+/// here; the dialog chooses no device for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProjectHostChoice {
+    #[garde(skip)]
+    pub kind: ProjectHostKind,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "DeviceId")]
+    #[garde(skip)]
+    pub device_id: Option<DeviceId>,
+}
+
 /// A user's saved preferences.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -184,6 +212,15 @@ pub struct Preferences {
     #[schemars(with = "ModelSettings")]
     #[garde(dive)]
     pub last_model: Option<ModelSettings>,
+    /// Where New project starts, as the user last chose it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ProjectHostChoice")]
+    #[garde(dive)]
+    pub last_project_host: Option<ProjectHostChoice>,
     /// The time zone and languages the user's browser last reported, which
     /// commands receive in their command context: a zone the backend knows,
     /// in its IANA spelling, and each language once as its canonical tag.
@@ -226,6 +263,15 @@ pub struct PreferencesPatch {
     #[schemars(with = "ModelSettings")]
     #[garde(dive)]
     pub last_model: Option<ModelSettings>,
+    /// Replaces the saved choice whole.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ProjectHostChoice")]
+    #[garde(dive)]
+    pub last_project_host: Option<ProjectHostChoice>,
     /// A time zone the backend does not know or a malformed language tag is
     /// refused.
     #[serde(
