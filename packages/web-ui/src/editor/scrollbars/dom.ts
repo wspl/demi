@@ -1,5 +1,5 @@
 import type { EditorView } from '@codemirror/view'
-import { computeScrollbarAxis } from './metrics'
+import { computeScrollbarAxis } from '../../ui/scrollbar-axis'
 import type { RawScrollbarMarker } from './markers'
 
 export interface MountedScrollbarDom {

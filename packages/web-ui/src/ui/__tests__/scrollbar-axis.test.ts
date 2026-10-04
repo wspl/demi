@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test'
-import { computeScrollbarAxis } from '../scrollbars/metrics'
+import { computeScrollbarAxis } from '../scrollbar-axis'
 
 describe('computeScrollbarAxis', () => {
   it('computes thumb size and offset for a partially visible document', () => {

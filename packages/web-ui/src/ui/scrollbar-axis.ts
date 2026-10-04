@@ -12,6 +12,10 @@ export interface ScrollbarAxisOutput {
   scrollable: boolean
 }
 
+/**
+ * A drawn scrollbar along one axis: whether there is anything to scroll, and
+ * the thumb's length and its offset in the track for the scroll position.
+ */
 export function computeScrollbarAxis(input: ScrollbarAxisInput): ScrollbarAxisOutput {
   const { viewportSize, scrollSize, scrollOffset, trackSize, minThumbSize } = input
 

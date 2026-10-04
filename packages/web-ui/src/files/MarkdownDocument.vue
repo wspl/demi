@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document'
 import { useMarkdownRenderVersion } from '../markdown/highlight'
+import { useScrollThumbs } from '../composables/useScrollThumbs'
 
 /**
  * A Markdown file rendered as a document (`file-previews.md` § Markdown). A
@@ -18,6 +19,7 @@ const html = computed(() => {
   return renderMarkdownDocument(props.text, props.place)
 })
 const root = ref<HTMLElement | null>(null)
+useScrollThumbs(root)
 
 function follow(event: MouseEvent): void {
   const link = event.target instanceof Element ? event.target.closest('a') : null

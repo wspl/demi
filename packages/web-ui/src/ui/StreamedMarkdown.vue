@@ -3,6 +3,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import { openFileLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
+import { useScrollThumbs } from '@demicodes/web-ui/composables/useScrollThumbs'
 import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
 import {
   closeOpenInlineMarkdown,
@@ -18,6 +19,7 @@ const props = withDefaults(defineProps<{
 })
 
 const root = ref<HTMLElement>()
+useScrollThumbs(root)
 const { shown, frontier } = useStreamReveal(() => props.content, () => props.streaming)
 
 const visible = computed(() => {
