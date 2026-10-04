@@ -398,51 +398,71 @@ async fn retry_after_a_failed_continuation_reruns_it_from_its_message_and_keeps_
     assert_eq!(requests[2].turn_id, requests[1].turn_id);
 }
 
-#[tokio::test(flavor = "local")]
-async fn a_message_that_came_after_the_users_stop_waits_for_the_users_next_action() {
-    let provider = ScriptedRuntime::new([Turn::pending()]);
+// One session, four scripted requests and a minute of paused time: a few
+// milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_stop_writes_the_waiting_message_before_its_marker_and_holds_nothing_afterwards() {
+    let provider = ScriptedRuntime::new([
+        yield_call(60_000),
+        Turn::pending(),
+        Turn::Events(vec![event::text("read it"), event::response(1, 1)]),
+        Turn::Events(vec![event::text("checked"), event::response(1, 1)]),
+    ]);
     let store = MemoryTreeStore::new();
-    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
-    let running = session.send(text("start work"), turn("t1")).unwrap();
-    until(|| provider.requests().len() == 1).await;
+    let session = start_at(
+        &provider,
+        test_runtime(vec![yield_tool()]),
+        &store,
+        SessionConfig::default(),
+        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
+    )
+    .await;
+    session
+        .send(text("start the build"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    let running = session.send(text("anything else?"), turn("t2")).unwrap();
+    until(|| provider.requests().len() == 2).await;
     session
         .accept_agent_message(agent_message("unread"))
         .await
         .unwrap();
+
     session.abort().await;
     running.await.unwrap();
 
+    // The message waiting for the stopped turn's boundary is written into
+    // it, before the marker, as a pending steer is.
+    assert_eq!(
+        kinds(&session.transcript().blocks[3..]),
+        ["user", "agent_message", "abort"]
+    );
+    // A message that comes later wakes the session as usual.
     session
         .accept_agent_message(agent_message("late"))
         .await
         .unwrap();
-
-    assert_eq!(kinds(&session.transcript().blocks), ["user", "abort"]);
-    let checkpoint = store.checkpoint(&root()).unwrap();
-    assert_eq!(checkpoint.state.agent_inputs.len(), 2);
-    let later = ScriptedRuntime::new([Turn::Events(vec![
-        event::text("continued by the user"),
-        event::response(1, 1),
-    ])]);
-    let (restored, _) = restore_session(
-        checkpoint,
-        &store,
-        &later,
-        test_runtime(Vec::new()),
-        Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
-    );
-    restored.wake();
-    restored.settled().await;
-    assert!(later.requests().is_empty());
-    restored.resume().unwrap().await.unwrap();
-    let requests = later.requests();
-    assert_eq!(requests.len(), 1);
+    session.settled().await;
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 3);
+    // The stopped turn's message is history by now.
     assert_eq!(
-        steers(&requests[0].items),
+        steers(&requests[2].items),
         [
             agent_message_envelope(&agent_message("unread")),
             agent_message_envelope(&agent_message("late"))
         ]
+    );
+    // So does the wakeup the first turn scheduled, once it is due.
+    tokio::time::sleep(Duration::from_secs(61)).await;
+    until(|| provider.requests().len() == 4).await;
+    session.settled().await;
+    assert_eq!(
+        provider.requests()[3].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text(WAKEUP_TEXT),
+        })
     );
 }
 
@@ -872,10 +892,25 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_wakeups_and_mess
         &crashed,
         &later,
         test_runtime(Vec::new()),
-        clock,
+        clock.clone(),
     );
     assert!(continuation.interrupted);
     restored.record_interruption();
+    tokio::time::sleep(Duration::from_secs(5)).await;
+    assert!(later.requests().is_empty());
+    // A second restart before the user acts: the checkpoint is idle now,
+    // and its interruption record still holds the input.
+    restored.dispose().await.unwrap();
+    drop(restored);
+    let (restored, continuation) = restore_session(
+        crashed.checkpoint(&root()).unwrap(),
+        &crashed,
+        &later,
+        test_runtime(Vec::new()),
+        clock,
+    );
+    assert!(!continuation.interrupted);
+    restored.wake();
     tokio::time::sleep(Duration::from_secs(5)).await;
     assert!(later.requests().is_empty());
 
