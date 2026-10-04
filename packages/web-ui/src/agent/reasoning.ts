@@ -1,8 +1,9 @@
 import type { ModelInfo } from '../transport/protocol'
 import { firstEffort, THINKING_OFF } from './model-selection'
+import type { TitleText } from '../ui/ui-text'
 
 export interface ReasoningOption {
-  label: string
+  label: TitleText
   /** The effort the option chooses: one the model lists, or thinking off. */
   effort: string
 }
