@@ -789,7 +789,7 @@ returned, a child's as well as the root's
 | Plugins | No profiles; children inherit by default |
 | `web-ui` | Nested subagent views, receipts, and the agents chip over `ConversationClient` |
 
-[Crates](../architecture/crates-and-packages.md#crates) names the crate that owns
+[Packages](../architecture/packages.md#go-package-boundaries) names the package that owns
 each part.
 
 ## Non-goals

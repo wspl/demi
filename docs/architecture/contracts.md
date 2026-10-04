@@ -26,7 +26,7 @@ second contract shape by hand, even while the two would still agree.
 A contract package holds the types of one wire or data family, their tags
 and markers, and generated code. It has no IO and no goroutines. Both Go
 ends import the same package; TypeScript ends use its generated schemas.
-[Packages](crates-and-packages.md) owns package names and responsibilities.
+[Packages](packages.md) owns package names and responsibilities.
 
 | Wire or stored data | Contract owner | Ends |
 |---|---|---|
@@ -69,7 +69,7 @@ never relax them.
 | `root direction=receive output=protocol` | Type; a contract root. Without `output`, this is a Go-only boundary and `direction` may be omitted. `direction` is `receive` or `send`, from the web app's perspective; `output` is `protocol`, `web` or `plugin-<name>`. Every root and every type a boundary decodes gets `Decode<Type>`, except types that own their `codec`. |
 | `codec` | Concrete named type `T`; `T` implements `MarshalJSON() ([]byte, error)` and `*T` implements `UnmarshalJSON([]byte) error`, plus the corresponding `MarshalMsgpack` and `UnmarshalMsgpack` methods when reached from a MessagePack root. Generation calls these codecs, emits no methods for the type, and neither traverses nor validates its contents. `codec string` on a type with a string underlying type explicitly maps it to a string in JSON Schema and Zod; `pattern`, `length`, and `format` may accompany this form and are emitted there but never checked by generated Go code, since the codec owns validation. Otherwise only `root`, `msgpack`, and `schema` may accompany it; field nullability and presence still belong to the containing contract, but other field rules, flattening, and use as a record key are refused. Reaching an opaque codec without `codec string` from JSON Schema or TypeScript output fails. |
 | `schema` | Type; generate `<Type>JSONSchema() json.RawMessage` for command declarations and `<Type>PluginJSONSchema() json.RawMessage` for plugin page and stream declarations from the same checked contract model. The caller selects the form for its use; it is not a type-wide mode. |
-| `schema-primitive` | Named scalar type; its Rust custom `JsonSchema` implementation returns a primitive schema without derived type metadata and sets `inline_schema()` to true. Emit the scalar and its declared constraints inline in both schema modes, without the type doc description; explicit field comments still apply. This does not change codecs or Zod validation. String `timestamp` already carries this schema behavior. |
+| `schema-primitive` | Named scalar type; its schema is the bare primitive schema, without type metadata, and is always inline. Emit the scalar and its declared constraints inline in both schema modes, without the type doc description; explicit field comments still apply. This does not change codecs or Zod validation. String `timestamp` already carries this schema behavior. |
 | `union tag=type` | Interface with exactly one unexported method, a parameterless and resultless seal selected independently of method order; exported methods are allowed and implemented by every variant. Internally tagged union. The tag may instead be `op`, `status`, `kind` or `ok`, as the wire requires. `variant true` and `variant false` use JSON boolean tags, never strings. |
 | `union tag=op content=result` | Go-only adjacent union. A zero-field variant has nil content; a single required field is the content itself (including a named object or array). More than one field is refused; compose a named content object instead. The tag must precede content on decode. |
 | `flatten` | Field of an adjacent union, without a JSON tag or other field markers; contributes the tag and content at that field's position in its parent object. An adjacent variant's content field cannot itself be flattened. Keys must not collide with sibling or parent tag keys. |
@@ -78,13 +78,13 @@ never relax them.
 | `enum value1 value2` | Named string type; closed set of wire strings, including singleton literals. |
 | `object` | `json.RawMessage` field, without other markers; requires a JSON object with arbitrary member values. Decode retains member order; encoding uses the same compact escaping and number spelling as an unmarked `json.RawMessage` through `contract.EncodeJSON`, without reordering members. Read members with `contract.ObjectFields` and write through `contract.EncodeJSON`. Zod is `z.record(z.string(), z.json())`; JSON Schema is `{"type":"object","additionalProperties":true}`. |
 | `nullable` | Field; its value may be null. Without `omitempty` the key is required; with `omitempty` it may also be absent (below). |
-| `default` | Non-pointer scalar, slice or map field; it may be absent, which decodes to its zero value (an empty slice or map, `false`, `0`, `""`), as Rust's `#[serde(default)]` without `skip_serializing_if`; its key is always written. JSON Schema marks it optional and includes the zero value as `default`; Zod uses `.optional()` without inserting a value, as the Rust generators do. It cannot be combined with an omission tag. |
-| `integer string` | Integer type or field; also accepts a JSON (or reached MessagePack) string that Rust's `FromStr` for the same integer type accepts, as Rust's tool inputs do for numbers the model writes as strings. It encodes as an integer, and its schema and Zod stay those of the integer; null is refused, including optional fields. A leading `+` and leading zeros are accepted; whitespace, nondecimal digits and overflow are refused. Signed integers also accept `-`. Bounds apply after parsing. Optional fields retain Rust's `default: null` schema annotation without accepting null input. Cannot be combined with `nullable` or `timestamp`. |
+| `default` | Non-pointer scalar, slice or map field; it may be absent, which decodes to its zero value (an empty slice or map, `false`, `0`, `""`); its key is always written. JSON Schema marks it optional and includes the zero value as `default`; Zod uses `.optional()` without inserting a value. It cannot be combined with an omission tag. |
+| `integer string` | Integer type or field; also accepts a JSON (or reached MessagePack) string holding a decimal integer of that type, for tool inputs whose numbers the model writes as strings. It encodes as an integer, and its schema and Zod stay those of the integer; null is refused, including optional fields. A leading `+` and leading zeros are accepted; whitespace, nondecimal digits and overflow are refused. Signed integers also accept `-`. Bounds apply after parsing. Optional fields carry a `default: null` schema annotation without accepting null input. Cannot be combined with `nullable` or `timestamp`. |
 | `tolerant` | Struct; ignore unknown keys in Go. Every other object is strict. |
 | `length chars min=1 max=64` | String type or field; Unicode scalar count. Arrays omit `chars` and count elements. Either bound may be omitted. |
 | `pattern ^[0-9a-f]{64}$` | String type or field; shared regex subset below. The remainder of the line is the pattern. |
 | `range min=0 max=9007199254740991` | Numeric type or field; either bound may be omitted. Integer kind comes from the Go type; web integers must fit the safe range. |
-| `range ... schema-only` | The bounds appear in JSON Schema and Zod only; Go checks nothing for them. A `check` beside it supplies the rule and its words, as Rust's `schemars(range)` beside a `TryFrom` that refuses with its own message (`0 is not a whole number of milliseconds from 1 to 600000`). |
+| `range ... schema-only` | The bounds appear in JSON Schema and Zod only; Go checks nothing for them. A `check` beside it supplies the rule and its words, for example a refusal with its own message (`0 is not a whole number of milliseconds from 1 to 600000`). |
 | `check validateName` | Type; call the named `func(Type) error` after structural checks, in Go only, without IO or mutation. |
 | `id` or `id pattern=<regexp>` | Named string type; emit `Parse<Type>(string) (<Type>, error)` with its length, pattern and checks. |
 | `timestamp` | Named string type for canonical JSON time, or named `int64` for runner milliseconds since the Unix epoch (an integer in JSON and a timestamp extension in MessagePack). |
@@ -140,9 +140,9 @@ from their owning Go declarations, without parallel TypeScript tables.
   empty non-nil slice means `[]`. Ordinary arrays and maps require non-nil
   empty values to encode `[]` and `{}` rather than null.
 - An optional field that also accepts null is a pointer with `omitempty` and
-  the nullable marker, as Rust's `Option` with `#[serde(default)]`: absent and
-  null both decode to nil, and nil is omitted. A three-state field, Rust's
-  `double_option`, is `**T` with `omitempty` and the nullable marker: absent
+  the nullable marker: absent and null both decode to nil, and nil is
+  omitted. A three-state field is `**T` with `omitempty` and the nullable
+  marker: absent
   is a nil outer pointer, null is a non-nil pointer to nil and writes null,
   and a value is a pointer to a pointer to it. For example, a patch's
   `BaseURL **EndpointURL` with tag `json:"baseUrl,omitempty"` leaves the
@@ -158,9 +158,9 @@ from their owning Go declarations, without parallel TypeScript tables.
   also a separate root, declare it once and compose it into the tagged
   envelope rather than changing its encoding by call site.
 - An embedded value object contributes its properties at that field's position.
-  An embedded `*Object` without a tag represents serde's flattened `Option<T>`.
+  An embedded `*Object` without a tag is an optional flattened object.
   Nil writes no properties. Decoding tries the contributed properties as a whole;
-  as in serde, a failed child decode leaves nil, including missing required
+  a failed child decode leaves nil, including missing required
   fields and invalid child values. A child with no required fields can decode
   an empty object successfully. Parent token checks and its own fields still
   fail normally. Encoding a non-nil child validates it. Flattened property names
@@ -168,15 +168,14 @@ from their owning Go declarations, without parallel TypeScript tables.
   optional export, `directory`, `manifest` and `files` must decode together.
   Its schema and Zod merge the child properties as optional, without the child's
   required list or object-level description. They describe the serialized fields;
-  they do not model serde's failed-child-to-nil decode behavior.
+  they do not model the decoder's failed-child-to-nil behavior.
 - Bytes are base64 strings in JSON. Empty bytes use a non-nil empty slice,
   never null.
 - Timestamps are UTC RFC 3339 strings with exactly three fractional digits,
   such as `2026-09-21T14:13:20.000Z`. No offset, omitted fraction, extra
   precision or other spelling is accepted, even for the same instant.
   Calendar validity and exact spelling are checked. Their text orders as
-  their times do. This deliberately narrows the previous parser's accepted
-  input; every stored timestamp already uses this spelling.
+  their times do. Every stored timestamp uses this spelling.
 - Integers travel as integers, never through floating point. Go widths and
   signedness are checked before conversion. Web-visible integers must fit
   `[-9007199254740991, 9007199254740991]`; unsigned types also have their
@@ -189,8 +188,7 @@ Identifiers are named Go strings with validating constructors. Go cannot
 prevent `core.BlockID("")`: validity is a boundary guarantee, not a guarantee
 of every value constructible in Go. Decoders validate identifiers; internal
 code creating one calls `core.ParseBlockID`. Parent validation checks them
-too. This is a known difference from the previous private identifier
-representation.
+too.
 
 [Storage](../backend/storage.md) owns column types, database times, digests,
 sealed credentials and password hashes.
@@ -248,13 +246,13 @@ order. Binary and extension values are not JSON values.
 Adjacent unions write tag then content. Flattening inserts both at the field's
 position, so runner replies write `type`, `id`, `op`, `result`. Decoding requires
 `op` before `result`, and empty variants require explicit nil (JSON null), never
-an empty object. Adjacent unions are refused for TypeScript roots because the
-Rust emitter did not support them.
+an empty object. Adjacent unions are Go-only, so generation refuses them
+under a TypeScript root.
 
 Kept-output records use their external tag and tuple representation. Decoders distinguish absent keys from nil, reject duplicate
 keys, unknown tags, invalid scalar kinds, overflow and trailing data, and
 enforce the same presence and bounds rules as JSON. Floating-point targets
-accept integer tokens as serde does, including unsigned values above `MaxInt64`;
+accept integer tokens, including unsigned values above `MaxInt64`;
 integer targets never accept floating-point tokens.
 
 The machine-manager Unix socket carries one JSON document followed by a newline.
@@ -280,33 +278,32 @@ A command declaration calls `<Type>JSONSchema()` on a type marked
 callers cannot mutate another caller's schema. Both forms use draft 2020-12
 keywords without a `$schema` meta-schema declaration. Command subschemas are inline
 except cycles: a reference back to the root uses `$ref: "#"`, and other
-recursive types use `$defs` and `$ref`, as schemars does even with inlining
-enabled.
+recursive types use `$defs` and `$ref`.
 The declaration's input-subset check still decides whether a schema has a
 command-line form; schema generation also supports richer result objects.
 
 A plugin page's state, method params and results, and a stream's messages
-instead call `<Type>PluginJSONSchema()`. Like `plugin-interface::schema_of`,
-this retains named types in `$defs`, in first-use order, and refers to them
+instead call `<Type>PluginJSONSchema()`. This form retains named types in
+`$defs`, in first-use order, and refers to them
 with `$ref`. For example, `BrowserTabsPluginJSONSchema()` has
-`properties.tabs.items: {"$ref":"#/$defs/BrowserTab"}`. Named variants that
-are only Go's representation of an inline Rust enum branch stay inline;
-Rust's timestamp wrapper also explicitly inlines its primitive schema.
+`properties.tabs.items: {"$ref":"#/$defs/BrowserTab"}`. A union's variants
+stay inline in the union's schema, and `schema-primitive` types and string
+timestamps are always inline.
 A nullable named reference becomes `anyOf: [{"$ref": ...}, {"type":"null"}]`.
 Root recursion uses `#`; repeated named types share one definition. Definition
-names follow Rust's initialism spelling (`TabID` becomes `TabId`). The command
+names spell Go initialisms as capitalized words (`TabID` becomes `TabId`). The command
 and plugin forms coexist even when the same type is used by both boundaries.
 
 
-Root keywords use the declaration's sorted order. Nested schema objects retain
-schemars 1.2.2's insertion order, including declaration-order properties.
-Array items also follow schemars' serialization ordering: metadata, type,
-format and properties first, definitions last. This order is part of the
-model request bytes.
+Root keywords use the declaration's sorted order. Nested schema objects and
+array items put `$id`, `$schema`, `title`, `description`, `type`, `format`
+and `properties` first, then the other keywords in the order the generator
+adds them, and `$defs` last; properties keep declaration order. This order
+is part of the model request bytes.
 
 JSON tags become `properties` and required fields become `required`.
-Optional properties omit `required` and never add null. `nullable` follows
-schemars: an ordinary typed schema adds `"null"` to its `type` array while
+Optional properties omit `required` and never add null. With `nullable`, an
+ordinary typed schema adds `"null"` to its `type` array while
 keeping its properties, bounds, format and description beside it. Enums also
 add null to their choices. References and immediate applicators (`if`, `allOf`,
 `anyOf`, `oneOf`) instead use `anyOf: [schema, {"type": "null"}]`.
@@ -317,9 +314,9 @@ use `items`. Tagged `union` produces `oneOf` with each `variant`'s tag as
 `enum` produces `enum`, `pattern` (including an `id` pattern) produces
 `pattern`, `length` produces `minLength`/`maxLength` for strings and
 `minItems`/`maxItems` for arrays, and `range` produces inclusive
-`minimum`/`maximum`. Numeric keywords match schemars: `int`/`uint` map
-Go's machine-sized integers to Rust's `isize`/`usize`, fixed widths use
-`int8` through `uint64`, and floats use `float`/`double`. Unsigned integers
+`minimum`/`maximum`. An integer's `format` is its Go type's name: `int`
+and `uint` for machine-sized integers, `int8` through `uint64` for fixed
+widths; floats use `float`/`double`. Unsigned integers
 have minimum zero; 8- and 16-bit integers also carry their representation
 bounds. Wider integers and floats acquire no extra limits from the generator.
 Named-type and field constraints both apply. `timestamp` on a string emits
@@ -331,27 +328,22 @@ Opaque JSON emits `true`.
 Root direction and MessagePack markers do not change the JSON representation.
 
 A root's `title` is its type name. A contract type's and field's Go doc
-comment is copied verbatim from its Rust doc comment and supplies its
-`description`, including paragraph and line breaks. Generator directives
-are excluded. As in schemars 1.2.2's derive, a documented newtype retains its
-description both when inlined for commands and when stored under plugin `$defs`.
+comment supplies its `description` verbatim, including paragraph and line
+breaks. Generator directives are excluded. A documented named type retains
+its description both when inlined for commands and when stored under plugin `$defs`.
 A `$ref` property does not copy its target's description; an explicit field
 comment adds a description beside the reference. For inline schemas, a field
 comment replaces the type description. Named subschemas acquire no title.
 
-This metadata comes from Rust's `JsonSchema` implementation, not from being a
-scalar or from the inline setting itself. A fully transparent derive delegates
-to the inner type only when neither the container nor its field has schema
-metadata; doc comments are metadata, so a documented transparent newtype uses
-the normal derive path and keeps its description. Custom implementations do not
-automatically import doc comments. Shared `id!` identities and `Timestamp`
-explicitly return primitive schemas without descriptions and set
-`inline_schema()` to true. `schema-primitive` represents that custom scalar
-contract; string `timestamp` implies it. `id` does not: it also marks ordinary
-derived browser identifiers, enums, and types without a Rust schema. Their type comments remain documentation but
-supply no schema description, even at the root. Their field comments still
-supply property descriptions. Ordinary derived scalars, including browser
-`TabId`, and the derived `ExposeAddress` keep their type descriptions.
+Only the `schema-primitive` marker drops a type's description; being a
+scalar or being inlined does not. The shared identities, such as
+`core.BlockID` and `webapi.UserID`, carry it, and string `timestamp` implies
+it: their schemas are primitive, always inline and without a description,
+even at the root, so their type comments remain documentation only. Field
+comments still supply property descriptions. `id` does not imply it: `id`
+also marks browser identifiers, enums and other types whose comments are
+descriptions. Other documented scalars, including browser `TabId` and
+`ExposeAddress`, keep their type descriptions.
 
 The lint requirement that an exported comment start with its name is waived
 for contract packages. Declaration builders may override a property description
@@ -359,8 +351,8 @@ for contract packages. Declaration builders may override a property description
 `internal/declare` and `internal/host` own that text, not the type generator.
 No defaults are inferred.
 
-A `check` function is a rule only Go enforces: schemas omit it, as Rust's
-schemas omit garde's custom rules, so a schema-reachable type may carry one.
+A `check` function is a rule only Go enforces: schemas omit it, so a
+schema-reachable type may carry one.
 Generation fails with the declaration and field path for reachable normalized
 string `format`, `base64` and byte-slice rules, except the explicit
 `codec string` mapping. Its `format` is a JSON Schema format annotation with
@@ -373,8 +365,7 @@ It also rejects the unsupported shapes and invalid markers described above.
 parsed values; the generated decoder additionally rejects duplicate keys,
 invalid Unicode and invalid numeric token spellings at the JSON boundary.
 Numeric `format` annotations do not enforce a Go width, and `date-time` does
-not enforce canonical UTC milliseconds: decoders retain those checks, just
-as the Rust value types have checks beyond their schemas.
+not enforce canonical UTC milliseconds: decoders retain those checks.
 
 ## Validation at entry
 
@@ -484,7 +475,7 @@ Go types + JSON tags + markers
   than declaring them again. A new body type gets a root marker and direction.
   Go initialisms become capitalized words: `WireAPI` emits `WireApi` and
   `wireApiSchema`, `BlockID` emits `BlockId`, and `HTTPFailureRecord` emits
-  `HttpFailureRecord`. Exports match the Rust emitter for the same roots;
+  `HttpFailureRecord`. A module exports its roots' schemas and types;
   factored variant and scalar schemas remain module-private unless rooted.
 - **One constraint definition.** The same marker drives the Go check and
   emitted schema. Tagged interfaces become discriminated unions; optional
@@ -529,7 +520,7 @@ Go types + JSON tags + markers
 - **Tolerant values where the web app receives.** Receive-only schemas may
   accept more than Go can hold, because the backend never sends the
   difference: failure-map keys may be empty even when a block ID cannot
-  (`z.record(z.string(), ...)`, matching the Rust emitter),
+  (`z.record(z.string(), ...)`),
   and email text may carry capitals that `EmailAddress` lowercases. Where
   the web sends a value, its schema refuses whatever Go refuses: trimmed
   names are trimmed before length checks, blank names fail, endpoints must

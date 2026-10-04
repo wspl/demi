@@ -4,7 +4,7 @@ Demi is a hosted, multi-user coding-agent product that people use in their own
 web browser. The backend owns conversations and agent execution. Runners provide
 filesystem, process and shell operations on paired devices and on each user's
 managed Cloud. The backend, the runner, the native command programs and the
-machine manager are Rust programs; the web app is Vue and TypeScript.
+machine manager are Go programs; the web app is Vue and TypeScript.
 
 Users configure model providers and choose where tools execute. A conversation
 starts with Cloud selected, but selecting Cloud does not start a machine. File
@@ -70,11 +70,11 @@ Host process interface, and the CLI contacts the vendor directly.
 define that boundary; [native execution](execution/native-runtime.md) defines
 native command services, which are separate from provider CLIs.
 
-Each wire between these parts is defined once, as Rust types in a contract
-crate that both ends link, and the web app's schemas are generated from those
-types ([Contracts](architecture/contracts.md)).
-[Crates and packages](architecture/crates-and-packages.md) owns the
-responsibilities and dependencies of every crate and package.
+Each wire between these parts is defined once, as Go types in a contract
+package that both ends import, and the web app's schemas are generated from
+those types ([Contracts](architecture/contracts.md)).
+[Packages](architecture/packages.md) owns the
+responsibilities and dependencies of every Go and TypeScript package.
 
 ## A conversation using a device
 

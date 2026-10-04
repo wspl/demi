@@ -24,20 +24,19 @@ Lima VM (Linux, the Mac's architecture)
 
 On an Apple silicon Mac, the Hosts in use are the Mac,
 `aarch64-apple-darwin`, and the Cloud guest, `aarch64-unknown-linux-musl`.
-Build and package those two targets with the Mac's own cross tools and its
-Apple SDK ([Builds and releases](../delivery/builds-and-releases.md)):
+Build and package those two targets on the Mac; Go cross-compiles both with
+no other tools ([Builds and releases](../delivery/builds-and-releases.md)):
 
 ```sh
-cargo xtask native build \
-  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk \
+go run ./tools/release native build \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-runner --output .cache/releases/runners \
+go run ./tools/release native package --package demi-runner --output .cache/releases/runners \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-file --output .cache/releases/demi-file \
+go run ./tools/release native package --package demi-file --output .cache/releases/demi-file \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-browser --output .cache/releases/demi-browser \
+go run ./tools/release native package --package demi-browser --output .cache/releases/demi-browser \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-claude-code --output .cache/releases/demi-claude-code \
+go run ./tools/release native package --package demi-claude-code --output .cache/releases/demi-claude-code \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 ```
 
@@ -60,8 +59,8 @@ VM's architecture into the VM under its SHA-256, so a later build never
 replaces the executable of a running manager.
 
 ```sh
-cargo xtask native build --package demi-machine-manager --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-machine-manager \
+go run ./tools/release native build --package demi-machine-manager --target aarch64-unknown-linux-musl
+go run ./tools/release native package --package demi-machine-manager \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-machine-manager-<build>
 bash scripts/machines/lima-machines.sh \
   --manager .cache/releases/demi-machine-manager-<build>/aarch64-unknown-linux-musl/demi-machine-manager \
@@ -112,15 +111,16 @@ connection by starting a Cloud through the backend.
 
 ## Machine manager tests
 
-The manager builds only for Linux, so on a Mac its tests are cross-built with
-cargo-zigbuild and run in the VM. The tests that need root run with
-`--include-ignored` under sudo:
+The manager builds only for Linux, so on a Mac its test binaries are
+cross-built and run in the VM, which sees the Mac's home directory at the same
+path. A test that needs root skips itself unless it runs as root, so run the
+binaries once as the VM's user and once under sudo:
 
 ```sh
-cargo zigbuild --tests --target aarch64-unknown-linux-musl \
-  -p demi-machine-manager -p demi-machine-manager-protocol --target-dir .cache/linux-target
-limactl shell demi-machine-manager -- <test executable>
-limactl shell demi-machine-manager -- sudo <test executable> --include-ignored
+GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -c -o .cache/linux-tests/ \
+  ./internal/machines/... ./internal/machinewire/...
+limactl shell demi-machine-manager -- <test binary>
+limactl shell demi-machine-manager -- sudo <test binary>
 ```
 
 ## Limits of a Lima Cloud

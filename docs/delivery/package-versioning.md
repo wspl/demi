@@ -7,9 +7,9 @@ package in the group. One version keeps the set consistent: `web-ui` depends on
 the other three, and a consumer who installs the same version of each gets
 packages that were released together.
 
-The Rust executables are versioned separately. They carry the Cargo workspace
-version and are not npm packages or members of the Changesets group
-([Rust executables](#rust-executables)).
+The Go executables are versioned separately. They carry the release version
+and are not npm packages or members of the Changesets group
+([Executables](#executables)).
 
 ## Release set
 
@@ -17,8 +17,8 @@ The fixed group contains the published packages:
 
 - `@demicodes/web-ui`: the reusable Vue component library of the product and
   the gallery.
-- `@demicodes/protocol`: the contract types and schemas generated from the Rust
-  contract crates.
+- `@demicodes/protocol`: the contract types and schemas generated from the Go
+  contract types.
 - `@demicodes/conversation-client`: `ConversationClient`, its WebSocket transport, and
   transcript patch application.
 - `@demicodes/utils`: generic helpers for the web app's packages.
@@ -26,7 +26,7 @@ The fixed group contains the published packages:
 The private `@demicodes/web` and `@demicodes/web-gallery` belong to the group
 as well: they carry the shared version but are never published.
 
-`@demicodes/protocol` has no hand-written source. A change to a Rust contract
+`@demicodes/protocol` has no hand-written source. A change to a Go contract
 type that the generator emits changes this package, so the changeset for that
 change names it
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
@@ -40,7 +40,7 @@ artifacts, and Git tags therefore expose the same group version.
 
 The repository release command publishes every group package whose shared
 version is absent from the registry. It refreshes the lockfile, generates the
-contract TypeScript from the Rust crates, builds the packages, validates packed
+contract TypeScript from the Go contract types, builds the packages, validates packed
 dependency ranges and export targets, publishes the tarballs, and creates one
 package tag per artifact.
 

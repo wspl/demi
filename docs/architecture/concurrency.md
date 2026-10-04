@@ -2,7 +2,7 @@
 
 This document defines how Demi's Go programs own state and goroutines, bound
 work, serialize decisions, cancel waits and release resources.
-[Crates and packages](crates-and-packages.md) defines package responsibilities;
+[Packages](packages.md) defines package responsibilities;
 each subsystem's document defines its behavior.
 
 For example, the user's browser downloads a file from a conversation on their

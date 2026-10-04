@@ -45,7 +45,7 @@ protocol, and the tree store contract. Related rules have their own homes:
   [Conversation Fork](conversation-fork.md) and
   [Command state history](command-state-history.md).
 - The thread a session runs on: [the user's shard](../architecture/concurrency.md#the-user-shard).
-- The crates that implement it: [Crates](../architecture/crates-and-packages.md#crates).
+- The packages that implement it: [Packages](../architecture/packages.md#go-package-boundaries).
 
 ## Sessions and turns
 
@@ -1219,7 +1219,7 @@ conversation ([Web API](../product/web-api.md)), with the session cookie
 The connection belongs to that one
 conversation: the backend supplies the session id and the working directory
 from the conversation's target, and the client never sends them. The types of
-every frame are Rust types, and the web app validates frames with the schemas
+every frame are Go types, and the web app validates frames with the schemas
 generated from them ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 `ConversationClient`, in `@demicodes/conversation-client`, is the web app's client of this
 protocol.

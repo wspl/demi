@@ -1,5 +1,3 @@
-<a id="crates-and-packages"></a>
-
 # Go and TypeScript packages
 
 This document is the boundary contract for every Go package and every
@@ -85,28 +83,23 @@ implementations above it.
 - Do not keep compatibility shims when a split moves an implementation to its
   final package.
 
-<a id="crates"></a>
-
 ## Go package boundaries
 
-One module, `github.com/wspl/demi`, contains the first-party packages below, in
-migration package-map order. Paths are relative to its root. Each entry
-replaces its mapped Rust crate's boundary; a split distributes the original
-boundary without another implementation. `shared-cli` becomes `internal/cli`.
+One module, `github.com/wspl/demi`, contains the first-party packages below.
+Paths are relative to its root.
 
 Plugins are backend-linked libraries. They use the plugin contract and contract
 packages, never a backend implementation or another plugin.
 
-The browser and machine-manager split keeps the original external dependency
-boundaries; their subpackage entries assign each former module one owner.
+The conversation browser (`internal/cmdpkg/browser`) and the machine manager
+(`internal/machines`) each span a package and its subpackages. Each subpackage
+entry gives its part one owner, and the external libraries they use, such as
+cdproto for the browser and netlink and nftables for the manager's network,
+stay inside those packages.
 
 Contract packages hold Go types with `+demi:` markers and their generated
 encoders, decoders and validation. They perform no IO and own no workers.
 [Contracts](contracts.md) owns the generation and validation rules.
-
-<a id="shared-types"></a>
-
-<a id="contract-crates"></a>
 
 #### `internal/core`
 
@@ -170,8 +163,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
 - **Must not:** declare domain contracts, perform IO, generate code or know
   providers, products or transports.
 
-<a id="conversation-socket-protocol"></a>
-
 #### `internal/framewire`
 
 - **Owns:** the conversation WebSocket's frames: `ClientFrame` and its content
@@ -188,8 +179,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   behavior is in [Frame protocol](../agent/runtime.md#frame-protocol).
 - **Must not:** hold session logic or a transport, or carry file bytes inside a
   frame.
-
-<a id="command-protocol"></a>
 
 #### `internal/commandwire`
 
@@ -211,8 +200,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   `internal/commandwire/commandwiretest`.
 - **Must not:** speak the wire: the client, the server and the recorder are
   `internal/cmdsdk`'s.
-
-<a id="command-declarations"></a>
 
 #### `internal/declare`
 
@@ -238,8 +225,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   [Commands](../execution/commands.md).
 - **Must not:** hold handlers or their bindings (`internal/host` pairs
   declarations with handlers), read stdin, or perform any other IO.
-
-<a id="runner-protocol"></a>
 
 #### `internal/runnerwire`
 
@@ -271,8 +256,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   the job table, credentials, claim policy, the device registry or conversation
   state.
 
-<a id="machine-manager-protocol"></a>
-
 #### `internal/machinewire`
 
 - **Owns:** the machine-manager socket: requests (`MachineRequest`,
@@ -288,8 +271,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   and the manager link it; `tools/release` writes the image manifest with it.
   Behavior: [Managed Cloud hosts](../cloud/managed-hosts.md).
 - **Must not:** hold the manager's policy or IO.
-
-<a id="web-api-protocol"></a>
 
 #### `internal/webapi`
 
@@ -308,8 +289,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   `web`. Behavior: [Web API](../product/web-api.md).
 - **Must not:** hold route handling or domain logic.
 
-<a id="command-package-file-protocol"></a>
-
 #### `internal/cmdpkg/file/fileop`
 
 - **Owns:** the `demi.file` package's id (`Package`, which its release
@@ -319,8 +298,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   `demi file` commands from them and `demi-file` decodes invocations with them.
   Behavior: [Commands](../execution/commands.md).
 - **Must not:** implement operations or perform IO.
-
-<a id="command-package-browser-protocol"></a>
 
 #### `internal/cmdpkg/browser/browserop`
 
@@ -339,8 +316,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
 - **Must not:** implement operations, transport, components, Host access,
   process management or conversation persistence.
 
-<a id="command-package-claude-code-protocol"></a>
-
 #### `internal/cmdpkg/claudecode/claudecodeop`
 
 - **Owns:** the `demi.claude-code` package's operations, `claude-code.ensure`
@@ -350,10 +325,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   and `demi-claude-code` decodes it. Behavior: [Claude
   Code](../providers/claude-code.md).
 - **Must not:** hold install logic.
-
-<a id="command-sdk"></a>
-
-<a id="libraries"></a>
 
 #### `internal/cmdsdk`
 
@@ -379,8 +350,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
   processes, hold credentials, or change the process-wide working directory or
   environment for an invocation.
 
-<a id="command-package-file-demi-file"></a>
-
 #### `internal/cmdpkg/file`
 
 - **Owns:** the independently released `demi.file` resident program: file read,
@@ -393,8 +362,6 @@ encoders, decoders and validation. They perform no IO and own no workers.
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner. The runner shell invokes
   system utilities.
-
-<a id="command-package-browser-demi-browser"></a>
 
 #### `internal/cmdpkg/browser`
 
@@ -413,16 +380,13 @@ encoders, decoders and validation. They perform no IO and own no workers.
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner.
 
-<a id="command-package-browser-chrome"></a>
-
-<a id="browser-library"></a>
-
 #### `internal/cmdpkg/browser/chrome/cdp`
 
-The package map has no separate driver package. Low-level driver operations
-live here, launch and environment ownership in `tabs`, and page actions and
-viewer behavior above them. A CDP operation receives a target or executor,
-not a tab registry, so the split introduces no dependency cycle.
+There is no separate driver package. Low-level driver operations live here,
+launch and environment ownership in `tabs`, and page actions and viewer
+behavior above them. A CDP operation receives a target or executor, not a tab
+registry, so this package does not import `tabs` and the Chrome packages form
+no dependency cycle.
 
 - **Owns:** Chrome's bounded CDP transport, session router and event pumps
   behind `cdp.Executor`, using cdproto types; low-level driver operations,
@@ -443,8 +407,7 @@ not a tab registry, so the split introduces no dependency cycle.
   process tree and profile; the environment's CDP pump; the tab registry and
   snapshot; each tab's state and gate, references, asset inventories, WebMCP
   tool sets, console buffer and access to its debugging owner; viewports,
-  dialogs, console logs and navigation. This includes the former driver's
-  launch, installation and capture connection responsibilities.
+  dialogs, console logs and navigation.
 - **Public boundary:** `Environment`, `Tab`, registry snapshots, lifecycle,
   navigation and the capture connection used by the live view. Low-level launch
   code knows no tabs, conversations or viewers.
@@ -472,8 +435,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** know how conversations are owned or released. The browser
   program starts one hub for each browser it owns.
 
-<a id="command-package-claude-code-demi-claude-code"></a>
-
 #### `internal/cmdpkg/claudecode`
 
 - **Owns:** the independently released `demi.claude-code` package, which
@@ -483,8 +444,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** read release pointers or choose a version, start the CLI, or be
   linked into the runner or another command program.
 
-<a id="shared-gates"></a>
-
 #### `internal/gates`
 
 - **Owns:** the named gates that serialize work across waits: `Activity`
@@ -493,8 +452,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** the types above. Their semantics are in
   [Locks](concurrency.md#locks). Test support is in `internal/gates/gatestest`.
 - **Must not:** know users, conversations, devices or any other domain.
-
-<a id="shared-artifacts"></a>
 
 #### `internal/artifacts`
 
@@ -518,8 +475,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** choose what to install or read release pointers: its callers
   name the location, size and digest they expect.
 
-<a id="shared-cli"></a>
-
 #### `internal/cli`
 
 - **Owns:** what every program's command line shares: a variable under the
@@ -529,8 +484,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** `UnknownVariable`, over the program's declared settings.
 - **Must not:** parse a program's settings, which its configuration parser
   does.
-
-<a id="host-interface"></a>
 
 #### `internal/version`
 
@@ -571,8 +524,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** depend on the agent's packages, `internal/provider`, a concrete
   provider, a plugin or a Host implementation.
 
-<a id="plugin-interface"></a>
-
 #### `internal/plugin`
 
 - **Owns:** the [plugin contract](plugins.md#the-contract) and nothing that
@@ -587,10 +538,6 @@ not a tab registry, so the split introduces no dependency cycle.
   `internal/plugin/plugintest`.
 - **Must not:** implement a plugin or a transport to a process, depend on the
   agent's packages or a backend package, or carry a live object in any message.
-
-<a id="plugin-browser"></a>
-
-<a id="plugins"></a>
 
 #### `internal/plugins/browser`
 
@@ -608,8 +555,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** implement a browser operation or hold browser state; the
   conversation browser's packages do.
 
-<a id="plugin-changes"></a>
-
 #### `internal/plugins/changes`
 
 - **Owns:** the `changes` plugin's identity: a manifest with its id, name and
@@ -617,8 +562,6 @@ not a tab registry, so the split introduces no dependency cycle.
   page shows the Change view ([Registration](plugin-pages.md#registration)).
 - **Public boundary:** its factory.
 - **Must not:** hold or serve a change; edit tracking and the file routes do.
-
-<a id="plugin-expose"></a>
 
 #### `internal/plugins/expose`
 
@@ -632,8 +575,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** hold an expose record or relay a byte;
   `internal/backend/expose` does.
 
-<a id="plugin-file"></a>
-
 #### `internal/plugins/file`
 
 - **Owns:** the `demi file` group, declared from `internal/cmdpkg/file/fileop`
@@ -641,16 +582,12 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** its factory.
 - **Must not:** implement a file operation; `demi-file` does.
 
-<a id="plugin-file-browser"></a>
-
 #### `internal/plugins/filebrowser`
 
 - **Owns:** the `file-browser` plugin's identity, as `internal/plugins/changes`
   owns its own, for the File view.
 - **Public boundary:** its factory.
 - **Must not:** read a Host file; the file routes do.
-
-<a id="plugin-skills"></a>
 
 #### `internal/plugins/skills`
 
@@ -666,8 +603,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** write to a Host, send a credential when it fetches, or hold the
   shard lock across blocking work.
 
-<a id="plugin-todo"></a>
-
 #### `internal/plugins/todo`
 
 - **Owns:** the `demi todo` group (`list`, `add`, `update`, `done`), its `rpc`
@@ -676,8 +611,6 @@ not a tab registry, so the split introduces no dependency cycle.
   history](../agent/command-state-history.md)).
 - **Public boundary:** its factory.
 - **Must not:** keep state outside command storage.
-
-<a id="provider-common"></a>
 
 #### `internal/provider`
 
@@ -718,8 +651,6 @@ not a tab registry, so the split introduces no dependency cycle.
   recovery](../agent/failures-and-recovery.md).
 - **Must not:** depend on concrete providers, the agent runtime,
   `internal/host` or a Host implementation.
-
-<a id="vendor-provider-crates"></a>
 
 #### `internal/providers/anthropicapi`
 
@@ -788,8 +719,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** depend on agent packages, `internal/host`, a plugin or a Host
   implementation.
 
-<a id="provider-claude-code"></a>
-
 #### `internal/providers/claudecode`
 
 - **Owns:** the Claude Code provider: the stream-json exchange with the CLI
@@ -809,8 +738,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** depend on the agent's packages, a plugin or a Host
   implementation. It runs the CLI through the `internal/host` process the
   placement answers; which machine that is, is the backend's placement.
-
-<a id="agent-store"></a>
 
 #### `internal/agent/store`
 
@@ -836,8 +763,6 @@ not a tab registry, so the split introduces no dependency cycle.
   provider's runtime. The product's store decides where media bytes go; this
   package defines only what is stored.
 
-<a id="agent-transcript"></a>
-
 #### `internal/agent/transcript`
 
 - **Owns:** the transcript of one session: its log and the patches it sends
@@ -849,8 +774,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** the items above; test support is in
   `internal/agent/transcript/transcripttest`.
 - **Must not:** run a turn, call a provider or store anything itself.
-
-<a id="agent-session"></a>
 
 #### `internal/agent/session`
 
@@ -870,8 +793,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** know tools, nodes, trees or connections; a session runs a tool
   only through the tool-call contract.
 
-<a id="agent-tools"></a>
-
 #### `internal/agent/tools`
 
 - **Owns:** the standard tools (`StandardTool`: `shell_exec`, `shell_status`,
@@ -886,8 +807,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** the items above; test support is in
   `internal/agent/tools/toolstest`.
 - **Must not:** create sessions, nodes or trees, or own a shell interpreter.
-
-<a id="agent-server"></a>
 
 #### `internal/agent/server`
 
@@ -927,8 +846,6 @@ not a tab registry, so the split introduces no dependency cycle.
   acceptance is run by hand outside this package; automated tests use scripted
   runtimes from the provider contract.
 
-<a id="runner-demi-runner"></a>
-
 #### `internal/runner`
 
 - **Owns:** the execution host's program: registration and the backend
@@ -947,10 +864,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** own conversations or provider implementations; administer Cloud
   mounts, networking or volumes, which belong to the machine manager; boot as
   PID 1, since init belongs to the image; link Demi's command algorithms.
-
-<a id="runner-process"></a>
-
-<a id="runner-libraries"></a>
 
 #### `internal/runner/process`
 
@@ -975,8 +888,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** know the backend connection, jobs, commands, services or the
   shell that implements the contract.
 
-<a id="runner-host"></a>
-
 #### `internal/runner/host`
 
 - **Owns:** the Host operations the backend asks for ([Host
@@ -992,8 +903,6 @@ not a tab registry, so the split introduces no dependency cycle.
   the working tree's watch.
 - **Must not:** know jobs, commands or the connection that carries the
   requests.
-
-<a id="runner-jobs"></a>
 
 #### `internal/runner/jobs`
 
@@ -1011,8 +920,6 @@ not a tab registry, so the split introduces no dependency cycle.
   composition's connection owner serves and whose answers it routes (`Relay`).
 - **Must not:** know the shell that runs a job's script, beyond the job shell
   contract, or own the backend connection.
-
-<a id="runner-shell"></a>
 
 #### `internal/runner/shell`
 
@@ -1037,8 +944,6 @@ not a tab registry, so the split introduces no dependency cycle.
   3 and 4](../delivery/go-migration.md#owner-decisions). Redirections remain
   tracked by the interpreter's open handler.
 
- <a id="runner-command-packages"></a>
-
 #### `internal/runner/cmdpkgs`
 
 - **Owns:** the artifact cache with its lines, the preinstalled artifacts of a
@@ -1052,8 +957,6 @@ not a tab registry, so the split introduces no dependency cycle.
   cache, the installs a connection reports (`InstallsReceiver`), and
   `NumberSource`. Test support is in `internal/runner/cmdpkgs/cmdpkgstest`.
 - **Must not:** implement a command, parse argv or know the connection.
-
-<a id="machine-manager-demi-machine-manager"></a>
 
 #### `internal/machines`
 
@@ -1118,8 +1021,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** decide policy, know images, sandboxes, networks or requests,
   or execute image content on the host.
 
-<a id="backend-demi-backend"></a>
-
 #### `internal/backend`
 
 - **Owns:** the hosted product's server program: its typed configuration,
@@ -1158,8 +1059,6 @@ not a tab registry, so the split introduces no dependency cycle.
   runner is a Claude Code account's token, in the CLI's environment on the
   user's Cloud.
 
-<a id="backend-accounts"></a>
-
 <a id="backend-libraries"></a>
 
 #### `internal/backend/accounts`
@@ -1172,8 +1071,6 @@ not a tab registry, so the split introduces no dependency cycle.
   that email codes are derived from is given to it; it does not derive keys.
 - **Must not:** know conversations, devices or providers.
 
-<a id="backend-blobs"></a>
-
 #### `internal/backend/blobs`
 
 - **Owns:** the object store, on local disk or S3 through its storage adapter,
@@ -1182,8 +1079,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** the store and the blob namespaces. Test support is in
   `internal/backend/blobs/blobstest`.
 - **Must not:** hold records other than the blobs'.
-
-<a id="backend-cloud"></a>
 
 #### `internal/backend/cloud`
 
@@ -1198,8 +1093,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** the Cloud component, its operations on `CloudShard`, and
   the manager client.
 - **Must not:** see `Shard`, conversations' state or exposes.
-
-<a id="backend-database"></a>
 
 #### `internal/backend/database`
 
@@ -1217,8 +1110,6 @@ not a tab registry, so the split introduces no dependency cycle.
   `internal/backend/database/databasetest`.
 - **Must not:** hold a domain's policy or call another backend package.
 
-<a id="backend-expose"></a>
-
 #### `internal/backend/expose`
 
 - **Owns:** the expose mechanism ([Host expose](../execution/expose.md)):
@@ -1232,8 +1123,6 @@ not a tab registry, so the split introduces no dependency cycle.
   `internal/plugins/expose`'s; the network stream of an admitted connection is
   opened by `internal/backend/usershard` through device access.
 - **Must not:** see `Shard` or reach a Host.
-
-<a id="backend-host-access"></a>
 
 #### `internal/backend/hostaccess`
 
@@ -1263,8 +1152,6 @@ not a tab registry, so the split introduces no dependency cycle.
   make no Host.
 - **Must not:** see `Shard`; or leave a second way to a conversation's Host.
 
-<a id="backend-http"></a>
-
 #### `internal/backend/edge`
 
 - **Owns:** the HTTP edge: the listener and router, the session gate, request
@@ -1277,8 +1164,6 @@ not a tab registry, so the split introduces no dependency cycle.
   `internal/backend/edge/edgetest`.
 - **Must not:** hold business logic beyond routing and validation.
 
-<a id="backend-idle-watch"></a>
-
 #### `internal/backend/idlewatch`
 
 - **Owns:** the idle rule's mechanism: one idle window, and one watch per
@@ -1287,8 +1172,6 @@ not a tab registry, so the split introduces no dependency cycle.
   release](../execution/resource-lifecycle.md)).
 - **Public boundary:** the watch, its policy and the activity it reads.
 - **Must not:** know what the resource is; its callers retire it.
-
-<a id="backend-page-sync"></a>
 
 #### `internal/backend/pagesync`
 
@@ -1301,8 +1184,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** the items above.
 - **Must not:** read or build the product state; `internal/backend/usershard`
   does.
-
-<a id="backend-plugins"></a>
 
 #### `internal/backend/plugins`
 
@@ -1327,8 +1208,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** see `Shard`, reach a Host, know an agent's session, or hold the
   logic of one plugin.
 
-<a id="backend-providers"></a>
-
 #### `internal/backend/providers`
 
 - **Owns:** provider assembly and model catalogs with the catalog cache; the
@@ -1340,8 +1219,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Public boundary:** the assembly, the vault, the meter, the family contract.
 - **Must not:** know conversations, devices or the Cloud; run a process for a
   provider, which the shard places on the user's Cloud.
-
-<a id="backend-remote-host"></a>
 
 #### `internal/backend/remotehost`
 
@@ -1368,8 +1245,6 @@ not a tab registry, so the split introduces no dependency cycle.
   pipe routes feed it), claim policy, the device registry, credentials or
   conversation state.
 
-<a id="backend-runners"></a>
-
 #### `internal/backend/runners`
 
 - **Owns:** runners and their devices: pairing with its pending claims and
@@ -1394,8 +1269,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Must not:** reach a conversation's Host except through host access, or know
   conversations, the Cloud or exposes.
 
-<a id="backend-user-shard"></a>
-
 #### `internal/backend/usershard`
 
 - **Owns:** the user shard ([The user shard](concurrency.md#the-user-shard)):
@@ -1417,8 +1290,6 @@ not a tab registry, so the split introduces no dependency cycle.
   bounds, and the calls the edge makes into a shard. Test support is in
   `internal/backend/usershard/usershardtest`.
 - **Must not:** serve HTTP.
-
-<a id="xtask"></a>
 
 #### `tools/release`
 
@@ -1468,8 +1339,6 @@ not a tab registry, so the split introduces no dependency cycle.
 - **Owns:** the no-cgo check of every shipped program on each target.
 - **Public boundary:** the cgo-check command.
 - **Must not:** allow cgo in shipped programs or implement runtime behavior.
-
-<a id="executables"></a>
 
 #### `cmd/demi-backend`
 
@@ -1551,8 +1420,8 @@ not a tab registry, so the split introduces no dependency cycle.
 
 #### `internal/cmdpkg/claudecode/claudecodetest`
 
-- **Owns:** the test-support boundary reserved by the command package's testing
-  feature; it currently supplies no exported fixtures.
+- **Owns:** the test-support package of `internal/cmdpkg/claudecode`; it
+  supplies no exported fixtures yet.
 - **Public boundary:** no exports until the package has shared test fixtures.
 - **Must not:** implement product behavior or import a consumer of its owner.
 
@@ -1675,8 +1544,8 @@ not a tab registry, so the split introduces no dependency cycle.
 #### `internal/runner/shell/shelltest`
 
 - **Owns:** shell execution and owned job scopes, with event-based observation
-  of units waiting; embedded utility fixtures have no successor because
-  utilities are external.
+  of units waiting. It holds no utility fixtures: the shell runs the system's
+  utilities.
 - **Public boundary:** these fixtures for black-box tests of the owner and its
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
@@ -1836,12 +1705,6 @@ it lists each changed, added and removed file with its added and removed line
 counts, and the upstream files the fork leaves out. `--patch` prints the unified diff instead,
 which is what `demi.patch` holds: the command fails when the file differs from
 it, so the patch never drifts from the fork.
-
-The other Rust vendored crates have no Go successor. System utilities replace
-embedded uutils, findutils, diffutils, sed, grep, ripgrep and jaq; cdproto with
-Demi's transport replaces the vendored Chromium client. Follow [owner decisions
-3 and 4](../delivery/go-migration.md#owner-decisions), including the deferred
-utility behavior named there.
 
 ## TypeScript packages
 
@@ -2007,22 +1870,21 @@ Each graph lists every member once, as `path -> dependency, dependency`, with
 `none` for no first-party dependencies. Each stays one fenced `text` block.
 External libraries and the third-party fork are outside these graphs.
 
-<a id="rust-crates"></a>
-
 ### Go packages
 
-Paths are relative to `github.com/wspl/demi`. The table maps the crate graph,
-adds the contract runtime used by generated code, and distributes split
-packages' edges within their boundary. Every package may import `internal/contract`, the runtime of generated
-contract code, whether or not its line names it. Test support has its own lines.
+Paths are relative to `github.com/wspl/demi`. Every package may import
+`internal/contract`, the runtime of generated contract code, whether or not its
+line names it. Test support has its own lines.
+
 Production imports follow the listed edges. For `TestImports` and
 `XTestImports`, an owner may also import its own support and a consumer may
-import support of a listed dependency. The check resolves such test-only
-edges to the support's owner; it permits neither runtime production imports
-of test support nor upward implementation imports. Support packages may
-import other support packages only through their explicitly listed edges. This keeps production and support
-graphs acyclic without treating a black-box test as a production dependency.
-The native fixture is a test program and may import its listed test support.
+import support of a listed dependency. The check resolves such test-only edges
+to the support's owner; it permits neither runtime production imports of test
+support nor upward implementation imports. Support packages may import other
+support packages only through their explicitly listed edges. This keeps
+production and support graphs acyclic without treating a black-box test as a
+production dependency. The native fixture is a test program and may import its
+listed test support.
 
 ```text
 internal/core -> internal/contract
@@ -2227,7 +2089,7 @@ direct import.
 `tools/cgocheck` checks each shipped program's full graph on every target
 with `CGO_ENABLED=0`; no shipped graph contains cgo.
 `go-check-sumtype -default-signifies-exhaustive=false` checks union switches,
-and `golangci-lint` checks Go conventions and correctness. During migration,
+and `golangci-lint` checks Go conventions and correctness.
 `scripts/gomig/check.sh` runs these checks with builds, vet and tests, always
 with `GOFLAGS=-mod=readonly`. Linux race tests alone use `CGO_ENABLED=1` and
 `-tags netgo,osusergo`; this does not change shipped graphs. macOS FSEvents

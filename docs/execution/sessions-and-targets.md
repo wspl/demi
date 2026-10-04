@@ -181,7 +181,7 @@ gates, the admission of file transfers and user streams, and the transitions
 that end them live there too. A runner connection makes a conversation's Host
 handle only against a lease of that conversation's file gate, which only the
 host access takes, so no other code can make one
-([`backend-runners`](../architecture/crates-and-packages.md#backend-runners)).
+([`internal/backend/runners`](../architecture/packages.md#internalbackendrunners)).
 
 Host access follows the concurrency rules in
 [The user shard](../architecture/concurrency.md#the-user-shard) and
@@ -454,7 +454,7 @@ conversation release; and the Cloud's policy and machine transitions (see
 moves the bytes of transfers, user streams and exposes; admitting them is the
 shard's. The agent owns tree admission and per-node context persistence. The
 Host adapter carries live execution facts without knowing user policy.
-[Crates and packages](../architecture/crates-and-packages.md) defines the
+[Packages](../architecture/packages.md) defines the
 modules and their dependencies.
 
 These rules hold because one shard holds all of a user's conversations,

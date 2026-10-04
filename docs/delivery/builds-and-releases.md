@@ -9,7 +9,7 @@ The backend, machine manager, runner, and command programs are Go executables
 in one module. A developer's Mac builds all six targets with Go itself.
 `go run ./tools/release` builds and packages releases, pins Chrome for
 Testing, and assembles the Cloud image.
-[Package responsibilities](../architecture/crates-and-packages.md) defines
+[Package responsibilities](../architecture/packages.md) defines
 who owns each program; this document defines how it is delivered.
 
 ```text
@@ -229,7 +229,7 @@ Each executable has its own kind of release:
 
 Every release is published the same way, through the one verified publication
 of the artifact library
-([Package responsibilities](../architecture/crates-and-packages.md)): stage
+([Package responsibilities](../architecture/packages.md)): stage
 every artifact, verify each copy's size and SHA-256, publish once, and refuse
 conflicting metadata or corrupt bytes already in place. A release already in
 place with the same record and bytes is the one being published, so packaging

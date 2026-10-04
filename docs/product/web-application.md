@@ -39,7 +39,7 @@ plugins' services over HTTP         plugins' fixture services
   `ConversationClient` and its waiters, the WebSocket transport, and the one function
   that applies transcript patches.
 - `@demicodes/protocol` is generated. It holds the schemas and types of the
-  Rust contracts the page reads, such as agent frames, transcript blocks,
+  Go contracts the page reads, such as agent frames, transcript blocks,
   message content and tool views, and the file-type table with its lookup.
 - `@demicodes/utils` holds small helpers the web app's packages share.
 - `@demicodes/plugin-sdk` is the page API ([Plugin pages](../architecture/plugin-pages.md)):
@@ -53,7 +53,7 @@ plugins' services over HTTP         plugins' fixture services
   the gallery over each specimen's fixture state.
 
 The product and gallery do not import each other. The web app knows the HTTP
-API and the streams only through types generated from the Rust types that
+API and the streams only through types generated from the Go types that
 define them: `@demicodes/protocol` for the conversation stream and the live
 view, REST types generated into `web` for the HTTP API, and each plugin's page
 types generated into its package
@@ -63,7 +63,7 @@ Where the page and the backend could each compute the same fact, one side owns
 it ([Logic the web app and backend share](../architecture/contracts.md#logic-the-web-app-and-backend-share)):
 the backend reads an upload's media type and snippet, and `web-ui` derives a
 queued message's summary from its content.
-[Crates and packages](../architecture/crates-and-packages.md#typescript-packages)
+[Packages](../architecture/packages.md#typescript-packages)
 owns the package registry and the dependency graph. Shared UI changes land in
 both consumers in the same checkpoint.
 

@@ -44,8 +44,8 @@ the token's device, which is online from then until the connection ends. A
 hello that meets the backend's shutdown gets no answer: its connection closes,
 as every runner's does at
 [shutdown](../backend/backend.md#startup-and-shutdown). Both ends decode every
-MessagePack message into the types of the runner wire's contract crate, which
-they both link, and validate it at entry; a message that fails closes the
+MessagePack message into the types of the runner wire's contract package
+(`internal/runnerwire`), which they both import, and validate it at entry; a message that fails closes the
 connection, since its sender broke the protocol
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 Integer fields travel as MessagePack integers, and byte fields as MessagePack
@@ -62,7 +62,7 @@ rather than lose it.
 endpoint access and installer verification.
 
 A message on the connection is at most 4 MiB, the limit the runner wire's
-contract crate defines for both ends. The side about to send a larger one fails
+contract package defines for both ends. The side about to send a larger one fails
 the one request that message belongs to with `too_large` and keeps the
 connection; a directory with tens of thousands of entries, for example, cannot
 be listed. A receiver still closes a connection that delivers a larger message,
@@ -289,10 +289,10 @@ page only sees a view that never learns its tabs.
 
 The runner keeps one log per Host, in its own data directory: text lines, each
 with a time, a source and, when the work belongs to one, a conversation id.
-Every part of the runner writes its diagnostics as `tracing` events, the
-logging interface Demi's Rust programs share, with the source and the
-conversation as event fields, and the Host log is a `tracing` layer that writes
-those events as lines. No module holds a handle to the log's files. A resident
+Every part of the runner writes its diagnostics as `log/slog` records, the
+logging interface Demi's Go programs share, with the source and the
+conversation as attributes, and the Host log is a `slog` handler that writes
+those records as lines. No module holds a handle to the log's files. A resident
 service's standard error enters the same way, one event per line as it arrives.
 
 | Source | Lines |
@@ -422,7 +422,7 @@ It also carries the [command context](native-runtime.md#command-context) the
 backend built for it; the runner never derives that context from the job's
 environment.
 One patched `mvdan.cc/sh` interpreter runs inside the runner for each job.
-The [module layout](../architecture/crates-and-packages.md#module-layout)
+The [module layout](../architecture/packages.md#module-layout)
 defines ownership of the shell and its fork.
 The interpreter's exec handler sends declared commands to the shared
 command dispatcher. Other commands, including standard utilities such as
@@ -724,13 +724,13 @@ that account. The runner performs no PID 1 boot, host mount, or network setup.
 [Managed hosts](../cloud/managed-hosts.md#container-initialization) owns that
 responsibility split, boot credentials, and lifecycle.
 
-[Crates and packages](../architecture/crates-and-packages.md#crates) defines
-what the runner crate owns and must not do. Tests that exercise a runner start
-the built executable through the testing feature of the crate that owns the
-backend's end of a runner, and tests that exercise a native service start its
-built binary through the command-sdk library's testing feature; both find
+[Packages](../architecture/packages.md#go-package-boundaries) defines
+what the runner's packages own and must not do. Tests that exercise a runner start
+the built executable through the test-support package of the package that owns
+the backend's end of a runner, and tests that exercise a native service start
+its built binary through the command SDK's test-support package; both find
 the binary the way every test finds a built program
-([Module layout](../architecture/crates-and-packages.md#module-layout)). The
+([Module layout](../architecture/packages.md#module-layout)). The
 [build guide](../delivery/builds-and-releases.md#validation) defines target
 execution checks; their results belong to acceptance reports.
 

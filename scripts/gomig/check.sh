@@ -34,7 +34,7 @@ echo "gomig: ${step}"
 go run ./tools/contractgen -check "$@"
 
 step='file names'
-# The module layout forbids catch-all files (crates-and-packages.md § Module
+# The module layout forbids catch-all files (packages.md § Module
 # layout): a file is named for its one responsibility.
 catch_all=$(find cmd internal tools scripts -name '*.go' \( -name 'util*.go' -o -name 'helper*.go' -o -name 'misc*.go' -o -name 'common*.go' \) -not -path '*/testdata/*')
 if [[ -n "${catch_all}" ]]; then

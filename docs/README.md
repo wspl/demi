@@ -8,8 +8,8 @@ layout and interaction; these documents do not repeat it.
 ## What is Demi, and how is the code organized?
 
 - [Overview](overview.md): what Demi is, its system boundary, one conversation end to end, where data and credentials live, and terms.
-- [Crates and packages](architecture/crates-and-packages.md): every Rust crate and TypeScript package, what it owns and must not do, both dependency graphs, module layout and boundary checks.
-- [Contracts](architecture/contracts.md): Rust types as the only contract definition, validation at entry, the generated TypeScript, the TypeScript boundary, and logic the web app and backend share.
+- [Packages](architecture/packages.md): every Go and TypeScript package, what it owns and must not do, both dependency graphs, module layout and boundary checks.
+- [Contracts](architecture/contracts.md): Go types as the only contract definition, validation at entry, the generated TypeScript, the TypeScript boundary, and logic the web app and backend share.
 - [Concurrency](architecture/concurrency.md): the threads of each program, the user shard, locks, blocking work, cancellation and cleanup, and tests and time.
 - [Plugins](architecture/plugins.md): how a capability joins Demi: commands, context, profiles, Host directories, Host file reads and a page, the contract every plugin uses in process and over a wire, the plugin host, and the built-in plugins.
 - [Plugin pages](architecture/plugin-pages.md): the web app as a shell that plugins fill: the page object and its context, work panel kinds, intents, the data a page shows, the plugin kit, types, registration and versions.
@@ -70,11 +70,11 @@ layout and interaction; these documents do not repeat it.
 - [Roadmap](delivery/roadmap.md): dependency order, completion conditions, required evidence and open deployment decisions.
 - [Scenarios](delivery/scenarios.md): backend scenario acceptance, the web app contract suite and real-machine acceptance.
 - [Testing](delivery/testing.md): what a test protects, its level, how it proves itself, time and stability, cost, resources and coverage.
-- [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `cargo xtask` packaging, the Chrome for Testing pin, targets per executable and Cloud image refresh.
-- [Package versioning](delivery/package-versioning.md): the npm release set and changesets, and how the Rust executables are versioned.
+- [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `tools/release` packaging, the Chrome for Testing pin, targets per executable and Cloud image refresh.
+- [Package versioning](delivery/package-versioning.md): the npm release set and changesets, and how the Go executables are versioned.
 - [Migration to Go](delivery/go-migration.md): the plan for replacing the Rust programs with Go, its work packages, isolation rules, roadmap, acceptance and the spike results behind it.
 
 ## How do I extend Demi?
 
-- [Add a provider](guides/add-a-provider.md): writing a provider crate for a new vendor.
+- [Add a provider](guides/add-a-provider.md): writing a provider package for a new vendor.
 - [Develop on a Mac with Lima](guides/mac-development.md): an optional setup that runs the machine manager and Clouds in a Lima VM beside a backend on the Mac.

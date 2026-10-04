@@ -5,11 +5,12 @@ shell, text the model reads, files every Host of its user's conversations
 holds, reads of a conversation's files on a running Host, calls and streams
 of its own command package, and a part of the web app with the calls behind
 it. Every capability that is not the agent runtime itself or the product's
-core is a plugin: the todo list (`plugin-todo`), the file commands
-(`plugin-file`), the conversation browser with its live view
-(`plugin-browser`), [Host expose](../execution/expose.md) (`plugin-expose`),
-[skills](../agent/skills.md) (`plugin-skills`), and the work panel's Change
-view (`plugin-changes`) and File view (`plugin-file-browser`). The agent
+core is a plugin: the todo list (`internal/plugins/todo`), the file commands
+(`internal/plugins/file`), the conversation browser with its live view
+(`internal/plugins/browser`), [Host expose](../execution/expose.md)
+(`internal/plugins/expose`), [skills](../agent/skills.md)
+(`internal/plugins/skills`), and the work panel's Change view
+(`internal/plugins/changes`) and File view (`internal/plugins/filebrowser`). The agent
 runtime, the runner, the backend's conversation lifecycle and the web app's
 shell know none of them; a plugin's part of the web app is written against
 the plugin SDK ([Plugin pages](plugin-pages.md)).
@@ -20,7 +21,7 @@ once, and what it gives the agent reaches a conversation when its tree opens
 again ([A user's plugins](#a-users-plugins)).
 
 Every plugin, built in or not, talks to Demi through one contract, and every
-message of that contract is data. Demi's plugins are Rust crates the backend
+message of that contract is data. Demi's plugins are Go packages the backend
 links and calls directly. A plugin written with a TypeScript SDK runs as a
 process of its own and exchanges the same messages over a wire. Demi has no
 such SDK yet; the contract keeps one possible
@@ -37,19 +38,19 @@ For example, a user turned on the skill `tdd` in the web app and opens a new
 conversation:
 
 ```text
-backend start      the composition root registers plugin-skills with the others;
+backend start      the composition root registers the skills plugin with the others;
                    the plugin host reads its manifest: a context source, no
                    commands
 
 web app            POST /api/plugins/skills/calls/set_enabled { source, skill, enabled }
-  -> plugin host   a page call: plugin-skills validates it, writes its stored
+  -> plugin host   a page call: the skills plugin validates it, writes its stored
                    value, sets the Host directories its user's jobs need, and
                    marks its part of the product state as changed
   -> sync channel  every page of the user receives { type: "plugin", plugin:
                    "skills", state } and shows tdd as on
 
-first request      the session asks each context source for news; plugin-skills
-                   answers the catalog of the skills that are on, with the path
+first request      the session asks each context source for news; the skills
+                   plugin answers the catalog of the skills that are on, with the path
                    of each SKILL.md; the session appends it as a context block
   -> model         reads it, runs `cat ~/.demi/plugins/skills/tdd-9f2c1a7b3e40/SKILL.md`
                    through shell_exec
@@ -63,10 +64,10 @@ declared.
 
 ## What a plugin contributes
 
-A plugin declares itself once, in its **manifest**: a plain value its crate
+A plugin declares itself once, in its **manifest**: a plain value its package
 builds in code, which the plugin host reads when the plugin is registered.
-Code, not a file beside the crate, because the manifest refers to what only
-code holds: its schemas are derived from the Rust types the plugin uses. What
+Code, not a file beside the package, because the manifest refers to what only
+code holds: its schemas are generated from the Go types the plugin uses. What
 a manifest declares is fixed while the plugin is registered; for a plugin
 linked into the backend, that is the life of the process. What varies by
 user, conversation or time arrives through requests.
@@ -83,9 +84,9 @@ user, conversation or time arrives through requests.
 | [Package calls and user streams](#calling-its-command-package) | Each user stream's name, the operation it binds, the schemas of its messages both ways and the constants its two ends share | A call: when the plugin makes it. A stream: when a page opens it |
 | [Its page](#the-page) | Its page package; for each scope, user and conversation, the schema of its state, the [topics](#topics) it follows and the operations a read of it calls; each method with its scope, its parameter and result schemas and the operations it calls | When a page reads a state; when a topic fires; when a page calls a method |
 
-A plugin declares only what it uses: `plugin-file` declares its package and
-its commands and nothing else, `plugin-skills` declares no command, and
-`plugin-changes` declares only its identity and its page.
+A plugin declares only what it uses: the `file` plugin declares its package
+and its commands and nothing else, `skills` declares no command, and
+`changes` declares only its identity and its page.
 
 ### Commands
 
@@ -99,11 +100,11 @@ The plugin host composes the command set every node starts from:
 
 ```text
 demi                     the plugin host's root
-  file                   plugin-file (native: demi.file)
-  todo                   plugin-todo (rpc)
-  browser                plugin-browser (native: demi.browser)
-  expose                 plugin-expose (rpc)
-  host                   the product's group (backend-host-access)
+  file                   the file plugin (native: demi.file)
+  todo                   the todo plugin (rpc)
+  browser                the browser plugin (native: demi.browser)
+  expose                 the expose plugin (rpc)
+  host                   the product's group (internal/backend/hostaccess)
   agent, shell           the agent runtime's groups, grafted per node
 ```
 
@@ -164,7 +165,7 @@ turned off adds nothing from the next request on, and one turned on is
 asked before the next request of every node, so its text reaches a running
 conversation without a reload.
 
-For example, `plugin-skills` writes the full catalog of the skills that are
+For example, the `skills` plugin writes the full catalog of the skills that are
 on, and answers again only when the catalog it would write differs from the
 newest of its blocks. After a compaction its earlier blocks are no longer given to it,
 so it writes the list again and the model, whose history now starts at the
@@ -191,7 +192,7 @@ A plugin can keep files on every Host its user's conversations run jobs on.
 It never writes to a Host: it tells the plugin host which directories its user
 needs, and the conversation's host access installs them before a job runs.
 
-For example, the user turns on `tdd`. `plugin-skills` sets its user's
+For example, the user turns on `tdd`. The `skills` plugin sets its user's
 directories to one directory, `tdd`, whose files are blobs it stored when it
 fetched the skill. The plugin host computes the directory's digest, the
 SHA-256 of its listing (each file's path, mode and SHA-256, in path order),
@@ -233,7 +234,7 @@ talks never wakes its Cloud for a plugin's files.
 
 A plugin can read the files of a conversation on its main Host while that
 Host is running, but never wakes it, writes to it or keeps it awake. For
-example, `plugin-skills` looks for the skills a repository holds in its
+example, the `skills` plugin looks for the skills a repository holds in its
 `.agents/skills` directory ([Project skills](../agent/skills.md#project-skills)).
 
 One request of the port names several paths, and the reply answers each:
@@ -261,7 +262,7 @@ already offers ([User streams](../execution/native-runtime.md#user-streams)):
 
 - **A package call** runs one operation once, with a `user` caller and the
   operation's arguments, and answers its JSON result. For example,
-  `plugin-browser` calls `browser.open` for a browser tab its user creates
+  the `browser` plugin calls `browser.open` for a browser tab its user creates
   in the work panel, so that tab is the tab the agent's `demi browser open`
   would have made. A call that starts work is ordinary demand through the
   conversation's host access and wakes a stopped Cloud; any other uses the
@@ -269,7 +270,7 @@ already offers ([User streams](../execution/native-runtime.md#user-streams)):
   stopped.
 - **A user stream** connects a page to an operation for as long as the page
   keeps it open. The plugin declares it in its manifest, by name, with the
-  operation it binds: `plugin-browser` declares `browser`, bound to
+  operation it binds: the `browser` plugin declares `browser`, bound to
   `browser.live`. The page opens it through the backend's one user stream
   route, and the bytes never pass through the plugin.
 
@@ -301,7 +302,7 @@ state again ([Data a page shows](plugin-pages.md#data-a-page-shows)):
 | `exposes` | User | One of the user's exposes is created, renewed or destroyed, or the earliest one expires |
 | `jobs` | Conversation | A job of the conversation ends |
 
-For example, `plugin-browser`'s conversation state, the conversation
+For example, the `browser` plugin's conversation state, the conversation
 browser's tab list, follows `jobs`: the agent's `demi browser open` is a job,
 and when it ends every page that shows the conversation reads the list again.
 A topic belongs to the product service whose change it is: `exposes` to the
@@ -310,7 +311,7 @@ it, as a slot of the page does.
 
 A manifest can also name the topics the plugin itself is told about: when one
 fires, the plugin host sends the plugin a `topic` request for its scope, after
-it marked the state changed. `plugin-browser` is told about `jobs`, since a job
+it marked the state changed. The `browser` plugin is told about `jobs`, since a job
 of the agent may have opened or closed tabs that the work panel shows
 ([Panel kinds](#panel-kinds)).
 
@@ -318,7 +319,7 @@ of the agent may have opened or closed tabs that the work panel shows
 
 A plugin's page shows [work panel](../product/web-application.md#work-panel)
 tabs of kinds it declares, and the manifest names the kinds whose tabs the
-backend keeps, such as `plugin-browser`'s `browser`. The backend keeps each
+backend keeps, such as the `browser` plugin's `browser`. The backend keeps each
 conversation's tabs ([Work panel state](../product/web-api.md#work-panel-state))
 and lets the plugin that names a kind take part in its tabs:
 
@@ -422,49 +423,51 @@ port operation, and what it gives Demi is a reply.
 ### One contract, two transports
 
 ```text
-                        Request, Reply, port messages (plugin-interface types)
+                        Request, Reply, port messages (internal/plugin types)
 plugin host  ────────────────────────────────────────────────────  plugin
-             in-process: a call of the trait, messages as Rust values
+             in-process: a method call, messages as Go values
              process (TypeScript SDK, later): the same messages, encoded,
                                               over the process's stdio
 ```
 
-- **In process.** A plugin of this repository is a crate that implements the
-  traits, and the composition root links it. Its messages pass as Rust values
-  and are never encoded.
+- **In process.** A plugin of this repository is a package that implements
+  the `plugin.Factory` and `plugin.Plugin` interfaces, and the composition
+  root links it. Its messages pass as Go values and are never encoded.
 - **As a process.** A plugin written with the TypeScript SDK will be a process
-  that serves every user's requests. The plugin host will hold one connection
-  to it per shard thread and carry the same messages over it.
+  that serves every user's requests. The plugin host will hold a connection
+  to it and carry the same messages over it.
 
 Three rules keep the two the same:
 
 - Every message type, request, reply and port operation alike, is
-  serializable and has a JSON Schema (serde and schemars), so a type that
-  could not cross a wire does not compile into the contract.
+  a contract type with generated JSON codecs and a JSON Schema
+  ([Contracts](contracts.md)), so a type that could not cross a wire fails
+  generation.
 - Every plugin's tests run through a loopback transport
-  (`plugin_interface::testing`) that encodes each request, reply and port
+  (`plugintest.Loopback` in `internal/plugin/plugintest`) that encodes each request, reply and port
   message to JSON and decodes it again. A plugin that relied on something only
   a call in process can carry fails there.
-- A plugin crate depends on `plugin-interface` and on contract crates, never on
-  a backend crate, so it cannot reach past the port. The crate check enforces
-  this ([Dependency graphs](crates-and-packages.md#dependency-graphs)).
+- A plugin package imports `internal/plugin` and contract packages, never a
+  backend package, so it cannot reach past the port. The package check
+  (`tools/archcheck`) enforces this ([Dependency graphs](packages.md#dependency-graphs)).
 
-The TypeScript SDK's types will be generated from the same Rust types, as
+The TypeScript SDK's types will be generated from the same Go types, as
 `@demicodes/protocol` is ([Generated TypeScript](contracts.md#generated-typescript)).
 
 ### Rules for a plugin in process
 
-An instance runs on its user's shard thread, so it follows the shard's rules
+An instance belongs to its user's shard, so it follows the shard's rules
 ([Concurrency](concurrency.md)):
 
-- It never blocks the thread. Blocking work, such as `plugin-skills`'s git
-  fetch, runs on the blocking pool.
+- Its calls run in their callers' goroutines and may overlap, and each ends
+  when its context is cancelled. Work that outlives a call, such as the
+  `skills` plugin's git fetch, runs in a goroutine the instance owns.
 - It may keep state in memory, for its own user only, and treats it as a
   cache: the instance ends with the shard and with the process, and what must
   last is a value or a blob.
-- Every task it starts ends when the instance is dropped, and the instance
-  saves nothing from a task that was cut off. For example, a fetch that
-  `plugin-skills` was running when the backend stopped leaves the source as
+- Every goroutine it starts ends when the host closes the instance
+  (`plugin.Closer`), and the instance saves nothing from work that was cut
+  off. For example, a fetch that the `skills` plugin was running when the backend stopped leaves the source as
   it was before the fetch.
 - A task may keep the port of the page call that started it: the port
   answers after the call's reply, until the task ends. For example,
@@ -473,7 +476,7 @@ An instance runs on its user's shard thread, so it follows the shard's rules
 
 ## The plugin host
 
-The plugin host, in `backend-plugins`, runs every plugin of the backend:
+The plugin host, in `internal/backend/plugins`, runs every plugin of the backend:
 
 - **Registration.** The backend's composition root registers the plugins
   linked into it, as it registers the provider families: these are the
@@ -565,7 +568,7 @@ looks at.
 
 **Settings.** The settings page lists every plugin with its name, its
 description and a switch. A plugin that needs settings of its own, such as
-`plugin-skills`, gives the web app a settings section
+the `skills` plugin, gives the web app a settings section
 ([The page](#the-page)).
 
 ## Built-in plugins
@@ -574,24 +577,24 @@ These are the plugins the composition root registers, in this order. Each
 row's contributions are all that plugin declares; what is not listed it does
 not use.
 
-| Id | Crate | Contributes | Page package | Design |
+| Id | Package | Contributes | Page package | Design |
 | --- | --- | --- | --- | --- |
-| `file` | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
-| `todo` | `plugin-todo` | The `demi todo` group, its `rpc` handlers over the node's command storage | None | [Command state history](../agent/command-state-history.md) |
-| `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
-| `expose` | `plugin-expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
-| `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; user state and five methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
-| `changes` | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
-| `file-browser` | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
+| `file` | `internal/plugins/file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
+| `todo` | `internal/plugins/todo` | The `demi todo` group, its `rpc` handlers over the node's command storage | None | [Command state history](../agent/command-state-history.md) |
+| `browser` | `internal/plugins/browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
+| `expose` | `internal/plugins/expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
+| `skills` | `internal/plugins/skills` | A context source; values and blobs; Host directories; Host file reads; user state and five methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
+| `changes` | `internal/plugins/changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
+| `file-browser` | `internal/plugins/filebrowser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 
 Besides the plugins, the components that carry them are:
 
 | Component | Holds |
 | --- | --- |
-| `plugin-interface` | The contract: factory and instance traits, manifest, requests and replies, the port, the JSON loopback transport for tests |
-| `backend-plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
-| `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
-| `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns, profiles as data |
+| `internal/plugin` | The contract: factory and instance interfaces, manifest, requests and replies, the port, the JSON loopback transport for tests |
+| `internal/backend/plugins` | The plugin host: registration and its checks, the command set, profiles and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
+| `internal/backend/usershard`, `internal/backend/hostaccess`, `internal/backend/expose`, `internal/backend/edge`, `internal/backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
+| `internal/agent/tools`, `internal/agent/server`, `internal/agent/session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns, profiles as data |
 | `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: `definePage`, `usePage`, intents, the conversation files service and the plugin kit ([Plugin pages](plugin-pages.md)); the shell and the primitives; the page context over HTTP, the sync channel and the user stream route, and the generated registry; the page context over each specimen's fixtures |
 
 ## The page
