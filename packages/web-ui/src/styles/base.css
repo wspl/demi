@@ -663,6 +663,15 @@ svg.lucide {
   }
 }
 
+/* The space between paragraphs, lists and quotes. A body of smaller secondary text,
+   such as thinking, sets a tighter gap with a utility, so the default sits in a layer
+   below the utilities. */
+@layer base {
+  .markdown-body {
+    --markdown-block-gap: 0.5em;
+  }
+}
+
 /* Rendered Markdown never widens what holds it: a word or an address longer than
    the line breaks, and a table or an equation wider than the text scrolls on its own. */
 .markdown-body {
@@ -678,7 +687,7 @@ svg.lucide {
 }
 
 .markdown-body p {
-  margin: 0.5em 0;
+  margin: var(--markdown-block-gap) 0;
 }
 
 .markdown-body strong {
@@ -725,7 +734,7 @@ svg.lucide {
 
 .markdown-body ul,
 .markdown-body ol {
-  margin: 0.5em 0;
+  margin: var(--markdown-block-gap) 0;
   padding-inline-start: 1.5em;
 }
 
@@ -742,7 +751,7 @@ svg.lucide {
 }
 
 .markdown-body blockquote {
-  margin: 0.5em 0;
+  margin: var(--markdown-block-gap) 0;
   padding-inline-start: 1em;
   border-inline-start: 3px solid color-mix(in srgb, var(--color-overlay) 15%, transparent);
   color: var(--fg-muted);
