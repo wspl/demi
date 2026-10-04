@@ -13,7 +13,7 @@ import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.v
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import type { DeviceInstallation } from '@demicodes/web-ui/devices/installation'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
-import type { WorkspaceDevice } from '@demicodes/web-ui/hosts/workspace'
+import type { WorkspaceDevice, WorkspaceHostChoice } from '@demicodes/web-ui/hosts/workspace'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import CloudResetDialog from '@demicodes/web-ui/cloud/CloudResetDialog.vue'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
@@ -149,13 +149,26 @@ function placesFor(deviceId: string) {
 const projectForms: {
   variant: string
   devices: WorkspaceDevice[]
+  lastHost?: WorkspaceHostChoice
   pending: boolean
   load: 'loading' | 'ready'
 }[] = [
-  { variant: 'device or Cloud', devices, pending: false, load: 'ready' },
+  { variant: 'first time: Cloud', devices, pending: false, load: 'ready' },
+  {
+    variant: 'last chose a device',
+    devices,
+    lastHost: { kind: 'device', deviceId: hosts[0]!.id },
+    pending: false,
+    load: 'ready',
+  },
   { variant: 'creating', devices, pending: true, load: 'ready' },
   { variant: 'devices loading', devices: [], pending: false, load: 'loading' },
 ]
+/**
+ * Each project form's remembered choice, as the product's preference keeps it:
+ * a card or a device chosen in one is where its next Open starts.
+ */
+const projectLastHosts = ref(projectForms.map((form) => form.lastHost))
 /** The device each file browser shows; choosing another in its address bar hands over that device's files. */
 const folderHostId = ref(hosts[0]!.id)
 const fileHostId = ref(hosts[0]!.id)
@@ -310,20 +323,22 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'workspace'">
-      <GallerySection title="New project" note="A project on a device or the Cloud. Switching between existing projects is the sidebar's Move to and the header's workspace control, not a dialog.">
+      <GallerySection title="New project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product's preference does. Switching between existing projects is the sidebar's Move to and the header's workspace control, not a dialog.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
-          <GallerySpecimen v-for="form in projectForms" :key="form.variant" wide :variant="form.variant">
+          <GallerySpecimen v-for="(form, index) in projectForms" :key="form.variant" wide :variant="form.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
               <WorkspaceDialog
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 :devices="form.devices"
+                :last-host="projectLastHosts[index]"
                 :pending="form.pending"
                 :load="form.load"
                 :source-for="sourceFor"
                 :places-for="placesFor"
                 @close="close"
                 @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud project ${draft.name}` : `Create the project at ${draft.path}`)"
+                @choose="(choice) => (projectLastHosts[index] = choice)"
                 @connect-device="productWould('Connect new device')"
                 @retry="productWould('Load the devices again')"
               />

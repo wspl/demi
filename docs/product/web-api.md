@@ -487,7 +487,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, locale? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -501,7 +501,11 @@ model no longer offers replaced by the model's first effort and a tier it no
 longer offers by the vendor's default. Its effort is null only for a model
 that lists no efforts. From then on the
 conversation has its own settings, which a later change of the preference does
-not touch. `locale` stores the time
+not touch. `lastProjectHost` stores where New project starts,
+`{ kind: "cloud" | "device", deviceId? }`: the kind and the device the user
+last chose in it ([Conversations and projects](product.md#conversations-and-projects)).
+A patch replaces it whole; a `deviceId` the user no longer has is kept and
+the dialog chooses no device for it. `locale` stores the time
 zone and languages the user's browser last reported, as
 `{ timeZone, languages }` with an IANA zone name and BCP 47 tags in preference
 order; the product sends it whenever either changes. A time zone the backend

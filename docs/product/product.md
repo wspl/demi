@@ -91,6 +91,18 @@ project or device directory affects subsequent execution; target-switch admissio
 and context announcements are defined in
 [Sessions and targets](../execution/sessions-and-targets.md).
 
+New project asks where the project lives, with Cloud as the first choice and
+Device beside it. The first time, Cloud is chosen. After that the dialog
+starts with what the user last chose: the kind, Cloud or Device, and the
+device last chosen in its device menu, kept even while Cloud is chosen. A
+user who last chose Device and the laptop sees Device and the laptop the
+next time; if the laptop has been removed since, Device with no device
+chosen. The dialog never goes back to Cloud on its own. Every explicit
+choice of a kind or a device saves it, whether or not a project is then
+created, as a backend user preference
+([User preferences](web-api.md#user-preferences)), so every browser of the
+user starts the same way. The directory and the name are not remembered.
+
 Conversations can be archived and restored, but not deleted. Archiving is refused
 while root or child work or conflicting operations are active. Archived history
 remains readable; sending and metadata changes require restore. Persistent ordering

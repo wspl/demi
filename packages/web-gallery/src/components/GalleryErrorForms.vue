@@ -13,6 +13,7 @@ import ProviderLoginDialog, {
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
+import type { WorkspaceHostChoice } from '@demicodes/web-ui/hosts/workspace'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { createGalleryFileHosts } from '../fixtures/files'
@@ -61,6 +62,8 @@ const pairing: PairingPhase = {
 /** Back and Next move the pairing specimen as the product's do; Open puts the failure back. */
 const pairingShown = ref<PairingPhase>(pairing)
 const hosts = createGalleryFileHosts()
+/** The failed project form's remembered choice: Device on the laptop the Create was for. */
+const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: 'preview-device' })
 </script>
 
 <template>
@@ -157,7 +160,9 @@ const hosts = createGalleryFileHosts()
                 { id: 'preview-device', name: 'Preview laptop', online: true },
               ]"
               :source-for="() => hosts[0]!.source"
+              :last-host="failedProjectHost"
               message="Could not create the project. The selected device is offline."
+              @choose="failedProjectHost = $event"
               @close="close"
               @create="(draft) => productWould(draft.kind === 'cloud' ? `Create the Cloud project ${draft.name}` : `Create the project at ${draft.path}`)"
               @connect-device="productWould('Connect new device')"
