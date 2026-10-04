@@ -79,7 +79,16 @@ pub async fn bytes(tab: &BrowserTab, full_page: bool, clip: Option<&str>) -> Res
         .capture_beyond_viewport(beyond_viewport)
         .build();
     request.clip = Some(clip);
-    let data = tab.page().execute(request).await?.result.data;
+    let data = tab
+        .page()
+        .execute(request)
+        .await
+        .map_err(|error| match BrowserError::from(error) {
+            BrowserError::MessageTooLarge(reason) => BrowserError::CaptureTooLarge(reason),
+            error => error,
+        })?
+        .result
+        .data;
     base64::engine::general_purpose::STANDARD
         .decode(AsRef::<[u8]>::as_ref(&data))
         .map_err(|error| BrowserError::InvalidResult(error.to_string()))
