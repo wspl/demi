@@ -22,7 +22,9 @@ func (c *ControlService) Master(ctx context.Context) (webapiproto.UserID, bool, 
 				tx,
 				"users",
 				"SELECT id FROM users WHERE role = 'master'",
-				func(r *storedRow) webapiproto.UserID { return checked(r, "id", webapiproto.ParseUserID) },
+				func(r *storedRow) webapiproto.UserID {
+					return checked(r, "id", webapiproto.ParseUserID)
+				},
 			)
 			found = ok
 			return r, err
@@ -321,7 +323,9 @@ func (c *ControlService) CatalogRecord(
 			tx,
 			"model_catalogs",
 			"SELECT record FROM model_catalogs WHERE provider_id = ?",
-			func(r *storedRow) CatalogRecord { return storedJSON(r, "record", DecodeCatalogRecord) },
+			func(r *storedRow) CatalogRecord {
+				return storedJSON(r, "record", DecodeCatalogRecord)
+			},
 			provider,
 		)
 		found = ok

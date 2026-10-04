@@ -53,7 +53,9 @@ func TestPluginFramesPageOutputRemainsForModel(t *testing.T) {
 		t,
 		w.socket,
 		id,
-		func(s conversationproto.ShellStatus) bool { return s.Command().Tail == "later\n" },
+		func(s conversationproto.ShellStatus) bool {
+			return s.Command().Tail == "later\n"
+		},
 	)
 	w.vendor.Respond(conversationToolUse(t, "check", "shell_status", `{"commandId":"`+string(id)+`"}`))
 	w.vendor.Respond(conversationAnswer(t, []string{"checked"}, 1, 1))
@@ -71,7 +73,9 @@ func TestPluginFramesPageOutputRemainsForModel(t *testing.T) {
 // nothing; both retain its end.
 func TestPluginFramesChattyCommandKeepsIdlePageConnected(t *testing.T) {
 	t.Parallel()
-	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Config.Conversations.OutboxFrames = 64 })
+	w := filesWorking(t, "", func(h *backendtest.Harness) {
+		h.Config.Conversations.OutboxFrames = 64
+	})
 	idle := conversationOpen(w.ctx, t, w.backend, &w.session, filesConversation)
 	w.vendor.Respond(
 		conversationShell(
@@ -207,7 +211,9 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 			t,
 			w.socket,
 			long,
-			func(s conversationproto.ShellStatus) bool { return s.Command().Tail == "long-ready\n" },
+			func(s conversationproto.ShellStatus) bool {
+				return s.Command().Tail == "long-ready\n"
+			},
 		)
 	}
 	second, err := w.backend.Conversation(w.ctx, t, &w.session, filesConversation)
@@ -237,7 +243,9 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 			t,
 			page,
 			long,
-			func(s conversationproto.ShellStatus) bool { return strings.HasSuffix(s.Command().Tail, "went\n") },
+			func(s conversationproto.ShellStatus) bool {
+				return strings.HasSuffix(s.Command().Tail, "went\n")
+			},
 		)
 	}
 	wireMust(t, second.Send(w.ctx, &conversationproto.ShellAbortFrame{CommandID: long}))
@@ -257,7 +265,9 @@ func TestPluginFramesEveryPageSeesOutputAndCommandEnd(t *testing.T) {
 	frames, err = second.Chat(w.ctx, "message-4", "Start the sleeper.")
 	wireMust(t, err)
 	pidPath := filepath.Join(w.paired.Runner.Home(), "sleeper.pid")
-	wireMust(t, backendtest.WaitFile(w.ctx, pidPath, func(b []byte) bool { return strings.HasSuffix(string(b), "\n") }))
+	wireMust(t, backendtest.WaitFile(w.ctx, pidPath, func(b []byte) bool {
+		return strings.HasSuffix(string(b), "\n")
+	}))
 	wireMust(t, second.Send(w.ctx, &conversationproto.CloseFrame{}))
 	closing, err := second.Until(w.ctx, func(f conversationproto.ServerFrame) bool {
 		_, ok := f.(*conversationproto.ClosedFrame)

@@ -53,7 +53,9 @@ func reserveStart(ctx context.Context, port host.RPCPort, request string, fresh 
 		port,
 		"agent.start."+request,
 		decodeStartReceipt,
-		func(v startReceipt) ([]byte, error) { return v.MarshalJSON() },
+		func(v startReceipt) ([]byte, error) {
+			return v.MarshalJSON()
+		},
 		func(current startReceipt, found bool) (startReceipt, error) {
 			if !found {
 				return fresh, nil

@@ -7,5 +7,10 @@ type filesystemError struct {
 	cause   error
 }
 
-func (e *filesystemError) Error() string { return e.message }
-func (e *filesystemError) Unwrap() error { return e.cause }
+func (e *filesystemError) Error() string {
+	return e.message
+}
+
+func (e *filesystemError) Unwrap() error {
+	return e.cause
+}

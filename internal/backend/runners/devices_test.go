@@ -167,15 +167,24 @@ type connectionLog struct {
 	messages []string
 }
 
-func (*connectionLog) Enabled(context.Context, slog.Level) bool { return true }
+func (*connectionLog) Enabled(context.Context, slog.Level) bool {
+	return true
+}
+
 func (l *connectionLog) Handle(_ context.Context, r slog.Record) error {
 	l.mu.Lock()
 	l.messages = append(l.messages, r.Message)
 	l.mu.Unlock()
 	return nil
 }
-func (l *connectionLog) WithAttrs([]slog.Attr) slog.Handler { return l }
-func (l *connectionLog) WithGroup(string) slog.Handler      { return l }
+
+func (l *connectionLog) WithAttrs([]slog.Attr) slog.Handler {
+	return l
+}
+
+func (l *connectionLog) WithGroup(string) slog.Handler {
+	return l
+}
 
 func TestServingRevocationAndProtocolLogging(t *testing.T) {
 	for _, mode := range []string{"revoked", "text", "malformed"} {
@@ -212,7 +221,9 @@ func TestServingRevocationAndProtocolLogging(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = socket.CloseNow() }() // Serving already ends the link on every path.
+			defer func() {
+				_ = socket.CloseNow()
+			}() // Serving already ends the link on every path.
 			if mode == "revoked" {
 				devices.Revoke("device")
 				kind, data, err := socket.Read(t.Context())

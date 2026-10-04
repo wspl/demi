@@ -25,7 +25,9 @@ type claims struct {
 func tokenClaims(token provider.Secret) claims {
 	value, _ := provider.JWTClaims(
 		token.Expose(),
-		func(b []byte) (claims, error) { return provider.DecodeUntagged[claims](string(b)) },
+		func(b []byte) (claims, error) {
+			return provider.DecodeUntagged[claims](string(b))
+		},
 	)
 	return value
 }
@@ -124,7 +126,9 @@ func (a *auth) credentials(
 	}
 	s, err := provider.Renew(ctx, doc, decodeSecret, func(s secret) bool {
 		return s.RefreshToken != nil && ((refused != nil && s.AccessToken == *refused) || s.expiring(a.clock.Now()))
-	}, func(ctx context.Context, s secret) (secret, error) { return a.refresh(ctx, client, s) })
+	}, func(ctx context.Context, s secret) (secret, error) {
+		return a.refresh(ctx, client, s)
+	})
 	if err != nil {
 		return secret{}, provider.AccountAuthFailure("Grok", err)
 	}
@@ -146,7 +150,9 @@ type tokens struct {
 }
 
 //nolint:staticcheck // ST1005: user-facing error text starts with a capital letter.
-func decodeTokens(data []byte) (tokens, error) { return provider.DecodeUntagged[tokens](string(data)) }
+func decodeTokens(data []byte) (tokens, error) {
+	return provider.DecodeUntagged[tokens](string(data))
+}
 
 //nolint:staticcheck // ST1005: user-facing error text starts with the product name Grok.
 func (a *auth) refresh(ctx context.Context, client *http.Client, s secret) (secret, error) {
@@ -179,7 +185,9 @@ func (a *auth) refresh(ctx context.Context, client *http.Client, s secret) (secr
 		return secret{}, fmt.Errorf("Grok token refresh failed: %w", provider.WithoutURL(err))
 	}
 	// The response is consumed or abandoned; close errors cannot change its result.
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return secret{}, fmt.Errorf("Grok token refresh failed with HTTP %d", response.StatusCode)
 	}

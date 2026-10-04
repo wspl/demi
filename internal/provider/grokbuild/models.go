@@ -47,7 +47,9 @@ func (p *Provider) ListModels(ctx context.Context) (types.ProviderModelList, err
 		return types.ProviderModelList{}, fmt.Errorf("Grok Build models request failed: %v", provider.WithoutURL(err))
 	}
 	// The response is consumed or abandoned; close errors cannot change its result.
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return types.ProviderModelList{}, fmt.Errorf(
 			"Grok Build models request failed with HTTP %d",

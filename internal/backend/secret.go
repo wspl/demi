@@ -37,10 +37,14 @@ func ParseInstanceSecret(text string) (InstanceSecret, error) {
 }
 
 // String hides the secret in ordinary formatting.
-func (s InstanceSecret) String() string { return "InstanceSecret(..)" }
+func (s InstanceSecret) String() string {
+	return "InstanceSecret(..)"
+}
 
 // GoString hides the secret in Go-syntax formatting.
-func (s InstanceSecret) GoString() string { return s.String() }
+func (s InstanceSecret) GoString() string {
+	return s.String()
+}
 
 var errMalformedSecret = errors.New("the instance secret must be 64 hexadecimal digits")
 

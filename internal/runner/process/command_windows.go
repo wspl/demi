@@ -68,7 +68,9 @@ func startPlatform(
 		return nil, err
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = windows.CloseHandle(handle) }()
+	defer func() {
+		_ = windows.CloseHandle(handle)
+	}()
 	if err := windows.AssignProcessToJobObject(job, handle); err != nil {
 		return nil, err
 	}
@@ -88,7 +90,9 @@ func resumeChild(pid uint32) error {
 		return err
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = windows.CloseHandle(snapshot) }()
+	defer func() {
+		_ = windows.CloseHandle(snapshot)
+	}()
 	entry := windows.ThreadEntry32{Size: uint32(unsafe.Sizeof(windows.ThreadEntry32{}))}
 	for err = windows.Thread32First(snapshot, &entry); err == nil; err = windows.Thread32Next(snapshot, &entry) {
 		if entry.OwnerProcessID != pid {
@@ -139,7 +143,9 @@ func (p *platformGroup) kill(process *os.Process, group bool) error {
 			return nil
 		}
 		// Cleanup follows the operation result; cancellation may already have closed it.
-		defer func() { _ = windows.CloseHandle(handle) }()
+		defer func() {
+			_ = windows.CloseHandle(handle)
+		}()
 		return windows.TerminateJobObject(handle, 1)
 	}
 	err := process.Kill()
@@ -157,11 +163,19 @@ func (p *platformGroup) signal(process *os.Process, group bool, signal runnerpro
 		return fmt.Errorf("unsupported Windows process signal")
 	}
 }
-func exitSignal(_ *os.ProcessState) *string { return nil }
-func runChildBootstrap() (bool, error)      { return false, nil }
+
+func exitSignal(_ *os.ProcessState) *string {
+	return nil
+}
+
+func runChildBootstrap() (bool, error) {
+	return false, nil
+}
 
 // wait preserves Windows Job Object cleanup; Unix additionally reaps adopted children.
-func (*platformGroup) wait(_ context.Context, _ *os.Process) error { return nil }
+func (*platformGroup) wait(_ context.Context, _ *os.Process) error {
+	return nil
+}
 
 func setJobLimits(job windows.Handle) error {
 	limits := windows.JOBOBJECT_EXTENDED_LIMIT_INFORMATION{}

@@ -29,7 +29,9 @@ func (s *Session) modelView(ctx context.Context) (*store.ModelView, error) {
 		if err != nil {
 			return nil, err
 		}
-		s.mutate(func(c *coreState) { c.media.Absorb(media) })
+		s.mutate(func(c *coreState) {
+			c.media.Absorb(media)
+		})
 	}
 }
 
@@ -126,7 +128,9 @@ func (s *Session) forkRuntime(ctx context.Context) (provider.Runtime, error) {
 			source := s.core.provider
 			s.mu.Unlock()
 			fresh := source.Fresh()
-			s.mutate(func(c *coreState) { c.providerBusy = false })
+			s.mutate(func(c *coreState) {
+				c.providerBusy = false
+			})
 			return fresh, nil
 		}
 		changed := s.core.changed
@@ -196,7 +200,9 @@ func (s *Session) applySwitch(ctx context.Context) (bool, error) {
 	if _, err := s.useProvider(ctx); err != nil {
 		return false, err
 	}
-	defer s.mutate(func(c *coreState) { c.providerBusy = false })
+	defer s.mutate(func(c *coreState) {
+		c.providerBusy = false
+	})
 	var retired []provider.Runtime
 	s.mutate(func(c *coreState) {
 		// A newer accepted switch may arrive during compaction; installing takes

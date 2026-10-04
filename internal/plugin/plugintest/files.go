@@ -27,7 +27,9 @@ func hostFile(files map[string][]byte, read plugin.HostRead) plugin.HostFile {
 		if directory {
 			kind = plugin.EntryKindDirectory
 		}
-		if !slices.ContainsFunc(entries, func(e plugin.HostEntry) bool { return e.Name == name }) {
+		if !slices.ContainsFunc(entries, func(e plugin.HostEntry) bool {
+			return e.Name == name
+		}) {
 			entries = append(entries, plugin.HostEntry{Name: name, Kind: kind})
 		}
 	}

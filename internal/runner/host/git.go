@@ -38,7 +38,9 @@ func (s *Service) GitChanges(ctx context.Context, request runnerproto.GitChanges
 	if err = admit(ctx, s.gitRequests); err != nil {
 		return err
 	}
-	defer func() { <-s.gitRequests }()
+	defer func() {
+		<-s.gitRequests
+	}()
 	root, failure := s.resolve(nil, request.Root)
 	if failure == nil {
 		root, failure = filepath.EvalSymlinks(root)
@@ -69,7 +71,9 @@ func (s *Service) GitShow(ctx context.Context, request runnerproto.GitShow) erro
 	if failure == nil {
 		data, failure = commandsdk.Retry(
 			ctx,
-			func() ([]byte, error) { return s.showBlob(ctx, request.Root, request.Path) },
+			func() ([]byte, error) {
+				return s.showBlob(ctx, request.Root, request.Path)
+			},
 		)
 		<-s.gitRequests
 	}
@@ -126,7 +130,9 @@ func (s *Service) showBlob(ctx context.Context, root, path string) (data []byte,
 	if location == nil {
 		return nil, &gitError{code: "not_repository", message: "not inside a git repository"}
 	}
-	defer func() { err = errors.Join(err, closeRepository(repo)) }()
+	defer func() {
+		err = errors.Join(err, closeRepository(repo))
+	}()
 	tree, _, _, err := headEntries(ctx, repo)
 	if err != nil {
 		return nil, err

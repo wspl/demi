@@ -89,7 +89,11 @@ func startHost(t *testing.T, controllers bool) *testHost {
 	if err = command.Start(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = command.Process.Kill(); _ = command.Wait(); _ = stdout.Close() })
+	t.Cleanup(func() {
+		_ = command.Process.Kill()
+		_ = command.Wait()
+		_ = stdout.Close()
+	})
 	ready, err := bufio.NewReader(stdout).ReadString('\n')
 	if err != nil || ready != "ready\n" {
 		t.Fatalf("host readiness: %q %v", ready, err)
@@ -128,14 +132,18 @@ func settings(t *testing.T) *processSettings {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = notify.Close() })
+	t.Cleanup(func() {
+		_ = notify.Close()
+	})
 	raw, err := notify.SyscallConn()
 	if err != nil {
 		t.Fatal(err)
 	}
 	var optionErr error
 	if err = raw.Control(
-		func(fd uintptr) { optionErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PASSCRED, 1) },
+		func(fd uintptr) {
+			optionErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_PASSCRED, 1)
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -198,7 +206,10 @@ func (h *testHost) manager(t *testing.T, s *processSettings, args ...string) *ma
 		t.Fatal(err)
 	}
 	p.pid = p.command.Process.Pid
-	go func() { p.err = p.command.Wait(); close(p.done) }()
+	go func() {
+		p.err = p.command.Wait()
+		close(p.done)
+	}()
 	t.Cleanup(func() {
 		select {
 		case <-p.done:
@@ -325,7 +336,9 @@ func TestLimitsOnNamesMissingControllers(t *testing.T) {
 	}
 	var readErr error
 	if err := raw.Control(
-		func(fd uintptr) { _, _, readErr = unix.Recvfrom(int(fd), make([]byte, 4096), unix.MSG_DONTWAIT) },
+		func(fd uintptr) {
+			_, _, readErr = unix.Recvfrom(int(fd), make([]byte, 4096), unix.MSG_DONTWAIT)
+		},
 	); err != nil {
 		t.Fatal(err)
 	}

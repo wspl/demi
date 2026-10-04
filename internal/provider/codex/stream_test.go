@@ -92,7 +92,10 @@ func TestHTTPFailureRecord(t *testing.T) {
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
-func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
+
 func TestHeaderTimeout(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		pool := poolWith(t, document(t, freshToken(t), "refresh-1", now))
@@ -102,7 +105,10 @@ func TestHeaderTimeout(t *testing.T) {
 		config.HeaderTimeout = 50 * time.Millisecond
 		client := &http.Client{
 			Transport: roundTripFunc(
-				func(r *http.Request) (*http.Response, error) { <-r.Context().Done(); return nil, r.Context().Err() },
+				func(r *http.Request) (*http.Response, error) {
+					<-r.Context().Done()
+					return nil, r.Context().Err()
+				},
 			),
 		}
 		p, err := codex.New(config, pool, &provider.MemorySnapshots{}, client, providertest.FixedClock(now))

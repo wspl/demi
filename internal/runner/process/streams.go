@@ -103,7 +103,9 @@ func (s *commandStreams) start() {
 		s.workers.Add(1)
 		go func() {
 			defer s.workers.Done()
-			defer func() { _ = stream.pipe.Close() }() // Closing an already interrupted pipe is harmless.
+			defer func() {
+				_ = stream.pipe.Close()
+			}() // Closing an already interrupted pipe is harmless.
 			_, err := io.CopyBuffer(stream.target, stream.source, make([]byte, 64*1024))
 			if stream.input && errors.Is(err, syscall.EPIPE) {
 				return

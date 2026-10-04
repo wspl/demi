@@ -65,7 +65,9 @@ func encodeRequest(request provider.InferenceRequest, policy provider.VendorPoli
 }
 
 // mark gives a vendor cache boundary a one-hour lifetime.
-func mark(c *content) { c.cache = &cacheControl{Type: "ephemeral", TTL: "1h"} }
+func mark(c *content) {
+	c.cache = &cacheControl{Type: "ephemeral", TTL: "1h"}
+}
 
 // thinking converts configured reasoning into the vendor's budget or effort.
 func thinking(
@@ -149,7 +151,9 @@ func itemContent(item provider.InferenceItem) (string, []block) {
 }
 
 // newTextBlock constructs a Messages text block.
-func newTextBlock(text string) *textBlock { return &textBlock{Type: "text", Text: text} }
+func newTextBlock(text string) *textBlock {
+	return &textBlock{Type: "text", Text: text}
+}
 
 // source constructs the vendor's inline base64 source.
 func source(bytes provider.MediaBytes) base64Source {

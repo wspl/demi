@@ -473,20 +473,28 @@ func Operations() []string {
 }
 
 // OperationNames returns every served operation, including the live view.
-func OperationNames() []string { return append(Operations(), LiveOperation) }
+func OperationNames() []string {
+	return append(Operations(), LiveOperation)
+}
 
 func (*LiveInput) operation() {}
 
 // FullName returns the live operation name in the package descriptor.
-func (*LiveInput) FullName() string { return LiveOperation }
+func (*LiveInput) FullName() string {
+	return LiveOperation
+}
 
 func (*OpenInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*OpenInput) OperationName() string { return "open" }
+func (*OpenInput) OperationName() string {
+	return "open"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*OpenInput) DefaultTimeoutMS() uint64 { return MaxTimeoutMS }
+func (*OpenInput) DefaultTimeoutMS() uint64 {
+	return MaxTimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (oi *OpenInput) Timeout() time.Duration {
@@ -498,21 +506,31 @@ func (oi *OpenInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (oi *OpenInput) TabID() (TabID, bool) { return "", false }
+func (oi *OpenInput) TabID() (TabID, bool) {
+	return "", false
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (oi *OpenInput) WaitURLPattern() (string, bool) { return "", false }
+func (oi *OpenInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*OpenInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*OpenInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*TabsInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*TabsInput) OperationName() string { return "tabs" }
+func (*TabsInput) OperationName() string {
+	return "tabs"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*TabsInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*TabsInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ti *TabsInput) Timeout() time.Duration {
@@ -524,21 +542,31 @@ func (ti *TabsInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ti *TabsInput) TabID() (TabID, bool) { return "", false }
+func (ti *TabsInput) TabID() (TabID, bool) {
+	return "", false
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ti *TabsInput) WaitURLPattern() (string, bool) { return "", false }
+func (ti *TabsInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*TabsInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*TabsInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*InfoInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*InfoInput) OperationName() string { return "info" }
+func (*InfoInput) OperationName() string {
+	return "info"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*InfoInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*InfoInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ii *InfoInput) Timeout() time.Duration {
@@ -550,21 +578,31 @@ func (ii *InfoInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ii *InfoInput) TabID() (TabID, bool) { return ii.Tab, true }
+func (ii *InfoInput) TabID() (TabID, bool) {
+	return ii.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ii *InfoInput) WaitURLPattern() (string, bool) { return "", false }
+func (ii *InfoInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*InfoInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*InfoInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*GotoInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*GotoInput) OperationName() string { return "goto" }
+func (*GotoInput) OperationName() string {
+	return "goto"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*GotoInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*GotoInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (gi *GotoInput) Timeout() time.Duration {
@@ -576,21 +614,31 @@ func (gi *GotoInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (gi *GotoInput) TabID() (TabID, bool) { return gi.Tab, true }
+func (gi *GotoInput) TabID() (TabID, bool) {
+	return gi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (gi *GotoInput) WaitURLPattern() (string, bool) { return "", false }
+func (gi *GotoInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*GotoInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*GotoInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*BackInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*BackInput) OperationName() string { return "back" }
+func (*BackInput) OperationName() string {
+	return "back"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*BackInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*BackInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (bi *BackInput) Timeout() time.Duration {
@@ -602,21 +650,31 @@ func (bi *BackInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (bi *BackInput) TabID() (TabID, bool) { return bi.Tab, true }
+func (bi *BackInput) TabID() (TabID, bool) {
+	return bi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (bi *BackInput) WaitURLPattern() (string, bool) { return "", false }
+func (bi *BackInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*BackInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*BackInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ForwardInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ForwardInput) OperationName() string { return "forward" }
+func (*ForwardInput) OperationName() string {
+	return "forward"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ForwardInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ForwardInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (fi *ForwardInput) Timeout() time.Duration {
@@ -628,21 +686,31 @@ func (fi *ForwardInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (fi *ForwardInput) TabID() (TabID, bool) { return fi.Tab, true }
+func (fi *ForwardInput) TabID() (TabID, bool) {
+	return fi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (fi *ForwardInput) WaitURLPattern() (string, bool) { return "", false }
+func (fi *ForwardInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ForwardInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ForwardInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ReloadInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ReloadInput) OperationName() string { return "reload" }
+func (*ReloadInput) OperationName() string {
+	return "reload"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ReloadInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ReloadInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ri *ReloadInput) Timeout() time.Duration {
@@ -654,21 +722,31 @@ func (ri *ReloadInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ri *ReloadInput) TabID() (TabID, bool) { return ri.Tab, true }
+func (ri *ReloadInput) TabID() (TabID, bool) {
+	return ri.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ri *ReloadInput) WaitURLPattern() (string, bool) { return "", false }
+func (ri *ReloadInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ReloadInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ReloadInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*HistoryInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*HistoryInput) OperationName() string { return "history" }
+func (*HistoryInput) OperationName() string {
+	return "history"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*HistoryInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*HistoryInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (hi *HistoryInput) Timeout() time.Duration {
@@ -680,21 +758,31 @@ func (hi *HistoryInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (hi *HistoryInput) TabID() (TabID, bool) { return hi.Tab, true }
+func (hi *HistoryInput) TabID() (TabID, bool) {
+	return hi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (hi *HistoryInput) WaitURLPattern() (string, bool) { return "", false }
+func (hi *HistoryInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*HistoryInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*HistoryInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*CloseInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CloseInput) OperationName() string { return "close" }
+func (*CloseInput) OperationName() string {
+	return "close"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CloseInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CloseInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ci *CloseInput) Timeout() time.Duration {
@@ -706,21 +794,31 @@ func (ci *CloseInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ci *CloseInput) TabID() (TabID, bool) { return ci.Tab, true }
+func (ci *CloseInput) TabID() (TabID, bool) {
+	return ci.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ci *CloseInput) WaitURLPattern() (string, bool) { return "", false }
+func (ci *CloseInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*CloseInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CloseInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*InspectInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*InspectInput) OperationName() string { return "inspect" }
+func (*InspectInput) OperationName() string {
+	return "inspect"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*InspectInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*InspectInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ii *InspectInput) Timeout() time.Duration {
@@ -732,21 +830,31 @@ func (ii *InspectInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ii *InspectInput) TabID() (TabID, bool) { return ii.Tab, true }
+func (ii *InspectInput) TabID() (TabID, bool) {
+	return ii.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ii *InspectInput) WaitURLPattern() (string, bool) { return "", false }
+func (ii *InspectInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*InspectInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*InspectInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*FindInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*FindInput) OperationName() string { return "find" }
+func (*FindInput) OperationName() string {
+	return "find"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*FindInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*FindInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (fi *FindInput) Timeout() time.Duration {
@@ -758,10 +866,14 @@ func (fi *FindInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (fi *FindInput) TabID() (TabID, bool) { return fi.Tab, true }
+func (fi *FindInput) TabID() (TabID, bool) {
+	return fi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (fi *FindInput) WaitURLPattern() (string, bool) { return "", false }
+func (fi *FindInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (fi *FindInput) ElementTarget() (BrowserTarget, bool) {
@@ -771,10 +883,14 @@ func (fi *FindInput) ElementTarget() (BrowserTarget, bool) {
 func (*ReadInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ReadInput) OperationName() string { return "read" }
+func (*ReadInput) OperationName() string {
+	return "read"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ReadInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ReadInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ri *ReadInput) Timeout() time.Duration {
@@ -786,10 +902,14 @@ func (ri *ReadInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ri *ReadInput) TabID() (TabID, bool) { return ri.Tab, true }
+func (ri *ReadInput) TabID() (TabID, bool) {
+	return ri.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ri *ReadInput) WaitURLPattern() (string, bool) { return "", false }
+func (ri *ReadInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (ri *ReadInput) ElementTarget() (BrowserTarget, bool) {
@@ -799,10 +919,14 @@ func (ri *ReadInput) ElementTarget() (BrowserTarget, bool) {
 func (*ScreenshotInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ScreenshotInput) OperationName() string { return "screenshot" }
+func (*ScreenshotInput) OperationName() string {
+	return "screenshot"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ScreenshotInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ScreenshotInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (si *ScreenshotInput) Timeout() time.Duration {
@@ -814,21 +938,31 @@ func (si *ScreenshotInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (si *ScreenshotInput) TabID() (TabID, bool) { return si.Tab, true }
+func (si *ScreenshotInput) TabID() (TabID, bool) {
+	return si.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (si *ScreenshotInput) WaitURLPattern() (string, bool) { return "", false }
+func (si *ScreenshotInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ScreenshotInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ScreenshotInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ProbeInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ProbeInput) OperationName() string { return "probe" }
+func (*ProbeInput) OperationName() string {
+	return "probe"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ProbeInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ProbeInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (pi *ProbeInput) Timeout() time.Duration {
@@ -840,21 +974,31 @@ func (pi *ProbeInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (pi *ProbeInput) TabID() (TabID, bool) { return pi.Tab, true }
+func (pi *ProbeInput) TabID() (TabID, bool) {
+	return pi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (pi *ProbeInput) WaitURLPattern() (string, bool) { return "", false }
+func (pi *ProbeInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ProbeInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ProbeInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ClickInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ClickInput) OperationName() string { return "click" }
+func (*ClickInput) OperationName() string {
+	return "click"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ClickInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ClickInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ci *ClickInput) Timeout() time.Duration {
@@ -866,7 +1010,9 @@ func (ci *ClickInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ci *ClickInput) TabID() (TabID, bool) { return ci.Tab, true }
+func (ci *ClickInput) TabID() (TabID, bool) {
+	return ci.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
 func (ci *ClickInput) WaitURLPattern() (string, bool) {
@@ -884,10 +1030,14 @@ func (ci *ClickInput) ElementTarget() (BrowserTarget, bool) {
 func (*MoveInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*MoveInput) OperationName() string { return "move" }
+func (*MoveInput) OperationName() string {
+	return "move"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*MoveInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*MoveInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (mi *MoveInput) Timeout() time.Duration {
@@ -899,10 +1049,14 @@ func (mi *MoveInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (mi *MoveInput) TabID() (TabID, bool) { return mi.Tab, true }
+func (mi *MoveInput) TabID() (TabID, bool) {
+	return mi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (mi *MoveInput) WaitURLPattern() (string, bool) { return "", false }
+func (mi *MoveInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (mi *MoveInput) ElementTarget() (BrowserTarget, bool) {
@@ -912,10 +1066,14 @@ func (mi *MoveInput) ElementTarget() (BrowserTarget, bool) {
 func (*DragInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*DragInput) OperationName() string { return "drag" }
+func (*DragInput) OperationName() string {
+	return "drag"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*DragInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*DragInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (di *DragInput) Timeout() time.Duration {
@@ -927,21 +1085,31 @@ func (di *DragInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (di *DragInput) TabID() (TabID, bool) { return di.Tab, true }
+func (di *DragInput) TabID() (TabID, bool) {
+	return di.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (di *DragInput) WaitURLPattern() (string, bool) { return "", false }
+func (di *DragInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*DragInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*DragInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ScrollInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ScrollInput) OperationName() string { return "scroll" }
+func (*ScrollInput) OperationName() string {
+	return "scroll"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ScrollInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ScrollInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (si *ScrollInput) Timeout() time.Duration {
@@ -953,10 +1121,14 @@ func (si *ScrollInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (si *ScrollInput) TabID() (TabID, bool) { return si.Tab, true }
+func (si *ScrollInput) TabID() (TabID, bool) {
+	return si.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (si *ScrollInput) WaitURLPattern() (string, bool) { return "", false }
+func (si *ScrollInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (si *ScrollInput) ElementTarget() (BrowserTarget, bool) {
@@ -966,10 +1138,14 @@ func (si *ScrollInput) ElementTarget() (BrowserTarget, bool) {
 func (*FillInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*FillInput) OperationName() string { return "fill" }
+func (*FillInput) OperationName() string {
+	return "fill"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*FillInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*FillInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (fi *FillInput) Timeout() time.Duration {
@@ -981,7 +1157,9 @@ func (fi *FillInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (fi *FillInput) TabID() (TabID, bool) { return fi.Tab, true }
+func (fi *FillInput) TabID() (TabID, bool) {
+	return fi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
 func (fi *FillInput) WaitURLPattern() (string, bool) {
@@ -999,10 +1177,14 @@ func (fi *FillInput) ElementTarget() (BrowserTarget, bool) {
 func (*TypeInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*TypeInput) OperationName() string { return "type" }
+func (*TypeInput) OperationName() string {
+	return "type"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*TypeInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*TypeInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ti *TypeInput) Timeout() time.Duration {
@@ -1014,10 +1196,14 @@ func (ti *TypeInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ti *TypeInput) TabID() (TabID, bool) { return ti.Tab, true }
+func (ti *TypeInput) TabID() (TabID, bool) {
+	return ti.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ti *TypeInput) WaitURLPattern() (string, bool) { return "", false }
+func (ti *TypeInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (ti *TypeInput) ElementTarget() (BrowserTarget, bool) {
@@ -1027,10 +1213,14 @@ func (ti *TypeInput) ElementTarget() (BrowserTarget, bool) {
 func (*KeyInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*KeyInput) OperationName() string { return "key" }
+func (*KeyInput) OperationName() string {
+	return "key"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*KeyInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*KeyInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ki *KeyInput) Timeout() time.Duration {
@@ -1042,7 +1232,9 @@ func (ki *KeyInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ki *KeyInput) TabID() (TabID, bool) { return ki.Tab, true }
+func (ki *KeyInput) TabID() (TabID, bool) {
+	return ki.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
 func (ki *KeyInput) WaitURLPattern() (string, bool) {
@@ -1060,10 +1252,14 @@ func (ki *KeyInput) ElementTarget() (BrowserTarget, bool) {
 func (*CheckInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CheckInput) OperationName() string { return "check" }
+func (*CheckInput) OperationName() string {
+	return "check"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CheckInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CheckInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ci *CheckInput) Timeout() time.Duration {
@@ -1075,10 +1271,14 @@ func (ci *CheckInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ci *CheckInput) TabID() (TabID, bool) { return ci.Tab, true }
+func (ci *CheckInput) TabID() (TabID, bool) {
+	return ci.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ci *CheckInput) WaitURLPattern() (string, bool) { return "", false }
+func (ci *CheckInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (ci *CheckInput) ElementTarget() (BrowserTarget, bool) {
@@ -1088,10 +1288,14 @@ func (ci *CheckInput) ElementTarget() (BrowserTarget, bool) {
 func (*SelectInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*SelectInput) OperationName() string { return "select" }
+func (*SelectInput) OperationName() string {
+	return "select"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*SelectInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*SelectInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (si *SelectInput) Timeout() time.Duration {
@@ -1103,10 +1307,14 @@ func (si *SelectInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (si *SelectInput) TabID() (TabID, bool) { return si.Tab, true }
+func (si *SelectInput) TabID() (TabID, bool) {
+	return si.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (si *SelectInput) WaitURLPattern() (string, bool) { return "", false }
+func (si *SelectInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (si *SelectInput) ElementTarget() (BrowserTarget, bool) {
@@ -1116,10 +1324,14 @@ func (si *SelectInput) ElementTarget() (BrowserTarget, bool) {
 func (*SelectTextInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*SelectTextInput) OperationName() string { return "select-text" }
+func (*SelectTextInput) OperationName() string {
+	return "select-text"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*SelectTextInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*SelectTextInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (sti *SelectTextInput) Timeout() time.Duration {
@@ -1131,10 +1343,14 @@ func (sti *SelectTextInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (sti *SelectTextInput) TabID() (TabID, bool) { return sti.Tab, true }
+func (sti *SelectTextInput) TabID() (TabID, bool) {
+	return sti.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (sti *SelectTextInput) WaitURLPattern() (string, bool) { return "", false }
+func (sti *SelectTextInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (sti *SelectTextInput) ElementTarget() (BrowserTarget, bool) {
@@ -1144,10 +1360,14 @@ func (sti *SelectTextInput) ElementTarget() (BrowserTarget, bool) {
 func (*WaitInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*WaitInput) OperationName() string { return "wait" }
+func (*WaitInput) OperationName() string {
+	return "wait"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*WaitInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*WaitInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (wi *WaitInput) Timeout() time.Duration {
@@ -1159,10 +1379,14 @@ func (wi *WaitInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (wi *WaitInput) TabID() (TabID, bool) { return wi.Tab, true }
+func (wi *WaitInput) TabID() (TabID, bool) {
+	return wi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (wi *WaitInput) WaitURLPattern() (string, bool) { return "", false }
+func (wi *WaitInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (wi *WaitInput) ElementTarget() (BrowserTarget, bool) {
@@ -1172,10 +1396,14 @@ func (wi *WaitInput) ElementTarget() (BrowserTarget, bool) {
 func (*UploadInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*UploadInput) OperationName() string { return "upload" }
+func (*UploadInput) OperationName() string {
+	return "upload"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*UploadInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*UploadInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ui *UploadInput) Timeout() time.Duration {
@@ -1187,10 +1415,14 @@ func (ui *UploadInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ui *UploadInput) TabID() (TabID, bool) { return ui.Tab, true }
+func (ui *UploadInput) TabID() (TabID, bool) {
+	return ui.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ui *UploadInput) WaitURLPattern() (string, bool) { return "", false }
+func (ui *UploadInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (ui *UploadInput) ElementTarget() (BrowserTarget, bool) {
@@ -1200,10 +1432,14 @@ func (ui *UploadInput) ElementTarget() (BrowserTarget, bool) {
 func (*DownloadInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*DownloadInput) OperationName() string { return "download" }
+func (*DownloadInput) OperationName() string {
+	return "download"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*DownloadInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*DownloadInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (di *DownloadInput) Timeout() time.Duration {
@@ -1215,10 +1451,14 @@ func (di *DownloadInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (di *DownloadInput) TabID() (TabID, bool) { return di.Tab, true }
+func (di *DownloadInput) TabID() (TabID, bool) {
+	return di.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (di *DownloadInput) WaitURLPattern() (string, bool) { return "", false }
+func (di *DownloadInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (di *DownloadInput) ElementTarget() (BrowserTarget, bool) {
@@ -1228,10 +1468,14 @@ func (di *DownloadInput) ElementTarget() (BrowserTarget, bool) {
 func (*ClipboardWriteInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ClipboardWriteInput) OperationName() string { return "clipboard.write" }
+func (*ClipboardWriteInput) OperationName() string {
+	return "clipboard.write"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ClipboardWriteInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ClipboardWriteInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (cwi *ClipboardWriteInput) Timeout() time.Duration {
@@ -1243,21 +1487,31 @@ func (cwi *ClipboardWriteInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cwi *ClipboardWriteInput) TabID() (TabID, bool) { return cwi.Tab, true }
+func (cwi *ClipboardWriteInput) TabID() (TabID, bool) {
+	return cwi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cwi *ClipboardWriteInput) WaitURLPattern() (string, bool) { return "", false }
+func (cwi *ClipboardWriteInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ClipboardWriteInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ClipboardWriteInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ClipboardReadInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ClipboardReadInput) OperationName() string { return "clipboard.read" }
+func (*ClipboardReadInput) OperationName() string {
+	return "clipboard.read"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ClipboardReadInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ClipboardReadInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (cri *ClipboardReadInput) Timeout() time.Duration {
@@ -1269,21 +1523,31 @@ func (cri *ClipboardReadInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cri *ClipboardReadInput) TabID() (TabID, bool) { return cri.Tab, true }
+func (cri *ClipboardReadInput) TabID() (TabID, bool) {
+	return cri.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cri *ClipboardReadInput) WaitURLPattern() (string, bool) { return "", false }
+func (cri *ClipboardReadInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ClipboardReadInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ClipboardReadInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*EvalInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*EvalInput) OperationName() string { return "eval" }
+func (*EvalInput) OperationName() string {
+	return "eval"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*EvalInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*EvalInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ei *EvalInput) Timeout() time.Duration {
@@ -1295,10 +1559,14 @@ func (ei *EvalInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ei *EvalInput) TabID() (TabID, bool) { return ei.Tab, true }
+func (ei *EvalInput) TabID() (TabID, bool) {
+	return ei.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ei *EvalInput) WaitURLPattern() (string, bool) { return "", false }
+func (ei *EvalInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
 func (ei *EvalInput) ElementTarget() (BrowserTarget, bool) {
@@ -1308,10 +1576,14 @@ func (ei *EvalInput) ElementTarget() (BrowserTarget, bool) {
 func (*LogsInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*LogsInput) OperationName() string { return "logs" }
+func (*LogsInput) OperationName() string {
+	return "logs"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*LogsInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*LogsInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (li *LogsInput) Timeout() time.Duration {
@@ -1323,21 +1595,31 @@ func (li *LogsInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (li *LogsInput) TabID() (TabID, bool) { return li.Tab, true }
+func (li *LogsInput) TabID() (TabID, bool) {
+	return li.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (li *LogsInput) WaitURLPattern() (string, bool) { return "", false }
+func (li *LogsInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*LogsInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*LogsInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ViewportSetInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ViewportSetInput) OperationName() string { return "viewport.set" }
+func (*ViewportSetInput) OperationName() string {
+	return "viewport.set"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ViewportSetInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ViewportSetInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (vsi *ViewportSetInput) Timeout() time.Duration {
@@ -1349,21 +1631,31 @@ func (vsi *ViewportSetInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (vsi *ViewportSetInput) TabID() (TabID, bool) { return vsi.Tab, true }
+func (vsi *ViewportSetInput) TabID() (TabID, bool) {
+	return vsi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (vsi *ViewportSetInput) WaitURLPattern() (string, bool) { return "", false }
+func (vsi *ViewportSetInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ViewportSetInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ViewportSetInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ViewportResetInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ViewportResetInput) OperationName() string { return "viewport.reset" }
+func (*ViewportResetInput) OperationName() string {
+	return "viewport.reset"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ViewportResetInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ViewportResetInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (vri *ViewportResetInput) Timeout() time.Duration {
@@ -1375,21 +1667,31 @@ func (vri *ViewportResetInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (vri *ViewportResetInput) TabID() (TabID, bool) { return vri.Tab, true }
+func (vri *ViewportResetInput) TabID() (TabID, bool) {
+	return vri.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (vri *ViewportResetInput) WaitURLPattern() (string, bool) { return "", false }
+func (vri *ViewportResetInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ViewportResetInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ViewportResetInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*DialogInspectInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*DialogInspectInput) OperationName() string { return "dialog.inspect" }
+func (*DialogInspectInput) OperationName() string {
+	return "dialog.inspect"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*DialogInspectInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*DialogInspectInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (dii *DialogInspectInput) Timeout() time.Duration {
@@ -1401,21 +1703,31 @@ func (dii *DialogInspectInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (dii *DialogInspectInput) TabID() (TabID, bool) { return dii.Tab, true }
+func (dii *DialogInspectInput) TabID() (TabID, bool) {
+	return dii.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (dii *DialogInspectInput) WaitURLPattern() (string, bool) { return "", false }
+func (dii *DialogInspectInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*DialogInspectInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*DialogInspectInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*DialogAcceptInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*DialogAcceptInput) OperationName() string { return "dialog.accept" }
+func (*DialogAcceptInput) OperationName() string {
+	return "dialog.accept"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*DialogAcceptInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*DialogAcceptInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (dai *DialogAcceptInput) Timeout() time.Duration {
@@ -1427,21 +1739,31 @@ func (dai *DialogAcceptInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (dai *DialogAcceptInput) TabID() (TabID, bool) { return dai.Tab, true }
+func (dai *DialogAcceptInput) TabID() (TabID, bool) {
+	return dai.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (dai *DialogAcceptInput) WaitURLPattern() (string, bool) { return "", false }
+func (dai *DialogAcceptInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*DialogAcceptInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*DialogAcceptInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*DialogDismissInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*DialogDismissInput) OperationName() string { return "dialog.dismiss" }
+func (*DialogDismissInput) OperationName() string {
+	return "dialog.dismiss"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*DialogDismissInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*DialogDismissInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ddi *DialogDismissInput) Timeout() time.Duration {
@@ -1453,21 +1775,31 @@ func (ddi *DialogDismissInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ddi *DialogDismissInput) TabID() (TabID, bool) { return ddi.Tab, true }
+func (ddi *DialogDismissInput) TabID() (TabID, bool) {
+	return ddi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ddi *DialogDismissInput) WaitURLPattern() (string, bool) { return "", false }
+func (ddi *DialogDismissInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*DialogDismissInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*DialogDismissInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*CDPTargetsInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CDPTargetsInput) OperationName() string { return "cdp.targets" }
+func (*CDPTargetsInput) OperationName() string {
+	return "cdp.targets"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CDPTargetsInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CDPTargetsInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (cti *CDPTargetsInput) Timeout() time.Duration {
@@ -1479,21 +1811,31 @@ func (cti *CDPTargetsInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cti *CDPTargetsInput) TabID() (TabID, bool) { return cti.Tab, true }
+func (cti *CDPTargetsInput) TabID() (TabID, bool) {
+	return cti.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cti *CDPTargetsInput) WaitURLPattern() (string, bool) { return "", false }
+func (cti *CDPTargetsInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*CDPTargetsInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CDPTargetsInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*CDPDetachInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CDPDetachInput) OperationName() string { return "cdp.detach" }
+func (*CDPDetachInput) OperationName() string {
+	return "cdp.detach"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CDPDetachInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CDPDetachInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (cdi *CDPDetachInput) Timeout() time.Duration {
@@ -1505,21 +1847,31 @@ func (cdi *CDPDetachInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cdi *CDPDetachInput) TabID() (TabID, bool) { return cdi.Tab, true }
+func (cdi *CDPDetachInput) TabID() (TabID, bool) {
+	return cdi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cdi *CDPDetachInput) WaitURLPattern() (string, bool) { return "", false }
+func (cdi *CDPDetachInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*CDPDetachInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CDPDetachInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*CDPSendInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CDPSendInput) OperationName() string { return "cdp.send" }
+func (*CDPSendInput) OperationName() string {
+	return "cdp.send"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CDPSendInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CDPSendInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (csi *CDPSendInput) Timeout() time.Duration {
@@ -1531,21 +1883,31 @@ func (csi *CDPSendInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (csi *CDPSendInput) TabID() (TabID, bool) { return csi.Tab, true }
+func (csi *CDPSendInput) TabID() (TabID, bool) {
+	return csi.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (csi *CDPSendInput) WaitURLPattern() (string, bool) { return "", false }
+func (csi *CDPSendInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*CDPSendInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CDPSendInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*CDPEventsInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CDPEventsInput) OperationName() string { return "cdp.events" }
+func (*CDPEventsInput) OperationName() string {
+	return "cdp.events"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CDPEventsInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CDPEventsInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (cei *CDPEventsInput) Timeout() time.Duration {
@@ -1557,21 +1919,31 @@ func (cei *CDPEventsInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cei *CDPEventsInput) TabID() (TabID, bool) { return cei.Tab, true }
+func (cei *CDPEventsInput) TabID() (TabID, bool) {
+	return cei.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cei *CDPEventsInput) WaitURLPattern() (string, bool) { return "", false }
+func (cei *CDPEventsInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*CDPEventsInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CDPEventsInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ContentReadInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ContentReadInput) OperationName() string { return "content.read" }
+func (*ContentReadInput) OperationName() string {
+	return "content.read"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ContentReadInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ContentReadInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (cri *ContentReadInput) Timeout() time.Duration {
@@ -1583,21 +1955,31 @@ func (cri *ContentReadInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cri *ContentReadInput) TabID() (TabID, bool) { return cri.Tab, true }
+func (cri *ContentReadInput) TabID() (TabID, bool) {
+	return cri.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cri *ContentReadInput) WaitURLPattern() (string, bool) { return "", false }
+func (cri *ContentReadInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ContentReadInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ContentReadInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*ContentFetchInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*ContentFetchInput) OperationName() string { return "content.fetch" }
+func (*ContentFetchInput) OperationName() string {
+	return "content.fetch"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*ContentFetchInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*ContentFetchInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (cfi *ContentFetchInput) Timeout() time.Duration {
@@ -1609,21 +1991,31 @@ func (cfi *ContentFetchInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (cfi *ContentFetchInput) TabID() (TabID, bool) { return "", false }
+func (cfi *ContentFetchInput) TabID() (TabID, bool) {
+	return "", false
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (cfi *ContentFetchInput) WaitURLPattern() (string, bool) { return "", false }
+func (cfi *ContentFetchInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*ContentFetchInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*ContentFetchInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*AssetsListInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*AssetsListInput) OperationName() string { return "assets.list" }
+func (*AssetsListInput) OperationName() string {
+	return "assets.list"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*AssetsListInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*AssetsListInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ali *AssetsListInput) Timeout() time.Duration {
@@ -1635,21 +2027,31 @@ func (ali *AssetsListInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ali *AssetsListInput) TabID() (TabID, bool) { return ali.Tab, true }
+func (ali *AssetsListInput) TabID() (TabID, bool) {
+	return ali.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ali *AssetsListInput) WaitURLPattern() (string, bool) { return "", false }
+func (ali *AssetsListInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*AssetsListInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*AssetsListInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*AssetsExportInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*AssetsExportInput) OperationName() string { return "assets.export" }
+func (*AssetsExportInput) OperationName() string {
+	return "assets.export"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*AssetsExportInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*AssetsExportInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (aei *AssetsExportInput) Timeout() time.Duration {
@@ -1661,21 +2063,31 @@ func (aei *AssetsExportInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (aei *AssetsExportInput) TabID() (TabID, bool) { return aei.Tab, true }
+func (aei *AssetsExportInput) TabID() (TabID, bool) {
+	return aei.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (aei *AssetsExportInput) WaitURLPattern() (string, bool) { return "", false }
+func (aei *AssetsExportInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*AssetsExportInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*AssetsExportInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*CapabilitiesInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*CapabilitiesInput) OperationName() string { return "capabilities" }
+func (*CapabilitiesInput) OperationName() string {
+	return "capabilities"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*CapabilitiesInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*CapabilitiesInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (ci *CapabilitiesInput) Timeout() time.Duration {
@@ -1687,21 +2099,31 @@ func (ci *CapabilitiesInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (ci *CapabilitiesInput) TabID() (TabID, bool) { return ci.Tab, true }
+func (ci *CapabilitiesInput) TabID() (TabID, bool) {
+	return ci.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (ci *CapabilitiesInput) WaitURLPattern() (string, bool) { return "", false }
+func (ci *CapabilitiesInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*CapabilitiesInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*CapabilitiesInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*WebMCPListInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*WebMCPListInput) OperationName() string { return "webmcp.list" }
+func (*WebMCPListInput) OperationName() string {
+	return "webmcp.list"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*WebMCPListInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*WebMCPListInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (wli *WebMCPListInput) Timeout() time.Duration {
@@ -1713,21 +2135,31 @@ func (wli *WebMCPListInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (wli *WebMCPListInput) TabID() (TabID, bool) { return wli.Tab, true }
+func (wli *WebMCPListInput) TabID() (TabID, bool) {
+	return wli.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (wli *WebMCPListInput) WaitURLPattern() (string, bool) { return "", false }
+func (wli *WebMCPListInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*WebMCPListInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*WebMCPListInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 func (*WebMCPCallInput) operation() {}
 
 // OperationName returns the name without the browser. prefix.
-func (*WebMCPCallInput) OperationName() string { return "webmcp.call" }
+func (*WebMCPCallInput) OperationName() string {
+	return "webmcp.call"
+}
 
 // DefaultTimeoutMS is the deadline when the input names none, in milliseconds.
-func (*WebMCPCallInput) DefaultTimeoutMS() uint64 { return TimeoutMS }
+func (*WebMCPCallInput) DefaultTimeoutMS() uint64 {
+	return TimeoutMS
+}
 
 // Timeout is the whole operation's deadline.
 func (wci *WebMCPCallInput) Timeout() time.Duration {
@@ -1739,13 +2171,19 @@ func (wci *WebMCPCallInput) Timeout() time.Duration {
 }
 
 // TabID is the tab this operation acts on; ok is false for an untargeted command.
-func (wci *WebMCPCallInput) TabID() (TabID, bool) { return wci.Tab, true }
+func (wci *WebMCPCallInput) TabID() (TabID, bool) {
+	return wci.Tab, true
+}
 
 // WaitURLPattern is the URL glob the action waits for after its input.
-func (wci *WebMCPCallInput) WaitURLPattern() (string, bool) { return "", false }
+func (wci *WebMCPCallInput) WaitURLPattern() (string, bool) {
+	return "", false
+}
 
 // ElementTarget is the element target the input carries.
-func (*WebMCPCallInput) ElementTarget() (BrowserTarget, bool) { return BrowserTarget{}, false }
+func (*WebMCPCallInput) ElementTarget() (BrowserTarget, bool) {
+	return BrowserTarget{}, false
+}
 
 // ParseQuery decodes the tree find --query reads from stdin and checks every base.
 func ParseQuery(body []byte) (BrowserQuery, error) {
@@ -1809,4 +2247,6 @@ func (q *BrowserQuery) branchRefs() iter.Seq[*BrowserQuery] {
 }
 
 // Target converts a query's base locator to an unscoped element target.
-func (q BrowserQueryMatch) Target() BrowserTarget { return BrowserTarget{BrowserQueryMatch: q.clone()} }
+func (q BrowserQueryMatch) Target() BrowserTarget {
+	return BrowserTarget{BrowserQueryMatch: q.clone()}
+}

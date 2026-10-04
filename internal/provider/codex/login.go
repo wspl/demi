@@ -53,7 +53,9 @@ func (k *loginKit) login(ctx context.Context, pending func(types.LoginPending)) 
 	if err != nil {
 		return provider.NewAccount{}, err
 	}
-	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
+	defer func() {
+		_ = response.Body.Close()
+	}() // The reader reports IO failures; close releases the response.
 	if response.StatusCode == 404 {
 		return provider.NewAccount{}, errors.New("Device-code login is not enabled for this Codex account")
 	}
@@ -84,7 +86,9 @@ func (k *loginKit) login(ctx context.Context, pending func(types.LoginPending)) 
 	if err != nil {
 		return provider.NewAccount{}, fmt.Errorf("Codex sign-in request failed: %w", provider.WithoutURL(err))
 	}
-	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
+	defer func() {
+		_ = response.Body.Close()
+	}() // The reader reports IO failures; close releases the response.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return provider.NewAccount{}, fmt.Errorf("Device-code token exchange failed with HTTP %d", response.StatusCode)
 	}

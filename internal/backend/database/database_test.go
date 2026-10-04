@@ -25,11 +25,16 @@ import (
 )
 
 // These SQLite scenarios cost local temporary files only; no network or wall-time waits.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 type testClock struct{ at types.Timestamp }
 
-func (c *testClock) Now() types.Timestamp { return c.at }
+func (c *testClock) Now() types.Timestamp {
+	return c.at
+}
+
 func require(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
@@ -49,7 +54,9 @@ func testControl(t *testing.T) (*ControlService, *testClock) {
 	clock := &testClock{at: types.UnixEpoch}
 	c, err := OpenControl(t.Context(), filepath.Join(t.TempDir(), "control.sqlite"), clock)
 	require(t, err)
-	t.Cleanup(func() { require(t, c.Close(context.Background())) })
+	t.Cleanup(func() {
+		require(t, c.Close(context.Background()))
+	})
 	return c, clock
 }
 
@@ -82,7 +89,9 @@ func testStores(t *testing.T, limit int) *ConversationStores {
 	t.Helper()
 	s, err := OpenConversations(t.Context(), t.TempDir(), limit)
 	require(t, err)
-	t.Cleanup(func() { require(t, s.Close(context.Background())) })
+	t.Cleanup(func() {
+		require(t, s.Close(context.Background()))
+	})
 	return s
 }
 
@@ -109,7 +118,9 @@ func TestOtherSchemaRefusedAndCurrentReopens(t *testing.T) {
 	require(t, c.Close(t.Context()))
 	c, err = OpenControl(t.Context(), path, types.SystemClock{})
 	require(t, err)
-	defer func() { require(t, c.Close(context.Background())) }()
+	defer func() {
+		require(t, c.Close(context.Background()))
+	}()
 	users, err := c.Users(t.Context())
 	require(t, err)
 	equal(t, 1, len(users))
@@ -270,7 +281,9 @@ func TestHostAttachesOnceUnderFreeName(t *testing.T) {
 		{Device: devices[1].ID, Name: "laptop-2", CWD: new("/work")},
 		{Device: devices[2].ID, Name: string(devices[2].ID)},
 	}
-	slices.SortFunc(expected, func(a, b AttachedHostRecord) int { return strings.Compare(a.Name, b.Name) })
+	slices.SortFunc(expected, func(a, b AttachedHostRecord) int {
+		return strings.Compare(a.Name, b.Name)
+	})
 	got, err := c.AttachedHosts(t.Context(), id)
 	require(t, err)
 	equal(t, expected, got)
@@ -410,16 +423,22 @@ func TestWritersBoundedColdReadsCreateNothing(t *testing.T) {
 	read(stores.DB(webapiproto.ConversationID(strings.ToUpper(string(a)))), "a2")
 	require(t, stores.Close(ctx))
 	equal(t, 0, openWriters(stores))
-	if err := first.Call(ctx, func(context.Context, *sql.Tx) error { return nil }); !errors.Is(err, ErrClosed) {
+	if err := first.Call(ctx, func(context.Context, *sql.Tx) error {
+		return nil
+	}); !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
-	_, err = first.Read(ctx, func(context.Context, *sql.Tx) error { return nil })
+	_, err = first.Read(ctx, func(context.Context, *sql.Tx) error {
+		return nil
+	})
 	if !errors.Is(err, ErrClosed) {
 		t.Fatal(err)
 	}
 	reopened, err := OpenConversations(ctx, stores.directory, MaxWriters)
 	require(t, err)
-	defer func() { require(t, reopened.Close(context.Background())) }()
+	defer func() {
+		require(t, reopened.Close(context.Background()))
+	}()
 	read(reopened.DB(a), "a2")
 	read(reopened.DB(b), "b")
 	read(reopened.DB(c), "c")
@@ -432,7 +451,9 @@ func TestConcurrentFirstCallsOpenOneWriter(t *testing.T) {
 	results := make(chan error, 2)
 	var wg sync.WaitGroup
 	for _, state := range []string{"first", "second"} {
-		wg.Go(func() { results <- writeRoot(t.Context(), stores.DB(id), id, state) })
+		wg.Go(func() {
+			results <- writeRoot(t.Context(), stores.DB(id), id, state)
+		})
 	}
 	wg.Wait()
 	close(results)
@@ -448,7 +469,10 @@ type testBlobs struct {
 	touched []types.BlobRef
 }
 
-func (b *testBlobs) Media() store.Blobs { return b.MemoryBlobs }
+func (b *testBlobs) Media() store.Blobs {
+	return b.MemoryBlobs
+}
+
 func (b *testBlobs) CommitUses(_ context.Context, blobs []types.BlobRef) error {
 	b.touched = append(b.touched, blobs...)
 	return b.refuse
@@ -530,7 +554,9 @@ func facts(t *testing.T, db *ConversationDB) SummaryFacts {
 func TestOutputRevisionIgnoresInputAndAdvancesOnRewrite(t *testing.T) {
 	tree, db, _ := testTree(t)
 	ctx := t.Context()
-	found, err := db.Read(ctx, func(context.Context, *sql.Tx) error { return nil })
+	found, err := db.Read(ctx, func(context.Context, *sql.Tx) error {
+		return nil
+	})
 	require(t, err)
 	equal(t, false, found)
 	require(t, tree.CreateNode(ctx, node("root", nil, 0), update(0)))

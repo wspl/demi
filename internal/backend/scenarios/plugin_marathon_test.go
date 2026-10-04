@@ -25,7 +25,9 @@ func filesScripted(t *testing.T, script *providertest.ScriptedRuntime) filesWork
 		h.Config.Clock = types.SystemClock{}
 		h.Config.Families.Register(
 			"files-script",
-			conversationFamily{build: func(providerhost.FamilyArgs) provider.Runtime { return script }},
+			conversationFamily{build: func(providerhost.FamilyArgs) provider.Runtime {
+				return script
+			}},
 		)
 	})
 	filesCloseTree(w.ctx, t, w.socket)

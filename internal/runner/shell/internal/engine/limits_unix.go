@@ -89,7 +89,9 @@ func limitOptions(ctx context.Context, args []string) (soft, hard, all bool, ask
 				case 'a':
 					all = true
 				default:
-					index := slices.IndexFunc(resources, func(r resource) bool { return r.option == option })
+					index := slices.IndexFunc(resources, func(r resource) bool {
+						return r.option == option
+					})
 					if index < 0 {
 						return false, false, false, nil, diagnostic(ctx, 2, "ulimit: -%c: invalid option\n", option)
 					}
@@ -183,7 +185,9 @@ func applyLimit(
 	}
 	attributes.Limits = slices.DeleteFunc(
 		attributes.Limits,
-		func(limit process.ResourceLimit) bool { return limit.Resource == r.number },
+		func(limit process.ResourceLimit) bool {
+			return limit.Resource == r.number
+		},
 	)
 	attributes.Limits = append(attributes.Limits, process.ResourceLimit{Resource: r.number, Soft: low, Hard: high})
 	return nil, checkChildLimit(ctx, r, *attributes)

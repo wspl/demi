@@ -58,7 +58,9 @@ func filled(
 	if _, err = link.call(
 		ctx,
 		expected,
-		func(id string) runnerproto.Inbound { return build(id, pipe.WireRef()) },
+		func(id string) runnerproto.Inbound {
+			return build(id, pipe.WireRef())
+		},
 	); err != nil {
 		reader.Fail(err.Error())
 		return nil, err
@@ -68,7 +70,9 @@ func filled(
 
 // collect reads a runner's pipe within the protocol's expected output bound.
 func collect(ctx context.Context, reader *PipeReader, limit int) (result []byte, err error) {
-	defer func() { err = errors.Join(err, reader.Close(context.WithoutCancel(ctx))) }()
+	defer func() {
+		err = errors.Join(err, reader.Close(context.WithoutCancel(ctx)))
+	}()
 	for {
 		chunk, err := reader.Next(ctx)
 		if errors.Is(err, io.EOF) {
@@ -118,7 +122,9 @@ func (s fileStream) Read(ctx context.Context, data []byte) (int, error) {
 }
 
 // Close releases the file pipe reader.
-func (s fileStream) Close(ctx context.Context) error { return s.reader.Close(ctx) }
+func (s fileStream) Close(ctx context.Context) error {
+	return s.reader.Close(ctx)
+}
 
 // WriteFile uploads contents while the runner writes the destination file.
 func (f remoteFS) WriteFile(
@@ -128,7 +134,9 @@ func (f remoteFS) WriteFile(
 	options host.WriteOptions,
 ) (err error) {
 	if contents.Stream != nil {
-		defer func() { err = errors.Join(err, contents.Stream.Close(context.WithoutCancel(ctx))) }()
+		defer func() {
+			err = errors.Join(err, contents.Stream.Close(context.WithoutCancel(ctx)))
+		}()
 	}
 	pipe, err := f.host.WritePipe()
 	if err != nil {

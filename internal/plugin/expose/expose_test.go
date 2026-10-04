@@ -17,7 +17,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 type testWorld struct {
 	*plugintest.TestDemi

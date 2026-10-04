@@ -22,10 +22,14 @@ func (v exposeView) Control() expose.Store {
 }
 
 // Exposes returns the shard’s live expose registry.
-func (v exposeView) Exposes() *expose.Connections { return &v.exposes }
+func (v exposeView) Exposes() *expose.Connections {
+	return &v.exposes
+}
 
 // Domain returns the configured public expose domain.
-func (v exposeView) Domain() *expose.Domain { return v.services.ExposeDomain }
+func (v exposeView) Domain() *expose.Domain {
+	return v.services.ExposeDomain
+}
 
 // PublicURL returns the backend URL already validated at entry.
 func (v exposeView) PublicURL() *url.Url {

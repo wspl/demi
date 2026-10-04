@@ -26,7 +26,9 @@ type response struct {
 }
 
 // Header returns the headers to commit for this response.
-func (w *response) Header() http.Header { return w.header }
+func (w *response) Header() http.Header {
+	return w.header
+}
 
 // WriteHeader starts the encoder after deciding whether the connection can be reused.
 func (w *response) WriteHeader(status int) {
@@ -128,7 +130,11 @@ func (w *response) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 }
 
 // SetReadDeadline forwards the HTTP controller deadline to the connection.
-func (w *response) SetReadDeadline(t time.Time) error { return w.conn.SetReadDeadline(t) }
+func (w *response) SetReadDeadline(t time.Time) error {
+	return w.conn.SetReadDeadline(t)
+}
 
 // SetWriteDeadline forwards the HTTP controller deadline to the connection.
-func (w *response) SetWriteDeadline(t time.Time) error { return w.conn.SetWriteDeadline(t) }
+func (w *response) SetWriteDeadline(t time.Time) error {
+	return w.conn.SetWriteDeadline(t)
+}

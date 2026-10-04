@@ -35,7 +35,9 @@ type targetElement struct {
 }
 
 // identity keys a DOM node by both renderer and backend identity.
-func (e targetElement) identity() domIdentity { return domIdentity{e.page.TargetID(), e.backend} }
+func (e targetElement) identity() domIdentity {
+	return domIdentity{e.page.TargetID(), e.backend}
+}
 
 // resolveElement binds the observed node to a command-owned remote object.
 func resolveElement(ctx context.Context, page cdp.FrameTarget, backend protocol.BackendNodeID) (targetElement, error) {

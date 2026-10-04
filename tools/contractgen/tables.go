@@ -129,7 +129,9 @@ func (g *generator) tableSources() ([]byte, error) {
 	if len(g.tables) == 0 {
 		return nil, nil
 	}
-	sort.Slice(g.tables, func(i, j int) bool { return g.tables[i].name < g.tables[j].name })
+	sort.Slice(g.tables, func(i, j int) bool {
+		return g.tables[i].name < g.tables[j].name
+	})
 	var out strings.Builder
 	out.WriteString(tsHeader)
 	seen := map[string]bool{}

@@ -13,7 +13,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // In-memory boundary scenarios; no IO or wall-time waits, under one second.
 func TestFanoutAndCoalescing(t *testing.T) {
@@ -96,7 +98,9 @@ func TestWaitWakeAndCancellation(t *testing.T) {
 		for _, endSession := range []bool{false, true} {
 			ctx, cancel := context.WithCancel(t.Context())
 			done := make(chan error, 1)
-			go func() { done <- channel.Marked(ctx) }()
+			go func() {
+				done <- channel.Marked(ctx)
+			}()
 			synctest.Wait()
 			select {
 			case err := <-done:
@@ -117,7 +121,9 @@ func TestWaitWakeAndCancellation(t *testing.T) {
 		}
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- channel.Marked(ctx) }()
+		go func() {
+			done <- channel.Marked(ctx)
+		}()
 		synctest.Wait()
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {
@@ -173,8 +179,12 @@ func TestSignOutOnlyWakesMatchingSession(t *testing.T) {
 		}()
 		firstDone := make(chan error, 1)
 		secondDone := make(chan error, 1)
-		waiters.Go(func() { firstDone <- first.Marked(ctx) })
-		waiters.Go(func() { secondDone <- second.Marked(ctx) })
+		waiters.Go(func() {
+			firstDone <- first.Marked(ctx)
+		})
+		waiters.Go(func() {
+			secondDone <- second.Marked(ctx)
+		})
 		synctest.Wait()
 
 		registry.EndSession("alice", firstSession)

@@ -18,7 +18,9 @@ import (
 )
 
 // MsgpackNull reports an explicit MessagePack nil.
-func MsgpackNull(data []byte) bool { return len(data) == 1 && data[0] == msgpcode.Nil }
+func MsgpackNull(data []byte) bool {
+	return len(data) == 1 && data[0] == msgpcode.Nil
+}
 
 // MsgpackObject preserves presence and refuses duplicate names before dispatch.
 func MsgpackObject(data []byte) (map[string][]byte, error) {
@@ -295,7 +297,9 @@ func MsgpackTuple(data []byte, tag string, count int) ([][]byte, error) {
 	if count == 1 {
 		return [][]byte{raw}, nil
 	}
-	fields, err := MsgpackList(raw, func(b []byte) ([]byte, error) { return b, nil })
+	fields, err := MsgpackList(raw, func(b []byte) ([]byte, error) {
+		return b, nil
+	})
 	if err != nil {
 		return nil, At(tag, err)
 	}
@@ -525,7 +529,9 @@ func encodeMsgpackRecord(encoder *msgpack.Encoder, value reflect.Value) error {
 		return errors.New("record keys must be strings")
 	}
 	keys := value.MapKeys()
-	slices.SortFunc(keys, func(a, b reflect.Value) int { return strings.Compare(a.String(), b.String()) })
+	slices.SortFunc(keys, func(a, b reflect.Value) int {
+		return strings.Compare(a.String(), b.String())
+	})
 	if err := encoder.EncodeMapLen(len(keys)); err != nil {
 		return err
 	}

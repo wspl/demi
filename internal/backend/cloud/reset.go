@@ -289,7 +289,9 @@ func admitReset(
 		defer c.workers.Done()
 		result := runTransition(
 			context.WithoutCancel(c.ctx),
-			func(ctx context.Context) error { return resetSteps(ctx, s, m, operation, previous, retirement) },
+			func(ctx context.Context) error {
+				return resetSteps(ctx, s, m, operation, previous, retirement)
+			},
 		)
 		finishReset(context.WithoutCancel(c.ctx), s, m, operation, t, result)
 	}()

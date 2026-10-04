@@ -66,7 +66,9 @@ func TestOAuthDurations(t *testing.T) {
 }
 
 func TestJWTClaimsWithoutSignature(t *testing.T) {
-	decode := func(data []byte) (any, error) { return provider.DecodeUntagged[any](string(data)) }
+	decode := func(data []byte) (any, error) {
+		return provider.DecodeUntagged[any](string(data))
+	}
 	for _, value := range []any{
 		map[string]any{
 			"sub": "user-1",
@@ -96,7 +98,9 @@ func TestJWTClaimsWithoutSignature(t *testing.T) {
 	}
 	if _, ok := provider.JWTClaims(
 		providertest.JWT(t, 42),
-		func(data []byte) (claims, error) { return provider.DecodeUntagged[claims](string(data)) },
+		func(data []byte) (claims, error) {
+			return provider.DecodeUntagged[claims](string(data))
+		},
 	); ok {
 		t.Fatal("accepted numeric claims as object")
 	}

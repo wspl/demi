@@ -125,7 +125,9 @@ func (i *installing) close() {
 	owner := i.installs
 	owner.mu.Lock()
 	defer owner.mu.Unlock()
-	owner.list = slices.DeleteFunc(owner.list, func(item *installing) bool { return item == i })
+	owner.list = slices.DeleteFunc(owner.list, func(item *installing) bool {
+		return item == i
+	})
 	owner.notifyLocked()
 }
 

@@ -18,7 +18,9 @@ type PreferenceStore interface {
 type Preferences struct{ control PreferenceStore }
 
 // NewPreferences returns the per-user preference service.
-func NewPreferences(control PreferenceStore) *Preferences { return &Preferences{control: control} }
+func NewPreferences(control PreferenceStore) *Preferences {
+	return &Preferences{control: control}
+}
 
 // Read returns the authenticated user's saved overrides.
 func (p *Preferences) Read(ctx context.Context, caller webapiproto.UserID) (webapiproto.Preferences, error) {

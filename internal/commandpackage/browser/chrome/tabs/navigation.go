@@ -440,7 +440,10 @@ func (n *NavigationObservation) next(ctx context.Context) (navigationEvent, stri
 	return navigationOther, "", nil
 }
 
-func frameURL(frame *protocol.Frame) string { return frame.URL + frame.URLFragment }
+func frameURL(frame *protocol.Frame) string {
+	return frame.URL + frame.URLFragment
+}
+
 func loadEvent(load browserproto.Load) string {
 	if load == browserproto.LoadLoad {
 		return "load"

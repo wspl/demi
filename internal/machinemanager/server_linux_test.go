@@ -48,7 +48,12 @@ func server(
 		flight.Wait(context.Background())
 	}()
 	var once sync.Once
-	stop := func() { once.Do(func() { cancel(); <-done }) }
+	stop := func() {
+		once.Do(func() {
+			cancel()
+			<-done
+		})
+	}
 	t.Cleanup(stop)
 	return &serverFixture{path, service, deaths, stop}
 }
@@ -64,7 +69,9 @@ func (f *serverFixture) connect(t *testing.T) *socketClient {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = conn.Close() })
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
 	return &socketClient{conn, bufio.NewReader(conn)}
 }
 
@@ -174,7 +181,11 @@ func TestFailureLeavesConnectionUsable(t *testing.T) {
 func TestConcurrentRepliesCompleteInOrder(t *testing.T) {
 	release := make(chan struct{})
 	var once sync.Once
-	unblock := func() { once.Do(func() { close(release) }) }
+	unblock := func() {
+		once.Do(func() {
+			close(release)
+		})
+	}
 	f := server(t, func(_ context.Context, call machinemanagerproto.Call) (json.RawMessage, error) {
 		if call.Name() == "current_base_version" {
 			<-release
@@ -239,7 +250,11 @@ func TestDisconnectedRequestCompletes(t *testing.T) {
 	release := make(chan struct{})
 	finished := make(chan struct{})
 	var once sync.Once
-	unblock := func() { once.Do(func() { close(release) }) }
+	unblock := func() {
+		once.Do(func() {
+			close(release)
+		})
+	}
 	f := server(t, func(_ context.Context, _ machinemanagerproto.Call) (json.RawMessage, error) {
 		close(entered)
 		<-release

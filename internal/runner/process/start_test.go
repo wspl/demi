@@ -27,7 +27,9 @@ func TestStartRetriesOnlyTransientFailures(t *testing.T) {
 			t.Fatalf("descriptor retry: %d %d %v", value, calls, err)
 		}
 		start := time.Now()
-		_, err = process.Start(t.Context(), func() (int, error) { return 0, syscall.ETXTBSY })
+		_, err = process.Start(t.Context(), func() (int, error) {
+			return 0, syscall.ETXTBSY
+		})
 		if !errors.Is(err, syscall.ETXTBSY) || time.Since(start) != 1055*time.Millisecond {
 			t.Fatalf("busy retry: %s %v", time.Since(start), err)
 		}
@@ -42,7 +44,9 @@ func TestStartRetriesOnlyTransientFailures(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
 		go func() {
-			_, err := process.Start(ctx, func() (int, error) { return 0, commandsdk.Exhaustion() })
+			_, err := process.Start(ctx, func() (int, error) {
+				return 0, commandsdk.Exhaustion()
+			})
 			done <- err
 		}()
 		synctest.Wait()

@@ -29,12 +29,16 @@ func Attach(ctx context.Context, image string) (*LoopDevice, error) {
 	}
 	// No writes are made through these descriptors; the loop driver holds its
 	// own reference to the backing file after successful configuration.
-	defer func() { _ = backing.Close() }()
+	defer func() {
+		_ = backing.Close()
+	}()
 	control, err := os.OpenFile("/dev/loop-control", os.O_RDWR, 0)
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = control.Close() }()
+	defer func() {
+		_ = control.Close()
+	}()
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
@@ -63,10 +67,14 @@ func Attach(ctx context.Context, image string) (*LoopDevice, error) {
 }
 
 // Number returns the attached device's number, retained for growth.
-func (d *LoopDevice) Number() uint32 { return d.number }
+func (d *LoopDevice) Number() uint32 {
+	return d.number
+}
 
 // Path returns the attached device's /dev/loop<number> path.
-func (d *LoopDevice) Path() string { return LoopPath(d.number) }
+func (d *LoopDevice) Path() string {
+	return LoopPath(d.number)
+}
 
 // Close releases the device descriptor. It is idempotent; a mounted filesystem
 // keeps the device attached until unmount.
@@ -80,7 +88,9 @@ func (d *LoopDevice) Close() error {
 }
 
 // LoopPath returns /dev/loop<number>.
-func LoopPath(number uint32) string { return fmt.Sprintf("/dev/loop%d", number) }
+func LoopPath(number uint32) string {
+	return fmt.Sprintf("/dev/loop%d", number)
+}
 
 // RefreshCapacity makes the loop device see its backing file's new size.
 func RefreshCapacity(ctx context.Context, number uint32) error {
@@ -93,6 +103,8 @@ func RefreshCapacity(ctx context.Context, number uint32) error {
 		return err
 	}
 	// The ioctl does not buffer writes on this descriptor.
-	defer func() { _ = device.Close() }()
+	defer func() {
+		_ = device.Close()
+	}()
 	return Failed("refreshing the capacity of", path, unix.IoctlSetInt(int(device.Fd()), unix.LOOP_SET_CAPACITY, 0))
 }

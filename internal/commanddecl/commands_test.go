@@ -604,7 +604,9 @@ func TestPinningPreservesDeclarationsAndPropagatesResolutionFailures(t *testing.
 	failure := errors.New("resolver failed")
 	if _, err := commanddecl.Pin(
 		root,
-		func(commanddecl.NativeOperation) (string, error) { return "", failure },
+		func(commanddecl.NativeOperation) (string, error) {
+			return "", failure
+		},
 	); !errors.Is(
 		err,
 		failure,

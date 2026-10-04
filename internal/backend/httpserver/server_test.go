@@ -30,7 +30,9 @@ func TestRequestAfterShutdownAnswersBackendClosing(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = control.Close(context.Background()) }()
+	defer func() {
+		_ = control.Close(context.Background())
+	}()
 	state := httpserver.AppState{
 		Services: &usershard.Services{Control: control, PublicURL: &runners.PublicURL{}},
 		Site:     &httpserver.Site{},
@@ -40,7 +42,9 @@ func TestRequestAfterShutdownAnswersBackendClosing(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = e.Close(context.Background()) }()
+	defer func() {
+		_ = e.Close(context.Background())
+	}()
 	transport := &http.Transport{MaxConnsPerHost: 1}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
@@ -98,7 +102,9 @@ func TestRunnerProtocolRefusalUsesUpgradedListener(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = socket.CloseNow() }()
+	defer func() {
+		_ = socket.CloseNow()
+	}()
 	hello := &runnerproto.Hello{
 		Protocol: 0,
 		Runner: runnerproto.Info{
@@ -157,7 +163,9 @@ func TestExposeHostnameIsSelectedBeforeHTTPHeaderParsing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		_ = conn.Close()
+	}()
 	// An unknown expose is answered by the relay before net/http can reject
 	// the malformed header name. Product routing must never see this request.
 	if _, err := io.WriteString(

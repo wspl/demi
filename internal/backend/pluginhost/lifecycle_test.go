@@ -42,7 +42,9 @@ func TestDisableCancelsCallsAndJoinsInstanceWork(t *testing.T) {
 		t,
 		registry(t, &fakeFactory{
 			manifest: manifest(t, "worker"),
-			make:     func() plugin.Plugin { return p },
+			make: func() plugin.Plugin {
+				return p
+			},
 		}),
 	)
 	answered := make(chan error, 1)

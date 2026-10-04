@@ -27,8 +27,13 @@ func parseOrigin(text string) (origin, error) {
 	return origin{}, fmt.Errorf("\"%s\" is neither owner/repo nor an https URL", text)
 }
 
-func (o origin) id() string         { return fmt.Sprintf("%x", sha256.Sum256([]byte(o.url)))[:12] }
-func (o origin) repository() string { return o.url[strings.LastIndexByte(o.url, '/')+1:] }
+func (o origin) id() string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(o.url)))[:12]
+}
+
+func (o origin) repository() string {
+	return o.url[strings.LastIndexByte(o.url, '/')+1:]
+}
 
 func githubName(part string) bool {
 	if part == "" {

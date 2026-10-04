@@ -99,7 +99,9 @@ func NewStaged(ctx context.Context, path string, publication Publication) (*Stag
 }
 
 // File is the staged artifact's writable file, valid until Publish or Close.
-func (s *Staged) File() *os.File { return s.file }
+func (s *Staged) File() *os.File {
+	return s.file
+}
 
 // Close discards an unpublished artifact; it is idempotent.
 func (s *Staged) Close() error {
@@ -121,7 +123,9 @@ func (s *Staged) Close() error {
 // Publish commits a complete artifact. Cancellation is checked before commit;
 // once publication starts it is completed, including requested durability.
 func (s *Staged) Publish(ctx context.Context) (err error) {
-	defer func() { err = errors.Join(err, s.Close()) }()
+	defer func() {
+		err = errors.Join(err, s.Close())
+	}()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -169,7 +173,9 @@ func Publish(ctx context.Context, path string, input io.Reader, publication Publ
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, staged.Close()) }()
+	defer func() {
+		err = errors.Join(err, staged.Close())
+	}()
 	if err := transfer(ctx, input, staged.File(), nil); err != nil {
 		return err
 	}

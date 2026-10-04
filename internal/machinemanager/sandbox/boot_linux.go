@@ -302,7 +302,9 @@ func (s *Sandbox) Grow(
 	if err != nil {
 		return 0, err
 	}
-	defer func() { err = errors.Join(err, file.Close()) }()
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
 	info, err := file.Stat()
 	if err != nil {
 		return 0, err
@@ -374,7 +376,9 @@ func (s *Sandbox) Close(ctx context.Context, working Working) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, directory.Close()) }()
+	defer func() {
+		err = errors.Join(err, directory.Close())
+	}()
 	if err := directory.Sync(); err != nil {
 		return err
 	}
@@ -412,7 +416,9 @@ func (s *Sandbox) mountImage(
 	if err != nil {
 		return 0, err
 	}
-	defer func() { err = errors.Join(err, device.Close()) }()
+	defer func() {
+		err = errors.Join(err, device.Close())
+	}()
 	if err := system.Ext4(ctx, device.Path(), s.directory.Volume(volume)); err != nil {
 		return 0, err
 	}
@@ -425,7 +431,9 @@ func (s *Sandbox) startRuntime(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, log.Close()) }()
+	defer func() {
+		err = errors.Join(err, log.Close())
+	}()
 	return s.dependencies.Runsc.Start(ctx, s.record.ID, s.directory.Root(), log, s.directory.Log())
 }
 
@@ -461,7 +469,9 @@ func (s *Sandbox) captureImage(ctx context.Context, source, destination string) 
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, file.Close()) }()
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
 	return file.Sync()
 }
 

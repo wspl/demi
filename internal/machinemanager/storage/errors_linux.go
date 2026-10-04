@@ -19,7 +19,9 @@ func (e *GrowthCapabilityError) Error() string {
 }
 
 // Unwrap returns the resize tool failure.
-func (e *GrowthCapabilityError) Unwrap() error { return e.Source }
+func (e *GrowthCapabilityError) Unwrap() error {
+	return e.Source
+}
 
 var (
 	// ErrUnsafeEntry reports an unsafe archive member.

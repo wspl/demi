@@ -10,4 +10,6 @@ package process
 // means the invocation was a bootstrap and the caller must exit, reporting err.
 // Ordinary invocations (and Windows) return false. Successful Unix execution
 // replaces the process and does not return.
-func RunChildBootstrap() (handled bool, err error) { return runChildBootstrap() }
+func RunChildBootstrap() (handled bool, err error) {
+	return runChildBootstrap()
+}

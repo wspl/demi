@@ -13,7 +13,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const (
 	window = time.Hour
@@ -39,7 +41,9 @@ func (g *gated) Check(_ context.Context) (idlewatch.Activity, error) {
 	return idlewatch.Of(g.gate.State()), nil
 }
 
-func (g *gated) Changed() <-chan struct{} { return g.gate.State().Changed() }
+func (g *gated) Changed() <-chan struct{} {
+	return g.gate.State().Changed()
+}
 
 func (g *gated) Reserve(ctx context.Context) (idlewatch.Retirement, bool, error) {
 	if g.before != nil {
@@ -67,7 +71,9 @@ type retirement struct {
 	run func(context.Context) error
 }
 
-func (r *retirement) Retire(ctx context.Context) error { return r.run(ctx) }
+func (r *retirement) Retire(ctx context.Context) error {
+	return r.run(ctx)
+}
 
 // counted records observable retirement attempts at their virtual timestamps.
 func counted() (*gated, <-chan time.Time) {
@@ -150,7 +156,11 @@ func TestCanceledWatchFinishesRetirementWhileOtherWatchesContinue(t *testing.T) 
 		slow, _ := counted()
 		finish := make(chan struct{})
 		var once sync.Once
-		release := func() { once.Do(func() { close(finish) }) }
+		release := func() {
+			once.Do(func() {
+				close(finish)
+			})
+		}
 		// Deferred release also unblocks retirement before cleanup joins it.
 		began := make(chan struct{})
 		slow.retire = func(ctx context.Context) error {
@@ -277,7 +287,9 @@ func TestReadAndReserveFailuresWaitBeforeRetry(t *testing.T) {
 func TestRetirementPanicEndsWatchAndReleasesReservation(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		g, _ := counted()
-		g.retire = func(context.Context) error { panic("retirement failed") }
+		g.retire = func(context.Context) error {
+			panic("retirement failed")
+		}
 		_, done := start(t, g)
 		<-done
 		if g.gate.State().Reserved {

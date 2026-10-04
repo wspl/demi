@@ -158,7 +158,9 @@ type Capture struct {
 // Events returns the capture's events. The channel is closed when the capture
 // ends: on Close, when the extension disconnects or is replaced, and when the
 // environment ends. Frame payloads are immutable.
-func (c *Capture) Events() <-chan CaptureEvent { return c.events }
+func (c *Capture) Events() <-chan CaptureEvent {
+	return c.events
+}
 
 // Ack reports received frames and the maximum in-flight frame window.
 // Superseding controls are dropped when the control queue is full.
@@ -178,7 +180,9 @@ func (c *Capture) Encoding(bitrate, fps uint32) {
 
 // Close stops capture and releases its event queue, including on cancellation.
 func (c *Capture) Close(ctx context.Context) error {
-	c.closeOnce.Do(func() { close(c.closed) })
+	c.closeOnce.Do(func() {
+		close(c.closed)
+	})
 	reply := make(chan captureReply, 1)
 	select {
 	case c.channel.requests <- captureRequest{stop: c, reply: reply}:
@@ -248,7 +252,9 @@ func bindCapture(ctx context.Context) (*CaptureChannel, string, func() error, er
 		done:     make(chan struct{}),
 		changed:  make(chan struct{}),
 	}
-	server := &http.Server{BaseContext: func(net.Listener) context.Context { return lifetime }}
+	server := &http.Server{BaseContext: func(net.Listener) context.Context {
+		return lifetime
+	}}
 	var handlers sync.WaitGroup
 	var admission sync.Mutex
 	closing := false

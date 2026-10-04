@@ -15,7 +15,10 @@ type activity struct {
 	last time.Time
 }
 
-func newActivity(conn net.Conn) *activity { return &activity{Conn: conn, last: time.Now()} }
+func newActivity(conn net.Conn) *activity {
+	return &activity{Conn: conn, last: time.Now()}
+}
+
 func (a *activity) touch() {
 	a.mu.Lock()
 	a.last = time.Now()

@@ -237,7 +237,9 @@ func TestCallExitsAfterStdoutDrained(t *testing.T) {
 		}
 		sink, err := d.Pipes().ClaimSink(pipes.Stdout.ID, remotehosttest.TestDeviceID)
 		requirePipe(t, err)
-		defer func() { requirePipe(t, sink.Close(context.Background())) }()
+		defer func() {
+			requirePipe(t, sink.Close(context.Background()))
+		}()
 		requirePipe(t, sink.SourceArrived(t.Context()))
 		data, err := collectPipe(t.Context(), sink)
 		requirePipe(t, err)

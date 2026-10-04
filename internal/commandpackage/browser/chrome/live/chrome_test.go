@@ -28,8 +28,14 @@ type chromeViewerBrowser struct {
 func (b *chromeViewerBrowser) Running(ctx context.Context) (*tabs.Environment, *Hub, error) {
 	return b.environment, b.hub, ctx.Err()
 }
-func (b *chromeViewerBrowser) Changed() <-chan struct{}  { return b.changed }
-func (b *chromeViewerBrowser) Released() <-chan struct{} { return b.released }
+
+func (b *chromeViewerBrowser) Changed() <-chan struct{} {
+	return b.changed
+}
+
+func (b *chromeViewerBrowser) Released() <-chan struct{} {
+	return b.released
+}
 
 // TestChromeLiveAcceptance costs one Chrome launch and capture startup. A real
 // browser is required to prove that the extension supplies video and viewer key

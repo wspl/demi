@@ -215,10 +215,14 @@ func (d *Dispatch) serve(
 ) {
 	defer close(d.done)
 	relay := jobs.NewRelay(ctx)
-	defer func() { _ = relay.Close(context.Background()) }()
+	defer func() {
+		_ = relay.Close(context.Background())
+	}()
 	table := jobs.NewContextTable(contexts)
 	defer table.Close()
-	handle := func(request jobs.Request) { handleRequest(ctx, request, relay, table, control) }
+	handle := func(request jobs.Request) {
+		handleRequest(ctx, request, relay, table, control)
+	}
 	for {
 		select {
 		case <-ctx.Done():

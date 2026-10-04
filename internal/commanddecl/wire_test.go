@@ -68,7 +68,9 @@ func TestDecodedSchemasAndPinning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pinned, err := commanddecl.Pin(node, func(commanddecl.NativeOperation) (string, error) { return "abc", nil })
+	pinned, err := commanddecl.Pin(node, func(commanddecl.NativeOperation) (string, error) {
+		return "abc", nil
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

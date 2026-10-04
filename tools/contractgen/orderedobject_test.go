@@ -73,7 +73,9 @@ func TestOrderedObjectRoundTrip(t *testing.T) {
 // oracleJSON exercises an opaque codec that returns the original JSON spelling.
 type oracleJSON json.RawMessage
 
-func (v oracleJSON) MarshalJSON() ([]byte, error) { return []byte(v), nil }
+func (v oracleJSON) MarshalJSON() ([]byte, error) {
+	return []byte(v), nil
+}
 
 // The fixture records the object schema and non-object errors from the reference
 // decoder. Local fixture only; budget <1 second.

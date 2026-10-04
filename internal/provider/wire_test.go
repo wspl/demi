@@ -32,8 +32,12 @@ type testStart struct {
 }
 
 var testPayloads = map[string]func(string) (any, error){
-	"start": func(text string) (any, error) { return provider.DecodeUntagged[testStart](text) },
-	"stop":  func(text string) (any, error) { return provider.DecodeUntagged[struct{}](text) },
+	"start": func(text string) (any, error) {
+		return provider.DecodeUntagged[testStart](text)
+	},
+	"stop": func(text string) (any, error) {
+		return provider.DecodeUntagged[struct{}](text)
+	},
 }
 
 func TestWireUnknownAndRegisteredTags(t *testing.T) {

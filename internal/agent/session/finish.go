@@ -48,7 +48,9 @@ type editResult struct {
 	err     error
 }
 
-func newAcceptance() *acceptance { return &acceptance{result: &editResult{done: make(chan struct{})}} }
+func newAcceptance() *acceptance {
+	return &acceptance{result: &editResult{done: make(chan struct{})}}
+}
 
 func (a *acceptance) finish(receipt store.EditReceipt, err error) {
 	a.result.once.Do(func() {

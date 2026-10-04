@@ -70,20 +70,55 @@ func newTestShard(t *testing.T) *testShard {
 	})
 	return s
 }
-func (s *testShard) User() webapiproto.UserID          { return s.owner }
-func (s *testShard) Control() *database.ControlService { return s.control }
-func (s *testShard) Clock() types.Clock                { return types.SystemClock{} }
-func (s *testShard) Devices() *runners.Devices         { return &s.devices }
-func (s *testShard) Pipes() *remotehost.Pipes          { return s.pipes }
-func (s *testShard) Commands() *runners.CommandRouter  { return &s.commands }
-func (s *testShard) Conversations() *Conversations     { return s.conversations }
-func (s *testShard) Blobs() *blobs.Namespace           { return s.blobs }
+
+func (s *testShard) User() webapiproto.UserID {
+	return s.owner
+}
+
+func (s *testShard) Control() *database.ControlService {
+	return s.control
+}
+
+func (s *testShard) Clock() types.Clock {
+	return types.SystemClock{}
+}
+
+func (s *testShard) Devices() *runners.Devices {
+	return &s.devices
+}
+
+func (s *testShard) Pipes() *remotehost.Pipes {
+	return s.pipes
+}
+
+func (s *testShard) Commands() *runners.CommandRouter {
+	return &s.commands
+}
+
+func (s *testShard) Conversations() *Conversations {
+	return s.conversations
+}
+
+func (s *testShard) Blobs() *blobs.Namespace {
+	return s.blobs
+}
+
 func (s *testShard) ConversationDB(id webapiproto.ConversationID) *database.ConversationDB {
 	return s.stores.DB(id)
 }
-func (s *testShard) Native() *runners.NativeCatalog { return s.native }
-func (s *testShard) PublicURL() *runners.PublicURL  { return nil }
-func (s *testShard) CloudShard() cloud.Shard        { return nil }
+
+func (s *testShard) Native() *runners.NativeCatalog {
+	return s.native
+}
+
+func (s *testShard) PublicURL() *runners.PublicURL {
+	return nil
+}
+
+func (s *testShard) CloudShard() cloud.Shard {
+	return nil
+}
+
 func (s *testShard) TrackIdle(id webapiproto.ConversationID) {
 	s.mu.Lock()
 	s.idle++
@@ -106,7 +141,10 @@ func (s *testShard) DirectorySets(ctx context.Context) (DirectorySets, error) {
 	}
 	return s.directories, nil
 }
-func (s *testShard) PluginInstalls() *PluginInstalls { return s.installs }
+
+func (s *testShard) PluginInstalls() *PluginInstalls {
+	return s.installs
+}
 
 func (s *testShard) conversation(t *testing.T) database.ConversationRecord {
 	t.Helper()

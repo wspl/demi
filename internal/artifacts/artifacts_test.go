@@ -20,7 +20,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 var body = []byte("verified bytes")
 
@@ -225,7 +227,9 @@ func TestCancellationInterruptsWaitingDownload(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	result := make(chan error, 1)
-	go func() { result <- artifacts.Download(ctx, c, server.URL("/artifact"), declared(body), io.Discard) }()
+	go func() {
+		result <- artifacts.Download(ctx, c, server.URL("/artifact"), declared(body), io.Discard)
+	}()
 	<-requested
 	cancel()
 	if err := <-result; !errors.Is(err, context.Canceled) {
@@ -248,7 +252,9 @@ func TestCopiesAndDigestsCheckDeclaredBytes(t *testing.T) {
 	var output bytes.Buffer
 	input, err := os.Open(source)
 	must(t, err)
-	defer func() { must(t, input.Close()) }()
+	defer func() {
+		must(t, input.Close())
+	}()
 	must(t, artifacts.Copy(t.Context(), input, declared(body), &output))
 	if !bytes.Equal(output.Bytes(), body) {
 		t.Fatal("copy changed bytes")
@@ -301,7 +307,9 @@ func TestStagedFileAppearsOnlyWhenPublished(t *testing.T) {
 	publication := artifacts.Publication{Permissions: artifacts.Executable, Durable: true}
 	abandoned, err := artifacts.NewStaged(t.Context(), path, publication)
 	must(t, err)
-	defer func() { must(t, abandoned.Close()) }()
+	defer func() {
+		must(t, abandoned.Close())
+	}()
 	_, err = abandoned.File().Write([]byte("partial"))
 	must(t, err)
 	got := names(t, directory)
@@ -314,7 +322,9 @@ func TestStagedFileAppearsOnlyWhenPublished(t *testing.T) {
 	}
 	staged, err := artifacts.NewStaged(t.Context(), path, publication)
 	must(t, err)
-	defer func() { must(t, staged.Close()) }()
+	defer func() {
+		must(t, staged.Close())
+	}()
 	must(t, artifacts.Copy(t.Context(), bytes.NewReader(body), declared(body), staged.File()))
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("staged artifact visible")
@@ -448,7 +458,9 @@ func TestInstallLockWaitsAndCanGiveUp(t *testing.T) {
 		path := filepath.Join(t.TempDir(), "artifact.lock")
 		held, err := artifacts.AcquireInstallLock(t.Context(), path)
 		must(t, err)
-		defer func() { must(t, held.Close()) }()
+		defer func() {
+			must(t, held.Close())
+		}()
 		result := make(chan *artifacts.InstallLock, 1)
 		failures := make(chan error, 1)
 		before := artifactstest.LockWaits()
@@ -469,7 +481,9 @@ func TestInstallLockWaitsAndCanGiveUp(t *testing.T) {
 		must(t, held.Close())
 		next := <-result
 		must(t, <-failures)
-		defer func() { must(t, next.Close()) }()
+		defer func() {
+			must(t, next.Close())
+		}()
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		go func() {
@@ -499,7 +513,9 @@ func install(
 	if err != nil || unpacking == nil {
 		return entry, err
 	}
-	defer func() { err = errors.Join(err, unpacking.Close()) }()
+	defer func() {
+		err = errors.Join(err, unpacking.Close())
+	}()
 	output, err := os.Create(unpacking.ArchivePath())
 	if err != nil {
 		return "", err
@@ -527,7 +543,9 @@ func TestArchiveInstalledOnceAndCheckedBeforeUse(t *testing.T) {
 	results := make([]string, 2)
 	failures := make([]error, 2)
 	for i := range results {
-		wg.Go(func() { results[i], failures[i] = install(t.Context(), c, root, server.URL("/app.zip"), archive) })
+		wg.Go(func() {
+			results[i], failures[i] = install(t.Context(), c, root, server.URL("/app.zip"), archive)
+		})
 	}
 	wg.Wait()
 	for _, err := range failures {

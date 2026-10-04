@@ -21,19 +21,29 @@ func ServeStdio(ctx context.Context, h Handler[commandproto.Invocation]) error {
 type PipeConn struct{ Reader, Writer *os.File }
 
 // Read reads from the owned input.
-func (c *PipeConn) Read(b []byte) (int, error) { return c.Reader.Read(b) }
+func (c *PipeConn) Read(b []byte) (int, error) {
+	return c.Reader.Read(b)
+}
 
 // Write writes to the owned output.
-func (c *PipeConn) Write(b []byte) (int, error) { return c.Writer.Write(b) }
+func (c *PipeConn) Write(b []byte) (int, error) {
+	return c.Writer.Write(b)
+}
 
 // Close releases both pipe ends.
-func (c *PipeConn) Close() error { return errors.Join(c.Reader.Close(), c.Writer.Close()) }
+func (c *PipeConn) Close() error {
+	return errors.Join(c.Reader.Close(), c.Writer.Close())
+}
 
 // LocalAddr identifies the local pipe end.
-func (c *PipeConn) LocalAddr() net.Addr { return &net.UnixAddr{Name: "local", Net: "pipe"} }
+func (c *PipeConn) LocalAddr() net.Addr {
+	return &net.UnixAddr{Name: "local", Net: "pipe"}
+}
 
 // RemoteAddr identifies the peer pipe end.
-func (c *PipeConn) RemoteAddr() net.Addr { return &net.UnixAddr{Name: "peer", Net: "pipe"} }
+func (c *PipeConn) RemoteAddr() net.Addr {
+	return &net.UnixAddr{Name: "peer", Net: "pipe"}
+}
 
 // SetDeadline sets both pipe deadlines.
 func (c *PipeConn) SetDeadline(t time.Time) error {
@@ -41,7 +51,11 @@ func (c *PipeConn) SetDeadline(t time.Time) error {
 }
 
 // SetReadDeadline sets the input pipe deadline.
-func (c *PipeConn) SetReadDeadline(t time.Time) error { return c.Reader.SetReadDeadline(t) }
+func (c *PipeConn) SetReadDeadline(t time.Time) error {
+	return c.Reader.SetReadDeadline(t)
+}
 
 // SetWriteDeadline sets the output pipe deadline.
-func (c *PipeConn) SetWriteDeadline(t time.Time) error { return c.Writer.SetWriteDeadline(t) }
+func (c *PipeConn) SetWriteDeadline(t time.Time) error {
+	return c.Writer.SetWriteDeadline(t)
+}

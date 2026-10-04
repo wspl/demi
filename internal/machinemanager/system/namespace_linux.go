@@ -28,18 +28,26 @@ const (
 )
 
 // HostMount selects PID 1's mount namespace, where namespace handles live.
-func HostMount() Namespace { return Namespace{kind: hostMountKind, path: "/proc/1/ns/mnt"} }
+func HostMount() Namespace {
+	return Namespace{kind: hostMountKind, path: "/proc/1/ns/mnt"}
+}
 
 // Mount selects an already opened saved mount namespace. RunNamespace borrows
 // the descriptor without reopening its path or closing it. The caller must
 // keep file open until RunNamespace returns.
-func Mount(file *os.File) Namespace { return Namespace{kind: savedMountKind, file: file} }
+func Mount(file *os.File) Namespace {
+	return Namespace{kind: savedMountKind, file: file}
+}
 
 // Network selects the network namespace bound at path, such as /run/netns/demi-3.
-func Network(path string) Namespace { return Namespace{kind: networkKind, path: path} }
+func Network(path string) Namespace {
+	return Namespace{kind: networkKind, path: path}
+}
 
 // NewNetwork selects a new network namespace, which the job may bind to a path.
-func NewNetwork() Namespace { return Namespace{kind: newNetworkKind} }
+func NewNetwork() Namespace {
+	return Namespace{kind: newNetworkKind}
+}
 
 // RunNamespace runs the whole job in an owned goroutine that locks its OS
 // thread, unshares CLONE_FS, enters namespace and exits without unlocking.
@@ -83,7 +91,9 @@ func RunNamespace[T any](ctx context.Context, namespace Namespace, job func(cont
 				return
 			}
 			// The namespace descriptor is only read; setns retains the namespace.
-			defer func() { _ = file.Close() }()
+			defer func() {
+				_ = file.Close()
+			}()
 			kind := unix.CLONE_NEWNET
 			if namespace.kind == hostMountKind {
 				kind = unix.CLONE_NEWNS

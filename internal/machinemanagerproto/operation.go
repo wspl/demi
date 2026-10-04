@@ -19,7 +19,9 @@ type Operation[T any] interface {
 type Unit struct{}
 
 // MarshalJSON encodes the result of an operation that returns nothing as null.
-func (Unit) MarshalJSON() ([]byte, error) { return []byte("null"), nil }
+func (Unit) MarshalJSON() ([]byte, error) {
+	return []byte("null"), nil
+}
 
 // UnmarshalJSON checks the same unit result contract as a reconcile reply.
 func (*Unit) UnmarshalJSON(data []byte) error {
@@ -49,7 +51,9 @@ func decodeResultFor[T any](op string, data []byte, decode func([]byte) (T, erro
 type reconcileResult struct{}
 
 // Call identifies the operation and carries its parameters.
-func (p ReconcileParams) Call() Call { return &Reconcile{Params: p} }
+func (p ReconcileParams) Call() Call {
+	return &Reconcile{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (ReconcileParams) DecodeOutput(data []byte) (Unit, error) {
@@ -63,7 +67,9 @@ type currentBaseVersionResult struct {
 }
 
 // Call identifies the operation and carries its parameters.
-func (p CurrentBaseVersionParams) Call() Call { return &CurrentBaseVersion{Params: p} }
+func (p CurrentBaseVersionParams) Call() Call {
+	return &CurrentBaseVersion{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (CurrentBaseVersionParams) DecodeOutput(data []byte) (BaseVersion, error) {
@@ -82,7 +88,9 @@ type imageStateResult struct {
 }
 
 // Call identifies the operation and carries its parameters.
-func (p ImageStateParams) Call() Call { return &ImageState{Params: p} }
+func (p ImageStateParams) Call() Call {
+	return &ImageState{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (ImageStateParams) DecodeOutput(data []byte) (*MachineImageState, error) {
@@ -100,7 +108,9 @@ type runtimeStateResult struct {
 }
 
 // Call identifies the operation and carries its parameters.
-func (p RuntimeStateParams) Call() Call { return &RuntimeStateCall{Params: p} }
+func (p RuntimeStateParams) Call() Call {
+	return &RuntimeStateCall{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (RuntimeStateParams) DecodeOutput(data []byte) (RuntimeState, error) {
@@ -116,7 +126,9 @@ func (RuntimeStateParams) DecodeOutput(data []byte) (RuntimeState, error) {
 type wakeResult struct{}
 
 // Call identifies the operation and carries its parameters.
-func (p WakeParams) Call() Call { return &Wake{Params: p} }
+func (p WakeParams) Call() Call {
+	return &Wake{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (WakeParams) DecodeOutput(data []byte) (Unit, error) {
@@ -128,7 +140,9 @@ func (WakeParams) DecodeOutput(data []byte) (Unit, error) {
 type hibernateResult struct{}
 
 // Call identifies the operation and carries its parameters.
-func (p HibernateParams) Call() Call { return &Hibernate{Params: p} }
+func (p HibernateParams) Call() Call {
+	return &Hibernate{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (HibernateParams) DecodeOutput(data []byte) (Unit, error) {
@@ -140,7 +154,9 @@ func (HibernateParams) DecodeOutput(data []byte) (Unit, error) {
 type checkpointResult struct{}
 
 // Call identifies the operation and carries its parameters.
-func (p CheckpointParams) Call() Call { return &Checkpoint{Params: p} }
+func (p CheckpointParams) Call() Call {
+	return &Checkpoint{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (CheckpointParams) DecodeOutput(data []byte) (Unit, error) {
@@ -152,7 +168,9 @@ func (CheckpointParams) DecodeOutput(data []byte) (Unit, error) {
 type growVolumeResult struct{}
 
 // Call identifies the operation and carries its parameters.
-func (p GrowVolumeParams) Call() Call { return &GrowVolume{Params: p} }
+func (p GrowVolumeParams) Call() Call {
+	return &GrowVolume{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (GrowVolumeParams) DecodeOutput(data []byte) (Unit, error) {
@@ -164,7 +182,9 @@ func (GrowVolumeParams) DecodeOutput(data []byte) (Unit, error) {
 type resetResult struct{}
 
 // Call identifies the operation and carries its parameters.
-func (p ResetParams) Call() Call { return &Reset{Params: p} }
+func (p ResetParams) Call() Call {
+	return &Reset{Params: p}
+}
 
 // DecodeOutput checks the result of this operation's successful reply.
 func (ResetParams) DecodeOutput(data []byte) (Unit, error) {

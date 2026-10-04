@@ -102,7 +102,9 @@ func writeCommandVersion(ctx context.Context, tx *sql.Tx, node types.NodeID, ver
 		tx,
 		"command_snapshots",
 		"SELECT entries FROM command_snapshots WHERE node_id=? AND revision=?",
-		func(r *storedRow) commandValues { return storedJSON(r, "entries", decodeCommandValues) },
+		func(r *storedRow) commandValues {
+			return storedJSON(r, "entries", decodeCommandValues)
+		},
 		node,
 		version.Revision,
 	)

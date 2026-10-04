@@ -66,7 +66,9 @@ func (s *Service) Readdir(ctx context.Context, request runnerproto.FSReaddir) er
 		if err != nil {
 			return nil, err
 		}
-		entries, err := commandsdk.Retry(ctx, func() ([]os.DirEntry, error) { return os.ReadDir(path) })
+		entries, err := commandsdk.Retry(ctx, func() ([]os.DirEntry, error) {
+			return os.ReadDir(path)
+		})
 		if err != nil {
 			return nil, err
 		}

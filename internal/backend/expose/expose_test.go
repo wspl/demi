@@ -19,7 +19,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const testID webapiproto.ExposeID = "k7x2maqw4p3s6tavaw2y4z6aab"
 
@@ -34,14 +36,37 @@ type shard struct {
 	changes   atomic.Int32
 }
 
-func (s *shard) User() webapiproto.UserID                   { return "owner" }
-func (s *shard) Control() expose.Store                      { return s.store }
-func (s *shard) Clock() types.Clock                         { return types.SystemClock{} }
-func (s *shard) ExposesChanged()                            { s.changes.Add(1) }
-func (s *shard) Exposes() *expose.Connections               { return &s.exposes }
-func (s *shard) Domain() *expose.Domain                     { return s.domain }
-func (s *shard) PublicURL() *url.Url                        { return s.backend }
-func (s *shard) DeviceConnected(database.DeviceRecord) bool { return s.connected }
+func (s *shard) User() webapiproto.UserID {
+	return "owner"
+}
+
+func (s *shard) Control() expose.Store {
+	return s.store
+}
+
+func (s *shard) Clock() types.Clock {
+	return types.SystemClock{}
+}
+
+func (s *shard) ExposesChanged() {
+	s.changes.Add(1)
+}
+
+func (s *shard) Exposes() *expose.Connections {
+	return &s.exposes
+}
+
+func (s *shard) Domain() *expose.Domain {
+	return s.domain
+}
+
+func (s *shard) PublicURL() *url.Url {
+	return s.backend
+}
+
+func (s *shard) DeviceConnected(database.DeviceRecord) bool {
+	return s.connected
+}
 
 func newShard(t *testing.T) *shard {
 	t.Helper()
@@ -153,7 +178,9 @@ func (m *memoryStore) UserExposes(_ context.Context, user webapiproto.UserID) (d
 			result.Live = append(result.Live, record)
 		}
 	}
-	sort.Slice(result.Live, func(i, j int) bool { return result.Live[i].ExpiresAt < result.Live[j].ExpiresAt })
+	sort.Slice(result.Live, func(i, j int) bool {
+		return result.Live[i].ExpiresAt < result.Live[j].ExpiresAt
+	})
 	return result, nil
 }
 
@@ -480,7 +507,9 @@ func TestExpiryFollowsRenewalAndEndsRelay(t *testing.T) {
 		ended := false
 		go func() {
 			defer close(done)
-			a.Relay(t.Context(), s, nil, func() { ended = true })
+			a.Relay(t.Context(), s, nil, func() {
+				ended = true
+			})
 		}()
 		synctest.Wait()
 		time.Sleep(30 * time.Minute)
@@ -636,7 +665,9 @@ func TestCanceledRelayReleasesAdmission(t *testing.T) {
 		ended := 0
 		go func() {
 			defer close(done)
-			admission.Relay(ctx, s, nil, func() { ended++ })
+			admission.Relay(ctx, s, nil, func() {
+				ended++
+			})
 		}()
 		synctest.Wait()
 		cancel()

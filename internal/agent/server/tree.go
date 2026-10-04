@@ -48,10 +48,14 @@ type Tree[H host.Host] struct {
 }
 
 // Toolset returns the revision the tree opened with, for product comparison.
-func (t *Tree[H]) Toolset() string { return t.toolset }
+func (t *Tree[H]) Toolset() string {
+	return t.toolset
+}
 
 // Root returns the root node.
-func (t *Tree[H]) Root() *Node[H] { return t.root }
+func (t *Tree[H]) Root() *Node[H] {
+	return t.root
+}
 
 // Node returns the live node, root or child at any depth, or nil.
 func (t *Tree[H]) Node(id types.NodeID) *Node[H] {
@@ -68,7 +72,9 @@ func (t *Tree[H]) Node(id types.NodeID) *Node[H] {
 
 // Admission returns the tree's admission. Every node action holds a lease;
 // a target switch or archive reserves the idle tree through the same gate.
-func (t *Tree[H]) Admission() *gates.Activity { return t.admission }
+func (t *Tree[H]) Admission() *gates.Activity {
+	return t.admission
+}
 
 // Interrupt reserves admission, stops the root's running action, aborts all
 // live children and ends the root's shells for a Host transition. The caller
@@ -86,7 +92,10 @@ func (t *Tree[H]) Interrupt(ctx context.Context) (*gates.Reservation, error) {
 	result := make(chan answer, 1)
 	reservationCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	go func() { r, err := t.admission.Reserve(reservationCtx); result <- answer{r, err} }()
+	go func() {
+		r, err := t.admission.Reserve(reservationCtx)
+		result <- answer{r, err}
+	}()
 	// New action admission remains gated until the reservation is acquired.
 	err = t.root.session.StopRunning(ctx)
 	err = errors.Join(err, t.abortChildren(ctx, t.id), t.root.runtime.access.Environments.EndAll(ctx))
@@ -347,7 +356,9 @@ func (t *Tree[H]) dispose(ctx context.Context) error {
 	return err
 }
 
-func (t *Tree[H]) report(err error) { t.emit(&conversationproto.ErrorFrame{Message: err.Error()}) }
+func (t *Tree[H]) report(err error) {
+	t.emit(&conversationproto.ErrorFrame{Message: err.Error()})
+}
 
 // monitor owns the detached-idle timer and working-state notifications.
 func (t *Tree[H]) monitor() {

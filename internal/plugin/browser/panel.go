@@ -39,7 +39,9 @@ func (i *instance) enter(ctx context.Context, conversation webapiproto.Conversat
 	i.mu.Unlock()
 	select {
 	case turn <- struct{}{}:
-		return func() { <-turn }, nil
+		return func() {
+			<-turn
+		}, nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}

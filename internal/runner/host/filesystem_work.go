@@ -28,7 +28,9 @@ func (s *Service) fsCall(
 	if err = admit(ctx, s.filesystem); err != nil {
 		return err
 	}
-	defer func() { <-s.filesystem }()
+	defer func() {
+		<-s.filesystem
+	}()
 	result, err := work(ctx)
 	return s.fsReply(ctx, id, result, err)
 }
@@ -62,7 +64,9 @@ func removePath(ctx context.Context, path string, recursive bool) error {
 				cause:   syscall.EISDIR,
 			}
 		}
-		_, err = commandsdk.Retry(ctx, func() (struct{}, error) { return struct{}{}, os.RemoveAll(path) })
+		_, err = commandsdk.Retry(ctx, func() (struct{}, error) {
+			return struct{}{}, os.RemoveAll(path)
+		})
 		return err
 	}
 	return os.Remove(path)
@@ -138,7 +142,9 @@ func copyEntry(ctx context.Context, source, destination string) error {
 	if info.Mode().IsRegular() {
 		_, err = commandsdk.Retry(
 			ctx,
-			func() (struct{}, error) { return struct{}{}, copyRegular(ctx, source, destination, info.Mode()) },
+			func() (struct{}, error) {
+				return struct{}{}, copyRegular(ctx, source, destination, info.Mode())
+			},
 		)
 		return err
 	}
@@ -148,7 +154,9 @@ func copyEntry(ctx context.Context, source, destination string) error {
 	if err = os.MkdirAll(destination, 0o777); err != nil {
 		return err
 	}
-	entries, err := commandsdk.Retry(ctx, func() ([]os.DirEntry, error) { return os.ReadDir(source) })
+	entries, err := commandsdk.Retry(ctx, func() ([]os.DirEntry, error) {
+		return os.ReadDir(source)
+	})
 	if err != nil {
 		return err
 	}
@@ -170,12 +178,16 @@ func copyRegular(ctx context.Context, source, destination string, mode os.FileMo
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, in.Close()) }()
+	defer func() {
+		err = errors.Join(err, in.Close())
+	}()
 	out, err := os.OpenFile(destination, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode.Perm())
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, out.Close()) }()
+	defer func() {
+		err = errors.Join(err, out.Close())
+	}()
 	if _, err = io.Copy(out, &contextReader{ctx: ctx, reader: in}); err != nil {
 		return err
 	}

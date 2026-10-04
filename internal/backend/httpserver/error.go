@@ -27,7 +27,9 @@ type apiError struct {
 }
 
 // Error returns the response message.
-func (e *apiError) Error() string { return e.body.Message }
+func (e *apiError) Error() string {
+	return e.body.Message
+}
 
 func apiFailure(status int, code webapiproto.ErrorCode, message string) *apiError {
 	return &apiError{status: status, body: webapiproto.ErrorBody{Code: code, Message: message}}

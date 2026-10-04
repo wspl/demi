@@ -82,7 +82,9 @@ func (e *Server) syncChannel(w http.ResponseWriter, r *http.Request) error {
 		return err
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = socket.CloseNow() }()
+	defer func() {
+		_ = socket.CloseNow()
+	}()
 	shard, err := e.state.Shards.Of(r.Context(), session.User.ID)
 	if err != nil {
 		return nil
@@ -107,7 +109,9 @@ func (e *Server) conversationSocket(w http.ResponseWriter, r *http.Request) erro
 		return err
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = socket.CloseNow() }()
+	defer func() {
+		_ = socket.CloseNow()
+	}()
 	shard, err := e.state.Shards.Of(r.Context(), caller(r).ID)
 	if err != nil {
 		return nil
@@ -147,13 +151,17 @@ func (e *Server) userStream(w http.ResponseWriter, r *http.Request) error {
 	defer stream.Lease.Release()
 	defer stream.ToHost.Fail("user stream ended")
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = stream.FromHost.Close(context.WithoutCancel(r.Context())) }()
+	defer func() {
+		_ = stream.FromHost.Close(context.WithoutCancel(r.Context()))
+	}()
 	socket, err := pageUpgrade(w, r, "A user stream is a WebSocket")
 	if err != nil {
 		return err
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = socket.CloseNow() }()
+	defer func() {
+		_ = socket.CloseNow()
+	}()
 	relayUserStream(r.Context(), socket, stream, pluginOff, e.state.Services.Pages.CloseWait)
 	return nil
 }

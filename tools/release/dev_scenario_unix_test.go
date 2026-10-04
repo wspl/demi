@@ -41,7 +41,9 @@ func (o *devOutput) Write(p []byte) (int, error) {
 	defer o.mu.Unlock()
 	n, err := o.buffer.Write(p)
 	if strings.Contains(o.buffer.String(), "Ctrl-C stops the backend.") {
-		o.once.Do(func() { o.ready <- o.buffer.String() })
+		o.once.Do(func() {
+			o.ready <- o.buffer.String()
+		})
 	}
 	return n, err
 }
@@ -233,7 +235,9 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-	defer func() { _ = socket.CloseNow() }()
+	defer func() {
+		_ = socket.CloseNow()
+	}()
 	send := func(frame conversationproto.ClientFrame) {
 		t.Helper()
 		data, err := contract.EncodeJSON(frame)

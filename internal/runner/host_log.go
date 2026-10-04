@@ -147,7 +147,9 @@ type logHandler struct {
 	group string
 }
 
-func (*logHandler) Enabled(_ context.Context, level slog.Level) bool { return level >= slog.LevelInfo }
+func (*logHandler) Enabled(_ context.Context, level slog.Level) bool {
+	return level >= slog.LevelInfo
+}
 
 func (h *logHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
 	next := *h

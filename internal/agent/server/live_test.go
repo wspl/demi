@@ -21,13 +21,21 @@ import (
 
 type scriptedHost struct{ toolstest.NoHost }
 
-func (*scriptedHost) Key() host.Key { return host.Key("scripted") }
+func (*scriptedHost) Key() host.Key {
+	return host.Key("scripted")
+}
 
-func (*scriptedHost) DefaultCWD() string { return "/workspace" }
+func (*scriptedHost) DefaultCWD() string {
+	return "/workspace"
+}
 
-func (*scriptedHost) Identity() host.Identity { return host.Identity{Hostname: "scripted"} }
+func (*scriptedHost) Identity() host.Identity {
+	return host.Identity{Hostname: "scripted"}
+}
 
-func (h *scriptedHost) Host(context.Context, tools.NodeContext) (*scriptedHost, error) { return h, nil }
+func (h *scriptedHost) Host(context.Context, tools.NodeContext) (*scriptedHost, error) {
+	return h, nil
+}
 
 type scriptedShell struct {
 	mu      sync.Mutex
@@ -87,16 +95,27 @@ func (s *scriptedShell) PageViews() []host.PageView {
 	}
 	return []host.PageView{r.PageView()}
 }
-func (*scriptedShell) ReleaseCommand(context.Context, types.CommandID) bool { return false }
-func (*scriptedShell) DisposeShell(context.Context, types.ShellID) bool     { return false }
+
+func (*scriptedShell) ReleaseCommand(context.Context, types.CommandID) bool {
+	return false
+}
+
+func (*scriptedShell) DisposeShell(context.Context, types.ShellID) bool {
+	return false
+}
+
 func (s *scriptedShell) DisposeAll(context.Context) error {
 	s.end()
 	return nil
 }
 
-func (s *scriptedShell) OwnsShell(id types.ShellID) bool { return s.record() != nil && id == "1" }
+func (s *scriptedShell) OwnsShell(id types.ShellID) bool {
+	return s.record() != nil && id == "1"
+}
 
-func (s *scriptedShell) OwnsCommand(id types.CommandID) bool { return s.record() != nil && id == "1" }
+func (s *scriptedShell) OwnsCommand(id types.CommandID) bool {
+	return s.record() != nil && id == "1"
+}
 
 type scriptedShells struct {
 	mu    sync.Mutex
@@ -130,12 +149,14 @@ func serving(t *testing.T) (*server.Server[*scriptedHost], *scriptedShell, *serv
 	shells := &scriptedShells{}
 	s := server.New(
 		server.Deps[*scriptedHost]{
-			Toolsets:      tools.Set{Commands: &host.CommandSet{}, Revision: "none"},
-			Instructions:  "system prompt",
-			Hosts:         &scriptedHost{},
-			Shells:        shells,
-			Providers:     providers,
-			Stores:        func(types.NodeID) store.Tree { return memory },
+			Toolsets:     tools.Set{Commands: &host.CommandSet{}, Revision: "none"},
+			Instructions: "system prompt",
+			Hosts:        &scriptedHost{},
+			Shells:       shells,
+			Providers:    providers,
+			Stores: func(types.NodeID) store.Tree {
+				return memory
+			},
 			Clock:         types.SystemClock{},
 			IDs:           &testIDs{},
 			Config:        server.DefaultConfig(),

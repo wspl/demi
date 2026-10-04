@@ -41,7 +41,9 @@ func (e *InstallationError) Error() string {
 }
 
 // Unwrap returns the installation failure.
-func (e *InstallationError) Unwrap() error { return e.Cause }
+func (e *InstallationError) Unwrap() error {
+	return e.Cause
+}
 
 // insideArchive checks the slash-separated paths an artifact may contain.
 func insideArchive(name string) bool {
@@ -164,7 +166,9 @@ func InstallArchive(ctx context.Context, root string, archive Archive) (entry st
 }
 
 // ArchivePath is where the caller writes the ZIP, verifying it during the write.
-func (u *Unpacking) ArchivePath() string { return artifactPath(u.temporary, "archive.zip") }
+func (u *Unpacking) ArchivePath() string {
+	return artifactPath(u.temporary, "archive.zip")
+}
 
 // Close discards staged files and releases the installation lock, idempotently.
 func (u *Unpacking) Close() error {
@@ -182,7 +186,9 @@ func (u *Unpacking) Close() error {
 
 // Finish extracts the caller's verified ZIP, records its entry and publishes it.
 func (u *Unpacking) Finish(ctx context.Context) (entry string, err error) {
-	defer func() { err = errors.Join(err, u.Close()) }()
+	defer func() {
+		err = errors.Join(err, u.Close())
+	}()
 	if u.temporary == "" {
 		return "", os.ErrClosed
 	}
@@ -198,7 +204,9 @@ func (u *Unpacking) Finish(ctx context.Context) (entry string, err error) {
 // must remove it on failure. This is the shared publication step used by
 // artifactstest.InstallUnpacked; Finish uses it after ZIP extraction.
 func (u *Unpacking) Publish(ctx context.Context, extracted string) (entry string, err error) {
-	defer func() { err = errors.Join(err, u.Close()) }()
+	defer func() {
+		err = errors.Join(err, u.Close())
+	}()
 	if u.temporary == "" {
 		return "", os.ErrClosed
 	}
@@ -235,7 +243,9 @@ func ZipHolds(ctx context.Context, archive, name string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("the archive cannot be installed: %w", err)
 	}
-	defer func() { _ = reader.Close() }() // Read-only ZIP file.
+	defer func() {
+		_ = reader.Close()
+	}() // Read-only ZIP file.
 	for _, entry := range reader.File {
 		if entry.Name == name {
 			return !entry.FileInfo().IsDir(), nil
@@ -254,7 +264,9 @@ func extractZIP(ctx context.Context, archive, destination string) error {
 	if err != nil {
 		return fmt.Errorf("the archive cannot be installed: %w", err)
 	}
-	defer func() { _ = reader.Close() }() // Read-only ZIP file.
+	defer func() {
+		_ = reader.Close()
+	}() // Read-only ZIP file.
 	if err := os.MkdirAll(destination, 0o755); err != nil {
 		return err
 	}
@@ -262,7 +274,9 @@ func extractZIP(ctx context.Context, archive, destination string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = root.Close() }() // Only releases the directory handle.
+	defer func() {
+		_ = root.Close()
+	}() // Only releases the directory handle.
 	directories := make([]*zip.File, 0)
 	for _, entry := range reader.File {
 		if err := ctx.Err(); err != nil {
@@ -277,7 +291,9 @@ func extractZIP(ctx context.Context, archive, destination string) error {
 	}
 	// Restrictive directory modes are applied only after their children exist,
 	// deepest first so an ancestor cannot prevent setting a child's mode.
-	sort.Slice(directories, func(i, j int) bool { return len(directories[i].Name) > len(directories[j].Name) })
+	sort.Slice(directories, func(i, j int) bool {
+		return len(directories[i].Name) > len(directories[j].Name)
+	})
 	for _, entry := range directories {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -309,7 +325,9 @@ func extractEntry(ctx context.Context, root *os.Root, entry *zip.File) (err erro
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, input.Close()) }()
+	defer func() {
+		err = errors.Join(err, input.Close())
+	}()
 	if entry.Mode()&os.ModeSymlink != 0 {
 		data, err := io.ReadAll(io.LimitReader(input, 4097))
 		if err != nil {
@@ -329,7 +347,9 @@ func extractEntry(ctx context.Context, root *os.Root, entry *zip.File) (err erro
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, output.Close()) }()
+	defer func() {
+		err = errors.Join(err, output.Close())
+	}()
 	if err := transfer(ctx, input, output, nil); err != nil {
 		return err
 	}

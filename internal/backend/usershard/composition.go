@@ -26,35 +26,55 @@ import (
 )
 
 // User identifies the owner.
-func (s *Shard) User() webapiproto.UserID { return s.user }
+func (s *Shard) User() webapiproto.UserID {
+	return s.user
+}
 
 // Cloud is the user's Cloud machine.
-func (s *Shard) Cloud() *cloud.Cloud { return s.cloud }
+func (s *Shard) Cloud() *cloud.Cloud {
+	return s.cloud
+}
 
 // Devices is the user's devices, the Cloud among them.
-func (s *Shard) Devices() *runners.Devices { return &s.devices }
+func (s *Shard) Devices() *runners.Devices {
+	return &s.devices
+}
 
 // Control supplies the user's durable control records.
-func (s *Shard) Control() *database.ControlService { return s.services.Control }
+func (s *Shard) Control() *database.ControlService {
+	return s.services.Control
+}
 
 // CloudServices supplies the shared manager client, capacity and settings.
-func (s *Shard) CloudServices() *cloud.Services { return s.services.Cloud }
+func (s *Shard) CloudServices() *cloud.Services {
+	return s.services.Cloud
+}
 
 // PublicURL is where a booting Cloud's runner reaches this backend.
-func (s *Shard) PublicURL() *runners.PublicURL { return s.services.PublicURL }
+func (s *Shard) PublicURL() *runners.PublicURL {
+	return s.services.PublicURL
+}
 
 // IdleWindow is how long a Cloud no conversation uses stays awake.
-func (s *Shard) IdleWindow() time.Duration { return s.services.Lifecycle.IdleWindow }
+func (s *Shard) IdleWindow() time.Duration {
+	return s.services.Lifecycle.IdleWindow
+}
 
 // Marks is the user's pages, which show the Cloud and the devices.
-func (s *Shard) Marks() pagesync.UserMarks { return s.services.Sync.Of(s.user) }
+func (s *Shard) Marks() pagesync.UserMarks {
+	return s.services.Sync.Of(s.user)
+}
 
 // Vault is the credential vault, whose entries say which providers run a
 // process on the Cloud.
-func (s *Shard) Vault() *providerhost.Vault { return s.services.Vault }
+func (s *Shard) Vault() *providerhost.Vault {
+	return s.services.Vault
+}
 
 // Assembly resolves which providers need a process.
-func (s *Shard) Assembly() *providerhost.Assembly { return s.services.Assembly }
+func (s *Shard) Assembly() *providerhost.Assembly {
+	return s.services.Assembly
+}
 
 // Activity is what the conversation is doing: a turn of its tree, an
 // operation holding its file gate, or a user stream someone has open.
@@ -118,19 +138,29 @@ func (s *Shard) CloudStopped(ctx context.Context, device webapiproto.DeviceID) e
 }
 
 // Clock is the wall clock the backend reads times from.
-func (s *Shard) Clock() types.Clock { return s.services.Clock }
+func (s *Shard) Clock() types.Clock {
+	return s.services.Clock
+}
 
 // Pipes is the pipes of the user's devices.
-func (s *Shard) Pipes() *remotehost.Pipes { return s.pipes }
+func (s *Shard) Pipes() *remotehost.Pipes {
+	return s.pipes
+}
 
 // Commands is each agent node's commands, for the rpc calls of its jobs.
-func (s *Shard) Commands() *runners.CommandRouter { return &s.commands }
+func (s *Shard) Commands() *runners.CommandRouter {
+	return &s.commands
+}
 
 // Conversations owns each conversation's slot, file gate and transfers.
-func (s *Shard) Conversations() *hostaccess.Conversations { return s.conversations }
+func (s *Shard) Conversations() *hostaccess.Conversations {
+	return s.conversations
+}
 
 // Blobs is the user's blob namespace.
-func (s *Shard) Blobs() *blobs.Namespace { return s.services.Blobs.ForUser(s.user) }
+func (s *Shard) Blobs() *blobs.Namespace {
+	return s.services.Blobs.ForUser(s.user)
+}
 
 // ConversationDB is the database of the user's conversation.
 func (s *Shard) ConversationDB(conversation webapiproto.ConversationID) *database.ConversationDB {
@@ -138,10 +168,14 @@ func (s *Shard) ConversationDB(conversation webapiproto.ConversationID) *databas
 }
 
 // Native is the command packages the conversations' commands bind to.
-func (s *Shard) Native() *runners.NativeCatalog { return s.services.Native }
+func (s *Shard) Native() *runners.NativeCatalog {
+	return s.services.Native
+}
 
 // CloudShard is the shard as the user's Cloud sees it.
-func (s *Shard) CloudShard() cloud.Shard { return s }
+func (s *Shard) CloudShard() cloud.Shard {
+	return s
+}
 
 // TrackIdle starts the conversation's idle watch unless one runs.
 func (s *Shard) TrackIdle(conversation webapiproto.ConversationID) {
@@ -190,7 +224,9 @@ func (s *Shard) DirectorySets(ctx context.Context) (hostaccess.DirectorySets, er
 }
 
 // PluginInstalls remembers the Hosts' installed directories.
-func (s *Shard) PluginInstalls() *hostaccess.PluginInstalls { return s.installs }
+func (s *Shard) PluginInstalls() *hostaccess.PluginInstalls {
+	return s.installs
+}
 
 // JobEnded reports a finished or stopped job, which may change plugin views.
 func (s *Shard) JobEnded(conversation webapiproto.ConversationID) {

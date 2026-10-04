@@ -51,7 +51,9 @@ func (h shardHosts) Host(ctx context.Context, node tools.NodeContext) (*remoteho
 type executionContext struct{ shard *Shard }
 
 // Name identifies this context source’s transcript blocks.
-func (executionContext) Name() string { return plugin.ExecutionSource }
+func (executionContext) Name() string {
+	return plugin.ExecutionSource
+}
 
 // Context returns source text the node has not yet observed.
 func (e executionContext) Context(
@@ -73,7 +75,9 @@ type pluginContext struct {
 }
 
 // Name identifies this context source’s transcript blocks.
-func (p pluginContext) Name() string { return string(p.plugin) }
+func (p pluginContext) Name() string {
+	return string(p.plugin)
+}
 
 // Context returns source text the node has not yet observed.
 func (p pluginContext) Context(

@@ -13,7 +13,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 type answerTransport struct {
 	response host.PortResponse
@@ -76,15 +78,23 @@ func TestRPCWirePreservesStrictnessNullableValuesAndBytes(t *testing.T) {
 		wire   string
 		decode func([]byte) (any, error)
 	}{
-		{`{"type":"stdout","bytes":"AP8="}`, func(b []byte) (any, error) { return host.DecodePortRequest(b) }},
-		{`{"type":"input","bytes":null}`, func(b []byte) (any, error) { return host.DecodePortResponse(b) }},
+		{`{"type":"stdout","bytes":"AP8="}`, func(b []byte) (any, error) {
+			return host.DecodePortRequest(b)
+		}},
+		{`{"type":"input","bytes":null}`, func(b []byte) (any, error) {
+			return host.DecodePortResponse(b)
+		}},
 		{
 			`{"op":"write_if","key":"<>&\u2028","value":null}`,
-			func(b []byte) (any, error) { return host.DecodeStorageOp(b) },
+			func(b []byte) (any, error) {
+				return host.DecodeStorageOp(b)
+			},
 		},
 		{
 			`{"outcome":"value","value":{"x":9007199254740993},"revision":18446744073709551615}`,
-			func(b []byte) (any, error) { return host.DecodeStorageReply(b) },
+			func(b []byte) (any, error) {
+				return host.DecodeStorageReply(b)
+			},
 		},
 	}
 	for _, tc := range cases {

@@ -80,7 +80,9 @@ func (s *Session) rejectEditLocked(err error) {
 	}
 	acceptance := c.edit.acceptance
 	c.edit = nil
-	c.effects = append(c.effects, func() { acceptance.finish(store.EditReceipt{}, err) })
+	c.effects = append(c.effects, func() {
+		acceptance.finish(store.EditReceipt{}, err)
+	})
 	if c.waitingChange != nil {
 		c.replaceSwitchLocked(&c.change, *c.waitingChange)
 		c.waitingChange = nil
@@ -169,7 +171,9 @@ func (s *Session) runEdit(ctx context.Context) error {
 	reserved := true
 	defer func() {
 		if reserved {
-			s.mutate(func(c *coreState) { c.providerBusy = false })
+			s.mutate(func(c *coreState) {
+				c.providerBusy = false
+			})
 		}
 	}()
 	s.mu.Lock()
@@ -182,7 +186,9 @@ func (s *Session) runEdit(ctx context.Context) error {
 	if !committed {
 		return err
 	}
-	s.mutate(func(c *coreState) { c.providerBusy = false })
+	s.mutate(func(c *coreState) {
+		c.providerBusy = false
+	})
 	reserved = false
 	if reservation != nil {
 		reservation.Release()
@@ -292,7 +298,9 @@ func (s *Session) commitEdit(ctx context.Context, candidate editCandidate) (bool
 		c.edit.accepted = true
 		s.eventLocked(&EditCommitted{Receipt: candidate.receipt})
 		acceptance := c.edit.acceptance
-		c.effects = append(c.effects, func() { acceptance.finish(candidate.receipt, nil) })
+		c.effects = append(c.effects, func() {
+			acceptance.finish(candidate.receipt, nil)
+		})
 	})
 	accepted = true
 	permit.Release()

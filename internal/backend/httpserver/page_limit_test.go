@@ -59,7 +59,9 @@ func TestPageMessageLimitForEverySocketKind(t *testing.T) {
 					readCtx, cancel := context.WithCancel(t.Context())
 					go func() {
 						total := 0
-						defer func() { consumed <- total }()
+						defer func() {
+							consumed <- total
+						}()
 						for total < webapiproto.MaxPageMessageBytes {
 							data, err := hostInput.Next(readCtx)
 							if err != nil {
@@ -83,7 +85,9 @@ func TestPageMessageLimitForEverySocketKind(t *testing.T) {
 								t.Error(err)
 								return
 							}
-							defer func() { _ = socket.CloseNow() }()
+							defer func() {
+								_ = socket.CloseNow()
+							}()
 							// Serving may return the expected overflow error; the peer close
 							// below is the assertion at the socket boundary.
 							switch kind {

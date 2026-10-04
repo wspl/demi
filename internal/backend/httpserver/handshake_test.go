@@ -75,20 +75,48 @@ func TestBadUserStreamHandshakeNeverReachesAdmission(t *testing.T) {
 		name   string
 		change func(*http.Request)
 	}{
-		{"method", func(r *http.Request) { r.Method = "HEAD" }},
-		{"HTTP version", func(r *http.Request) { r.ProtoMinor = 0 }},
-		{"missing Connection", func(r *http.Request) { r.Header.Del("Connection") }},
-		{"wrong Connection token", func(r *http.Request) { r.Header.Set("Connection", "not-upgrade") }},
-		{"missing Upgrade", func(r *http.Request) { r.Header.Del("Upgrade") }},
-		{"wrong Upgrade token", func(r *http.Request) { r.Header.Set("Upgrade", "not-websocket") }},
-		{"missing version", func(r *http.Request) { r.Header.Del("Sec-WebSocket-Version") }},
-		{"wrong version", func(r *http.Request) { r.Header.Set("Sec-WebSocket-Version", "12") }},
-		{"version list", func(r *http.Request) { r.Header.Set("Sec-WebSocket-Version", "13, 12") }},
-		{"missing key", func(r *http.Request) { r.Header.Del("Sec-WebSocket-Key") }},
-		{"empty key", func(r *http.Request) { r.Header.Set("Sec-WebSocket-Key", "") }},
-		{"duplicate key", func(r *http.Request) { r.Header.Add("Sec-WebSocket-Key", r.Header.Get("Sec-WebSocket-Key")) }},
-		{"invalid base64 key", func(r *http.Request) { r.Header.Set("Sec-WebSocket-Key", "!") }},
-		{"short key", func(r *http.Request) { r.Header.Set("Sec-WebSocket-Key", "YQ==") }},
+		{"method", func(r *http.Request) {
+			r.Method = "HEAD"
+		}},
+		{"HTTP version", func(r *http.Request) {
+			r.ProtoMinor = 0
+		}},
+		{"missing Connection", func(r *http.Request) {
+			r.Header.Del("Connection")
+		}},
+		{"wrong Connection token", func(r *http.Request) {
+			r.Header.Set("Connection", "not-upgrade")
+		}},
+		{"missing Upgrade", func(r *http.Request) {
+			r.Header.Del("Upgrade")
+		}},
+		{"wrong Upgrade token", func(r *http.Request) {
+			r.Header.Set("Upgrade", "not-websocket")
+		}},
+		{"missing version", func(r *http.Request) {
+			r.Header.Del("Sec-WebSocket-Version")
+		}},
+		{"wrong version", func(r *http.Request) {
+			r.Header.Set("Sec-WebSocket-Version", "12")
+		}},
+		{"version list", func(r *http.Request) {
+			r.Header.Set("Sec-WebSocket-Version", "13, 12")
+		}},
+		{"missing key", func(r *http.Request) {
+			r.Header.Del("Sec-WebSocket-Key")
+		}},
+		{"empty key", func(r *http.Request) {
+			r.Header.Set("Sec-WebSocket-Key", "")
+		}},
+		{"duplicate key", func(r *http.Request) {
+			r.Header.Add("Sec-WebSocket-Key", r.Header.Get("Sec-WebSocket-Key"))
+		}},
+		{"invalid base64 key", func(r *http.Request) {
+			r.Header.Set("Sec-WebSocket-Key", "!")
+		}},
+		{"short key", func(r *http.Request) {
+			r.Header.Set("Sec-WebSocket-Key", "YQ==")
+		}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			request := handshakeRequest()

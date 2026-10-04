@@ -23,7 +23,9 @@ func TestCancelledContextCannotRegisterAfterOwnerCheck(t *testing.T) {
 	defer cancelExecution()
 	execution := &ExecutionContext{ID: "context", JobID: "job", lifetime: executionCtx, cancel: cancelExecution}
 	outcome := make(chan error, 1)
-	go func() { outcome <- handle.RegisterContext(caller, execution, nil) }()
+	go func() {
+		outcome <- handle.RegisterContext(caller, execution, nil)
+	}()
 	request := (<-requests).(*ContextRequest)
 	// This is the connection owner's pre-registration check in the old ordering.
 	if err := caller.Err(); err != nil {
@@ -39,7 +41,9 @@ func TestCancelledContextCannotRegisterAfterOwnerCheck(t *testing.T) {
 	}
 	// A subsequent live registration of the same job must still succeed.
 	next := make(chan error, 1)
-	go func() { next <- handle.RegisterContext(t.Context(), execution, nil) }()
+	go func() {
+		next <- handle.RegisterContext(t.Context(), execution, nil)
+	}()
 	(<-requests).(*ContextRequest).Register(table)
 	if err := <-next; err != nil {
 		t.Fatal(err)

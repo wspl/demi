@@ -33,10 +33,14 @@ type Parsed struct {
 }
 
 // Select finds the command named by argv, excluding the root executable name.
-func (g *Group[B]) Select(argv []string) (*Selected[B], error) { return selectNode[B](g, argv) }
+func (g *Group[B]) Select(argv []string) (*Selected[B], error) {
+	return selectNode[B](g, argv)
+}
 
 // Select selects this root leaf, whose arguments begin immediately.
-func (l *Leaf[B]) Select(argv []string) (*Selected[B], error) { return selectNode[B](l, argv) }
+func (l *Leaf[B]) Select(argv []string) (*Selected[B], error) {
+	return selectNode[B](l, argv)
+}
 
 // selectNode walks only group tokens, leaving leaf tokens for parsing.
 func selectNode[B any](node Node[B], argv []string) (*Selected[B], error) {

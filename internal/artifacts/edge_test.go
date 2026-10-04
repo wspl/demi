@@ -51,7 +51,9 @@ func TestInstallLockAcrossProcesses(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "artifact.lock")
 	held, err := artifacts.AcquireInstallLock(t.Context(), path)
 	must(t, err)
-	defer func() { must(t, held.Close()) }()
+	defer func() {
+		must(t, held.Close())
+	}()
 	executable, err := os.Executable()
 	must(t, err)
 	command := exec.CommandContext(t.Context(), executable, "-test.run=^TestInstallLockAcrossProcesses$")
@@ -119,7 +121,9 @@ func TestUnpackedFixtureInstallsAndPreservesSymlinks(t *testing.T) {
 		t.Fatal(info.Mode())
 	}
 	must(t, os.Chmod(result, 0))
-	defer func() { must(t, os.Chmod(result, 0o755)) }()
+	defer func() {
+		must(t, os.Chmod(result, 0o755))
+	}()
 	// The stored receipt alone must suffice in a private cache. No corrupt
 	// bytes are planted to assert that a defect is correct behavior.
 	recorded, err := artifacts.Recorded(t.Context(), installed, archive)
@@ -162,7 +166,9 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 			root := t.TempDir()
 			_, unpacking, err := artifacts.InstallArchive(t.Context(), root, archive)
 			must(t, err)
-			defer func() { must(t, unpacking.Close()) }()
+			defer func() {
+				must(t, unpacking.Close())
+			}()
 			must(t, os.WriteFile(unpacking.ArchivePath(), data.Bytes(), 0o600))
 			_, err = unpacking.Finish(t.Context())
 			assertPrefix(t, err, "the archive cannot be installed: ")
@@ -183,7 +189,9 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 	archive := artifacts.Archive{Digest: declared(body), Entry: "tool"}
 	_, unpacking, err := artifacts.InstallArchive(t.Context(), root, archive)
 	must(t, err)
-	defer func() { must(t, unpacking.Close()) }()
+	defer func() {
+		must(t, unpacking.Close())
+	}()
 	must(t, os.WriteFile(unpacking.ArchivePath(), body, 0o600))
 	_, err = unpacking.Finish(t.Context())
 	assertPrefix(t, err, "the archive cannot be installed: ")
@@ -191,7 +199,10 @@ func TestArchivesRejectSymlinkEscapesAndInvalidInput(t *testing.T) {
 
 type brokenReader struct{ err error }
 
-func (r brokenReader) Read([]byte) (int, error) { return 0, r.err }
+func (r brokenReader) Read([]byte) (int, error) {
+	return 0, r.err
+}
+
 func TestFailedAndMidstreamCancelledPublicationKeepsOldFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "artifact")
 	must(t, os.WriteFile(path, body, 0o600))
@@ -270,12 +281,16 @@ func TestArchivePreservesDirectoryPermissionsAfterExtraction(t *testing.T) {
 	root := t.TempDir()
 	_, unpacking, err := artifacts.InstallArchive(t.Context(), root, archive)
 	must(t, err)
-	defer func() { must(t, unpacking.Close()) }()
+	defer func() {
+		must(t, unpacking.Close())
+	}()
 	must(t, os.WriteFile(unpacking.ArchivePath(), data.Bytes(), 0o600))
 	entry, err := unpacking.Finish(t.Context())
 	must(t, err)
 	directory := filepath.Dir(entry)
-	defer func() { must(t, os.Chmod(directory, 0o755)) }()
+	defer func() {
+		must(t, os.Chmod(directory, 0o755))
+	}()
 	contents(t, entry, body)
 	info, err := os.Stat(directory)
 	must(t, err)
@@ -287,7 +302,9 @@ func TestArchivePreservesDirectoryPermissionsAfterExtraction(t *testing.T) {
 	failedRoot := t.TempDir()
 	_, pending, err := artifacts.InstallArchive(t.Context(), failedRoot, archive)
 	must(t, err)
-	defer func() { must(t, pending.Close()) }()
+	defer func() {
+		must(t, pending.Close())
+	}()
 	must(t, os.WriteFile(pending.ArchivePath(), data.Bytes(), 0o600))
 	_, err = pending.Finish(t.Context())
 	assertPrefix(t, err, "the archive cannot be installed: ")

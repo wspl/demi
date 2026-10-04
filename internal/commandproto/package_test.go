@@ -120,12 +120,24 @@ func TestResourceSelectionAndDescriptorValidation(t *testing.T) {
 		t.Fatal("resource selected for wrong target")
 	}
 	for _, mutate := range []func(*commandproto.PackageDescriptor){
-		func(p *commandproto.PackageDescriptor) { p.ID = "invalid" },
-		func(p *commandproto.PackageDescriptor) { p.Version = "" },
-		func(p *commandproto.PackageDescriptor) { p.Operations = []string{} },
-		func(p *commandproto.PackageDescriptor) { p.ProtocolVersion = 2 },
-		func(p *commandproto.PackageDescriptor) { p.Operations = []string{"open", "open"} },
-		func(p *commandproto.PackageDescriptor) { p.Operations = []string{""} },
+		func(p *commandproto.PackageDescriptor) {
+			p.ID = "invalid"
+		},
+		func(p *commandproto.PackageDescriptor) {
+			p.Version = ""
+		},
+		func(p *commandproto.PackageDescriptor) {
+			p.Operations = []string{}
+		},
+		func(p *commandproto.PackageDescriptor) {
+			p.ProtocolVersion = 2
+		},
+		func(p *commandproto.PackageDescriptor) {
+			p.Operations = []string{"open", "open"}
+		},
+		func(p *commandproto.PackageDescriptor) {
+			p.Operations = []string{""}
+		},
 		func(p *commandproto.PackageDescriptor) {
 			p.Targets = map[string]commandproto.PackageArtifact{"wrong": {SHA256: hash, Size: 1}}
 		},
@@ -442,7 +454,9 @@ func runnerParts(t *testing.T, data []byte, path []string) [][]byte {
 	var children [][]byte
 	if path[0] == "[]" {
 		var err error
-		children, err = contract.MsgpackList(data, func(raw []byte) ([]byte, error) { return raw, nil })
+		children, err = contract.MsgpackList(data, func(raw []byte) ([]byte, error) {
+			return raw, nil
+		})
 		if err != nil {
 			t.Fatal(err)
 		}

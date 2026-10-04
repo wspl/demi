@@ -17,7 +17,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // gitCommand prepares reference fixtures and asks Git for the porcelain oracle.
 func gitCommand(t *testing.T, root string, args ...string) string {
@@ -351,7 +353,9 @@ func TestWorkingTreeRequestsWait(t *testing.T) {
 func observeTree(t *testing.T, root string) <-chan WatchEvent {
 	t.Helper()
 	events := make(chan WatchEvent, 4096)
-	watch, err := StartWatch(t.Context(), []string{root}, func(event WatchEvent) { events <- event })
+	watch, err := StartWatch(t.Context(), []string{root}, func(event WatchEvent) {
+		events <- event
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,7 +462,9 @@ func TestWatchedRequestsFollowIgnoreRulesAndModes(t *testing.T) {
 		out,
 		events,
 		root,
-		func(c runnerproto.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) },
+		func(c runnerproto.GitChanges) bool {
+			return cmp.Equal(changeStatuses(c), want)
+		},
 	)
 	writeFixture(t, root, ".gitignore", "*.log\n")
 	want = gitStatuses(t, root)
@@ -468,7 +474,9 @@ func TestWatchedRequestsFollowIgnoreRulesAndModes(t *testing.T) {
 		out,
 		events,
 		root,
-		func(c runnerproto.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) },
+		func(c runnerproto.GitChanges) bool {
+			return cmp.Equal(changeStatuses(c), want)
+		},
 	)
 	if err := os.Chmod(filepath.Join(root, "b.txt"), 0o755); err != nil {
 		t.Fatal(err)
@@ -480,7 +488,9 @@ func TestWatchedRequestsFollowIgnoreRulesAndModes(t *testing.T) {
 		out,
 		events,
 		root,
-		func(c runnerproto.GitChanges) bool { return cmp.Equal(changeStatuses(c), want) },
+		func(c runnerproto.GitChanges) bool {
+			return cmp.Equal(changeStatuses(c), want)
+		},
 	)
 }
 
@@ -495,7 +505,9 @@ func TestRuleAboveRootReachesUnderIt(t *testing.T) {
 		out,
 		events,
 		sub,
-		func(c runnerproto.GitChanges) bool { return len(c.Files) == 1 && c.Files[0].Path == "scratch.log" },
+		func(c runnerproto.GitChanges) bool {
+			return len(c.Files) == 1 && c.Files[0].Path == "scratch.log"
+		},
 	)
 	writeFixture(t, root, ".gitignore", "*.log\n")
 	if result := changesFixture(t, s, out, sub); len(result.Files) != 0 {
@@ -523,7 +535,9 @@ func TestStagedRenameStaysOneEntryAcrossWatch(t *testing.T) {
 		out,
 		events,
 		root,
-		func(c runnerproto.GitChanges) bool { return changeMap(c)["moved.txt"].Status == "RM" },
+		func(c runnerproto.GitChanges) bool {
+			return changeMap(c)["moved.txt"].Status == "RM"
+		},
 	)
 	want.Status = "RM"
 	want.Added = 1
@@ -531,7 +545,9 @@ func TestStagedRenameStaysOneEntryAcrossWatch(t *testing.T) {
 		t.Fatal(diff)
 	}
 	writeFixture(t, root, "a.txt", "temporary\n")
-	awaitChanges(t, s, out, events, root, func(c runnerproto.GitChanges) bool { return len(c.Files) == 2 })
+	awaitChanges(t, s, out, events, root, func(c runnerproto.GitChanges) bool {
+		return len(c.Files) == 2
+	})
 	if err := os.Remove(filepath.Join(root, "a.txt")); err != nil {
 		t.Fatal(err)
 	}

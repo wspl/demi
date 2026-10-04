@@ -8,7 +8,9 @@ import (
 )
 
 // Rate scenarios use virtual time and no external resources; each costs <1 s.
-func healthySample() sample { return sample{roundTrip: 5, activeFrames: 30, encodedBitrate: 6_000_000} }
+func healthySample() sample {
+	return sample{roundTrip: 5, activeFrames: 30, encodedBitrate: 6_000_000}
+}
 
 func referenceRate() rate {
 	r := newRate(500 * 1000)

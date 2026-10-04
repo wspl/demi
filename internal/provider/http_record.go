@@ -40,7 +40,9 @@ func NewHTTPFailureRecord(status uint16, headers http.Header, body string) HTTPF
 			pairs = append(pairs, HeaderPair{strings.ToLower(name), vendorResponseText([]byte(value))})
 		}
 	}
-	sort.SliceStable(pairs, func(i, j int) bool { return pairs[i][0] < pairs[j][0] })
+	sort.SliceStable(pairs, func(i, j int) bool {
+		return pairs[i][0] < pairs[j][0]
+	})
 	return HTTPFailureRecord{Status: status, Headers: pairs, Body: body}
 }
 

@@ -52,7 +52,9 @@ func (f *Factory) Manifest() plugin.Manifest {
 }
 
 // Instance returns the immutable native command dispatcher.
-func (f *Factory) Instance() plugin.Plugin { return f.commands }
+func (f *Factory) Instance() plugin.Plugin {
+	return f.commands
+}
 
 func readCommand() (host.Declared, error) {
 	input, err := commanddecl.NewSchema(fileproto.ReadArgsJSONSchema())

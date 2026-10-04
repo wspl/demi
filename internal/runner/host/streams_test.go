@@ -30,7 +30,9 @@ func pipeService(t *testing.T, root string, handler http.HandlerFunc) (*Service,
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipes, err := process.NewPipeClient(backend, func() (runnerproto.DeviceToken, bool) { return token, true })
+	pipes, err := process.NewPipeClient(backend, func() (runnerproto.DeviceToken, bool) {
+		return token, true
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,7 +262,9 @@ func TestNetworkHalfCloseKeepsResponseAndReportsInputImmediately(t *testing.T) {
 			serverDone <- err
 			return
 		}
-		defer func() { _ = socket.Close() }()
+		defer func() {
+			_ = socket.Close()
+		}()
 		data, err := io.ReadAll(socket)
 		if err == nil && string(data) != "request" {
 			err = errors.New("incorrect request")
@@ -321,7 +325,9 @@ func TestNetworkPipeFailureCancelsBothDirections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = listener.Close() }) // The accepted connection is joined below.
+	t.Cleanup(func() {
+		_ = listener.Close()
+	}) // The accepted connection is joined below.
 	_, text, err := net.SplitHostPort(listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)

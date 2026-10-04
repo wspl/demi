@@ -213,7 +213,9 @@ func TestRunnerJobPipesCarryStreamsAndRefusedEndsDoNotBlock(t *testing.T) {
 	requirePipe(t, err)
 	reader, err := output.Reader()
 	requirePipe(t, err)
-	defer func() { requirePipe(t, reader.Close(context.Background())) }()
+	defer func() {
+		requirePipe(t, reader.Close(context.Background()))
+	}()
 	request := startRequest("tr a-z A-Z")
 	request.CWD = f.Home()
 	request.Env = map[string]string{"PATH": "/usr/bin:/bin"}

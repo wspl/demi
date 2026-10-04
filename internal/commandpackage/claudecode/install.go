@@ -32,7 +32,9 @@ func (e *operationError) Error() string {
 }
 
 // Unwrap returns the operation failure.
-func (e *operationError) Unwrap() error { return e.cause }
+func (e *operationError) Unwrap() error {
+	return e.cause
+}
 
 func parseRelease(input []byte) (claudecodeproto.Release, error) {
 	release, err := claudecodeproto.DecodeRelease(input)

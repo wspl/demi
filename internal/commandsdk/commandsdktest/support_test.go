@@ -12,7 +12,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // Local fixtures have the same per-conversation sequence and artifact outcome
 // semantics as side streams, and their test cleanup ends outstanding sources.

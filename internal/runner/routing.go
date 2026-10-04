@@ -13,27 +13,39 @@ func (c *connection) message(message runnerproto.Inbound) error {
 	// Relay and authentication variants have already been consumed by route.
 	switch m := any(message).(type) {
 	case *runnerproto.ConversationRelease:
-		work = func() error { return c.releaseConversation(m) }
+		work = func() error {
+			return c.releaseConversation(m)
+		}
 	case *runnerproto.ManifestMessage:
 		c.installManifest(m)
 		return nil
 	case *runnerproto.JobRead:
-		work = func() error { return c.readJob(m) }
+		work = func() error {
+			return c.readJob(m)
+		}
 	case *runnerproto.JobRelease:
 		work = func() error {
 			c.directories.Release(c.ctx, m.JobID)
 			return nil
 		}
 	case *runnerproto.Sync:
-		work = func() error { return c.volumes.Sync(c.ctx, *m) }
+		work = func() error {
+			return c.volumes.Sync(c.ctx, *m)
+		}
 	case *runnerproto.VolumeGrown:
 		return c.volumes.Grown(*m)
 	case *runnerproto.GitChangesMessage:
-		work = func() error { return c.host.GitChanges(c.ctx, *m) }
+		work = func() error {
+			return c.host.GitChanges(c.ctx, *m)
+		}
 	case *runnerproto.GitShow:
-		work = func() error { return c.host.GitShow(c.ctx, *m) }
+		work = func() error {
+			return c.host.GitShow(c.ctx, *m)
+		}
 	case *runnerproto.NetOpen:
-		work = func() error { return c.host.NetOpen(c.ctx, *m) }
+		work = func() error {
+			return c.host.NetOpen(c.ctx, *m)
+		}
 	case *runnerproto.ServiceOpen:
 		return c.streams.HandleOpen(m)
 	case *runnerproto.LogRead:
@@ -46,7 +58,9 @@ func (c *connection) message(message runnerproto.Inbound) error {
 			return c.task(message)
 		}
 	}
-	c.launch(func() connectionWork { return connectionWork{err: work()} })
+	c.launch(func() connectionWork {
+		return connectionWork{err: work()}
+	})
 	return nil
 }
 
@@ -100,25 +114,45 @@ func (c *connection) task(message runnerproto.Inbound) error {
 func (c *connection) filesystemWork(message runnerproto.Inbound) (work func() error) {
 	switch m := any(message).(type) {
 	case *runnerproto.FSExists:
-		work = func() error { return c.host.Exists(c.ctx, *m) }
+		work = func() error {
+			return c.host.Exists(c.ctx, *m)
+		}
 	case *runnerproto.FSStat:
-		work = func() error { return c.host.Stat(c.ctx, *m) }
+		work = func() error {
+			return c.host.Stat(c.ctx, *m)
+		}
 	case *runnerproto.FSLstat:
-		work = func() error { return c.host.Lstat(c.ctx, *m) }
+		work = func() error {
+			return c.host.Lstat(c.ctx, *m)
+		}
 	case *runnerproto.FSReadFile:
-		work = func() error { return c.host.ReadFile(c.ctx, *m) }
+		work = func() error {
+			return c.host.ReadFile(c.ctx, *m)
+		}
 	case *runnerproto.FSWriteFile:
-		work = func() error { return c.host.WriteFile(c.ctx, *m) }
+		work = func() error {
+			return c.host.WriteFile(c.ctx, *m)
+		}
 	case *runnerproto.FSReaddir:
-		work = func() error { return c.host.Readdir(c.ctx, *m) }
+		work = func() error {
+			return c.host.Readdir(c.ctx, *m)
+		}
 	case *runnerproto.FSMkdir:
-		work = func() error { return c.host.Mkdir(c.ctx, *m) }
+		work = func() error {
+			return c.host.Mkdir(c.ctx, *m)
+		}
 	case *runnerproto.FSRm:
-		work = func() error { return c.host.Rm(c.ctx, *m) }
+		work = func() error {
+			return c.host.Rm(c.ctx, *m)
+		}
 	case *runnerproto.FSCp:
-		work = func() error { return c.host.Cp(c.ctx, *m) }
+		work = func() error {
+			return c.host.Cp(c.ctx, *m)
+		}
 	case *runnerproto.FSMv:
-		work = func() error { return c.host.Mv(c.ctx, *m) }
+		work = func() error {
+			return c.host.Mv(c.ctx, *m)
+		}
 	default:
 		return c.filesystemMetadataWork(message)
 	}
@@ -180,17 +214,29 @@ func (c *connection) releaseConversation(m *runnerproto.ConversationRelease) err
 func (c *connection) filesystemMetadataWork(message runnerproto.Inbound) (work func() error) {
 	switch m := any(message).(type) {
 	case *runnerproto.FSChmod:
-		work = func() error { return c.host.Chmod(c.ctx, *m) }
+		work = func() error {
+			return c.host.Chmod(c.ctx, *m)
+		}
 	case *runnerproto.FSSymlink:
-		work = func() error { return c.host.Symlink(c.ctx, *m) }
+		work = func() error {
+			return c.host.Symlink(c.ctx, *m)
+		}
 	case *runnerproto.FSLink:
-		work = func() error { return c.host.Link(c.ctx, *m) }
+		work = func() error {
+			return c.host.Link(c.ctx, *m)
+		}
 	case *runnerproto.FSReadlink:
-		work = func() error { return c.host.Readlink(c.ctx, *m) }
+		work = func() error {
+			return c.host.Readlink(c.ctx, *m)
+		}
 	case *runnerproto.FSRealpath:
-		work = func() error { return c.host.Realpath(c.ctx, *m) }
+		work = func() error {
+			return c.host.Realpath(c.ctx, *m)
+		}
 	case *runnerproto.FSUtimes:
-		work = func() error { return c.host.Utimes(c.ctx, *m) }
+		work = func() error {
+			return c.host.Utimes(c.ctx, *m)
+		}
 	}
 	return work
 }

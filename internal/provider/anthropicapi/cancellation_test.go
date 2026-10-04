@@ -32,7 +32,9 @@ func openReader(ctx context.Context, t *testing.T) (*providertest.MockVendor, *p
 	reader := providertest.NewEventReader(
 		ctx,
 		t,
-		func(ctx context.Context) provider.Run { return r.Run(ctx, providertest.InferenceRequest()) },
+		func(ctx context.Context) provider.Run {
+			return r.Run(ctx, providertest.InferenceRequest())
+		},
 	)
 	event, ok := reader.NextEvent()
 	if !ok {

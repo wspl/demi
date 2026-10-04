@@ -18,7 +18,9 @@ import (
 
 type dispatchHost struct{ host.Host }
 
-func (*dispatchHost) Key() host.Key { return "test" }
+func (*dispatchHost) Key() host.Key {
+	return "test"
+}
 
 type dispatchProduct struct {
 	environment *dispatchEnvironment

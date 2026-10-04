@@ -65,7 +65,9 @@ func TestRefusedBodyAnnouncesWhetherConnectionCanBeReused(t *testing.T) {
 				)
 			}
 			var reused atomic.Bool
-			trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) { reused.Store(info.Reused) }}
+			trace := &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) {
+				reused.Store(info.Reused)
+			}}
 			ctx := httptrace.WithClientTrace(t.Context(), trace)
 			request, err := http.NewRequestWithContext(
 				ctx,

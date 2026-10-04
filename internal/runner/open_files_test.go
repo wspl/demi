@@ -150,17 +150,23 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipes, err := process.NewPipeClient(backendURL, func() (runnerproto.DeviceToken, bool) { return "token", true })
+	pipes, err := process.NewPipeClient(backendURL, func() (runnerproto.DeviceToken, bool) {
+		return "token", true
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = pipes.Close() }()
+	defer func() {
+		_ = pipes.Close()
+	}()
 	exhaustDescriptors(ctx, t, "pipe download", func() error {
 		stream, err := pipes.Open(ctx, "/pipe/download")
 		if err != nil {
 			return err
 		}
-		defer func() { _ = stream.Close() }()
+		defer func() {
+			_ = stream.Close()
+		}()
 		bytes := make([]byte, 5)
 		_, err = io.ReadFull(stream, bytes)
 		if string(bytes) != "hello" {
@@ -172,7 +178,9 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		ctx,
 		t,
 		"pipe upload",
-		func() error { return pipes.Put(ctx, "/pipe/upload", io.NopCloser(strings.NewReader("hello"))) },
+		func() error {
+			return pipes.Put(ctx, "/pipe/upload", io.NopCloser(strings.NewReader("hello")))
+		},
 	)
 	output := make(chan []byte, 64)
 	service := host.New(ctx, root, pipes, output)
@@ -272,7 +280,9 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		defer close(networkDone)
 		conn, err := socket.Accept()
 		if err == nil {
-			defer func() { _ = conn.Close() }()
+			defer func() {
+				_ = conn.Close()
+			}()
 			<-ctx.Done()
 		}
 	}()
@@ -494,7 +504,9 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		defer job.Cancel()
 		awaitReady(ctx, t, scope, job)
 		held := fillDescriptors(t)
-		defer func() { releaseDescriptors(held) }()
+		defer func() {
+			releaseDescriptors(held)
+		}()
 		job.Input() <- process.Input{Bytes: []byte("three\n")}
 		job.Input() <- process.Input{}
 		var output strings.Builder
@@ -558,7 +570,9 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 		awaitReady(ctx, t, scope, cancelled)
 		held := fillDescriptors(t)
-		defer func() { releaseDescriptors(held) }()
+		defer func() {
+			releaseDescriptors(held)
+		}()
 		joined := make(chan error, 1)
 		var exit process.Exit
 		go func() {
@@ -707,5 +721,10 @@ func (p localFixtureArtifact) Resolve(
 
 type discardCommandOutput struct{}
 
-func (discardCommandOutput) Write(p []byte) (int, error) { return len(p), nil }
-func (discardCommandOutput) Close() error                { return nil }
+func (discardCommandOutput) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+func (discardCommandOutput) Close() error {
+	return nil
+}

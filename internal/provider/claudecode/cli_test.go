@@ -18,7 +18,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const testToken = "sk-ant-oat01-test-token"
 
@@ -96,7 +98,11 @@ func toolOutput(id, text string) provider.InferenceItem {
 func response(input, output uint64) provider.Event {
 	return &provider.Response{Usage: types.TokenUsage{InputTokens: input, OutputTokens: output}}
 }
-func textEvent(text string) provider.Event { return &provider.TextDelta{Text: text} }
+
+func textEvent(text string) provider.Event {
+	return &provider.TextDelta{Text: text}
+}
+
 func equal(t *testing.T, got, want any) {
 	t.Helper()
 	if !reflect.DeepEqual(want, got) {
@@ -240,7 +246,11 @@ func (c *scriptedCLI) WriteStdin(_ context.Context, data []byte) error {
 	}
 	return nil
 }
-func (*scriptedCLI) CloseStdin(context.Context) error { return nil }
+
+func (*scriptedCLI) CloseStdin(context.Context) error {
+	return nil
+}
+
 func (c *scriptedCLI) Kill(_ context.Context, signal host.Signal) error {
 	c.signals = append(c.signals, signal)
 	if signal != host.Terminate || !c.ignoreTerminate {

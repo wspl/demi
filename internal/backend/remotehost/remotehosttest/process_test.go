@@ -10,7 +10,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // One built runner, restarted once against a local rejecting endpoint. Requests
 // establish startup; Stop joins each child and its readers, with no sleep.

@@ -13,7 +13,9 @@ import (
 	"github.com/wspl/demi/internal/types"
 )
 
-func newRecord() *host.CommandRecord { return host.NewCommandRecord("shell", "command", "call") }
+func newRecord() *host.CommandRecord {
+	return host.NewCommandRecord("shell", "command", "call")
+}
 
 // The record tests use virtual time only; the complete suite costs less than one second.
 func TestByteViewsAndRepeatedUnfinishedLines(t *testing.T) {

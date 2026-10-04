@@ -57,4 +57,6 @@ func numericSignal(number int) (string, bool) {
 	return "", false
 }
 
-func signalExitCode(_ string) uint8 { return 1 }
+func signalExitCode(_ string) uint8 {
+	return 1
+}

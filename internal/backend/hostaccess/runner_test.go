@@ -144,7 +144,9 @@ func receiveHostWrite(t *testing.T, s *testShard, r *boundRunner, device databas
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = sink.Close(context.Background()) }()
+	defer func() {
+		_ = sink.Close(context.Background())
+	}()
 	var data []byte
 	for {
 		chunk, err := sink.Next(t.Context())
@@ -185,4 +187,7 @@ func (b *hostBytes) Read(ctx context.Context, data []byte) (int, error) {
 	}
 	return b.Reader.Read(data)
 }
-func (*hostBytes) Close(context.Context) error { return nil }
+
+func (*hostBytes) Close(context.Context) error {
+	return nil
+}

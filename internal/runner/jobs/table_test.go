@@ -21,7 +21,10 @@ type playedShell struct {
 	run func(context.Context, process.JobStart, chan<- process.OutputChunk, <-chan process.Input) (process.Exit, *string)
 }
 
-func (*playedShell) BuiltinNames() map[string]struct{} { return map[string]struct{}{} }
+func (*playedShell) BuiltinNames() map[string]struct{} {
+	return map[string]struct{}{}
+}
+
 func (s *playedShell) Start(ctx context.Context, start process.JobStart) (process.ShellJob, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	job := &playedJob{
@@ -49,14 +52,27 @@ type playedJob struct {
 	cwd    *string
 }
 
-func (j *playedJob) Input() chan<- process.Input        { return j.input }
-func (j *playedJob) Output() <-chan process.OutputChunk { return j.output }
+func (j *playedJob) Input() chan<- process.Input {
+	return j.input
+}
+
+func (j *playedJob) Output() <-chan process.OutputChunk {
+	return j.output
+}
+
 func (j *playedJob) Signal(runnerproto.Signal) error {
 	j.cancel()
 	return nil
 }
-func (j *playedJob) Cancel()           { j.cancel() }
-func (j *playedJob) IsCancelled() bool { return j.ctx.Err() != nil }
+
+func (j *playedJob) Cancel() {
+	j.cancel()
+}
+
+func (j *playedJob) IsCancelled() bool {
+	return j.ctx.Err() != nil
+}
+
 func (j *playedJob) Wait(ctx context.Context) (process.Exit, *string, error) {
 	select {
 	case <-j.done:
@@ -134,7 +150,9 @@ func kept(t *testing.T, directories *jobs.Directories) []runnerproto.KeptRecord 
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = snapshot.Close() }()
+	defer func() {
+		_ = snapshot.Close()
+	}()
 	data, err := io.ReadAll(snapshot)
 	if err != nil {
 		t.Fatal(err)

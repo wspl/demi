@@ -38,7 +38,9 @@ func (fixedClock) Now() types.Timestamp {
 }
 
 // SkillMD wraps front matter in a skill document.
-func SkillMD(front string) string { return "---\n" + front + "\n---\n\nFollow these steps.\n" }
+func SkillMD(front string) string {
+	return "---\n" + front + "\n---\n\nFollow these steps.\n"
+}
 
 // File is one path in a fixture commit. Mode defaults to a regular file;
 // setting Executable preserves script permissions. Mode can also model links.
@@ -83,13 +85,17 @@ func New(t testing.TB) *Repos {
 // Factory fetches these repositories by their public owner/repo names.
 func (r *Repos) Factory() (*skills.Factory, error) {
 	return skills.NewResolving(
-		func(url string) string { return r.server.URL + "/" + strings.TrimPrefix(url, "https://github.com/") },
+		func(url string) string {
+			return r.server.URL + "/" + strings.TrimPrefix(url, "https://github.com/")
+		},
 		fixedClock{},
 	)
 }
 
 // URL returns the local HTTP endpoint of a fixture repository.
-func (r *Repos) URL(name string) string { return r.server.URL + "/" + name }
+func (r *Repos) URL(name string) string {
+	return r.server.URL + "/" + name
+}
 
 // Commit replaces the entire tree and retains a parent commit reference.
 func (r *Repos) Commit(ctx context.Context, name string, files []File) (string, error) {
@@ -152,7 +158,9 @@ func (r *Repos) CommitBytes(ctx context.Context, name, path string, content []by
 		return "", fmt.Errorf("no fixture repository %q", name)
 	}
 	files := slices.Clone(current.files)
-	index := slices.IndexFunc(files, func(file File) bool { return file.Path == path })
+	index := slices.IndexFunc(files, func(file File) bool {
+		return file.Path == path
+	})
 	file := File{Path: path, Bytes: content}
 	if index < 0 {
 		files = append(files, file)

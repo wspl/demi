@@ -18,7 +18,9 @@ type Permit struct {
 
 // NewCapacity creates capacity for machines Clouds that are not stopped.
 // The caller supplies a nonnegative count from validated lifecycle settings.
-func NewCapacity(machines int) *Capacity { return &Capacity{available: machines} }
+func NewCapacity(machines int) *Capacity {
+	return &Capacity{available: machines}
+}
 
 // TryTake returns a permit now, or nil while every one is taken. It never queues.
 func (c *Capacity) TryTake() *Permit {

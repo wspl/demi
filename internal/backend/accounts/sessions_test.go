@@ -12,7 +12,9 @@ import (
 // accountClock moves account record expiry time without wall-time waits or virtualized IO.
 type accountClock struct{ at types.Timestamp }
 
-func (c *accountClock) Now() types.Timestamp { return c.at }
+func (c *accountClock) Now() types.Timestamp {
+	return c.at
+}
 
 func TestWebSessionLifecycle(t *testing.T) {
 	clock := &accountClock{at: "2026-01-01T00:00:00.000Z"}

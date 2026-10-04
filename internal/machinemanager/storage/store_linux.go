@@ -31,7 +31,9 @@ func (p ImagePair[T]) ForVolume(volume machinemanagerproto.Volume) T {
 }
 
 // ImageFile returns system.ext4 or home.ext4 for a validated volume.
-func ImageFile(volume machinemanagerproto.Volume) string { return string(volume) + ".ext4" }
+func ImageFile(volume machinemanagerproto.Volume) string {
+	return string(volume) + ".ext4"
+}
 
 // ImagesInDirectory names the system.ext4 and home.ext4 images in directory.
 func ImagesInDirectory(directory string) ImagePair[string] {
@@ -46,10 +48,14 @@ func ImagesInDirectory(directory string) ImagePair[string] {
 type Store struct{ root string }
 
 // NewStore locates the committed image store at root.
-func NewStore(root string) *Store { return &Store{root: root} }
+func NewStore(root string) *Store {
+	return &Store{root: root}
+}
 
 // Bases returns the imported bases directory, <data>/images/bases.
-func (s *Store) Bases() string { return filepath.Join(s.root, "bases") }
+func (s *Store) Bases() string {
+	return filepath.Join(s.root, "bases")
+}
 
 // ReadState reads a generation record; found is false when the file does not exist.
 // A record that does not decode is an error; nothing repairs it.

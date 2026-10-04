@@ -146,7 +146,11 @@ func TestToolValuesKeepReadOrderAndCanonicalSpelling(t *testing.T) {
 		)
 	})
 	t.Run("transcript", func(t *testing.T) {
-		r, p := fixture(t, func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.result(1, 1) } })
+		r, p := fixture(t, func(c *scriptedCLI) {
+			c.onWrite = func(map[string]json.RawMessage) {
+				c.result(1, 1)
+			}
+		})
 		equal(
 			t,
 			collect(

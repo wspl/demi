@@ -605,7 +605,9 @@ func (o *observation) resolve(
 	if scope != nil {
 		matches = slices.DeleteFunc(
 			matches,
-			func(element targetElement) bool { return !o.descendant(element.identity(), *scope, true) },
+			func(element targetElement) bool {
+				return !o.descendant(element.identity(), *scope, true)
+			},
 		)
 	}
 	if target.Nth != nil {
@@ -641,9 +643,13 @@ func (o *observation) resolveWait(
 func (o *observation) domOrder(elements []targetElement) []targetElement {
 	slices.SortStableFunc(
 		elements,
-		func(a, b targetElement) int { return o.domIndex[a.identity()] - o.domIndex[b.identity()] },
+		func(a, b targetElement) int {
+			return o.domIndex[a.identity()] - o.domIndex[b.identity()]
+		},
 	)
-	return slices.CompactFunc(elements, func(a, b targetElement) bool { return a.identity() == b.identity() })
+	return slices.CompactFunc(elements, func(a, b targetElement) bool {
+		return a.identity() == b.identity()
+	})
 }
 
 func (o *observation) captureAX(
@@ -897,7 +903,9 @@ func (o *observation) resolveLocator(
 		}
 		keys = append(keys, local...)
 	}
-	slices.SortStableFunc(keys, func(a, b domIdentity) int { return o.domIndex[a] - o.domIndex[b] })
+	slices.SortStableFunc(keys, func(a, b domIdentity) int {
+		return o.domIndex[a] - o.domIndex[b]
+	})
 	for _, key := range keys {
 		element, err := o.resolveIdentity(ctx, key)
 		if err != nil {

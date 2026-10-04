@@ -43,7 +43,9 @@ func (m *Manager) worker(id machinemanagerproto.DeviceID) *deviceWorker {
 	}
 	w := newDeviceWorker(m, id)
 	m.devices[id] = w
-	m.workers.Go(func() { w.run(context.Background()) })
+	m.workers.Go(func() {
+		w.run(context.Background())
+	})
 	return w
 }
 
@@ -68,7 +70,9 @@ func (m *Manager) Reconcile(ctx context.Context) error {
 func (m *Manager) Close(ctx context.Context) error {
 	// The server has stopped consuming deaths. Unblock workers before waiting
 	// for admission, including a checkpoint currently reporting a failed thaw.
-	m.stopDeaths.Do(func() { close(m.stopping) })
+	m.stopDeaths.Do(func() {
+		close(m.stopping)
+	})
 	release, err := m.admission.Exclusive(ctx)
 	if err != nil {
 		return err
@@ -95,7 +99,9 @@ func (m *Manager) drain(ctx context.Context) error {
 	results := make([]error, len(workers))
 	var jobs sync.WaitGroup
 	for i, w := range workers {
-		jobs.Go(func() { _, results[i] = w.call(ctx, &machinemanagerproto.Hibernate{}) })
+		jobs.Go(func() {
+			_, results[i] = w.call(ctx, &machinemanagerproto.Hibernate{})
+		})
 	}
 	jobs.Wait()
 	if err := errors.Join(results...); err != nil {
@@ -162,7 +168,11 @@ type OperationError struct {
 }
 
 // Error returns the failure message.
-func (e *OperationError) Error() string { return e.Message }
+func (e *OperationError) Error() string {
+	return e.Message
+}
 
 // Unwrap returns the underlying failure.
-func (e *OperationError) Unwrap() error { return e.Cause }
+func (e *OperationError) Unwrap() error {
+	return e.Cause
+}

@@ -196,7 +196,9 @@ func TestEveryBlockWriteKeepsBlobIndexDerived(t *testing.T) {
 			tx,
 			"blob_refs",
 			"SELECT idx,holder FROM blob_refs ORDER BY idx,part",
-			func(r *storedRow) string { return fmt.Sprintf("%d/%s", r.integer("idx"), r.text("holder")) },
+			func(r *storedRow) string {
+				return fmt.Sprintf("%d/%s", r.integer("idx"), r.text("holder"))
+			},
 		)
 		return err
 	})
@@ -220,7 +222,9 @@ func TestEveryCommitReportsEarliestSavedWakeup(t *testing.T) {
 	tree, _, _ := testTree(t)
 	ctx := t.Context()
 	told := make([]WakeupDue, 0)
-	tree.saved = func(_ types.NodeID, due WakeupDue) { told = append(told, due) }
+	tree.saved = func(_ types.NodeID, due WakeupDue) {
+		told = append(told, due)
+	}
 	late, err := types.TimestampFromMillisecond(9000)
 	require(t, err)
 	early, err := types.TimestampFromMillisecond(5000)

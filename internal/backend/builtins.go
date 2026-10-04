@@ -39,7 +39,9 @@ func BuiltinFamilies() *providerhost.FamilyRegistry {
 type apiFamily struct{ name string }
 
 // Credential identifies the credentials this provider family accepts.
-func (apiFamily) Credential() webapiproto.CredentialKind { return webapiproto.CredentialKindAPIKey }
+func (apiFamily) Credential() webapiproto.CredentialKind {
+	return webapiproto.CredentialKindAPIKey
+}
 
 // Wires lists the selectable wire protocols for this family.
 func (f apiFamily) Wires() []types.WireAPI {
@@ -83,7 +85,9 @@ func (subscriptionFamily) Credential() webapiproto.CredentialKind {
 }
 
 // Wires lists the selectable wire protocols for this family.
-func (subscriptionFamily) Wires() []types.WireAPI { return nil }
+func (subscriptionFamily) Wires() []types.WireAPI {
+	return nil
+}
 
 // Provider constructs the provider for the supplied family credentials.
 func (f subscriptionFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
@@ -106,7 +110,9 @@ func (claudeFamily) Credential() webapiproto.CredentialKind {
 }
 
 // Wires lists the selectable wire protocols for this family.
-func (claudeFamily) Wires() []types.WireAPI { return nil }
+func (claudeFamily) Wires() []types.WireAPI {
+	return nil
+}
 
 // Provider constructs the provider for the supplied family credentials.
 func (f claudeFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {

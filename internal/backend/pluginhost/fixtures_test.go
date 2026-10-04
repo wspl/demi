@@ -61,7 +61,10 @@ type fakeFactory struct {
 	make     func() plugin.Plugin
 }
 
-func (f *fakeFactory) Manifest() plugin.Manifest { return f.manifest }
+func (f *fakeFactory) Manifest() plugin.Manifest {
+	return f.manifest
+}
+
 func (f *fakeFactory) Instance() plugin.Plugin {
 	if f.make != nil {
 		return f.make()
@@ -129,7 +132,9 @@ func command(name string, placement plugin.Placement, operation *commanddecl.Nat
 // registry builds fake plugins against a catalog serving every declared operation.
 func registry(t *testing.T, factories ...plugin.Factory) *pluginhost.Registry {
 	t.Helper()
-	r, err := pluginhost.NewRegistry(factories, func(commanddecl.NativeOperation) bool { return true })
+	r, err := pluginhost.NewRegistry(factories, func(commanddecl.NativeOperation) bool {
+		return true
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -173,9 +178,18 @@ func (u *fakeUses) CommitUses(_ context.Context, blobs []types.BlobRef) error {
 	u.touched = append(u.touched, blobs...)
 	return u.fail
 }
-func (s *fakeShard) Control() *database.ControlService { return s.control }
-func (s *fakeShard) Marks() pagesync.UserMarks         { return s.sync.Of(s.user) }
-func (s *fakeShard) BlobUses() database.OwnerBlobs     { return &s.uses }
+
+func (s *fakeShard) Control() *database.ControlService {
+	return s.control
+}
+
+func (s *fakeShard) Marks() pagesync.UserMarks {
+	return s.sync.Of(s.user)
+}
+
+func (s *fakeShard) BlobUses() database.OwnerBlobs {
+	return &s.uses
+}
 
 func (s *fakeShard) PackageCall(
 	ctx context.Context,
@@ -210,7 +224,9 @@ func (s *fakeShard) Blob(ctx context.Context, ref types.BlobRef) (*types.B64Byte
 	return s.blob(ctx, ref)
 }
 
-func (s *fakeShard) Exposes(ctx context.Context) (plugin.ExposeList, error) { return s.exposes(ctx) }
+func (s *fakeShard) Exposes(ctx context.Context) (plugin.ExposeList, error) {
+	return s.exposes(ctx)
+}
 
 func (s *fakeShard) CreateExpose(
 	ctx context.Context,

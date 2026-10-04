@@ -20,19 +20,29 @@ func (h *NoHost) Host(_ context.Context, _ tools.NodeContext) (*NoHost, error) {
 }
 
 // Key is unreachable for a product with no shell Host.
-func (h *NoHost) Key() host.Key { panic("NoHost operations are unreachable") }
+func (h *NoHost) Key() host.Key {
+	panic("NoHost operations are unreachable")
+}
 
 // DefaultCWD is unreachable for a product with no shell Host.
-func (h *NoHost) DefaultCWD() string { panic("NoHost operations are unreachable") }
+func (h *NoHost) DefaultCWD() string {
+	panic("NoHost operations are unreachable")
+}
 
 // Identity is unreachable for a product with no shell Host.
-func (h *NoHost) Identity() host.Identity { panic("NoHost operations are unreachable") }
+func (h *NoHost) Identity() host.Identity {
+	panic("NoHost operations are unreachable")
+}
 
 // FS is unreachable for a product with no shell Host.
-func (h *NoHost) FS() host.FS { panic("NoHost operations are unreachable") }
+func (h *NoHost) FS() host.FS {
+	panic("NoHost operations are unreachable")
+}
 
 // Process is unreachable for a product with no shell Host.
-func (h *NoHost) Process() host.Process { panic("NoHost operations are unreachable") }
+func (h *NoHost) Process() host.Process {
+	panic("NoHost operations are unreachable")
+}
 
 // NoShells is the shell environment factory of a product whose Host is NoHost.
 type NoShells struct{}

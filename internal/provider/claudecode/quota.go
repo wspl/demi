@@ -240,7 +240,9 @@ func (*quotaSource) Observe(observation provider.Observation) []types.QuotaWindo
 		}
 	}
 	if info.Type.Value != nil &&
-		!slices.ContainsFunc(windows, func(w types.QuotaWindow) bool { return w.ID == *info.Type.Value }) {
+		!slices.ContainsFunc(windows, func(w types.QuotaWindow) bool {
+			return w.ID == *info.Type.Value
+		}) {
 		add(*info.Type.Value, unifiedWindow{Utilization: info.Utilization, ResetsAt: info.ResetsAt})
 	}
 	if len(windows) == 0 {

@@ -85,7 +85,9 @@ func update(ctx context.Context, call host.Call[UpdateArgs], port host.RPCPort) 
 }
 
 func done(ctx context.Context, call host.Call[DoneArgs], port host.RPCPort) (uint8, error) {
-	todo, err := change(ctx, port, call.Args.ID, func(todo *Item) { todo.Status = Done })
+	todo, err := change(ctx, port, call.Args.ID, func(todo *Item) {
+		todo.Status = Done
+	})
 	if err != nil {
 		return 0, err
 	}

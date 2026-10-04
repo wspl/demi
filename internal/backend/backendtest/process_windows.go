@@ -20,7 +20,9 @@ func ProcessRunning(pid int) (bool, error) {
 		return false, err
 	}
 	// The handle was only needed for the query; a close failure changes no answer.
-	defer func() { _ = windows.CloseHandle(handle) }()
+	defer func() {
+		_ = windows.CloseHandle(handle)
+	}()
 	var code uint32
 	if err := windows.GetExitCodeProcess(handle, &code); err != nil {
 		return false, err

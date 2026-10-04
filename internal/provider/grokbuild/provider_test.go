@@ -17,7 +17,9 @@ import (
 
 // These boundary scenarios use only a loopback scripted vendor; no model calls.
 // Ordinary cases cost milliseconds; login timers run in synctest time.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const now types.Timestamp = "2026-09-18T14:00:00.000Z"
 

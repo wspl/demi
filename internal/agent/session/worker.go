@@ -66,9 +66,13 @@ func (s *Session) runAction(a *action) {
 		s.startNextLocked()
 		if report != nil {
 			s.eventLocked(&ActionFailed{Report: *report})
-			c.effects = append(c.effects, func() { a.answer.finish(0, report) })
+			c.effects = append(c.effects, func() {
+				a.answer.finish(0, report)
+			})
 		} else {
-			c.effects = append(c.effects, func() { a.answer.finish(end, nil) })
+			c.effects = append(c.effects, func() {
+				a.answer.finish(end, nil)
+			})
 		}
 	})
 }
@@ -143,7 +147,9 @@ func (s *Session) retry(ctx context.Context) error {
 	if err := s.rewrite(ctx, rewound.Retained, revision); err != nil {
 		return err
 	}
-	s.mutate(func(c *coreState) { c.active.turn = rewound.Turn })
+	s.mutate(func(c *coreState) {
+		c.active.turn = rewound.Turn
+	})
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -197,7 +203,9 @@ func (s *Session) recordStopLocked(shutdown bool) {
 }
 
 func (s *Session) pushResume() {
-	s.mutate(func(c *coreState) { c.log.PushResume(c.active.turn, c.model) })
+	s.mutate(func(c *coreState) {
+		c.log.PushResume(c.active.turn, c.model)
+	})
 }
 
 // finishAction records an action outcome before the final checkpoint is saved.
@@ -221,10 +229,14 @@ func (s *Session) finishAction(a *action, err error) (ActionEnd, bool, *ReportEr
 		}
 		a.stopped = true
 		a.again = c.canAbortLocked()
-		c.effects = append(c.effects, func() { close(a.ack) })
+		c.effects = append(c.effects, func() {
+			close(a.ack)
+		})
 		c.stage = Finalizing
 		c.edit = nil
-		c.inputs = slices.DeleteFunc(c.inputs, func(input pendingInput) bool { return input.steer != nil })
+		c.inputs = slices.DeleteFunc(c.inputs, func(input pendingInput) bool {
+			return input.steer != nil
+		})
 		s.armLocked()
 		c.releaseMediaLocked()
 	})
@@ -251,7 +263,11 @@ func (s *Session) detachActionLocked(a *action) ActionEnd {
 	c.active = nil
 	c.stage = Idle
 	a.again = false
-	c.effects = append(c.effects, func() { close(a.ack) }, func() { a.answer.finish(end, nil) }, a.cancel)
+	c.effects = append(c.effects, func() {
+		close(a.ack)
+	}, func() {
+		a.answer.finish(end, nil)
+	}, a.cancel)
 	return end
 }
 
@@ -296,7 +312,9 @@ func (s *Session) resumeTurn(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	s.mutate(func(c *coreState) { c.log.MarkLatestAbortResumed() })
+	s.mutate(func(c *coreState) {
+		c.log.MarkLatestAbortResumed()
+	})
 	if _, err := s.applySwitch(ctx); err != nil {
 		return err
 	}

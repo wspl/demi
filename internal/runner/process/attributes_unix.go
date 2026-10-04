@@ -96,4 +96,6 @@ func parseOpenFiles(output string) (unix.Rlimit, error) {
 
 // Umask reads and caches the runner's creation mask. Call it during startup
 // before any jobs run; nothing in the runner changes the mask afterwards.
-func Umask() uint32 { return inheritedUmask() }
+func Umask() uint32 {
+	return inheritedUmask()
+}

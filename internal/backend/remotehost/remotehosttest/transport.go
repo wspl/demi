@@ -138,7 +138,9 @@ func (b pipeHTTPBody) Read(ctx context.Context, data []byte) (int, error) {
 }
 
 // Close closes the HTTP request body.
-func (b pipeHTTPBody) Close(context.Context) error { return b.body.Close() }
+func (b pipeHTTPBody) Close(context.Context) error {
+	return b.body.Close()
+}
 
 // pipeRefused maps the broker's two claim refusals to the fixture's HTTP boundary.
 func pipeRefused(response http.ResponseWriter, err error) {

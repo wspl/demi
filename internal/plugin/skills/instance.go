@@ -106,7 +106,10 @@ func (i *instance) enterMutation(ctx context.Context) error {
 		return nil
 	}
 }
-func (i *instance) leaveMutation() { <-i.mutations }
+
+func (i *instance) leaveMutation() {
+	<-i.mutations
+}
 
 // projectSkills caches only successful searches by conversation, cwd and turn.
 func (i *instance) projectSkills(ctx context.Context, request *plugin.RequestContext, port plugin.Port) []projectSkill {
@@ -152,7 +155,9 @@ func (i *instance) contextBlock(
 			if !skill.Enabled {
 				continue
 			}
-			if slices.ContainsFunc(entries, func(entry catalogEntry) bool { return entry.name == skill.Name }) {
+			if slices.ContainsFunc(entries, func(entry catalogEntry) bool {
+				return entry.name == skill.Name
+			}) {
 				slog.Info("a user skill is shadowed by a project skill", "skill", skill.Name, "origin", value.Origin)
 				continue
 			}
@@ -220,7 +225,9 @@ func (i *instance) pageCall(
 			ctx,
 			port,
 			args.Source,
-			func(source) map[string]bool { return map[string]bool{args.Skill: true} },
+			func(source) map[string]bool {
+				return map[string]bool{args.Skill: true}
+			},
 			args.Enabled,
 		); err != nil {
 			return nil, err

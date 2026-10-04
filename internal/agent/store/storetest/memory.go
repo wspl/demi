@@ -28,7 +28,9 @@ type MemoryTreeStore struct {
 }
 
 // NewMemoryTreeStore creates a store with its own in-memory blob namespace.
-func NewMemoryTreeStore() *MemoryTreeStore { return NewMemoryTreeStoreWithBlobs(NewMemoryBlobs()) }
+func NewMemoryTreeStore() *MemoryTreeStore {
+	return NewMemoryTreeStoreWithBlobs(NewMemoryBlobs())
+}
 
 // NewMemoryTreeStoreWithBlobs creates a store using the supplied namespace.
 func NewMemoryTreeStoreWithBlobs(blobs store.Blobs) *MemoryTreeStore {

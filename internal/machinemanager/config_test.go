@@ -13,11 +13,15 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(programTests{m}) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(programTests{m})
+}
 
 type programTests struct{ m *testing.M }
 
-func (p programTests) Run() int { return programtest.Run(p.m) }
+func (p programTests) Run() int {
+	return programtest.Run(p.m)
+}
 
 func configEnv(extra ...string) []string {
 	return append(

@@ -15,10 +15,14 @@ import (
 // keeps its OS thread until Close has cancelled and joined that call.
 func cancellableStdio(ctx context.Context, stdio Stdio) (Stdio, func() error, error) {
 	if err := ctx.Err(); err != nil {
-		return stdio, func() error { return nil }, err
+		return stdio, func() error {
+			return nil
+		}, err
 	}
 	if err := cancelSynchronousIO.Find(); err != nil {
-		return stdio, func() error { return nil }, err
+		return stdio, func() error {
+			return nil
+		}, err
 	}
 	files := map[*os.File]*synchronousCommandFile{}
 	wrap := func(file *os.File) *synchronousCommandFile {
@@ -38,7 +42,9 @@ func cancellableStdio(ctx context.Context, stdio Stdio) (Stdio, func() error, er
 	if file, ok := stdio.Stderr.(*os.File); ok {
 		stdio.Stderr = wrap(file)
 	}
-	return stdio, func() error { return nil }, nil
+	return stdio, func() error {
+		return nil
+	}, nil
 }
 
 // x/sys does not wrap CancelSynchronousIo. Microsoft documents a thread handle
@@ -60,11 +66,15 @@ type synchronousCommandFile struct {
 }
 
 func (f *synchronousCommandFile) Read(b []byte) (int, error) {
-	return f.call(func() (int, error) { return f.file.Read(b) })
+	return f.call(func() (int, error) {
+		return f.file.Read(b)
+	})
 }
 
 func (f *synchronousCommandFile) Write(b []byte) (int, error) {
-	return f.call(func() (int, error) { return f.file.Write(b) })
+	return f.call(func() (int, error) {
+		return f.file.Write(b)
+	})
 }
 
 // call reserves the OS thread through cancellation acknowledgement, preventing
@@ -76,7 +86,9 @@ func (f *synchronousCommandFile) call(operation func() (int, error)) (int, error
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = windows.CloseHandle(thread) }() // The IO/cancellation result already records failure.
+	defer func() {
+		_ = windows.CloseHandle(thread)
+	}() // The IO/cancellation result already records failure.
 	call := &commandFileCall{thread: thread, done: make(chan struct{}), release: make(chan struct{})}
 	f.mu.Lock()
 	if f.closed {

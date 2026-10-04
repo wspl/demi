@@ -23,7 +23,9 @@ type SequentialIDs struct {
 }
 
 // NewSequentialIDs constructs a predictable identity source beginning at one.
-func NewSequentialIDs(prefix string) *SequentialIDs { return &SequentialIDs{prefix: prefix, next: 1} }
+func NewSequentialIDs(prefix string) *SequentialIDs {
+	return &SequentialIDs{prefix: prefix, next: 1}
+}
 
 // NextID returns the next identity in the sequence.
 func (s *SequentialIDs) NextID() string {

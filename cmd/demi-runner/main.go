@@ -8,4 +8,6 @@ import (
 	"github.com/wspl/demi/internal/version"
 )
 
-func main() { os.Exit(runner.Main(version.Release)) }
+func main() {
+	os.Exit(runner.Main(version.Release))
+}

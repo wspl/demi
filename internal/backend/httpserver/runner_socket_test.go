@@ -233,7 +233,9 @@ func dialRunner(t *testing.T, services *usershard.Services, shards *usershard.Sh
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = socket.CloseNow() }) // Cleanup joins the server through Server.Close.
+	t.Cleanup(func() {
+		_ = socket.CloseNow()
+	}) // Cleanup joins the server through Server.Close.
 	return socket
 }
 

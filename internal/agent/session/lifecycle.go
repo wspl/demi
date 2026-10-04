@@ -107,7 +107,9 @@ func (s *Session) dispose(ctx context.Context) error {
 		c.effects = append(c.effects, c.generationCancel, s.cancel)
 		kept := []*action{}
 		for _, a := range c.queue {
-			c.effects = append(c.effects, func() { a.answer.finish(Detached, nil) })
+			c.effects = append(c.effects, func() {
+				a.answer.finish(Detached, nil)
+			})
 			if a.kind == sendAction {
 				kept = append(kept, a)
 			}
@@ -256,7 +258,9 @@ func (c *coreState) dropPendingLocked() *conversationproto.AbortTarget {
 			target = conversationproto.AbortTargetQueuedMessage
 		}
 		result.Target = &target
-		c.effects = append(c.effects, func() { dropped.answer.finish(Dropped, nil) })
+		c.effects = append(c.effects, func() {
+			dropped.answer.finish(Dropped, nil)
+		})
 	} else if len(c.wakeups) > 0 {
 		c.wakeups = c.wakeups[1:]
 		c.dirty = true

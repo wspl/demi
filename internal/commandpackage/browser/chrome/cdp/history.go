@@ -83,10 +83,14 @@ func (b *Buffer[T]) MarkGap() error {
 }
 
 // Entries returns retained entries in stream order.
-func (b *Buffer[T]) Entries() []T { return append([]T{}, b.entries...) }
+func (b *Buffer[T]) Entries() []T {
+	return append([]T{}, b.entries...)
+}
 
 // Next returns the position of the next entry.
-func (b *Buffer[T]) Next() uint64 { return b.next }
+func (b *Buffer[T]) Next() uint64 {
+	return b.next
+}
 
 // Cursor binds a position to this stream's generation.
 func (b *Buffer[T]) Cursor(position uint64) string {
@@ -112,4 +116,6 @@ func (b *Buffer[T]) TruncatedSince(position uint64) bool {
 }
 
 // HasEvicted reports whether any position has been lost.
-func (b *Buffer[T]) HasEvicted() bool { return b.evicted != nil }
+func (b *Buffer[T]) HasEvicted() bool {
+	return b.evicted != nil
+}

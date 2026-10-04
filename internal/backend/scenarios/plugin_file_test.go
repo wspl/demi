@@ -55,7 +55,9 @@ func TestPluginFileReadsCreatesInsideAndOutsideWorkspace(t *testing.T) {
 		}
 		conversationEqual(t, toolstest.Field(results[i], "exitCode"), code)
 	}
-	shown := func(i int) string { return toolstest.ShownOutput(results[i]) }
+	shown := func(i int) string {
+		return toolstest.ShownOutput(results[i])
+	}
 	exit(0, "0")
 	conversationEqual(t, shown(0), "Created note.txt\n")
 	conversationEqual(t, shown(1), "hello world\n")
@@ -138,7 +140,9 @@ func TestPluginFileEditsAndPatchesAtomically(t *testing.T) {
 		}
 		conversationEqual(t, toolstest.Field(results[i], "exitCode"), code)
 	}
-	shown := func(i int) string { return toolstest.ShownOutput(results[i]) }
+	shown := func(i int) string {
+		return toolstest.ShownOutput(results[i])
+	}
 	exit(0, "1")
 	filesContains(t, shown(0), "Multiple matches in file.txt; specify --occurrence or --context")
 	conversationEqual(t, shown(1), "Edited file.txt\none\ntwo\nchanged\n")

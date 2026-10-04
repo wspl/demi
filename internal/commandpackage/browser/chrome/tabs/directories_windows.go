@@ -22,7 +22,9 @@ func lockEnvironment(file *os.File) (bool, error) {
 	return err == nil, err
 }
 
-func currentOwner() uint32 { return 0 }
+func currentOwner() uint32 {
+	return 0
+}
 
 // Windows browser storage is below the user's private temporary directory.
 func ownsDirectory(path string, _ uint32) bool {
@@ -30,7 +32,9 @@ func ownsDirectory(path string, _ uint32) bool {
 	return err == nil && info.IsDir()
 }
 
-func directoryNotEmpty(err error) bool { return errors.Is(err, windows.ERROR_DIR_NOT_EMPTY) }
+func directoryNotEmpty(err error) bool {
+	return errors.Is(err, windows.ERROR_DIR_NOT_EMPTY)
+}
 
 // openEnvironmentLock permits rename/removal while the lock is still held
 // (FILE_SHARE_DELETE), which os.OpenFile omits on Windows.

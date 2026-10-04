@@ -15,7 +15,9 @@ type sessionStore struct {
 }
 
 // Blobs returns the conversation owner’s media store.
-func (s *sessionStore) Blobs() store.Blobs { return s.tree.blobs.Media() }
+func (s *sessionStore) Blobs() store.Blobs {
+	return s.tree.blobs.Media()
+}
 
 // Load returns a decoded, checked checkpoint, and false when none exists.
 func (s *sessionStore) Load(ctx context.Context) (store.Checkpoint, bool, error) {

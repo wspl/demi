@@ -55,7 +55,9 @@ func TestRunnerLogNewestLinesThenLaterLines(t *testing.T) {
 		h,
 		nil,
 		new("runner"),
-		func(page remotehost.LogPage) bool { return logCount(page, "online") > 0 },
+		func(page remotehost.LogPage) bool {
+			return logCount(page, "online") > 0
+		},
 	)
 	started := false
 	for _, line := range page.Lines {

@@ -28,7 +28,9 @@ func Freeze(ctx context.Context, mount string) error {
 		return err
 	}
 	// Closing this read-only descriptor has no buffered writes to report.
-	defer func() { _ = directory.Close() }()
+	defer func() {
+		_ = directory.Close()
+	}()
 	return Failed("freezing", mount, unix.IoctlSetInt(int(directory.Fd()), fiFreeze, 0))
 }
 
@@ -43,7 +45,9 @@ func Thaw(ctx context.Context, mount string) (thawed bool, err error) {
 		return false, err
 	}
 	// Closing this read-only descriptor has no buffered writes to report.
-	defer func() { _ = directory.Close() }()
+	defer func() {
+		_ = directory.Close()
+	}()
 	err = unix.IoctlSetInt(int(directory.Fd()), fiThaw, 0)
 	if errors.Is(err, unix.EINVAL) {
 		return false, nil

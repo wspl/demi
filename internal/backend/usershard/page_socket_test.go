@@ -27,7 +27,9 @@ func TestPageCloseInterruptsTransportAtBound(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				transport, peer := net.Pipe()
 				// The page may already have ended the in-memory connection.
-				defer func() { _ = peer.Close() }()
+				defer func() {
+					_ = peer.Close()
+				}()
 				recorder := &pageSocketRecorder{httptest.NewRecorder(), transport}
 				request := httptest.NewRequest(http.MethodGet, "http://page.test", nil)
 				request.Header.Set("Connection", "Upgrade")
@@ -40,7 +42,9 @@ func TestPageCloseInterruptsTransportAtBound(t *testing.T) {
 					t.Fatal(err)
 				}
 				// The bounded close owns transport termination; cleanup is idempotent.
-				defer func() { _ = socket.CloseNow() }()
+				defer func() {
+					_ = socket.CloseNow()
+				}()
 				if name == "queued frame" {
 					written := make(chan error, 1)
 					go func() {
@@ -109,7 +113,9 @@ func TestConversationShutdownSendsCloseWithReadyOutbox(t *testing.T) {
 					return
 				}
 				// The exchange may already have closed the connection.
-				defer func() { _ = socket.CloseNow() }()
+				defer func() {
+					_ = socket.CloseNow()
+				}()
 				page := newPageSocket(NewPageConnection(socket, <-transports), DefaultPageTuning())
 				defer page.heartbeat.Stop()
 				outgoing := make(chan conversationproto.ServerFrame, 1)

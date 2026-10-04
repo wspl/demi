@@ -21,8 +21,13 @@ import (
 
 type programSuite struct{ m *testing.M }
 
-func (s programSuite) Run() int { return programtest.Run(s.m) }
-func TestMain(m *testing.M)     { goleak.VerifyTestMain(programSuite{m}) }
+func (s programSuite) Run() int {
+	return programtest.Run(s.m)
+}
+
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(programSuite{m})
+}
 
 type marshaler interface{ MarshalJSON() ([]byte, error) }
 

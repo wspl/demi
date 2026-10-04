@@ -37,7 +37,9 @@ func Isolate(ctx context.Context, job func(context.Context) error) error {
 }
 
 // Placeholder returns tools with empty paths for command-line-only tests.
-func Placeholder() *system.Tools { return &system.Tools{} }
+func Placeholder() *system.Tools {
+	return &system.Tools{}
+}
 
 // OnPath resolves infrastructure tools on PATH without requiring runsc.
 func OnPath(ctx context.Context) (*system.Tools, error) {

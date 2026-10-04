@@ -72,7 +72,9 @@ type ChatError struct {
 }
 
 // DecodeChatChunk decodes the fields of a vendor chunk, naming malformed fields.
-func DecodeChatChunk(data string) (ChatChunk, error) { return DecodeUntagged[ChatChunk](data) }
+func DecodeChatChunk(data string) (ChatChunk, error) {
+	return DecodeUntagged[ChatChunk](data)
+}
 
 // MapChatSSE maps one body to run events and closes it on every exit. A clean
 // end or DONE flushes collected calls followed by one response.
@@ -184,7 +186,9 @@ func (m *chatMapper) flush() []Event {
 	for index := range m.calls {
 		indices = append(indices, index)
 	}
-	sort.Slice(indices, func(i, j int) bool { return indices[i] < indices[j] })
+	sort.Slice(indices, func(i, j int) bool {
+		return indices[i] < indices[j]
+	})
 	var out []Event
 	for _, index := range indices {
 		call := m.calls[index]
@@ -204,7 +208,10 @@ func (m *chatMapper) flush() []Event {
 	clear(m.calls)
 	return out
 }
-func (m *chatMapper) finish() []Event { return append(m.flush(), &Response{Usage: m.usage}) }
+
+func (m *chatMapper) finish() []Event {
+	return append(m.flush(), &Response{Usage: m.usage})
+}
 
 func (m *chatMapper) delta(delta *ChatDelta) []Event {
 	if delta == nil {

@@ -23,19 +23,29 @@ func TestBuiltinPipelineEmitsBeforeInputEOF(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = input.Close() }()  // Cleanup also runs after cancellation closes the file.
-	defer func() { _ = writer.Close() }() // Cleanup also runs after cancellation closes the file.
+	defer func() {
+		_ = input.Close()
+	}() // Cleanup also runs after cancellation closes the file.
+	defer func() {
+		_ = writer.Close()
+	}() // Cleanup also runs after cancellation closes the file.
 	reader, output, err := os.Pipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = reader.Close() }() // Cleanup also runs after cancellation closes the file.
-	defer func() { _ = output.Close() }() // Cleanup also runs after cancellation closes the file.
+	defer func() {
+		_ = reader.Close()
+	}() // Cleanup also runs after cancellation closes the file.
+	defer func() {
+		_ = output.Close()
+	}() // Cleanup also runs after cancellation closes the file.
 	stderr, err := os.CreateTemp(root, "stderr")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = stderr.Close() }() // Cleanup also runs after cancellation closes the file.
+	defer func() {
+		_ = stderr.Close()
+	}() // Cleanup also runs after cancellation closes the file.
 	type outcome struct {
 		result shelltest.Result
 		err    error

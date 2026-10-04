@@ -38,7 +38,9 @@ func conversationStream(
 		t.Fatal(err)
 	}
 	socket.SetReadLimit(64 << 20)
-	t.Cleanup(func() { _ = socket.CloseNow() }) // Teardown may follow a received close.
+	t.Cleanup(func() {
+		_ = socket.CloseNow()
+	}) // Teardown may follow a received close.
 	return socket
 }
 

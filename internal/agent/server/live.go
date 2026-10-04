@@ -46,11 +46,15 @@ func (f *nodeFeed[H]) Changed(record *host.CommandRecord) {
 	attached := len(t.attachments) != 0
 	if attached {
 		if view.State.Phase == host.Running {
-			if !slices.ContainsFunc(t.waiting, func(w waitingOutput) bool { return w.command == view.CommandID }) {
+			if !slices.ContainsFunc(t.waiting, func(w waitingOutput) bool {
+				return w.command == view.CommandID
+			}) {
 				t.waiting = append(t.waiting, waitingOutput{command: view.CommandID, child: f.child, record: record})
 			}
 		} else {
-			t.waiting = slices.DeleteFunc(t.waiting, func(w waitingOutput) bool { return w.command == view.CommandID })
+			t.waiting = slices.DeleteFunc(t.waiting, func(w waitingOutput) bool {
+				return w.command == view.CommandID
+			})
 		}
 	}
 	t.server.mu.Unlock()

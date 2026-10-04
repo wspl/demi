@@ -196,7 +196,9 @@ func (h *Host) GitChanges(ctx context.Context, root string) (runnerproto.GitChan
 	reply, err := link.call(
 		ctx,
 		`Git("changes")`,
-		func(id string) runnerproto.Inbound { return &runnerproto.GitChangesMessage{ID: id, Root: root} },
+		func(id string) runnerproto.Inbound {
+			return &runnerproto.GitChangesMessage{ID: id, Root: root}
+		},
 	)
 	if err != nil {
 		return runnerproto.GitChanges{}, err
@@ -453,7 +455,9 @@ func (j *Job) WriteStdin(ctx context.Context, bytes []byte) error {
 		ctx,
 		j.link,
 		bytes,
-		func(chunk []byte) runnerproto.Inbound { return &runnerproto.JobStdin{JobID: j.id, Bytes: chunk} },
+		func(chunk []byte) runnerproto.Inbound {
+			return &runnerproto.JobStdin{JobID: j.id, Bytes: chunk}
+		},
 	)
 }
 
@@ -682,7 +686,9 @@ func (j *Job) finish(end JobEnd) {
 }
 
 // live reports whether a job still has a runner and no terminal result.
-func (j *Job) live() bool { return j.link != nil && !j.state.hasEnded() }
+func (j *Job) live() bool {
+	return j.link != nil && !j.state.hasEnded()
+}
 
 // sendStdin preserves stdin ordering while splitting writes to the runner's frame bound.
 func sendStdin(ctx context.Context, link *Link, data []byte, frame func([]byte) runnerproto.Inbound) error {

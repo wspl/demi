@@ -71,4 +71,6 @@ type PanelRevision struct {
 }
 
 // EmptyWorkPanel returns the panel of a conversation that never changed one.
-func EmptyWorkPanel() WorkPanel { return WorkPanel{Tabs: []PanelTab{}} }
+func EmptyWorkPanel() WorkPanel {
+	return WorkPanel{Tabs: []PanelTab{}}
+}

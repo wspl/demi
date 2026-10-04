@@ -88,4 +88,6 @@ func shellWord(value string) string {
 
 // powershellWord quotes an installer value as a PowerShell literal. No declared
 // dependency implements PowerShell quoting; single quotes double inside literals.
-func powershellWord(value string) string { return "'" + strings.ReplaceAll(value, "'", "''") + "'" }
+func powershellWord(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "''") + "'"
+}

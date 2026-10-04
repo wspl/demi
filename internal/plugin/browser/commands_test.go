@@ -10,7 +10,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // All scenarios use in-memory declarations and ports; no processes or wall-time waits.
 func TestEveryOperationHasACommandWithOneOperandSource(t *testing.T) {

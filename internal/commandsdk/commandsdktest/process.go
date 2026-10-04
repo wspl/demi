@@ -43,7 +43,9 @@ func Start(ctx context.Context, t testing.TB, program string, args, env []string
 	_ = input.Close()
 	_ = output.Close()
 	process := &ServiceProcess{command: command, wait: make(chan error, 1)}
-	go func() { process.wait <- command.Wait() }()
+	go func() {
+		process.wait <- command.Wait()
+	}()
 	client, err := commandsdk.Connect(ctx, &commandsdk.PipeConn{Reader: reader, Writer: writer})
 	if err != nil {
 		_ = command.Process.Kill()
@@ -51,12 +53,16 @@ func Start(ctx context.Context, t testing.TB, program string, args, env []string
 		return nil, err
 	}
 	process.Client = client
-	t.Cleanup(func() { _ = process.Close() })
+	t.Cleanup(func() {
+		_ = process.Close()
+	})
 	return process, nil
 }
 
 // PID identifies the running service.
-func (p *ServiceProcess) PID() int { return p.command.Process.Pid }
+func (p *ServiceProcess) PID() int {
+	return p.command.Process.Pid
+}
 
 // Close stops and reaps the service; it is idempotent.
 func (p *ServiceProcess) Close() error {

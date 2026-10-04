@@ -63,8 +63,10 @@ func NewClaudeReleases(base *url.URL) (*ClaudeReleases, error) {
 	return &ClaudeReleases{
 		base: strings.TrimRight(base.String(), "/"),
 		http: &http.Client{
-			Timeout:       15 * time.Second,
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			Timeout: 15 * time.Second,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 		releases: make(map[string]claudecodeproto.Release),
 		ctx:      ctx,

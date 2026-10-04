@@ -23,7 +23,9 @@ func TestStoredProviderData(t *testing.T) {
 			remove  bool
 		}
 	}{
-		{"catalog", func(b []byte) (any, error) { return types.DecodeProviderModelList(b) }, []struct {
+		{"catalog", func(b []byte) (any, error) {
+			return types.DecodeProviderModelList(b)
+		}, []struct {
 			pointer string
 			value   any
 			remove  bool
@@ -38,7 +40,9 @@ func TestStoredProviderData(t *testing.T) {
 				false,
 			},
 		}},
-		{"snapshot", func(b []byte) (any, error) { return types.DecodeQuotaSnapshot(b) }, []struct {
+		{"snapshot", func(b []byte) (any, error) {
+			return types.DecodeQuotaSnapshot(b)
+		}, []struct {
 			pointer string
 			value   any
 			remove  bool

@@ -18,7 +18,9 @@ import (
 
 type credentialTransport func(*http.Request) (*http.Response, error)
 
-func (f credentialTransport) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+func (f credentialTransport) RoundTrip(r *http.Request) (*http.Response, error) {
+	return f(r)
+}
 
 // Real SDK credential providers are exercised with an entirely scripted transport;
 // unexpected requests fail locally, so the tests cannot contact cloud metadata.

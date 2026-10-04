@@ -80,7 +80,9 @@ func transaction(
 	if err != nil {
 		return sqlError(err)
 	}
-	defer func() { err = errors.Join(err, conn.Close()) }()
+	defer func() {
+		err = errors.Join(err, conn.Close())
+	}()
 	operation := context.WithoutCancel(ctx)
 	tx, err := conn.BeginTx(operation, nil)
 	if err != nil {

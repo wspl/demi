@@ -69,7 +69,9 @@ func (e *RuntimeError) Error() string {
 }
 
 // Unwrap returns the underlying artifact, IO, protocol or exit error.
-func (e *RuntimeError) Unwrap() error { return e.Cause }
+func (e *RuntimeError) Unwrap() error {
+	return e.Cause
+}
 
 // ServiceExit reports a service's end and the tail of its standard error.
 type ServiceExit struct {

@@ -310,13 +310,17 @@ func TestEndpointAndBodyBuild(t *testing.T) {
 	body, err := provider.EncodeBody(
 		t.Context(),
 		"Acme",
-		func() ([]byte, error) { return provider.JSONBody(map[string]string{"text": "<>&\u2028\u2029"}) },
+		func() ([]byte, error) {
+			return provider.JSONBody(map[string]string{"text": "<>&\u2028\u2029"})
+		},
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	requireEqual(t, string(body), "{\"text\":\"<>&\u2028\u2029\"}")
-	_, err = provider.EncodeBody(t.Context(), "Acme", func() ([]byte, error) { panic("credential must not appear") })
+	_, err = provider.EncodeBody(t.Context(), "Acme", func() ([]byte, error) {
+		panic("credential must not appear")
+	})
 	var failure *provider.Failure
 	if !errors.As(err, &failure) || failure.Code != nil || strings.Contains(err.Error(), "credential") {
 		t.Fatalf("%v", err)

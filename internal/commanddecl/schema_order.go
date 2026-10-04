@@ -59,7 +59,9 @@ func documentOrder(document []byte) (map[string][]string, error) {
 }
 
 // keys reads the original order of a schema object's members.
-func (s *Schema) keys(path string) []string { return s.order["/"+path] }
+func (s *Schema) keys(path string) []string {
+	return s.order["/"+path]
+}
 
 // pointerEscape addresses schema properties, including names containing slash or tilde.
 func pointerEscape(text string) string {
@@ -224,7 +226,9 @@ func (e *unevaluatedFailure) KeywordPath() []string {
 }
 
 // LocalizedString is empty because command diagnostics render this aggregate themselves.
-func (*unevaluatedFailure) LocalizedString(*message.Printer) string { return "" }
+func (*unevaluatedFailure) LocalizedString(*message.Printer) string {
+	return ""
+}
 
 // aggregateFailures keeps one contains failure per schema and instance location, and one
 // unevaluated failure per keyword and parent instance that lists every member.

@@ -168,7 +168,9 @@ func (s *Session) LastAssistantText() string {
 // HoldMedia takes the bytes resolved by the backend for the next send, steer or
 // edit. Bytes unreferenced by the next request are released.
 func (s *Session) HoldMedia(media *store.HeldMedia) {
-	s.mutate(func(c *coreState) { c.media.Absorb(*media) })
+	s.mutate(func(c *coreState) {
+		c.media.Absorb(*media)
+	})
 }
 
 // Send submits a message, queuing it when busy. A known id returns Duplicate
@@ -202,7 +204,9 @@ func (s *Session) DequeueMessage(id types.TurnID) bool {
 		a := c.removeQueuedLocked(id)
 		if a != nil {
 			removed = true
-			c.effects = append(c.effects, func() { a.answer.finish(Dropped, nil) })
+			c.effects = append(c.effects, func() {
+				a.answer.finish(Dropped, nil)
+			})
 		}
 	})
 	return removed
@@ -245,7 +249,9 @@ func (s *Session) ClearMessageQueue() int {
 				continue
 			}
 			count++
-			c.effects = append(c.effects, func() { a.answer.finish(Dropped, nil) })
+			c.effects = append(c.effects, func() {
+				a.answer.finish(Dropped, nil)
+			})
 		}
 		c.queue = kept
 	})
@@ -277,7 +283,9 @@ func (s *Session) SteerQueuedMessage(message types.TurnID, steer types.BlockID) 
 			return
 		}
 		found = true
-		c.effects = append(c.effects, func() { a.answer.finish(Dropped, nil) })
+		c.effects = append(c.effects, func() {
+			a.answer.finish(Dropped, nil)
+		})
 		c.inputs = append(
 			c.inputs,
 			pendingInput{
@@ -342,13 +350,17 @@ func (s *Session) PrepareFork(target types.BlockID) (store.Checkpoint, error) {
 // Wake opens a continuation for waiting input while nothing runs. The node's
 // policy calls it when a restored session may act.
 func (s *Session) Wake() {
-	s.mutate(func(_ *coreState) { s.startNextLocked() })
+	s.mutate(func(_ *coreState) {
+		s.startNextLocked()
+	})
 }
 
 // Hold keeps waiting input from opening a continuation until another action
 // starts, so a closing child can save later deliveries without running again.
 func (s *Session) Hold() {
-	s.mutate(func(c *coreState) { c.held = true })
+	s.mutate(func(c *coreState) {
+		c.held = true
+	})
 }
 
 // Abort stops the running action, else the first waiting action, else the

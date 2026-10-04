@@ -157,7 +157,9 @@ func (e *ExecutionContext) Cancel() {
 // invocations. Repeated calls are harmless.
 func (e *ExecutionContext) Close(_ context.Context) error {
 	e.Cancel()
-	e.closeOnce.Do(func() { e.closeErr = os.RemoveAll(e.aliases) })
+	e.closeOnce.Do(func() {
+		e.closeErr = os.RemoveAll(e.aliases)
+	})
 	return e.closeErr
 }
 
@@ -436,5 +438,10 @@ func executionID() string {
 // contextUnavailableError retains the protocol diagnostic and permission classification.
 type contextUnavailableError struct{}
 
-func (contextUnavailableError) Error() string { return "execution context is not live on this runner" }
-func (contextUnavailableError) Unwrap() error { return os.ErrPermission }
+func (contextUnavailableError) Error() string {
+	return "execution context is not live on this runner"
+}
+
+func (contextUnavailableError) Unwrap() error {
+	return os.ErrPermission
+}

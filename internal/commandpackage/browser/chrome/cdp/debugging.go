@@ -52,7 +52,9 @@ func (d *DebugOwner) run() {
 	defer close(d.done)
 	<-d.ctx.Done()
 	d.gate <- struct{}{}
-	defer func() { <-d.gate }()
+	defer func() {
+		<-d.gate
+	}()
 	d.mu.Lock()
 	connections := d.connections
 	d.connections = map[uint64]*DebugConnection{}
@@ -86,7 +88,9 @@ func (d *DebugOwner) Connect(ctx context.Context, caller uint64) (*DebugConnecti
 	if err := d.acquire(ctx); err != nil {
 		return nil, err
 	}
-	defer func() { <-d.gate }()
+	defer func() {
+		<-d.gate
+	}()
 	if d.ctx.Err() != nil {
 		return nil, &BrowserError{Kind: KindClosed}
 	}
@@ -172,7 +176,9 @@ func (d *DebugOwner) Detach(ctx context.Context, caller uint64) error {
 	if err := d.acquire(ctx); err != nil {
 		return err
 	}
-	defer func() { <-d.gate }()
+	defer func() {
+		<-d.gate
+	}()
 	d.mu.Lock()
 	handle := d.connections[caller]
 	delete(d.connections, caller)

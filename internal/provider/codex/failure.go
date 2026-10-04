@@ -52,7 +52,9 @@ type refusalError struct {
 }
 
 // Error returns the HTTP status text of the refusal.
-func (r *refusalError) Error() string { return http.StatusText(r.status) }
+func (r *refusalError) Error() string {
+	return http.StatusText(r.status)
+}
 
 func (p *Provider) refused(r *refusalError) provider.Failure {
 	body, err := provider.DecodeUntagged[errorBody](r.body)

@@ -29,7 +29,9 @@ func (n StoreNumbers) Next(ctx context.Context, sequence types.Sequence) (uint64
 type numberError struct{ cause error }
 
 // Error returns the underlying store failure text.
-func (e *numberError) Error() string { return e.cause.Error() }
+func (e *numberError) Error() string {
+	return e.cause.Error()
+}
 
 // Unwrap exposes both the Host classification and store cause.
 func (e *numberError) Unwrap() []error {
@@ -145,7 +147,9 @@ func (s *ShellAccess[H]) environment(
 		target.Key(),
 		shell,
 		command,
-		func(ctx context.Context) (host.ShellEnvironment, error) { return s.Shells.Create(ctx, scope, target) },
+		func(ctx context.Context) (host.ShellEnvironment, error) {
+			return s.Shells.Create(ctx, scope, target)
+		},
 	)
 	if err != nil {
 		return nil, nil, err

@@ -218,12 +218,16 @@ func manage(ctx context.Context, state runnerState, action action, release *stri
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = stdout.Close() }() // Forward owns it; this covers setup failure.
+	defer func() {
+		_ = stdout.Close()
+	}() // Forward owns it; this covers setup failure.
 	stderr, err := process.StandardFile(ctx, 2)
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = stderr.Close() }()
+	defer func() {
+		_ = stderr.Close()
+	}()
 	completion, err := process.Forward(
 		ctx,
 		active.Endpoint,

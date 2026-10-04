@@ -290,7 +290,7 @@ acceptance runs the shared Go suites on each platform that ships a feature.
 | `go run ./tools/archcheck` | Declared package dependency direction, including test imports and otherwise unused packages |
 | `go run ./tools/cgocheck` | No selected cgo dependencies and no failed package loads on every shipping target, always with `CGO_ENABLED=0` |
 | `go-check-sumtype -default-signifies-exhaustive=false ./...` | Exhaustive switches over annotated sealed interfaces; a default does not excuse a missing variant |
-| `scripts/check.sh <package>...` | All of the above in one run, the check before a commit: builds on the six shipping targets, generated code, file names, no Rust files, vet and lint for darwin, linux and windows, exhaustiveness, package dependencies, cgo, and race tests; with `./...` also the shell fork's tests. It passes when its last line ends in `PASS` |
+| `scripts/check.sh <package>...` | All of the above in one run, the check before a commit: builds on the six shipping targets, generated code, one-line function bodies, file names, no Rust files, vet and lint for darwin, linux and windows, exhaustiveness, package dependencies, cgo, and race tests; with `./...` also the shell fork's tests. It passes when its last line ends in `PASS` |
 | `bun run test` | TypeScript tests, package boundaries, web app contract scenarios, and capture-extension JavaScript tests |
 
 The release target table drives builds and checks. Run lint, import and

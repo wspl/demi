@@ -273,7 +273,9 @@ func earliestWakeup(ctx context.Context, tx *sql.Tx) (WakeupDue, error) {
 		tx,
 		"nodes",
 		"SELECT MIN(wakeup_at) AS wakeup_at FROM nodes",
-		func(r *storedRow) WakeupDue { return rowWakeup(r, "wakeup_at") },
+		func(r *storedRow) WakeupDue {
+			return rowWakeup(r, "wakeup_at")
+		},
 	)
 	if err != nil {
 		return nil, err

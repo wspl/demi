@@ -73,10 +73,14 @@ func NewCommandRecord(shell types.ShellID, command types.CommandID, toolUseID st
 }
 
 // CommandID identifies this command.
-func (r *CommandRecord) CommandID() types.CommandID { return r.commandID }
+func (r *CommandRecord) CommandID() types.CommandID {
+	return r.commandID
+}
 
 // ShellID identifies its shell.
-func (r *CommandRecord) ShellID() types.ShellID { return r.shellID }
+func (r *CommandRecord) ShellID() types.ShellID {
+	return r.shellID
+}
 
 // IsRunning reports whether the command runs.
 func (r *CommandRecord) IsRunning() bool {

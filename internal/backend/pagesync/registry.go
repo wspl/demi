@@ -64,7 +64,9 @@ func (r *Registry) Of(user webapiproto.UserID) UserMarks {
 }
 
 // Mark marks the part changed on the user's open channels.
-func (m UserMarks) Mark(part Part) { m.registry.Mark(m.user, part) }
+func (m UserMarks) Mark(part Part) {
+	m.registry.Mark(m.user, part)
+}
 
 // Mark marks the part changed on each open channel of the user.
 func (r *Registry) Mark(user webapiproto.UserID, part Part) {
@@ -72,7 +74,9 @@ func (r *Registry) Mark(user webapiproto.UserID, part Part) {
 }
 
 // MarkEveryone marks a change that every user sees.
-func (r *Registry) MarkEveryone(part Part) { r.change(nil, nil, &part) }
+func (r *Registry) MarkEveryone(part Part) {
+	r.change(nil, nil, &part)
+}
 
 // EndSession marks the user's channels opened with the signed-out session.
 func (r *Registry) EndSession(user webapiproto.UserID, session database.TokenHash) {

@@ -77,7 +77,9 @@ func TestMediaHeldOnceUntilReleased(t *testing.T) {
 
 type failedBlobs struct{ err error }
 
-func (b failedBlobs) Put(context.Context, types.B64Bytes) (types.BlobRef, error) { return "", b.err }
+func (b failedBlobs) Put(context.Context, types.B64Bytes) (types.BlobRef, error) {
+	return "", b.err
+}
 
 func (b failedBlobs) Read(context.Context, types.BlobRef) (types.B64Bytes, bool, error) {
 	return nil, false, b.err
@@ -175,7 +177,11 @@ func (b *heldReads) Read(ctx context.Context, _ types.BlobRef) (types.B64Bytes, 
 	if eighth {
 		close(b.entered)
 	}
-	defer func() { b.mu.Lock(); b.active--; b.mu.Unlock() }()
+	defer func() {
+		b.mu.Lock()
+		b.active--
+		b.mu.Unlock()
+	}()
 	select {
 	case <-ctx.Done():
 		return nil, false, ctx.Err()
@@ -189,13 +195,19 @@ func TestMediaReadsAreBoundedAndJoinedOnCancellation(t *testing.T) {
 		blobs := &heldReads{entered: make(chan struct{}), release: make(chan struct{})}
 		ctx, cancel := context.WithCancel(t.Context())
 		var workers sync.WaitGroup
-		defer func() { cancel(); workers.Wait() }()
+		defer func() {
+			cancel()
+			workers.Wait()
+		}()
 		refs := make([]types.BlobRef, 12)
 		for i := range refs {
 			refs[i] = types.BlobRef(fmt.Sprint(i))
 		}
 		done := make(chan error, 1)
-		workers.Go(func() { _, err := store.ReadMedia(ctx, blobs, refs); done <- err })
+		workers.Go(func() {
+			_, err := store.ReadMedia(ctx, blobs, refs)
+			done <- err
+		})
 		<-blobs.entered
 		synctest.Wait()
 		blobs.mu.Lock()

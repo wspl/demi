@@ -148,7 +148,9 @@ func TestBoundedFrames(t *testing.T) {
 // unrelatedMetadata models another package's value that happens to validate.
 type unrelatedMetadata struct{}
 
-func (unrelatedMetadata) Validate() error { return nil }
+func (unrelatedMetadata) Validate() error {
+	return nil
+}
 
 func TestMetadataAdmission(t *testing.T) {
 	if reflect.TypeOf(commandproto.EncodeMetadata).In(0) != reflect.TypeFor[commandproto.Metadata]() {

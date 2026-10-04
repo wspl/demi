@@ -9,7 +9,9 @@ import (
 )
 
 // TextTokens estimates text as UTF-8 bytes divided by four, rounded up.
-func TextTokens(text string) uint64 { return (uint64(len(text)) + 3) / 4 }
+func TextTokens(text string) uint64 {
+	return (uint64(len(text)) + 3) / 4
+}
 
 // BlockTokens estimates a block's text and media as request carries them.
 func BlockTokens(block types.Block, request *RequestView) uint64 {
@@ -235,7 +237,9 @@ func resultEstimate(part types.ToolResultContentBlock, request *RequestView) (st
 }
 
 // imageWeight is compaction's minimum image cost or decoded bytes per 1,000.
-func imageWeight(data []byte) uint64 { return max(1600, (uint64(len(data))+999)/1000) }
+func imageWeight(data []byte) uint64 {
+	return max(1600, (uint64(len(data))+999)/1000)
+}
 
 // canAnchorUsage requires a completed compaction before trusting reported usage.
 func canAnchorUsage(blocks []types.Block, start int) bool {

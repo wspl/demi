@@ -36,7 +36,9 @@ func run(ctx context.Context) (passed bool, err error) {
 		if err != nil {
 			return false, err
 		}
-		defer func() { err = errors.Join(err, c.close(context.WithoutCancel(ctx))) }()
+		defer func() {
+			err = errors.Join(err, c.close(context.WithoutCancel(ctx)))
+		}()
 		return recall(ctx, c)
 	case "switch":
 		small, err := window("COMPACTION_FIXTURE_SMALL_WINDOW", 8000)
@@ -51,7 +53,9 @@ func run(ctx context.Context) (passed bool, err error) {
 		if err != nil {
 			return false, err
 		}
-		defer func() { err = errors.Join(err, c.close(context.WithoutCancel(ctx))) }()
+		defer func() {
+			err = errors.Join(err, c.close(context.WithoutCancel(ctx)))
+		}()
 		return switchWindows(ctx, c, small, large)
 	default:
 		return false, fmt.Errorf("unknown mode %q: recall or switch", mode)

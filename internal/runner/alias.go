@@ -26,7 +26,9 @@ func commandAlias(ctx context.Context, root string, argv []string) (uint8, error
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = stdin.Close() }() // Forward owns IO once called; this also covers setup failures.
+	defer func() {
+		_ = stdin.Close()
+	}() // Forward owns IO once called; this also covers setup failures.
 	live, err := process.IsLive(stdin, env)
 	if err != nil {
 		return 0, err
@@ -47,12 +49,16 @@ func commandAlias(ctx context.Context, root string, argv []string) (uint8, error
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = stdout.Close() }() // Duplicated descriptor, also closed by Forward.
+	defer func() {
+		_ = stdout.Close()
+	}() // Duplicated descriptor, also closed by Forward.
 	stderr, err := process.StandardFile(ctx, 2)
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = stderr.Close() }() // Duplicated descriptor, also closed by Forward.
+	defer func() {
+		_ = stderr.Close()
+	}() // Duplicated descriptor, also closed by Forward.
 	completion, err := process.Forward(
 		ctx,
 		endpoint,

@@ -309,7 +309,9 @@ func TestRetryWaitOnlyWhenNamed(t *testing.T) {
 func TestTransportFailureOmitsEndpoint(t *testing.T) {
 	// A controlled dial failure does not race with reuse of a temporarily free port.
 	transport := &http.Transport{
-		DialContext: func(context.Context, string, string) (net.Conn, error) { return nil, errors.New("connection refused") },
+		DialContext: func(context.Context, string, string) (net.Conn, error) {
+			return nil, errors.New("connection refused")
+		},
 	}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}

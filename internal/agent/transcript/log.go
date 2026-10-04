@@ -43,7 +43,9 @@ func NewLog(blocks []types.Block, ids IDs, clock types.Clock) *Log {
 }
 
 // Blocks returns the ordered transcript snapshot.
-func (l *Log) Blocks() []types.Block { return slices.Clone(l.blocks) }
+func (l *Log) Blocks() []types.Block {
+	return slices.Clone(l.blocks)
+}
 
 // Version returns the epoch and current published revision.
 func (l *Log) Version() conversationproto.TranscriptVersion {

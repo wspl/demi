@@ -74,31 +74,40 @@ func agentLeaf[H host.Host, A any](
 }
 
 func (t *Tree[H]) commands(inherited *host.CommandSet, spawning bool) (*host.CommandSet, error) {
-	commands := inherited.Filter(func([]string) bool { return true })
+	commands := inherited.Filter(func([]string) bool {
+		return true
+	})
+	agent, err := t.agentGroup(spawning)
+	if err != nil {
+		return nil, err
+	}
+	shell, err := t.shellGroup()
+	if err != nil {
+		return nil, err
+	}
+	return graftCommands(commands, agent, shell)
+}
+
+// agentGroup is the `agent` command group: send, list and show for every
+// session, and spawn, abort and resume only where the session may spawn.
+func (t *Tree[H]) agentGroup(spawning bool) (host.Declared, error) {
 	children := []host.Declared{}
 	if spawning {
-		leaf, err := agentLeaf(t, "spawn", spawnSummary, spawnContract(), nil, new("prompt"), spawnCommand[H])
+		spawn, err := t.spawnLeaf()
 		if err != nil {
-			return nil, err
+			return host.Declared{}, err
 		}
-		available := t.profileNames()
-		children = append(
-			children,
-			leaf.Describe("prompt", spawnPrompt).
-				Describe("profile", fmt.Sprintf("Named subagent profile; omit to inherit the parent's model, prompt, "+
-					"Host and commands. "+
-					"Available: %s.", available)),
-		)
+		children = append(children, spawn)
 	}
 	send, err := agentLeaf(t, "send", sendSummary, sendContract(), []string{"id"}, new("message"), sendCommand[H])
 	if err != nil {
-		return nil, err
+		return host.Declared{}, err
 	}
 	children = append(children, send)
 	if spawning {
 		abort, err := agentLeaf(t, "abort", abortSummary, abortContract(), []string{"id"}, nil, abortCommand[H])
 		if err != nil {
-			return nil, err
+			return host.Declared{}, err
 		}
 		resume, err := agentLeaf(
 			t,
@@ -110,29 +119,37 @@ func (t *Tree[H]) commands(inherited *host.CommandSet, spawning bool) (*host.Com
 			resumeCommand[H],
 		)
 		if err != nil {
-			return nil, err
+			return host.Declared{}, err
 		}
 		children = append(children, abort, resume)
 	}
 	list, err := agentLeaf(t, "list", listSummary, listContract(), nil, nil, listCommand[H])
 	if err != nil {
-		return nil, err
+		return host.Declared{}, err
 	}
 	show, err := agentLeaf(t, "show", showSummary, showContract(), []string{"id"}, nil, showCommand[H])
 	if err != nil {
-		return nil, err
+		return host.Declared{}, err
 	}
 	children = append(children, list, show)
 	summary := "Agent tree: spawn and manage your own children; send, list and show any live agent."
 	if !spawning {
 		summary = "Agent tree communication: this session may not spawn subagents; send, list and show any live agent."
 	}
-	agent := host.Group("agent", summary, children...)
-	shell, err := t.shellGroup()
+	return host.Group("agent", summary, children...), nil
+}
+
+// spawnLeaf is `agent spawn`, describing the profiles this tree offers.
+func (t *Tree[H]) spawnLeaf() (host.Declared, error) {
+	leaf, err := agentLeaf(t, "spawn", spawnSummary, spawnContract(), nil, new("prompt"), spawnCommand[H])
 	if err != nil {
-		return nil, err
+		return host.Declared{}, err
 	}
-	return graftCommands(commands, agent, shell)
+	available := t.profileNames()
+	return leaf.Describe("prompt", spawnPrompt).
+		Describe("profile", fmt.Sprintf("Named subagent profile; omit to inherit the parent's model, prompt, "+
+			"Host and commands. "+
+			"Available: %s.", available)), nil
 }
 
 func spawnCommand[H host.Host](

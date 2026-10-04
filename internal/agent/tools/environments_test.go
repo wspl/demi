@@ -105,7 +105,9 @@ func TestHandleBelongsToItsHost(t *testing.T) {
 	command := types.CommandID("cmd-a")
 	shell := types.ShellID("shell-a")
 	owner := &ownedEnvironment{commands: []types.CommandID{command}, shells: []types.ShellID{shell}}
-	create := func(context.Context) (host.ShellEnvironment, error) { return owner, nil }
+	create := func(context.Context) (host.ShellEnvironment, error) {
+		return owner, nil
+	}
 	if _, _, err := environments.resolve(t.Context(), "a", nil, nil, create); err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +126,9 @@ func TestHandleBelongsToItsHost(t *testing.T) {
 				"b",
 				scenario.shell,
 				scenario.command,
-				func(context.Context) (host.ShellEnvironment, error) { return &ownedEnvironment{}, nil },
+				func(context.Context) (host.ShellEnvironment, error) {
+					return &ownedEnvironment{}, nil
+				},
 			)
 			if err == nil || err.Error() != scenario.want {
 				t.Fatalf("got %v want %s", err, scenario.want)
@@ -183,7 +187,9 @@ func TestDisposeEndsExistingAndConcurrentCreation(t *testing.T) {
 			"a",
 			nil,
 			nil,
-			func(context.Context) (host.ShellEnvironment, error) { return first, nil },
+			func(context.Context) (host.ShellEnvironment, error) {
+				return first, nil
+			},
 		); err != nil {
 			t.Fatal(err)
 		}
@@ -205,7 +211,9 @@ func TestDisposeEndsExistingAndConcurrentCreation(t *testing.T) {
 		}()
 		<-started
 		disposed := make(chan error, 1)
-		go func() { disposed <- environments.Dispose(t.Context()) }()
+		go func() {
+			disposed <- environments.Dispose(t.Context())
+		}()
 		synctest.Wait()
 		premature := false
 		select {
@@ -277,13 +285,17 @@ func TestSeventhIdenticalExecSuppressed(t *testing.T) {
 func TestEndAllRecreatesAndCleanupErrorsAreReturned(t *testing.T) {
 	var environments Environments
 	failure := errors.New("cleanup failed")
-	first := &ownedEnvironment{dispose: func(context.Context) error { return failure }}
+	first := &ownedEnvironment{dispose: func(context.Context) error {
+		return failure
+	}}
 	if _, _, err := environments.resolve(
 		t.Context(),
 		"a",
 		nil,
 		nil,
-		func(context.Context) (host.ShellEnvironment, error) { return first, nil },
+		func(context.Context) (host.ShellEnvironment, error) {
+			return first, nil
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +308,9 @@ func TestEndAllRecreatesAndCleanupErrorsAreReturned(t *testing.T) {
 		"a",
 		nil,
 		nil,
-		func(context.Context) (host.ShellEnvironment, error) { return next, nil },
+		func(context.Context) (host.ShellEnvironment, error) {
+			return next, nil
+		},
 	); err != nil ||
 		got != next {
 		t.Fatalf("did not create fresh environment: %v", err)
@@ -323,15 +337,21 @@ func TestDisposeJoinsConcurrentEndAll(t *testing.T) {
 			"a",
 			nil,
 			nil,
-			func(context.Context) (host.ShellEnvironment, error) { return owner, nil },
+			func(context.Context) (host.ShellEnvironment, error) {
+				return owner, nil
+			},
 		); err != nil {
 			t.Fatal(err)
 		}
 		ended := make(chan error, 1)
-		go func() { ended <- environments.EndAll(t.Context()) }()
+		go func() {
+			ended <- environments.EndAll(t.Context())
+		}()
 		<-closing
 		disposed := make(chan error, 1)
-		go func() { disposed <- environments.Dispose(t.Context()) }()
+		go func() {
+			disposed <- environments.Dispose(t.Context())
+		}()
 		synctest.Wait()
 		premature := false
 		select {
@@ -384,7 +404,9 @@ func TestCancelledWaiterDoesNotCancelSharedCreation(t *testing.T) {
 				"a",
 				nil,
 				nil,
-				func(context.Context) (host.ShellEnvironment, error) { return nil, errors.New("created twice") },
+				func(context.Context) (host.ShellEnvironment, error) {
+					return nil, errors.New("created twice")
+				},
 			)
 			waited <- err
 		}()

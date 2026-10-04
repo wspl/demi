@@ -45,7 +45,9 @@ func (e *SSEError) Error() string {
 }
 
 // Unwrap returns the underlying cause.
-func (e *SSEError) Unwrap() error { return e.Err }
+func (e *SSEError) Unwrap() error {
+	return e.Err
+}
 
 var sseConfig = sse.ReadConfig{MaxEventSize: int(^uint(0) >> 1)}
 
@@ -82,7 +84,11 @@ func SSEData(ctx context.Context, body io.ReadCloser) iter.Seq2[string, error] {
 // closeOnCancel owns a response body and joins its cancellation callback.
 func closeOnCancel(ctx context.Context, body io.Closer) func() {
 	var once sync.Once
-	closeBody := func() { once.Do(func() { _ = body.Close() }) } // The reader reports IO failures; close only releases it.
+	closeBody := func() {
+		once.Do(func() {
+			_ = body.Close()
+		})
+	} // The reader reports IO failures; close only releases it.
 	done := make(chan struct{})
 	stop := context.AfterFunc(ctx, func() {
 		defer close(done)

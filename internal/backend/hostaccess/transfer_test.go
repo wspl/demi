@@ -14,7 +14,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // Dense tables cover whole, suffix, open, overflowing, unsatisfiable and invalid Range headers.
 // Cost: no IO, processes, or wall-clock waits.

@@ -63,7 +63,11 @@ func (h *CommitHold) UntilWaiting(ctx context.Context, count int) error {
 }
 
 // Release lets current and later checkpoints through, once.
-func (h *CommitHold) Release() { h.once.Do(func() { close(h.released) }) }
+func (h *CommitHold) Release() {
+	h.once.Do(func() {
+		close(h.released)
+	})
+}
 
 func (h *CommitHold) pass(ctx context.Context) error {
 	h.mu.Lock()

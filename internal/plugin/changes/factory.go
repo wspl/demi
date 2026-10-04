@@ -6,7 +6,9 @@ import "github.com/wspl/demi/internal/plugin"
 type Factory struct{}
 
 // New constructs the plugin's factory.
-func New() *Factory { return &Factory{} }
+func New() *Factory {
+	return &Factory{}
+}
 
 // Manifest returns the plugin's declarations.
 func (*Factory) Manifest() plugin.Manifest {
@@ -19,4 +21,6 @@ func (*Factory) Manifest() plugin.Manifest {
 }
 
 // Instance creates an identity-only plugin.
-func (*Factory) Instance() plugin.Plugin { return plugin.NoRequests{} }
+func (*Factory) Instance() plugin.Plugin {
+	return plugin.NoRequests{}
+}

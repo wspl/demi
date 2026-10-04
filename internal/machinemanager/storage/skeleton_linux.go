@@ -69,7 +69,9 @@ func copySkeletonFile(ctx context.Context, source, destination string) (err erro
 	if err != nil {
 		return err
 	}
-	defer func() { _ = from.Close() }() // Read-only skeleton file.
+	defer func() {
+		_ = from.Close()
+	}() // Read-only skeleton file.
 	info, err := from.Stat()
 	if err != nil {
 		return err
@@ -78,7 +80,9 @@ func copySkeletonFile(ctx context.Context, source, destination string) (err erro
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, to.Close()) }()
+	defer func() {
+		err = errors.Join(err, to.Close())
+	}()
 	if _, err := io.Copy(to, from); err != nil {
 		return err
 	}

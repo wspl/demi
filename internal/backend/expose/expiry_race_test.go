@@ -30,9 +30,17 @@ type storedShard struct {
 	user    webapiproto.UserID
 }
 
-func (s *storedShard) Control() expose.Store    { return s.control }
-func (s *storedShard) Clock() types.Clock       { return s.clock }
-func (s *storedShard) User() webapiproto.UserID { return s.user }
+func (s *storedShard) Control() expose.Store {
+	return s.control
+}
+
+func (s *storedShard) Clock() types.Clock {
+	return s.clock
+}
+
+func (s *storedShard) User() webapiproto.UserID {
+	return s.user
+}
 
 type heldExposeRead struct {
 	expose.Store

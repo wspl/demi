@@ -186,7 +186,9 @@ func (s *CommandSet) Graft(parent []string, d Declared) error {
 	name := commanddecl.Name(d.tree)
 	childIndex := slices.IndexFunc(
 		group.Subcommands,
-		func(n commanddecl.Node[commanddecl.NativeOperation]) bool { return commanddecl.Name(n) == name },
+		func(n commanddecl.Node[commanddecl.NativeOperation]) bool {
+			return commanddecl.Name(n) == name
+		},
 	)
 	if childIndex < 0 {
 		group.Subcommands = append(group.Subcommands, cloneNode(d.tree))

@@ -29,7 +29,9 @@ func cancellableStdio(ctx context.Context, stdio Stdio) (Stdio, func() error, er
 		for _, file := range adapted {
 			_ = file.Close()
 		}
-		return initial, func() error { return nil }, errors.Join(err, restore(false))
+		return initial, func() error {
+			return nil
+		}, errors.Join(err, restore(false))
 	}
 	files := []*os.File{nil, nil, nil}
 	files[0], _ = stdio.Stdin.(*os.File)
@@ -48,7 +50,9 @@ func cancellableStdio(ctx context.Context, stdio Stdio) (Stdio, func() error, er
 		if err != nil {
 			return failed(err)
 		}
-		if !slices.ContainsFunc(originals, func(h stdioHandle) bool { return h.original == file }) {
+		if !slices.ContainsFunc(originals, func(h stdioHandle) bool {
+			return h.original == file
+		}) {
 			originals = append(originals, entry)
 		}
 		stream := os.NewFile(uintptr(duplicate), file.Name())
@@ -62,7 +66,9 @@ func cancellableStdio(ctx context.Context, stdio Stdio) (Stdio, func() error, er
 			stdio.Stderr = stream
 		}
 	}
-	return stdio, func() error { return restore(true) }, nil
+	return stdio, func() error {
+		return restore(true)
+	}, nil
 }
 
 type stdioHandle struct {
@@ -92,7 +98,9 @@ func stdioHandlesOf(files []*os.File) ([]stdioHandle, error) {
 func duplicateStdio(ctx context.Context, fd uintptr) (int, error) {
 	duplicate, err := commandsdk.Retry(
 		ctx,
-		func() (int, error) { return unix.FcntlInt(fd, unix.F_DUPFD_CLOEXEC, 0) },
+		func() (int, error) {
+			return unix.FcntlInt(fd, unix.F_DUPFD_CLOEXEC, 0)
+		},
 	)
 	if err != nil {
 		return 0, err

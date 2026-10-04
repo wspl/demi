@@ -284,7 +284,11 @@ func TestProcessExitStatusAndStderr(t *testing.T) {
 
 func TestKeptProcessThatExitedIsReplaced(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		r, p := fixture(t, func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.result(2, 2) } })
+		r, p := fixture(t, func(c *scriptedCLI) {
+			c.onWrite = func(map[string]json.RawMessage) {
+				c.result(2, 2)
+			}
+		})
 		collect(t.Context(), r, request(user("hi")))
 		p.starts[0].finish(host.ProcessEnd{Kind: host.ProcessLost, Reason: "runner disconnected"})
 		synctest.Wait()
@@ -346,7 +350,11 @@ func TestCancelledRunClosesWithoutEvent(t *testing.T) {
 }
 
 func TestEarlyIteratorStopAndRuntimeClose(t *testing.T) {
-	r, p := fixture(t, func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.text("first") } })
+	r, p := fixture(t, func(c *scriptedCLI) {
+		c.onWrite = func(map[string]json.RawMessage) {
+			c.text("first")
+		}
+	})
 	for event := range r.Run(t.Context(), request(user("hi"))) {
 		equal(t, event, textEvent("first"))
 		break
@@ -355,7 +363,11 @@ func TestEarlyIteratorStopAndRuntimeClose(t *testing.T) {
 	equal(t, p.starts[0].closedWhileRunning, true)
 	equal(t, len(p.starts[0].input), 1)
 	equal(t, len(p.starts[0].signals), 0)
-	p.setup = func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.result(1, 1) } }
+	p.setup = func(c *scriptedCLI) {
+		c.onWrite = func(map[string]json.RawMessage) {
+			c.result(1, 1)
+		}
+	}
 	collect(t.Context(), r, request(user("hi")))
 	fresh := r.Fresh()
 	collect(t.Context(), fresh, request(user("elsewhere")))
@@ -382,7 +394,11 @@ func TestResultErrorKeepsProcessButBrokenLineCloses(t *testing.T) {
 	result := `{"type":"result","is_error":true,"result":"context window ` +
 		`exceeded","errors":["input is too long"],` +
 		`"usage":{"input_tokens":200000,"output_tokens":0}}`
-	r, p := fixture(t, func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.say(result) } })
+	r, p := fixture(t, func(c *scriptedCLI) {
+		c.onWrite = func(map[string]json.RawMessage) {
+			c.say(result)
+		}
+	})
 	var events []provider.Event
 	for event := range r.Run(t.Context(), request(user("huge"))) {
 		events = append(events, event)
@@ -412,7 +428,9 @@ func TestResultErrorKeepsProcessButBrokenLineCloses(t *testing.T) {
 
 func TestRetryWithNoNewInputReplays(t *testing.T) {
 	r, p := fixture(t, func(c *scriptedCLI) {
-		c.onWrite = func(map[string]json.RawMessage) { c.say(`{"type":"result","is_error":true,"result":"overloaded"}`) }
+		c.onWrite = func(map[string]json.RawMessage) {
+			c.say(`{"type":"result","is_error":true,"result":"overloaded"}`)
+		}
 	})
 	for event := range r.Run(t.Context(), request(user("hi"))) {
 		if _, ok := event.(*provider.Error); !ok {
@@ -420,7 +438,11 @@ func TestRetryWithNoNewInputReplays(t *testing.T) {
 		}
 		break
 	}
-	p.setup = func(c *scriptedCLI) { c.onWrite = func(map[string]json.RawMessage) { c.result(1, 1) } }
+	p.setup = func(c *scriptedCLI) {
+		c.onWrite = func(map[string]json.RawMessage) {
+			c.result(1, 1)
+		}
+	}
 	equal(t, collect(t.Context(), r, request(user("hi"))), []provider.Event{response(1, 1)})
 	equal(t, len(p.starts), 2)
 	equal(t, p.starts[0].signals, []host.Signal{host.Terminate})

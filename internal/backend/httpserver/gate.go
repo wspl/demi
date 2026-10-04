@@ -125,7 +125,9 @@ type renewResponse struct {
 }
 
 // Unwrap exposes the response writer to HTTP controllers.
-func (w *renewResponse) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+func (w *renewResponse) Unwrap() http.ResponseWriter {
+	return w.ResponseWriter
+}
 
 // WriteHeader defers session renewal until a handler can replace the cookie.
 func (w *renewResponse) WriteHeader(status int) {

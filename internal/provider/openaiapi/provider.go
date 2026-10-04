@@ -52,10 +52,14 @@ func New(config Config, clock types.Clock) *Provider {
 }
 
 // Capabilities describes the entry's Host requirements.
-func (*Provider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
+func (*Provider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{}
+}
 
 // AuthStatus reports the entry's key; the vendor validates it on the first request.
-func (*Provider) AuthStatus(context.Context) types.AuthState { return &types.Authenticated{} }
+func (*Provider) AuthStatus(context.Context) types.AuthState {
+	return &types.Authenticated{}
+}
 
 // RuntimeState describes the configured wire.
 func (p *Provider) RuntimeState() types.RuntimeState {
@@ -77,10 +81,14 @@ func (*Provider) ReadFailure(d *types.ProviderErrorDiagnostics, at types.Timesta
 }
 
 // Quota returns nil: this entry has no subscription quota.
-func (*Provider) Quota() *provider.Quota { return nil }
+func (*Provider) Quota() *provider.Quota {
+	return nil
+}
 
 // Accounts returns nil: this entry has no subscription accounts.
-func (*Provider) Accounts() provider.SubscriptionAccounts { return nil }
+func (*Provider) Accounts() provider.SubscriptionAccounts {
+	return nil
+}
 
 // Runtime creates a stateless session runtime using the owner's HTTP client.
 func (p *Provider) Runtime(env provider.RuntimeEnv) (provider.Runtime, error) {

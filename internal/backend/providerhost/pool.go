@@ -154,7 +154,9 @@ type vaultDocument struct {
 }
 
 // Name identifies the account whose sealed document is read.
-func (d *vaultDocument) Name() string { return "account " + d.id }
+func (d *vaultDocument) Name() string {
+	return "account " + d.id
+}
 
 // Read opens the account’s sealed secret with its stored version; ok is false when there is none.
 func (d *vaultDocument) Read(ctx context.Context) (provider.Revision, bool, error) {

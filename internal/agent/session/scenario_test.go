@@ -22,7 +22,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // Session scenarios use only memory stores and scripted providers. Every clock
 // and persistence/retry/yield timer runs inside synctest; no wall time is spent.
@@ -57,7 +59,9 @@ func start(t *testing.T, runtime *sessiontest.Runtime, config session.Config, tu
 		},
 	)
 	must(t, tree.CreateNode(t.Context(), store.RootRecord("root", types.SystemClock{}.Now()), s.FirstCheckpoint()))
-	t.Cleanup(func() { must(t, s.Dispose(context.Background())) })
+	t.Cleanup(func() {
+		must(t, s.Dispose(context.Background()))
+	})
 	return &scenario{t: t, s: s, p: p, tree: tree, runtime: runtime, config: config, trace: trace}
 }
 
@@ -128,7 +132,9 @@ func (f *scenario) restoreWith(
 		},
 	)
 	must(f.t, err)
-	f.t.Cleanup(func() { must(f.t, s.Dispose(context.Background())) })
+	f.t.Cleanup(func() {
+		must(f.t, s.Dispose(context.Background()))
+	})
 	return s, c, p
 }
 

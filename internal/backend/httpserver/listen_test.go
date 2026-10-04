@@ -23,7 +23,9 @@ func TestUnspecifiedIPv4ListensOnIPv4Only(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = control.Close(context.Background()) }()
+	defer func() {
+		_ = control.Close(context.Background())
+	}()
 	state := httpserver.AppState{
 		Services: &usershard.Services{Control: control, PublicURL: &runners.PublicURL{}},
 		Site:     &httpserver.Site{},
@@ -33,7 +35,9 @@ func TestUnspecifiedIPv4ListensOnIPv4Only(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = e.Close(context.Background()) }()
+	defer func() {
+		_ = e.Close(context.Background())
+	}()
 	port := e.LocalAddr().Port()
 	dialer := net.Dialer{}
 	ipv4, err := dialer.DialContext(

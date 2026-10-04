@@ -13,7 +13,9 @@ import (
 )
 
 func borrowFile(ctx context.Context, file *os.File) (io.ReadWriteCloser, error) {
-	return commandsdk.Retry(ctx, func() (io.ReadWriteCloser, error) { return interp.BorrowFile(ctx, file) })
+	return commandsdk.Retry(ctx, func() (io.ReadWriteCloser, error) {
+		return interp.BorrowFile(ctx, file)
+	})
 }
 
 // restoreInputPolling reverses File.Fd's blocking mode after child inheritance.
@@ -27,5 +29,7 @@ func restoreInputPolling(file *os.File) {
 	if err != nil {
 		return
 	}
-	_ = raw.Control(func(fd uintptr) { _ = unix.SetNonblock(int(fd), true) })
+	_ = raw.Control(func(fd uintptr) {
+		_ = unix.SetNonblock(int(fd), true)
+	})
 } // Cancellation may already have closed the invocation-owned file.

@@ -25,7 +25,9 @@ func (e *execution) open(ctx context.Context, path string, flags int, mode os.Fi
 	if recording != nil {
 		defer recording.Close(ctx)
 	}
-	file, err := commandsdk.Retry(ctx, func() (*os.File, error) { return os.OpenFile(absolute, flags, mode) })
+	file, err := commandsdk.Retry(ctx, func() (*os.File, error) {
+		return os.OpenFile(absolute, flags, mode)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -67,10 +69,14 @@ type recordedFile struct {
 }
 
 // Read preserves the native descriptor position for shell reads.
-func (f *recordedFile) Read(b []byte) (int, error) { return f.file.Read(b) }
+func (f *recordedFile) Read(b []byte) (int, error) {
+	return f.file.Read(b)
+}
 
 // Close releases the retained native handle.
-func (f *recordedFile) Close() error { return f.file.Close() }
+func (f *recordedFile) Close() error {
+	return f.file.Close()
+}
 
 // Write records a mutation only while the path still identifies the opened file.
 func (f *recordedFile) Write(b []byte) (int, error) {

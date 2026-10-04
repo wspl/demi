@@ -273,7 +273,9 @@ func TestWebSocketRefusalKeepsWholeBody(t *testing.T) {
 	v, pool, _ := setup(t)
 	body := strings.Repeat("backend unavailable ", 150)
 	v.RespondAt(responses, answer(503, body))
-	p := configured(t, v, pool, func(c *codex.Config) { c.Transport = codex.WebSocket })
+	p := configured(t, v, pool, func(c *codex.Config) {
+		c.Transport = codex.WebSocket
+	})
 	f := failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest()))
 	record, _ := provider.ReadHTTPRecord(f.Diagnostics)
 	equal(t, record.Body, body)

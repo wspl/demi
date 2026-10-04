@@ -105,7 +105,9 @@ func TestRealRunscLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 		prepareErr := func() (err error) {
-			defer func() { err = errors.Join(err, system.Unmount(context.WithoutCancel(ctx), home)) }()
+			defer func() {
+				err = errors.Join(err, system.Unmount(context.WithoutCancel(ctx), home))
+			}()
 			userHome := filepath.Join(home, "demi")
 			if err := os.Mkdir(userHome, 0o755); err != nil {
 				return err

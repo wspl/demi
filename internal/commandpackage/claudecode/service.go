@@ -28,7 +28,9 @@ type service struct {
 }
 
 // SetArtifacts supplies the runner-owned artifact source.
-func (s *service) SetArtifacts(a *commandsdk.Artifacts) { s.artifacts.Store(a) }
+func (s *service) SetArtifacts(a *commandsdk.Artifacts) {
+	s.artifacts.Store(a)
+}
 
 // Operations lists the resident service operations.
 func (*service) Operations() []string {

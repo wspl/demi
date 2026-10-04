@@ -51,7 +51,10 @@ type measure struct {
 	size, limit uint64
 }
 
-func newMeasure(limit uint64) *measure { return &measure{hash: sha256.New(), limit: limit} }
+func newMeasure(limit uint64) *measure {
+	return &measure{hash: sha256.New(), limit: limit}
+}
+
 func (m *measure) update(b []byte) error {
 	if uint64(len(b)) > m.limit-m.size {
 		return &TooLargeError{m.limit}
@@ -60,7 +63,10 @@ func (m *measure) update(b []byte) error {
 	_, _ = m.hash.Write(b) // hash.Hash.Write never returns an error.
 	return nil
 }
-func (m *measure) finish() Digest { return Digest{m.size, hex.EncodeToString(m.hash.Sum(nil))} }
+
+func (m *measure) finish() Digest {
+	return Digest{m.size, hex.EncodeToString(m.hash.Sum(nil))}
+}
 
 // Verifier checks artifact chunks before they are kept.
 type Verifier struct {
@@ -69,10 +75,14 @@ type Verifier struct {
 }
 
 // NewVerifier starts checking against expected.
-func NewVerifier(expected Digest) *Verifier { return &Verifier{expected, newMeasure(expected.Size)} }
+func NewVerifier(expected Digest) *Verifier {
+	return &Verifier{expected, newMeasure(expected.Size)}
+}
 
 // Update rejects a chunk that would exceed the declared size.
-func (v *Verifier) Update(b []byte) error { return v.measure.update(b) }
+func (v *Verifier) Update(b []byte) error {
+	return v.measure.update(b)
+}
 
 // Finish checks the complete size and hash.
 func (v *Verifier) Finish() error {
@@ -126,7 +136,9 @@ func DigestFile(ctx context.Context, path string, limit uint64) (Digest, error) 
 	if err != nil {
 		return Digest{}, err
 	}
-	defer func() { _ = f.Close() }() // Read-only file; no buffered writes to lose.
+	defer func() {
+		_ = f.Close()
+	}() // Read-only file; no buffered writes to lose.
 	m := newMeasure(limit)
 	if err := transfer(ctx, f, io.Discard, m.update); err != nil {
 		return Digest{}, err

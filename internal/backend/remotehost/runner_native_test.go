@@ -117,7 +117,9 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 			untilExit,
 		)
 	})
-	calls.Go(func() { fromB = runnerExec(t, onB, "PROBE=beta demi where --label B", untilExit) })
+	calls.Go(func() {
+		fromB = runnerExec(t, onB, "PROBE=beta demi where --label B", untilExit)
+	})
 	calls.Wait()
 	for _, item := range []struct {
 		status            host.CommandStatus

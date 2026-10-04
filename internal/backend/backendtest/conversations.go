@@ -218,7 +218,9 @@ func WaitRunnerJobsRemoved(ctx context.Context, stateDir string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, watcher.Close()) }()
+	defer func() {
+		err = errors.Join(err, watcher.Close())
+	}()
 	if err := watcher.Add(jobs); err != nil {
 		return err
 	}

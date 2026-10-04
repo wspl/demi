@@ -24,10 +24,14 @@ type OutputSink interface {
 type Input struct{ source InputSource }
 
 // NewInput adapts a local source without buffering or reading ahead.
-func NewInput(source InputSource) *Input { return &Input{source: source} }
+func NewInput(source InputSource) *Input {
+	return &Input{source: source}
+}
 
 // Next requests one chunk, preserving its boundary.
-func (i *Input) Next(ctx context.Context) ([]byte, error) { return i.source.Next(ctx) }
+func (i *Input) Next(ctx context.Context) ([]byte, error) {
+	return i.source.Next(ctx)
+}
 
 // Output shares an invocation's bounded output queue. It is safe for concurrent writers.
 type Output struct {
@@ -56,10 +60,14 @@ func (o *Output) send(ctx context.Context, r commandproto.Record) error {
 }
 
 // Stdout writes bytes as bounded standard output records.
-func (o *Output) Stdout(ctx context.Context, b []byte) error { return o.write(ctx, b, false) }
+func (o *Output) Stdout(ctx context.Context, b []byte) error {
+	return o.write(ctx, b, false)
+}
 
 // Stderr writes bytes as bounded standard error records.
-func (o *Output) Stderr(ctx context.Context, b []byte) error { return o.write(ctx, b, true) }
+func (o *Output) Stderr(ctx context.Context, b []byte) error {
+	return o.write(ctx, b, true)
+}
 
 func (o *Output) write(ctx context.Context, b []byte, stderr bool) error {
 	for len(b) > 0 {

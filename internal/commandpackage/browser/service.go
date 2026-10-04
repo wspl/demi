@@ -71,10 +71,14 @@ func newService() *service {
 }
 
 // Operations returns the served browser operation names.
-func (*service) Operations() []string { return browserproto.OperationNames() }
+func (*service) Operations() []string {
+	return browserproto.OperationNames()
+}
 
 // SetArtifacts attaches the runner artifact source for Chrome installation.
-func (s *service) SetArtifacts(source *commandsdk.Artifacts) { s.chrome.Attach(source) }
+func (s *service) SetArtifacts(source *commandsdk.Artifacts) {
+	s.chrome.Attach(source)
+}
 
 // SetNumbers attaches the runner number source for tab identities.
 func (s *service) SetNumbers(source *commandsdk.Numbers) {
@@ -157,7 +161,9 @@ func (s *service) Close(ctx context.Context) error {
 	failures := make(chan error, len(browsers))
 	var tasks sync.WaitGroup
 	for _, browser := range browsers {
-		tasks.Go(func() { failures <- browser.release(ctx) })
+		tasks.Go(func() {
+			failures <- browser.release(ctx)
+		})
 	}
 	tasks.Wait()
 	close(failures)

@@ -310,7 +310,9 @@ func wireConversation(t *testing.T, family wireFamily) []string {
 			Config:  session.DefaultConfig(),
 		},
 	)
-	defer func() { wireMust(t, conversation.Dispose(context.Background())) }()
+	defer func() {
+		wireMust(t, conversation.Dispose(context.Background()))
+	}()
 	wireMust(t, tree.CreateNode(ctx, store.RootRecord("root", types.UnixEpoch), conversation.FirstCheckpoint()))
 	photo := storetest.PNG(4, 3, 1)
 	held := store.HeldMedia{}

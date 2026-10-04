@@ -92,11 +92,15 @@ func (s *treeState) start(location *gitLocation) {
 		defer close(s.watchDone)
 		trees := []string{location.root}
 		for _, path := range []string{location.gitDir, location.common} {
-			if !slices.ContainsFunc(trees, func(root string) bool { return pathWithin(path, root) }) {
+			if !slices.ContainsFunc(trees, func(root string) bool {
+				return pathWithin(path, root)
+			}) {
 				trees = append(trees, path)
 			}
 		}
-		watch, err := StartWatch(s.ctx, trees, func(event WatchEvent) { s.record(location, event) })
+		watch, err := StartWatch(s.ctx, trees, func(event WatchEvent) {
+			s.record(location, event)
+		})
 		s.watchMu.Lock()
 		if err != nil {
 			s.watchPhase = "unavailable"
@@ -164,7 +168,9 @@ func computeChanges(
 		state.reset(ctx)
 		return runnerproto.GitChanges{Files: []runnerproto.GitChange{}}, nil
 	}
-	defer func() { err = errors.Join(err, closeRepository(repo)) }()
+	defer func() {
+		err = errors.Join(err, closeRepository(repo))
+	}()
 	state.stopBrokenWatch()
 	state.start(location)
 	rules := aboveRules(location)
@@ -176,7 +182,9 @@ func computeChanges(
 	if err = admit(ctx, slots); err != nil {
 		return result, err
 	}
-	defer func() { <-slots }()
+	defer func() {
+		<-slots
+	}()
 	running, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if scope == nil {
@@ -223,7 +231,9 @@ func retryChanges(
 ) (runnerproto.GitChanges, error) {
 	return commandsdk.Retry(
 		ctx,
-		func() (runnerproto.GitChanges, error) { return computeChanges(ctx, state, root, slots, limit) },
+		func() (runnerproto.GitChanges, error) {
+			return computeChanges(ctx, state, root, slots, limit)
+		},
 	)
 }
 
@@ -347,7 +357,9 @@ func scopedBaseline(base *gitBaseline, scope []string) *gitBaseline {
 	for name := range base.files {
 		if slices.ContainsFunc(
 			scope,
-			func(path string) bool { return name == path || strings.HasPrefix(name, path+"/") },
+			func(path string) bool {
+				return name == path || strings.HasPrefix(name, path+"/")
+			},
 		) {
 			delete(base.files, name)
 		}

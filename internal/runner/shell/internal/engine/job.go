@@ -90,7 +90,9 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 	var inputError error
 	go func() {
 		defer close(inputDone)
-		defer func() { _ = files[1].Close() }() // Cleanup also runs after cancellation closes the file.
+		defer func() {
+			_ = files[1].Close()
+		}() // Cleanup also runs after cancellation closes the file.
 		inputError = j.writeInput(inputCtx, files[1])
 	}()
 	var drains sync.WaitGroup
@@ -138,13 +140,19 @@ func (j *job) run(start process.JobStart, env map[string]string, files []*os.Fil
 }
 
 // Input exposes the bounded input channel consumed by the job.
-func (j *job) Input() chan<- process.Input { return j.input }
+func (j *job) Input() chan<- process.Input {
+	return j.input
+}
 
 // Output exposes stdout and stderr chunks until all drains finish.
-func (j *job) Output() <-chan process.OutputChunk { return j.output }
+func (j *job) Output() <-chan process.OutputChunk {
+	return j.output
+}
 
 // Cancel requests cancellation of the interpreter and its owned work.
-func (j *job) Cancel() { j.cancel() }
+func (j *job) Cancel() {
+	j.cancel()
+}
 
 // IsCancelled reports cancellation while running or the final signal after completion.
 func (j *job) IsCancelled() bool {

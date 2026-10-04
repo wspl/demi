@@ -19,14 +19,19 @@ import (
 
 type workingFixture string
 
-func (w workingFixture) Directory() string { return string(w) }
+func (w workingFixture) Directory() string {
+	return string(w)
+}
+
 func (w workingFixture) Image(volume machinemanagerproto.Volume) string {
 	return filepath.Join(string(w), string(volume)+".ext4")
 }
 
 type leaseFixture struct{ releases int }
 
-func (l *leaseFixture) Release() { l.releases++ }
+func (l *leaseFixture) Release() {
+	l.releases++
+}
 
 type networkFixture struct {
 	attachError error
@@ -281,7 +286,9 @@ func TestGrowRefreshesLiveLoopAndNeverShrinks(t *testing.T) {
 				if err != nil {
 					return err
 				}
-				defer func() { err = errors.Join(err, file.Close()) }()
+				defer func() {
+					err = errors.Join(err, file.Close())
+				}()
 				size, err := file.Seek(0, io.SeekEnd)
 				if err != nil {
 					return err

@@ -25,24 +25,48 @@ func (o *observation) query(
 	}
 	var matches []targetElement
 	if q.Match != nil {
-		var err error
 		matches, err = o.resolve(ctx, page, browserproto.BrowserTarget{BrowserQueryMatch: *q.Match}, refs)
-		if err != nil {
-			return nil, err
-		}
 	} else {
-		var err error
 		matches, err = o.queryBranches(ctx, page, q, refs, scope)
-		if err != nil {
-			return nil, err
-		}
+	}
+	if err != nil {
+		return nil, err
 	}
 	if scope != nil {
 		matches = slices.DeleteFunc(
 			matches,
-			func(element targetElement) bool { return !o.descendant(element.identity(), *scope, false) },
+			func(element targetElement) bool {
+				return !o.descendant(element.identity(), *scope, false)
+			},
 		)
 	}
+	matches, err = o.filterHas(ctx, page, q, refs, matches)
+	if err != nil {
+		return nil, err
+	}
+	matches, err = filterQueryState(ctx, q, matches)
+	if err != nil {
+		return nil, err
+	}
+	matches = o.domOrder(matches)
+	if q.Nth != nil {
+		if *q.Nth >= uint(len(matches)) {
+			return []targetElement{}, nil
+		}
+		matches = matches[*q.Nth : *q.Nth+1]
+	}
+	return matches, nil
+}
+
+// filterHas keeps the matches that have a descendant matching q.Has, and
+// none matching q.HasNot.
+func (o *observation) filterHas(
+	ctx context.Context,
+	page cdp.FrameTarget,
+	q browserproto.BrowserQuery,
+	refs *tabs.References,
+	matches []targetElement,
+) ([]targetElement, error) {
 	for i, filter := range []*browserproto.BrowserQuery{q.Has, q.HasNot} {
 		if filter == nil {
 			continue
@@ -59,17 +83,6 @@ func (o *observation) query(
 			}
 		}
 		matches = filtered
-	}
-	matches, err = filterQueryState(ctx, q, matches)
-	if err != nil {
-		return nil, err
-	}
-	matches = o.domOrder(matches)
-	if q.Nth != nil {
-		if *q.Nth >= uint(len(matches)) {
-			return []targetElement{}, nil
-		}
-		matches = matches[*q.Nth : *q.Nth+1]
 	}
 	return matches, nil
 }
@@ -146,7 +159,9 @@ func (o *observation) queryBranches(
 			}
 			matches = slices.DeleteFunc(
 				matches,
-				func(element targetElement) bool { return !ids[element.identity()] },
+				func(element targetElement) bool {
+					return !ids[element.identity()]
+				},
 			)
 		}
 	}

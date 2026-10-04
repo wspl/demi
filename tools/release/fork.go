@@ -58,9 +58,12 @@ func (o *checksumOps) WriteConfig(_ string, old, next []byte) error {
 	o.latest = bytes.Clone(next)
 	return nil
 }
-func (*checksumOps) ReadCache(string) ([]byte, error) { return nil, os.ErrNotExist }
-func (*checksumOps) WriteCache(string, []byte)        {}
-func (*checksumOps) Log(string)                       {}
+
+func (*checksumOps) ReadCache(string) ([]byte, error) {
+	return nil, os.ErrNotExist
+}
+func (*checksumOps) WriteCache(string, []byte) {}
+func (*checksumOps) Log(string)                {}
 
 // SecurityError is returned as sumdb.ErrSecurity by Lookup; it is never ignored.
 func (*checksumOps) SecurityError(string) {}
@@ -90,7 +93,9 @@ func (a *application) fork(ctx context.Context, patch bool) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(scratch)) }()
+	defer func() {
+		err = errors.Join(err, os.RemoveAll(scratch))
+	}()
 	upstream, err := moduleUpstream(
 		ctx,
 		client,

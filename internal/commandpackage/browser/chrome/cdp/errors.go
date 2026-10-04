@@ -230,7 +230,9 @@ type ProtocolError struct {
 }
 
 // Error describes Chrome's command rejection.
-func (e *ProtocolError) Error() string { return fmt.Sprintf("%s (%d)", e.Message, e.Code) }
+func (e *ProtocolError) Error() string {
+	return fmt.Sprintf("%s (%d)", e.Message, e.Code)
+}
 
 func (e *BrowserError) conditionError() string {
 	condition := ""

@@ -39,7 +39,9 @@ func (r *Runtime) ReserveEdit(ctx context.Context) (*gates.Reservation, error) {
 }
 
 // SystemPrompt returns the configured prompt.
-func (r *Runtime) SystemPrompt(ctx context.Context) (string, error) { return r.Prompt, ctx.Err() }
+func (r *Runtime) SystemPrompt(ctx context.Context) (string, error) {
+	return r.Prompt, ctx.Err()
+}
 
 // Preamble delegates the configured hook or returns no preamble.
 func (r *Runtime) Preamble(ctx context.Context) (*string, error) {
@@ -62,7 +64,9 @@ func (r *Runtime) Context(
 }
 
 // Tools returns the immutable definitions supplied by the test.
-func (r *Runtime) Tools() []provider.ToolDefinition { return r.Definitions }
+func (r *Runtime) Tools() []provider.ToolDefinition {
+	return r.Definitions
+}
 
 // InvokeTool delegates a call or completes it with empty output.
 func (r *Runtime) InvokeTool(ctx context.Context, call session.ToolInvocation) (session.ToolOutcome, error) {

@@ -134,7 +134,9 @@ func RemoveExpiredOutputs(
 		tx,
 		"command_outputs",
 		"SELECT blob FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?",
-		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef {
+			return checked(r, "blob", types.ParseBlobRef)
+		},
 		before,
 	)
 	if err != nil {
@@ -165,7 +167,9 @@ func CommandOutputReferences(ctx context.Context, tx *sql.Tx) ([]types.BlobRef, 
 		tx,
 		"command_outputs",
 		"SELECT blob FROM command_outputs WHERE blob IS NOT NULL",
-		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef {
+			return checked(r, "blob", types.ParseBlobRef)
+		},
 	)
 }
 

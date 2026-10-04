@@ -105,12 +105,16 @@ func Start(ctx context.Context, config Config) (_ *Backend, err error) {
 }
 
 // LocalAddr is the address the listener is bound to.
-func (b *Backend) LocalAddr() netip.AddrPort { return b.edge.LocalAddr() }
+func (b *Backend) LocalAddr() netip.AddrPort {
+	return b.edge.LocalAddr()
+}
 
 // Close requests ordered shutdown and joins it. A canceled cleanup context
 // ends only this wait; a later Close with a live context joins the same shutdown.
 func (b *Backend) Close(ctx context.Context) error {
-	b.closeOnce.Do(func() { close(b.request) })
+	b.closeOnce.Do(func() {
+		close(b.request)
+	})
 	select {
 	case <-b.done:
 		return b.closeErr
@@ -120,10 +124,14 @@ func (b *Backend) Close(ctx context.Context) error {
 }
 
 // Services borrows shared handles for test support; ownership stays with Backend.
-func (b *Backend) Services() *usershard.Services { return b.services }
+func (b *Backend) Services() *usershard.Services {
+	return b.services
+}
 
 // Shards borrows user routing for test support; ownership stays with Backend.
-func (b *Backend) Shards() *usershard.Shards { return b.shards }
+func (b *Backend) Shards() *usershard.Shards {
+	return b.shards
+}
 
 // shutdown drains the backend in dependency order, also after partial startup.
 func (b *Backend) shutdown(ctx context.Context) error {

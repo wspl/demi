@@ -132,7 +132,9 @@ func TestRecoveryKeepsLiveTokenAndRebootsStoppedRuntime(t *testing.T) {
 					f.runtime = machinemanagerproto.RuntimeStateStopped
 				}
 				result := make(chan *MachineAccess, 1)
-				go func() { result <- f.access() }()
+				go func() {
+					result <- f.access()
+				}()
 				f.waitCalls(t.Context(), "runtime_state", 1)
 				synctest.Wait()
 				if running {
@@ -342,7 +344,9 @@ func TestResetIdempotencyAndWaitingAdmission(t *testing.T) {
 		_, err = Reset(t.Context(), f, "reset-two")
 		requireCloudError(t, err, Resetting)
 		pending := make(chan *MachineAccess, 1)
-		go func() { pending <- f.access() }()
+		go func() {
+			pending <- f.access()
+		}()
 		synctest.Wait()
 		select {
 		case <-pending:
@@ -661,7 +665,9 @@ func TestResetDuringBootJoinsItAndSharesItsPermit(t *testing.T) {
 			return "", nil
 		}
 		waiter := make(chan *MachineAccess, 1)
-		go func() { waiter <- f.access() }()
+		go func() {
+			waiter <- f.access()
+		}()
 		f.waitCalls(t.Context(), "wake", 1)
 		_, err := Reset(t.Context(), f, "during-boot")
 		if err != nil {

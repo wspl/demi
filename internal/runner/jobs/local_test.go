@@ -25,7 +25,9 @@ type localCommands struct {
 	) (commandproto.Completion, error)
 }
 
-func (localCommands) Operations() []string { return []string{"fixture"} }
+func (localCommands) Operations() []string {
+	return []string{"fixture"}
+}
 
 func (h localCommands) Invoke(
 	ctx context.Context,
@@ -36,7 +38,9 @@ func (h localCommands) Invoke(
 
 type outputBuffer struct{ bytes.Buffer }
 
-func (*outputBuffer) Close() error { return nil }
+func (*outputBuffer) Close() error {
+	return nil
+}
 
 type neverRead struct{ t testing.TB }
 
@@ -44,7 +48,11 @@ func (r neverRead) Read([]byte) (int, error) {
 	r.t.Error("stdin consumed without demand")
 	return 0, errors.New("stdin consumed without demand")
 }
-func (neverRead) Close() error { return nil }
+
+func (neverRead) Close() error {
+	return nil
+}
+
 func localRequest() commandproto.LocalInvocation {
 	return commandproto.LocalInvocation{
 		Operation:    "fixture",
@@ -123,7 +131,9 @@ func TestPendingTerminalInputAllowsOutputAndCompletion(t *testing.T) {
 	)
 	reader, writer := io.Pipe()
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = writer.Close() }()
+	defer func() {
+		_ = writer.Close()
+	}()
 	stdout := &outputBuffer{}
 	input := &observedRead{ReadCloser: reader, started: requested}
 	result, err := process.Forward(
@@ -144,7 +154,9 @@ type observedRead struct {
 }
 
 func (r *observedRead) Read(bytes []byte) (int, error) {
-	r.once.Do(func() { close(r.started) })
+	r.once.Do(func() {
+		close(r.started)
+	})
 	return r.ReadCloser.Read(bytes)
 }
 
@@ -166,7 +178,9 @@ func TestCancellationInterruptsBlockedOutput(t *testing.T) {
 	)
 	reader, writer := io.Pipe()
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = reader.Close() }()
+	defer func() {
+		_ = reader.Close()
+	}()
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
@@ -237,7 +251,9 @@ func TestPrivateEndpointStreamsBinaryInputAndJoinsCancellation(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = client.Close() }()
+	defer func() {
+		_ = client.Close()
+	}()
 	input, output, err := client.Invoke(ctx, localRequest())
 	if err != nil {
 		t.Fatal(err)

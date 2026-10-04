@@ -12,7 +12,9 @@ import (
 )
 
 // TestMain checks that fixture tests release their goroutines and shared program builds.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(programTests{m}) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(programTests{m})
+}
 
 // The wire fixture runs over one local socket and uses no process or sleep.
 // It checks responses, call observation and joining even with a client open.
@@ -77,4 +79,6 @@ func TestScriptedManagerProtocolAndClose(t *testing.T) {
 type programTests struct{ m *testing.M }
 
 // Run releases shared program builds before leak checking.
-func (p programTests) Run() int { return programtest.Run(p.m) }
+func (p programTests) Run() int {
+	return programtest.Run(p.m)
+}

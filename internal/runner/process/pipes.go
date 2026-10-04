@@ -82,8 +82,10 @@ func NewPipeClientWithConnectTimeout(
 	transport.TLSHandshakeTimeout = timeout
 	transport.ResponseHeaderTimeout = 0
 	client := &http.Client{
-		Transport:     transport,
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: transport,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	return &PipeClient{http: client, transport: transport, origin: origin, token: token}, nil
 }
@@ -148,7 +150,9 @@ func (c *PipeClient) Put(ctx context.Context, path string, body io.ReadCloser) (
 		if err := pipeOK(response); err != nil {
 			return err
 		}
-		defer func() { _ = response.Body.Close() }() // Read errors below carry any transport failure.
+		defer func() {
+			_ = response.Body.Close()
+		}() // Read errors below carry any transport failure.
 		answer, err := io.ReadAll(io.LimitReader(response.Body, pipeAnswerBytes+1))
 		if err != nil {
 			return fmt.Errorf("pipe confirmation: %w", err)
@@ -168,7 +172,9 @@ type pipeUpload struct {
 }
 
 func (u *pipeUpload) close() {
-	u.once.Do(func() { _ = u.body.Close() }) // Completion/cancellation already supplies the outcome.
+	u.once.Do(func() {
+		_ = u.body.Close()
+	}) // Completion/cancellation already supplies the outcome.
 }
 
 func (u *pipeUpload) Close() error {
@@ -228,7 +234,9 @@ func pipeOK(response *http.Response) error {
 		return nil
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	body, err := io.ReadAll(io.LimitReader(response.Body, pipeAnswerBytes))
 	if err != nil {
 		return fmt.Errorf("pipe refusal: %w", err)

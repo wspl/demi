@@ -40,7 +40,9 @@ func Encode(ctx context.Context, data []byte, effort Effort) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = encoder.Close() }() // EncodeAll has no pending streamed output.
+	defer func() {
+		_ = encoder.Close()
+	}() // EncodeAll has no pending streamed output.
 	encoded := encoder.EncodeAll(data, nil)
 	return encoded, ctx.Err()
 }
@@ -52,10 +54,14 @@ type Client struct {
 }
 
 // NewClient makes an HTTPS-only client without redirects.
-func NewClient() *Client { return newClient(false) }
+func NewClient() *Client {
+	return newClient(false)
+}
 
 // NewClientAllowingHTTP permits HTTP when the digest came from a trusted peer.
-func NewClientAllowingHTTP() *Client { return newClient(true) }
+func NewClientAllowingHTTP() *Client {
+	return newClient(true)
+}
 
 func newClient(allowHTTP bool) *Client {
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
@@ -75,15 +81,19 @@ func newClient(allowHTTP bool) *Client {
 	}
 	return &Client{
 		http: &http.Client{
-			Transport:     transport,
-			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+			Transport: transport,
+			CheckRedirect: func(*http.Request, []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
 		},
 		allowHTTP: allowHTTP,
 	}
 }
 
 // Close releases connections retained by the client. Active downloads must end first.
-func (c *Client) Close() { c.http.CloseIdleConnections() }
+func (c *Client) Close() {
+	c.http.CloseIdleConnections()
+}
 
 // progressConn enforces the artifact's idle-read timeout, not an overall deadline.
 type progressConn struct{ net.Conn }
@@ -103,16 +113,22 @@ type RejectedError struct {
 }
 
 // Error reports the rejected HTTP status.
-func (e *RejectedError) Error() string { return fmt.Sprintf("the server answered %d", e.Status) }
+func (e *RejectedError) Error() string {
+	return fmt.Sprintf("the server answered %d", e.Status)
+}
 
 // downloadError hides potentially signed URLs while retaining error identity.
 type downloadError struct{ cause error }
 
 // Error reports a download failure without exposing its URL.
-func (e *downloadError) Error() string { return "artifact download failed" }
+func (e *downloadError) Error() string {
+	return "artifact download failed"
+}
 
 // Unwrap returns the download failure.
-func (e *downloadError) Unwrap() error { return e.cause }
+func (e *downloadError) Unwrap() error {
+	return e.cause
+}
 
 func (c *Client) get(ctx context.Context, location string) (*http.Response, error) {
 	if err := ctx.Err(); err != nil {
@@ -161,7 +177,9 @@ type decodedBody struct {
 }
 
 // Read returns decoded artifact bytes.
-func (b *decodedBody) Read(p []byte) (int, error) { return b.decoder.Read(p) }
+func (b *decodedBody) Read(p []byte) (int, error) {
+	return b.decoder.Read(p)
+}
 
 // Close releases the decoder and its response body.
 func (b *decodedBody) Close() error {
@@ -176,7 +194,9 @@ func Download(ctx context.Context, client *Client, location string, expected Dig
 	if err != nil {
 		return err
 	}
-	defer func() { _ = response.Body.Close() }() // Closing a read body only releases the connection.
+	defer func() {
+		_ = response.Body.Close()
+	}() // Closing a read body only releases the connection.
 	if response.ContentLength >= 0 && uint64(response.ContentLength) != expected.Size {
 		return &SizeError{expected.Size, uint64(response.ContentLength)}
 	}
@@ -195,7 +215,9 @@ func DownloadMeasured(
 	if err != nil {
 		return Digest{}, err
 	}
-	defer func() { _ = response.Body.Close() }() // Read-only response ownership ends here.
+	defer func() {
+		_ = response.Body.Close()
+	}() // Read-only response ownership ends here.
 	if response.ContentLength >= 0 {
 		if uint64(response.ContentLength) > limit {
 			return Digest{}, &TooLargeError{limit}

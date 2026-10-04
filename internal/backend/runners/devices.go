@@ -42,7 +42,9 @@ func (d *Devices) Link(device webapiproto.DeviceID) *remotehost.Link {
 }
 
 // Online reports whether the device has a live runner connection.
-func (d *Devices) Online(device webapiproto.DeviceID) bool { return d.Link(device) != nil }
+func (d *Devices) Online(device webapiproto.DeviceID) bool {
+	return d.Link(device) != nil
+}
 
 // UntilOnline waits until a live connection serves device, as a Cloud boot does.
 func (d *Devices) UntilOnline(ctx context.Context, device webapiproto.DeviceID) error {
@@ -199,7 +201,9 @@ func (d *Devices) Disconnect(device webapiproto.DeviceID, reason string) {
 }
 
 // Revoke ends a revoked device's connection and tells its runner to stop for good.
-func (d *Devices) Revoke(device webapiproto.DeviceID) { d.Disconnect(device, "device revoked") }
+func (d *Devices) Revoke(device webapiproto.DeviceID) {
+	d.Disconnect(device, "device revoked")
+}
 
 // DisconnectAll ends every connection for reason. The connection owners join Serve.
 func (d *Devices) DisconnectAll(reason string) {
@@ -398,7 +402,11 @@ func (s *Serving) run(
 type stoppedFrames struct{}
 
 // Receive reports EOF for a connection that never started serving.
-func (stoppedFrames) Receive(context.Context) ([]byte, error) { return nil, io.EOF }
+func (stoppedFrames) Receive(context.Context) ([]byte, error) {
+	return nil, io.EOF
+}
 
 // Send reports EOF for a connection that never started serving.
-func (stoppedFrames) Send(context.Context, []byte) error { return io.EOF }
+func (stoppedFrames) Send(context.Context, []byte) error {
+	return io.EOF
+}

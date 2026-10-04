@@ -28,7 +28,9 @@ type LoginLimiter struct {
 }
 
 // NewLoginLimiter returns an empty process-local login limiter.
-func NewLoginLimiter() *LoginLimiter { return &LoginLimiter{} }
+func NewLoginLimiter() *LoginLimiter {
+	return &LoginLimiter{}
+}
 
 // Locked reports whether even the right password must currently be refused.
 func (l *LoginLimiter) Locked(email webapiproto.EmailAddress) bool {

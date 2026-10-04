@@ -49,13 +49,19 @@ func validateSecret(secret Secret) error {
 }
 
 // Expose explicitly reveals the credential for its intended recipient.
-func (s Secret) Expose() string { return string(s) }
+func (s Secret) Expose() string {
+	return string(s)
+}
 
 // Format redacts all fmt verbs, including %#v.
-func (s Secret) Format(f fmt.State, _ rune) { _, _ = f.Write([]byte("Secret(..)")) }
+func (s Secret) Format(f fmt.State, _ rune) {
+	_, _ = f.Write([]byte("Secret(..)"))
+}
 
 // HeaderValue returns a redacted header value whose Expose method supplies HTTP text.
-func (s Secret) HeaderValue() Secret { return s }
+func (s Secret) HeaderValue() Secret {
+	return s
+}
 
 // Bearer returns a redacted bearer authorization value.
 func (s Secret) Bearer() Secret {

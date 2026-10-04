@@ -81,6 +81,12 @@ Guide (Decisions and Best Practices), [STD] the standard library's practice.
   project's configuration, the one choice here that no source makes. A
   `+demi:` contract marker is exempt from the line limit: like a
   `//go:generate` directive, it is one line the generator reads.
+- [Owner] A function body that holds statements is never written on one
+  line, declared or literal: `func() {` ends its line and `}` starts its own,
+  as gofmt already does for `if`, `for` and `switch`. gofmt keeps a one-line
+  function body as it finds it, so `tools/bodycheck` (in `scripts/check.sh`)
+  refuses it and `go run ./tools/bodycheck -fix` rewrites it. An empty body
+  may stay `{}`.
 - Handle errors first and return early; keep the normal path at the left
   margin; no `else` after a `return` [CRC: Indent Error Flow].
 - Many parameters, or several of one type, become an option struct [GSG: Function

@@ -51,7 +51,9 @@ func (c *ControlService) ReorderConversations(
 FROM conversations
 WHERE user_id = ? AND archived = 0 AND pinned = ? AND target_workspace_id IS ?
 ORDER BY sort_order,id`,
-			func(r *storedRow) string { return r.text("id") },
+			func(r *storedRow) string {
+				return r.text("id")
+			},
 			user,
 			p.pinned,
 			p.workspace,
@@ -82,7 +84,9 @@ func (c *ControlService) ReorderWorkspaces(
 			tx,
 			"workspaces",
 			"SELECT id FROM workspaces WHERE user_id = ? ORDER BY sort_order,id",
-			func(r *storedRow) string { return r.text("id") },
+			func(r *storedRow) string {
+				return r.text("id")
+			},
 			user,
 		)
 		if err != nil {
@@ -105,18 +109,24 @@ func writeOrder(
 	moved string,
 	before *string,
 ) (bool, error) {
-	from := slices.IndexFunc(peers, func(s string) bool { return strings.EqualFold(s, moved) })
+	from := slices.IndexFunc(peers, func(s string) bool {
+		return strings.EqualFold(s, moved)
+	})
 	if from < 0 {
 		return false, nil
 	}
-	if before != nil && !slices.ContainsFunc(peers, func(s string) bool { return strings.EqualFold(s, *before) }) {
+	if before != nil && !slices.ContainsFunc(peers, func(s string) bool {
+		return strings.EqualFold(s, *before)
+	}) {
 		return false, nil
 	}
 	row := peers[from]
 	peers = slices.Delete(peers, from, from+1)
 	to := len(peers)
 	if before != nil {
-		to = slices.IndexFunc(peers, func(s string) bool { return strings.EqualFold(s, *before) })
+		to = slices.IndexFunc(peers, func(s string) bool {
+			return strings.EqualFold(s, *before)
+		})
 		if to < 0 {
 			to = from
 		}

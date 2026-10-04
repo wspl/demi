@@ -84,7 +84,9 @@ func (f *Factory) Manifest() plugin.Manifest {
 }
 
 // Instance returns the stateless todo command dispatcher.
-func (f *Factory) Instance() plugin.Plugin { return f.commands }
+func (f *Factory) Instance() plugin.Plugin {
+	return f.commands
+}
 
 func listCommand() (host.Declared, error) {
 	listOutput, err := commanddecl.NewSchema(ListJSONSchema())

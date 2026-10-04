@@ -179,16 +179,46 @@ type cloudFixture struct {
 	workers           sync.WaitGroup
 }
 
-func (f *cloudFixture) User() webapiproto.UserID          { return "owner" }
-func (f *cloudFixture) Cloud() *Cloud                     { return f.cloud }
-func (f *cloudFixture) CloudServices() *Services          { return f.services }
-func (f *cloudFixture) Devices() *runners.Devices         { return &f.devices }
-func (f *cloudFixture) Control() *database.ControlService { return f.control }
-func (f *cloudFixture) PublicURL() *runners.PublicURL     { return &f.public }
-func (f *cloudFixture) IdleWindow() time.Duration         { return 10 * time.Second }
-func (f *cloudFixture) Marks() pagesync.UserMarks         { return f.marks }
-func (f *cloudFixture) Vault() *providerhost.Vault        { return nil }
-func (f *cloudFixture) Assembly() *providerhost.Assembly  { return nil }
+func (f *cloudFixture) User() webapiproto.UserID {
+	return "owner"
+}
+
+func (f *cloudFixture) Cloud() *Cloud {
+	return f.cloud
+}
+
+func (f *cloudFixture) CloudServices() *Services {
+	return f.services
+}
+
+func (f *cloudFixture) Devices() *runners.Devices {
+	return &f.devices
+}
+
+func (f *cloudFixture) Control() *database.ControlService {
+	return f.control
+}
+
+func (f *cloudFixture) PublicURL() *runners.PublicURL {
+	return &f.public
+}
+
+func (f *cloudFixture) IdleWindow() time.Duration {
+	return 10 * time.Second
+}
+
+func (f *cloudFixture) Marks() pagesync.UserMarks {
+	return f.marks
+}
+
+func (f *cloudFixture) Vault() *providerhost.Vault {
+	return nil
+}
+
+func (f *cloudFixture) Assembly() *providerhost.Assembly {
+	return nil
+}
+
 func (f *cloudFixture) Activity(id webapiproto.ConversationID) idlewatch.Activity {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -290,7 +320,9 @@ func newCloudFixture(t *testing.T) *cloudFixture {
 	c, _ := NewClient(ctx, "scripted-cloud")
 	c.dial = func(context.Context, string, string) (net.Conn, error) {
 		local, peer := net.Pipe()
-		f.workers.Go(func() { f.serveManager(peer) })
+		f.workers.Go(func() {
+			f.serveManager(peer)
+		})
 		return local, nil
 	}
 	f.services = NewServices(c, tuning)
@@ -401,7 +433,9 @@ func (f cloudFrames) Send(ctx context.Context, data []byte) error {
 // serveManager scripts requests through the actual manager codecs, allowing
 // concurrent replies so a blocked checkpoint cannot serialize unrelated calls.
 func (f *cloudFixture) serveManager(conn net.Conn) {
-	defer func() { _ = conn.Close() }() // Closing the scripted connection only releases its descriptor.
+	defer func() {
+		_ = conn.Close()
+	}() // Closing the scripted connection only releases its descriptor.
 	ctx, cancel := context.WithCancel(f.ctx)
 	defer cancel()
 	closed := make(chan struct{})

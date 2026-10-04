@@ -106,7 +106,9 @@ func (c *ArtifactCache) Close(ctx context.Context) error {
 }
 
 // Holds returns the digests running services hold against line removal.
-func (c *ArtifactCache) Holds() *Holds { return &c.holds }
+func (c *ArtifactCache) Holds() *Holds {
+	return &c.holds
+}
 
 // Install returns the cached, verified image, or downloaded path of wanted.
 // It records the line and removes older artifacts no service holds. Metadata
@@ -249,7 +251,9 @@ func (h *Holds) held(sha256 string) bool {
 }
 
 // Release ends this hold exactly once; repeated calls do nothing.
-func (h *Hold) Release() { h.release() }
+func (h *Hold) Release() {
+	h.release()
+}
 
 func (c *ArtifactCache) obtainFile(
 	ctx context.Context,
@@ -274,7 +278,9 @@ func (c *ArtifactCache) obtainFile(
 	if err != nil {
 		return "", artifactError(err)
 	}
-	defer func() { err = errors.Join(err, staged.Close()) }()
+	defer func() {
+		err = errors.Join(err, staged.Close())
+	}()
 	if err := c.fetch(ctx, wanted.Artifact, staged.File(), resolver, installing); err != nil {
 		return "", err
 	}
@@ -310,7 +316,9 @@ func (c *ArtifactCache) obtainArchive(
 	if unpacking == nil {
 		return path, nil
 	}
-	defer func() { err = errors.Join(err, unpacking.Close()) }()
+	defer func() {
+		err = errors.Join(err, unpacking.Close())
+	}()
 	installing := c.installs.start(wanted)
 	defer installing.close()
 	var output *os.File

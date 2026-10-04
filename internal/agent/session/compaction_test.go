@@ -649,7 +649,9 @@ func TestOversizedInputIsNeverSummarized(t *testing.T) {
 			if isCopy(request) &&
 				slices.ContainsFunc(
 					request.Items,
-					func(i provider.InferenceItem) bool { return reflect.DeepEqual(i, userItem(huge)) },
+					func(i provider.InferenceItem) bool {
+						return reflect.DeepEqual(i, userItem(huge))
+					},
 				) {
 				t.Fatal("input summarized")
 			}
@@ -850,7 +852,9 @@ func TestContextSourceReannouncesAfterBoundary(t *testing.T) {
 			t,
 			slices.ContainsFunc(
 				f.p.Requests()[3].Items,
-				func(i provider.InferenceItem) bool { return reflect.DeepEqual(i, userItem("environment")) },
+				func(i provider.InferenceItem) bool {
+					return reflect.DeepEqual(i, userItem("environment"))
+				},
 			),
 			true,
 		)
@@ -986,7 +990,9 @@ func TestInputDuringCompactionStaysOutsideSummary(t *testing.T) {
 
 func TestEditAroundBoundariesKeepsOnlyPrefixSummaries(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		question := func(name string) string { return name + " " + strings.Repeat("q", 400) }
+		question := func(name string) string {
+			return name + " " + strings.Repeat("q", 400)
+		}
 		f := small(
 			t,
 			false,

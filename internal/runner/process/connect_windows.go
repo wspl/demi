@@ -51,5 +51,10 @@ func connectLocal(ctx context.Context, endpoint string) (net.Conn, error) {
 
 type localPipe struct{ *os.File }
 
-func (*localPipe) LocalAddr() net.Addr  { return &net.UnixAddr{Name: "local", Net: "pipe"} }
-func (*localPipe) RemoteAddr() net.Addr { return &net.UnixAddr{Name: "peer", Net: "pipe"} }
+func (*localPipe) LocalAddr() net.Addr {
+	return &net.UnixAddr{Name: "local", Net: "pipe"}
+}
+
+func (*localPipe) RemoteAddr() net.Addr {
+	return &net.UnixAddr{Name: "peer", Net: "pipe"}
+}

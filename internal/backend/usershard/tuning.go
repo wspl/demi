@@ -37,7 +37,9 @@ type ExposeTuning struct {
 }
 
 // DefaultExposeTuning returns the production timing and bounds.
-func DefaultExposeTuning() ExposeTuning { return ExposeTuning{Idle: 10 * time.Minute} }
+func DefaultExposeTuning() ExposeTuning {
+	return ExposeTuning{Idle: 10 * time.Minute}
+}
 
 // ConversationTuning configures conversation delivery and rate limits.
 type ConversationTuning struct {

@@ -20,8 +20,12 @@ func TestDownloadIdleTimeoutResetsOnProgress(t *testing.T) {
 		t.Run(fmt.Sprint(stalled), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				clientSide, serverSide := net.Pipe()
-				defer func() { _ = clientSide.Close() }() // Also unblocks the transport on failure.
-				defer func() { _ = serverSide.Close() }() // Also unblocks the fixture on failure.
+				defer func() {
+					_ = clientSide.Close()
+				}() // Also unblocks the transport on failure.
+				defer func() {
+					_ = serverSide.Close()
+				}() // Also unblocks the fixture on failure.
 				transport := &http.Transport{
 					DialContext: func(context.Context, string, string) (net.Conn, error) {
 						return &progressConn{Conn: clientSide}, nil

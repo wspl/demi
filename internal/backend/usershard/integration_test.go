@@ -358,7 +358,9 @@ func operate(t *testing.T, f *fixture) {
 		f.shard,
 		conversationID,
 		nil,
-		func(context.Context, *hostaccess.ConversationHost) (struct{}, error) { return struct{}{}, nil },
+		func(context.Context, *hostaccess.ConversationHost) (struct{}, error) {
+			return struct{}{}, nil
+		},
 	)
 	if err != nil {
 		t.Fatal(err)

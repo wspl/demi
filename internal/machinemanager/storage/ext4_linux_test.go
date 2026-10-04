@@ -136,7 +136,9 @@ func TestGrowthWithoutCapabilityNamesCapability(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer func() { err = errors.Join(err, device.Close()) }()
+		defer func() {
+			err = errors.Join(err, device.Close())
+		}()
 		if err := system.Ext4(ctx, device.Path(), target); err != nil {
 			return err
 		}

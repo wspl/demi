@@ -50,7 +50,9 @@ func TestTransportDrainFlushesBeforeGoingAway(t *testing.T) {
 		client.control <- frame
 	}
 	closed := make(chan error, 1)
-	go func() { closed <- client.close(context.Background()) }()
+	go func() {
+		closed <- client.close(context.Background())
+	}()
 	defer func() {
 		if err := <-closed; err != nil {
 			t.Error(err)

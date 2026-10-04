@@ -79,7 +79,9 @@ func realCloudStart(t *testing.T, brokenRunner bool) *realCloud {
 	h.Config.PublicURL = address
 	catalog, err := runners.PublishNative(ctx, os.Getenv("DEMI_TEST_CLOUD_NATIVE"))
 	wireMust(t, err)
-	t.Cleanup(func() { wireMust(t, catalog.Close(context.Background())) })
+	t.Cleanup(func() {
+		wireMust(t, catalog.Close(context.Background()))
+	})
 	h.Config.Native = catalog
 	h.Config.Lifecycle.IdleWindow = 2 * time.Second
 	h.Config.Lifecycle.IdlePoll = 50 * time.Millisecond
@@ -138,7 +140,9 @@ func realRun(ctx context.Context, w *cloudWork, id, script string, watch ...int)
 	scenario := *owner
 	scenario.ctx = ctx
 	w.s = &scenario
-	defer func() { w.s = owner }()
+	defer func() {
+		w.s = owner
+	}()
 	milliseconds := 240000
 	if len(watch) != 0 {
 		milliseconds = watch[0]
@@ -332,7 +336,9 @@ func TestACloudRunsAsUID1000ForEveryConversationAndKeepsASystemPackageAndHomeAcr
 	conversationEqual(t, s.device(s.ctx), device)
 	started = time.Now()
 	working.Release()
-	s.until(s.ctx, func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.until(s.ctx, func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	realMeasured(t, "idle stop, window included", started)
 	stopped := s.image(s.ctx, device)
 	output := realCommand(
@@ -397,7 +403,9 @@ func TestACloudGrowsItsHomeOnlineAndItsSavedGenerationRecordsTheGrownCapacity(t 
 	}
 	device := s.device(s.ctx)
 	working.Release()
-	s.until(s.ctx, func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.until(s.ctx, func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	working = s.hold(s.ctx, realFirst)
 	s.list(s.ctx, realFirst, 200)
 	started := time.Now()
@@ -462,7 +470,9 @@ func TestAResetBringsBackACloudWhoseBashOrRunnerIsBrokenAndKeepsItsHome(t *testi
 	realContains(t, realRun(s.ctx, first, "repaired", "cat ~/note; stat -c %a /usr/bin/bash"), "latest-home\n755")
 	realContains(t, realRun(s.ctx, first, "remove-runner", "sudo -n rm /usr/bin/demi-runner; echo removed"), "removed")
 	working.Release()
-	s.until(s.ctx, func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.until(s.ctx, func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	conversationRefusal(t, s.list(s.ctx, realFirst, 503), webapiproto.ErrorCodeCloudUnavailable)
 	s.resetCloud("7e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02")
 	s.until(s.ctx, ready)
@@ -607,7 +617,9 @@ func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEv
 	// stat allocation, while a temporary directory on tmpfs does not.
 	copies, err := os.MkdirTemp(filepath.Dir(system), "sparse-copy-")
 	wireMust(t, err)
-	t.Cleanup(func() { wireMust(t, os.RemoveAll(copies)) })
+	t.Cleanup(func() {
+		wireMust(t, os.RemoveAll(copies))
+	})
 	for _, image := range []string{system, home} {
 		copyPath := filepath.Join(copies, "copy.ext4")
 		realCommand(s.ctx, t, "cp", "--reflink=auto", "--sparse=always", image, copyPath)
@@ -705,7 +717,9 @@ func TestTwoUsersCloudsRunAtOnceAndReachTheBackendButNothingElsePrivate(t *testi
 	address := s.b.Address()
 	private, err := (&net.ListenConfig{}).Listen(s.ctx, "tcp", net.JoinHostPort(address.Addr().String(), "0"))
 	wireMust(t, err)
-	defer func() { wireMust(t, private.Close()) }()
+	defer func() {
+		wireMust(t, private.Close())
+	}()
 	_, port, err := net.SplitHostPort(private.Addr().String())
 	wireMust(t, err)
 	targets := fmt.Sprintf(
@@ -754,7 +768,9 @@ func TestACloudWhoseSandboxIsKilledReportsADeathAndBootsAgainWithItsFiles(t *tes
 	boot := s.boot(device)
 	realCommand(s.ctx, t, "pkill", "-KILL", "-f", "^runsc-sandbox .*"+boot)
 	started := time.Now()
-	s.until(s.ctx, func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.until(s.ctx, func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	realMeasured(t, "death until off", started)
 	started = time.Now()
 	back := realRun(s.ctx, first, "back", "cat ~/note; ls -d /var/lib/demi/jobs/job-* | wc -l")

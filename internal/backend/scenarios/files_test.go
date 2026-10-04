@@ -217,7 +217,9 @@ func TestFileShutdownEndsOpenDownload(t *testing.T) {
 		nil,
 	)
 	wireMust(t, err)
-	defer func() { wireMust(t, response.Body.Close()) }()
+	defer func() {
+		wireMust(t, response.Body.Close())
+	}()
 	if response.StatusCode != 200 {
 		t.Fatalf("download: %s", response.Status)
 	}
@@ -363,7 +365,9 @@ func TestFilesWorkingTreeTextListingAndOffline(t *testing.T) {
 func TestFilesRawRangesInertHeadersAndCommittedSide(t *testing.T) {
 	t.Parallel()
 	d := filesOnDevice(t)
-	raw := func(path string) string { return "/fs/raw?path=" + url.QueryEscape(filepath.Join(d.root, path)) }
+	raw := func(path string) string {
+		return "/fs/raw?path=" + url.QueryEscape(filepath.Join(d.root, path))
+	}
 	image := backendtest.Pattern(300000, 0)
 	wireMust(t, os.WriteFile(filepath.Join(d.root, "logo.svg"), image, 0o644))
 	whole := d.read(t, raw("logo.svg"))
@@ -520,7 +524,9 @@ func TestFileUploadIsWholeAndRequiresOverwriteConsent(t *testing.T) {
 	}
 	watcher, err := fsnotify.NewWatcher()
 	wireMust(t, err)
-	defer func() { wireMust(t, watcher.Close()) }()
+	defer func() {
+		wireMust(t, watcher.Close())
+	}()
 	wireMust(t, watcher.Add(d.root))
 	partial := func() []int64 {
 		t.Helper()

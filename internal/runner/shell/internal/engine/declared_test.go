@@ -22,7 +22,9 @@ type recordingHandler struct {
 	requests []process.RawCommand
 }
 
-func (*recordingHandler) Operations() []string { return []string{process.Raw} }
+func (*recordingHandler) Operations() []string {
+	return []string{process.Raw}
+}
 
 func (h *recordingHandler) Invoke(
 	ctx context.Context,
@@ -109,7 +111,9 @@ func TestDeclaredBrokenPipeExits141(t *testing.T) {
 	if err := reader.Close(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = writer.Close() }() // engine.Execute may close cancelled job streams.
+	defer func() {
+		_ = writer.Close()
+	}() // engine.Execute may close cancelled job streams.
 	result, output, diagnostic := shellFiles(t, root, `fixture; printf '%s' "$?" >&2`, func(o *engine.Options) {
 		o.Stdout = writer
 		o.Commands = &process.JobCommands{
@@ -137,8 +141,10 @@ type stoppedInputHandler struct {
 	writer  *os.File
 }
 
-func (*stoppedInputHandler) Operations() []string { return []string{process.Raw} }
-func (*stoppedInputHandler) Check()               {}
+func (*stoppedInputHandler) Operations() []string {
+	return []string{process.Raw}
+}
+func (*stoppedInputHandler) Check() {}
 func (h *stoppedInputHandler) Waiting(delta int) {
 	if delta == 1 {
 		h.waiting <- struct{}{}
@@ -198,8 +204,12 @@ func TestDeclaredInputCancellationPreservesShellInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = reader.Close() }() // engine.Execute may close canceled job streams.
-			defer func() { _ = writer.Close() }()
+			defer func() {
+				_ = reader.Close()
+			}() // engine.Execute may close canceled job streams.
+			defer func() {
+				_ = writer.Close()
+			}()
 			handler := &stoppedInputHandler{waiting: make(chan struct{}, test.waits), waits: test.waits, writer: writer}
 			result, output, diagnostic := shellFiles(t, t.TempDir(), test.script, func(o *engine.Options) {
 				o.Stdin = reader

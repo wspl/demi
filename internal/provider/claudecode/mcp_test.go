@@ -287,7 +287,9 @@ func TestMissingAndUnaskedBatchResults(t *testing.T) {
 			request(user("run both"), toolOutput("toolu_alpha", "alpha done"), toolOutput("toolu_beta", "beta done")),
 		)
 		ended := make(chan []provider.Event, 1)
-		go func() { ended <- collect(t.Context(), r, both) }()
+		go func() {
+			ended <- collect(t.Context(), r, both)
+		}()
 		synctest.Wait()
 		c.finish(host.ProcessEnd{Kind: host.ProcessExited})
 		f = failure(t, <-ended)

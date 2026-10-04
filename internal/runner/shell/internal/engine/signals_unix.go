@@ -54,7 +54,9 @@ func (e *execution) kill(ctx context.Context, args []string) error {
 	return nil
 }
 
-func signalExitCode(name string) uint8 { return uint8(128 + unix.SignalNum(name)) }
+func signalExitCode(name string) uint8 {
+	return uint8(128 + unix.SignalNum(name))
+}
 
 // signal sends to active processes descended from this shell scope. The job
 // retains only active commands, not every scope ever made by a long-running loop.

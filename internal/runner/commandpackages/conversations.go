@@ -98,8 +98,13 @@ type conversationError struct {
 	cause   error
 }
 
-func (e *conversationError) Error() string { return e.message }
-func (e *conversationError) Unwrap() error { return e.cause }
+func (e *conversationError) Error() string {
+	return e.message
+}
+
+func (e *conversationError) Unwrap() error {
+	return e.cause
+}
 
 func releaseFailures(failures []error) error {
 	if len(failures) == 0 {

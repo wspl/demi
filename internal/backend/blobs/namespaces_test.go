@@ -23,7 +23,9 @@ import (
 	"github.com/wspl/demi/internal/types"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 type wallClock struct{ milliseconds atomic.Int64 }
 

@@ -76,7 +76,9 @@ func (f *Factory) Manifest() plugin.Manifest {
 }
 
 // Instance creates one user's stateless handler; its port owns persisted numbers.
-func (f *Factory) Instance() plugin.Plugin { return &instance{commands: f.commands} }
+func (f *Factory) Instance() plugin.Plugin {
+	return &instance{commands: f.commands}
+}
 
 type instance struct{ commands *plugin.CommandPlugin }
 

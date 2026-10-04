@@ -94,4 +94,6 @@ func validateManifest(m CloudImageManifest) error {
 }
 
 // Name returns the base archive's file name.
-func (f RootfsFile) Name() string { return string(f) }
+func (f RootfsFile) Name() string {
+	return string(f)
+}

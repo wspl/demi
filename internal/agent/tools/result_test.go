@@ -17,7 +17,9 @@ import (
 	"github.com/wspl/demi/internal/types"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // exited supplies a command whose whole stdout has not yet been seen.
 func exited(text string) host.CommandStatus {

@@ -218,7 +218,11 @@ func TestUntilAndPackageCalls(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		done := make(chan error, 1)
-		go func() { done <- d.Until(ctx, func(d *plugintest.TestDemi) bool { return d.Changes() == 1 }) }()
+		go func() {
+			done <- d.Until(ctx, func(d *plugintest.TestDemi) bool {
+				return d.Changes() == 1
+			})
+		}()
 		synctest.Wait()
 		if err := d.Port().Changed(ctx, plugin.ScopeUser); err != nil {
 			t.Fatal(err)
@@ -236,7 +240,11 @@ func TestUntilAndPackageCalls(t *testing.T) {
 		if len(d.Called()) != 1 {
 			t.Fatal("package call was not recorded")
 		}
-		go func() { done <- d.Until(ctx, func(*plugintest.TestDemi) bool { return false }) }()
+		go func() {
+			done <- d.Until(ctx, func(*plugintest.TestDemi) bool {
+				return false
+			})
+		}()
 		synctest.Wait()
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {

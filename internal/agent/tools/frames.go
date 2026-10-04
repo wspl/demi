@@ -44,7 +44,9 @@ func StoredRunningCommands(blocks []types.Block) []types.CommandID {
 		if !ok {
 			continue
 		}
-		running = slices.DeleteFunc(running, func(id types.CommandID) bool { return id == view.CommandID })
+		running = slices.DeleteFunc(running, func(id types.CommandID) bool {
+			return id == view.CommandID
+		})
 		if view.Status == types.ShellViewStatusRunning {
 			running = append(running, view.CommandID)
 		}

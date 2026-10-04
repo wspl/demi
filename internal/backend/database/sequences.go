@@ -29,7 +29,9 @@ VALUES (?,1 + ?)
 ON CONFLICT (name) DO UPDATE
 SET next=next + ?
 RETURNING next - ? AS next`,
-		func(r *storedRow) uint64 { return r.count("next") },
+		func(r *storedRow) uint64 {
+			return r.count("next")
+		},
 		sequence,
 		count,
 		count,

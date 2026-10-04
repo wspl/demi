@@ -162,7 +162,9 @@ func (t *Table) downloadInput(
 		return err
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = body.Close() }()
+	defer func() {
+		_ = body.Close()
+	}()
 	for {
 		bytes := make([]byte, 65536)
 		n, err := body.Read(bytes)
@@ -250,14 +252,20 @@ func (t *Table) runShell(spec TaskSpec, entry *taskEntry, command *ShellCommand)
 	if err != nil {
 		return nil, err
 	}
-	child := taskExecution{
+	return t.executeTask(spec, entry, shellExecution(shell), directory, recorder, command.Stdin, command.Stdout)
+}
+
+// shellExecution is a shell job as the task table runs it.
+func shellExecution(shell process.ShellJob) taskExecution {
+	return taskExecution{
 		input:  shell.Input(),
 		output: shell.Output(),
 		cancel: shell.Cancel,
-		signal: func(_ context.Context, signal runnerproto.Signal) error { return shell.Signal(signal) },
-		wait:   shell.Wait,
+		signal: func(_ context.Context, signal runnerproto.Signal) error {
+			return shell.Signal(signal)
+		},
+		wait: shell.Wait,
 	}
-	return t.executeTask(spec, entry, child, directory, recorder, command.Stdin, command.Stdout)
 }
 
 // executeTask joins pipe workers before child cleanup; shell authority and directory cleanup remain with runShell.

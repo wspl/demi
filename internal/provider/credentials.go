@@ -35,10 +35,14 @@ var ErrNoAccount = errors.New("no account")
 type PoolError struct{ Err error }
 
 // Error returns the diagnostic for this failure.
-func (e *PoolError) Error() string { return e.Err.Error() }
+func (e *PoolError) Error() string {
+	return e.Err.Error()
+}
 
 // Unwrap returns the underlying cause.
-func (e *PoolError) Unwrap() error { return e.Err }
+func (e *PoolError) Unwrap() error {
+	return e.Err
+}
 
 // Revision is a secret document and its equality-only version.
 type Revision struct {
@@ -110,7 +114,9 @@ type memoryEntry struct {
 }
 
 // NewMemoryCredentialPool returns an empty pool.
-func NewMemoryCredentialPool() *MemoryCredentialPool { return &MemoryCredentialPool{} }
+func NewMemoryCredentialPool() *MemoryCredentialPool {
+	return &MemoryCredentialPool{}
+}
 
 // AccountEntry is an account together with its secret document for login publication.
 type AccountEntry struct {
@@ -126,7 +132,9 @@ func (p *MemoryCredentialPool) Entries() []AccountEntry {
 	for _, entry := range p.accounts {
 		entries = append(entries, AccountEntry{Meta: cloneMeta(entry.meta), Secret: entry.text})
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Meta.ID < entries[j].Meta.ID })
+	sort.Slice(entries, func(i, j int) bool {
+		return entries[i].Meta.ID < entries[j].Meta.ID
+	})
 	return entries
 }
 
@@ -284,10 +292,14 @@ var ErrNoSecretDocument = errors.New("the account has no secret document")
 type RenewError struct{ Err error }
 
 // Error returns the diagnostic for this failure.
-func (e *RenewError) Error() string { return e.Err.Error() }
+func (e *RenewError) Error() string {
+	return e.Err.Error()
+}
 
 // Unwrap returns the underlying cause.
-func (e *RenewError) Unwrap() error { return e.Err }
+func (e *RenewError) Unwrap() error {
+	return e.Err
+}
 
 // Stored is a decoded secret and the version it was read at.
 type Stored[S any] struct {

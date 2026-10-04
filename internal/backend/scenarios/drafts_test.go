@@ -70,7 +70,9 @@ func TestDraftReachesEverySessionAndKeepsReplacedVersion(t *testing.T) {
 		},
 		&webapiproto.DraftFileRemoteFile{DeviceID: "a-device", Path: "/var/log/app.log"},
 	}
-	text := func(words string) string { return "Fix the login" + words + " ￼ after ￼" }
+	text := func(words string) string {
+		return "Fix the login" + words + " ￼ after ￼"
+	}
 	save := func(
 		s *backendtest.Session,
 		base uint64,

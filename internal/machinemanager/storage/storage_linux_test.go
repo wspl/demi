@@ -20,7 +20,9 @@ var rootTests = flag.Bool(
 	"run storage tests in private Linux namespaces (requires root and filesystem tools)",
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // isolatedStorage runs privileged disk scenarios on an owned namespace thread.
 // Scenario defers run on that same thread before the namespace disappears.

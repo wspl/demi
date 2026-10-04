@@ -33,7 +33,9 @@ func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 					t.Error(err)
 					return
 				}
-				defer func() { _ = socket.CloseNow() }() // The read owns disconnection diagnostics.
+				defer func() {
+					_ = socket.CloseNow()
+				}() // The read owns disconnection diagnostics.
 				close(connected)
 				defer close(disconnected)
 				for {
@@ -69,7 +71,9 @@ func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = socket.Close() }()
+			defer func() {
+				_ = socket.Close()
+			}()
 			backend, err := runnerproto.ParseBackendURL(server.URL)
 			if err != nil {
 				t.Fatal(err)

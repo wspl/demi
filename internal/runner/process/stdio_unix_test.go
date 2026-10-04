@@ -42,7 +42,9 @@ func TestStandardDuplicatesAndLiveInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	cloned := os.NewFile(uintptr(duplicate), "live clone")
-	defer func() { _ = cloned.Close() }()
+	defer func() {
+		_ = cloned.Close()
+	}()
 	live, err := process.IsLive(cloned, map[string]string{process.LiveInputEnv: reference})
 	if err != nil || !live {
 		t.Fatalf("cloned live input: %t %v", live, err)

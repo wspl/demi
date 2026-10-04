@@ -42,7 +42,9 @@ func TestPanickingCallDoesNotPoisonShard(t *testing.T) {
 	if !errors.Is(err, errShardFailed) {
 		t.Fatalf("panic result = %v", err)
 	}
-	value, err := shardCall(t.Context(), s, func(context.Context) (int, error) { return 42, nil })
+	value, err := shardCall(t.Context(), s, func(context.Context) (int, error) {
+		return 42, nil
+	})
 	if err != nil || value != 42 {
 		t.Fatalf("subsequent call = %d, %v", value, err)
 	}

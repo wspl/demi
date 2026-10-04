@@ -52,7 +52,9 @@ func ConversationHostForNode(
 			return remotehost.NewHost(
 				admitted.Host.Key(),
 				admitted.Root,
-				func() remotehost.DeviceLink { return remotehost.DeviceLink{Last: &account} },
+				func() remotehost.DeviceLink {
+					return remotehost.DeviceLink{Last: &account}
+				},
 				func() (*gates.Lease, error) {
 					return nil, &host.Error{
 						Kind:    host.Unavailable,
@@ -75,7 +77,9 @@ func RunJob(
 	key host.Key,
 	job func(context.Context) error,
 ) error {
-	return runJob(ctx, shard, id, key, func(ctx context.Context, _ *Admitted) error { return job(ctx) })
+	return runJob(ctx, shard, id, key, func(ctx context.Context, _ *Admitted) error {
+		return job(ctx)
+	})
 }
 
 // ShardShellEnvironments makes node-owned shell environments and keeps outputs
@@ -293,7 +297,9 @@ func (k *commandKeeper) Retain(
 		}
 		retained = append(
 			retained,
-			remotehost.EditedFile(file, func(index int) *types.EditCopies { return copies[index] }),
+			remotehost.EditedFile(file, func(index int) *types.EditCopies {
+				return copies[index]
+			}),
 		)
 	}
 	return retained, nil
@@ -369,7 +375,11 @@ type hostAdmissionError struct {
 }
 
 // Error returns the tool-facing admission message.
-func (e *hostAdmissionError) Error() string { return e.failure.Error() }
+func (e *hostAdmissionError) Error() string {
+	return e.failure.Error()
+}
 
 // Unwrap preserves both the classification and underlying admission failure.
-func (e *hostAdmissionError) Unwrap() []error { return []error{e.failure, e.cause} }
+func (e *hostAdmissionError) Unwrap() []error {
+	return []error{e.failure, e.cause}
+}

@@ -20,4 +20,7 @@ func startupLimits() {
 	}
 	_ = process.Umask()
 }
-func terminationSignal() os.Signal { return syscall.SIGTERM }
+
+func terminationSignal() os.Signal {
+	return syscall.SIGTERM
+}

@@ -19,7 +19,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func mustValue(t *testing.T, value any) json.RawMessage {
 	t.Helper()

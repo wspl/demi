@@ -42,7 +42,9 @@ type ReportError struct {
 }
 
 // Error returns the message of an action failure.
-func (e *ReportError) Error() string { return e.Message }
+func (e *ReportError) Error() string {
+	return e.Message
+}
 
 // ForkError explains why a Fork cannot start where it was asked.
 type ForkError struct {
@@ -93,4 +95,6 @@ func (e *ForkError) Error() string {
 }
 
 // Unwrap returns the target or store failure, when present.
-func (e *ForkError) Unwrap() error { return e.Cause }
+func (e *ForkError) Unwrap() error {
+	return e.Cause
+}

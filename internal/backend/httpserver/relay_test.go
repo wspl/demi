@@ -37,7 +37,9 @@ func TestExposeRelayPreservesMixedCaseAndRepeatedHeaders(t *testing.T) {
 				bufio.NewReader(edge),
 				head,
 				relayTestConn{relay},
-				func() { _ = relay.SetDeadline(time.Now()) },
+				func() {
+					_ = relay.SetDeadline(time.Now())
+				},
 				"localhost:3000",
 				time.Minute,
 			)
@@ -120,7 +122,9 @@ func TestExposeUpgradeCopiesUnreadBytesBothWays(t *testing.T) {
 				bufio.NewReader(edge),
 				head,
 				relayTestConn{relay},
-				func() { _ = relay.SetDeadline(time.Now()) },
+				func() {
+					_ = relay.SetDeadline(time.Now())
+				},
 				"localhost:3000",
 				time.Minute,
 			)
@@ -169,8 +173,12 @@ func TestExposeUpgradeCopiesUnreadBytesBothWays(t *testing.T) {
 func TestExposeUpgradeJoinsCopiesBeforeClosingPipeEnds(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		visitor, edge := net.Pipe()
-		defer func() { _ = visitor.Close() }()
-		defer func() { _ = edge.Close() }()
+		defer func() {
+			_ = visitor.Close()
+		}()
+		defer func() {
+			_ = edge.Close()
+		}()
 		toService, serviceInput := testPipe(t)
 		serviceOutput, fromService := testPipe(t)
 		ctx, cancel := context.WithCancel(t.Context())
@@ -225,4 +233,6 @@ func TestExposeUpgradeJoinsCopiesBeforeClosingPipeEnds(t *testing.T) {
 // net.Pipe has no half-close. Its concurrency-safe Close ends the test peer.
 type relayTestConn struct{ net.Conn }
 
-func (c relayTestConn) CloseWrite() error { return c.Close() }
+func (c relayTestConn) CloseWrite() error {
+	return c.Close()
+}

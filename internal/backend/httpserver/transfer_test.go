@@ -15,7 +15,10 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
+
 func testPipe(t *testing.T) (*remotehost.PipeWriter, *remotehost.PipeReader) {
 	t.Helper()
 	broker := remotehost.NewPipes(120 * time.Second)
@@ -44,10 +47,14 @@ func TestConnectionInactivityFollowsLastByte(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		first, second := net.Pipe()
 		// The operation reports IO failures; cleanup has no further recipient.
-		defer func() { _ = second.Close() }()
+		defer func() {
+			_ = second.Close()
+		}()
 		activity := newActivity(first)
 		// The operation reports IO failures; cleanup has no further recipient.
-		defer func() { _ = activity.Close() }()
+		defer func() {
+			_ = activity.Close()
+		}()
 		stop := activity.watch(t.Context(), transferIdle)
 		defer stop()
 		moved := make(chan struct{})
@@ -80,7 +87,11 @@ func (b *chunkBody) Read(_ context.Context, p []byte) (int, error) {
 	b.chunks = b.chunks[1:]
 	return copy(p, chunk), nil
 }
-func (*chunkBody) Close(context.Context) error { return nil }
+
+func (*chunkBody) Close(context.Context) error {
+	return nil
+}
+
 func TestUploadHostTimeDoesNotCountAgainstBrowser(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		writer, reader := testPipe(t)
@@ -129,7 +140,11 @@ func (quietBody) Read(ctx context.Context, _ []byte) (int, error) {
 	<-ctx.Done()
 	return 0, ctx.Err()
 }
-func (quietBody) Close(context.Context) error { return nil }
+
+func (quietBody) Close(context.Context) error {
+	return nil
+}
+
 func TestQuietBrowserStallsUploadAndRevocationRefusesIt(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		writer, reader := testPipe(t)
@@ -148,7 +163,11 @@ func TestQuietBrowserStallsUploadAndRevocationRefusesIt(t *testing.T) {
 		writer, _ = testPipe(t)
 		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan error, 1)
-		go func() { done <- copyUpload(ctx, quietBody{}, writer, func(context.Context) error { return nil }) }()
+		go func() {
+			done <- copyUpload(ctx, quietBody{}, writer, func(context.Context) error {
+				return nil
+			})
+		}()
 		synctest.Wait()
 		cancel()
 		err = <-done
@@ -165,8 +184,13 @@ type testDownloadLease struct {
 	released chan struct{}
 }
 
-func (l *testDownloadLease) Context() context.Context { return l.ctx }
-func (l *testDownloadLease) Release()                 { close(l.released) }
+func (l *testDownloadLease) Context() context.Context {
+	return l.ctx
+}
+
+func (l *testDownloadLease) Release() {
+	close(l.released)
+}
 
 func TestDownloadEndsCompleteOnlyWhenHostReadDid(t *testing.T) {
 	for _, scenario := range []string{"complete", "host_failed", "visitor_left", "revoked"} {
@@ -186,7 +210,9 @@ func TestDownloadEndsCompleteOnlyWhenHostReadDid(t *testing.T) {
 				lease := &testDownloadLease{ctx: lifetime, released: make(chan struct{})}
 				response := httptest.NewRecorder()
 				done := make(chan error, 1)
-				go func() { done <- serveDownload(request, response, peer, reader, lease, 200) }()
+				go func() {
+					done <- serveDownload(request, response, peer, reader, lease, 200)
+				}()
 				switch scenario {
 				case "complete":
 					for _, chunk := range []string{"one ", "two"} {

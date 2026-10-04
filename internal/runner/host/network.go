@@ -43,7 +43,9 @@ func (s *Service) NetOpen(ctx context.Context, request runnerproto.NetOpen) erro
 		outputErr := process.ReportPipe(s.life.ctx, s.output, request.Output.ID, failure)
 		return errors.Join(replyErr, inputErr, outputErr)
 	}
-	defer func() { _ = socket.Close() }() // Each direction reports its own IO failure.
+	defer func() {
+		_ = socket.Close()
+	}() // Each direction reports its own IO failure.
 	if err = sendFrame(s.life.ctx, s.output, &runnerproto.NetOpened{StreamID: request.StreamID}); err != nil {
 		return err
 	}
@@ -83,8 +85,13 @@ type netError struct {
 	cause   error
 }
 
-func (e *netError) Error() string { return e.message }
-func (e *netError) Unwrap() error { return e.cause }
+func (e *netError) Error() string {
+	return e.message
+}
+
+func (e *netError) Unwrap() error {
+	return e.cause
+}
 
 // connectTCP gives each socket attempt ten seconds, excluding descriptor backoff.
 func connectTCP(ctx context.Context, host string, port uint16) (*net.TCPConn, error) {
@@ -116,7 +123,9 @@ func (s *Service) netInput(ctx context.Context, url string, socket *net.TCPConn)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, body.Close()) }()
+	defer func() {
+		err = errors.Join(err, body.Close())
+	}()
 	if _, err = io.CopyBuffer(socket, body, make([]byte, 64*1024)); err != nil {
 		return err
 	}
@@ -126,4 +135,6 @@ func (s *Service) netInput(ctx context.Context, url string, socket *net.TCPConn)
 // socketReader transfers ownership of the TCP read half to the output pipe.
 type socketReader struct{ *net.TCPConn }
 
-func (r *socketReader) Close() error { return r.CloseRead() }
+func (r *socketReader) Close() error {
+	return r.CloseRead()
+}

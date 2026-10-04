@@ -63,7 +63,9 @@ func switchSkills(all sources, id string, chosen map[string]bool, enabled bool) 
 	changed := stored.source
 	changed.Skills = slices.Clone(changed.Skills)
 	for _, name := range slices.Sorted(maps.Keys(chosen)) {
-		if !slices.ContainsFunc(changed.Skills, func(skill userSkill) bool { return skill.Name == name }) {
+		if !slices.ContainsFunc(changed.Skills, func(skill userSkill) bool {
+			return skill.Name == name
+		}) {
 			return source{}, &plugin.ErrorRefused{
 				Reason:  "skill_not_found",
 				Message: fmt.Sprintf("The source has no skill \"%s\"", name),
@@ -192,7 +194,9 @@ func skillLocation(skill userSkill) string {
 // pageState orders the source summaries by the user's addition order.
 func pageState(all sources, fetching map[string]bool) SkillsState {
 	ids := slices.Sorted(maps.Keys(all))
-	slices.SortStableFunc(ids, func(a, b string) int { return cmp.Compare(all[a].source.Added, all[b].source.Added) })
+	slices.SortStableFunc(ids, func(a, b string) int {
+		return cmp.Compare(all[a].source.Added, all[b].source.Added)
+	})
 	state := SkillsState{Sources: make([]SourceState, 0, len(ids))}
 	for _, id := range ids {
 		value := all[id].source

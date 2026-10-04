@@ -38,7 +38,9 @@ func connectHostRunner(t *testing.T, b *backendtest.TestBackend) *rawHostRunner 
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = socket.CloseNow() }) // Closing an already closed fixture socket is harmless.
+	t.Cleanup(func() {
+		_ = socket.CloseNow()
+	}) // Closing an already closed fixture socket is harmless.
 	return &rawHostRunner{t, t.Context(), socket}
 }
 
@@ -174,8 +176,12 @@ func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
 	one, other := connectHostRunner(t, s.b), connectHostRunner(t, s.b)
 	hello := runnerHello(runnerproto.Version, token, nil)
 	var sends sync.WaitGroup
-	sends.Go(func() { one.send(hello) })
-	sends.Go(func() { other.send(hello) })
+	sends.Go(func() {
+		one.send(hello)
+	})
+	sends.Go(func() {
+		other.send(hello)
+	})
 	sends.Wait()
 	first, second := one.next(), other.next()
 	bound, refused := one, second
@@ -425,7 +431,9 @@ func TestRunnerHelloDuringShutdownIsNotWelcomed(t *testing.T) {
 		t.Fatal(err)
 	}
 	closed := make(chan error, 1)
-	go func() { closed <- s.b.Close(s.ctx) }()
+	go func() {
+		closed <- s.b.Close(s.ctx)
+	}()
 	defer func() {
 		hold.Release()
 		_ = runner.socket.CloseNow() // Release the owned socket even if an assertion failed.

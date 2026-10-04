@@ -49,10 +49,14 @@ func takeLock(path string) (*os.File, error) {
 }
 
 // Data returns the borrowed state lock inherited by the recovery process.
-func (l *ManagerLock) Data() *os.File { return l.data }
+func (l *ManagerLock) Data() *os.File {
+	return l.data
+}
 
 // Close releases both locks.
-func (l *ManagerLock) Close() error { return errors.Join(l.runtime.Close(), l.data.Close()) }
+func (l *ManagerLock) Close() error {
+	return errors.Join(l.runtime.Close(), l.data.Close())
+}
 
 // VerifyInherited checks descriptor 3 names and holds this state directory's lock.
 func VerifyInherited(data string) error {

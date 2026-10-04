@@ -26,6 +26,8 @@ func syncDirectory(ctx context.Context, path string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, directory.Close()) }()
+	defer func() {
+		err = errors.Join(err, directory.Close())
+	}()
 	return directory.Sync()
 }

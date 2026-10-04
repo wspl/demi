@@ -114,7 +114,9 @@ func filesCloseTree(ctx context.Context, t *testing.T, s *backendtest.Conversati
 func TestUploadReopeningTwoPagesAndSyncWritesNoBlob(t *testing.T) {
 	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
-	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Objects = counts })
+	w := filesWorking(t, "", func(h *backendtest.Harness) {
+		h.Objects = counts
+	})
 	shots := []filesAttachment{
 		filesUpload(w.ctx, t, w.backend, &w.session, "a.png", "image/png", storetest.PNG(4, 3, 1)),
 		filesUpload(w.ctx, t, w.backend, &w.session, "b.png", "image/png", storetest.PNG(4, 3, 2)),
@@ -155,7 +157,9 @@ func TestUploadReopeningTwoPagesAndSyncWritesNoBlob(t *testing.T) {
 func TestUploadRestoreReadsReplayBlobsOnceAfterCompaction(t *testing.T) {
 	t.Parallel()
 	counts := &blobstest.ObjectCounts{}
-	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Objects = counts })
+	w := filesWorking(t, "", func(h *backendtest.Harness) {
+		h.Objects = counts
+	})
 	old := filesUpload(w.ctx, t, w.backend, &w.session, "old.png", "image/png", storetest.PNG(4, 3, 0))
 	var shots []filesAttachment
 	for i := 1; i <= 9; i++ {

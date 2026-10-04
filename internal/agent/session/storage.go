@@ -98,7 +98,9 @@ func (s *Session) storage(ctx context.Context, op host.StorageOp, guard store.Co
 	if err = s.save(ctx, pending, guard); err != nil {
 		return nil, storageError(err)
 	}
-	s.mutate(func(c *coreState) { c.commands.Accept(*pending) })
+	s.mutate(func(c *coreState) {
+		c.commands.Accept(*pending)
+	})
 	return &host.StorageCommitted{Revision: host.Revision(pending.Revision)}, nil
 }
 

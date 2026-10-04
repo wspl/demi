@@ -37,6 +37,12 @@ step='generated'
 echo "check: ${step}"
 go run ./tools/contractgen -check "$@"
 
+step='function bodies'
+echo "check: ${step}"
+# gofmt keeps a one-line function body as it finds it; AGENTS.md § Layout
+# does not.
+go run ./tools/bodycheck
+
 step='file names'
 # The module layout forbids catch-all files (packages.md § Module
 # layout): a file is named for its one responsibility.

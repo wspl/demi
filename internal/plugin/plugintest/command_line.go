@@ -35,7 +35,9 @@ func Roots(manifest plugin.Manifest) ([]commanddecl.Node[commanddecl.Binding], e
 	for _, root := range roots {
 		pinned, err := commanddecl.Pin(
 			root,
-			func(commanddecl.NativeOperation) (string, error) { return strings.Repeat("0", 64), nil },
+			func(commanddecl.NativeOperation) (string, error) {
+				return strings.Repeat("0", 64), nil
+			},
 		)
 		if err != nil {
 			return nil, err

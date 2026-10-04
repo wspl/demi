@@ -19,8 +19,13 @@ import (
 
 type forkBlobs struct{ *storetest.MemoryBlobs }
 
-func (b forkBlobs) Media() store.Blobs                              { return b.MemoryBlobs }
-func (forkBlobs) CommitUses(context.Context, []types.BlobRef) error { return nil }
+func (b forkBlobs) Media() store.Blobs {
+	return b.MemoryBlobs
+}
+
+func (forkBlobs) CommitUses(context.Context, []types.BlobRef) error {
+	return nil
+}
 
 // Temporary SQLite databases, no vendor, runner or wall-clock wait.
 func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {

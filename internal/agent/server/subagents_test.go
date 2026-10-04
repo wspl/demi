@@ -44,8 +44,15 @@ func (m *nodeScripts) Run(ctx context.Context, r provider.InferenceRequest) prov
 	}
 	return m.root.Run(ctx, r)
 }
-func (m *nodeScripts) Fresh() provider.Runtime   { return m }
-func (*nodeScripts) Close(context.Context) error { return nil }
+
+func (m *nodeScripts) Fresh() provider.Runtime {
+	return m
+}
+
+func (*nodeScripts) Close(context.Context) error {
+	return nil
+}
+
 func (*nodeScripts) RequestLimits(types.Model) provider.RequestLimits {
 	return provider.RequestLimits{}
 }
@@ -482,7 +489,9 @@ func TestGrandchildCompletionReachesParentThenRoot(t *testing.T) {
 		equal(t, "sent to 0\n", agent(t, f, parent, "send", `{"id":"parent","message":"status: delegating"}`).stdout)
 		untilIdle(t, c)
 		done := make(chan types.NodeID, 1)
-		go func() { done <- spawn(t, f, parent, `{"prompt":"task nested"}`) }()
+		go func() {
+			done <- spawn(t, f, parent, `{"prompt":"task nested"}`)
+		}()
 		synctest.Wait()
 		close(parentGate)
 		child := <-done
@@ -633,7 +642,9 @@ func TestRestoreReadsGrandchildrenBeforeSettlingParent(t *testing.T) {
 		c := f.opened()
 		outer := spawn(t, f, rootID(), `{"prompt":"task outer"}`)
 		done := make(chan types.NodeID, 1)
-		go func() { done <- spawn(t, f, outer, `{"prompt":"task inner"}`) }()
+		go func() {
+			done <- spawn(t, f, outer, `{"prompt":"task inner"}`)
+		}()
 		synctest.Wait()
 		close(gate)
 		inner := <-done
@@ -714,7 +725,9 @@ func TestAbortClosesSubtreeAndDisposePreservesLiveChildren(t *testing.T) {
 		c := f.opened()
 		alpha := spawn(t, f, rootID(), `{"prompt":"task alpha"}`)
 		done := make(chan types.NodeID, 1)
-		go func() { done <- spawn(t, f, alpha, `{"prompt":"task gamma"}`) }()
+		go func() {
+			done <- spawn(t, f, alpha, `{"prompt":"task gamma"}`)
+		}()
 		synctest.Wait()
 		close(gate)
 		gamma := <-done
@@ -804,7 +817,9 @@ func TestMessagesCrossTreeButLifecycleBelongsToSpawner(t *testing.T) {
 		alpha := spawn(t, f, rootID(), `{"prompt":"task alpha","description":"alpha"}`)
 		beta := spawn(t, f, rootID(), `{"prompt":"task beta","description":"beta"}`)
 		done := make(chan types.NodeID, 1)
-		go func() { done <- spawn(t, f, alpha, `{"prompt":"task gamma","description":"gamma"}`) }()
+		go func() {
+			done <- spawn(t, f, alpha, `{"prompt":"task gamma","description":"gamma"}`)
+		}()
 		synctest.Wait()
 		close(alphaGate)
 		gamma := <-done

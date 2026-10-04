@@ -78,13 +78,19 @@ func (s *treeScript) Run(ctx context.Context, r provider.InferenceRequest) provi
 }
 
 // Fresh shares scripts across the session tree.
-func (s *treeScript) Fresh() provider.Runtime { return s }
+func (s *treeScript) Fresh() provider.Runtime {
+	return s
+}
 
 // Close requires no resource cleanup.
-func (*treeScript) Close(context.Context) error { return nil }
+func (*treeScript) Close(context.Context) error {
+	return nil
+}
 
 // RequestLimits returns the fixture request limits.
-func (*treeScript) RequestLimits(types.Model) provider.RequestLimits { return provider.RequestLimits{} }
+func (*treeScript) RequestLimits(types.Model) provider.RequestLimits {
+	return provider.RequestLimits{}
+}
 
 // treeShell scripts a tool request separately for one node's model.
 func treeShell(t *testing.T, id, script string) []provider.Event {
@@ -117,7 +123,9 @@ func conversationTree(
 	}
 	harness.Config.Families.Register(
 		"tree",
-		conversationFamily{build: func(providerhost.FamilyArgs) provider.Runtime { return script }},
+		conversationFamily{build: func(providerhost.FamilyArgs) provider.Runtime {
+			return script
+		}},
 	)
 	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)

@@ -62,7 +62,9 @@ func NewAccounts(pool CredentialPool, kit AccountKit, clock types.Clock) *Accoun
 }
 
 // Capability reports the kit's supported account operations.
-func (a *Accounts) Capability() AccountsCapability { return a.kit.Capability() }
+func (a *Accounts) Capability() AccountsCapability {
+	return a.kit.Capability()
+}
 
 // List returns accounts in ID order.
 func (a *Accounts) List(ctx context.Context) ([]types.AccountInfo, error) {
@@ -78,10 +80,14 @@ func (a *Accounts) List(ctx context.Context) ([]types.AccountInfo, error) {
 }
 
 // Active returns the selected account ID; ok is false when there is none.
-func (a *Accounts) Active(ctx context.Context) (string, bool, error) { return a.pool.Active(ctx) }
+func (a *Accounts) Active(ctx context.Context) (string, bool, error) {
+	return a.pool.Active(ctx)
+}
 
 // SetActive selects an existing account.
-func (a *Accounts) SetActive(ctx context.Context, id string) error { return a.pool.SetActive(ctx, id) }
+func (a *Accounts) SetActive(ctx context.Context, id string) error {
+	return a.pool.SetActive(ctx, id)
+}
 
 // Login runs the device flow and imports the result only after it completes.
 func (a *Accounts) Login(ctx context.Context, pending func(types.LoginPending)) (types.AccountInfo, error) {

@@ -113,7 +113,9 @@ func look(ctx context.Context, fs host.FS, read plugin.HostRead) (plugin.HostFil
 		if err != nil {
 			return unreadable(err)
 		}
-		defer func() { _ = stream.Close(context.WithoutCancel(ctx)) }() // Remote pipe Close only releases its reader.
+		defer func() {
+			_ = stream.Close(context.WithoutCancel(ctx))
+		}() // Remote pipe Close only releases its reader.
 		var data []byte
 		buffer := make([]byte, 65536)
 		for {

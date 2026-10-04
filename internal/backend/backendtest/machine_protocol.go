@@ -38,7 +38,9 @@ func (m *ScriptedManager) serve() {
 		}
 		m.connections[connection] = struct{}{}
 		m.mu.Unlock()
-		m.workers.Go(func() { m.connection(connection) })
+		m.workers.Go(func() {
+			m.connection(connection)
+		})
 	}
 }
 
@@ -211,7 +213,9 @@ func (m *ScriptedManager) wake(ctx context.Context, device string, params machin
 	}
 	m.mu.Unlock()
 	runner := m.takeRunner(device)
-	defer func() { m.putRunner(device, runner) }()
+	defer func() {
+		m.putRunner(device, runner)
+	}()
 	if (runner != nil && runner.Running()) || script.SilentWake {
 		return nil
 	}

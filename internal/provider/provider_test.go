@@ -17,7 +17,9 @@ import (
 
 // All tests use fixtures or loopback servers, never a real vendor. The package's
 // regular suite is budgeted at 10 seconds; time-based scenarios use synctest.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const now = types.Timestamp("2026-09-18T14:00:00.000Z")
 

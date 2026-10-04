@@ -60,7 +60,9 @@ func ParsePasswordHash(text string) (PasswordHash, error) {
 }
 
 // Text returns the PHC string for password verification and storage.
-func (h PasswordHash) Text() string { return h.value }
+func (h PasswordHash) Text() string {
+	return h.value
+}
 
 // String redacts the password hash in diagnostics.
 func (h PasswordHash) String() string {
@@ -77,7 +79,9 @@ func HashToken(token string) TokenHash {
 }
 
 // Text returns the stored token hash.
-func (h TokenHash) Text() string { return h.value }
+func (h TokenHash) Text() string {
+	return h.value
+}
 
 // CodeHash is the HMAC-SHA256 of a challenge's id and code under the email-change key.
 type CodeHash struct{ value string }
@@ -90,7 +94,9 @@ func HashCode(key []byte, challenge, code string) CodeHash {
 }
 
 // Text returns the stored challenge hash.
-func (h CodeHash) Text() string { return h.value }
+func (h CodeHash) Text() string {
+	return h.value
+}
 
 // Matches compares in constant time without revealing a guess's matching prefix.
 func (h CodeHash) Matches(stored string) bool {

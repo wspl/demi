@@ -129,12 +129,16 @@ func (e *Environments) Owning(command types.CommandID) host.ShellEnvironment {
 // EndAll ends every shell and forgets its environment, joining owned work.
 // The next call on a Host makes a fresh environment. Use a cleanup context
 // that remains usable after action cancellation.
-func (e *Environments) EndAll(ctx context.Context) error { return e.end(ctx, false) }
+func (e *Environments) EndAll(ctx context.Context) error {
+	return e.end(ctx, false)
+}
 
 // Dispose permanently closes the node's shells, including environments being
 // created concurrently, and joins their work before returning. Use a cleanup
 // context that remains usable after action cancellation.
-func (e *Environments) Dispose(ctx context.Context) error { return e.end(ctx, true) }
+func (e *Environments) Dispose(ctx context.Context) error {
+	return e.end(ctx, true)
+}
 
 // end retires the selected environments atomically before joining creation and cleanup.
 func (e *Environments) end(ctx context.Context, permanent bool) error {
@@ -162,7 +166,9 @@ func (e *Environments) end(ctx context.Context, permanent bool) error {
 	// Keep retired slots discoverable by overlapping cleanup until they settle.
 	if !permanent {
 		e.mu.Lock()
-		e.slots = slices.DeleteFunc(e.slots, func(slot *environmentSlot) bool { return slices.Contains(slots, slot) })
+		e.slots = slices.DeleteFunc(e.slots, func(slot *environmentSlot) bool {
+			return slices.Contains(slots, slot)
+		})
 		e.mu.Unlock()
 	}
 	return errors.Join(errs...)

@@ -64,7 +64,9 @@ func (s *Session) runTurn(ctx context.Context, switchFirst bool) error {
 }
 
 func (s *Session) stream(ctx context.Context, continues bool) (bool, error) {
-	s.mutate(func(c *coreState) { c.stage = ProviderStreaming })
+	s.mutate(func(c *coreState) {
+		c.stage = ProviderStreaming
+	})
 	attempt := uint32(1)
 	sizeChecked, refusalCompacted := false, false
 	for {
@@ -85,7 +87,9 @@ func (s *Session) stream(ctx context.Context, continues bool) (bool, error) {
 			return false, err
 		}
 		if failure == nil {
-			s.mutate(func(c *coreState) { c.stage = preparing })
+			s.mutate(func(c *coreState) {
+				c.stage = preparing
+			})
 			return needsCompaction, nil
 		}
 		requestFailure(failure, request.RequestID)
@@ -104,7 +108,9 @@ func (s *Session) stream(ctx context.Context, continues bool) (bool, error) {
 		policy := s.deps.Config.Retry
 		if !unwindable || !policy.retries(attempt, *failure) {
 			report := failureReport(*failure)
-			s.mutate(func(c *coreState) { c.log.PushError(c.model, report.Message, report.Code, report.Diagnostics) })
+			s.mutate(func(c *coreState) {
+				c.log.PushError(c.model, report.Message, report.Code, report.Diagnostics)
+			})
 			return false, report
 		}
 		if err = s.restoreCommands(ctx, start); err != nil {
@@ -236,7 +242,9 @@ func (s *Session) runTools(ctx context.Context, deferInput bool) (bool, bool, er
 	if len(calls) == 0 {
 		return false, false, nil
 	}
-	s.mutate(func(c *coreState) { c.stage = ToolExecuting })
+	s.mutate(func(c *coreState) {
+		c.stage = ToolExecuting
+	})
 	if err := s.Flush(ctx); err != nil {
 		return false, false, err
 	}
@@ -249,31 +257,14 @@ func (s *Session) runTools(ctx context.Context, deferInput bool) (bool, bool, er
 		s.mu.Lock()
 		before := s.core.arrivals
 		s.mu.Unlock()
-		var outcome ToolOutcome
-		if slices.ContainsFunc(tools, func(t provider.ToolDefinition) bool { return t.Name == call.ToolName }) {
-			var err error
-			outcome, err = s.invokeTool(ctx, call)
-			if err != nil {
-				return true, stop, err
-			}
-		} else {
-			outcome = ErrorOutcome("Tool not found: " + call.ToolName)
+		outcome, err := s.callTool(ctx, tools, call)
+		if err != nil {
+			return true, stop, err
 		}
 		switch effect := outcome.Effect.(type) {
 		case *ScheduleYield:
 			stop = true
-			var id types.WakeupID
-			s.mutate(func(c *coreState) {
-				id = types.WakeupID(s.deps.IDs.NextID())
-				c.wakeups = append(c.wakeups, store.ScheduledWakeup{ID: id, DurationMS: effect.DurationMS})
-				c.dirty = true
-			})
-			outcome = ToolOutcome{
-				Output: []provider.ResultPart{
-					&provider.TextPart{Text: fmt.Sprintf("yield scheduled\ndurationMs: %d", effect.DurationMS)},
-				},
-				View: &types.YieldWakeup{WakeupID: id, DurationMs: effect.DurationMS},
-			}
+			outcome = s.scheduleYield(effect)
 		}
 		output, held := store.PersistResult(context.WithoutCancel(ctx), outcome.Output, s.deps.Store.Blobs())
 		s.mutate(func(c *coreState) {
@@ -286,8 +277,43 @@ func (s *Session) runTools(ctx context.Context, deferInput bool) (bool, bool, er
 			}
 		}
 	}
-	s.mutate(func(c *coreState) { c.stage = preparing })
+	s.mutate(func(c *coreState) {
+		c.stage = preparing
+	})
 	return true, stop, nil
+}
+
+// callTool runs a call of one of the runtime's tools; a call of any other
+// tool fails as not found.
+func (s *Session) callTool(
+	ctx context.Context,
+	tools []provider.ToolDefinition,
+	call transcript.PendingCall,
+) (ToolOutcome, error) {
+	known := slices.ContainsFunc(tools, func(t provider.ToolDefinition) bool {
+		return t.Name == call.ToolName
+	})
+	if !known {
+		return ErrorOutcome("Tool not found: " + call.ToolName), nil
+	}
+	return s.invokeTool(ctx, call)
+}
+
+// scheduleYield schedules the wakeup a yield asks for and returns what the
+// model reads of it.
+func (s *Session) scheduleYield(effect *ScheduleYield) ToolOutcome {
+	var id types.WakeupID
+	s.mutate(func(c *coreState) {
+		id = types.WakeupID(s.deps.IDs.NextID())
+		c.wakeups = append(c.wakeups, store.ScheduledWakeup{ID: id, DurationMS: effect.DurationMS})
+		c.dirty = true
+	})
+	return ToolOutcome{
+		Output: []provider.ResultPart{
+			&provider.TextPart{Text: fmt.Sprintf("yield scheduled\ndurationMs: %d", effect.DurationMS)},
+		},
+		View: &types.YieldWakeup{WakeupID: id, DurationMs: effect.DurationMS},
+	}
 }
 
 // compactTurn reports whether compaction reduced the request estimate.
@@ -441,7 +467,9 @@ func (s *Session) streamRequest(
 		return false, nil, err
 	}
 	needsCompaction, failure, err := s.read(ctx, runtime.Run(ctx, request))
-	s.mutate(func(c *coreState) { c.providerBusy = false })
+	s.mutate(func(c *coreState) {
+		c.providerBusy = false
+	})
 	return needsCompaction, failure, err
 }
 

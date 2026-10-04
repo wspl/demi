@@ -55,7 +55,9 @@ func runRegistration(ctx context.Context, options registrationOptions) (err erro
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, lease.close()) }()
+	defer func() {
+		err = errors.Join(err, lease.close())
+	}()
 	state := runnerState{root: options.directory}
 	token, err := registrationToken(ctx, options, state)
 	if err != nil {
@@ -73,17 +75,23 @@ func runRegistration(ctx context.Context, options registrationOptions) (err erro
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, registry.Close(context.Background())) }()
+	defer func() {
+		err = errors.Join(err, registry.Close(context.Background()))
+	}()
 	r, err := prepareRegistration(ctx, options, state, registry, token)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, r.pipes.Close()) }()
+	defer func() {
+		err = errors.Join(err, r.pipes.Close())
+	}()
 	server, err := r.startServer(lifetime)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, server.Close(context.Background())) }()
+	defer func() {
+		err = errors.Join(err, server.Close(context.Background()))
+	}()
 	if err := lease.publish(
 		ctx,
 		state,

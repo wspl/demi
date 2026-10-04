@@ -47,7 +47,9 @@ func Serve(ctx context.Context, conn net.Conn, h Handler[commandproto.Invocation
 		conn,
 		h,
 		commandproto.DecodeInvocation,
-		func(m commandproto.Invocation) string { return m.Operation },
+		func(m commandproto.Invocation) string {
+			return m.Operation
+		},
 	)
 }
 
@@ -58,7 +60,9 @@ func ServeLocal(ctx context.Context, conn net.Conn, h Handler[commandproto.Local
 		conn,
 		h,
 		commandproto.DecodeLocalInvocation,
-		func(m commandproto.LocalInvocation) string { return m.Operation },
+		func(m commandproto.LocalInvocation) string {
+			return m.Operation
+		},
 	)
 }
 
@@ -72,7 +76,9 @@ type oneListener struct {
 // Accept yields the owned connection once, then waits for closure.
 func (l *oneListener) Accept() (net.Conn, error) {
 	var c net.Conn
-	l.once.Do(func() { c = l.conn })
+	l.once.Do(func() {
+		c = l.conn
+	})
 	if c != nil {
 		return c, nil
 	}
@@ -82,12 +88,16 @@ func (l *oneListener) Accept() (net.Conn, error) {
 
 // Close wakes any pending accept without closing the connection.
 func (l *oneListener) Close() error {
-	l.closeOnce.Do(func() { close(l.closed) })
+	l.closeOnce.Do(func() {
+		close(l.closed)
+	})
 	return nil
 }
 
 // Addr returns the owned connection's local address.
-func (l *oneListener) Addr() net.Addr { return l.conn.LocalAddr() }
+func (l *oneListener) Addr() net.Addr {
+	return l.conn.LocalAddr()
+}
 
 type observedConn struct {
 	net.Conn
@@ -98,7 +108,9 @@ type observedConn struct {
 // Close releases the owned transport.
 func (c *observedConn) Close() error {
 	err := c.Conn.Close()
-	c.once.Do(func() { close(c.done) })
+	c.once.Do(func() {
+		close(c.done)
+	})
 	return err
 }
 
@@ -139,13 +151,7 @@ func serve[M commandproto.Metadata](
 		default:
 		}
 	}
-	server := &http.Server{
-		Protocols:         protocols(),
-		HTTP2:             h2Config(false),
-		MaxHeaderBytes:    16 * 1024,
-		ReadHeaderTimeout: phaseTimeout,
-		BaseContext:       func(net.Listener) context.Context { return owner },
-	}
+	server := serviceServer(owner)
 	requests := serviceRequests[M]{
 		h: h, decode: decode, operation: operation, info: info, catalog: catalog,
 		mu: &mu, phase: &phase, opened: opened, calls: &calls, work: &work,
@@ -154,13 +160,29 @@ func serve[M commandproto.Metadata](
 	}
 	server.Handler = http.HandlerFunc(requests.serveHTTP)
 	serving := make(chan error, 1)
-	go func() { serving <- server.Serve(listener) }()
+	go func() {
+		serving <- server.Serve(listener)
+	}()
 	var outcome error
 	closeHandler := sync.OnceFunc(func() {
 		outcome = closeServiceHandler(owner, h, outcome)
 	})
 	requests.waitForShutdown(ctx, owner, server, watched.done, fatal, finish, closeHandler, &outcome)
 	return requests.stop(owner, cancel, finish, server, serving, &outcome, closeHandler, fatal)
+}
+
+// serviceServer is the HTTP/2 server of one service connection, whose
+// requests start from owner.
+func serviceServer(owner context.Context) *http.Server {
+	return &http.Server{
+		Protocols:         protocols(),
+		HTTP2:             h2Config(false),
+		MaxHeaderBytes:    16 * 1024,
+		ReadHeaderTimeout: phaseTimeout,
+		BaseContext: func(net.Listener) context.Context {
+			return owner
+		},
+	}
 }
 
 type servicePhase uint8

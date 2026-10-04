@@ -58,7 +58,9 @@ func numbered(ctx context.Context, port plugin.Port, exposes []plugin.ExposeReco
 func nextNumbers(read numbers, exposes []plugin.ExposeRecord) numbers {
 	next := numbers{Next: read.Next, Exposes: maps.Clone(read.Exposes)}
 	for id := range next.Exposes {
-		if !slices.ContainsFunc(exposes, func(e plugin.ExposeRecord) bool { return string(e.ID) == id }) {
+		if !slices.ContainsFunc(exposes, func(e plugin.ExposeRecord) bool {
+			return string(e.ID) == id
+		}) {
 			delete(next.Exposes, id)
 		}
 	}

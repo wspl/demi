@@ -339,7 +339,9 @@ func (accountRefusingFamily) Credential() webapiproto.CredentialKind {
 }
 
 // Wires advertises no wire APIs for the intentionally unbuildable family.
-func (accountRefusingFamily) Wires() []types.WireAPI { return nil }
+func (accountRefusingFamily) Wires() []types.WireAPI {
+	return nil
+}
 
 // Provider returns the scripted build failure used to observe provider status.
 func (accountRefusingFamily) Provider(providerhost.FamilyArgs) (provider.Provider, error) {

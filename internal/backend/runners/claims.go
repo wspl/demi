@@ -173,7 +173,11 @@ func (p *PendingRunner) Grant(
 }
 
 // Release idempotently abandons an ungranted claim; it does nothing after Grant.
-func (p *PendingRunner) Release() { p.once.Do(func() { p.wait.complete(nil) }) }
+func (p *PendingRunner) Release() {
+	p.once.Do(func() {
+		p.wait.complete(nil)
+	})
+}
 
 // ClaimGrant hands a runner its device and private token, and owns the reply
 // to the claimant. The runner defers Release and calls Bound after socket binding.
@@ -194,7 +198,9 @@ func (g *ClaimGrant) Bound(device webapiproto.DeviceDTO) {
 }
 
 // Release idempotently abandons an unanswered grant, waking its claimant.
-func (g *ClaimGrant) Release() { g.answer.Release() }
+func (g *ClaimGrant) Release() {
+	g.answer.Release()
+}
 
 // claimAnswer owns the claimant's wait for the runner to bind its socket.
 type claimAnswer struct {
@@ -204,7 +210,11 @@ type claimAnswer struct {
 }
 
 // Release idempotently abandons the claimant's answer without blocking the runner.
-func (a *claimAnswer) Release() { a.once.Do(func() { close(a.done) }) }
+func (a *claimAnswer) Release() {
+	a.once.Do(func() {
+		close(a.done)
+	})
+}
 
 // complete transfers a claim grant to the waiting runner, or abandons it if the
 // runner already left. Notification and grant release happen outside the mutex.

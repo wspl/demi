@@ -22,4 +22,6 @@ func ReservedNames() []string {
 }
 
 // IsReserved reports whether a root name belongs to the shell or system.
-func IsReserved(name string) bool { return slices.Contains(ReservedNames(), name) }
+func IsReserved(name string) bool {
+	return slices.Contains(ReservedNames(), name)
+}

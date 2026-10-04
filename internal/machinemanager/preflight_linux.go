@@ -95,7 +95,9 @@ func ProbeStorage(ctx context.Context, core *Core) (err error) {
 	if err = os.Mkdir(stage, 0o700); err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, releaseProbe(context.WithoutCancel(ctx), stage)) }()
+	defer func() {
+		err = errors.Join(err, releaseProbe(context.WithoutCancel(ctx), stage))
+	}()
 	for _, name := range []string{"volume", "merged", "base"} {
 		if err = os.Mkdir(filepath.Join(stage, name), 0o700); err != nil {
 			return err
@@ -110,7 +112,9 @@ func ProbeStorage(ctx context.Context, core *Core) (err error) {
 		return err
 	}
 	// The loop descriptor is released even when mounting fails; autoclear owns detachment.
-	defer func() { err = errors.Join(err, device.Close()) }()
+	defer func() {
+		err = errors.Join(err, device.Close())
+	}()
 	volume := filepath.Join(stage, "volume")
 	if err = system.Ext4(ctx, device.Path(), volume); err != nil {
 		return err

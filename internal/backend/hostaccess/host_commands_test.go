@@ -91,7 +91,9 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = reader.Close(context.Background()) }()
+	defer func() {
+		_ = reader.Close(context.Background())
+	}()
 	defer input.Fail("test ended")
 	args, err := (shellArgs{Host: "remote", Script: "exit 7"}).MarshalJSON()
 	if err != nil {

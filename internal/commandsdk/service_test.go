@@ -18,7 +18,10 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
@@ -43,7 +46,9 @@ func invocation(op string) commandproto.Invocation {
 
 type fixture struct{}
 
-func (fixture) Operations() []string { return []string{"echo", "hold", "short", "flood"} }
+func (fixture) Operations() []string {
+	return []string{"echo", "hold", "short", "flood"}
+}
 
 func (fixture) Invoke(
 	ctx context.Context,
@@ -358,7 +363,9 @@ func TestInputAfterEarlyAnswerIsNotFailure(t *testing.T) {
 		}),
 	}
 	served := make(chan error, 1)
-	go func() { served <- server.Serve(listener) }()
+	go func() {
+		served <- server.Serve(listener)
+	}()
 	defer func() {
 		must(t, server.Close())
 		if err := <-served; !errors.Is(err, http.ErrServerClosed) {
@@ -367,7 +374,9 @@ func TestInputAfterEarlyAnswerIsNotFailure(t *testing.T) {
 	}()
 	c, err := Connect(t.Context(), left)
 	must(t, err)
-	defer func() { must(t, c.Close()) }()
+	defer func() {
+		must(t, c.Close())
+	}()
 	// Until the client reads the server's SETTINGS it may send under the
 	// default 64 KiB window, which Go's server answers with FLOW_CONTROL_ERROR.
 	// The server writes SETTINGS before any response and the client reads
@@ -465,14 +474,21 @@ func TestOwnedFilePipesCarryServiceProtocol(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan error, 1)
-	go func() { done <- Serve(ctx, &PipeConn{Reader: serverRead, Writer: serverWrite}, fixture{}); close(done) }()
+	go func() {
+		done <- Serve(ctx, &PipeConn{Reader: serverRead, Writer: serverWrite}, fixture{})
+		close(done)
+	}()
 	c, err := Connect(ctx, &PipeConn{Reader: clientRead, Writer: clientWrite})
 	if err != nil {
 		cancel()
 		<-done
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { cancel(); _ = c.Close(); <-done })
+	t.Cleanup(func() {
+		cancel()
+		_ = c.Close()
+		<-done
+	})
 	short(t, c)
 	must(t, c.Shutdown(t.Context()))
 	must(t, <-done)

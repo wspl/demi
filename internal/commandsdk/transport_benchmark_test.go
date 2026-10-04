@@ -21,7 +21,9 @@ import (
 
 type benchmarkFixture struct{}
 
-func (benchmarkFixture) Operations() []string { return []string{"echo", "flood"} }
+func (benchmarkFixture) Operations() []string {
+	return []string{"echo", "flood"}
+}
 
 func (benchmarkFixture) Invoke(
 	ctx context.Context,
@@ -181,7 +183,9 @@ func benchmarkTransport(ctx context.Context, b *testing.B) (map[string]float64, 
 		return nil, err
 	}
 	// Close is idempotent; on failure it kills and reaps the child.
-	defer func() { _ = process.Close() }()
+	defer func() {
+		_ = process.Close()
+	}()
 	if _, err := process.Client.Info(ctx); err != nil {
 		return nil, err
 	}

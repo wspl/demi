@@ -66,7 +66,9 @@ func (b *Browser) Manifest() plugin.Manifest {
 }
 
 // Instance creates one user's browser plugin.
-func (b *Browser) Instance() plugin.Plugin { return &instance{commands: b.commands} }
+func (b *Browser) Instance() plugin.Plugin {
+	return &instance{commands: b.commands}
+}
 
 type instance struct {
 	commands *plugin.CommandPlugin

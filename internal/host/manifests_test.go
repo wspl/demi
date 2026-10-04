@@ -73,7 +73,9 @@ func rebuildDeclaration(t *testing.T, node commanddecl.Node[commanddecl.NativeOp
 		var handler host.RPCHandler
 		if _, rpc := node.Kind.(*commanddecl.RPC[commanddecl.NativeOperation]); rpc {
 			handler = host.RPCHandlerFunc(
-				func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil },
+				func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
+					return 0, nil
+				},
 			)
 		}
 		declared := host.Leaf(*node, handler)

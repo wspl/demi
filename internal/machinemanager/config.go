@@ -40,7 +40,9 @@ type Limits struct {
 }
 
 // MemoryBytes returns the memory budget in bytes.
-func (l Limits) MemoryBytes() uint64 { return uint64(l.MemoryMiB) << 20 }
+func (l Limits) MemoryBytes() uint64 {
+	return uint64(l.MemoryMiB) << 20
+}
 
 // Config is the validated manager configuration.
 type Config struct {
@@ -71,22 +73,34 @@ type Config struct {
 }
 
 // Working returns the devices' working pairs directory.
-func (c Config) Working() string { return filepath.Join(c.Data, "working") }
+func (c Config) Working() string {
+	return filepath.Join(c.Data, "working")
+}
 
 // Images returns the bases and committed generations directory.
-func (c Config) Images() string { return filepath.Join(c.Data, "images") }
+func (c Config) Images() string {
+	return filepath.Join(c.Data, "images")
+}
 
 // Runtime returns the manager's fixed runtime directory.
-func (c Config) Runtime() string { return RuntimeDirectory }
+func (c Config) Runtime() string {
+	return RuntimeDirectory
+}
 
 // SystemBytes returns a new system filesystem's capacity.
-func (c Config) SystemBytes() uint64 { return uint64(c.SystemMiB) << 20 }
+func (c Config) SystemBytes() uint64 {
+	return uint64(c.SystemMiB) << 20
+}
 
 // HomeBytes returns a new home filesystem's capacity.
-func (c Config) HomeBytes() uint64 { return uint64(c.HomeMiB) << 20 }
+func (c Config) HomeBytes() uint64 {
+	return uint64(c.HomeMiB) << 20
+}
 
 // ConfigFromEnv reads process arguments and environment, as ParseConfig does.
-func ConfigFromEnv() (Config, string, error) { return ParseConfig(os.Args[1:], os.Environ()) }
+func ConfigFromEnv() (Config, string, error) {
+	return ParseConfig(os.Args[1:], os.Environ())
+}
 
 type configSetting struct {
 	flag, name, initial, help string
@@ -160,7 +174,9 @@ func ParseConfig(args, environ []string) (c Config, display string, err error) {
 	if fs.NArg() != 0 {
 		return c, "", fmt.Errorf("unexpected argument: %s", fs.Arg(0))
 	}
-	fs.Visit(func(f *flag.Flag) { explicit[f.Name] = true })
+	fs.Visit(func(f *flag.Flag) {
+		explicit[f.Name] = true
+	})
 	if *recovery && *namespace {
 		return c, "", errors.New("--recover conflicts with --recover-namespace")
 	}
@@ -182,10 +198,14 @@ var ErrConfigRejected = errors.New("configuration rejected")
 // rejectedConfig is a configuration rejection whose text is its message alone.
 type rejectedConfig struct{ message string }
 
-func (e *rejectedConfig) Error() string { return e.message }
+func (e *rejectedConfig) Error() string {
+	return e.message
+}
 
 // Is reports whether target is ErrConfigRejected.
-func (*rejectedConfig) Is(target error) bool { return target == ErrConfigRejected }
+func (*rejectedConfig) Is(target error) bool {
+	return target == ErrConfigRejected
+}
 
 func configHelp(settings []configSetting) string {
 	var help strings.Builder

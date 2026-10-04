@@ -467,7 +467,9 @@ func TestFailedNumberDrawFailsOnlyStepNeedingNumber(t *testing.T) {
 	done := make(chan []uint32, 1)
 	go func() {
 		counts := []uint32{}
-		defer func() { done <- counts }()
+		defer func() {
+			done <- counts
+		}()
 		for _, answer := range []uint64{1, 0, 0, 101} {
 			select {
 			case pending := <-requests:

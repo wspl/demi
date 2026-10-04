@@ -18,7 +18,9 @@ type runtime struct {
 }
 
 // Fresh returns an independent runtime for another session.
-func (r *runtime) Fresh() provider.Runtime { return &runtime{owner: r.owner, placement: r.placement} }
+func (r *runtime) Fresh() provider.Runtime {
+	return &runtime{owner: r.owner, placement: r.placement}
+}
 
 // RequestLimits returns the request limits for the model.
 func (*runtime) RequestLimits(model types.Model) provider.RequestLimits {

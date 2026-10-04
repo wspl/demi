@@ -61,7 +61,9 @@ func (e *AssemblyError) Error() string {
 }
 
 // Unwrap returns the storage failure.
-func (e *AssemblyError) Unwrap() error { return e.Err }
+func (e *AssemblyError) Unwrap() error {
+	return e.Err
+}
 
 // LoginErrorKind identifies why a login did not start or complete.
 type LoginErrorKind uint8
@@ -98,4 +100,6 @@ func (e *LoginError) Error() string {
 }
 
 // Unwrap returns the assembly failure.
-func (e *LoginError) Unwrap() error { return e.Err }
+func (e *LoginError) Unwrap() error {
+	return e.Err
+}

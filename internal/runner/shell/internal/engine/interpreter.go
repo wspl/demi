@@ -126,7 +126,9 @@ func Execute(ctx context.Context, script string, options Options) (result Result
 		interp.Dir(options.Cwd),
 		interp.Env(expand.ListEnviron(env...)),
 		interp.StdIO(options.Stdin, options.Stdout, options.Stderr),
-		interp.ExecHandlers(func(interp.ExecHandlerFunc) interp.ExecHandlerFunc { return e.external }),
+		interp.ExecHandlers(func(interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+			return e.external
+		}),
 		interp.OpenHandler(e.open),
 		interp.Builtins(e.builtins()),
 		interp.WithScopeState(state),
@@ -145,13 +147,7 @@ func Execute(ctx context.Context, script string, options Options) (result Result
 		runner.Wait()
 	}()
 	if options.Login {
-		e.profile(ctx, runner, "/etc/profile")
-		for _, name := range []string{".bash_profile", ".bash_login", ".profile"} {
-			if e.profile(ctx, runner, filepath.Join(options.Env["HOME"], name)) {
-				break
-			}
-		}
-		if err = restoreContext(ctx, runner, options.Env, options.Cwd); err != nil {
+		if err = e.loginProfiles(ctx, runner, options); err != nil {
 			return result, err
 		}
 	}
@@ -171,6 +167,18 @@ func Execute(ctx context.Context, script string, options Options) (result Result
 	}
 	result.Cwd = runner.Dir
 	return result, err
+}
+
+// loginProfiles runs a login shell's profiles as bash does, the first of the
+// user's that exists, then restores the job's own environment and directory.
+func (e *execution) loginProfiles(ctx context.Context, runner *interp.Runner, options Options) error {
+	e.profile(ctx, runner, "/etc/profile")
+	for _, name := range []string{".bash_profile", ".bash_login", ".profile"} {
+		if e.profile(ctx, runner, filepath.Join(options.Env["HOME"], name)) {
+			break
+		}
+	}
+	return restoreContext(ctx, runner, options.Env, options.Cwd)
 }
 
 // profile sources a readable login profile; diagnostics do not discard the job script.

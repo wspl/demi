@@ -110,7 +110,9 @@ func TestDueSecretRefreshAndStore(t *testing.T) {
 		t.Context(),
 		pool.Document("a"),
 		providertest.DecodeTokenDocument,
-		func(tokens) bool { return true },
+		func(tokens) bool {
+			return true
+		},
 		func(_ context.Context, value tokens) (tokens, error) {
 			requireEqual(t, value.Refresh, "r1")
 			return tokens{Access: "new", Refresh: "r2"}, nil
@@ -147,7 +149,9 @@ func TestWaitingRefresherRereadsAndRechecks(t *testing.T) {
 				}
 				return tokens{Access: "new", Refresh: "after-" + value.Refresh}, nil
 			}
-			due := func(value tokens) bool { return always || value.Access == "old" }
+			due := func(value tokens) bool {
+				return always || value.Access == "old"
+			}
 			results := make(chan tokens, 2)
 			var workers sync.WaitGroup
 			for range 2 {
@@ -189,7 +193,9 @@ func TestRefusedRefreshUsesConcurrentWriter(t *testing.T) {
 		t.Context(),
 		pool.Document("a"),
 		providertest.DecodeTokenDocument,
-		func(tokens) bool { return true },
+		func(tokens) bool {
+			return true
+		},
 		func(ctx context.Context, _ tokens) (tokens, error) {
 			if err := pool.Write(
 				ctx,
@@ -209,8 +215,12 @@ func TestRefusedRefreshUsesConcurrentWriter(t *testing.T) {
 		t.Context(),
 		pool.Document("a"),
 		providertest.DecodeTokenDocument,
-		func(tokens) bool { return true },
-		func(context.Context, tokens) (tokens, error) { return tokens{}, refused },
+		func(tokens) bool {
+			return true
+		},
+		func(context.Context, tokens) (tokens, error) {
+			return tokens{}, refused
+		},
 	)
 	var renewal *provider.RenewError
 	if !errors.Is(err, refused) || !errors.As(err, &renewal) {
@@ -224,7 +234,9 @@ func TestRefreshReplaceLosesToWriter(t *testing.T) {
 		t.Context(),
 		pool.Document("a"),
 		providertest.DecodeTokenDocument,
-		func(tokens) bool { return true },
+		func(tokens) bool {
+			return true
+		},
 		func(ctx context.Context, _ tokens) (tokens, error) {
 			if err := pool.Write(
 				ctx,
@@ -389,7 +401,9 @@ func TestLoginImportsIdentityAndSelectsFirst(t *testing.T) {
 	accounts := provider.NewAccounts(pool, kit, providertest.FixedClock(now))
 	requireEqual(t, accounts.Capability(), provider.AccountsCapability{Login: true})
 	shown := []string{}
-	report := func(p types.LoginPending) { shown = append(shown, *p.UserCode) }
+	report := func(p types.LoginPending) {
+		shown = append(shown, *p.UserCode)
+	}
 	first, err := accounts.Login(t.Context(), report)
 	if err != nil {
 		t.Fatal(err)
@@ -476,7 +490,9 @@ func TestCanceledLoginStoresNothing(t *testing.T) {
 	accounts := provider.NewAccounts(pool, &accountKit{}, providertest.FixedClock(now))
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
-	_, err := accounts.Login(ctx, func(types.LoginPending) { cancel() })
+	_, err := accounts.Login(ctx, func(types.LoginPending) {
+		cancel()
+	})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("%v", err)
 	}

@@ -31,7 +31,10 @@ dev [--port 3271] [--keep]
 
 type stringsFlag []string
 
-func (s *stringsFlag) String() string { return fmt.Sprint([]string(*s)) }
+func (s *stringsFlag) String() string {
+	return fmt.Sprint([]string(*s))
+}
+
 func (s *stringsFlag) Set(v string) error {
 	*s = append(*s, v)
 	return nil

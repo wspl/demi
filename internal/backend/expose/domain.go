@@ -35,7 +35,9 @@ func ParseDomain(text string) (Domain, error) {
 }
 
 // String returns the domain in lowercase.
-func (d Domain) String() string { return d.name }
+func (d Domain) String() string {
+	return d.name
+}
 
 // Label returns the single label before this domain, ignoring ASCII case.
 // The caller removes the Host header's port first.

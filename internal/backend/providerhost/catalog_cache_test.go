@@ -89,7 +89,10 @@ func readCatalog(
 	}
 	return list
 }
-func catalogName(list types.ProviderModelList) string { return list.Models[0].DisplayName }
+
+func catalogName(list types.ProviderModelList) string {
+	return list.Models[0].DisplayName
+}
 
 func TestFreshCatalogServesMemoryAndStorageAndExpiredRefreshesOnce(t *testing.T) {
 	store := catalogStoreFixture(t)

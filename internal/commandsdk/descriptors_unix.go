@@ -13,4 +13,6 @@ func Exhausted(err error) bool {
 }
 
 // Exhaustion returns the platform's open-file exhaustion error.
-func Exhaustion() error { return syscall.EMFILE }
+func Exhaustion() error {
+	return syscall.EMFILE
+}

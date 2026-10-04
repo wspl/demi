@@ -21,7 +21,9 @@ func lockEnvironment(file *os.File) (bool, error) {
 	return err == nil, err
 }
 
-func currentOwner() uint32 { return uint32(os.Getuid()) }
+func currentOwner() uint32 {
+	return uint32(os.Getuid())
+}
 
 // ownsDirectory excludes symbolic links and another user's browser storage.
 func ownsDirectory(path string, owner uint32) bool {
@@ -33,7 +35,9 @@ func ownsDirectory(path string, owner uint32) bool {
 	return ok && stat.Uid == owner
 }
 
-func directoryNotEmpty(err error) bool { return errors.Is(err, unix.ENOTEMPTY) }
+func directoryNotEmpty(err error) bool {
+	return errors.Is(err, unix.ENOTEMPTY)
+}
 
 // openEnvironmentLock never creates a missing lock during an orphan probe.
 func openEnvironmentLock(path string, create bool) (*os.File, error) {

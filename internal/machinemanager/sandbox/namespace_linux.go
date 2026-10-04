@@ -89,7 +89,9 @@ func (n *SavedNamespace) Pin(ctx context.Context) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, own.Close()) }()
+	defer func() {
+		err = errors.Join(err, own.Close())
+	}()
 	_, err = system.RunNamespace(ctx, system.HostMount(), func(ctx context.Context) (struct{}, error) {
 		mounted, _, err := system.MountRoot(ctx, n.runtime)
 		if err != nil {

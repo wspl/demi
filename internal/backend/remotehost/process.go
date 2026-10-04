@@ -107,7 +107,9 @@ func (p *runnerProcess) WriteStdin(ctx context.Context, data []byte) error {
 		ctx,
 		p.link,
 		data,
-		func(chunk []byte) runnerproto.Inbound { return &runnerproto.SpawnStdin{SpawnID: p.id, Bytes: chunk} },
+		func(chunk []byte) runnerproto.Inbound {
+			return &runnerproto.SpawnStdin{SpawnID: p.id, Bytes: chunk}
+		},
 	)
 }
 
@@ -128,7 +130,9 @@ func (p *runnerProcess) Kill(ctx context.Context, signal host.Signal) error {
 }
 
 // Close kills the runner process.
-func (p *runnerProcess) Close(ctx context.Context) error { return p.Kill(ctx, host.Kill) }
+func (p *runnerProcess) Close(ctx context.Context) error {
+	return p.Kill(ctx, host.Kill)
+}
 
 // processEnd translates the runner's terminal status in its specified precedence.
 func processEnd(code *int32, signal *string, spawnError *runnerproto.SpawnError) host.ProcessEnd {

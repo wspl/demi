@@ -66,7 +66,9 @@ func (s *Session) compactPass(ctx context.Context) (bool, error) {
 		stage = c.stage
 		c.stage = Compacting
 	})
-	defer s.mutate(func(c *coreState) { c.stage = stage })
+	defer s.mutate(func(c *coreState) {
+		c.stage = stage
+	})
 	view, err := s.modelView(ctx)
 	if err != nil {
 		return false, err

@@ -17,7 +17,9 @@ type Serial struct {
 
 // semaphore initializes this serial gate on first use.
 func (s *Serial) semaphore() *semaphore.Weighted {
-	s.once.Do(func() { s.permits = semaphore.NewWeighted(1) })
+	s.once.Do(func() {
+		s.permits = semaphore.NewWeighted(1)
+	})
 	return s.permits
 }
 
@@ -27,7 +29,9 @@ func (s *Serial) Acquire(ctx context.Context) (*Permit, error) {
 	if err := sem.Acquire(ctx, 1); err != nil {
 		return nil, fmt.Errorf("acquire serial gate: %w", err)
 	}
-	return &Permit{release: func() { sem.Release(1) }}, nil
+	return &Permit{release: func() {
+		sem.Release(1)
+	}}, nil
 }
 
 // TryAcquire takes a turn immediately, or returns nil if anyone holds or waits.
@@ -36,7 +40,9 @@ func (s *Serial) TryAcquire() *Permit {
 	if !sem.TryAcquire(1) {
 		return nil
 	}
-	return &Permit{release: func() { sem.Release(1) }}
+	return &Permit{release: func() {
+		sem.Release(1)
+	}}
 }
 
 // Permit owns a serial or keyed serial turn. Transfer its pointer to hand it
@@ -47,7 +53,9 @@ type Permit struct {
 }
 
 // Release gives up the turn exactly once, from any goroutine.
-func (p *Permit) Release() { p.once.Do(p.release) }
+func (p *Permit) Release() {
+	p.once.Do(p.release)
+}
 
 // KeyedSerial serializes each key independently. Its zero value is ready for
 // use. Entries remain owned by both holders and waiters; do not copy the gate.

@@ -29,7 +29,9 @@ type ToolsetSource interface {
 }
 
 // Current returns this fixed toolset.
-func (t Set) Current(_ context.Context) (Set, error) { return t, nil }
+func (t Set) Current(_ context.Context) (Set, error) {
+	return t, nil
+}
 
 // NodeContext identifies the node a product question concerns.
 type NodeContext struct {

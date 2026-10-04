@@ -62,10 +62,14 @@ type SpawnFailure struct {
 }
 
 // Error returns the spawn failure's diagnostic.
-func (e *SpawnFailure) Error() string { return e.Message }
+func (e *SpawnFailure) Error() string {
+	return e.Message
+}
 
 // Unwrap preserves the underlying operating system error.
-func (e *SpawnFailure) Unwrap() error { return e.Cause }
+func (e *SpawnFailure) Unwrap() error {
+	return e.Cause
+}
 
 // OutputChunk is one read from a child's standard output or error.
 type OutputChunk struct {
@@ -207,7 +211,9 @@ func (c *Child) Signal(ctx context.Context, signal runnerproto.Signal) error {
 }
 
 // IsCancelled reports whether cancellation was requested.
-func (c *Child) IsCancelled() bool { return c.command.cancelled() }
+func (c *Child) IsCancelled() bool {
+	return c.command.cancelled()
+}
 
 // Cancel requests termination. Wait must still join the child and its IO.
 func (c *Child) Cancel() {
@@ -374,7 +380,9 @@ func (c *Command) Signal(signal runnerproto.Signal) error {
 }
 
 // PID returns the process ID after a successful Start.
-func (c *Command) PID() uint32 { return uint32(c.cmd.Process.Pid) }
+func (c *Command) PID() uint32 {
+	return uint32(c.cmd.Process.Pid)
+}
 
 func (c *Command) requestCancel() {
 	c.mu.Lock()
@@ -457,7 +465,9 @@ func commandExit(state *os.ProcessState, err error) (Exit, error) {
 }
 
 func writeChildInput(ctx context.Context, input <-chan Input, writer *io.PipeWriter) (err error) {
-	defer func() { _ = writer.Close() }() // EOF closes the in-memory input pipe.
+	defer func() {
+		_ = writer.Close()
+	}() // EOF closes the in-memory input pipe.
 	for {
 		select {
 		case <-ctx.Done():

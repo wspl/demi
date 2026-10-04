@@ -135,8 +135,12 @@ func (p *Provider) credentials(ctx context.Context, client *http.Client, refused
 		ctx,
 		doc,
 		decodeSecret,
-		func(s secret) bool { return refused != nil && s.AccessToken == *refused || s.due(p.clock.Now()) },
-		func(ctx context.Context, s secret) (secret, error) { return p.refresh(ctx, client, s) },
+		func(s secret) bool {
+			return refused != nil && s.AccessToken == *refused || s.due(p.clock.Now())
+		},
+		func(ctx context.Context, s secret) (secret, error) {
+			return p.refresh(ctx, client, s)
+		},
 	)
 	if err != nil {
 		return secret{}, provider.AccountAuthFailure("Codex", err)
@@ -165,7 +169,9 @@ func (p *Provider) refresh(ctx context.Context, client *http.Client, s secret) (
 	if err != nil {
 		return secret{}, fmt.Errorf("Codex token refresh failed: %w", provider.WithoutURL(err))
 	}
-	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
+	defer func() {
+		_ = response.Body.Close()
+	}() // The reader reports IO failures; close releases the response.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return secret{}, fmt.Errorf("Codex token refresh failed with HTTP %d", response.StatusCode)
 	}
@@ -185,7 +191,9 @@ func (p *Provider) refresh(ctx context.Context, client *http.Client, s secret) (
 }
 
 // vendorDecode adapts the shared vendor decoder to OAuth's secret-safe response reader.
-func vendorDecode[T any](data []byte) (T, error) { return provider.DecodeUntagged[T](string(data)) }
+func vendorDecode[T any](data []byte) (T, error) {
+	return provider.DecodeUntagged[T](string(data))
+}
 
 func accountHeaders(s secret) http.Header {
 	h := make(http.Header)

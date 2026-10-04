@@ -87,7 +87,9 @@ type PackageDescriptor struct {
 }
 
 // Digest returns the descriptor's RFC 8785 identity.
-func (p PackageDescriptor) Digest() (string, error) { return CanonicalDigest(p) }
+func (p PackageDescriptor) Digest() (string, error) {
+	return CanonicalDigest(p)
+}
 
 // Carries finds a pinned executable or resource archive for a target and hash.
 func (p PackageDescriptor) Carries(target TargetTriple, digest string) (PackageArtifact, bool) {

@@ -57,7 +57,9 @@ func browserSite(t *testing.T) http.Handler {
 			<-r.Context().Done()
 			return
 		case "/stream-download":
-			typed.Do(func() { close(typing) })
+			typed.Do(func() {
+				close(typing)
+			})
 			w.Header().Set("Content-Disposition", "attachment; filename=stream.bin")
 			w.Header().Set("Content-Length", "10485760")
 			w.Header().Set("Content-Type", "application/octet-stream")
@@ -70,7 +72,9 @@ func browserSite(t *testing.T) http.Handler {
 			<-r.Context().Done()
 			return
 		case "/typing-started":
-			typed.Do(func() { close(typing) })
+			typed.Do(func() {
+				close(typing)
+			})
 		case "/wait-typing":
 			select {
 			case <-typing:
@@ -78,7 +82,9 @@ func browserSite(t *testing.T) http.Handler {
 				return
 			}
 		case "/release-load":
-			replaced.Do(func() { close(replacement) })
+			replaced.Do(func() {
+				close(replacement)
+			})
 		case "/replace-load":
 			select {
 			case <-replacement:

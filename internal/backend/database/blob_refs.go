@@ -137,7 +137,9 @@ func SubtreeBlobs(ctx context.Context, tx *sql.Tx, node types.NodeID) ([]types.B
 SELECT blob
 FROM blob_refs
 WHERE node_id IN subtree`,
-		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef {
+			return checked(r, "blob", types.ParseBlobRef)
+		},
 		node,
 	)
 }
@@ -219,7 +221,9 @@ func References(ctx context.Context, tx *sql.Tx) ([]types.BlobRef, error) {
 		tx,
 		"blob_refs",
 		"SELECT DISTINCT blob FROM blob_refs",
-		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef {
+			return checked(r, "blob", types.ParseBlobRef)
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -230,7 +234,9 @@ func References(ctx context.Context, tx *sql.Tx) ([]types.BlobRef, error) {
 		tx,
 		"nodes",
 		"SELECT state FROM nodes",
-		func(r *storedRow) store.CheckpointState { return storedJSON(r, "state", store.DecodeCheckpointState) },
+		func(r *storedRow) store.CheckpointState {
+			return storedJSON(r, "state", store.DecodeCheckpointState)
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -257,7 +263,9 @@ func removedBlobs(
 		tx,
 		"blob_refs",
 		query,
-		func(r *storedRow) types.BlobRef { return checked(r, "blob", types.ParseBlobRef) },
+		func(r *storedRow) types.BlobRef {
+			return checked(r, "blob", types.ParseBlobRef)
+		},
 		node,
 		index,
 	)

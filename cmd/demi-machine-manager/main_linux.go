@@ -14,7 +14,10 @@ import (
 	"github.com/wspl/demi/internal/machinemanager"
 )
 
-func main() { os.Exit(run()) }
+func main() {
+	os.Exit(run())
+}
+
 func run() int {
 	config, display, err := machinemanager.ConfigFromEnv()
 	if err != nil {

@@ -253,7 +253,9 @@ func inGitScope(name, prefix string, scope []string) bool {
 	}
 	return slices.ContainsFunc(
 		scope,
-		func(path string) bool { return relative == path || strings.HasPrefix(relative, path+"/") },
+		func(path string) bool {
+			return relative == path || strings.HasPrefix(relative, path+"/")
+		},
 	)
 }
 

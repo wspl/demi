@@ -28,7 +28,10 @@ func modelDocument(t *testing.T) string {
 
 type roundTripper func(*http.Request) (*http.Response, error)
 
-func (f roundTripper) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+func (f roundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
+
 func TestModelsRevalidationAndSharedRequest(t *testing.T) {
 	document := modelDocument(t)
 	synctest.Test(t, func(t *testing.T) {

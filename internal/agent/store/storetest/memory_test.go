@@ -14,7 +14,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func TestGuardAndCancellationLeaveCheckpointsUnchanged(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -45,7 +47,9 @@ func TestGuardAndCancellationLeaveCheckpointsUnchanged(t *testing.T) {
 		t.Cleanup(gate.Release)
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
-		go func() { result <- memory.Session("root").Save(ctx, update, store.CommitGuard{}) }()
+		go func() {
+			result <- memory.Session("root").Save(ctx, update, store.CommitGuard{})
+		}()
 		if err := gate.Wait(t.Context(), 1); err != nil {
 			t.Fatal(err)
 		}

@@ -291,7 +291,9 @@ type RunningStatus struct {
 }
 
 // Command returns the command and its view, whatever its status.
-func (r *RunningStatus) Command() *CommandView { return &r.CommandView }
+func (r *RunningStatus) Command() *CommandView {
+	return &r.CommandView
+}
 
 // +demi:variant ShellStatus exited
 // +demi:tolerant
@@ -301,7 +303,9 @@ type ExitedStatus struct {
 }
 
 // Command returns the command and its view, whatever its status.
-func (e *ExitedStatus) Command() *CommandView { return &e.CommandView }
+func (e *ExitedStatus) Command() *CommandView {
+	return &e.CommandView
+}
 
 // +demi:variant ShellStatus aborted
 // +demi:tolerant
@@ -310,7 +314,9 @@ type AbortedStatus struct {
 }
 
 // Command returns the command and its view, whatever its status.
-func (a *AbortedStatus) Command() *CommandView { return &a.CommandView }
+func (a *AbortedStatus) Command() *CommandView {
+	return &a.CommandView
+}
 
 // A command as the pages see it, whatever its status (`runtime.md`
 // § Live output).

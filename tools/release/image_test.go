@@ -173,14 +173,20 @@ func fixtureImageArchive(ctx context.Context, root, path string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, file.Close()) }()
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
 	encoder, err := zstd.NewWriter(file)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, encoder.Close()) }()
+	defer func() {
+		err = errors.Join(err, encoder.Close())
+	}()
 	writer := tar.NewWriter(encoder)
-	defer func() { err = errors.Join(err, writer.Close()) }()
+	defer func() {
+		err = errors.Join(err, writer.Close())
+	}()
 	return filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -477,7 +483,9 @@ func TestCorruptArtifactOrUnfinishedPackagePublishesNoImage(t *testing.T) {
 					t.Fatal(err)
 				}
 			case "archive failure":
-				writer = func(context.Context, string, string) error { return io.ErrUnexpectedEOF }
+				writer = func(context.Context, string, string) error {
+					return io.ErrUnexpectedEOF
+				}
 			}
 
 			err := f.app.packageImage(

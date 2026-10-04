@@ -91,7 +91,9 @@ func TestSetupCreatesTheMasterOnceAndSignsItIn(t *testing.T) {
 	if len(token) < 40 ||
 		strings.ContainsFunc(
 			token,
-			func(r rune) bool { return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') },
+			func(r rune) bool {
+				return (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9')
+			},
 		) {
 		t.Fatalf("token: %q", token)
 	}
@@ -150,7 +152,9 @@ func TestConcurrentSetupsCreateOneMaster(t *testing.T) {
 	errs := make([]error, 2)
 	var wg sync.WaitGroup
 	for i := range bodies {
-		wg.Go(func() { answers[i], errs[i] = server.Post(ctx, "/api/setup", nil, []byte(bodies[i])) })
+		wg.Go(func() {
+			answers[i], errs[i] = server.Post(ctx, "/api/setup", nil, []byte(bodies[i]))
+		})
 	}
 	wg.Wait()
 	for _, err := range errs {

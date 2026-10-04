@@ -29,7 +29,10 @@ type testContext struct {
 	seen [][]string
 }
 
-func (*testContext) Name() string { return "execution" }
+func (*testContext) Name() string {
+	return "execution"
+}
+
 func (c *testContext) Context(_ context.Context, _ tools.NodeContext, _ types.TurnID, seen []string) (*string, error) {
 	c.mu.Lock()
 	c.seen = append(c.seen, append([]string{}, seen...))
@@ -54,7 +57,9 @@ func product(contextSource *testContext, profiles ...types.Profile) func(*server
 						Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 					},
 					host.RPCHandlerFunc(
-						func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil },
+						func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
+							return 0, nil
+						},
 					),
 				),
 			),
@@ -238,7 +243,9 @@ func TestGrandchildInheritsProfileAndReadsOwnContext(t *testing.T) {
 		f.opened()
 		outer := spawn(t, f, rootID(), `{"prompt":"task outer","profile":"worker"}`)
 		done := make(chan types.NodeID, 1)
-		go func() { done <- spawn(t, f, outer, `{"prompt":"task inner"}`) }()
+		go func() {
+			done <- spawn(t, f, outer, `{"prompt":"task inner"}`)
+		}()
 		synctest.Wait()
 		close(outerGate)
 		inner := <-done

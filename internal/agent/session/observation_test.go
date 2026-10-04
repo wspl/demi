@@ -18,7 +18,9 @@ func TestObserveExcludesPendingCallbacks(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := setup(t, answer("answer"))
 		paused, release := make(chan struct{}), make(chan struct{})
-		unblock := sync.OnceFunc(func() { close(release) })
+		unblock := sync.OnceFunc(func() {
+			close(release)
+		})
 		defer unblock()
 		var once sync.Once
 		blocker := f.s.Subscribe(func(event session.Event) {
@@ -36,7 +38,9 @@ func TestObserveExcludesPendingCallbacks(t *testing.T) {
 		queued := f.send("later", "queued")
 		must(t, f.s.Steer(storetest.Text("remember"), "steer"))
 		var events []session.Event
-		snapshot, subscription := f.s.Observe(func(event session.Event) { events = append(events, event) })
+		snapshot, subscription := f.s.Observe(func(event session.Event) {
+			events = append(events, event)
+		})
 		defer subscription.Release()
 		equal(t, kinds(snapshot.Transcript.Blocks), []string{"user", "error"})
 		equal(t, snapshot.Phase, types.SessionPhase("running"))
@@ -89,7 +93,9 @@ func TestEditAcceptanceIsPublishedBetweenRewriteAndProgress(t *testing.T) {
 		f.done(f.send("question", "turn"))
 		submission := edit(t, f.s, 0, "operation")
 		paused, release := make(chan struct{}), make(chan struct{})
-		unblock := sync.OnceFunc(func() { close(release) })
+		unblock := sync.OnceFunc(func() {
+			close(release)
+		})
 		defer unblock()
 		var events []session.Event
 		blocker := f.s.Subscribe(func(event session.Event) {

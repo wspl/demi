@@ -18,7 +18,9 @@ func standardFile(ctx context.Context, descriptor uint32) (*os.File, error) {
 	}
 	duplicate, err := commandsdk.Retry(
 		ctx,
-		func() (int, error) { return unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0) },
+		func() (int, error) {
+			return unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)
+		},
 	)
 	if err != nil {
 		return nil, err

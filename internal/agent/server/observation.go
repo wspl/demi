@@ -365,7 +365,9 @@ func (t *telemetry) addBlockLocked(value types.Block, now int64) {
 			toolRecord{id: block.ToolUseID, title: title, started: now, status: "executing"},
 		)
 		for len(t.tools) > 8 {
-			i := slices.IndexFunc(t.tools, func(tool toolRecord) bool { return tool.ended != nil })
+			i := slices.IndexFunc(t.tools, func(tool toolRecord) bool {
+				return tool.ended != nil
+			})
 			if i < 0 {
 				break
 			}
@@ -442,11 +444,15 @@ func (t *Tree[H]) archivedNodes(
 	}
 	archived := slices.DeleteFunc(
 		records,
-		func(record store.NodeRecord) bool { return record.Closed == nil || t.Node(record.ID) != nil },
+		func(record store.NodeRecord) bool {
+			return record.Closed == nil || t.Node(record.ID) != nil
+		},
 	)
 	slices.SortStableFunc(
 		archived,
-		func(a, b store.NodeRecord) int { return strings.Compare(string(b.Closed.At), string(a.Closed.At)) },
+		func(a, b store.NodeRecord) int {
+			return strings.Compare(string(b.Closed.At), string(a.Closed.At))
+		},
 	)
 	for _, record := range archived {
 		at, err := record.Closed.At.Millisecond()

@@ -25,10 +25,14 @@ type Paired struct {
 }
 
 // ID returns the claimed device's ID.
-func (p *Paired) ID() webapiproto.DeviceID { return p.Device.ID }
+func (p *Paired) ID() webapiproto.DeviceID {
+	return p.Device.ID
+}
 
 // Token waits until the runner has durably received its device token.
-func (p *Paired) Token(ctx context.Context) (string, error) { return StoredToken(ctx, p.Runner) }
+func (p *Paired) Token(ctx context.Context) (string, error) {
+	return StoredToken(ctx, p.Runner)
+}
 
 // Pair starts, claims and waits for a new named device and its stored token.
 // The runner fixture registers process cleanup before it starts the child.
@@ -74,7 +78,9 @@ func StoredToken(ctx context.Context, runner *remotehosttest.RunnerProcess) (tok
 	if err != nil {
 		return "", err
 	}
-	defer func() { err = errors.Join(err, watcher.Close()) }()
+	defer func() {
+		err = errors.Join(err, watcher.Close())
+	}()
 	if err := watcher.Add(runner.StateDir()); err != nil {
 		return "", err
 	}

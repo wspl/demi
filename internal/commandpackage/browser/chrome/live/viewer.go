@@ -269,12 +269,16 @@ func (v *viewer) runView(ctx context.Context, environment *tabs.Environment, hub
 		session.finishInput(ctx, cancel, &workers, input, stopInput)
 	}()
 	if err := start(
-		func(work context.Context) { runCommands(work, environment, member, v.writer, commands) },
+		func(work context.Context) {
+			runCommands(work, environment, member, v.writer, commands)
+		},
 	); err != nil {
 		return "browser_ended", nil
 	}
 	if err := start(
-		func(work context.Context) { runUploads(work, environment, member, v.writer, v.uploads) },
+		func(work context.Context) {
+			runUploads(work, environment, member, v.writer, v.uploads)
+		},
 	); err != nil {
 		return "browser_ended", nil
 	}

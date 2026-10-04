@@ -22,16 +22,26 @@ type testFamily struct {
 	build func(FamilyArgs) (provider.Provider, error)
 }
 
-func (f testFamily) Credential() webapiproto.CredentialKind              { return f.kind }
-func (testFamily) Wires() []types.WireAPI                                { return nil }
-func (f testFamily) Provider(args FamilyArgs) (provider.Provider, error) { return f.build(args) }
+func (f testFamily) Credential() webapiproto.CredentialKind {
+	return f.kind
+}
+
+func (testFamily) Wires() []types.WireAPI {
+	return nil
+}
+
+func (f testFamily) Provider(args FamilyArgs) (provider.Provider, error) {
+	return f.build(args)
+}
 
 type accountProvider struct {
 	*openaiapi.Provider
 	accounts provider.SubscriptionAccounts
 }
 
-func (p *accountProvider) Accounts() provider.SubscriptionAccounts { return p.accounts }
+func (p *accountProvider) Accounts() provider.SubscriptionAccounts {
+	return p.accounts
+}
 
 type loginKit struct {
 	started chan struct{}

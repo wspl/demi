@@ -72,7 +72,9 @@ func (HostsProcessFamily) Credential() webapiproto.CredentialKind {
 }
 
 // Wires has no selectable protocol.
-func (HostsProcessFamily) Wires() []types.WireAPI { return nil }
+func (HostsProcessFamily) Wires() []types.WireAPI {
+	return nil
+}
 
 // Provider accepts only the API-key credential.
 func (f HostsProcessFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
@@ -107,7 +109,9 @@ func (hostsProcessProvider) AuthStatus(context.Context) types.AuthState {
 }
 
 // RuntimeState reports that the fixture runtime is ready.
-func (hostsProcessProvider) RuntimeState() types.RuntimeState { return &types.RuntimeReady{} }
+func (hostsProcessProvider) RuntimeState() types.RuntimeState {
+	return &types.RuntimeReady{}
+}
 
 // ListModels returns the scripted provider catalog.
 func (hostsProcessProvider) ListModels(context.Context) (types.ProviderModelList, error) {
@@ -120,10 +124,14 @@ func (hostsProcessProvider) ReadFailure(*types.ProviderErrorDiagnostics, types.T
 }
 
 // Quota returns the fixture quota capability.
-func (hostsProcessProvider) Quota() *provider.Quota { return nil }
+func (hostsProcessProvider) Quota() *provider.Quota {
+	return nil
+}
 
 // Accounts returns the fixture subscription accounts capability.
-func (hostsProcessProvider) Accounts() provider.SubscriptionAccounts { return nil }
+func (hostsProcessProvider) Accounts() provider.SubscriptionAccounts {
+	return nil
+}
 
 // Runtime creates the scripted fixture runtime.
 func (p hostsProcessProvider) Runtime(provider.RuntimeEnv) (provider.Runtime, error) {
@@ -139,7 +147,9 @@ func HostsInstalledCode(ctx context.Context, state string) (code string, err err
 	if err != nil {
 		return "", err
 	}
-	defer func() { err = errors.Join(err, watcher.Close()) }()
+	defer func() {
+		err = errors.Join(err, watcher.Close())
+	}()
 	if err := watcher.Add(state); err != nil {
 		return "", err
 	}

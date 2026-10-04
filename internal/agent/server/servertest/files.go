@@ -26,7 +26,9 @@ type TestFiles struct {
 }
 
 // NewFiles constructs an empty upload resolver.
-func NewFiles() *TestFiles { return &TestFiles{} }
+func NewFiles() *TestFiles {
+	return &TestFiles{}
+}
 
 // Upload records the blocks and held media an upload reference resolves to.
 func (f *TestFiles) Upload(reference string, blocks []types.UserContentBlock, media store.HeldMedia) {

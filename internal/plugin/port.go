@@ -20,7 +20,9 @@ type Transport interface {
 type Port struct{ transport Transport }
 
 // NewPort constructs a port over the supplied transport.
-func NewPort(transport Transport) Port { return Port{transport: transport} }
+func NewPort(transport Transport) Port {
+	return Port{transport: transport}
+}
 
 // Forward sends one message, preserving a refusal as a wire answer.
 func (p Port) Forward(ctx context.Context, message PortMessage) (PortAnswer, error) {
@@ -28,7 +30,9 @@ func (p Port) Forward(ctx context.Context, message PortMessage) (PortAnswer, err
 }
 
 // RPC exposes the command operations through the same transport.
-func (p Port) RPC() host.RPCPort { return host.NewRPCPort(rpcMessages(p)) }
+func (p Port) RPC() host.RPCPort {
+	return host.NewRPCPort(rpcMessages(p))
+}
 
 type rpcMessages struct{ transport Transport }
 

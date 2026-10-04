@@ -216,7 +216,9 @@ func (s *streamEvent) UnmarshalJSON(data []byte) error {
 			}](text)
 			return streamEvent{Type: "content_block_delta", Delta: v.Delta}, e
 		},
-		"message_stop": func(string) (streamEvent, error) { return streamEvent{Type: "message_stop"}, nil },
+		"message_stop": func(string) (streamEvent, error) {
+			return streamEvent{Type: "message_stop"}, nil
+		},
 	})
 	if ok {
 		*s = v

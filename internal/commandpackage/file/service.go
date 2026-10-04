@@ -31,7 +31,9 @@ func Serve(ctx context.Context, args []string) error {
 type service struct{ mutations gates.Serial }
 
 // Operations lists the resident service operations.
-func (*service) Operations() []string { return fileproto.Operations() }
+func (*service) Operations() []string {
+	return fileproto.Operations()
+}
 
 func failure(err error) commandproto.Completion {
 	return commandproto.Completion{

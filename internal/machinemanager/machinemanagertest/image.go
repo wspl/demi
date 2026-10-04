@@ -14,7 +14,9 @@ type Entry = storagetest.Entry
 type CloudImage = storagetest.CloudImage
 
 // Entries returns the shared small Cloud root.
-func Entries() []Entry { return storagetest.Entries() }
+func Entries() []Entry {
+	return storagetest.Entries()
+}
 
 // NewCloudImage builds a release through storage's single fixture implementation.
 func NewCloudImage(

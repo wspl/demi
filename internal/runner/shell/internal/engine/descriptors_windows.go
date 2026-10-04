@@ -13,5 +13,7 @@ func extraDescriptors(
 	_ *exec.Cmd,
 	_ map[string]io.ReadWriteCloser,
 ) (func() error, error) {
-	return func() error { return nil }, nil
+	return func() error {
+		return nil
+	}, nil
 }

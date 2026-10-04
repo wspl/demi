@@ -16,7 +16,9 @@ func StandardFile(ctx context.Context, descriptor uint32) (*os.File, error) {
 
 // LiveReference identifies a live input file. The caller keeps the file open
 // for the entire shell job.
-func LiveReference(file *os.File) (string, error) { return liveReference(file) }
+func LiveReference(file *os.File) (string, error) {
+	return liveReference(file)
+}
 
 // IsLive compares file with the live input reference in env.
 func IsLive(file *os.File, env map[string]string) (bool, error) {

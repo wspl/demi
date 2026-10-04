@@ -209,7 +209,9 @@ func TestStatusAndInvalidOrMissingAccount(t *testing.T) {
 		*failure(t, run(t.Context(), t, p, v.Client(), providertest.InferenceRequest())).Code,
 		provider.AuthInvalid,
 	)
-	p = configured(t, v, pool, func(c *codex.Config) { c.Account = nil })
+	p = configured(t, v, pool, func(c *codex.Config) {
+		c.Account = nil
+	})
 	missing, ok := p.AuthStatus(t.Context()).(*types.Unauthenticated)
 	if !ok {
 		t.Fatal("missing account authenticated")

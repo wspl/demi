@@ -31,7 +31,9 @@ func (s *Shard) executionContext(
 		return nil, nil
 	}
 	marker := fmt.Sprintf("[Execution context %d]", record.ContextVersion)
-	if slices.ContainsFunc(seen, func(text string) bool { return strings.Contains(text, marker) }) {
+	if slices.ContainsFunc(seen, func(text string) bool {
+		return strings.Contains(text, marker)
+	}) {
 		return nil, nil
 	}
 	attached, err := control.AttachedHosts(ctx, id)
@@ -45,7 +47,9 @@ func (s *Shard) executionContext(
 	}
 	if reset != nil {
 		marker := fmt.Sprintf("[Cloud reset %s]", *reset)
-		if !slices.ContainsFunc(seen, func(text string) bool { return strings.Contains(text, marker) }) {
+		if !slices.ContainsFunc(seen, func(text string) bool {
+			return strings.Contains(text, marker)
+		}) {
 			lines = append(lines, marker, cloudReset)
 		}
 	}

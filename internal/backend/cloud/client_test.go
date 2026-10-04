@@ -17,7 +17,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 type managerPeer struct {
 	t      *testing.T
@@ -28,7 +30,9 @@ type managerPeer struct {
 // newPeer owns one scripted manager connection and its JSON line reader.
 func newPeer(t *testing.T, conn net.Conn) *managerPeer {
 	t.Helper()
-	t.Cleanup(func() { _ = conn.Close() })
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
 	return &managerPeer{t: t, conn: conn, reader: bufio.NewReader(conn)}
 }
 
@@ -201,7 +205,9 @@ func TestClientDeathAndDisconnect(t *testing.T) {
 			t.Fatal(device)
 		}
 		closed := make(chan error, 1)
-		go func() { closed <- c.Disconnect(t.Context()) }()
+		go func() {
+			closed <- c.Disconnect(t.Context())
+		}()
 		reconcile := peer.request()
 		if reconcile.Call.Name() != "reconcile" {
 			t.Fatal(reconcile.Call.Name())
@@ -221,7 +227,9 @@ func TestClientDeathAndDisconnect(t *testing.T) {
 		if result := <-again; result.err != nil || result.value != "base-2" {
 			t.Fatalf("reconnected: %+v", result)
 		}
-		go func() { closed <- c.Close(t.Context()) }()
+		go func() {
+			closed <- c.Close(t.Context())
+		}()
 		request = peer.request()
 		if request.Call.Name() != "reconcile" {
 			t.Fatal(request.Call.Name())
@@ -267,7 +275,9 @@ func TestClientDropFailsPendingAndReconnects(t *testing.T) {
 		}
 		// The next dial can fail; neither an old call nor this refusal is replayed.
 		dial := c.dial
-		c.dial = func(context.Context, string, string) (net.Conn, error) { return nil, io.ErrClosedPipe }
+		c.dial = func(context.Context, string, string) (net.Conn, error) {
+			return nil, io.ErrClosedPipe
+		}
 		if _, err := Call(
 			t.Context(),
 			c,
@@ -331,7 +341,9 @@ func TestClientUnixSocket(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		defer func() { _ = conn.Close() }() // Closing the scripted connection only releases its descriptor.
+		defer func() {
+			_ = conn.Close()
+		}() // Closing the scripted connection only releases its descriptor.
 		scanner := bufio.NewScanner(conn)
 		if !scanner.Scan() {
 			t.Error("no request")

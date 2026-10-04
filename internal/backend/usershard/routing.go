@@ -131,23 +131,35 @@ func (s *Shards) Close(ctx context.Context) error {
 }
 
 // Services returns the immutable shared service handles.
-func (s *Shard) Services() *Services { return s.services }
+func (s *Shard) Services() *Services {
+	return s.services
+}
 
 // HTTP returns the shard's provider HTTP client.
-func (s *Shard) HTTP() *http.Client { return s.http }
+func (s *Shard) HTTP() *http.Client {
+	return s.http
+}
 
 // Plugins returns the synchronized plugin host of this user.
-func (s *Shard) Plugins() *pluginhost.User { return s.plugins }
+func (s *Shard) Plugins() *pluginhost.User {
+	return s.plugins
+}
 
 // Closed is closed when shutdown begins; it does not signal that draining ended.
-func (s *Shard) Closed() <-chan struct{} { return s.ctx.Done() }
+func (s *Shard) Closed() <-chan struct{} {
+	return s.ctx.Done()
+}
 
 // HostShard supplies the conversation Host access boundary.
-func (s *Shard) HostShard() hostaccess.HostShard { return s }
+func (s *Shard) HostShard() hostaccess.HostShard {
+	return s
+}
 
 // ExposeShard supplies the expose boundary through a private adapter because
 // its Control, PublicURL and Exposes signatures differ from other consumers.
-func (s *Shard) ExposeShard() expose.Shard { return exposeView{s} }
+func (s *Shard) ExposeShard() expose.Shard {
+	return exposeView{s}
+}
 
 // RouteDeaths routes manager death events to the owning user's Cloud until
 // deaths closes or ctx ends. Its caller owns and joins the call.
@@ -220,7 +232,9 @@ func (s *Shard) RetentionPass(ctx context.Context) error {
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.retentionPass(ctx) },
+		func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, s.retentionPass(ctx)
+		},
 	)
 	return err
 }

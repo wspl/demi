@@ -215,10 +215,14 @@ var ErrPathUnquotable = errors.New("A referenced path cannot be written in a she
 type StreamError struct{ Err error }
 
 // Error returns the underlying failure text.
-func (e *StreamError) Error() string { return e.Err.Error() }
+func (e *StreamError) Error() string {
+	return e.Err.Error()
+}
 
 // Unwrap preserves the underlying failure.
-func (e *StreamError) Unwrap() error { return e.Err }
+func (e *StreamError) Unwrap() error {
+	return e.Err
+}
 
 // Code returns stream_failed with status 502.
 func (e *StreamError) Code() (webapiproto.ErrorCode, int) {

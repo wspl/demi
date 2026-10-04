@@ -26,8 +26,13 @@ type gitError struct {
 	cause         error
 }
 
-func (e *gitError) Error() string { return e.message }
-func (e *gitError) Unwrap() error { return e.cause }
+func (e *gitError) Error() string {
+	return e.message
+}
+
+func (e *gitError) Unwrap() error {
+	return e.cause
+}
 
 func gitProblem(err error) *gitError {
 	var failure *gitError

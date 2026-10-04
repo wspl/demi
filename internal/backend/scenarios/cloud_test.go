@@ -94,7 +94,9 @@ func TestCloudCrashLoopRequiresReset(t *testing.T) {
 		if err := s.manager.Kill(s.ctx, s.theCloud()); err != nil {
 			t.Fatal(err)
 		}
-		s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+		s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+			return status.State == webapiproto.CloudStateOff
+		})
 	}
 	conversationRefusal(
 		s.t,
@@ -169,7 +171,9 @@ func TestCloudCapacityIsSharedAcrossUsers(t *testing.T) {
 		),
 		webapiproto.ErrorCodeCloudCapacity,
 	)
-	s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	conversationRequest(
 		other.ctx,
 		other.t,
@@ -413,7 +417,9 @@ func TestCloudResetKeepsHomeIdentityAndAnnouncesOnce(t *testing.T) {
 	var answers [3]webapiproto.CloudResetAnswer
 	var workers sync.WaitGroup
 	for i := range answers {
-		workers.Go(func() { answers[i] = s.resetCloud(cloudReset) })
+		workers.Go(func() {
+			answers[i] = s.resetCloud(cloudReset)
+		})
 	}
 	workers.Wait()
 	for _, answer := range answers {
@@ -606,7 +612,9 @@ func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
 		201,
 	)
 	booting := s.cloudUntil(
-		func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateBooting },
+		func(status webapiproto.CloudStatus) bool {
+			return status.State == webapiproto.CloudStateBooting
+		},
 	)
 	if booting.Device == nil {
 		t.Fatal("booting Cloud has no identity")
@@ -860,8 +868,12 @@ func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
 	defer working.Release()
 	var results [2]string
 	var workers sync.WaitGroup
-	workers.Go(func() { results[0] = a.turn("a1", "echo 0 > note", "a wrote") })
-	workers.Go(func() { results[1] = other.turn("b1", "echo 1 > note", "b wrote") })
+	workers.Go(func() {
+		results[0] = a.turn("a1", "echo 0 > note", "a wrote")
+	})
+	workers.Go(func() {
+		results[1] = other.turn("b1", "echo 1 > note", "b wrote")
+	})
 	workers.Wait()
 	for _, result := range results {
 		if !strings.Contains(result, "exitCode: 0") {
@@ -903,7 +915,9 @@ func TestConcurrentCloudUsesBootOnceAndIdleStopWakesOnDemand(t *testing.T) {
 		t.Fatal(listed)
 	}
 	working.Release()
-	s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	if manager.Count("hibernate:"+string(device)) != 1 || manager.Running(device) {
 		t.Fatal(manager.Calls())
 	}
@@ -960,7 +974,9 @@ func TestCloudLifetimeCapEndsUnattendedJobs(t *testing.T) {
 		t.Fatal(result)
 	}
 	device := s.theCloud()
-	s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	if manager.Count("hibernate:"+string(device)) != 1 || manager.Running(device) {
 		t.Fatal(manager.Calls())
 	}
@@ -1008,7 +1024,9 @@ func TestCloudLogSurvivesIdleStopWithoutWakingOnRead(t *testing.T) {
 		t.Fatalf("online lines %d", count)
 	}
 	working.Release()
-	s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	conversationRefusal(
 		s.t,
 		conversationRequest(s.ctx, s.t, s.b, &s.user, "GET", path, "", 409),
@@ -1100,7 +1118,9 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 	if !found {
 		t.Fatal("Cloud not attached")
 	}
-	s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	if manager.Running(device) {
 		t.Fatal("idle Cloud runner still running")
 	}
@@ -1117,7 +1137,9 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 	if manager.Count("wake:"+string(device)) != 2 {
 		t.Fatal(manager.Calls())
 	}
-	s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	if manager.Running(device) {
 		t.Fatal("idle Cloud runner still running")
 	}
@@ -1128,7 +1150,9 @@ func TestAttachedCloudWakesForBrowseAndCommands(t *testing.T) {
 	if manager.Count("wake:"+string(device)) != 3 {
 		t.Fatal(manager.Calls())
 	}
-	s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	if manager.Running(device) {
 		t.Fatal("idle Cloud runner still running")
 	}
@@ -1240,8 +1264,12 @@ func TestIdleConversationReleasesNativeResourcesOnRunningCloud(t *testing.T) {
 	defer working.Release()
 	var results [2]string
 	var workers sync.WaitGroup
-	workers.Go(func() { results[0] = a.turn("a1", "echo ran", "ran") })
-	workers.Go(func() { results[1] = other.turn("b1", "echo ran", "ran") })
+	workers.Go(func() {
+		results[0] = a.turn("a1", "echo ran", "ran")
+	})
+	workers.Go(func() {
+		results[1] = other.turn("b1", "echo ran", "ran")
+	})
 	workers.Wait()
 	for _, result := range results {
 		if !strings.Contains(result, "exitCode: 0") {

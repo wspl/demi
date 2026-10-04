@@ -22,7 +22,9 @@ func VetArchive(ctx context.Context, archive string) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = file.Close() }() // Read-only archive.
+	defer func() {
+		_ = file.Close()
+	}() // Read-only archive.
 	// Synchronous streaming owns no decoder workers across namespace jobs.
 	// Allow windows up to 2^27 bytes, libzstd's ZSTD_WINDOWLOG_LIMIT_DEFAULT.
 	decoder, err := zstd.NewReader(file, zstd.WithDecoderConcurrency(1), zstd.WithDecoderMaxWindow(1<<27))

@@ -159,7 +159,9 @@ func TestBootstrapAttributesAndIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = extra.Close() }()
+	defer func() {
+		_ = extra.Close()
+	}()
 	var limits unix.Rlimit
 	if err := unix.Getrlimit(unix.RLIMIT_NOFILE, &limits); err != nil {
 		t.Fatal(err)
@@ -262,7 +264,9 @@ func TestGroupLeaderExitClosesDescendantOutput(t *testing.T) {
 func TestCommandWaitCancellationInterruptsIO(t *testing.T) {
 	input, writer := io.Pipe()
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = writer.Close() }()
+	defer func() {
+		_ = writer.Close()
+	}()
 	cmd := exec.Command("/bin/cat")
 	cmd.Stdin = input
 	command := Wrap(cmd, true, ChildAttributes{})
@@ -293,7 +297,9 @@ func TestCommandOutputFailureKillsChild(t *testing.T) {
 
 type failingOutput struct{ err error }
 
-func (f failingOutput) Write([]byte) (int, error) { return 0, f.err }
+func (f failingOutput) Write([]byte) (int, error) {
+	return 0, f.err
+}
 
 func TestSpawnUsesJobPATHAndEnvironment(t *testing.T) {
 	options := childOptions(t, "job-program")
@@ -335,7 +341,9 @@ func TestBootstrapCancellationAfterExecAcknowledgement(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() {
+		_ = reader.Close()
+	}()
 	cmd := exec.Command("/bin/cat")
 	cmd.Stdin = reader
 	mask := uint32(0o077)

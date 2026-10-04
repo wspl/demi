@@ -122,7 +122,9 @@ func (p *Provider) websocket(
 	dialClient := *client
 	dialClient.Transport = transport
 	// A redirect answering the handshake is a refusal: the dialer returns it instead of following it.
-	dialClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	dialClient.CheckRedirect = func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
 	activity := make(chan struct{}, 1)
 	pulse := func() {
 		select {
@@ -137,7 +139,9 @@ func (p *Provider) websocket(
 			pulse()
 			return true
 		},
-		OnPongReceived: func(context.Context, []byte) { pulse() },
+		OnPongReceived: func(context.Context, []byte) {
+			pulse()
+		},
 	})
 	expired := errors.Is(connectCtx.Err(), context.DeadlineExceeded)
 	cancel()
@@ -156,7 +160,9 @@ func (p *Provider) websocket(
 	// A message is at most 64 MiB. coder/websocket has no separate frame-size
 	// limit, so a single frame may also be up to 64 MiB.
 	socket.SetReadLimit(64 * 1024 * 1024)
-	cleanup := func() { _ = socket.CloseNow() } // Release even when the peer has already closed.
+	cleanup := func() {
+		_ = socket.CloseNow()
+	} // Release even when the peer has already closed.
 	message := append([]byte(`{"type":"response.create",`), body[1:]...)
 	if err := socket.Write(ctx, websocket.MessageText, message); err != nil {
 		cleanup()

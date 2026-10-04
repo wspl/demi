@@ -14,8 +14,13 @@ import (
 
 type factory struct{ manifest plugin.Manifest }
 
-func (f factory) Manifest() plugin.Manifest { return f.manifest }
-func (factory) Instance() plugin.Plugin     { return nil }
+func (f factory) Manifest() plugin.Manifest {
+	return f.manifest
+}
+
+func (factory) Instance() plugin.Plugin {
+	return nil
+}
 
 // Cost: the built-in browser plugin's declarations in memory, no backend or processes.
 // Observe the command's JSON interface, including registration order and every use.
@@ -24,7 +29,9 @@ func TestPrintedPageManifests(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	index := slices.IndexFunc(builtins, func(f plugin.Factory) bool { return f.Manifest().ID == "browser" })
+	index := slices.IndexFunc(builtins, func(f plugin.Factory) bool {
+		return f.Manifest().ID == "browser"
+	})
 	if index < 0 {
 		t.Fatal("no built-in browser plugin")
 	}

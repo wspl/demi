@@ -266,7 +266,9 @@ func (d *ConversationDB) Read(ctx context.Context, work func(context.Context, *s
 	case <-ctx.Done():
 		return false, ctx.Err()
 	}
-	defer func() { <-coldReads }()
+	defer func() {
+		<-coldReads
+	}()
 	path := filepath.Join(d.stores.directory, d.file+".sqlite")
 	if _, err := os.Stat(path); err != nil {
 		if errors.Is(err, os.ErrNotExist) {

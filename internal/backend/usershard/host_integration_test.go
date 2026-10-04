@@ -261,7 +261,9 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 		t.Fatalf("reference lost identity: %s", reference.Reference)
 	}
 	// Parse both shell levels, so quoting may vary but cannot evaluate the path.
-	command, err := shell.Fields(parsed.Query().Get("readCommand"), func(string) string { return "" })
+	command, err := shell.Fields(parsed.Query().Get("readCommand"), func(string) string {
+		return ""
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -277,7 +279,9 @@ func TestRemoteReferencePreservesDeviceAndPathAndRefusesWholeBatch(t *testing.T)
 	}, command[:5]); diff != "" {
 		t.Fatal(diff)
 	}
-	read, err := shell.Fields(command[5], func(string) string { return "" })
+	read, err := shell.Fields(command[5], func(string) string {
+		return ""
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -14,13 +14,19 @@ import (
 )
 
 // plain escapes page-controlled terminal and line controls inside browser output.
-func plain(value string) string { return escaped(value, false) }
+func plain(value string) string {
+	return escaped(value, false)
+}
 
 // quoted encloses page data in Go's quoted-string syntax (strconv.Quote).
-func quoted(value string) string { return strconv.Quote(value) }
+func quoted(value string) string {
+	return strconv.Quote(value)
+}
 
 // body preserves page content's own lines and tabs without terminal controls.
-func body(value string) string { return escaped(value, true) }
+func body(value string) string {
+	return escaped(value, true)
+}
 
 // escaped confines page-controlled strings to their documented
 // browser text scope, escaping control characters as Go's quoted strings do.
@@ -55,7 +61,11 @@ func (o textObject) text(key string) string {
 	value, _ := o[key].(string)
 	return value
 }
-func (o textObject) number(key string) string { return pageValue(o[key]) }
+
+func (o textObject) number(key string) string {
+	return pageValue(o[key])
+}
+
 func (o textObject) flag(key string) bool {
 	value, _ := o[key].(bool)
 	return value

@@ -41,4 +41,6 @@ type UploadNotFoundError struct {
 }
 
 // Error names the missing upload.
-func (e *UploadNotFoundError) Error() string { return "draft upload not found: " + string(e.Upload) }
+func (e *UploadNotFoundError) Error() string {
+	return "draft upload not found: " + string(e.Upload)
+}

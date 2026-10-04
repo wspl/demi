@@ -32,7 +32,9 @@ func loadFixture() (fixture, error) {
 	if err != nil {
 		return fixture{}, fmt.Errorf("large-context-fixture.json.gz: %w", err)
 	}
-	defer func() { _ = reader.Close() }() // The reader owns only in-memory decompression state.
+	defer func() {
+		_ = reader.Close()
+	}() // The reader owns only in-memory decompression state.
 	data, err := io.ReadAll(reader)
 	if err != nil {
 		return fixture{}, fmt.Errorf("large-context-fixture.json.gz: %w", err)

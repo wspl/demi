@@ -14,7 +14,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // These in-process admission scenarios use only events and virtual time;
 // each should take less than one second and owns no external resources.
@@ -134,7 +136,9 @@ func TestCancelDrainingReservationAdmitsWaiters(t *testing.T) {
 		}()
 		synctest.Wait()
 		entrant := make(chan *gates.Lease, 1)
-		go func() { entrant <- enter(t, a, gates.Demand) }()
+		go func() {
+			entrant <- enter(t, a, gates.Demand)
+		}()
 		synctest.Wait()
 		if len(entrant) != 0 {
 			t.Fatal("entrant bypassed reservation")
@@ -322,7 +326,9 @@ func TestKeyedSerialRetainsWaitersAndForgetsUnusedKeys(t *testing.T) {
 			t.Fatal("independent keys were not retained")
 		}
 		waiter := make(chan *gates.Permit, 1)
-		go func() { waiter <- keyed(t, &s, "a") }()
+		go func() {
+			waiter <- keyed(t, &s, "a")
+		}()
 		synctest.Wait()
 		if len(waiter) != 0 {
 			t.Fatal("same key admitted concurrently")

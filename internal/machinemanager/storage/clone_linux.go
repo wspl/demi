@@ -23,12 +23,16 @@ func CloneSparse(ctx context.Context, source, destination string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = from.Close() }() // Read-only source.
+	defer func() {
+		_ = from.Close()
+	}() // Read-only source.
 	to, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, to.Close()) }()
+	defer func() {
+		err = errors.Join(err, to.Close())
+	}()
 	err = unix.IoctlFileClone(int(to.Fd()), int(from.Fd()))
 	if err == nil {
 		return nil

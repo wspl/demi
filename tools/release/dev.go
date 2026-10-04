@@ -177,7 +177,9 @@ func postDev(ctx context.Context, client *http.Client, url string, value any) ([
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = response.Body.Close() }() // Read-only HTTP body.
+	defer func() {
+		_ = response.Body.Close()
+	}() // Read-only HTTP body.
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return nil, err

@@ -44,7 +44,9 @@ func Trim(text string) string {
 }
 
 // IsBlank reports whether JavaScript's trim leaves no text.
-func IsBlank(text string) bool { return Trim(text) == "" }
+func IsBlank(text string) bool {
+	return Trim(text) == ""
+}
 
 // CharOffset is the byte offset after chars Unicode scalar values, capped at the end.
 func CharOffset(text string, chars int) int {

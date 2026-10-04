@@ -18,10 +18,14 @@ type sweepShutdownHandler struct {
 }
 
 // Operations returns the fixture operation name.
-func (h *sweepShutdownHandler) Operations() []string { return []string{"test"} }
+func (h *sweepShutdownHandler) Operations() []string {
+	return []string{"test"}
+}
 
 // SetArtifacts attaches the fixture artifact stream.
-func (h *sweepShutdownHandler) SetArtifacts(a *commandsdk.Artifacts) { h.artifacts = a }
+func (h *sweepShutdownHandler) SetArtifacts(a *commandsdk.Artifacts) {
+	h.artifacts = a
+}
 
 // Invoke completes the fixture invocation.
 func (h *sweepShutdownHandler) Invoke(

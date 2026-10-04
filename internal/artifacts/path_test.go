@@ -21,7 +21,9 @@ func TestPublicationStagesBesideSymlinkParent(t *testing.T) {
 	destination := root + "/link/../file"
 	staged, err := artifacts.NewStaged(t.Context(), destination, artifacts.Publication{Durable: true})
 	must(t, err)
-	defer func() { must(t, staged.Close()) }()
+	defer func() {
+		must(t, staged.Close())
+	}()
 	if got := names(t, other); len(got) != 2 {
 		t.Fatalf("stage must be in actual parent: %v", got)
 	}

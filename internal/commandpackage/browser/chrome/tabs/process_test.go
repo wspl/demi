@@ -79,7 +79,9 @@ func TestRetirementIncludesMarkedHelpersInAnotherSessionOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	helperDone := make(chan error, 1)
-	go func() { helperDone <- helper.Wait() }()
+	go func() {
+		helperDone <- helper.Wait()
+	}()
 	t.Cleanup(func() {
 		_ = helper.Process.Kill()
 		<-helperDone
@@ -97,7 +99,9 @@ func TestRetirementIncludesMarkedHelpersInAnotherSessionOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	unrelatedDone := make(chan error, 1)
-	go func() { unrelatedDone <- unrelated.Wait() }()
+	go func() {
+		unrelatedDone <- unrelated.Wait()
+	}()
 	t.Cleanup(func() {
 		_ = unrelatedInput.Close()
 		_ = unrelated.Process.Kill()

@@ -52,7 +52,9 @@ func startRequest(script string) remotehost.JobStart {
 func barrier(t *testing.T, l *remotehosttest.TestLink) {
 	t.Helper()
 	done := make(chan error, 1)
-	go func() { done <- l.Link().Sync(t.Context()) }()
+	go func() {
+		done <- l.Link().Sync(t.Context())
+	}()
 	request, ok := nextFrame(t, l).(*runnerproto.Sync)
 	if !ok {
 		t.Fatal("expected synchronization request")
@@ -169,7 +171,9 @@ func TestClosingRunningProcessKillsItAndEndedOneIsLeftAlone(t *testing.T) {
 func TestRetainedProcessHoldsNoAdmissionAndIsNotCounted(t *testing.T) {
 	d, l, _ := linkDevice(t)
 	gate := gates.NewActivity(nil)
-	h := d.Host("/work", func() (*gates.Lease, error) { return gate.TryEnter(gates.Demand), nil })
+	h := d.Host("/work", func() (*gates.Lease, error) {
+		return gate.TryEnter(gates.Demand), nil
+	})
 	retained, err := h.Process().Spawn(t.Context(), host.SpawnRequest{Command: "provider", Retained: true})
 	requirePipe(t, err)
 	nextFrame(t, l)

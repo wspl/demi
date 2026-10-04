@@ -37,7 +37,9 @@ type State struct {
 }
 
 // Changed returns the notification channel belonging to this snapshot.
-func (s State) Changed() <-chan struct{} { return s.changed }
+func (s State) Changed() <-chan struct{} {
+	return s.changed
+}
 
 // Hub notifies observers when any attached Activity changes. Its zero value
 // is ready for use. A Hub must not be copied after first use.
@@ -92,7 +94,9 @@ func NewActivity(hub *Hub) *Activity {
 }
 
 // State returns a value and its notification channel from one publication.
-func (a *Activity) State() State { return *a.state.Load() }
+func (a *Activity) State() State {
+	return *a.state.Load()
+}
 
 // publish updates activity state before announcing the replacement.
 func (a *Activity) publish(change func(*State)) {
@@ -181,7 +185,9 @@ func (a *Activity) TryReserve() *Reservation {
 
 // hold publishes an exclusive activity reservation.
 func (a *Activity) hold() *Reservation {
-	a.publish(func(s *State) { s.Reserved = true })
+	a.publish(func(s *State) {
+		s.Reserved = true
+	})
 	return &Reservation{gate: a}
 }
 
@@ -194,7 +200,9 @@ type Lease struct {
 }
 
 // Purpose reports why this lease holds the activity.
-func (l *Lease) Purpose() Purpose { return l.purpose }
+func (l *Lease) Purpose() Purpose {
+	return l.purpose
+}
 
 // Release ends the lease exactly once, from any goroutine.
 func (l *Lease) Release() {
@@ -222,7 +230,9 @@ type Reservation struct {
 // Release ends the reservation exactly once, from any goroutine.
 func (r *Reservation) Release() {
 	r.once.Do(func() {
-		r.gate.publish(func(s *State) { s.Reserved = false })
+		r.gate.publish(func(s *State) {
+			s.Reserved = false
+		})
 		r.gate.permits.Release(activityPermits)
 	})
 }

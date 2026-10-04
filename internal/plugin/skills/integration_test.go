@@ -94,7 +94,9 @@ func (p *plugged) add(t *testing.T, origin string) string {
 	}
 	if err := p.demi.Until(
 		t.Context(),
-		func(d *plugintest.TestDemi) bool { return d.Changes() >= before+3 },
+		func(d *plugintest.TestDemi) bool {
+			return d.Changes() >= before+3
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +111,9 @@ func (p *plugged) update(t *testing.T, source string) {
 	}
 	if err := p.demi.Until(
 		t.Context(),
-		func(d *plugintest.TestDemi) bool { return d.Changes() >= before+2 },
+		func(d *plugintest.TestDemi) bool {
+			return d.Changes() >= before+2
+		},
 	); err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +300,9 @@ func TestEnabledSkillDirectoryAndCatalog(t *testing.T) {
 	p.enable(t, id, "review")
 	p.enable(t, id, "hidden")
 	directories := p.demi.Directories()
-	index := slices.IndexFunc(directories, func(d plugin.HostDirectory) bool { return d.Name == "review" })
+	index := slices.IndexFunc(directories, func(d plugin.HostDirectory) bool {
+		return d.Name == "review"
+	})
 	if index < 0 {
 		t.Fatal("missing review directory")
 	}
@@ -525,7 +531,9 @@ func TestShutdownDuringFetchPreservesSource(t *testing.T) {
 		if name != "acme/tools" {
 			return nil
 		}
-		once.Do(func() { close(entered) })
+		once.Do(func() {
+			close(entered)
+		})
 		<-ctx.Done()
 		close(ended)
 		return ctx.Err()

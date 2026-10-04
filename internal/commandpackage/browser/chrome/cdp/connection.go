@@ -369,7 +369,9 @@ func (c *Connection) subscribe(session target.SessionID, capacity int, methods [
 }
 
 // Done closes when the connection ends; Err retains its transport failure.
-func (c *Connection) Done() <-chan struct{} { return c.done }
+func (c *Connection) Done() <-chan struct{} {
+	return c.done
+}
 
 // Err reports the transport failure, or nil for explicit closure.
 func (c *Connection) Err() error {
@@ -421,10 +423,14 @@ func (s *Session) Execute(ctx context.Context, method string, params, result any
 }
 
 // TargetID identifies the Chrome target, without a conversation tab number.
-func (s *Session) TargetID() target.ID { return s.target }
+func (s *Session) TargetID() target.ID {
+	return s.target
+}
 
 // ID identifies the flattened CDP session for internal event routing.
-func (s *Session) ID() target.SessionID { return s.id }
+func (s *Session) ID() target.SessionID {
+	return s.id
+}
 
 // Related returns an attached descendant, or nil when none is attached.
 func (s *Session) Related(ctx context.Context, id target.ID) (FrameTarget, error) {

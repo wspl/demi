@@ -66,4 +66,6 @@ type EditJournal struct {
 }
 
 // IsText reports whether edit contents are UTF-8 without NUL bytes.
-func IsText(data []byte) bool { return utf8.Valid(data) && !bytes.ContainsRune(data, 0) }
+func IsText(data []byte) bool {
+	return utf8.Valid(data) && !bytes.ContainsRune(data, 0)
+}

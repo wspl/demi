@@ -49,7 +49,9 @@ func NewNativeCatalog(packages []commandproto.PackageDescriptor, store Store) (*
 
 // UnpublishedCatalog makes an empty catalog. Commands declaring a native command
 // select no manifest; product startup instead loads releases with PublishNative.
-func UnpublishedCatalog() *NativeCatalog { return &NativeCatalog{store: &UnpublishedStore{}} }
+func UnpublishedCatalog() *NativeCatalog {
+	return &NativeCatalog{store: &UnpublishedStore{}}
+}
 
 // Catalog builds a command catalog, locating development downloads on backend.
 func (c *NativeCatalog) Catalog(backend *PublicURL) *remotehost.CommandCatalog {

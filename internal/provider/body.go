@@ -22,7 +22,9 @@ func EndpointURL(base *url.URL, path string) *url.URL {
 }
 
 // JSONBody encodes a request body with contract.EncodeJSON, which leaves <, >, &, U+2028 and U+2029 unescaped.
-func JSONBody(body any) ([]byte, error) { return contract.EncodeJSON(body) }
+func JSONBody(body any) ([]byte, error) {
+	return contract.EncodeJSON(body)
+}
 
 // EncodeBody builds a request in the caller's goroutine, outside state locks.
 // A failed body build becomes a run failure without a recovery code.

@@ -18,7 +18,9 @@ type jobState[E, C any] struct {
 type runningHint struct{ id, text string }
 
 // newJobState creates the output and completion publication for one runner operation.
-func newJobState[E, C any]() *jobState[E, C] { return &jobState[E, C]{changed: make(chan struct{})} }
+func newJobState[E, C any]() *jobState[E, C] {
+	return &jobState[E, C]{changed: make(chan struct{})}
+}
 
 // publish releases the job state before notifying its readers.
 func (s *jobState[E, C]) publish() {

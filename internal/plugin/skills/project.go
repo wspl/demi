@@ -65,10 +65,14 @@ func searchProject(ctx context.Context, port plugin.Port, cwd string) ([]project
 		frontier = next
 	}
 	found = found[:min(len(found), sourceMaxSkills)]
-	slices.SortStableFunc(found, func(a, b rankedProjectSkill) int { return cmp.Compare(a.rank, b.rank) })
+	slices.SortStableFunc(found, func(a, b rankedProjectSkill) int {
+		return cmp.Compare(a.rank, b.rank)
+	})
 	skills := []projectSkill{}
 	for _, value := range found {
-		index := slices.IndexFunc(skills, func(kept projectSkill) bool { return kept.name == value.skill.name })
+		index := slices.IndexFunc(skills, func(kept projectSkill) bool {
+			return kept.name == value.skill.name
+		})
 		if index >= 0 {
 			slog.Info(
 				"a project skill is shadowed by one of the same name",
@@ -131,7 +135,9 @@ func hostAncestors(cwd string) []string {
 }
 
 // hostJoin appends a Host path component without cleaning its spelling.
-func hostJoin(directory, name string) string { return strings.TrimRight(directory, "/") + "/" + name }
+func hostJoin(directory, name string) string {
+	return strings.TrimRight(directory, "/") + "/" + name
+}
 
 func parseProjectSkill(directory string, file *plugin.HostFileFile) (projectSkill, error) {
 	if file.Size > skillMDMaxBytes {

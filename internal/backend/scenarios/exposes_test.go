@@ -172,7 +172,9 @@ func filesExposeHeld(
 	t.Helper()
 	response := filesExposeFetch(ctx, t, b, entry, "/hold")
 	conversationEqual(t, response.StatusCode, 200)
-	t.Cleanup(func() { _ = response.Body.Close() }) // Idempotent if the visitor already disconnected.
+	t.Cleanup(func() {
+		_ = response.Body.Close()
+	}) // Idempotent if the visitor already disconnected.
 	first := make([]byte, 5)
 	_, err := io.ReadFull(response.Body, first)
 	wireMust(t, err)
@@ -425,7 +427,9 @@ func TestExposeQuietConnectionEndsAtIdleLimit(t *testing.T) {
 // plugin's page state.
 func TestExposeAgentAddsListsRenewsAndRemoves(t *testing.T) {
 	t.Parallel()
-	w := filesWorking(t, "demi-file", func(h *backendtest.Harness) { filesExposeConfig(t, h) })
+	w := filesWorking(t, "demi-file", func(h *backendtest.Harness) {
+		filesExposeConfig(t, h)
+	})
 	service, _ := filesExposeService(t)
 	port := filesExposePort(t, service)
 	add := "demi expose add " + port
@@ -615,7 +619,9 @@ func TestExposeCloudDeathResetRediscoveryAndBackendStartupEndRecords(t *testing.
 	held := filesExposeHeld(s.ctx, t, s.b, dying)
 	wireMust(t, s.manager.Kill(s.ctx, device))
 	filesExposeEnded(s.ctx, t, held, released)
-	s.cloudUntil(func(status webapiproto.CloudStatus) bool { return status.State == webapiproto.CloudStateOff })
+	s.cloudUntil(func(status webapiproto.CloudStatus) bool {
+		return status.State == webapiproto.CloudStateOff
+	})
 	conversationEqual(t, len(filesExposeState(s.ctx, t, s.b, &s.user).Exposes), 0)
 	vendor.Respond(conversationShell(t, "t2", "true", 20000))
 	vendor.Respond(conversationAnswer(t, []string{"awake again"}, 1, 1))
@@ -693,7 +699,9 @@ func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
 			handlerErrors <- err
 			return
 		}
-		defer func() { _ = socket.CloseNow() }() // The read loop observes the peer close; cleanup is idempotent.
+		defer func() {
+			_ = socket.CloseNow()
+		}() // The read loop observes the peer close; cleanup is idempotent.
 		for {
 			kind, data, err := socket.Read(ctx)
 			if err != nil {
@@ -729,13 +737,17 @@ func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
 		ctx,
 		b.WSURL("/socket"),
 		&websocket.DialOptions{
-			Host:           public.Host,
-			HTTPClient:     b.HTTP,
-			OnPongReceived: func(_ context.Context, payload []byte) { pongs <- string(payload) },
+			Host:       public.Host,
+			HTTPClient: b.HTTP,
+			OnPongReceived: func(_ context.Context, payload []byte) {
+				pongs <- string(payload)
+			},
 		},
 	)
 	wireMust(t, err)
-	t.Cleanup(func() { _ = socket.CloseNow() })
+	t.Cleanup(func() {
+		_ = socket.CloseNow()
+	})
 	conversationEqual(t, switched.StatusCode, 101)
 	if switched.Header.Get("Sec-WebSocket-Accept") == "" {
 		t.Fatal("no upgrade accept")
@@ -794,7 +806,9 @@ func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
 		&websocket.DialOptions{Host: public.Host, HTTPClient: b.HTTP},
 	)
 	wireMust(t, err)
-	t.Cleanup(func() { _ = second.CloseNow() })
+	t.Cleanup(func() {
+		_ = second.CloseNow()
+	})
 	select {
 	case <-handshakes:
 	case <-ctx.Done():
@@ -886,7 +900,9 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	})
 	go func() {
 		var failure error
-		defer func() { done <- failure }()
+		defer func() {
+			done <- failure
+		}()
 		for range 4 {
 			conn, err := listener.Accept()
 			if err != nil {
@@ -897,7 +913,9 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 			current = conn
 			mu.Unlock()
 			failure = func() error {
-				defer func() { _ = conn.Close() }() // The exchange checks I/O errors; cleanup may follow relay closure.
+				defer func() {
+					_ = conn.Close()
+				}() // The exchange checks I/O errors; cleanup may follow relay closure.
 				read := bufio.NewReader(conn)
 				head, err := filesExposeHead(ctx, read)
 				if err != nil {
@@ -1013,7 +1031,9 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 		t.Helper()
 		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", b.Address().String())
 		wireMust(t, err)
-		t.Cleanup(func() { _ = conn.Close() })
+		t.Cleanup(func() {
+			_ = conn.Close()
+		})
 		_, err = io.WriteString(conn, request)
 		wireMust(t, err)
 		read := bufio.NewReader(conn)
@@ -1073,7 +1093,9 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	// Upload and response use the standard library's chunk framing over raw sockets.
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", b.Address().String())
 	wireMust(t, err)
-	t.Cleanup(func() { _ = conn.Close() })
+	t.Cleanup(func() {
+		_ = conn.Close()
+	})
 	_, err = io.WriteString(
 		conn,
 		"POST /upload HTTP/1.1\r\nHost: "+public.Host+"\r\n"+

@@ -44,13 +44,19 @@ func DecodeClientFrame(data []byte) (ClientFrame, error) {
 }
 
 // ValidateClientFrame checks a frame constructed inside the process.
-func ValidateClientFrame(frame ClientFrame) error { return validateClientFrame(frame) }
+func ValidateClientFrame(frame ClientFrame) error {
+	return validateClientFrame(frame)
+}
 
 // validateSend restricts kept file references to edit frames.
-func validateSend(v SendFrame) error { return validateNewContent(v.Content) }
+func validateSend(v SendFrame) error {
+	return validateNewContent(v.Content)
+}
 
 // validateSteer restricts kept file references to edit frames.
-func validateSteer(v SteerFrame) error { return validateNewContent(v.Content) }
+func validateSteer(v SteerFrame) error {
+	return validateNewContent(v.Content)
+}
 
 // validateNewContent rejects references to files held by an edited message.
 func validateNewContent(content []ClientContent) error {

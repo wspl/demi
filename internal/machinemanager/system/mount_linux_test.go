@@ -16,7 +16,9 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // isolated runs an explicitly root-invoked test with its mount cleanup on the
 // namespace thread, before the thread exits. Each scenario normally costs <1 s.

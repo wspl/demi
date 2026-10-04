@@ -117,26 +117,9 @@ func (k *loginKit) Login(ctx context.Context, pending func(types.LoginPending)) 
 
 //nolint:staticcheck // ST1005: user-facing error text starts with the product name Grok.
 func (k *loginKit) login(ctx context.Context, pending func(types.LoginPending)) (provider.NewAccount, error) {
-	response, err := k.post(
-		ctx,
-		"/oauth2/device/code",
-		url.Values{"client_id": {clientID}, "scope": {scope}, "referrer": {"grok-build"}},
-	)
+	device, err := k.deviceCode(ctx)
 	if err != nil {
 		return provider.NewAccount{}, err
-	}
-	// The response is consumed or abandoned; close errors cannot change its result.
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return provider.NewAccount{}, fmt.Errorf("Grok device code request failed with HTTP %d", response.StatusCode)
-	}
-	device, err := provider.DecodeJSONResponse(
-		ctx,
-		response,
-		func(b []byte) (deviceAnswer, error) { return provider.DecodeUntagged[deviceAnswer](string(b)) },
-	)
-	if err != nil {
-		return provider.NewAccount{}, fmt.Errorf("Grok device code failed: %w", err)
 	}
 	verification := device.Complete
 	if verification == nil {
@@ -177,6 +160,38 @@ func (k *loginKit) login(ctx context.Context, pending func(types.LoginPending)) 
 		return provider.NewAccount{}, err
 	}
 	return provider.NewAccount{Label: s.label(), Secret: string(encoded)}, nil
+}
+
+// deviceCode asks the issuer for a device code the user confirms.
+func (k *loginKit) deviceCode(ctx context.Context) (deviceAnswer, error) {
+	response, err := k.post(
+		ctx,
+		"/oauth2/device/code",
+		url.Values{"client_id": {clientID}, "scope": {scope}, "referrer": {"grok-build"}},
+	)
+	if err != nil {
+		return deviceAnswer{}, err
+	}
+	// The response is consumed or abandoned; close errors cannot change its result.
+	defer func() {
+		_ = response.Body.Close()
+	}()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+		return deviceAnswer{}, fmt.Errorf("Grok device code request failed with HTTP %d", response.StatusCode)
+	}
+	device, err := provider.DecodeJSONResponse(
+		ctx,
+		response,
+		func(b []byte) (deviceAnswer, error) {
+			return provider.DecodeUntagged[deviceAnswer](string(b))
+		},
+	)
+	if err != nil {
+		//nolint:staticcheck // ST1005: the text is a product message shown to the user as written.
+		return deviceAnswer{}, fmt.Errorf("Grok device code failed: %w", err)
+	}
+	return device, nil
 }
 
 //nolint:staticcheck // ST1005: user-facing error text starts with the product name Grok.
@@ -293,14 +308,18 @@ func (k *loginKit) enrichUser(ctx context.Context, s secret) secret {
 		return s
 	}
 	// The response is consumed or abandoned; close errors cannot change its result.
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return s
 	}
 	user, err := provider.DecodeJSONResponse(
 		ctx,
 		response,
-		func(b []byte) (userAnswer, error) { return provider.DecodeUntagged[userAnswer](string(b)) },
+		func(b []byte) (userAnswer, error) {
+			return provider.DecodeUntagged[userAnswer](string(b))
+		},
 	)
 	if err != nil {
 		return s

@@ -68,7 +68,9 @@ func (n *Network) Prepare(ctx context.Context) error {
 		}
 		port = uint16(parsed)
 	}
-	return applyFirewall(ctx, func(batch *firewallBatch) error { return batch.prepare(n.pool, backend, port, n.dns) })
+	return applyFirewall(ctx, func(batch *firewallBatch) error {
+		return batch.prepare(n.pool, backend, port, n.dns)
+	})
 }
 
 // Attach creates slot's namespace and veth pair, gives both ends their
@@ -89,7 +91,9 @@ func (n *Network) Attach(ctx context.Context, slot Slot) error {
 		return err
 	}
 	// The descriptor only keeps the namespace alive for this operation.
-	defer func() { _ = file.Close() }()
+	defer func() {
+		_ = file.Close()
+	}()
 	handle, err := netlink.NewHandle(unix.NETLINK_ROUTE)
 	if err != nil {
 		return err
@@ -110,19 +114,9 @@ func (n *Network) Attach(ctx context.Context, slot Slot) error {
 	if err := addressAndUp(ctx, handle, slot.HostInterface(), slot.Gateway); err != nil {
 		return err
 	}
-	_, err = os.Stat(ipv6Settings)
-	ipv6 := err == nil
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
+	ipv6, err := disableHostIPv6(slot.HostInterface())
+	if err != nil {
 		return err
-	}
-	if ipv6 {
-		if err := os.WriteFile(
-			ipv6Settings+"/conf/"+slot.HostInterface()+"/disable_ipv6",
-			[]byte("1"),
-			0o644,
-		); err != nil {
-			return err
-		}
 	}
 	// A descriptor path also works when the caller has an isolated mount namespace.
 	_, err = system.RunNamespace(
@@ -135,14 +129,31 @@ func (n *Network) Attach(ctx context.Context, slot Slot) error {
 	if err != nil {
 		return err
 	}
-	return applyFirewall(ctx, func(batch *firewallBatch) error { return batch.attach(slot) })
+	return applyFirewall(ctx, func(batch *firewallBatch) error {
+		return batch.attach(slot)
+	})
+}
+
+// disableHostIPv6 turns IPv6 off on a slot's host interface when the host has
+// IPv6 at all, and reports whether it has.
+func disableHostIPv6(iface string) (bool, error) {
+	_, err := os.Stat(ipv6Settings)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, os.WriteFile(ipv6Settings+"/conf/"+iface+"/disable_ipv6", []byte("1"), 0o644)
 }
 
 // Detach removes slot's firewall pair, veth pair and namespace, each only if
 // it exists. Recovery may pass a slot reconstructed from a saved record.
 // Cleanup callers use a context without cancellation and await completion.
 func (n *Network) Detach(ctx context.Context, slot Slot) error {
-	if err := applyFirewall(ctx, func(batch *firewallBatch) error { return batch.detach(slot) }); err != nil {
+	if err := applyFirewall(ctx, func(batch *firewallBatch) error {
+		return batch.detach(slot)
+	}); err != nil {
 		return err
 	}
 	handle, err := netlink.NewHandle(unix.NETLINK_ROUTE)

@@ -23,7 +23,10 @@ import (
 
 type programTests struct{ m *testing.M }
 
-func (p programTests) Run() int { return programtest.Run(p.m) }
+func (p programTests) Run() int {
+	return programtest.Run(p.m)
+}
+
 func TestMain(m *testing.M) {
 	if handled, err := process.RunChildBootstrap(); handled {
 		os.Exit(exitCode(0, err))
@@ -147,7 +150,9 @@ func (f *runnerFixture) start() {
 	}
 	f.command = command
 	f.done = make(chan error, 1)
-	go func() { f.done <- command.Wait() }()
+	go func() {
+		f.done <- command.Wait()
+	}()
 	f.accept()
 }
 
@@ -167,7 +172,11 @@ func (f *runnerFixture) accept() {
 	}
 	f.hello = hello
 }
-func (f *runnerFixture) online() { f.send(&runnerproto.HelloOK{DeviceID: "device"}) }
+
+func (f *runnerFixture) online() {
+	f.send(&runnerproto.HelloOK{DeviceID: "device"})
+}
+
 func (f *runnerFixture) stop() {
 	if f.command == nil {
 		return

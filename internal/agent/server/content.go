@@ -56,10 +56,14 @@ type ContentError struct {
 }
 
 // Error returns the refusal's text.
-func (e *ContentError) Error() string { return e.Message }
+func (e *ContentError) Error() string {
+	return e.Message
+}
 
 // Unwrap returns the underlying resolution failure.
-func (e *ContentError) Unwrap() error { return e.Cause }
+func (e *ContentError) Unwrap() error {
+	return e.Cause
+}
 
 // resolveEdit replaces a frame's external file references while retaining its order.
 func resolveEdit(

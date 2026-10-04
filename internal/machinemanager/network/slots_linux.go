@@ -33,13 +33,19 @@ func SlotAt(subnet netip.Prefix, index uint16) Slot {
 }
 
 // HostInterface returns the host end of the sandbox's veth pair, such as demih3.
-func (s Slot) HostInterface() string { return fmt.Sprintf("%s%d", hostInterfacePrefix, s.Index) }
+func (s Slot) HostInterface() string {
+	return fmt.Sprintf("%s%d", hostInterfacePrefix, s.Index)
+}
 
 // PeerInterface returns the sandbox's end of the veth pair, such as demip3.
-func (s Slot) PeerInterface() string { return fmt.Sprintf("demip%d", s.Index) }
+func (s Slot) PeerInterface() string {
+	return fmt.Sprintf("demip%d", s.Index)
+}
 
 // Namespace returns the sandbox's network namespace, such as demi-3.
-func (s Slot) Namespace() string { return fmt.Sprintf("demi-%d", s.Index) }
+func (s Slot) Namespace() string {
+	return fmt.Sprintf("demi-%d", s.Index)
+}
 
 // Pool owns the slots of the configured pool. Its methods are safe for
 // concurrent use. Construct it with NewPool and do not copy it.
@@ -57,10 +63,14 @@ func NewPool(subnet netip.Prefix, count uint16) *Pool {
 }
 
 // Slot returns the slot at index, taken or not, as a recovery record names it.
-func (p *Pool) Slot(index uint16) Slot { return SlotAt(p.subnet, index) }
+func (p *Pool) Slot(index uint16) Slot {
+	return SlotAt(p.subnet, index)
+}
 
 // Contains reports whether index lies in the configured pool.
-func (p *Pool) Contains(index uint16) bool { return int(index) < len(p.taken) }
+func (p *Pool) Contains(index uint16) bool {
+	return int(index) < len(p.taken)
+}
 
 // Take takes the lowest free slot, or returns ErrExhausted. The caller owns
 // the lease and must defer Release or transfer that duty to the sandbox owner.
@@ -85,7 +95,9 @@ type Lease struct {
 }
 
 // Slot returns the leased slot as a value, which remains readable after release.
-func (l *Lease) Slot() Slot { return l.slot }
+func (l *Lease) Slot() Slot {
+	return l.slot
+}
 
 // Release frees the allocation for reuse. It is idempotent and safe to call
 // concurrently; it does not wait for or perform kernel cleanup.

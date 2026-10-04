@@ -337,7 +337,9 @@ func (c *ControlService) PluginBlobs(ctx context.Context, user webapiproto.UserI
 			tx,
 			"plugin_values",
 			"SELECT blobs FROM plugin_values WHERE user_id = ?",
-			func(r *storedRow) blobNames { return storedJSON(r, "blobs", decodeBlobNames) },
+			func(r *storedRow) blobNames {
+				return storedJSON(r, "blobs", decodeBlobNames)
+			},
 			user,
 		)
 		if err != nil {
@@ -381,7 +383,9 @@ func directoryBlobs(ctx context.Context, tx *sql.Tx, query string, args ...any) 
 		tx,
 		"plugin_directories",
 		query,
-		func(r *storedRow) directoryFiles { return storedJSON(r, "files", decodeDirectoryFiles) },
+		func(r *storedRow) directoryFiles {
+			return storedJSON(r, "files", decodeDirectoryFiles)
+		},
 		args...)
 	if err != nil {
 		return nil, err

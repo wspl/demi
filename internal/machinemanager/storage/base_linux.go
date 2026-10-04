@@ -106,12 +106,16 @@ func copyBaseArchive(ctx context.Context, source, destination string, expected a
 	if err != nil {
 		return err
 	}
-	defer func() { _ = from.Close() }() // Read-only release archive.
+	defer func() {
+		_ = from.Close()
+	}() // Read-only release archive.
 	to, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, to.Close()) }()
+	defer func() {
+		err = errors.Join(err, to.Close())
+	}()
 	if err := artifacts.Copy(ctx, from, expected, to); err != nil {
 		var tooLarge *artifacts.TooLargeError
 		var size *artifacts.SizeError
@@ -135,7 +139,9 @@ func publishBase(
 	if err != nil {
 		return err
 	}
-	defer func() { _ = root.Close() }() // Read-only directory handle.
+	defer func() {
+		_ = root.Close()
+	}() // Read-only directory handle.
 	// Check executables in path order, so the first failure reported is stable.
 	for _, path := range slices.Sorted(maps.Keys(manifest.Executables)) {
 		artifact := manifest.Executables[path]
@@ -188,7 +194,9 @@ func verifyExecutable(ctx context.Context, root *os.File, path string, expected 
 		return system.Failed("opening", path, err)
 	}
 	file := os.NewFile(uintptr(fd), path)
-	defer func() { _ = file.Close() }() // Read-only executable.
+	defer func() {
+		_ = file.Close()
+	}() // Read-only executable.
 	info, err := file.Stat()
 	if err != nil {
 		return err

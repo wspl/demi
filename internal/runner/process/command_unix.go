@@ -53,9 +53,13 @@ func startPlatform(
 	if err != nil {
 		return nil, err
 	}
-	defer func() { _ = reader.Close() }() // The handshake has no remaining consumer on return.
+	defer func() {
+		_ = reader.Close()
+	}() // The handshake has no remaining consumer on return.
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = writer.Close() }()
+	defer func() {
+		_ = writer.Close()
+	}()
 	if err := prepareBootstrap(&cmd, attributes, writer); err != nil {
 		return nil, err
 	}

@@ -48,7 +48,9 @@ func TestDevProcessesStopAndAreReaped(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = input.Close() }()
+			defer func() {
+				_ = input.Close()
+			}()
 			process, err := startDevProcess(t.Context(), command)
 			if err != nil {
 				t.Fatal(err)

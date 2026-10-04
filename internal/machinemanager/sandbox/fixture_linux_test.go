@@ -100,7 +100,9 @@ func runscFixture(args []string) error {
 			}
 			return err
 		}
-		defer func() { _ = connection.Close() }() // No buffered writes remain after the protocol event.
+		defer func() {
+			_ = connection.Close()
+		}() // No buffered writes remain after the protocol event.
 		if _, err := connection.Write([]byte("W")); err != nil {
 			return err
 		}
@@ -142,7 +144,9 @@ func recoveryProbe(args []string) error {
 	if lock == nil {
 		return errors.New("missing inherited lock")
 	}
-	defer func() { _ = lock.Close() }() // Borrowed read-only lock has no buffered writes.
+	defer func() {
+		_ = lock.Close()
+	}() // Borrowed read-only lock has no buffered writes.
 	actual, err := lock.Stat()
 	if err != nil {
 		return err
@@ -191,12 +195,16 @@ func fixtureCopy(_ context.Context, source, destination string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, input.Close()) }()
+	defer func() {
+		err = errors.Join(err, input.Close())
+	}()
 	output, err := os.Create(destination)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, output.Close()) }()
+	defer func() {
+		err = errors.Join(err, output.Close())
+	}()
 	_, err = io.Copy(output, input)
 	return err
 }

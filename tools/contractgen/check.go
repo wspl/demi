@@ -16,7 +16,10 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-func isPointer(t types.Type) bool { _, ok := t.(*types.Pointer); return ok }
+func isPointer(t types.Type) bool {
+	_, ok := t.(*types.Pointer)
+	return ok
+}
 
 // check rejects contract declarations that cannot be represented faithfully.
 func (g *generator) check(p *packages.Package) error {
@@ -584,7 +587,9 @@ func (g *generator) writeTSOutput(dir, out string, pages []pagemeta.Page, source
 		destination = "protocol"
 	}
 	if strings.HasPrefix(out, "plugin-") ||
-		slices.ContainsFunc(pages, func(page pagemeta.Page) bool { return page.Package == pageScope+out }) {
+		slices.ContainsFunc(pages, func(page pagemeta.Page) bool {
+			return page.Package == pageScope+out
+		}) {
 		filename = "plugin.ts"
 	}
 	dest := filepath.Join(dir, "packages", destination, "src", "generated", filename)

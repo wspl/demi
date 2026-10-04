@@ -37,7 +37,9 @@ func (e *Error) Error() string {
 }
 
 // Unwrap returns the cause of the contract refusal.
-func (e *Error) Unwrap() error { return e.Err }
+func (e *Error) Unwrap() error {
+	return e.Err
+}
 
 // At adds a field or array index to an error's path.
 func At(path string, err error) error {
@@ -56,7 +58,9 @@ func At(path string, err error) error {
 }
 
 // IsNull reports an explicit JSON null.
-func IsNull(data []byte) bool { return bytes.Equal(bytes.TrimSpace(data), []byte("null")) }
+func IsNull(data []byte) bool {
+	return bytes.Equal(bytes.TrimSpace(data), []byte("null"))
+}
 
 // CheckJSON rejects ambiguous objects and malformed Unicode before decoding.
 func CheckJSON(data []byte) error {

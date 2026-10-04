@@ -19,4 +19,6 @@ func (p *chromeProcess) start(command *exec.Cmd, _ string) error {
 }
 
 // Windows has no process group or inherited-marker sweep to terminate.
-func (p *chromeProcess) terminate(ctx context.Context) error { return ctx.Err() }
+func (p *chromeProcess) terminate(ctx context.Context) error {
+	return ctx.Err()
+}

@@ -29,7 +29,9 @@ var (
 type UnreachableError struct{ Code string }
 
 // Error returns the service connection failure.
-func (e *UnreachableError) Error() string { return "the service is unreachable (" + e.Code + ")" }
+func (e *UnreachableError) Error() string {
+	return "the service is unreachable (" + e.Code + ")"
+}
 
 // Connections tracks a user's live connections. Its zero value is ready to use.
 // The shard stops admission, closes this component, and joins its Relay callers
@@ -150,10 +152,14 @@ func (e *Connections) Active() int {
 }
 
 // Record returns the admitted record by value.
-func (a *RelayAdmission) Record() database.ExposeRecord { return a.record }
+func (a *RelayAdmission) Record() database.ExposeRecord {
+	return a.record
+}
 
 // Ending closes once the expose ends. Device connection attempts also observe it.
-func (a *RelayAdmission) Ending() <-chan struct{} { return a.live.ended.Done() }
+func (a *RelayAdmission) Ending() <-chan struct{} {
+	return a.live.ended.Done()
+}
 
 // Release frees this admission, once, and cancels the last connection's expiry watch.
 // Close joins canceled workers; Release never waits for storage or a worker.

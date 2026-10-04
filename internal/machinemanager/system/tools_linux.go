@@ -58,7 +58,9 @@ func (t Tool) Name() string {
 }
 
 // String returns the program name.
-func (t Tool) String() string { return t.Name() }
+func (t Tool) String() string {
+	return t.Name()
+}
 
 // Tools holds resolved programs. A zero value supplies empty paths for tests
 // that only build command lines. Use Resolve for production execution.
@@ -66,10 +68,14 @@ type Tools struct{ paths map[Tool]string }
 
 // NewTools copies already resolved program paths. It supports fixtures that
 // substitute infrastructure programs; production callers use Resolve.
-func NewTools(paths map[Tool]string) *Tools { return &Tools{paths: maps.Clone(paths)} }
+func NewTools(paths map[Tool]string) *Tools {
+	return &Tools{paths: maps.Clone(paths)}
+}
 
 // SpawnFailed reports that tool could not start or that waiting for it failed.
-func SpawnFailed(tool Tool, err error) error { return fmt.Errorf("%s could not start: %w", tool, err) }
+func SpawnFailed(tool Tool, err error) error {
+	return fmt.Errorf("%s could not start: %w", tool, err)
+}
 
 // DeadlinePassed reports that tool did not finish within deadline.
 func DeadlinePassed(tool Tool, deadline time.Duration) error {
@@ -141,7 +147,9 @@ func Resolve(ctx context.Context, runsc string) (*Tools, error) {
 }
 
 // Path returns the resolved path of tool.
-func (t *Tools) Path(tool Tool) string { return t.paths[tool] }
+func (t *Tools) Path(tool Tool) string {
+	return t.paths[tool]
+}
 
 // Command prepares tool with LC_ALL=C.UTF-8 and no input. The caller owns
 // Start and Wait, and must cancel and reap a started command on every path.
@@ -195,7 +203,9 @@ func (t *Tools) Output(ctx context.Context, tool Tool, args []string, deadline t
 	for i := range streams {
 		// Start succeeded: only the child may retain the writing ends now.
 		_ = streams[i].writer.Close()
-		readers.Go(func() { _, streams[i].err = io.Copy(&streams[i].data, streams[i].reader) })
+		readers.Go(func() {
+			_, streams[i].err = io.Copy(&streams[i].data, streams[i].reader)
+		})
 	}
 	defer watchToolCancellation(runCtx, streams[0].reader, streams[1].reader)()
 	if deadline > 0 {

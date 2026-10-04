@@ -17,7 +17,9 @@ func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) pr
 				yield(&provider.Error{Failure: f})
 			}
 		}
-		body, err := provider.EncodeBody(ctx, label, func() ([]byte, error) { return encodeRequest(request) })
+		body, err := provider.EncodeBody(ctx, label, func() ([]byte, error) {
+			return encodeRequest(request)
+		})
 		if err != nil {
 			var failure *provider.Failure
 			if errors.As(err, &failure) {
@@ -67,7 +69,9 @@ func (r *runtime) stream(
 	yield func(provider.Event) bool,
 ) {
 	// The response is consumed or abandoned; close errors cannot change its result.
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		emitFailure(provider.HTTPFailure(ctx, response, label, provider.ReadHTTPFailure, r.shared.clock))
 		return

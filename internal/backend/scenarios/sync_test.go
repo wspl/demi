@@ -340,8 +340,12 @@ func TestPageChannelOriginAuthenticationAndLifetime(t *testing.T) {
 	closed(laptopPage, 1008, "unexpected_message")
 	last, _ := conversationPage(ctx, t, backend, &laptop)
 	done := make(chan error, 1)
-	go func() { done <- backend.Close(ctx) }()
-	defer func() { wireMust(t, <-done) }()
+	go func() {
+		done <- backend.Close(ctx)
+	}()
+	defer func() {
+		wireMust(t, <-done)
+	}()
 	closed(last, 1001, "backend_closing")
 }
 
@@ -403,10 +407,14 @@ func TestTurnAndReadStateReachEveryPage(t *testing.T) {
 		wireMust(t, err)
 		return conversationChanged(t, events[len(events)-1])
 	}
-	until(func(c webapiproto.ConversationSummary) bool { return c.Status == webapiproto.ConversationStatusRunning })
+	until(func(c webapiproto.ConversationSummary) bool {
+		return c.Status == webapiproto.ConversationStatusRunning
+	})
 	wireMust(t, socket.Send(ctx, &conversationproto.AbortFrame{}))
 	stopped := until(
-		func(c webapiproto.ConversationSummary) bool { return c.Status == webapiproto.ConversationStatusStopped },
+		func(c webapiproto.ConversationSummary) bool {
+			return c.Status == webapiproto.ConversationStatusStopped
+		},
 	)
 	if !stopped.Unread || stopped.Revision == 0 {
 		t.Fatalf("stopped summary: %#v", stopped)
@@ -421,7 +429,9 @@ func TestTurnAndReadStateReachEveryPage(t *testing.T) {
 		fmt.Sprintf(`{"revision":%d}`, stopped.Revision),
 		204,
 	)
-	until(func(c webapiproto.ConversationSummary) bool { return !c.Unread })
+	until(func(c webapiproto.ConversationSummary) bool {
+		return !c.Unread
+	})
 }
 
 // pageLoginKit supplies the device login result without contacting a vendor.
@@ -459,7 +469,9 @@ func (pageSubscriptionFamily) Credential() webapiproto.CredentialKind {
 }
 
 // Wires declares no external wire APIs.
-func (pageSubscriptionFamily) Wires() []types.WireAPI { return nil }
+func (pageSubscriptionFamily) Wires() []types.WireAPI {
+	return nil
+}
 
 // Provider builds a subscription with local accounts and quota.
 func (pageSubscriptionFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
@@ -486,7 +498,9 @@ type pageSubscription struct {
 }
 
 // Accounts returns the fixture subscription accounts.
-func (p *pageSubscription) Accounts() provider.SubscriptionAccounts { return p.accounts }
+func (p *pageSubscription) Accounts() provider.SubscriptionAccounts {
+	return p.accounts
+}
 
 // AuthStatus reports the bound account as authenticated.
 func (p *pageSubscription) AuthStatus(context.Context) types.AuthState {
@@ -494,7 +508,9 @@ func (p *pageSubscription) AuthStatus(context.Context) types.AuthState {
 }
 
 // Quota returns the fixture account quota.
-func (p *pageSubscription) Quota() *provider.Quota { return p.quota }
+func (p *pageSubscription) Quota() *provider.Quota {
+	return p.quota
+}
 
 type pageQuota struct{}
 
@@ -514,7 +530,9 @@ func (pageQuota) Probe(context.Context) (provider.ProbeReading, error) {
 }
 
 // Observe produces no quota windows from observations.
-func (pageQuota) Observe(provider.Observation) []types.QuotaWindow { return nil }
+func (pageQuota) Observe(provider.Observation) []types.QuotaWindow {
+	return nil
+}
 
 // TestProviderChangesReachAllUsersWithAccountsOnlyForConfigurer checks that provider changes reach all
 // users while accounts remain private to the configurer.

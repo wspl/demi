@@ -30,7 +30,9 @@ const (
 
 // Definitions returns the five model-facing definitions in their standard
 // order: exec, status, write, abort, yield. Callers must not mutate them.
-func Definitions() []provider.ToolDefinition { return definitions() }
+func Definitions() []provider.ToolDefinition {
+	return definitions()
+}
 
 var definitions = sync.OnceValue(makeDefinitions)
 

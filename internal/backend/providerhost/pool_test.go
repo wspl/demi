@@ -95,7 +95,9 @@ func TestAccountIsSealedAndRefreshedOnlyOverItsReadVersion(t *testing.T) {
 				ctx,
 				pool.Document("a"),
 				providertest.DecodeTokenDocument,
-				func(v providertest.TokenDocument) bool { return v.Refresh == "two" },
+				func(v providertest.TokenDocument) bool {
+					return v.Refresh == "two"
+				},
 				func(_ context.Context, v providertest.TokenDocument) (providertest.TokenDocument, error) {
 					asked.Add(1)
 					v.Refresh += "+"

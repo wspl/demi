@@ -75,7 +75,9 @@ func (e *Server) relay(
 	notFound := func() {
 		relayPage(conn, 404, "This expose does not exist (anymore); its URL is gone or has expired.\n")
 	}
-	unavailable := func() { relayPage(conn, 503, "This expose cannot be served right now; retry shortly.\n") }
+	unavailable := func() {
+		relayPage(conn, 503, "This expose cannot be served right now; retry shortly.\n")
+	}
 	id, err := webapiproto.ParseExposeID(label)
 	if err != nil {
 		notFound()

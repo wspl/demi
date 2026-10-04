@@ -31,7 +31,9 @@ func shellFixture(
 	pages := hosttest.NewPages(false)
 	options := remotehost.NewEnvironmentOptions(
 		h,
-		func(context.Context) (commandproto.Context, error) { return hosttest.CommandContext(), nil },
+		func(context.Context) (commandproto.Context, error) {
+			return hosttest.CommandContext(), nil
+		},
 		pages,
 		&hosttest.CountingNumbers{},
 	)
@@ -270,7 +272,9 @@ func TestInputWrittenWhileAcquiringHostReachesStartedJob(t *testing.T) {
 			t.Fatal("command not shown during acquisition")
 		}
 		done := make(chan error, 1)
-		go func() { done <- s.Write(t.Context(), started.CommandID, []byte("Ana\n")) }()
+		go func() {
+			done <- s.Write(t.Context(), started.CommandID, []byte("Ana\n"))
+		}()
 		synctest.Wait()
 		select {
 		case err := <-done:
@@ -297,7 +301,9 @@ func TestConversationReleaseWaitsAndAdmitsNoWork(t *testing.T) {
 	l := d.Connect(0)
 	done := make(chan error, 1)
 	for _, failure := range []*string{nil, new("cleanup failed"), new("")} {
-		go func() { done <- h.ReleaseConversation(t.Context(), "conversation") }()
+		go func() {
+			done <- h.ReleaseConversation(t.Context(), "conversation")
+		}()
 		request := nextFrame(t, l).(*runnerproto.ConversationRelease)
 		if request.ConversationID != "conversation" {
 			t.Fatal(request)
@@ -318,7 +324,9 @@ func TestConversationReleaseWaitsAndAdmitsNoWork(t *testing.T) {
 			}
 		}
 	}
-	go func() { done <- h.ReleaseConversation(t.Context(), "conversation") }()
+	go func() {
+		done <- h.ReleaseConversation(t.Context(), "conversation")
+	}()
 	nextFrame(t, l)
 	_, err := l.Close(t.Context())
 	requirePipe(t, err)
@@ -355,7 +363,9 @@ func TestStatusShowsLatestFirstRegisteredHintUntilEnd(t *testing.T) {
 		hint("first", nil, job.JobID)
 		hint("third", new("hint before abort"), job.JobID)
 		aborted := make(chan error, 1)
-		go func() { aborted <- s.Abort(t.Context(), started.CommandID) }()
+		go func() {
+			aborted <- s.Abort(t.Context(), started.CommandID)
+		}()
 		kill := nextFrame(t, l).(*runnerproto.JobKill)
 		if kill.Signal == nil || *kill.Signal != runnerproto.SignalTerminate {
 			t.Fatal(kill)
@@ -515,7 +525,9 @@ func TestCommandEndsOnceEditsPublishedAndKeepsThem(t *testing.T) {
 			},
 		}
 		keeper := &editPublisher{entered: make(chan struct{}), release: make(chan struct{}), file: file}
-		_, l, s, p := shellFixture(t, func(o *remotehost.EnvironmentOptions) { o.Keeper = keeper })
+		_, l, s, p := shellFixture(t, func(o *remotehost.EnvironmentOptions) {
+			o.Keeper = keeper
+		})
 		started := shellExec(t, s, "echo new > file")
 		page(t, p)
 		job := nextFrame(t, l).(*runnerproto.JobStart)
@@ -593,7 +605,9 @@ func TestKeeperAndReleaseFailuresAreLoggedWithoutChangingCompletion(t *testing.T
 		publisher := &editPublisher{entered: make(chan struct{}), release: make(chan struct{}), file: file}
 		_, l, s, p := shellFixture(
 			t,
-			func(options *remotehost.EnvironmentOptions) { options.Keeper = failingKeeper{publisher} },
+			func(options *remotehost.EnvironmentOptions) {
+				options.Keeper = failingKeeper{publisher}
+			},
 		)
 		started := shellExec(t, s, "echo new > file")
 		page(t, p)

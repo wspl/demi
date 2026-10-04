@@ -15,7 +15,9 @@ import (
 )
 
 // Tests use only a loopback scripted vendor; each run costs one local request.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const now = "2026-09-18T14:00:00.000Z"
 

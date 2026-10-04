@@ -121,7 +121,9 @@ func echoMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
-	send := func(name string, value any) bool { return sendEchoEvent(w, name, value) }
+	send := func(name string, value any) bool {
+		return sendEchoEvent(w, name, value)
+	}
 	if !send("message_start", struct {
 		Type    string      `json:"type"`
 		Message echoMessage `json:"message"`

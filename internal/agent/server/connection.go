@@ -54,11 +54,15 @@ func (f *Frames) Next(ctx context.Context) bool {
 }
 
 // Frame returns the frame the last Next found.
-func (f *Frames) Frame() conversationproto.ServerFrame { return f.frame }
+func (f *Frames) Frame() conversationproto.ServerFrame {
+	return f.frame
+}
 
 // Err returns ErrLagged after a lag, the context's error after a cancelled
 // wait, and nil at the end of the outbox.
-func (f *Frames) Err() error { return f.err }
+func (f *Frames) Err() error {
+	return f.err
+}
 
 // Connection handles one conversation socket's decoded frames. The backend
 // supplies its conversation and working directory; clients never send them.

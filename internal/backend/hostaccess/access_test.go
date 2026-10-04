@@ -49,7 +49,9 @@ func TestCloudWaitReleasesFilesAndRechecksChangedTarget(t *testing.T) {
 				case <-ctx.Done():
 					return nil, ctx.Err()
 				}
-				return &cloudHold{device: device.ID, release: func() { released.Add(1) }}, nil
+				return &cloudHold{device: device.ID, release: func() {
+					released.Add(1)
+				}}, nil
 			}
 			outcome := make(chan error, 1)
 			var ran atomic.Int32
@@ -408,7 +410,9 @@ func TestShutdownRefusesNewAdmissionAndJoinsDispatchedOperation(t *testing.T) {
 	}()
 	<-entered
 	closed := make(chan error, 1)
-	go func() { closed <- s.conversations.Close(context.Background()) }()
+	go func() {
+		closed <- s.conversations.Close(context.Background())
+	}()
 	<-s.conversations.ctx.Done()
 	_, err := AdmitHost(t.Context(), s, record.ID, nil)
 	var refused *Error

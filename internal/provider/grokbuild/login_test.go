@@ -78,7 +78,9 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		equal(t, provider.AccountsCapability{Login: true}, p.Accounts().Capability())
 		var shown []types.LoginPending
 		account, err := p.Accounts().
-			Login(context.Background(), func(p types.LoginPending) { shown = append(shown, p) })
+			Login(context.Background(), func(p types.LoginPending) {
+				shown = append(shown, p)
+			})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -219,7 +221,9 @@ func TestLoginTenMinuteDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		started := time.Now()
 		var shown []types.LoginPending
-		_, err := p.Accounts().Login(context.Background(), func(p types.LoginPending) { shown = append(shown, p) })
+		_, err := p.Accounts().Login(context.Background(), func(p types.LoginPending) {
+			shown = append(shown, p)
+		})
 		if err == nil {
 			t.Fatal("unconfirmed login succeeded")
 		}
@@ -274,7 +278,9 @@ func TestCancelPendingLogin(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
-		_, err := p.Accounts().Login(ctx, func(types.LoginPending) { cancel() })
+		_, err := p.Accounts().Login(ctx, func(types.LoginPending) {
+			cancel()
+		})
 		if err == nil || !errors.Is(err, context.Canceled) {
 			t.Fatalf("unexpected result: %v", err)
 		}

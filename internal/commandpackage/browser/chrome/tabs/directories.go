@@ -156,7 +156,9 @@ func sweepOrphan(ctx context.Context, path string, roots []string, owner uint32)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, lock.Close()) }()
+	defer func() {
+		err = errors.Join(err, lock.Close())
+	}()
 	held, err := lockEnvironment(lock)
 	if err != nil || !held {
 		return err

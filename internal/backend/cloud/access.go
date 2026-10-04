@@ -22,7 +22,9 @@ type MachineAccess struct {
 }
 
 // Release lets the Cloud admission go. It is idempotent and does not wait.
-func (a *MachineAccess) Release() { a.admission.Release() }
+func (a *MachineAccess) Release() {
+	a.admission.Release()
+}
 
 // Device returns the user's Cloud device, made on its first use, which the
 // user's pages then show among the devices and as the Cloud.

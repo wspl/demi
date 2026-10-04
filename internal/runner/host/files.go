@@ -63,7 +63,9 @@ func (s *Service) openRange(ctx context.Context, request runnerproto.FSReadFile)
 	if err != nil {
 		return nil, err
 	}
-	file, err := commandsdk.Retry(ctx, func() (*os.File, error) { return os.Open(path) })
+	file, err := commandsdk.Retry(ctx, func() (*os.File, error) {
+		return os.Open(path)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -109,7 +111,10 @@ func (f *fileRange) Read(p []byte) (int, error) {
 	f.left -= uint64(n)
 	return n, err
 }
-func (f *fileRange) Close() error { return f.file.Close() }
+
+func (f *fileRange) Close() error {
+	return f.file.Close()
+}
 
 // writeFromPipe publishes only complete pipe input into the Host's destination.
 func (s *Service) writeFromPipe(ctx context.Context, request runnerproto.FSWriteFile) (err error) {
@@ -142,12 +147,16 @@ func (s *Service) writeFromPipe(ctx context.Context, request runnerproto.FSWrite
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, staged.Close()) }()
+	defer func() {
+		err = errors.Join(err, staged.Close())
+	}()
 	body, err := s.pipes.Open(ctx, request.Input.URL)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, body.Close()) }()
+	defer func() {
+		err = errors.Join(err, body.Close())
+	}()
 	if _, err = io.Copy(staged.File(), &contextReader{ctx: ctx, reader: body}); err != nil {
 		return err
 	}

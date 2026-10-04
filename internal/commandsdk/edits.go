@@ -37,7 +37,9 @@ func NewRecorder(ctx context.Context, c commandproto.EditContext) (*Recorder, er
 }
 
 // Context returns the paths to pass to other writers of this job.
-func (r *Recorder) Context() commandproto.EditContext { return r.context }
+func (r *Recorder) Context() commandproto.EditContext {
+	return r.context
+}
 
 // Begin takes the job's OS lock. Failure to record must not prevent the filesystem operation.
 // Defer Close on a non-nil result so partial writes are captured on failure as well.
@@ -88,7 +90,9 @@ func (r *Recorder) Report(ctx context.Context) (commandproto.EditJournal, error)
 func (r *Recorder) lockRecording(ctx context.Context) (*Recording, error) {
 	lock, err := Retry(
 		ctx,
-		func() (*artifacts.InstallLock, error) { return artifacts.AcquireInstallLock(ctx, r.context.Lock) },
+		func() (*artifacts.InstallLock, error) {
+			return artifacts.AcquireInstallLock(ctx, r.context.Lock)
+		},
 	)
 	if err != nil {
 		return nil, err
@@ -96,7 +100,9 @@ func (r *Recorder) lockRecording(ctx context.Context) (*Recording, error) {
 	journal := commandproto.EditJournal{Files: []commandproto.EditFile{}}
 	b, err := Retry(
 		ctx,
-		func() ([]byte, error) { return os.ReadFile(filepath.Join(r.context.Directory, "journal.json")) },
+		func() ([]byte, error) {
+			return os.ReadFile(filepath.Join(r.context.Directory, "journal.json"))
+		},
 	)
 	if err == nil {
 		journal, err = commandproto.DecodeEditJournal(b)
@@ -150,7 +156,9 @@ func (r *Recording) Track(ctx context.Context, path string) {
 // Restored forgets a destination a transactional writer restored to its exact prior bytes.
 func (r *Recording) Restored(path string) {
 	path = normalize(path)
-	r.before = slices.DeleteFunc(r.before, func(p tracked) bool { return p.path == path })
+	r.before = slices.DeleteFunc(r.before, func(p tracked) bool {
+		return p.path == path
+	})
 }
 
 // Close captures final contents and publishes the journal, then releases the lock.
@@ -268,7 +276,9 @@ type contents struct {
 	created time.Time
 }
 
-func absent(err error) bool { return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) }
+func absent(err error) bool {
+	return errors.Is(err, os.ErrNotExist) || errors.Is(err, syscall.ENOTDIR)
+}
 
 func readContents(ctx context.Context, path string, metadataOnly bool) contents {
 	info, err := os.Stat(path)
@@ -285,7 +295,9 @@ func readContents(ctx context.Context, path string, metadataOnly bool) contents 
 	if metadataOnly || info.Size() > commandproto.EditFileBytes {
 		return result
 	}
-	file, err := Retry(ctx, func() (*os.File, error) { return os.Open(path) })
+	file, err := Retry(ctx, func() (*os.File, error) {
+		return os.Open(path)
+	})
 	if err != nil {
 		return result
 	}
@@ -347,9 +359,13 @@ func normalize(path string) string {
 	volume := filepath.VolumeName(path)
 	parts := strings.FieldsFunc(
 		path[len(volume):],
-		func(c rune) bool { return c == rune(os.PathSeparator) || (os.PathSeparator == '\\' && c == '/') },
+		func(c rune) bool {
+			return c == rune(os.PathSeparator) || (os.PathSeparator == '\\' && c == '/')
+		},
 	)
-	parts = slices.DeleteFunc(parts, func(part string) bool { return part == "." })
+	parts = slices.DeleteFunc(parts, func(part string) bool {
+		return part == "."
+	})
 	return volume + string(os.PathSeparator) + strings.Join(parts, string(os.PathSeparator))
 }
 
@@ -375,7 +391,9 @@ func checkJournalSnapshots(journal commandproto.EditJournal, directory string) e
 
 // editFile locates or registers a changed file within the job limit.
 func (r *Recording) editFile(path string, before, after contents) int {
-	index := slices.IndexFunc(r.journal.Files, func(f commandproto.EditFile) bool { return f.Path == path })
+	index := slices.IndexFunc(r.journal.Files, func(f commandproto.EditFile) bool {
+		return f.Path == path
+	})
 	if index < 0 {
 		if after.kind == missing {
 			return -1

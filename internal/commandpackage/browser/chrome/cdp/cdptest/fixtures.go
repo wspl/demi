@@ -242,7 +242,9 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 }
 
 // Address returns the fixture's browser WebSocket address.
-func (s *Server) Address() string { return "ws" + strings.TrimPrefix(s.server.URL, "http") }
+func (s *Server) Address() string {
+	return "ws" + strings.TrimPrefix(s.server.URL, "http")
+}
 
 // Emit sends an event after the test's preceding command or synchronization.
 func (s *Server) Emit(ctx context.Context, event cdp.Event) error {

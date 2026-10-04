@@ -71,8 +71,10 @@ func (c S3Config) Open(ctx context.Context) (*blob.Bucket, error) {
 		return nil, err
 	}
 	client := &http.Client{
-		Transport:     awshttp.NewBuildableClient().GetTransport(),
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		Transport: awshttp.NewBuildableClient().GetTransport(),
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
 	}
 	provider, err := storageCredentials(ctx, c.Region, client)
 	if err != nil {

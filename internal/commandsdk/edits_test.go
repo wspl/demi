@@ -43,8 +43,12 @@ func TestSeparateRecorderHandlesShareJobJournal(t *testing.T) {
 	first := recorder(t, root)
 	native := recorder(t, root)
 	path := filepath.Join(root, "file")
-	must(t, first.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("one"), 0o600) }))
-	must(t, native.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("two"), 0o600) }))
+	must(t, first.Record(t.Context(), path, func() error {
+		return os.WriteFile(path, []byte("one"), 0o600)
+	}))
+	must(t, native.Record(t.Context(), path, func() error {
+		return os.WriteFile(path, []byte("two"), 0o600)
+	}))
 	j := report(t, first)
 	if len(j.Files) != 1 || j.Files[0].Kind != commandproto.EditAdded || len(j.Files[0].Edits) != 1 {
 		t.Fatalf("journal: %+v", j)
@@ -118,7 +122,9 @@ func TestFailedWriteBelowFileIsNotEdit(t *testing.T) {
 	if err := r.Record(
 		t.Context(),
 		below,
-		func() error { return os.WriteFile(below, []byte("never"), 0o600) },
+		func() error {
+			return os.WriteFile(below, []byte("never"), 0o600)
+		},
 	); err == nil {
 		t.Fatal("write succeeded")
 	}
@@ -131,7 +137,9 @@ func TestBinaryEditsHaveNoContents(t *testing.T) {
 	root := t.TempDir()
 	r := recorder(t, root)
 	path := filepath.Join(root, "binary")
-	must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte{0, 1, 2}, 0o600) }))
+	must(t, r.Record(t.Context(), path, func() error {
+		return os.WriteFile(path, []byte{0, 1, 2}, 0o600)
+	}))
 	j := report(t, r)
 	if len(j.Files) != 1 || j.Files[0].Kind != commandproto.EditAdded || j.Files[0].Edits[0].Modified != nil {
 		t.Fatalf("journal: %+v", j)
@@ -144,7 +152,9 @@ func TestEditContinuityAndRestoration(t *testing.T) {
 	path := filepath.Join(root, "file")
 	write := func(value string) {
 		t.Helper()
-		must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte(value), 0o600) }))
+		must(t, r.Record(t.Context(), path, func() error {
+			return os.WriteFile(path, []byte(value), 0o600)
+		}))
 	}
 	must(t, os.WriteFile(path, []byte("original"), 0o600))
 	write("one")
@@ -166,7 +176,9 @@ func TestEditContinuityAndRestoration(t *testing.T) {
 	g.Track(t.Context(), path)
 	g.Restored(path)
 	g.Close(t.Context())
-	must(t, r.Record(t.Context(), path, func() error { return os.Remove(path) }))
+	must(t, r.Record(t.Context(), path, func() error {
+		return os.Remove(path)
+	}))
 	if len(report(t, r).Files) != 0 {
 		t.Fatal("deleted path retained")
 	}
@@ -181,7 +193,9 @@ func TestJournalLeavesPathCharactersUnescaped(t *testing.T) {
 		name += "<>"
 	}
 	path := filepath.Join(root, name)
-	must(t, r.Record(t.Context(), path, func() error { return os.WriteFile(path, []byte("one"), 0o600) }))
+	must(t, r.Record(t.Context(), path, func() error {
+		return os.WriteFile(path, []byte("one"), 0o600)
+	}))
 	data, err := os.ReadFile(filepath.Join(r.Context().Directory, "journal.json"))
 	must(t, err)
 	if !strings.Contains(string(data), name) {

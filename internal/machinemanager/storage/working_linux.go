@@ -35,13 +35,19 @@ func NewWorkingPair(working string, device machinemanagerproto.DeviceID) *Workin
 }
 
 // Directory returns the working pair's directory.
-func (p *WorkingPair) Directory() string { return p.directory }
+func (p *WorkingPair) Directory() string {
+	return p.directory
+}
 
 // Images returns the working image paths.
-func (p *WorkingPair) Images() ImagePair[string] { return ImagesInDirectory(p.directory) }
+func (p *WorkingPair) Images() ImagePair[string] {
+	return ImagesInDirectory(p.directory)
+}
 
 // SandboxRecord returns the runtime record path, sandbox.json.
-func (p *WorkingPair) SandboxRecord() string { return filepath.Join(p.directory, "sandbox.json") }
+func (p *WorkingPair) SandboxRecord() string {
+	return filepath.Join(p.directory, "sandbox.json")
+}
 
 // Manifest reads the working pair's record; found is false when there is none.
 func (p *WorkingPair) Manifest(ctx context.Context) (machinemanagerproto.MachineImageState, bool, error) {

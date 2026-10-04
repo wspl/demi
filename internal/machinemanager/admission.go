@@ -25,10 +25,14 @@ type Admission struct {
 }
 
 // Enter admits one device operation. The returned release must be called once.
-func (a *Admission) Enter(ctx context.Context) (func(), error) { return a.acquire(ctx, false) }
+func (a *Admission) Enter(ctx context.Context) (func(), error) {
+	return a.acquire(ctx, false)
+}
 
 // Exclusive waits for all earlier operations and holds back later entrants.
-func (a *Admission) Exclusive(ctx context.Context) (func(), error) { return a.acquire(ctx, true) }
+func (a *Admission) Exclusive(ctx context.Context) (func(), error) {
+	return a.acquire(ctx, true)
+}
 
 func (a *Admission) acquire(ctx context.Context, exclusive bool) (func(), error) {
 	if err := ctx.Err(); err != nil {

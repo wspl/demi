@@ -62,4 +62,6 @@ func (l *InstallLock) Close() error {
 
 // InstallLockWaits is the process-wide count of acquisitions that waited.
 // It is exposed for artifactstest; product code has no use for this observation.
-func InstallLockWaits() uint64 { return lockWaits.Load() }
+func InstallLockWaits() uint64 {
+	return lockWaits.Load()
+}

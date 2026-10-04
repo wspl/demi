@@ -299,7 +299,9 @@ func TestImageArchiveWithMissingEntryLogsAndDownloads(t *testing.T) {
 	}
 	_, unpacking, err := artifacts.InstallArchive(t.Context(), image, archive)
 	must(t, err)
-	t.Cleanup(func() { must(t, unpacking.Close()) })
+	t.Cleanup(func() {
+		must(t, unpacking.Close())
+	})
 	must(t, os.WriteFile(unpacking.ArchivePath(), data, 0o600))
 	entry, err := unpacking.Finish(t.Context())
 	must(t, err)
@@ -313,7 +315,9 @@ func TestImageArchiveWithMissingEntryLogsAndDownloads(t *testing.T) {
 	t.Cleanup(installs.Close)
 	cache, err := commandpackages.NewArtifactCache(t.Context(), filepath.Join(root, "cache"), image, installs)
 	must(t, err)
-	t.Cleanup(func() { must(t, cache.Close(context.Background())) })
+	t.Cleanup(func() {
+		must(t, cache.Close(context.Background()))
+	})
 	resolver := writeSource(t, root, "source.zip", data)
 	got, err := cache.Install(t.Context(), w, resolver)
 	must(t, err)

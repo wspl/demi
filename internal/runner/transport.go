@@ -81,11 +81,17 @@ func (t *transport) run(ctx context.Context) {
 	defer close(t.done)
 	defer close(t.input)
 	defer t.cancel()
-	defer func() { _ = t.socket.CloseNow() }() // The result is decided by the read/write or graceful shutdown.
+	defer func() {
+		_ = t.socket.CloseNow()
+	}() // The result is decided by the read/write or graceful shutdown.
 	received := make(chan error, 1)
-	go func() { received <- t.receive(ctx) }()
+	go func() {
+		received <- t.receive(ctx)
+	}()
 	sent := make(chan error, 1)
-	go func() { sent <- t.send(ctx) }()
+	go func() {
+		sent <- t.send(ctx)
+	}()
 	writerJoined := false
 	select {
 	case err := <-received:
@@ -205,7 +211,9 @@ func (t *transport) flush(ctx context.Context) error {
 }
 
 func (t *transport) close(ctx context.Context) error {
-	t.once.Do(func() { close(t.stopping) })
+	t.once.Do(func() {
+		close(t.stopping)
+	})
 	select {
 	case <-ctx.Done():
 		return ctx.Err()

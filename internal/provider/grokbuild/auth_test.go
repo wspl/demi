@@ -76,7 +76,9 @@ func TestConcurrentReplacementAvoidsRefresh(t *testing.T) {
 		defer close(done)
 		done <- run(t, p, providertest.InferenceRequest())
 	}()
-	t.Cleanup(func() { <-finished })
+	t.Cleanup(func() {
+		<-finished
+	})
 	v.Received(t.Context(), 1)
 	entry, _, err := doc.Read(t.Context())
 	if err != nil {
@@ -131,7 +133,9 @@ func TestConcurrentRequestsRefreshOnce(t *testing.T) {
 	p, _ := fixture(t, v, map[string]any{"expiresAt": "2026-09-18T14:01:00.000Z"})
 	var wg sync.WaitGroup
 	for range 2 {
-		wg.Go(func() { equal(t, []provider.Event{&provider.Response{}}, run(t, p, providertest.InferenceRequest())) })
+		wg.Go(func() {
+			equal(t, []provider.Event{&provider.Response{}}, run(t, p, providertest.InferenceRequest()))
+		})
 	}
 	wg.Wait()
 	requests := v.Requests()

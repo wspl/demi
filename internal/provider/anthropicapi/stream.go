@@ -17,11 +17,15 @@ const label = "Anthropic"
 // Run streams inference events for the request.
 func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
 	return func(yield func(provider.Event) bool) {
-		emit := func(event provider.Event) bool { return ctx.Err() == nil && yield(event) }
+		emit := func(event provider.Event) bool {
+			return ctx.Err() == nil && yield(event)
+		}
 		body, err := provider.EncodeBody(
 			ctx,
 			label,
-			func() ([]byte, error) { return encodeRequest(request, r.shared.policy) },
+			func() ([]byte, error) {
+				return encodeRequest(request, r.shared.policy)
+			},
 		)
 		if ctx.Err() != nil {
 			return
@@ -144,7 +148,9 @@ func (m *streamMapper) frame(data string) (mapped, error) {
 			delete(m.tools, value.Index)
 			return mapped{event: b.call()}, nil
 		},
-		"error": func(text string) (mapped, error) { return m.failure(text, data) },
+		"error": func(text string) (mapped, error) {
+			return m.failure(text, data)
+		},
 	})
 	return result, err
 }

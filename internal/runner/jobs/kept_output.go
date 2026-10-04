@@ -62,7 +62,9 @@ func CreateKeptOutput(ctx context.Context, directory string) (*KeptOutput, error
 		return nil, err
 	}
 	path := filepath.Join(directory, "head")
-	file, err := commandsdk.Retry(ctx, func() (*os.File, error) { return os.Create(path) })
+	file, err := commandsdk.Retry(ctx, func() (*os.File, error) {
+		return os.Create(path)
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +131,9 @@ func (o *KeptOutput) Reader() *KeptReader {
 
 // Close releases writer files without removing the output. It is idempotent.
 func (o *KeptOutput) Close() error {
-	o.closeOnce.Do(func() { close(o.stop) })
+	o.closeOnce.Do(func() {
+		close(o.stop)
+	})
 	<-o.done
 	return o.closeErr
 }
@@ -266,7 +270,10 @@ type keptSnapshot struct {
 	err    error
 }
 
-func (s *keptSnapshot) Read(bytes []byte) (int, error) { return s.reader.Read(bytes) }
+func (s *keptSnapshot) Read(bytes []byte) (int, error) {
+	return s.reader.Read(bytes)
+}
+
 func (s *keptSnapshot) Close() error {
 	s.once.Do(func() {
 		for _, file := range s.files {

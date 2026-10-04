@@ -107,4 +107,6 @@ type DraftFileRemoteFile struct {
 const AttachmentMark = '\uFFFC'
 
 // The draft of a conversation that never saved one.
-func EmptyConversationDraft() ConversationDraft { return ConversationDraft{Files: []DraftFile{}} }
+func EmptyConversationDraft() ConversationDraft {
+	return ConversationDraft{Files: []DraftFile{}}
+}

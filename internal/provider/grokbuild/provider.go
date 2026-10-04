@@ -83,7 +83,9 @@ func New(
 }
 
 // Capabilities reports that inference requires no Host process.
-func (*Provider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
+func (*Provider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{}
+}
 
 // AuthStatus reads the stored account without refreshing it.
 func (p *Provider) AuthStatus(ctx context.Context) types.AuthState {
@@ -107,10 +109,14 @@ func (*Provider) ReadFailure(d *types.ProviderErrorDiagnostics, at types.Timesta
 }
 
 // Quota returns this account's quota.
-func (p *Provider) Quota() *provider.Quota { return p.quota }
+func (p *Provider) Quota() *provider.Quota {
+	return p.quota
+}
 
 // Accounts returns the entry's subscription account operations.
-func (p *Provider) Accounts() provider.SubscriptionAccounts { return p.accounts }
+func (p *Provider) Accounts() provider.SubscriptionAccounts {
+	return p.accounts
+}
 
 // Runtime builds a session runtime using its owner's HTTP client.
 func (p *Provider) Runtime(env provider.RuntimeEnv) (provider.Runtime, error) {
@@ -123,12 +129,18 @@ type runtime struct {
 }
 
 // Fresh returns an independent runtime for another session.
-func (r *runtime) Fresh() provider.Runtime { return &runtime{shared: r.shared, http: r.http} }
+func (r *runtime) Fresh() provider.Runtime {
+	return &runtime{shared: r.shared, http: r.http}
+}
 
 // Close releases the runtime resources.
-func (*runtime) Close(context.Context) error { return nil }
+func (*runtime) Close(context.Context) error {
+	return nil
+}
 
 // RequestLimits returns the request limits for the model.
-func (*runtime) RequestLimits(types.Model) provider.RequestLimits { return provider.RequestLimits{} }
+func (*runtime) RequestLimits(types.Model) provider.RequestLimits {
+	return provider.RequestLimits{}
+}
 
 var _ provider.Provider = (*Provider)(nil)

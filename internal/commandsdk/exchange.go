@@ -16,10 +16,14 @@ type ExchangeError struct {
 }
 
 // Error returns the failure message.
-func (e *ExchangeError) Error() string { return fmt.Sprintf("command %s: %v", e.Side, e.Cause) }
+func (e *ExchangeError) Error() string {
+	return fmt.Sprintf("command %s: %v", e.Side, e.Cause)
+}
 
 // Unwrap returns the underlying failure.
-func (e *ExchangeError) Unwrap() error { return e.Cause }
+func (e *ExchangeError) Unwrap() error {
+	return e.Cause
+}
 
 // Exchange drives one invocation's pull-driven input and output to completion.
 type Exchange struct {

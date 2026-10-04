@@ -111,7 +111,9 @@ func TestFilesystemRequestsWait(t *testing.T) {
 	var jobs sync.WaitGroup
 	failures := make(chan error, 500)
 	for i := range 500 {
-		jobs.Go(func() { failures <- s.Readdir(t.Context(), runnerproto.FSReaddir{ID: fmt.Sprint(i), Path: "."}) })
+		jobs.Go(func() {
+			failures <- s.Readdir(t.Context(), runnerproto.FSReaddir{ID: fmt.Sprint(i), Path: "."})
+		})
 	}
 	jobs.Wait()
 	close(failures)

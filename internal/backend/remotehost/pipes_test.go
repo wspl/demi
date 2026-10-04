@@ -16,7 +16,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(programTests{m}) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(programTests{m})
+}
 
 // pipeBroker registers shutdown at acquisition for every pipe scenario.
 func pipeBroker(t *testing.T, arrival time.Duration) *remotehost.Pipes {
@@ -33,8 +35,13 @@ func pipeBroker(t *testing.T, arrival time.Duration) *remotehost.Pipes {
 // pipeBody supplies finite fixture bytes through the Host's cancellable stream boundary.
 type pipeBody struct{ *bytes.Reader }
 
-func (b pipeBody) Read(_ context.Context, p []byte) (int, error) { return b.Reader.Read(p) }
-func (pipeBody) Close(context.Context) error                     { return nil }
+func (b pipeBody) Read(_ context.Context, p []byte) (int, error) {
+	return b.Reader.Read(p)
+}
+
+func (pipeBody) Close(context.Context) error {
+	return nil
+}
 
 // collectPipe observes pipe EOF or failure without treating a short stream as success.
 func collectPipe(ctx context.Context, stream host.ByteStream) ([]byte, error) {
@@ -63,7 +70,9 @@ func requirePipe(t *testing.T, err error) {
 // startUpload returns the owned upload's joined result.
 func startUpload(ctx context.Context, source *remotehost.DeviceSource, body host.ByteStream) <-chan error {
 	done := make(chan error, 1)
-	go func() { done <- source.Pump(ctx, body) }()
+	go func() {
+		done <- source.Pump(ctx, body)
+	}()
 	return done
 }
 
@@ -82,7 +91,9 @@ func TestDevicePutStreamsIntoDeviceGetAndAnswersOnceDrained(t *testing.T) {
 	}
 	sink, err := p.ClaimSink(pipe.ID(), "b")
 	requirePipe(t, err)
-	defer func() { requirePipe(t, sink.Close(context.Background())) }()
+	defer func() {
+		requirePipe(t, sink.Close(context.Background()))
+	}()
 	source, err := p.ClaimSource(pipe.ID(), "a")
 	requirePipe(t, err)
 	done := startUpload(t.Context(), source, pipeBody{bytes.NewReader(payload)})
@@ -106,7 +117,9 @@ func TestDevicePutStreamsIntoDeviceGetAndAnswersOnceDrained(t *testing.T) {
 	}
 	claimed, err := p.ClaimSink(second.ID(), "b")
 	requirePipe(t, err)
-	defer func() { requirePipe(t, claimed.Close(context.Background())) }()
+	defer func() {
+		requirePipe(t, claimed.Close(context.Background()))
+	}()
 	if _, err = p.ClaimSink(second.ID(), "b"); !errors.Is(err, remotehost.ErrPipeAlreadyConnected) {
 		t.Fatal(err)
 	}
@@ -298,7 +311,10 @@ func (b quietPipeBody) Read(ctx context.Context, _ []byte) (int, error) {
 	<-ctx.Done()
 	return 0, ctx.Err()
 }
-func (quietPipeBody) Close(context.Context) error { return nil }
+
+func (quietPipeBody) Close(context.Context) error {
+	return nil
+}
 
 func TestFailureInterruptsQuietBodyAndWaitingRead(t *testing.T) {
 	p := pipeBroker(t, 5*time.Second)
@@ -431,7 +447,9 @@ func TestClosingFailsEveryPipeAndEveryLaterOne(t *testing.T) {
 // programTests releases compiled runner fixtures before checking goroutine ownership.
 type programTests struct{ m *testing.M }
 
-func (p programTests) Run() int { return programtest.Run(p.m) }
+func (p programTests) Run() int {
+	return programtest.Run(p.m)
+}
 
 // gatedPipeBody holds a claimed device upload quiet before releasing its payload.
 type gatedPipeBody struct {

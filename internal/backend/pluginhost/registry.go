@@ -165,7 +165,9 @@ func served(
 		}
 		page.Methods = slices.DeleteFunc(
 			page.Methods,
-			func(m plugin.Method) bool { return !keep("page method", m.Name, m.Operations) },
+			func(m plugin.Method) bool {
+				return !keep("page method", m.Name, m.Operations)
+			},
 		)
 	}
 	names := make([]string, 0, len(packages))

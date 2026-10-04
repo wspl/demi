@@ -58,8 +58,18 @@ func (v *streamView) paced(epoch, floor, window uint32) {
 		p.paced = true
 	})
 }
-func (v *streamView) encode(e encoding) { v.change(func(p *pacing) { p.encoding = &e }) }
-func (v *streamView) keyFrame()         { v.change(func(p *pacing) { p.keys++ }) }
+
+func (v *streamView) encode(e encoding) {
+	v.change(func(p *pacing) {
+		p.encoding = &e
+	})
+}
+
+func (v *streamView) keyFrame() {
+	v.change(func(p *pacing) {
+		p.keys++
+	})
+}
 
 type captureStream struct {
 	// mu protects membership and the latest pacing; no IO runs under it.

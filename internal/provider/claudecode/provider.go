@@ -91,10 +91,14 @@ func (*Provider) ReadFailure(d *types.ProviderErrorDiagnostics, at types.Timesta
 }
 
 // Quota returns the account's usage probe and observations.
-func (p *Provider) Quota() *provider.Quota { return p.quota }
+func (p *Provider) Quota() *provider.Quota {
+	return p.quota
+}
 
 // Accounts returns shared subscription operations for setup tokens.
-func (p *Provider) Accounts() provider.SubscriptionAccounts { return p.accounts }
+func (p *Provider) Accounts() provider.SubscriptionAccounts {
+	return p.accounts
+}
 
 // Runtime refuses because only the backend can choose a process machine.
 func (p *Provider) Runtime(provider.RuntimeEnv) (provider.Runtime, error) {

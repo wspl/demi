@@ -32,7 +32,9 @@ type VerificationMail struct {
 type CodeKey [32]byte
 
 // NewCodeKey wraps the instance-derived email-change key.
-func NewCodeKey(key [32]byte) CodeKey { return CodeKey(key) }
+func NewCodeKey(key [32]byte) CodeKey {
+	return CodeKey(key)
+}
 
 var (
 	// ErrMailUnavailable means no mail delivery service is configured.

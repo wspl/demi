@@ -86,7 +86,9 @@ func (v *Volumes) Sync(ctx context.Context, request runnerproto.Sync) error {
 	if err = admit(ctx, v.syncs); err != nil {
 		return err
 	}
-	defer func() { <-v.syncs }()
+	defer func() {
+		<-v.syncs
+	}()
 	failure := syncFilesystems(v.blocks)
 	var message *string
 	if failure != nil {
@@ -150,7 +152,9 @@ func (v *Volumes) Checked(ctx context.Context) (bool, error) {
 	if err := admit(ctx, v.checked); err != nil {
 		return false, err
 	}
-	defer func() { <-v.checked }()
+	defer func() {
+		<-v.checked
+	}()
 	pending := v.hasPendingCheck()
 	if !pending {
 		return false, nil

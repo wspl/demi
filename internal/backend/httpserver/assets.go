@@ -48,7 +48,9 @@ func assets(directory string) http.Handler {
 			return
 		}
 		// The operation reports IO failures; cleanup has no further recipient.
-		defer func() { _ = opened.Close() }()
+		defer func() {
+			_ = opened.Close()
+		}()
 		info, err = opened.Stat()
 		if err != nil {
 			missing()

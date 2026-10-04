@@ -56,7 +56,9 @@ func TestRemoveDuringFetchAndIgnoreConcurrentUpdate(t *testing.T) {
 	close(release)
 	if err := p.demi.Until(
 		t.Context(),
-		func(d *plugintest.TestDemi) bool { return d.Changes() >= before+4 },
+		func(d *plugintest.TestDemi) bool {
+			return d.Changes() >= before+4
+		},
 	); err != nil {
 		t.Fatal(err)
 	}

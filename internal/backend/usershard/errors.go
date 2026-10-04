@@ -40,7 +40,11 @@ type ForkTargetError struct {
 }
 
 // Error returns the cause's text.
-func (e *ForkTargetError) Error() string { return e.Err.Error() }
+func (e *ForkTargetError) Error() string {
+	return e.Err.Error()
+}
 
 // Unwrap returns the cause.
-func (e *ForkTargetError) Unwrap() error { return e.Err }
+func (e *ForkTargetError) Unwrap() error {
+	return e.Err
+}

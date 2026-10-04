@@ -92,9 +92,13 @@ func (d diskAdapter) Capacity(ctx context.Context, image string) (uint64, error)
 type workingImages struct{ *storage.WorkingPair }
 
 // Image returns the path for the selected volume.
-func (w workingImages) Image(v machinemanagerproto.Volume) string { return w.Images().ForVolume(v) }
+func (w workingImages) Image(v machinemanagerproto.Volume) string {
+	return w.Images().ForVolume(v)
+}
 
 type imagePaths struct{ storage.ImagePair[string] }
 
 // Image returns the path for the selected volume.
-func (p imagePaths) Image(v machinemanagerproto.Volume) string { return p.ForVolume(v) }
+func (p imagePaths) Image(v machinemanagerproto.Volume) string {
+	return p.ForVolume(v)
+}

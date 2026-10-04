@@ -40,7 +40,9 @@ func TestRecordingEditWaitsForOpenFile(t *testing.T) {
 	old := limit
 	limit.Cur = 128
 	must(t, unix.Setrlimit(unix.RLIMIT_NOFILE, &limit))
-	defer func() { must(t, unix.Setrlimit(unix.RLIMIT_NOFILE, &old)) }()
+	defer func() {
+		must(t, unix.Setrlimit(unix.RLIMIT_NOFILE, &old))
+	}()
 	var held []*os.File
 	defer func() {
 		for _, f := range held {

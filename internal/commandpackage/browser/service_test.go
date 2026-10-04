@@ -24,10 +24,14 @@ import (
 type programSuite struct{ m *testing.M }
 
 // Run builds fixture programs before running the browser suite.
-func (s programSuite) Run() int { return programtest.Run(s.m) }
+func (s programSuite) Run() int {
+	return programtest.Run(s.m)
+}
 
 // TestMain checks that the browser suite leaves no goroutines running.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(programSuite{m}) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(programSuite{m})
+}
 
 func invocation(operation, args, conversation string) commandsdk.InvocationContext[commandproto.Invocation] {
 	asJSON := true
@@ -423,7 +427,9 @@ func TestShutdownRetiresConversationsTogether(t *testing.T) {
 		<-started
 		<-started
 		closed := make(chan error, 1)
-		go func() { closed <- s.Close(t.Context()) }()
+		go func() {
+			closed <- s.Close(t.Context())
+		}()
 		// Both cancellations must arrive before either cleanup may finish.
 		<-canceled
 		<-canceled

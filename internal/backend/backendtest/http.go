@@ -76,7 +76,9 @@ func (a Answer) SessionCookies() []string {
 
 // ReadAnswer reads the whole response and closes its body on every exit.
 func ReadAnswer(ctx context.Context, response *http.Response) (answer Answer, err error) {
-	defer func() { err = errors.Join(err, response.Body.Close()) }()
+	defer func() {
+		err = errors.Join(err, response.Body.Close())
+	}()
 	if err := ctx.Err(); err != nil {
 		return Answer{}, err
 	}
@@ -105,7 +107,9 @@ func (b *TestBackend) Close(ctx context.Context) error {
 }
 
 // Address returns the listener's bound address.
-func (b *TestBackend) Address() netip.AddrPort { return b.Backend.LocalAddr() }
+func (b *TestBackend) Address() netip.AddrPort {
+	return b.Backend.LocalAddr()
+}
 
 // WSURL returns the ws:// URL of path on this backend.
 func (b *TestBackend) WSURL(path string) string {

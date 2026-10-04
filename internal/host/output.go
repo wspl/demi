@@ -31,7 +31,9 @@ type Missing struct {
 }
 
 // Line renders the missing bytes' note.
-func (m Missing) Line() string { return fmt.Sprintf("[... %d bytes %s ...]", m.Bytes, m.Reason) }
+func (m Missing) Line() string {
+	return fmt.Sprintf("[... %d bytes %s ...]", m.Bytes, m.Reason)
+}
 
 // streamParts collects kept stream bytes on either side of the gap.
 func (w WholeOutput) streamParts(stream types.StreamKind) ([]byte, []byte) {
@@ -95,7 +97,9 @@ func isOutputText(data []byte, cutStart, cutEnd bool) bool {
 }
 
 // BinaryLine is the line standing for non-text stdout.
-func BinaryLine(length uint64) string { return fmt.Sprintf("<binary stdout: %d bytes>", length) }
+func BinaryLine(length uint64) string {
+	return fmt.Sprintf("<binary stdout: %d bytes>", length)
+}
 
 // Streams selects both streams, stdout, or stderr.
 type Streams uint8
@@ -203,7 +207,9 @@ func ReceivedOutput(text string, firstLine uint64) OutputText {
 }
 
 // Bytes returns a copy of the raw bytes.
-func (t OutputText) Bytes() []byte { return bytes.Clone(t.data) }
+func (t OutputText) Bytes() []byte {
+	return bytes.Clone(t.data)
+}
 
 // Notes returns gap and missing-output notes in order.
 func (t OutputText) Notes() []string {
@@ -218,7 +224,9 @@ func (t OutputText) Notes() []string {
 }
 
 // LastLine returns the final numbered line, or one before FirstLine for empty text.
-func (t OutputText) LastLine() uint64 { return t.firstLine + t.LineCount() - 1 }
+func (t OutputText) LastLine() uint64 {
+	return t.firstLine + t.LineCount() - 1
+}
 
 // Unseen returns the first unseen byte offset, including the end for missing bytes.
 func (t OutputText) Unseen() (int, bool) {
@@ -373,7 +381,9 @@ func (t OutputText) Chunks(from int) []types.OutputChunk {
 }
 
 // gapNote renders bytes omitted between the first and last kept output.
-func gapNote(count uint64) string { return fmt.Sprintf("[... %d bytes left out ...]", count) }
+func gapNote(count uint64) string {
+	return fmt.Sprintf("[... %d bytes left out ...]", count)
+}
 
 // lossy replaces each invalid UTF-8 sequence, and an incomplete final character, with one U+FFFD.
 func lossy(data []byte) string {

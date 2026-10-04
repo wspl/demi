@@ -10,7 +10,9 @@ import (
 	"github.com/wspl/demi/internal/plugin"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // All scenarios are in memory and are expected to finish in under one second.
 func TestSourceOrigins(t *testing.T) {

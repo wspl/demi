@@ -16,10 +16,14 @@ type runtime struct {
 }
 
 // Fresh returns an independent runtime for another session.
-func (r *runtime) Fresh() provider.Runtime { return &runtime{shared: r.shared, http: r.http} }
+func (r *runtime) Fresh() provider.Runtime {
+	return &runtime{shared: r.shared, http: r.http}
+}
 
 // Close releases the runtime resources.
-func (*runtime) Close(context.Context) error { return nil }
+func (*runtime) Close(context.Context) error {
+	return nil
+}
 
 // RequestLimits returns the request limits for the model.
 func (*runtime) RequestLimits(types.Model) provider.RequestLimits {

@@ -40,7 +40,9 @@ func (p *PublicURL) Listening(public *url.URL, address netip.AddrPort) {
 		slog.Error("the URL runners connect to is not usable: " + err.Error())
 		return
 	}
-	p.once.Do(func() { p.value.Store(&value) })
+	p.once.Do(func() {
+		p.value.Store(&value)
+	})
 }
 
 // URL returns the backend URL once it listens, or false before it is set.

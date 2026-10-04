@@ -118,7 +118,9 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 			scenario.change(&a, &b)
 			_, err := pluginhost.NewRegistry(
 				[]plugin.Factory{&fakeFactory{manifest: a}, &fakeFactory{manifest: b}},
-				func(commanddecl.NativeOperation) bool { return false },
+				func(commanddecl.NativeOperation) bool {
+					return false
+				},
 			)
 			if err == nil || !strings.Contains(err.Error(), scenario.want) {
 				t.Fatalf("got %v, want %q", err, scenario.want)
@@ -191,7 +193,9 @@ func TestRegistryCatalogAndOrder(t *testing.T) {
 	a.Page.Methods[1].Operations = []commanddecl.NativeOperation{{Package: "method-only", Operation: "run"}}
 	r, err := pluginhost.NewRegistry(
 		[]plugin.Factory{&fakeFactory{manifest: a}, &fakeFactory{manifest: b}},
-		func(operation commanddecl.NativeOperation) bool { return operation.Operation != "missing" },
+		func(operation commanddecl.NativeOperation) bool {
+			return operation.Operation != "missing"
+		},
 	)
 	if err != nil {
 		t.Fatal(err)

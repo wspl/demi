@@ -81,7 +81,9 @@ func (q *quotaSource) fetch(ctx context.Context, u *url.URL, s secret) (string, 
 		return "", failed(err)
 	}
 	// The response is consumed or abandoned; close errors cannot change its result.
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	body, err := io.ReadAll(response.Body)
 	if err != nil {
 		return "", failed(err)

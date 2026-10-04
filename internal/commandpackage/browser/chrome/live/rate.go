@@ -26,7 +26,9 @@ type rate struct {
 }
 
 // roundedBitrate rounds to the nearest integer and saturates at math.MaxUint32.
-func roundedBitrate(value float64) uint32 { return uint32(min(math.Round(value), math.MaxUint32)) }
+func roundedBitrate(value float64) uint32 {
+	return uint32(min(math.Round(value), math.MaxUint32))
+}
 
 func initialBitrate(pixels uint64, fps uint32) uint32 {
 	return roundedBitrate(max(float64(pixels)*float64(fps)*.6, minimumBitrate))
@@ -44,10 +46,23 @@ func (r *rate) resize(pixels uint64) {
 		r.budget = float64(initialBitrate(pixels, r.fps()))
 	}
 }
-func (r *rate) bitrate() uint32           { return roundedBitrate(r.budget) }
-func (r *rate) fps() uint32               { return frameRates[r.frameRate] }
-func (r *rate) scale() float64            { return scales[r.resolution] }
-func (r *rate) acknowledged(trip float64) { r.minimumRoundTrip = min(r.minimumRoundTrip, trip) }
+
+func (r *rate) bitrate() uint32 {
+	return roundedBitrate(r.budget)
+}
+
+func (r *rate) fps() uint32 {
+	return frameRates[r.frameRate]
+}
+
+func (r *rate) scale() float64 {
+	return scales[r.resolution]
+}
+
+func (r *rate) acknowledged(trip float64) {
+	r.minimumRoundTrip = min(r.minimumRoundTrip, trip)
+}
+
 func (r *rate) bits(fps uint32, scale float64) float64 {
 	return r.budget / max(r.pixels*scale*scale*float64(fps), 1)
 }

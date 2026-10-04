@@ -142,13 +142,19 @@ func (g *Group[B]) Leaves() []*Leaf[B] {
 }
 
 // Leaves lists this leaf.
-func (l *Leaf[B]) Leaves() []*Leaf[B] { return []*Leaf[B]{l} }
+func (l *Leaf[B]) Leaves() []*Leaf[B] {
+	return []*Leaf[B]{l}
+}
 
 // Validate checks names, depth, subcommand uniqueness and input-source rules.
-func (g *Group[B]) Validate() error { return validateNode[B](g, 0) }
+func (g *Group[B]) Validate() error {
+	return validateNode[B](g, 0)
+}
 
 // Validate checks this command's name and input-source rules.
-func (l *Leaf[B]) Validate() error { return validateNode[B](l, 0) }
+func (l *Leaf[B]) Validate() error {
+	return validateNode[B](l, 0)
+}
 
 // validateNode checks declaration rules with the root at depth zero.
 func validateNode[B any](node Node[B], depth int) error {

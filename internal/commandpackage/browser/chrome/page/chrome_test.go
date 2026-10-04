@@ -270,7 +270,9 @@ func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
 	if err := tab.WaitCurrentLoad(ctx, browserproto.LoadLoad); err != nil {
 		t.Fatal(err)
 	}
-	deadline := func() time.Time { return time.Now().Add(5 * time.Second) }
+	deadline := func() time.Time {
+		return time.Now().Add(5 * time.Second)
+	}
 	cwd := t.TempDir()
 	invocation := &commandsdk.InvocationContext[commandproto.Invocation]{Request: commandproto.Invocation{Cwd: cwd}}
 	file := filepath.Join(cwd, "chooser.txt")

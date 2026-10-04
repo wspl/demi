@@ -7,7 +7,9 @@ type Tail struct {
 }
 
 // NewTail creates a tail with the supplied byte limit.
-func NewTail(limit int) *Tail { return &Tail{limit: max(0, limit)} }
+func NewTail(limit int) *Tail {
+	return &Tail{limit: max(0, limit)}
+}
 
 // Push retains the newest bytes within the limit.
 func (t *Tail) Push(chunk []byte) {
@@ -27,4 +29,6 @@ func (t *Tail) Bytes() []byte {
 }
 
 // Text returns the bytes as text, replacing invalid or cut UTF-8 characters.
-func (t *Tail) Text() string { return streamText(t.bytes) }
+func (t *Tail) Text() string {
+	return streamText(t.bytes)
+}

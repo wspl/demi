@@ -23,7 +23,9 @@ func (s *Shard) serveSyncChannel(ctx context.Context, socket *PageConnection, se
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.relaySync(ctx, socket, session) },
+		func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, s.relaySync(ctx, socket, session)
+		},
 	)
 	return err
 }

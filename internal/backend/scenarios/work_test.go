@@ -162,7 +162,9 @@ func TestWorkRunnerLossEndsCommandAndReconnectServesNextTurn(t *testing.T) {
 	w.vendor.Respond(conversationShell(t, "t2", "touch started; sleep 20; echo late", 30000))
 	w.vendor.Respond(conversationAnswer(t, []string{"the runner is gone"}, 1, 1))
 	wireMust(t, w.socket.Send(w.ctx, backendtest.ConversationText("m2", "go")))
-	wireMust(t, backendtest.WaitFile(w.ctx, filepath.Join(w.root, "started"), func([]byte) bool { return true }))
+	wireMust(t, backendtest.WaitFile(w.ctx, filepath.Join(w.root, "started"), func([]byte) bool {
+		return true
+	}))
 	wireMust(t, w.paired.Runner.Kill(w.ctx))
 	_, err = w.socket.UntilIdle(w.ctx)
 	wireMust(t, err)
@@ -289,7 +291,9 @@ func TestWorkBackendRestartReconnectsRunnerAndInterruptsTurn(t *testing.T) {
 	conversationEqual(t, toolstest.Field(kept, "commandId"), "1")
 	w.vendor.Respond(conversationShell(t, "t2", "touch started; sleep 20", 30000))
 	wireMust(t, w.socket.Send(w.ctx, backendtest.ConversationText("m2", "go")))
-	wireMust(t, backendtest.WaitFile(w.ctx, filepath.Join(w.root, "started"), func([]byte) bool { return true }))
+	wireMust(t, backendtest.WaitFile(w.ctx, filepath.Join(w.root, "started"), func([]byte) bool {
+		return true
+	}))
 	address := w.backend.Address()
 	wireMust(t, w.backend.Close(w.ctx))
 	w.backend, err = w.harness.StartAt(w.ctx, t, address)
@@ -564,7 +568,9 @@ func TestWorkHostShellStreamsErrorsAcceptsInputAndStopsFarJob(t *testing.T) {
 			t,
 			w.socket,
 			command,
-			func(s conversationproto.ShellStatus) bool { return strings.Contains(s.Command().Tail, "ready\n") },
+			func(s conversationproto.ShellStatus) bool {
+				return strings.Contains(s.Command().Tail, "ready\n")
+			},
 		)
 	}
 	if !strings.Contains(toolstest.ShownOutput(started), "ready") {
@@ -590,11 +596,15 @@ func TestWorkHostShellStreamsErrorsAcceptsInputAndStopsFarJob(t *testing.T) {
 		backendtest.WaitFile(
 			w.ctx,
 			filepath.Join(w.root, "got.txt"),
-			func(b []byte) bool { return string(b) == "hello" },
+			func(b []byte) bool {
+				return string(b) == "hello"
+			},
 		),
 	)
 	pidPath := filepath.Join(w.root, "far.pid")
-	wireMust(t, backendtest.WaitFile(w.ctx, pidPath, func(b []byte) bool { return strings.HasSuffix(string(b), "\n") }))
+	wireMust(t, backendtest.WaitFile(w.ctx, pidPath, func(b []byte) bool {
+		return strings.HasSuffix(string(b), "\n")
+	}))
 	pid, err := strconv.Atoi(strings.TrimSpace(filesRead(t, pidPath)))
 	wireMust(t, err)
 	running, err := backendtest.ProcessRunning(pid)

@@ -37,7 +37,9 @@ func TestOversizedStreamingBodyReceivesRefusal(t *testing.T) {
 			return
 		}
 		ctx, incoming := readIncoming(t.Context(), conn)
-		defer func() { _ = incoming.Close() }()
+		defer func() {
+			_ = incoming.Close()
+		}()
 		edge.serveConnection(ctx, newActivity(incoming))
 	}()
 	defer func() {
@@ -48,7 +50,9 @@ func TestOversizedStreamingBodyReceivesRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		_ = conn.Close()
+	}()
 	if _, err := fmt.Fprint(
 		conn,
 		"PATCH / HTTP/1.1\r\nHost: localhost\r\nTransfer-Encoding: chunked\r\n\r\n",
@@ -64,7 +68,9 @@ func TestOversizedStreamingBodyReceivesRefusal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = response.Body.Close() }()
+	defer func() {
+		_ = response.Body.Close()
+	}()
 	if _, err := io.WriteString(conn, "400000\r\n"+strings.Repeat("x", 4*1024*1024)+"\r\n"); err != nil {
 		t.Fatalf("upload reset before refusal could be read: %v", err)
 	}

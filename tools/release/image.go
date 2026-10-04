@@ -171,12 +171,16 @@ func installExecutable(
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, input.Close()) }()
+	defer func() {
+		err = errors.Join(err, input.Close())
+	}()
 	stage, err := artifacts.NewStaged(ctx, destination, artifacts.Publication{Permissions: artifacts.Executable})
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, stage.Close()) }()
+	defer func() {
+		err = errors.Join(err, stage.Close())
+	}()
 	if err := artifacts.Copy(
 		ctx,
 		input,
@@ -254,12 +258,16 @@ func installResource(
 	if unpacking == nil {
 		return "", fmt.Errorf("%s is in the image twice", source)
 	}
-	defer func() { err = errors.Join(err, unpacking.Close()) }()
+	defer func() {
+		err = errors.Join(err, unpacking.Close())
+	}()
 	input, err := os.Open(source)
 	if err != nil {
 		return "", err
 	}
-	defer func() { err = errors.Join(err, input.Close()) }()
+	defer func() {
+		err = errors.Join(err, input.Close())
+	}()
 	output, err := os.Create(unpacking.ArchivePath())
 	if err != nil {
 		return "", err
@@ -293,7 +301,9 @@ func installUV(
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(scratch)) }()
+	defer func() {
+		err = errors.Join(err, os.RemoveAll(scratch))
+	}()
 	path := filepath.Join(scratch, "uv.tar.gz")
 	if err := downloadArchive(
 		ctx,
@@ -308,12 +318,16 @@ func installUV(
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, file.Close()) }()
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
 	zipped, err := gzip.NewReader(file)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, zipped.Close()) }()
+	defer func() {
+		err = errors.Join(err, zipped.Close())
+	}()
 	return installUVExecutables(ctx, root, archive, tar.NewReader(zipped), executables)
 }
 
@@ -365,12 +379,16 @@ func (a *application) writeArchive(ctx context.Context, root, path string) (err 
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, file.Close()) }()
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
 	encoder, err := zstd.NewWriter(file)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, encoder.Close()) }()
+	defer func() {
+		err = errors.Join(err, encoder.Close())
+	}()
 	cmd := exec.CommandContext(ctx, "tar", "--numeric-owner", "--xattrs", "--acls", "-cf", "-", "-C", root, ".")
 	cmd.Stdout = encoder
 	cmd.Stderr = a.Err
@@ -547,7 +565,9 @@ func (a *application) publishImageArchive(
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(scratch)) }()
+	defer func() {
+		err = errors.Join(err, os.RemoveAll(scratch))
+	}()
 	archivePath := filepath.Join(scratch, string(machinemanagerproto.RootfsTarZst))
 	if _, err := fmt.Fprintln(a.Err, "Cloud image: writing", machinemanagerproto.RootfsTarZst); err != nil {
 		return err

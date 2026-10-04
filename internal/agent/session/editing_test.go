@@ -207,7 +207,9 @@ func TestDisposeWaitsForEditSaveAndKeepsReplacement(t *testing.T) {
 		editing := editAsync(t, f.s, edit(t, f.s, 0, "op1"))
 		must(t, gate.Wait(t.Context(), 1))
 		disposed := make(chan error, 1)
-		go func() { disposed <- f.s.Dispose(t.Context()) }()
+		go func() {
+			disposed <- f.s.Dispose(t.Context())
+		}()
 		synctest.Wait()
 		equal(t, f.p.Closes(), 0)
 		select {

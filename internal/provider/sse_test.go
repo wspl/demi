@@ -63,7 +63,10 @@ func TestSSEEmptyData(t *testing.T) {
 
 type failedReader struct{ err error }
 
-func (r failedReader) Read([]byte) (int, error) { return 0, r.err }
+func (r failedReader) Read([]byte) (int, error) {
+	return 0, r.err
+}
+
 func TestSSETransportAfterFrames(t *testing.T) {
 	broken := errors.New("connection reset")
 	body := io.NopCloser(io.MultiReader(strings.NewReader("data: first\n\n"), failedReader{broken}))

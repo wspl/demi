@@ -60,7 +60,9 @@ func (v *VendorCatalog) Vendors(ctx context.Context) ([]webapiproto.Vendor, erro
 	collator := collate.New(language.Und)
 	sort.SliceStable(
 		vendors,
-		func(i, j int) bool { return collator.CompareString(vendors[i].Name, vendors[j].Name) < 0 },
+		func(i, j int) bool {
+			return collator.CompareString(vendors[i].Name, vendors[j].Name) < 0
+		},
 	)
 	return vendors, nil
 }

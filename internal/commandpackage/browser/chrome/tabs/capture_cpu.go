@@ -6,7 +6,9 @@ import (
 	"runtime"
 )
 
-func smeWithoutSVE(hwcap, hwcap2 uint64) bool { return hwcap2&(1<<23) != 0 && hwcap&(1<<22) == 0 }
+func smeWithoutSVE(hwcap, hwcap2 uint64) bool {
+	return hwcap2&(1<<23) != 0 && hwcap&(1<<22) == 0
+}
 
 // captureUnavailable prevents Chrome's Linux SME-without-SVE capture crash.
 func captureUnavailable() string {

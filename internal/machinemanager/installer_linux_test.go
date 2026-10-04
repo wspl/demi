@@ -54,7 +54,9 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 		if err != nil {
 			return err
 		}
-		defer func() { _ = device.Close() }()
+		defer func() {
+			_ = device.Close()
+		}()
 		if err = system.Ext4(ctx, device.Path(), data); err != nil {
 			return err
 		}

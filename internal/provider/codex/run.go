@@ -15,7 +15,9 @@ func (s *session) Run(ctx context.Context, request provider.InferenceRequest) pr
 		if ctx.Err() != nil {
 			return
 		}
-		body, err := provider.EncodeBody(ctx, "Codex", func() ([]byte, error) { return encodeRequest(request) })
+		body, err := provider.EncodeBody(ctx, "Codex", func() ([]byte, error) {
+			return encodeRequest(request)
+		})
 		if err != nil {
 			emitEncodingFailure(ctx, err, yield)
 			return

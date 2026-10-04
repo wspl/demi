@@ -59,7 +59,9 @@ type delayedExposeView struct {
 	store expose.Store
 }
 
-func (v delayedExposeView) Control() expose.Store { return v.store }
+func (v delayedExposeView) Control() expose.Store {
+	return v.store
+}
 
 // The Cloud's stop callback races the actual Add commit on a connected device.
 // The runner link is inert; no manager or Host access placeholder is executed.
@@ -79,7 +81,9 @@ func TestCloudStopOrdersExposeCreation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		registry, err := pluginhost.NewRegistry(nil, func(commanddecl.NativeOperation) bool { return false })
+		registry, err := pluginhost.NewRegistry(nil, func(commanddecl.NativeOperation) bool {
+			return false
+		})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -24,4 +24,6 @@ func tryLock(file *os.File) (bool, error) {
 }
 
 // Windows has no portable directory fsync; the file system persists directory entries itself.
-func syncDirectory(ctx context.Context, _ string) error { return ctx.Err() }
+func syncDirectory(ctx context.Context, _ string) error {
+	return ctx.Err()
+}

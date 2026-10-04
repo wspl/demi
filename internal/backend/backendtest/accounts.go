@@ -159,7 +159,9 @@ func (f *AccountFamily) Credential() webapiproto.CredentialKind {
 }
 
 // Wires lists the protocols selectable for this scripted family.
-func (f *AccountFamily) Wires() []types.WireAPI { return f.WireTypes }
+func (f *AccountFamily) Wires() []types.WireAPI {
+	return f.WireTypes
+}
 
 // Provider binds the script to the entry and its selected account.
 func (f *AccountFamily) Provider(args providerhost.FamilyArgs) (provider.Provider, error) {
@@ -232,7 +234,9 @@ func (q accountQuota) Probe(context.Context) (provider.ProbeReading, error) {
 }
 
 // Observe reports no quota windows from fixture observations.
-func (accountQuota) Observe(provider.Observation) []types.QuotaWindow { return nil }
+func (accountQuota) Observe(provider.Observation) []types.QuotaWindow {
+	return nil
+}
 
 type accountProvider struct {
 	family   *AccountFamily
@@ -242,7 +246,9 @@ type accountProvider struct {
 }
 
 // Capabilities returns the fixture provider capabilities.
-func (p *accountProvider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
+func (p *accountProvider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{}
+}
 
 // AuthStatus reports the fixture authentication state.
 func (p *accountProvider) AuthStatus(context.Context) types.AuthState {
@@ -250,7 +256,9 @@ func (p *accountProvider) AuthStatus(context.Context) types.AuthState {
 }
 
 // RuntimeState reports that the fixture runtime is ready.
-func (p *accountProvider) RuntimeState() types.RuntimeState { return &types.RuntimeReady{} }
+func (p *accountProvider) RuntimeState() types.RuntimeState {
+	return &types.RuntimeReady{}
+}
 
 // ListModels returns the scripted provider catalog.
 func (p *accountProvider) ListModels(context.Context) (types.ProviderModelList, error) {
@@ -263,10 +271,14 @@ func (p *accountProvider) ReadFailure(*types.ProviderErrorDiagnostics, types.Tim
 }
 
 // Quota returns the fixture quota capability.
-func (p *accountProvider) Quota() *provider.Quota { return p.quota }
+func (p *accountProvider) Quota() *provider.Quota {
+	return p.quota
+}
 
 // Accounts returns the fixture subscription accounts capability.
-func (p *accountProvider) Accounts() provider.SubscriptionAccounts { return p.accounts }
+func (p *accountProvider) Accounts() provider.SubscriptionAccounts {
+	return p.accounts
+}
 
 // Runtime creates the scripted fixture runtime.
 func (p *accountProvider) Runtime(provider.RuntimeEnv) (provider.Runtime, error) {

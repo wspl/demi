@@ -70,7 +70,9 @@ func servePipe(w http.ResponseWriter, r *http.Request, pipes *remotehost.Pipes, 
 		return nil
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = sink.Close(context.WithoutCancel(r.Context())) }()
+	defer func() {
+		_ = sink.Close(context.WithoutCancel(r.Context()))
+	}()
 	if err := sink.SourceArrived(r.Context()); err != nil {
 		plain(w, 409, err.Error())
 		return nil

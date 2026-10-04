@@ -103,10 +103,14 @@ func ScriptedMachines(
 type streamsFactory struct{ manifest plugin.Manifest }
 
 // Manifest returns the fixture stream declarations.
-func (f *streamsFactory) Manifest() plugin.Manifest { return f.manifest }
+func (f *streamsFactory) Manifest() plugin.Manifest {
+	return f.manifest
+}
 
 // Instance creates the stateless fixture plugin.
-func (*streamsFactory) Instance() plugin.Plugin { return noRequests{} }
+func (*streamsFactory) Instance() plugin.Plugin {
+	return noRequests{}
+}
 
 type noRequests struct{}
 

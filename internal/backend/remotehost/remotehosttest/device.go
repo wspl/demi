@@ -244,7 +244,9 @@ func (l *TestLink) Next(ctx context.Context) (runnerproto.Inbound, error) {
 }
 
 // Queued counts the backend's frames not yet taken.
-func (l *TestLink) Queued() int { return len(l.outgoing) }
+func (l *TestLink) Queued() int {
+	return len(l.outgoing)
+}
 
 // Send encodes and sends a runner message to the backend.
 func (l *TestLink) Send(ctx context.Context, message runnerproto.Outbound) error {

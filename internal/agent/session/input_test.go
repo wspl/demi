@@ -294,7 +294,9 @@ func TestMessageDuringFinalSaveOpensContinuation(t *testing.T) {
 		must(t, gate.Wait(t.Context(), 1))
 		equal(t, f.s.Execution(), session.Finalizing)
 		done := make(chan error, 1)
-		go func() { done <- f.s.AcceptAgentMessage(t.Context(), message("race")) }()
+		go func() {
+			done <- f.s.AcceptAgentMessage(t.Context(), message("race"))
+		}()
 		synctest.Wait()
 		gate.Release()
 		must(t, <-done)

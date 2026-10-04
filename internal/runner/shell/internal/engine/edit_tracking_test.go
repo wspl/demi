@@ -104,7 +104,9 @@ func TestRedirectedExternalOutputIsForwardedThroughTheRecorder(t *testing.T) {
 		`/bin/sh -c 'printf child; printf error >&2' > out 2> err; cat out > observed; `+
 			`/bin/sh -c 'printf first; printf second >&2; printf third' > combined 2>&1; `+
 			`/bin/sh -c 'printf numbered >&3' 3> numbered`,
-		func(o *engine.Options) { o.Edits = recorder },
+		func(o *engine.Options) {
+			o.Edits = recorder
+		},
 	)
 	if result.Code != 0 {
 		t.Fatalf("exit %d: %s", result.Code, stderr)
@@ -146,7 +148,9 @@ func TestAnotherJobCannotChangeAnAlreadyCapturedAfterSide(t *testing.T) {
 		recorder *commandsdk.Recorder
 		script   string
 	}{{a, "echo A > file"}, {b, "echo B > file"}, {a, "echo C > file"}} {
-		result, _, stderr := shellFiles(t, root, step.script, func(o *engine.Options) { o.Edits = step.recorder })
+		result, _, stderr := shellFiles(t, root, step.script, func(o *engine.Options) {
+			o.Edits = step.recorder
+		})
 		if result.Code != 0 {
 			t.Fatalf("exit %d: %s", result.Code, stderr)
 		}

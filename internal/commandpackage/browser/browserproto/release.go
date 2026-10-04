@@ -15,10 +15,14 @@ const Resource = "chrome"
 var pinnedRelease []byte
 
 // PinnedRelease returns the release this build of Demi pins.
-func PinnedRelease() (BrowserRelease, error) { return DecodeBrowserRelease(pinnedRelease) }
+func PinnedRelease() (BrowserRelease, error) {
+	return DecodeBrowserRelease(pinnedRelease)
+}
 
 // Title returns the resource's title for the user.
-func (r BrowserRelease) Title() string { return "Chrome for Testing " + r.Version }
+func (r BrowserRelease) Title() string {
+	return "Chrome for Testing " + r.Version
+}
 
 // Platform returns the archive for target; ok is false when the release has none.
 func (r BrowserRelease) Platform(target string) (ReleasePlatform, bool) {

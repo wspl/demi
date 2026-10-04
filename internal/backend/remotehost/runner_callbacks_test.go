@@ -64,7 +64,9 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 				p,
 				"todos",
 				hosttest.DecodeItems,
-				func(items hosttest.Items) ([]byte, error) { return items.MarshalJSON() },
+				func(items hosttest.Items) ([]byte, error) {
+					return items.MarshalJSON()
+				},
 				func(current hosttest.Items, found bool) (hosttest.Items, error) {
 					items := hosttest.Items{}
 					if found {

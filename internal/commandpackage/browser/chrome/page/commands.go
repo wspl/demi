@@ -96,12 +96,7 @@ func CommandAdmitted(
 	var before []browserproto.TabID
 	var observedBefore bool
 	if opensTabs(command) {
-		err := operation.Run(ctx, func(work context.Context) error {
-			var err error
-			before, err = tab.Opened(work)
-			return err
-		})
-		observedBefore = err == nil // Popup metadata cannot prevent native input.
+		before, observedBefore = tabsBefore(ctx, operation, tab)
 	}
 	var result any
 	// Input branches retain their cancellation cleanup and readiness failure.
@@ -109,7 +104,9 @@ func CommandAdmitted(
 	result, err = dispatch(operation.Context(), tab, command, references, operation, navigation)
 	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
 		original := err
-		err = operation.Run(ctx, func(context.Context) error { return original })
+		err = operation.Run(ctx, func(context.Context) error {
+			return original
+		})
 	}
 
 	if !dialogCommand {
@@ -211,13 +208,27 @@ func actionResult(
 	return result, nil
 }
 
+// tabsBefore reads the tabs open before a command that may open more, and
+// whether it could: popup metadata never prevents native input.
+func tabsBefore(ctx context.Context, operation *cdp.Operation, tab *tabs.Tab) ([]browserproto.TabID, bool) {
+	var before []browserproto.TabID
+	err := operation.Run(ctx, func(work context.Context) error {
+		var err error
+		before, err = tab.Opened(work)
+		return err
+	})
+	return before, err == nil
+}
+
 func includeOpenedTabs(operation *cdp.Operation, tab *tabs.Tab, result any, before []browserproto.TabID) any {
 	if action, ok := result.(browserproto.ActionResult); ok {
 		bounded, cancel := context.WithTimeout(operation.Context(), cdp.ControlTimeout)
 		after, popupErr := tab.Popups(bounded)
 		cancel()
 		if popupErr == nil {
-			opened := slices.DeleteFunc(after, func(id browserproto.TabID) bool { return slices.Contains(before, id) })
+			opened := slices.DeleteFunc(after, func(id browserproto.TabID) bool {
+				return slices.Contains(before, id)
+			})
 			if len(opened) > 0 {
 				action.OpenedTabs = &opened
 			}

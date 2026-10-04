@@ -28,7 +28,9 @@ type localHandler struct {
 	) (commandproto.Completion, error)
 }
 
-func (localHandler) Operations() []string { return []string{Raw} }
+func (localHandler) Operations() []string {
+	return []string{Raw}
+}
 
 func (h localHandler) Invoke(
 	ctx context.Context,
@@ -39,7 +41,9 @@ func (h localHandler) Invoke(
 
 type bufferOutput struct{ bytes.Buffer }
 
-func (*bufferOutput) Close() error { return nil }
+func (*bufferOutput) Close() error {
+	return nil
+}
 
 func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 	// Keep the Unix socket pathname below macOS's sockaddr_un limit.
@@ -48,17 +52,23 @@ func TestForwardPullDrivenBinaryAndCompletion(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = os.RemoveAll(directory) }()
+	defer func() {
+		_ = os.RemoveAll(directory)
+	}()
 	endpoint := filepath.Join(directory, "socket")
 	listener, err := net.Listen("unix", endpoint)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = listener.Close() }()
+	defer func() {
+		_ = listener.Close()
+	}()
 	input, writer := io.Pipe()
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = writer.Close() }()
+	defer func() {
+		_ = writer.Close()
+	}()
 	output := &bufferOutput{}
 	errorOutput := &bufferOutput{}
 	readRequested := make(chan struct{})
@@ -136,7 +146,9 @@ func TestConnectWaitsForLiveRunnerAndFailsWhenGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = os.RemoveAll(directory) }()
+	defer func() {
+		_ = os.RemoveAll(directory)
+	}()
 	endpoint := filepath.Join(directory, "socket")
 	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: endpoint, Net: "unix"})
 	if err != nil {
@@ -151,7 +163,9 @@ func TestConnectWaitsForLiveRunnerAndFailsWhenGone(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = lock.Close() }()
+	defer func() {
+		_ = lock.Close()
+	}()
 	if err := unix.Flock(int(lock.Fd()), unix.LOCK_EX|unix.LOCK_NB); err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +204,9 @@ func TestForwardOwnedFileInputIsInterruptible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = writer.Close() }()
+	defer func() {
+		_ = writer.Close()
+	}()
 	// Fd switches the source pipe to blocking, as inherited standard IO is.
 	duplicate, err := unix.FcntlInt(reader.Fd(), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
@@ -201,7 +217,9 @@ func TestForwardOwnedFileInputIsInterruptible(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() {
+		_ = reader.Close()
+	}()
 	stdio, restore, err := cancellableStdio(
 		t.Context(),
 		Stdio{Stdin: file, Stdout: &bufferOutput{}, Stderr: &bufferOutput{}},
@@ -240,13 +258,17 @@ func TestForwardRestoresSharedOutputFlags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = reader.Close() }()
+	defer func() {
+		_ = reader.Close()
+	}()
 	duplicate, err := unix.FcntlInt(writer.Fd(), unix.F_DUPFD_CLOEXEC, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	kept := os.NewFile(uintptr(duplicate), "original shared output")
-	defer func() { _ = kept.Close() }()
+	defer func() {
+		_ = kept.Close()
+	}()
 	flags, err := unix.FcntlInt(uintptr(duplicate), unix.F_GETFL, 0)
 	if err != nil {
 		t.Fatal(err)
@@ -292,15 +314,21 @@ func TestForwardConnectionLossInterruptsBlockedOutput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = os.RemoveAll(directory) }()
+			defer func() {
+				_ = os.RemoveAll(directory)
+			}()
 			endpoint := filepath.Join(directory, "socket")
 			listener, err := net.Listen("unix", endpoint)
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = listener.Close() }()
+			defer func() {
+				_ = listener.Close()
+			}()
 			reader, writer := io.Pipe()
-			defer func() { _ = reader.Close() }()
+			defer func() {
+				_ = reader.Close()
+			}()
 			blocked := &forwardOutput{PipeWriter: writer, started: make(chan struct{})}
 			stdio := Stdio{Stdin: io.NopCloser(strings.NewReader("")), Stdout: blocked, Stderr: &bufferOutput{}}
 			if stderr {

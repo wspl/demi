@@ -59,7 +59,9 @@ func publish(
 	group.SetLimit(4)
 	for digest, upload := range uploads {
 		published[digest] = upload.file.Artifact.Size
-		group.Go(func() error { return uploadNative(work, store, prefix+"/blobs/"+digest, upload) })
+		group.Go(func() error {
+			return uploadNative(work, store, prefix+"/blobs/"+digest, upload)
+		})
 	}
 	if err := group.Wait(); err != nil {
 		return nil, err

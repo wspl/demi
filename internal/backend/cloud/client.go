@@ -160,7 +160,9 @@ func (c *Client) run(ctx context.Context, socket string, deaths chan<- webapipro
 			delete(pending, id)
 		}
 	}
-	defer func() { drop(errors.New("the machine manager's client is closed")) }()
+	defer func() {
+		drop(errors.New("the machine manager's client is closed"))
+	}()
 	for {
 		var incoming <-chan receivedLine
 		if connection != nil {

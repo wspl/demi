@@ -71,7 +71,9 @@ func readEditSnapshot(path string) ([]byte, error) {
 		return nil, err
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = file.Close() }()
+	defer func() {
+		_ = file.Close()
+	}()
 	bytes, err := io.ReadAll(io.LimitReader(file, commandproto.EditFileBytes+1))
 	if err != nil {
 		return nil, err

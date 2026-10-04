@@ -86,7 +86,11 @@ func (b *registryBook) admit() bool {
 	b.creating++
 	return true
 }
-func (b *registryBook) failed() { b.creating-- }
+
+func (b *registryBook) failed() {
+	b.creating--
+}
+
 func (b *registryBook) pending(id target.ID) bool {
 	entry := b.entries[id]
 	return entry != nil && entry.stage == tabPending
@@ -214,7 +218,9 @@ func (b *registryBook) listing() ([]Listed, bool) {
 			registering = true
 		}
 	}
-	slices.SortFunc(ordered, func(a, c orderedTab) int { return a.order - c.order })
+	slices.SortFunc(ordered, func(a, c orderedTab) int {
+		return a.order - c.order
+	})
 	listed := make([]Listed, 0, len(ordered))
 	for _, item := range ordered {
 		listed = append(listed, item.listed)
@@ -253,7 +259,9 @@ func (b *registryBook) popups(opener target.ID) ([]browserproto.TabID, bool) {
 			tabs = append(tabs, b.publicIDs[id])
 		}
 	}
-	slices.SortFunc(tabs, func(a, c publicTab) int { return a.order - c.order })
+	slices.SortFunc(tabs, func(a, c publicTab) int {
+		return a.order - c.order
+	})
 	ids := make([]browserproto.TabID, 0, len(tabs))
 	for _, tab := range tabs {
 		ids = append(ids, tab.id)

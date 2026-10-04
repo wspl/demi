@@ -87,7 +87,9 @@ func nodeState(ctx context.Context, tx *sql.Tx, id types.NodeID) (store.Checkpoi
 		tx,
 		"nodes",
 		"SELECT state FROM nodes WHERE id=?",
-		func(r *storedRow) store.CheckpointState { return storedJSON(r, "state", store.DecodeCheckpointState) },
+		func(r *storedRow) store.CheckpointState {
+			return storedJSON(r, "state", store.DecodeCheckpointState)
+		},
 		id,
 	)
 }

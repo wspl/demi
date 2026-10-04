@@ -104,7 +104,9 @@ func Start(t testing.TB, scripts []Script, fallback string) *FakeWebSocket {
 		proxy.Transport = f.proxyTransport
 	}
 	f.server = &http.Server{
-		BaseContext: func(net.Listener) context.Context { return ctx },
+		BaseContext: func(net.Listener) context.Context {
+			return ctx
+		},
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			f.mu.Lock()
 			if f.closed {
@@ -134,10 +136,14 @@ func Start(t testing.TB, scripts []Script, fallback string) *FakeWebSocket {
 }
 
 // BackendURL returns the in-memory backend's base URL.
-func (*FakeWebSocket) BackendURL() string { return "http://codex.test/backend-api" }
+func (*FakeWebSocket) BackendURL() string {
+	return "http://codex.test/backend-api"
+}
 
 // Client returns the HTTP client connected to this scripted backend.
-func (f *FakeWebSocket) Client() *http.Client { return f.client }
+func (f *FakeWebSocket) Client() *http.Client {
+	return f.client
+}
 
 // Connections returns independent copies of the recordings.
 func (f *FakeWebSocket) Connections() []Connection {
@@ -262,12 +268,16 @@ func (l *pipeListener) Accept() (net.Conn, error) {
 
 // Close releases the in-memory listener.
 func (l *pipeListener) Close() error {
-	l.once.Do(func() { close(l.done) })
+	l.once.Do(func() {
+		close(l.done)
+	})
 	return nil
 }
 
 // Addr returns the in-memory listener address.
-func (*pipeListener) Addr() net.Addr { return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)} }
+func (*pipeListener) Addr() net.Addr {
+	return &net.TCPAddr{IP: net.IPv4(127, 0, 0, 1)}
+}
 
 func (f *FakeWebSocket) dial(ctx context.Context, _, _ string) (net.Conn, error) {
 	client, server := net.Pipe()

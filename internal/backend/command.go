@@ -390,7 +390,9 @@ func parseCLIFlags(args, environ []string) (map[string]*string, map[string]bool,
 	if flags.NArg() != 0 {
 		return nil, nil, nil, fmt.Errorf("unexpected argument '%s' found", flags.Arg(0))
 	}
-	flags.Visit(func(f *flag.Flag) { present[f.Name] = true })
+	flags.Visit(func(f *flag.Flag) {
+		present[f.Name] = true
+	})
 	for _, setting := range settings {
 		if setting.required && !present[setting.flag] {
 			return nil, nil, nil, fmt.Errorf("%s: a value is required", setting.variable)

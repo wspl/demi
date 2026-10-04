@@ -52,7 +52,9 @@ func (u BackendURL) URL() (*url.Url, error) {
 }
 
 // String returns the URL in its normal form, which names the installation.
-func (u BackendURL) String() string { return u.value }
+func (u BackendURL) String() string {
+	return u.value
+}
 
 // A device's credential: 1 to 4096 characters, none of them whitespace. It
 // never appears in debugging output.
@@ -62,7 +64,9 @@ func (u BackendURL) String() string { return u.value }
 type DeviceToken string
 
 // Expose returns the credential itself, for the header or file that carries it.
-func (t DeviceToken) Expose() string { return string(t) }
+func (t DeviceToken) Expose() string {
+	return string(t)
+}
 
 // Format keeps credentials out of formatted diagnostics, including %+v and %#v.
 func (DeviceToken) Format(state fmt.State, _ rune) {

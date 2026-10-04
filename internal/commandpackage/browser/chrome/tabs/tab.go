@@ -160,7 +160,9 @@ func (t *Tab) Input(ctx context.Context, operation *cdp.Operation, input func(co
 		inputCtx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		finished := make(chan error, 1)
-		go func() { finished <- input(inputCtx) }()
+		go func() {
+			finished <- input(inputCtx)
+		}()
 		for {
 			dialog, changed := t.dialog.Watch()
 			if dialog != nil {
@@ -319,12 +321,16 @@ func (e tabExecutor) Execute(ctx context.Context, method string, params, result 
 	defer operation.Close()
 	return operation.Run(
 		ctx,
-		func(ctx context.Context) error { return e.tab.session.Execute(ctx, method, params, result) },
+		func(ctx context.Context) error {
+			return e.tab.session.Execute(ctx, method, params, result)
+		},
 	)
 }
 
 // TargetID identifies the tab renderer.
-func (e tabExecutor) TargetID() target.ID { return e.tab.TargetID() }
+func (e tabExecutor) TargetID() target.ID {
+	return e.tab.TargetID()
+}
 
 // Related finds a renderer attached beneath the tab.
 func (e tabExecutor) Related(ctx context.Context, id target.ID) (cdp.FrameTarget, error) {

@@ -44,7 +44,9 @@ func TestRetentionRunsFirstPassAfterServing(t *testing.T) {
 	wireMust(t, os.Chtimes(path, written, written))
 	watcher, err := fsnotify.NewWatcher()
 	wireMust(t, err)
-	defer func() { wireMust(t, watcher.Close()) }()
+	defer func() {
+		wireMust(t, watcher.Close())
+	}()
 	wireMust(t, watcher.Add(filepath.Dir(path)))
 	b, err = h.Start(ctx, t)
 	wireMust(t, err)
@@ -99,7 +101,9 @@ func filesResultMedia(t *testing.T, w filesWork, id string) []string {
 // manual retention clock advances.
 func TestRetentionIdleConversationRetiresToolImagesAndReplaysText(t *testing.T) {
 	t.Parallel()
-	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Clock.FollowSystem() })
+	w := filesWorking(t, "", func(h *backendtest.Harness) {
+		h.Clock.FollowSystem()
+	})
 	png := storetest.PNG(2, 2, 1)
 	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png, 0o644))
 	w.vendor.Respond(conversationShell(t, "toolu_1", "cat shot.png", 60000))
@@ -136,7 +140,9 @@ func TestRetentionIdleConversationRetiresToolImagesAndReplaysText(t *testing.T) 
 // manual 31-day retention advance.
 func TestRetentionRemovesCommandOutputThirtyDaysAfterEnd(t *testing.T) {
 	t.Parallel()
-	w := filesWorking(t, "", func(h *backendtest.Harness) { h.Clock.FollowSystem() })
+	w := filesWorking(t, "", func(h *backendtest.Harness) {
+		h.Clock.FollowSystem()
+	})
 	w.vendor.Respond(conversationShell(t, "toolu_1", "echo kept", 60000))
 	w.vendor.Respond(conversationAnswer(t, []string{"Said."}, 1, 1))
 	_, err := w.socket.Chat(w.ctx, "m1", "Say it")
@@ -340,7 +346,9 @@ func TestRetentionCollectsOnlyOldOrphansWhenEveryDatabaseReadable(t *testing.T) 
 		return len(state.Sources) > 0 && state.Sources[0].Commit != nil
 	})
 	wireMust(t, err)
-	png := func(seed byte) []byte { return storetest.PNG(2, 2, seed) }
+	png := func(seed byte) []byte {
+		return storetest.PNG(2, 2, seed)
+	}
 	wireMust(t, os.WriteFile(filepath.Join(w.root, "shot.png"), png(1), 0o644))
 	w.vendor.Respond(conversationShell(t, "toolu_0", "printf 'noted\\n' > note.txt", 60000))
 	w.vendor.Respond(conversationShell(t, "toolu_1", "cat shot.png", 60000))

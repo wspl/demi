@@ -365,7 +365,9 @@ func (c *connection) readJob(request *runnerproto.JobRead) error {
 		err = errors.New("the job keeps no output: it is unknown or released")
 	}
 	if stream != nil {
-		defer func() { _ = stream.Close() }()
+		defer func() {
+			_ = stream.Close()
+		}()
 	} // Put owns it too; cover failed acknowledgement.
 	reply := &runnerproto.JobReadReply{ID: request.ID}
 	if err != nil {

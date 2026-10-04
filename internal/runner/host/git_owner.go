@@ -88,7 +88,9 @@ func (o *gitOwner) run(slots chan struct{}, limit int) {
 	start := func(path string, root *gitRoot) {
 		o.startRoot(path, root, &workers, completed, slots, limit)
 	}
-	expire := func() { expireRoots(roots) }
+	expire := func() {
+		expireRoots(roots)
+	}
 	accept := func(request gitRequest) bool {
 		return o.acceptRoot(request, roots, expire, start)
 	}

@@ -395,7 +395,9 @@ func TestEditAndChildLifecycleRefuseEachOther(t *testing.T) {
 		gate = f.store.HoldSaves()
 		defer gate.Release()
 		started := make(chan commandRun, 1)
-		go func() { started <- agent(t, f, rootID(), "spawn", `{"prompt":"Count the files"}`) }()
+		go func() {
+			started <- agent(t, f, rootID(), "spawn", `{"prompt":"Count the files"}`)
+		}()
 		if err := gate.Wait(t.Context(), 1); err != nil {
 			t.Fatal(err)
 		}

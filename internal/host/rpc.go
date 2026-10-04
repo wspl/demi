@@ -79,10 +79,14 @@ type RPCError struct {
 }
 
 // Error returns the failure message.
-func (e *RPCError) Error() string { return e.Message }
+func (e *RPCError) Error() string {
+	return e.Message
+}
 
 // Unwrap returns the underlying failure.
-func (e *RPCError) Unwrap() error { return e.Err }
+func (e *RPCError) Unwrap() error {
+	return e.Err
+}
 
 // PortErrorKind classifies a failed port operation.
 type PortErrorKind uint8
@@ -111,7 +115,9 @@ func (e *PortError) Error() string {
 }
 
 // Unwrap returns the underlying failure.
-func (e *PortError) Unwrap() error { return e.Err }
+func (e *PortError) Unwrap() error {
+	return e.Err
+}
 
 // One request of a handler through its port.
 // +demi:union tag=type
@@ -264,7 +270,9 @@ type PortTransport interface {
 type RPCPort struct{ transport PortTransport }
 
 // NewRPCPort constructs a port over a transport.
-func NewRPCPort(transport PortTransport) RPCPort { return RPCPort{transport: transport} }
+func NewRPCPort(transport PortTransport) RPCPort {
+	return RPCPort{transport: transport}
+}
 
 // Forward sends a request as supplied by a remote handler.
 func (p RPCPort) Forward(ctx context.Context, request PortRequest) (PortResponse, error) {

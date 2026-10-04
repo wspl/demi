@@ -15,7 +15,9 @@ import (
 )
 
 // These loopback scenarios require no external resources; the package budget is 10 seconds.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // providerAt configures the Google entry against the scripted vendor.
 func providerAt(t *testing.T, v *providertest.MockVendor, path string) *google.Provider {

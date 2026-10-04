@@ -171,7 +171,9 @@ func TestClaimGrantRacesDeparture(t *testing.T) {
 		wait := claims.Register(code, runnerproto.Info{})
 		runner := claims.Take(code)
 		var workers sync.WaitGroup
-		workers.Go(func() { wait.Release() })
+		workers.Go(func() {
+			wait.Release()
+		})
 		_, err := runner.Grant(t.Context(), database.DeviceRecord{}, runners.NewDeviceToken())
 		workers.Wait()
 		if !errors.Is(err, runners.ErrRunnerLeft) {

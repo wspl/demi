@@ -52,7 +52,9 @@ func storageCredentials(ctx context.Context, region string, client *http.Client)
 			service,
 			env.RoleARN,
 			stscreds.IdentityTokenFile(env.WebIdentityTokenFilePath),
-			func(o *stscreds.WebIdentityRoleOptions) { o.RoleSessionName = session },
+			func(o *stscreds.WebIdentityRoleOptions) {
+				o.RoleSessionName = session
+			},
 		)
 	case env.ContainerCredentialsRelativePath != "" ||
 		(env.ContainerCredentialsEndpoint != "" && os.Getenv("AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE") != ""):
@@ -74,7 +76,9 @@ func storageCredentials(ctx context.Context, region string, client *http.Client)
 		})
 	default:
 		metadata := imds.New(imds.Options{HTTPClient: client})
-		provider = ec2rolecreds.New(func(o *ec2rolecreds.Options) { o.Client = metadata })
+		provider = ec2rolecreds.New(func(o *ec2rolecreds.Options) {
+			o.Client = metadata
+		})
 	}
 	return provider, nil
 }

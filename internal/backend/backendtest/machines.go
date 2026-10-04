@@ -148,7 +148,9 @@ func startScriptedManager(ctx context.Context) (*ScriptedManager, error) {
 }
 
 // Socket returns the machine-manager Unix socket path.
-func (m *ScriptedManager) Socket() string { return m.socket }
+func (m *ScriptedManager) Socket() string {
+	return m.socket
+}
 
 // Calls snapshots manager request names in arrival order.
 func (m *ScriptedManager) Calls() []string {
@@ -310,7 +312,9 @@ func (m *ScriptedManager) Close(ctx context.Context) error {
 }
 
 // HoldReset holds resets at their disk step until Release or test cleanup.
-func (m *ScriptedManager) HoldReset(t testing.TB) *StepHold { return m.resets.Hold(t, "reset") }
+func (m *ScriptedManager) HoldReset(t testing.TB) *StepHold {
+	return m.resets.Hold(t, "reset")
+}
 
 // record publishes a manager operation arrival before its scripted work starts.
 func (m *ScriptedManager) record(name string) {

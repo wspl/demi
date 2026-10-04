@@ -54,7 +54,9 @@ func OperationUntil(ctx context.Context, lifetime context.Context, deadline time
 }
 
 // Context supplies the shared deadline and cancellation to low-level steps.
-func (o *Operation) Context() context.Context { return o.ctx }
+func (o *Operation) Context() context.Context {
+	return o.ctx
+}
 
 // Close releases cancellation registrations and the operation's timer.
 func (o *Operation) Close() {
@@ -110,13 +112,19 @@ func (o *Operation) failureCause(ctx context.Context) error {
 }
 
 // BeginInput marks input as in flight, with an unknown outcome until delivered.
-func (o *Operation) BeginInput() { o.setProgress("unknown") }
+func (o *Operation) BeginInput() {
+	o.setProgress("unknown")
+}
 
 // InputNotDelivered records that input never reached the page.
-func (o *Operation) InputNotDelivered() { o.setProgress("not_started") }
+func (o *Operation) InputNotDelivered() {
+	o.setProgress("not_started")
+}
 
 // CompleteInput records acknowledged input delivery.
-func (o *Operation) CompleteInput() { o.setProgress("completed") }
+func (o *Operation) CompleteInput() {
+	o.setProgress("completed")
+}
 
 // setProgress updates the browser action's delivery state without holding a lock across IO.
 func (o *Operation) setProgress(progress browserproto.ActionProgress) {
@@ -202,7 +210,9 @@ func ErrorDetails(err error) browserproto.ErrorDetails {
 }
 
 // IsDeadline reports whether the primary browser failure exhausted its deadline.
-func IsDeadline(err error) bool { return ErrorCode(err) == "timeout" }
+func IsDeadline(err error) bool {
+	return ErrorCode(err) == "timeout"
+}
 
 // WithDeadlineCause preserves cleanup wrappers around a readiness failure.
 func WithDeadlineCause(err, cause error) error {

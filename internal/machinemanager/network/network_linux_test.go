@@ -22,7 +22,9 @@ import (
 //go:embed testdata/nft-ruleset.txt
 var expectedRules string
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // TestSlotAttachesAndDetachesUnderInstalledPolicy is the root attach and detach scenario.
 // It uses real kernel namespaces and readback tools; it normally costs <1 s.
@@ -62,7 +64,9 @@ func TestSlotAttachesAndDetachesUnderInstalledPolicy(t *testing.T) {
 		}
 		slot := network.NewPool(pool, 8).Slot(3)
 		// Register before Attach: failure can leave a partially attached slot.
-		defer func() { result = errors.Join(result, n.Detach(context.WithoutCancel(ctx), slot)) }()
+		defer func() {
+			result = errors.Join(result, n.Detach(context.WithoutCancel(ctx), slot))
+		}()
 		if err := n.Attach(ctx, slot); err != nil {
 			return err
 		}
@@ -230,7 +234,9 @@ func TestFailedAttachCanBeCleanedAndReused(t *testing.T) {
 		defer lease.Release()
 		slot := lease.Slot()
 		n := network.New(netip.MustParsePrefix("172.30.0.0/16"), []netip.Addr{netip.MustParseAddr("1.1.1.1")}, *backend)
-		defer func() { result = errors.Join(result, n.Detach(context.WithoutCancel(ctx), slot)) }()
+		defer func() {
+			result = errors.Join(result, n.Detach(context.WithoutCancel(ctx), slot))
+		}()
 		// No policy exists yet: the final admission step must fail.
 		err = n.Attach(ctx, slot)
 		if err == nil || !strings.HasPrefix(err.Error(), "Cannot apply the Cloud firewall: ") ||

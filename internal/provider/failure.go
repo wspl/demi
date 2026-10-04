@@ -24,7 +24,9 @@ type Failure struct {
 }
 
 // Error returns the diagnostic for this failure.
-func (f *Failure) Error() string { return f.Message }
+func (f *Failure) Error() string {
+	return f.Message
+}
 
 // ErrorCode is a recovery code or an unrecognized vendor code, retained verbatim.
 type ErrorCode string

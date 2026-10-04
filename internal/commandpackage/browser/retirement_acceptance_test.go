@@ -390,7 +390,9 @@ func TestChromeProcessTreeAndProfileRetireTogether(t *testing.T) {
 			}
 			injected := &cdp.BrowserError{Kind: cdp.KindConfiguration, Message: "injected work failure"}
 			result := func() (err error) {
-				defer func() { err = errors.Join(err, env.Close(context.Background())) }()
+				defer func() {
+					err = errors.Join(err, env.Close(context.Background()))
+				}()
 				switch mode {
 				case "failure":
 					return injected

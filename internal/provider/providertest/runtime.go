@@ -16,10 +16,14 @@ import (
 )
 
 // Text builds an answer increment.
-func Text(text string) provider.Event { return &provider.TextDelta{Text: text} }
+func Text(text string) provider.Event {
+	return &provider.TextDelta{Text: text}
+}
 
 // Thinking builds a reasoning increment.
-func Thinking(text string) provider.Event { return &provider.ThinkingDelta{Text: text} }
+func Thinking(text string) provider.Event {
+	return &provider.ThinkingDelta{Text: text}
+}
 
 // ToolCall builds a scripted tool invocation.
 func ToolCall(id, name string, input json.RawMessage) provider.Event {
@@ -76,7 +80,9 @@ func Respond(respond func(provider.InferenceRequest) []provider.Event) Turn {
 // Pending waits until cancellation without emitting anything.
 func Pending() Turn {
 	return func(ctx context.Context, _ provider.InferenceRequest) provider.Run {
-		return func(_ func(provider.Event) bool) { <-ctx.Done() }
+		return func(_ func(provider.Event) bool) {
+			<-ctx.Done()
+		}
 	}
 }
 
@@ -149,7 +155,9 @@ func (r *ScriptedRuntime) Run(ctx context.Context, request provider.InferenceReq
 }
 
 // Fresh shares the script but no execution state.
-func (r *ScriptedRuntime) Fresh() provider.Runtime { return &ScriptedRuntime{script: r.script} }
+func (r *ScriptedRuntime) Fresh() provider.Runtime {
+	return &ScriptedRuntime{script: r.script}
+}
 
 // Close records the runtime close.
 func (r *ScriptedRuntime) Close(context.Context) error {
@@ -199,7 +207,9 @@ func Run(
 	request provider.InferenceRequest,
 ) []provider.Event {
 	t.Helper()
-	return AllEvents(ctx, t, func(ctx context.Context) provider.Run { return runtime.Run(ctx, request) })
+	return AllEvents(ctx, t, func(ctx context.Context) provider.Run {
+		return runtime.Run(ctx, request)
+	})
 }
 
 // EventReader reads events one at a time and cancels and stops the iterator on close.
@@ -250,7 +260,9 @@ func (r *EventReader) Close() {
 type FixedClock types.Timestamp
 
 // Now implements types.Clock.
-func (c FixedClock) Now() types.Timestamp { return types.Timestamp(c) }
+func (c FixedClock) Now() types.Timestamp {
+	return types.Timestamp(c)
+}
 
 // ManualClock is a settable wall clock; timer tests use testing/synctest instead.
 type ManualClock struct {
@@ -259,7 +271,9 @@ type ManualClock struct {
 }
 
 // NewManualClock returns a clock at start.
-func NewManualClock(start types.Timestamp) *ManualClock { return &ManualClock{now: start} }
+func NewManualClock(start types.Timestamp) *ManualClock {
+	return &ManualClock{now: start}
+}
 
 // Now reads the current moment.
 func (c *ManualClock) Now() types.Timestamp {
@@ -291,7 +305,9 @@ func (c *ManualClock) Advance(by time.Duration) error {
 }
 
 // FollowSystem sets the clock to the system time (or synctest time in a bubble).
-func (c *ManualClock) FollowSystem() { c.Set(types.SystemClock{}.Now()) }
+func (c *ManualClock) FollowSystem() {
+	c.Set(types.SystemClock{}.Now())
+}
 
 // JWT creates a token with an unchecked signature for vendor tests.
 func JWT(t testing.TB, claims any) string {

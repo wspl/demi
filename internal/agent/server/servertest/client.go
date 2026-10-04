@@ -46,7 +46,9 @@ func ConnectWith[H host.Host](
 }
 
 // SetHangGuard changes the hang deadline for a test using a slower resource.
-func (c *TestClient[H]) SetHangGuard(guard time.Duration) { c.hangGuard = guard }
+func (c *TestClient[H]) SetHangGuard(guard time.Duration) {
+	c.hangGuard = guard
+}
 
 // Send hands frame to the connection and waits until it is handled.
 func (c *TestClient[H]) Send(ctx context.Context, frame conversationproto.ClientFrame) {
@@ -67,7 +69,9 @@ func (c *TestClient[H]) Next(ctx context.Context) (conversationproto.ServerFrame
 }
 
 // Received returns every frame waiting now.
-func (c *TestClient[H]) Received() []conversationproto.ServerFrame { return WaitingFrames(c.frames) }
+func (c *TestClient[H]) Received() []conversationproto.ServerFrame {
+	return WaitingFrames(c.frames)
+}
 
 // Split returns the connection and outbox for observing frames while another
 // goroutine handles input. Only one goroutine may read the outbox at a time.
@@ -101,7 +105,9 @@ func (c *TestClient[H]) NextUntil(
 }
 
 // Connection returns the client's connection handle.
-func (c *TestClient[H]) Connection() *server.Connection[H] { return c.connection }
+func (c *TestClient[H]) Connection() *server.Connection[H] {
+	return c.connection
+}
 
 // WaitingFrames returns every frame frames holds now.
 func WaitingFrames(frames *server.Frames) []conversationproto.ServerFrame {

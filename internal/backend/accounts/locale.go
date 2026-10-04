@@ -47,7 +47,9 @@ var normalizedZones = func() map[string]string {
 
 func canonicalLocale(locale commandproto.CommandLocale) (commandproto.CommandLocale, error) {
 	zone, ok := normalizedZones[strings.ToLower(locale.TimeZone)]
-	if !ok || strings.ContainsFunc(locale.TimeZone, func(r rune) bool { return r > 127 }) {
+	if !ok || strings.ContainsFunc(locale.TimeZone, func(r rune) bool {
+		return r > 127
+	}) {
 		return commandproto.CommandLocale{}, fmt.Errorf(
 			"locale.timeZone: %q is not a time zone the backend knows",
 			locale.TimeZone,
@@ -83,7 +85,9 @@ var (
 )
 
 func canonicalLanguage(tag string) (string, error) {
-	if strings.ContainsFunc(tag, func(r rune) bool { return r > 127 }) || !localeSyntax.MatchString(tag) {
+	if strings.ContainsFunc(tag, func(r rune) bool {
+		return r > 127
+	}) || !localeSyntax.MatchString(tag) {
 		return "", errLanguage
 	}
 	input, unknownVariants, err := languageSubtags(tag)
@@ -213,7 +217,9 @@ func canonicalLanguageAliases(input, unknownVariants []string) ([]string, []stri
 	// ICU's language/variant alias is not in x/text's canonicalizer.
 	if input[0] == "zh" && slices.Contains(unknownVariants, "hakka") {
 		input[0] = "hak"
-		unknownVariants = slices.DeleteFunc(unknownVariants, func(v string) bool { return v == "hakka" })
+		unknownVariants = slices.DeleteFunc(unknownVariants, func(v string) bool {
+			return v == "hakka"
+		})
 	}
 	return input, unknownVariants, canonicalizer
 }

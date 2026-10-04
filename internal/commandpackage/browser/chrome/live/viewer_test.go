@@ -20,8 +20,14 @@ type viewerBrowser struct{ released, changed chan struct{} }
 func (b *viewerBrowser) Running(ctx context.Context) (*tabs.Environment, *Hub, error) {
 	return nil, nil, ctx.Err()
 }
-func (b *viewerBrowser) Changed() <-chan struct{}  { return b.changed }
-func (b *viewerBrowser) Released() <-chan struct{} { return b.released }
+
+func (b *viewerBrowser) Changed() <-chan struct{} {
+	return b.changed
+}
+
+func (b *viewerBrowser) Released() <-chan struct{} {
+	return b.released
+}
 
 type viewerSource struct{ data chan []byte }
 

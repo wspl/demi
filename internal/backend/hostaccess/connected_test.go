@@ -225,7 +225,9 @@ func TestConnectedStreamRetainsActivityWithoutFilesAndEnds(t *testing.T) {
 			}
 			stream := opened.value
 			defer stream.Lease.Release()
-			defer func() { _ = stream.FromHost.Close(context.Background()) }()
+			defer func() {
+				_ = stream.FromHost.Close(context.Background())
+			}()
 			slot := s.conversations.Slot(record.ID)
 			if slot.Streams().State().Demand != 1 {
 				t.Fatal("stream did not retain activity")
@@ -412,7 +414,9 @@ func TestCompletedUserStreamRetainsActivityUntilEdgeRelease(t *testing.T) {
 		}
 		stream := opened.value
 		defer stream.Lease.Release()
-		defer func() { _ = stream.FromHost.Close(context.Background()) }()
+		defer func() {
+			_ = stream.FromHost.Close(context.Background())
+		}()
 		r.send(t, &runnerproto.ServiceDone{StreamID: request.StreamID})
 		synctest.Wait()
 		slot := s.conversations.Slot(record.ID)

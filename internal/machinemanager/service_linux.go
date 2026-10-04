@@ -46,7 +46,9 @@ func Run(ctx context.Context, config Config) (err error) {
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, lock.Close()) }()
+	defer func() {
+		err = errors.Join(err, lock.Close())
+	}()
 	namespace := sandbox.NewSavedNamespace(RuntimeDirectory, config.Data)
 	if err = namespace.Recover(ctx, lock.Data(), os.Args[1:]); err != nil {
 		return err
@@ -83,7 +85,9 @@ func notifyReady(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	defer func() { _ = conn.Close() }() // Datagram close has no pending application data.
+	defer func() {
+		_ = conn.Close()
+	}() // Datagram close has no pending application data.
 	_, err = conn.Write([]byte("READY=1"))
 	return err
 }

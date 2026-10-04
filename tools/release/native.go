@@ -344,7 +344,9 @@ func downloadArchive(
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, stage.Close()) }()
+	defer func() {
+		err = errors.Join(err, stage.Close())
+	}()
 	if err := artifacts.Download(ctx, client, url, digest, stage.File()); err != nil {
 		return err
 	}

@@ -463,7 +463,9 @@ func (e environmentExecutor) Execute(ctx context.Context, method string, params,
 	defer operation.Close()
 	return operation.Run(
 		ctx,
-		func(ctx context.Context) error { return e.environment.connection.Execute(ctx, method, params, result) },
+		func(ctx context.Context) error {
+			return e.environment.connection.Execute(ctx, method, params, result)
+		},
 	)
 }
 
@@ -537,7 +539,9 @@ func (e *Environment) discoverTabs(ctx context.Context) error {
 		events.Close()
 		return err
 	}
-	if err := e.StartTask(func(ctx context.Context) { e.runRegistry(ctx, events) }); err != nil {
+	if err := e.StartTask(func(ctx context.Context) {
+		e.runRegistry(ctx, events)
+	}); err != nil {
 		events.Close()
 		return err
 	}

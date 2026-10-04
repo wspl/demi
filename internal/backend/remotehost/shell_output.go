@@ -211,7 +211,9 @@ func (e *ShellEnvironment) keepJobFiles(
 		}
 		if e.options.Keeper == nil {
 			for _, file := range end.Files {
-				files = append(files, EditedFile(file, func(int) *types.EditCopies { return nil }))
+				files = append(files, EditedFile(file, func(int) *types.EditCopies {
+					return nil
+				}))
 			}
 		}
 		record.SetFiles(host.EditedFiles{Files: files, Truncated: end.FilesTruncated})

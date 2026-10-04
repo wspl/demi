@@ -72,7 +72,9 @@ func Forward(
 	if err != nil {
 		return completion, err
 	}
-	defer func() { err = errors.Join(err, client.Close()) }()
+	defer func() {
+		err = errors.Join(err, client.Close())
+	}()
 	// Only invocation opening has a ten-second deadline. Its
 	// stream retains the parent context after headers arrive.
 	timeoutDone := make(chan struct{})
@@ -134,7 +136,9 @@ type commandStream[T io.Closer] struct {
 }
 
 func (s *commandStream[T]) Close() error {
-	s.once.Do(func() { s.err = s.stream.Close() })
+	s.once.Do(func() {
+		s.err = s.stream.Close()
+	})
 	return s.err
 }
 

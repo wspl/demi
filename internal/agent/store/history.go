@@ -19,7 +19,9 @@ func validateCommandStorageKey(key CommandStorageKey) error {
 	s := string(key)
 	drive := len(s) >= 3 && (s[0] >= 'a' && s[0] <= 'z' || s[0] >= 'A' && s[0] <= 'Z') && s[1] == ':' &&
 		(s[2] == '/' || s[2] == '\\')
-	traverses := slices.Contains(strings.FieldsFunc(s, func(r rune) bool { return r == '/' || r == '\\' }), "..")
+	traverses := slices.Contains(strings.FieldsFunc(s, func(r rune) bool {
+		return r == '/' || r == '\\'
+	}), "..")
 	if s == "" || strings.ContainsRune(s, 0) || strings.HasPrefix(s, "/") || drive || traverses {
 		return fmt.Errorf("command storage key %q is not a relative name without path traversal", s)
 	}
@@ -94,7 +96,9 @@ func RestoreCommandStateHistory(snapshot CommandStateSnapshot) (*CommandStateHis
 }
 
 // Revision returns the current version's revision.
-func (h *CommandStateHistory) Revision() uint64 { return h.current }
+func (h *CommandStateHistory) Revision() uint64 {
+	return h.current
+}
 
 // Values returns an owned copy of the current version's keys and values.
 func (h *CommandStateHistory) Values() map[CommandStorageKey]json.RawMessage {
@@ -146,7 +150,9 @@ func (h *CommandStateHistory) Select(blocks []types.Block, revision uint64, refe
 	snapshot.Revision = revision
 	snapshot.Boundaries = slices.DeleteFunc(
 		snapshot.Boundaries,
-		func(b SessionBoundary) bool { return !retained[b.BlockID] },
+		func(b SessionBoundary) bool {
+			return !retained[b.BlockID]
+		},
 	)
 	if referencedOnly {
 		referenced := map[uint64]bool{0: true, revision: true}
@@ -155,7 +161,9 @@ func (h *CommandStateHistory) Select(blocks []types.Block, revision uint64, refe
 		}
 		snapshot.Versions = slices.DeleteFunc(
 			snapshot.Versions,
-			func(v CommandVersion) bool { return !referenced[v.Revision] },
+			func(v CommandVersion) bool {
+				return !referenced[v.Revision]
+			},
 		)
 	}
 	return snapshot
@@ -220,7 +228,9 @@ func (h *CommandStateHistory) TakeUpdate(pending *CommandVersion) *CommandStateS
 }
 
 // MarkDirty makes a failed save's next attempt carry command state again.
-func (h *CommandStateHistory) MarkDirty() { h.dirty = true }
+func (h *CommandStateHistory) MarkDirty() {
+	h.dirty = true
+}
 
 // cloneValues gives a command version its own raw JSON values.
 func cloneValues(values map[CommandStorageKey]json.RawMessage) map[CommandStorageKey]json.RawMessage {

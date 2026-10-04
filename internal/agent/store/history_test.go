@@ -11,7 +11,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func TestStoredHistoryIsRefusedRatherThanRepaired(t *testing.T) {
 	duplicate := store.InitialCommandState()

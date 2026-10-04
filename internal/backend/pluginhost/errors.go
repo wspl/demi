@@ -60,4 +60,6 @@ func (e *PageCallError) Error() string {
 }
 
 // Unwrap returns the underlying plugin failure, when present.
-func (e *PageCallError) Unwrap() error { return e.Err }
+func (e *PageCallError) Unwrap() error {
+	return e.Err
+}

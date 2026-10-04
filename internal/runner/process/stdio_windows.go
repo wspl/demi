@@ -64,7 +64,9 @@ func matchesReference(file *os.File, reference string) (bool, error) {
 		return false, err
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = windows.CloseHandle(process) }()
+	defer func() {
+		_ = windows.CloseHandle(process)
+	}()
 	var duplicate windows.Handle
 	if err := windows.DuplicateHandle(
 		process,
@@ -78,7 +80,9 @@ func matchesReference(file *os.File, reference string) (bool, error) {
 		return false, err
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = windows.CloseHandle(duplicate) }()
+	defer func() {
+		_ = windows.CloseHandle(duplicate)
+	}()
 	// x/sys does not wrap CompareObjectHandles. Its BOOL is identity, not an
 	// error indication; last-error is not part of this API's result.
 	if err := compareHandles.Find(); err != nil {

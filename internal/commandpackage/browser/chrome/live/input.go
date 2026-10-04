@@ -79,7 +79,9 @@ func (in *viewerInput) run(ctx context.Context, w *writer, mac bool) {
 	var ahead inputItem
 	var hasAhead bool
 	held := heldInput{keys: make(map[string]*input.DispatchKeyEventParams)}
-	defer func() { releaseInput(ctx, tab, &held) }()
+	defer func() {
+		releaseInput(ctx, tab, &held)
+	}()
 	for {
 		if ctx.Err() != nil {
 			return
@@ -314,7 +316,9 @@ func deliverPointer(
 	}
 	if m.Action == "up" {
 		kind = input.MouseReleased
-		held.buttons = slices.DeleteFunc(held.buttons, func(b input.MouseButton) bool { return b == button })
+		held.buttons = slices.DeleteFunc(held.buttons, func(b input.MouseButton) bool {
+			return b == button
+		})
 	}
 	event := input.DispatchMouseEvent(kind, m.X, m.Y).
 		WithButton(button).

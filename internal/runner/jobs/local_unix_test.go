@@ -35,14 +35,18 @@ func TestClientWaitsForBusyRunnerButNotGoneRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = os.RemoveAll(directory) }()
+	defer func() {
+		_ = os.RemoveAll(directory)
+	}()
 	endpoint = filepath.Join(directory, "ipc.sock")
 	fd, err := unix.Socket(unix.AF_UNIX, unix.SOCK_STREAM, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = unix.Close(fd) }()
+	defer func() {
+		_ = unix.Close(fd)
+	}()
 	if err = unix.Bind(fd, &unix.SockaddrUnix{Name: endpoint}); err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +55,9 @@ func TestClientWaitsForBusyRunnerButNotGoneRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = alive.Close() }()
+	defer func() {
+		_ = alive.Close()
+	}()
 	if conn, err := process.Connect(ctx, endpoint); err == nil {
 		_ = conn.Close()
 		t.Fatal("connected to crashed runner")

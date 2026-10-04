@@ -156,7 +156,9 @@ func (v *browserView) watch(t *testing.T, tab browserproto.TabID) {
 	stream := v.until(
 		t,
 		"stream",
-		func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "1600" },
+		func(raw json.RawMessage) bool {
+			return string(observedField(t, raw, "width")) == "1600"
+		},
 	)
 	expectValue(t, observedField(t, stream, "tab"), tab)
 	expectValue(t, observedField(t, stream, "height"), 1200)
@@ -227,7 +229,9 @@ func (v *browserView) key(t *testing.T, tab browserproto.TabID, key, code string
 
 func (v *browserView) close(t *testing.T) {
 	t.Helper()
-	v.closeInput.Do(func() { close(v.input.data) })
+	v.closeInput.Do(func() {
+		close(v.input.data)
+	})
 	for {
 		select {
 		case result := <-v.done:
@@ -327,7 +331,9 @@ func TestAViewWaitsForBrowserAndEndsWithItsLastTab(t *testing.T) {
 	state = view.until(
 		t,
 		"state",
-		func(raw json.RawMessage) bool { return bytes.Contains(raw, mustBrowserValue(t, tab)) },
+		func(raw json.RawMessage) bool {
+			return bytes.Contains(raw, mustBrowserValue(t, tab))
+		},
 	)
 	expectValue(t, observedField(t, state, "tabs", "0", "createdBy"), json.RawMessage(`{"kind":"user"}`))
 	expectValue(t, observedField(t, state, "running"), true)
@@ -341,7 +347,9 @@ func TestAViewWaitsForBrowserAndEndsWithItsLastTab(t *testing.T) {
 	state = view.until(
 		t,
 		"state",
-		func(raw json.RawMessage) bool { return bytes.Contains(raw, mustBrowserValue(t, second.Tab)) },
+		func(raw json.RawMessage) bool {
+			return bytes.Contains(raw, mustBrowserValue(t, second.Tab))
+		},
 	)
 	rows, err := contract.List(observedField(t, state, "tabs"), contract.Decode[json.RawMessage])
 	if err != nil || len(rows) != 2 {
@@ -431,7 +439,9 @@ func TestModesFollowViewerAndAgent(t *testing.T) {
 	stream := view.until(
 		t,
 		"stream",
-		func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "780" },
+		func(raw json.RawMessage) bool {
+			return string(observedField(t, raw, "width")) == "780"
+		},
 	)
 	expectValue(t, observedField(t, stream, "height"), 1688)
 	for servedMobile := false; !servedMobile; {
@@ -454,7 +464,9 @@ func TestModesFollowViewerAndAgent(t *testing.T) {
 	state := view.until(
 		t,
 		"state",
-		func(raw json.RawMessage) bool { return bytes.Contains(raw, []byte(`"mode":"custom"`)) },
+		func(raw json.RawMessage) bool {
+			return bytes.Contains(raw, []byte(`"mode":"custom"`))
+		},
 	)
 	expectValue(
 		t,
@@ -467,7 +479,9 @@ func TestModesFollowViewerAndAgent(t *testing.T) {
 		[]any{false, 0, 1000},
 	)
 	view.send(t, &browserproto.LiveViewerMessageMode{Tab: tab, Mode: "web"})
-	view.until(t, "stream", func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "1600" })
+	view.until(t, "stream", func(raw json.RawMessage) bool {
+		return string(observedField(t, raw, "width")) == "1600"
+	})
 	expectValue(t, observedField(t, f.command(t, tab, "info", `{}`), "viewport", "mode"), "web")
 	view.close(t)
 }
@@ -508,14 +522,18 @@ func TestTwoViewersShareTabAndLastToOperateDecides(t *testing.T) {
 		stream := view.until(
 			t,
 			"stream",
-			func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "1000" },
+			func(raw json.RawMessage) bool {
+				return string(observedField(t, raw, "width")) == "1000"
+			},
 		)
 		expectValue(t, observedField(t, stream, "height"), 700)
 	}
 	f.eventually(t, tab, `devicePixelRatio===1&&screen.width===1920&&innerWidth===1000&&innerHeight===700`)
 	second.close(t)
 	first.click(t, tab, 100, 25)
-	first.until(t, "stream", func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "1600" })
+	first.until(t, "stream", func(raw json.RawMessage) bool {
+		return string(observedField(t, raw, "width")) == "1600"
+	})
 	first.close(t)
 }
 
@@ -607,7 +625,9 @@ func TestDialogsControlsFilesAndClipboardReachViewer(t *testing.T) {
 	dialog := view.until(
 		t,
 		"dialog",
-		func(raw json.RawMessage) bool { return string(observedField(t, raw, "dialog")) != "null" },
+		func(raw json.RawMessage) bool {
+			return string(observedField(t, raw, "dialog")) != "null"
+		},
 	)
 	expectValue(
 		t,
@@ -615,7 +635,9 @@ func TestDialogsControlsFilesAndClipboardReachViewer(t *testing.T) {
 		json.RawMessage(`{"type":"alert","message":"hello","defaultText":""}`),
 	)
 	view.send(t, &browserproto.LiveViewerMessageDialog{Tab: tab, Accept: true})
-	view.until(t, "dialog", func(raw json.RawMessage) bool { return string(observedField(t, raw, "dialog")) == "null" })
+	view.until(t, "dialog", func(raw json.RawMessage) bool {
+		return string(observedField(t, raw, "dialog")) == "null"
+	})
 	view.click(t, tab, 100, 90)
 	view.send(t, &browserproto.LiveViewerMessagePaste{Tab: tab, Text: "pasted", HTML: "<b>pasted</b>"})
 	f.eventually(t, tab, `window.pasted?.text==='pasted'&&document.querySelector('#area').value==='pasted'`)

@@ -46,7 +46,9 @@ func (f *Fixture) initLocked() {
 }
 
 // Operations returns the shared commandwiretest fixture operation catalog.
-func (f *Fixture) Operations() []string { return commandprototest.FixtureOperations() }
+func (f *Fixture) Operations() []string {
+	return commandprototest.FixtureOperations()
+}
 
 // SetNumbers supplies this connection's conversation number source.
 func (f *Fixture) SetNumbers(numbers *commandsdk.Numbers) {

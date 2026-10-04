@@ -83,7 +83,9 @@ func Connect(ctx context.Context, conn net.Conn) (*Client, error) {
 }
 
 // Close closes the service connection and cancels its streams.
-func (c *Client) Close() error { return c.connection.Close() }
+func (c *Client) Close() error {
+	return c.connection.Close()
+}
 
 func (c *Client) request(ctx context.Context, method, path string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, "http://demi"+path, body)
@@ -109,7 +111,9 @@ func (c *Client) Info(ctx context.Context) (commandproto.ServiceInfo, error) {
 	if err != nil {
 		return commandproto.ServiceInfo{}, err
 	}
-	defer func() { _ = r.Body.Close() }() // Reading the bounded response reports transport failures.
+	defer func() {
+		_ = r.Body.Close()
+	}() // Reading the bounded response reports transport failures.
 	b, err := io.ReadAll(io.LimitReader(r.Body, commandproto.MaxMetadataBytes+1))
 	if err != nil {
 		return commandproto.ServiceInfo{}, err
@@ -206,10 +210,14 @@ func (i *CommandInput) Write(ctx context.Context, b []byte) error {
 }
 
 // End signals input EOF without ending the invocation.
-func (i *CommandInput) End() error { return i.state.writer.Close() }
+func (i *CommandInput) End() error {
+	return i.state.writer.Close()
+}
 
 // Cancel resets this invocation without closing the service connection.
-func (i *CommandInput) Cancel() { i.state.close() }
+func (i *CommandInput) Cancel() {
+	i.state.close()
+}
 
 // CommandOutput decodes bounded records and requires exactly one final completion.
 type CommandOutput struct {
@@ -271,4 +279,6 @@ type requestBody struct {
 }
 
 // Close releases the owned transport.
-func (b *requestBody) Close() error { return b.closer.Close() }
+func (b *requestBody) Close() error {
+	return b.closer.Close()
+}

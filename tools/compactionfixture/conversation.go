@@ -53,8 +53,10 @@ func openConversation(ctx context.Context, f fixture, model types.ModelSelection
 		Toolsets:     tools.Set{Commands: &host.CommandSet{}, Revision: "none"},
 		Instructions: systemPrompt, Hosts: &toolstest.NoHost{}, Shells: toolstest.NoShells{},
 		Providers: &deepSeek{provider: entry, http: client, selection: model},
-		Stores:    func(types.NodeID) store.Tree { return memory },
-		Clock:     types.SystemClock{}, IDs: transcript.RandomIDs{}, Config: config,
+		Stores: func(types.NodeID) store.Tree {
+			return memory
+		},
+		Clock: types.SystemClock{}, IDs: transcript.RandomIDs{}, Config: config,
 		StatusChanged: func(types.NodeID) {},
 	})
 	connection, frames := s.Connect(root, f.CWD, nil)

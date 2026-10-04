@@ -174,7 +174,9 @@ func (c *ControlService) DeleteDeviceExposes(
 				tx,
 				"exposes",
 				"DELETE FROM exposes WHERE device_id = ? RETURNING id",
-				func(r *storedRow) webapiproto.ExposeID { return checked(r, "id", webapiproto.ParseExposeID) },
+				func(r *storedRow) webapiproto.ExposeID {
+					return checked(r, "id", webapiproto.ParseExposeID)
+				},
 				device,
 			)
 		},

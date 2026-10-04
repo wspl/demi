@@ -43,10 +43,16 @@ func (p *startupPeer) Accept() (net.Conn, error) {
 }
 
 func (p *startupPeer) Close() error {
-	p.closeOnce.Do(func() { close(p.closed) })
+	p.closeOnce.Do(func() {
+		close(p.closed)
+	})
 	return nil
 }
-func (p *startupPeer) Addr() net.Addr { return p.conn.LocalAddr() }
+
+func (p *startupPeer) Addr() net.Addr {
+	return p.conn.LocalAddr()
+}
+
 func (p *startupPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.URL.Path {
 	case commandproto.InfoPath:
@@ -71,7 +77,9 @@ func (p *startupPeer) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err := http.NewResponseController(w).Flush(); err != nil {
 			return
 		}
-		p.shutdownOnce.Do(func() { close(p.shutdown) })
+		p.shutdownOnce.Do(func() {
+			close(p.shutdown)
+		})
 	default:
 		http.NotFound(w, r)
 	}
@@ -89,7 +97,9 @@ func serveStartupPeer(mode string) error {
 	protocols.SetUnencryptedHTTP2(true)
 	server := &http.Server{Handler: peer, Protocols: protocols}
 	done := make(chan error, 1)
-	go func() { done <- server.Serve(peer) }()
+	go func() {
+		done <- server.Serve(peer)
+	}()
 	<-peer.shutdown
 	err := server.Shutdown(context.Background())
 	serveErr := <-done
@@ -133,7 +143,9 @@ func TestStartupFailureRequestsShutdownBeforeTermination(t *testing.T) {
 				map[string]string{"DEMI_STARTUP_PEER": mode, "DEMI_STARTUP_MARKER": marker},
 			)
 			must(t, err)
-			defer func() { must(t, r.Close(context.Background())) }()
+			defer func() {
+				must(t, r.Close(context.Background()))
+			}()
 			start := time.Now()
 			_, err = r.
 				Acquire(t.Context(), descriptor, &localResolver{path: executable}, commandpackagestest.NoNumbers{})

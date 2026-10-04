@@ -154,7 +154,10 @@ type storedDraft struct {
 	replaced *webapiproto.ReplacedDraft
 }
 
-func (v draftVersion) empty() bool { return strings.TrimSpace(v.Text) == "" && len(v.Files) == 0 }
+func (v draftVersion) empty() bool {
+	return strings.TrimSpace(v.Text) == "" && len(v.Files) == 0
+}
+
 func (d storedDraft) present() webapiproto.ConversationDraft {
 	return webapiproto.ConversationDraft{
 		Revision: d.revision,

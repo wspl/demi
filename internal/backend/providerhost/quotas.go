@@ -56,7 +56,9 @@ func (q *AccountQuotas) Store(
 		stop:  make(chan struct{}),
 	}
 	if record.Quota != nil {
-		s.snapshots.Update(func(*types.QuotaSnapshot) types.QuotaSnapshot { return *record.Quota })
+		s.snapshots.Update(func(*types.QuotaSnapshot) types.QuotaSnapshot {
+			return *record.Quota
+		})
 	}
 	q.held[key] = s
 	if !q.closed {
@@ -80,7 +82,9 @@ func (q *AccountQuotas) Latest(id webapiproto.ProviderID, record database.Creden
 	if record.Quota == nil {
 		return nil
 	}
-	return snapshot.Update(func(*types.QuotaSnapshot) types.QuotaSnapshot { return *record.Quota })
+	return snapshot.Update(func(*types.QuotaSnapshot) types.QuotaSnapshot {
+		return *record.Quota
+	})
 }
 
 // ForgetAccount forgets one account snapshot.
@@ -126,7 +130,9 @@ func (q *AccountQuotas) Close(_ context.Context) error {
 }
 
 // Latest returns an independent copy of the account’s latest quota snapshot.
-func (s *accountQuota) Latest() *types.QuotaSnapshot { return s.snapshots.Latest() }
+func (s *accountQuota) Latest() *types.QuotaSnapshot {
+	return s.snapshots.Latest()
+}
 
 // Update publishes the account snapshot and wakes its storage worker.
 func (s *accountQuota) Update(next func(*types.QuotaSnapshot) types.QuotaSnapshot) *types.QuotaSnapshot {

@@ -9,7 +9,9 @@ import (
 var pauses atomic.Uint64
 
 // DescriptorPauses exposes retry observations for cmdsdktest.Pauses.
-func DescriptorPauses() uint64 { return pauses.Load() }
+func DescriptorPauses() uint64 {
+	return pauses.Load()
+}
 
 // Backoff spaces descriptor retries from 5 ms up to 100 ms; its zero value is ready.
 type Backoff struct{ delay time.Duration }

@@ -11,7 +11,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // userBlock supplies a transcript message, including a preamble estimates omit.
 func userBlock(id, text string) types.Block {

@@ -19,7 +19,9 @@ type MemoryBlobs struct {
 }
 
 // NewMemoryBlobs creates an empty namespace.
-func NewMemoryBlobs() *MemoryBlobs { return &MemoryBlobs{blobs: map[types.BlobRef]types.B64Bytes{}} }
+func NewMemoryBlobs() *MemoryBlobs {
+	return &MemoryBlobs{blobs: map[types.BlobRef]types.B64Bytes{}}
+}
 
 // Holds reports whether the namespace holds blob.
 func (b *MemoryBlobs) Holds(blob types.BlobRef) bool {

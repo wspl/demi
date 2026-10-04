@@ -13,7 +13,9 @@ import (
 type copyRuntime struct{ Runtime }
 
 // EnterAction avoids reacquiring the parent admission during compaction.
-func (copyRuntime) EnterAction(context.Context) (*gates.Lease, error) { return nil, nil }
+func (copyRuntime) EnterAction(context.Context) (*gates.Lease, error) {
+	return nil, nil
+}
 
 // ReserveEdit refuses transcript edits in a compaction copy.
 func (copyRuntime) ReserveEdit(context.Context) (*gates.Reservation, error) {
@@ -26,13 +28,17 @@ func (copyRuntime) Context(context.Context, []SeenContext, types.TurnID) ([]NewC
 }
 
 // Dispose leaves the shared parent environments with their owner.
-func (copyRuntime) Dispose(context.Context) error { return nil }
+func (copyRuntime) Dispose(context.Context) error {
+	return nil
+}
 
 // copyStore gives compaction a private command history and unstored media.
 type copyStore struct{}
 
 // Save keeps compaction checkpoints out of the parent store.
-func (copyStore) Save(context.Context, store.CheckpointUpdate, store.CommitGuard) error { return nil }
+func (copyStore) Save(context.Context, store.CheckpointUpdate, store.CommitGuard) error {
+	return nil
+}
 
 // Load starts the compaction copy without a persisted checkpoint.
 func (copyStore) Load(context.Context) (store.Checkpoint, bool, error) {
@@ -40,7 +46,9 @@ func (copyStore) Load(context.Context) (store.Checkpoint, bool, error) {
 }
 
 // Blobs returns the unstored media source of the compaction copy.
-func (copyStore) Blobs() store.Blobs { return copyBlobs{} }
+func (copyStore) Blobs() store.Blobs {
+	return copyBlobs{}
+}
 
 type copyBlobs struct{}
 

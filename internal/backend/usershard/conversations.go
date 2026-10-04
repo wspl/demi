@@ -35,7 +35,9 @@ func (s *Shard) Fork(
 	return shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (Forked, error) { return s.fork(ctx, source, destination, block) },
+		func(ctx context.Context) (Forked, error) {
+			return s.fork(ctx, source, destination, block)
+		},
 	)
 }
 
@@ -162,7 +164,9 @@ func (s *Shard) AskTitle(ctx context.Context, id webapiproto.ConversationID) err
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.askTitle(ctx, id) },
+		func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, s.askTitle(ctx, id)
+		},
 	)
 	return err
 }
@@ -173,7 +177,9 @@ func (s *Shard) CreateCloudWorkspace(ctx context.Context, name string) (database
 	return shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (database.WorkspaceRecord, error) { return s.createCloudWorkspace(ctx, name) },
+		func(ctx context.Context) (database.WorkspaceRecord, error) {
+			return s.createCloudWorkspace(ctx, name)
+		},
 	)
 }
 
@@ -250,7 +256,9 @@ func (s *Shard) SwitchPlugin(ctx context.Context, id string, enabled bool) error
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.switchPlugin(ctx, id, enabled) },
+		func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, s.switchPlugin(ctx, id, enabled)
+		},
 	)
 	return err
 }
@@ -275,7 +283,9 @@ func (s *Shard) ReloadConversation(ctx context.Context, id webapiproto.Conversat
 	_, err := shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) (struct{}, error) { return struct{}{}, s.reloadConversation(ctx, id) },
+		func(ctx context.Context) (struct{}, error) {
+			return struct{}{}, s.reloadConversation(ctx, id)
+		},
 	)
 	return err
 }
@@ -335,7 +345,9 @@ func (s *Shard) CLIMachines(ctx context.Context, entry webapiproto.ProviderID) (
 	return shardCall(
 		ctx,
 		s,
-		func(ctx context.Context) ([]webapiproto.CLIMachine, error) { return s.cliMachines(ctx, entry) },
+		func(ctx context.Context) ([]webapiproto.CLIMachine, error) {
+			return s.cliMachines(ctx, entry)
+		},
 	)
 }
 

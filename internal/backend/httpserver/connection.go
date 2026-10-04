@@ -38,7 +38,9 @@ func readIncoming(ctx context.Context, conn net.Conn) (context.Context, *incomin
 }
 
 // Read consumes bytes from the owned read-ahead worker.
-func (i *incoming) Read(p []byte) (int, error) { return i.reader.Read(p) }
+func (i *incoming) Read(p []byte) (int, error) {
+	return i.reader.Read(p)
+}
 
 // Close cancels the connection and joins its read-ahead worker.
 func (i *incoming) Close() error {
@@ -79,4 +81,6 @@ func closeWriteAndWait(ctx context.Context, conn net.Conn) {
 
 // allowHalfClose lets an upgraded relay finish writing after visitor read EOF.
 // Explicit Close and parent shutdown still cancel the connection's context.
-func (i *incoming) allowHalfClose() { i.halfCloseAllowed.Store(true) }
+func (i *incoming) allowHalfClose() {
+	i.halfCloseAllowed.Store(true)
+}

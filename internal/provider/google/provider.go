@@ -39,10 +39,14 @@ func New(config Config, clock types.Clock) *Provider {
 }
 
 // Capabilities describes this API provider's Host requirements.
-func (*Provider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
+func (*Provider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{}
+}
 
 // AuthStatus reports the configured key; acceptance is checked by the vendor.
-func (*Provider) AuthStatus(context.Context) types.AuthState { return &types.Authenticated{} }
+func (*Provider) AuthStatus(context.Context) types.AuthState {
+	return &types.Authenticated{}
+}
 
 // RuntimeState reports the native API transport.
 func (*Provider) RuntimeState() types.RuntimeState {
@@ -61,10 +65,14 @@ func (*Provider) ReadFailure(d *types.ProviderErrorDiagnostics, at types.Timesta
 }
 
 // Quota returns nil because this API has no quota probe.
-func (*Provider) Quota() *provider.Quota { return nil }
+func (*Provider) Quota() *provider.Quota {
+	return nil
+}
 
 // Accounts returns nil because an API key has no subscription account pool.
-func (*Provider) Accounts() provider.SubscriptionAccounts { return nil }
+func (*Provider) Accounts() provider.SubscriptionAccounts {
+	return nil
+}
 
 // Runtime creates a session runtime using the owner's HTTP client.
 func (p *Provider) Runtime(env provider.RuntimeEnv) (provider.Runtime, error) {
@@ -86,10 +94,14 @@ type runtime struct {
 }
 
 // Fresh returns an independent runtime for another session.
-func (r *runtime) Fresh() provider.Runtime { return &runtime{shared: r.shared, http: r.http} }
+func (r *runtime) Fresh() provider.Runtime {
+	return &runtime{shared: r.shared, http: r.http}
+}
 
 // Close releases the runtime resources.
-func (*runtime) Close(context.Context) error { return nil }
+func (*runtime) Close(context.Context) error {
+	return nil
+}
 
 // RequestLimits returns the request limits for the model.
 func (*runtime) RequestLimits(types.Model) provider.RequestLimits {

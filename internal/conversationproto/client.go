@@ -20,7 +20,9 @@ type clientFrame interface {
 type OpenFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*OpenFrame) Kind() ClientFrameKind { return ClientFrameKindOpen }
+func (*OpenFrame) Kind() ClientFrameKind {
+	return ClientFrameKindOpen
+}
 
 // Submit a message; its id becomes its turn's id and its queue entry's.
 // +demi:variant clientFrame send
@@ -31,7 +33,9 @@ type SendFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*SendFrame) Kind() ClientFrameKind { return ClientFrameKindSend }
+func (*SendFrame) Kind() ClientFrameKind {
+	return ClientFrameKindSend
+}
 
 // Replace a user message and everything after it.
 // +demi:variant clientFrame edit_and_send
@@ -41,7 +45,9 @@ type EditAndSendFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*EditAndSendFrame) Kind() ClientFrameKind { return ClientFrameKindEditAndSend }
+func (*EditAndSendFrame) Kind() ClientFrameKind {
+	return ClientFrameKindEditAndSend
+}
 
 // Add input to the running turn; its id is its `steer` block's.
 // +demi:variant clientFrame steer
@@ -52,7 +58,9 @@ type SteerFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*SteerFrame) Kind() ClientFrameKind { return ClientFrameKindSteer }
+func (*SteerFrame) Kind() ClientFrameKind {
+	return ClientFrameKindSteer
+}
 
 // +demi:variant clientFrame cancel_pending_steer
 type CancelPendingSteerFrame struct {
@@ -60,7 +68,9 @@ type CancelPendingSteerFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*CancelPendingSteerFrame) Kind() ClientFrameKind { return ClientFrameKindCancelPendingSteer }
+func (*CancelPendingSteerFrame) Kind() ClientFrameKind {
+	return ClientFrameKindCancelPendingSteer
+}
 
 // +demi:variant clientFrame dequeue_message
 type DequeueMessageFrame struct {
@@ -68,7 +78,9 @@ type DequeueMessageFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*DequeueMessageFrame) Kind() ClientFrameKind { return ClientFrameKindDequeueMessage }
+func (*DequeueMessageFrame) Kind() ClientFrameKind {
+	return ClientFrameKindDequeueMessage
+}
 
 // Move a queued message to the front, so that it runs next.
 // +demi:variant clientFrame send_queued_message
@@ -77,7 +89,9 @@ type SendQueuedMessageFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*SendQueuedMessageFrame) Kind() ClientFrameKind { return ClientFrameKindSendQueuedMessage }
+func (*SendQueuedMessageFrame) Kind() ClientFrameKind {
+	return ClientFrameKindSendQueuedMessage
+}
 
 // Turn a queued message into a steer of the running turn.
 // +demi:variant clientFrame steer_queued_message
@@ -87,26 +101,34 @@ type SteerQueuedMessageFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*SteerQueuedMessageFrame) Kind() ClientFrameKind { return ClientFrameKindSteerQueuedMessage }
+func (*SteerQueuedMessageFrame) Kind() ClientFrameKind {
+	return ClientFrameKindSteerQueuedMessage
+}
 
 // +demi:variant clientFrame clear_message_queue
 type ClearMessageQueueFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*ClearMessageQueueFrame) Kind() ClientFrameKind { return ClientFrameKindClearMessageQueue }
+func (*ClearMessageQueueFrame) Kind() ClientFrameKind {
+	return ClientFrameKindClearMessageQueue
+}
 
 // Stop one thing (`runtime.md` § Stop).
 // +demi:variant clientFrame abort
 type AbortFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*AbortFrame) Kind() ClientFrameKind { return ClientFrameKindAbort }
+func (*AbortFrame) Kind() ClientFrameKind {
+	return ClientFrameKindAbort
+}
 
 // +demi:variant clientFrame abort_subagents
 type AbortSubagentsFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*AbortSubagentsFrame) Kind() ClientFrameKind { return ClientFrameKindAbortSubagents }
+func (*AbortSubagentsFrame) Kind() ClientFrameKind {
+	return ClientFrameKindAbortSubagents
+}
 
 // Stop one live subagent with its subtree.
 // +demi:variant clientFrame abort_subagent
@@ -115,25 +137,33 @@ type AbortSubagentFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*AbortSubagentFrame) Kind() ClientFrameKind { return ClientFrameKindAbortSubagent }
+func (*AbortSubagentFrame) Kind() ClientFrameKind {
+	return ClientFrameKindAbortSubagent
+}
 
 // +demi:variant clientFrame retry
 type RetryFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*RetryFrame) Kind() ClientFrameKind { return ClientFrameKindRetry }
+func (*RetryFrame) Kind() ClientFrameKind {
+	return ClientFrameKindRetry
+}
 
 // +demi:variant clientFrame resume
 type ResumeFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*ResumeFrame) Kind() ClientFrameKind { return ClientFrameKindResume }
+func (*ResumeFrame) Kind() ClientFrameKind {
+	return ClientFrameKindResume
+}
 
 // +demi:variant clientFrame compact
 type CompactFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*CompactFrame) Kind() ClientFrameKind { return ClientFrameKindCompact }
+func (*CompactFrame) Kind() ClientFrameKind {
+	return ClientFrameKindCompact
+}
 
 // Write stdin to a running command.
 // +demi:variant clientFrame shell_write
@@ -143,7 +173,9 @@ type ShellWriteFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*ShellWriteFrame) Kind() ClientFrameKind { return ClientFrameKindShellWrite }
+func (*ShellWriteFrame) Kind() ClientFrameKind {
+	return ClientFrameKindShellWrite
+}
 
 // Stop a running command.
 // +demi:variant clientFrame shell_abort
@@ -152,21 +184,27 @@ type ShellAbortFrame struct {
 }
 
 // Kind identifies the command named by a rejected frame.
-func (*ShellAbortFrame) Kind() ClientFrameKind { return ClientFrameKindShellAbort }
+func (*ShellAbortFrame) Kind() ClientFrameKind {
+	return ClientFrameKindShellAbort
+}
 
 // Ask for a fresh transcript, after a gap in the patch revisions.
 // +demi:variant clientFrame sync_transcript
 type SyncTranscriptFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*SyncTranscriptFrame) Kind() ClientFrameKind { return ClientFrameKindSyncTranscript }
+func (*SyncTranscriptFrame) Kind() ClientFrameKind {
+	return ClientFrameKindSyncTranscript
+}
 
 // Dispose the tree.
 // +demi:variant clientFrame close
 type CloseFrame struct{}
 
 // Kind identifies the command named by a rejected frame.
-func (*CloseFrame) Kind() ClientFrameKind { return ClientFrameKindClose }
+func (*CloseFrame) Kind() ClientFrameKind {
+	return ClientFrameKindClose
+}
 
 // Which frame a frame is: its `type`, which a `rejected` frame names.
 // +demi:enum open send edit_and_send steer cancel_pending_steer dequeue_message send_queued_message steer_queued_message clear_message_queue abort abort_subagents abort_subagent retry resume compact shell_write shell_abort sync_transcript close

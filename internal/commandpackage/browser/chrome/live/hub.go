@@ -327,7 +327,9 @@ func (o *hubOwner) layout(ctx context.Context) {
 		if o.screen == nil || *o.screen != desired {
 			for _, tab := range watched {
 				if err := tab.UpdateScreen(ctx, desired); err != nil {
-					o.notify(func(id uint64, _ *hubViewer) bool { return id == o.driver }, err)
+					o.notify(func(id uint64, _ *hubViewer) bool {
+						return id == o.driver
+					}, err)
 				} else {
 					o.screen = &desired
 				}
@@ -337,7 +339,9 @@ func (o *hubOwner) layout(ctx context.Context) {
 	}
 	for id, tab := range watched {
 		if err := fit(ctx, tab, tab.Viewport().Mode, *o.decider(id)); err != nil && tab.Context().Err() == nil {
-			o.notify(func(_ uint64, v *hubViewer) bool { return v.tab != nil && v.tab.ID() == id }, err)
+			o.notify(func(_ uint64, v *hubViewer) bool {
+				return v.tab != nil && v.tab.ID() == id
+			}, err)
 		}
 	}
 }

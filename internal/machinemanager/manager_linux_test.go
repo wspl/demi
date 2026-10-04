@@ -391,7 +391,9 @@ func TestManagerUnitReplyIsNull(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The test reads every reply it needs before the deferred close.
-	defer func() { _ = conn.Close() }()
+	defer func() {
+		_ = conn.Close()
+	}()
 	if _, err := conn.Write([]byte(`{"id":"7","op":"hibernate","params":{"deviceId":"dev-1"}}` + "\n")); err != nil {
 		t.Fatal(err)
 	}

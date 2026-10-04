@@ -61,7 +61,9 @@ func registry(t *testing.T, root, image string) *commandpackages.ServiceRegistry
 		map[string]string{},
 	)
 	must(t, err)
-	t.Cleanup(func() { must(t, r.Close(context.Background())) })
+	t.Cleanup(func() {
+		must(t, r.Close(context.Background()))
+	})
 	return r
 }
 
@@ -462,15 +464,24 @@ type logCapture struct {
 	lines []slog.Record
 }
 
-func (*logCapture) Enabled(context.Context, slog.Level) bool { return true }
+func (*logCapture) Enabled(context.Context, slog.Level) bool {
+	return true
+}
+
 func (l *logCapture) Handle(_ context.Context, r slog.Record) error {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.lines = append(l.lines, r.Clone())
 	return nil
 }
-func (l *logCapture) WithAttrs([]slog.Attr) slog.Handler { return l }
-func (l *logCapture) WithGroup(string) slog.Handler      { return l }
+
+func (l *logCapture) WithAttrs([]slog.Attr) slog.Handler {
+	return l
+}
+
+func (l *logCapture) WithGroup(string) slog.Handler {
+	return l
+}
 
 func TestNativeCallsAreNeverTurnedAway(t *testing.T) {
 	root := t.TempDir()

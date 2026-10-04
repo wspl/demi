@@ -22,7 +22,9 @@ type Factory struct {
 
 // New constructs the factory for public GitHub and HTTPS repositories.
 func New() (*Factory, error) {
-	return NewResolving(func(url string) string { return url }, types.SystemClock{})
+	return NewResolving(func(url string) string {
+		return url
+	}, types.SystemClock{})
 }
 
 // NewResolving constructs a factory with a test's HTTP repositories and clock.

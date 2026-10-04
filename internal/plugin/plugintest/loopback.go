@@ -10,10 +10,14 @@ import (
 )
 
 // Loopback sends every plugin request, reply and port message through JSON.
-func Loopback(p plugin.Plugin) plugin.Plugin { return loopback{p} }
+func Loopback(p plugin.Plugin) plugin.Plugin {
+	return loopback{p}
+}
 
 // Port constructs a fresh in-memory plugin port using rpc for command operations.
-func Port(rpc host.PortTransport) plugin.Port { return WithRPC(rpc).Port() }
+func Port(rpc host.PortTransport) plugin.Port {
+	return WithRPC(rpc).Port()
+}
 
 type loopback struct{ plugin plugin.Plugin }
 

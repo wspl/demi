@@ -21,7 +21,9 @@ func TestDevProviderNeedsAllFourVariables(t *testing.T) {
 			return complete[key]
 		}
 	}
-	if _, configured, err := readDevProvider(func(string) string { return "" }); configured || err != nil {
+	if _, configured, err := readDevProvider(func(string) string {
+		return ""
+	}); configured || err != nil {
 		t.Fatalf("none set: configured %v, error %v", configured, err)
 	}
 	p, configured, err := readDevProvider(with("", ""))

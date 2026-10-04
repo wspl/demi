@@ -27,7 +27,9 @@ import (
 )
 
 // All scenarios use in-memory stores and scripted providers; no model or process runs.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 type testIDs struct {
 	mu   sync.Mutex
@@ -69,12 +71,14 @@ func fixtureWith(
 	resolver := &servertest.ScriptedProviders{}
 	resolver.Provide("stub", script)
 	deps := server.Deps[*toolstest.NoHost]{
-		Toolsets:      tools.Set{Commands: &host.CommandSet{}, Revision: "test"},
-		Instructions:  "system prompt",
-		Hosts:         &toolstest.NoHost{},
-		Shells:        toolstest.NoShells{},
-		Providers:     resolver,
-		Stores:        func(types.NodeID) store.Tree { return memory },
+		Toolsets:     tools.Set{Commands: &host.CommandSet{}, Revision: "test"},
+		Instructions: "system prompt",
+		Hosts:        &toolstest.NoHost{},
+		Shells:       toolstest.NoShells{},
+		Providers:    resolver,
+		Stores: func(types.NodeID) store.Tree {
+			return memory
+		},
 		Clock:         types.SystemClock{},
 		IDs:           &testIDs{},
 		Config:        config,
@@ -226,8 +230,12 @@ func TestConcurrentOpensBuildOneTree(t *testing.T) {
 		f := newFixture(t)
 		a, b := f.client(), f.client()
 		var wg sync.WaitGroup
-		wg.Go(func() { a.Send(t.Context(), &conversationproto.OpenFrame{}) })
-		wg.Go(func() { b.Send(t.Context(), &conversationproto.OpenFrame{}) })
+		wg.Go(func() {
+			a.Send(t.Context(), &conversationproto.OpenFrame{})
+		})
+		wg.Go(func() {
+			b.Send(t.Context(), &conversationproto.OpenFrame{})
+		})
 		wg.Wait()
 		equal(t, 1, len(f.resolver.Calls()))
 		equal(t, 1, len(f.store.Saves()))
@@ -675,7 +683,9 @@ func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 				// continues. Hold the provider too, so the snapshot cannot
 				// already contain every transcript change of the turn.
 				answer := make(chan struct{})
-				resume := sync.OnceFunc(func() { close(answer) })
+				resume := sync.OnceFunc(func() {
+					close(answer)
+				})
 				defer resume()
 				f := newFixture(
 					t,
@@ -690,7 +700,9 @@ func TestOpenSnapshotDoesNotReplayEarlierRevisions(t *testing.T) {
 				}
 				agent := f.server.Tree(rootID()).Root().Session()
 				paused, release := make(chan struct{}), make(chan struct{})
-				unblock := sync.OnceFunc(func() { close(release) })
+				unblock := sync.OnceFunc(func() {
+					close(release)
+				})
 				defer unblock()
 				var once sync.Once
 				subscription := agent.Subscribe(func(event session.Event) {

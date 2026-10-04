@@ -66,7 +66,9 @@ func (r RecordedRequest) JSON(t testing.TB) any {
 }
 
 // Header reads the first value of a request header.
-func (r RecordedRequest) Header(name string) string { return r.Headers.Get(name) }
+func (r RecordedRequest) Header(name string) string {
+	return r.Headers.Get(name)
+}
 
 // MockVendor serves queued answers on loopback and records requests.
 type MockVendor struct {
@@ -83,7 +85,9 @@ type MockVendor struct {
 }
 
 // StartVendor starts an HTTP server and registers cleanup with the test.
-func StartVendor(t testing.TB) *MockVendor { return startVendor(t, nil) }
+func StartVendor(t testing.TB) *MockVendor {
+	return startVendor(t, nil)
+}
 
 // StartTLSVendor starts HTTPS using the supplied certificate chain and private key.
 func StartTLSVendor(t testing.TB, certificate, key []byte) *MockVendor {
@@ -105,7 +109,9 @@ func startVendor(t testing.TB, certificate *tls.Certificate) *MockVendor {
 		cancel:       cancel,
 	}
 	server := httptest.NewUnstartedServer(
-		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { vendor.answer(ctx, w, r) }),
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			vendor.answer(ctx, w, r)
+		}),
 	)
 	vendor.server = server
 	if certificate == nil {
@@ -128,10 +134,14 @@ func (v *MockVendor) Close() {
 }
 
 // URL returns the URL for path, including any query.
-func (v *MockVendor) URL(path string) string { return v.server.URL + path }
+func (v *MockVendor) URL(path string) string {
+	return v.server.URL + path
+}
 
 // Client returns a client trusting this server's test certificate.
-func (v *MockVendor) Client() *http.Client { return v.server.Client() }
+func (v *MockVendor) Client() *http.Client {
+	return v.server.Client()
+}
 
 // Respond queues the next default answer.
 func (v *MockVendor) Respond(response MockResponse) {

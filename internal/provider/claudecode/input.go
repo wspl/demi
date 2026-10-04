@@ -55,7 +55,9 @@ func spawnRequest(site Site, r provider.InferenceRequest, token provider.Secret)
 }
 
 // textBlock keeps empty text present on the wire too.
-func textBlock(text string) inputText { return inputText{"text", text} }
+func textBlock(text string) inputText {
+	return inputText{"text", text}
+}
 
 func userContent(parts []provider.UserPart) []inputContent {
 	blocks := make([]inputContent, 0, len(parts))

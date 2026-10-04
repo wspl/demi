@@ -62,13 +62,17 @@ func fetch(ctx context.Context, url, repository string) (result fetched, err err
 	network := &http.Transport{Proxy: http.ProxyFromEnvironment, ForceAttemptHTTP2: true}
 	defer network.CloseIdleConnections()
 	public := &publicGitTransport{transport: network}
-	defer func() { err = errors.Join(err, public.closeBodies()) }()
+	defer func() {
+		err = errors.Join(err, public.closeBodies())
+	}()
 	client := githttp.NewClient(&http.Client{Transport: public})
 	session, err := client.NewUploadPackSession(endpoint, nil)
 	if err != nil {
 		return result, err
 	}
-	defer func() { err = errors.Join(err, session.Close()) }()
+	defer func() {
+		err = errors.Join(err, session.Close())
+	}()
 	head, err := advertisedHead(ctx, session)
 	if err != nil {
 		return result, err
@@ -81,14 +85,20 @@ func fetch(ctx context.Context, url, repository string) (result fetched, err err
 	if err != nil {
 		return result, err
 	}
-	defer func() { err = errors.Join(err, response.Close()) }()
+	defer func() {
+		err = errors.Join(err, response.Close())
+	}()
 	directory, err := os.MkdirTemp("", "demi-skills-")
 	if err != nil {
 		return result, fmt.Errorf("no temporary directory: %w", err)
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(directory)) }()
+	defer func() {
+		err = errors.Join(err, os.RemoveAll(directory))
+	}()
 	store := filesystem.NewStorage(osfs.New(directory), cache.NewObjectLRUDefault())
-	defer func() { err = errors.Join(err, store.Close()) }()
+	defer func() {
+		err = errors.Join(err, store.Close())
+	}()
 	if err := decodeRepositoryPack(ctx, store, response); err != nil {
 		return result, err
 	}
@@ -284,7 +294,9 @@ func readRepositoryBlob(
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, reader.Close()) }()
+	defer func() {
+		err = errors.Join(err, reader.Close())
+	}()
 	return io.ReadAll(io.LimitReader(reader, int64(limit)))
 }
 

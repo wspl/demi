@@ -48,7 +48,9 @@ func addHandler() host.RPCHandler {
 				port,
 				"todos",
 				hosttest.DecodeItems,
-				func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
+				func(v hosttest.Items) ([]byte, error) {
+					return v.MarshalJSON()
+				},
 				func(current hosttest.Items, found bool) (hosttest.Items, error) {
 					items := hosttest.Items{}
 					if found {
@@ -150,9 +152,13 @@ func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 		{host.Leaf(rpcLeaf("add"), nil), `"demi add" has no handler`},
 		{host.Group("empty", "Empty."), "no subcommands"},
 		{host.Leaf(rpcLeaf("bad name"), addHandler()), "invalid command name"},
-		{with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) { l.Positionals = &missing }), "missing"},
+		{with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
+			l.Positionals = &missing
+		}), "missing"},
 		{
-			with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) { l.StdinField = &fieldCount }),
+			with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
+				l.StdinField = &fieldCount
+			}),
 			"stdin input must be a string",
 		},
 		{
@@ -163,7 +169,9 @@ func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 			"multiple input sources for text",
 		},
 		{
-			with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) { l.Positionals = &count }),
+			with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
+				l.Positionals = &count
+			}),
 			"required positional follows optional positional",
 		},
 		{with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
@@ -289,7 +297,9 @@ func TestConcurrentUpdatesKeepBothWrites(t *testing.T) {
 				hosttest.NewMemoryPort(storage).Port(),
 				"todos",
 				hosttest.DecodeItems,
-				func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
+				func(v hosttest.Items) ([]byte, error) {
+					return v.MarshalJSON()
+				},
 				func(current hosttest.Items, found bool) (hosttest.Items, error) {
 					if first {
 						first = false
@@ -331,7 +341,9 @@ func TestUnreadableStoredValueIsNotReplaced(t *testing.T) {
 		hosttest.NewMemoryPort(storage).Port(),
 		"todos",
 		hosttest.DecodeItems,
-		func(v hosttest.Items) ([]byte, error) { return v.MarshalJSON() },
+		func(v hosttest.Items) ([]byte, error) {
+			return v.MarshalJSON()
+		},
 		func(_ hosttest.Items, _ bool) (hosttest.Items, error) {
 			t.Fatal("change called for unreadable data")
 			return nil, nil
@@ -393,11 +405,15 @@ func TestGraftAndFilterKeepBindingsAtomic(t *testing.T) {
 	if err := s.Graft([]string{"demi", "todo", "add"}, host.Leaf(rpcLeaf("x"), nil)); err == nil {
 		t.Fatal("grafted below leaf")
 	}
-	narrow := s.Filter(func(path []string) bool { return len(path) < 2 || path[1] != "todo" })
+	narrow := s.Filter(func(path []string) bool {
+		return len(path) < 2 || path[1] != "todo"
+	})
 	if !reflect.DeepEqual(names(narrow), []string{"agent"}) {
 		t.Fatal(names(narrow))
 	}
-	if len(s.Filter(func([]string) bool { return false }).Declarations()) != 0 {
+	if len(s.Filter(func([]string) bool {
+		return false
+	}).Declarations()) != 0 {
 		t.Fatal("empty groups remain")
 	}
 	// Successful replacement must remove old handlers as well as replace the declaration.

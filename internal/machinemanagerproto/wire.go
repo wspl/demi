@@ -46,7 +46,9 @@ type Reconcile struct {
 func (*Reconcile) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*Reconcile) Name() string { return "reconcile" }
+func (*Reconcile) Name() string {
+	return "reconcile"
+}
 
 // Read the configured base.
 // +demi:root
@@ -62,7 +64,9 @@ type CurrentBaseVersion struct {
 func (*CurrentBaseVersion) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*CurrentBaseVersion) Name() string { return "current_base_version" }
+func (*CurrentBaseVersion) Name() string {
+	return "current_base_version"
+}
 
 // Read a device's committed generation.
 // +demi:root
@@ -81,7 +85,9 @@ type ImageState struct {
 func (*ImageState) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*ImageState) Name() string { return "image_state" }
+func (*ImageState) Name() string {
+	return "image_state"
+}
 
 // Read whether the manager runs a sandbox for a device, after the device's
 // earlier operations.
@@ -101,7 +107,9 @@ type RuntimeStateCall struct {
 func (*RuntimeStateCall) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*RuntimeStateCall) Name() string { return "runtime_state" }
+func (*RuntimeStateCall) Name() string {
+	return "runtime_state"
+}
 
 // Create first-use storage or recover existing storage, then start one
 // sandbox with the boot credential.
@@ -123,7 +131,9 @@ type Wake struct {
 func (*Wake) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*Wake) Name() string { return "wake" }
+func (*Wake) Name() string {
+	return "wake"
+}
 
 // Stop execution, save storage and release runtime resources.
 // +demi:root
@@ -142,7 +152,9 @@ type Hibernate struct {
 func (*Hibernate) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*Hibernate) Name() string { return "hibernate" }
+func (*Hibernate) Name() string {
+	return "hibernate"
+}
 
 // Publish the running device's storage while preserving its processes.
 // +demi:root
@@ -161,7 +173,9 @@ type Checkpoint struct {
 func (*Checkpoint) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*Checkpoint) Name() string { return "checkpoint" }
+func (*Checkpoint) Name() string {
+	return "checkpoint"
+}
 
 // Grow one of the running device's filesystems to at least `bytes`.
 // +demi:root
@@ -183,7 +197,9 @@ type GrowVolume struct {
 func (*GrowVolume) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*GrowVolume) Name() string { return "grow_volume" }
+func (*GrowVolume) Name() string {
+	return "grow_volume"
+}
 
 // Publish a clean system on `base_version` with the retained home, once
 // per `operation_id`; does not boot.
@@ -207,7 +223,9 @@ type Reset struct {
 func (*Reset) machineCall() {}
 
 // Name returns the operation's name on the wire, such as grow_volume.
-func (*Reset) Name() string { return "reset" }
+func (*Reset) Name() string {
+	return "reset"
+}
 
 // A message from the manager: the reply to a request, or the death of a
 // device's sandbox, which every connection receives.

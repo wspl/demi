@@ -72,7 +72,9 @@ func (c *ControlService) UploadBlobs(ctx context.Context, owner webapiproto.User
 			tx,
 			"attachments",
 			"SELECT DISTINCT sha256 FROM attachments WHERE user_id = ?",
-			func(r *storedRow) types.BlobRef { return checked(r, "sha256", types.ParseBlobRef) },
+			func(r *storedRow) types.BlobRef {
+				return checked(r, "sha256", types.ParseBlobRef)
+			},
 			owner,
 		)
 	})

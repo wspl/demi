@@ -84,7 +84,9 @@ func TestCatalogRestartsFromSQLiteAndRefusesCorruptStoredRecord(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache := NewModelCatalogCache(vault.control, types.SystemClock{})
-	fetch := func(context.Context) (types.ProviderModelList, error) { return catalog("Stored"), nil }
+	fetch := func(context.Context) (types.ProviderModelList, error) {
+		return catalog("Stored"), nil
+	}
 	if _, err := cache.Read(ctx, entry.ID, "key", fetch, false); err != nil {
 		t.Fatal(err)
 	}

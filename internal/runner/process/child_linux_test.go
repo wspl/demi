@@ -25,7 +25,9 @@ func TestStartBusyExecutable(t *testing.T) {
 				t.Fatal(err)
 			}
 			// Cleanup follows the operation result; cancellation may already have closed it.
-			defer func() { _ = writing.Close() }()
+			defer func() {
+				_ = writing.Close()
+			}()
 			if _, err := writing.WriteString("#!/bin/sh\necho started\n"); err != nil {
 				t.Fatal(err)
 			}
@@ -41,7 +43,9 @@ func TestStartBusyExecutable(t *testing.T) {
 			baseline := commandsdktest.Pauses()
 			done := make(chan error, 1)
 			ctx := t.Context()
-			go func() { done <- command.Start(ctx) }()
+			go func() {
+				done <- command.Start(ctx)
+			}()
 			// The pause counter offers no event, so the loop yields between checks.
 			for commandsdktest.Pauses() == baseline {
 				select {

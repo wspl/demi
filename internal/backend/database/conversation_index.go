@@ -98,7 +98,9 @@ func (c *ControlService) LastSwitch(ctx context.Context, id webapiproto.Conversa
 			tx,
 			"conversations",
 			"SELECT last_switch FROM conversations WHERE id = ?",
-			func(r *storedRow) *TargetSwitch { return optionalJSON(r, "last_switch", DecodeTargetSwitch) },
+			func(r *storedRow) *TargetSwitch {
+				return optionalJSON(r, "last_switch", DecodeTargetSwitch)
+			},
 			id,
 		)
 		if !found {
@@ -329,7 +331,9 @@ func (c *ControlService) LiveAt(ctx context.Context, id webapiproto.Conversation
 				tx,
 				"conversations",
 				"SELECT live_at FROM conversations WHERE id = ?",
-				func(r *storedRow) types.Timestamp { return r.instant("live_at") },
+				func(r *storedRow) types.Timestamp {
+					return r.instant("live_at")
+				},
 				id,
 			)
 			found = ok
@@ -612,7 +616,9 @@ func renameAttachedHost(
 		tx,
 		"conversation_hosts",
 		"SELECT device_id FROM conversation_hosts WHERE conversation_id = ? AND (device_id = ? OR name = ?)",
-		func(r *storedRow) string { return r.text("device_id") },
+		func(r *storedRow) string {
+			return r.text("device_id")
+		},
 		id,
 		change.Device,
 		change.Name,

@@ -1117,7 +1117,9 @@ func TestLaggingSocketClosesAndReopenAdoptsRunningTree(t *testing.T) {
 	})
 	harness.Config.Families.Register(
 		"lag",
-		conversationFamily{build: func(providerhost.FamilyArgs) provider.Runtime { return vendor }},
+		conversationFamily{build: func(providerhost.FamilyArgs) provider.Runtime {
+			return vendor
+		}},
 	)
 	backend, session, err := harness.StartSetUp(ctx, t)
 	wireMust(t, err)
@@ -1466,7 +1468,9 @@ func (r *keyedRuntime) Fresh() provider.Runtime {
 }
 
 // Close requires no resource cleanup.
-func (*keyedRuntime) Close(context.Context) error { return nil }
+func (*keyedRuntime) Close(context.Context) error {
+	return nil
+}
 
 // RequestLimits returns the fixture request limits.
 func (*keyedRuntime) RequestLimits(types.Model) provider.RequestLimits {

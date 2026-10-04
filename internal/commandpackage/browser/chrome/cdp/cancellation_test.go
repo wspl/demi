@@ -28,7 +28,9 @@ func TestCancelledRawSendDetachesItsSessionAndJoinsSocket(t *testing.T) {
 			t.Error(err)
 			return
 		}
-		defer func() { _ = socket.CloseNow() }()
+		defer func() {
+			_ = socket.CloseNow()
+		}()
 		socket.SetReadLimit(cdp.MessageLimit)
 		for {
 			_, data, err := socket.Read(t.Context())

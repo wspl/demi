@@ -16,11 +16,15 @@ import (
 // Run streams inference events for the request.
 func (r *runtime) Run(ctx context.Context, request provider.InferenceRequest) provider.Run {
 	return func(yield func(provider.Event) bool) {
-		emit := func(event provider.Event) bool { return ctx.Err() == nil && yield(event) }
+		emit := func(event provider.Event) bool {
+			return ctx.Err() == nil && yield(event)
+		}
 		if ctx.Err() != nil {
 			return
 		}
-		body, err := provider.EncodeBody(ctx, "Google", func() ([]byte, error) { return encode(request) })
+		body, err := provider.EncodeBody(ctx, "Google", func() ([]byte, error) {
+			return encode(request)
+		})
 		if err != nil {
 			var failure *provider.Failure
 			if errors.As(err, &failure) {

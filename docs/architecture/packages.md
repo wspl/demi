@@ -1357,6 +1357,15 @@ no dependency cycle.
 - **Must not:** maintain another dependency table or implement runtime
   behavior.
 
+#### `tools/bodycheck`
+
+- **Owns:** the check that no hand-written function body with statements is
+  written on one line ([AGENTS.md](../../AGENTS.md) § Layout), which gofmt
+  leaves as it finds it, and `-fix`, which puts each such body on lines of
+  its own. Generated files and `testdata` are not checked.
+- **Public boundary:** the command, which `scripts/check.sh` runs.
+- **Must not:** import repository packages.
+
 #### `tools/cgocheck`
 
 - **Owns:** the no-cgo check of every shipped program on each target.
@@ -1989,6 +1998,7 @@ tools/contractgen/manifests -> internal/backend, internal/plugin, tools/contract
 tools/contractgen/pagemeta -> none
 tools/archcheck -> none
 tools/cgocheck -> none
+tools/bodycheck -> none
 internal/programtest -> none
 cmd/demi-backend -> internal/backend, internal/version
 cmd/demi-runner -> internal/runner, internal/version

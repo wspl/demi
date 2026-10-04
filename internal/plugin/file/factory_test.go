@@ -9,7 +9,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 // The registration bytes are read by the plugin host; budget below one second.
 func TestManifestMatchesGolden(t *testing.T) {

@@ -125,9 +125,13 @@ func WriteArchive(t *testing.T, directory string, entries []Entry) string {
 		t.Fatal(err)
 	}
 	// Deferred closes release compressor resources even when fixture creation fails.
-	defer func() { _ = encoder.Close() }()
+	defer func() {
+		_ = encoder.Close()
+	}()
 	writer := tar.NewWriter(encoder)
-	defer func() { _ = writer.Close() }()
+	defer func() {
+		_ = writer.Close()
+	}()
 	for _, entry := range entries {
 		kind := entry.Kind
 		if kind == 0 {

@@ -53,8 +53,12 @@ func bindListener(ctx context.Context) (*Listener, error) {
 	success = true
 	return &Listener{
 		endpoint: path,
-		close:    func() error { return errors.Join(socket.Close(), alive.Close(), os.RemoveAll(directory)) },
-		accept:   func(ctx context.Context) (net.Conn, error) { return acceptLocal(ctx, socket) },
+		close: func() error {
+			return errors.Join(socket.Close(), alive.Close(), os.RemoveAll(directory))
+		},
+		accept: func(ctx context.Context) (net.Conn, error) {
+			return acceptLocal(ctx, socket)
+		},
 	}, nil
 }
 

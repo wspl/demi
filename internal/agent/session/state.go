@@ -121,10 +121,14 @@ func (s *Session) mutate(change func(*coreState)) {
 		c.publishedStatus = status
 		c.publishedStatus.changed = make(chan struct{})
 		if previous.changed != nil {
-			c.effects = append(c.effects, func() { close(previous.changed) })
+			c.effects = append(c.effects, func() {
+				close(previous.changed)
+			})
 		}
 	}
-	c.effects = append(c.effects, func() { close(old) })
+	c.effects = append(c.effects, func() {
+		close(old)
+	})
 	if c.delivering {
 		s.mu.Unlock()
 		return
@@ -176,7 +180,11 @@ func (s *Session) eventLocked(event Event) {
 	})
 }
 
-func (s *Session) emit(event Event) { s.mutate(func(_ *coreState) { s.eventLocked(event) }) }
+func (s *Session) emit(event Event) {
+	s.mutate(func(_ *coreState) {
+		s.eventLocked(event)
+	})
+}
 
 // commitLocked captures the command-state boundaries of a transcript mutation.
 func (s *Session) commitLocked() {
@@ -280,7 +288,11 @@ func (c *coreState) statusLocked() Status {
 	}
 	return status
 }
-func (c *coreState) preparingEditLocked() bool { return c.edit != nil && !c.edit.accepted }
+
+func (c *coreState) preparingEditLocked() bool {
+	return c.edit != nil && !c.edit.accepted
+}
+
 func (c *coreState) admissionLocked() error {
 	if c.disposing {
 		return ErrClosed

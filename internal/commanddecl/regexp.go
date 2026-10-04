@@ -47,7 +47,9 @@ type schemaRegexp struct {
 }
 
 // String returns the schema pattern.
-func (r schemaRegexp) String() string { return r.regexp.String() }
+func (r schemaRegexp) String() string {
+	return r.regexp.String()
+}
 
 // MatchString reports whether the value matches the schema pattern.
 func (r schemaRegexp) MatchString(value string) bool {

@@ -226,7 +226,9 @@ func (a *Assembly) EntryCatalog(
 	var fetch CatalogFetch
 	if c, ok := entry.Credential.(*APIKeyConfig); ok && c.VendorID != nil {
 		vendor := *c.VendorID
-		fetch = func(ctx context.Context) (types.ProviderModelList, error) { return a.vendors.Models(ctx, vendor) }
+		fetch = func(ctx context.Context) (types.ProviderModelList, error) {
+			return a.vendors.Models(ctx, vendor)
+		}
 	} else if buildError != nil {
 		return emptyCatalog(buildError)
 	} else {

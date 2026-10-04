@@ -45,7 +45,9 @@ func Sync(ctx context.Context, path string) error {
 		return err
 	}
 	// Read-only descriptor; Sync reports durability errors.
-	defer func() { _ = file.Close() }()
+	defer func() {
+		_ = file.Close()
+	}()
 	return file.Sync()
 }
 

@@ -20,10 +20,14 @@ func (d *TestDemi) LiveExposes() []plugin.ExposeRecord {
 
 // liveExposesLocked applies the test clock while mu is held.
 func (d *TestDemi) liveExposesLocked() []plugin.ExposeRecord {
-	d.exposes = slices.DeleteFunc(d.exposes, func(e plugin.ExposeRecord) bool { return e.ExpiresAt <= d.Now })
+	d.exposes = slices.DeleteFunc(d.exposes, func(e plugin.ExposeRecord) bool {
+		return e.ExpiresAt <= d.Now
+	})
 	slices.SortStableFunc(
 		d.exposes,
-		func(a, b plugin.ExposeRecord) int { return cmp.Compare(a.ExpiresAt, b.ExpiresAt) },
+		func(a, b plugin.ExposeRecord) int {
+			return cmp.Compare(a.ExpiresAt, b.ExpiresAt)
+		},
 	)
 	return append([]plugin.ExposeRecord{}, d.exposes...)
 }
@@ -32,7 +36,9 @@ func (d *TestDemi) liveExposesLocked() []plugin.ExposeRecord {
 func (d *TestDemi) EndExposesOn(device webapiproto.DeviceID) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.exposes = slices.DeleteFunc(d.exposes, func(e plugin.ExposeRecord) bool { return e.Device == device })
+	d.exposes = slices.DeleteFunc(d.exposes, func(e plugin.ExposeRecord) bool {
+		return e.Device == device
+	})
 }
 
 // createExposeLocked answers a creation request using the test clock and Hosts.
@@ -44,7 +50,9 @@ func (d *TestDemi) createExposeLocked(m *plugin.PortMessageCreateExpose) (plugin
 	if err != nil {
 		return exposeRefused(plugin.ExposeRefusalInvalidAddress, err.Error()), nil
 	}
-	index := slices.IndexFunc(d.Hosts, func(h plugin.ConversationHost) bool { return h.Device == m.Device })
+	index := slices.IndexFunc(d.Hosts, func(h plugin.ConversationHost) bool {
+		return h.Device == m.Device
+	})
 	if index < 0 {
 		return exposeRefused(plugin.ExposeRefusalDeviceNotFound, "No such device"), nil
 	}

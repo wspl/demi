@@ -164,7 +164,9 @@ func TestCancellationClosesStream(t *testing.T) {
 	reader := providertest.NewEventReader(
 		ctx,
 		t,
-		func(ctx context.Context) provider.Run { return r.Run(ctx, providertest.InferenceRequest()) },
+		func(ctx context.Context) provider.Run {
+			return r.Run(ctx, providertest.InferenceRequest())
+		},
 	)
 	event, ok := reader.NextEvent()
 	if !ok || !reflect.DeepEqual(event, &provider.TextDelta{Text: "hel"}) {

@@ -125,8 +125,13 @@ type drawing struct {
 	drawing chan struct{}
 }
 
-func (h *drawing) SetNumbers(n *Numbers) { h.numbers = n }
-func (h *drawing) Operations() []string  { return []string{"draw"} }
+func (h *drawing) SetNumbers(n *Numbers) {
+	h.numbers = n
+}
+
+func (h *drawing) Operations() []string {
+	return []string{"draw"}
+}
 
 func (h *drawing) Invoke(
 	ctx context.Context,
@@ -162,7 +167,9 @@ func TestDrawsWaitForNumbersStreamContinuePerConversationAndShutdownEndsIt(t *te
 	go func() {
 		answer := func(_ context.Context, q commandproto.NumbersRequest) (uint64, error) {
 			lock <- struct{}{}
-			defer func() { <-lock }()
+			defer func() {
+				<-lock
+			}()
 			first := next[q.Conversation]
 			if first == 0 {
 				first = 1
@@ -196,8 +203,13 @@ func TestDrawsWaitForNumbersStreamContinuePerConversationAndShutdownEndsIt(t *te
 
 type artifactHandler struct{ artifacts *Artifacts }
 
-func (h *artifactHandler) SetArtifacts(a *Artifacts) { h.artifacts = a }
-func (h *artifactHandler) Operations() []string      { return []string{"install", "installed"} }
+func (h *artifactHandler) SetArtifacts(a *Artifacts) {
+	h.artifacts = a
+}
+
+func (h *artifactHandler) Operations() []string {
+	return []string{"install", "installed"}
+}
 
 func (h *artifactHandler) Invoke(
 	ctx context.Context,
@@ -362,7 +374,9 @@ func TestCancellationDeadlineRequiresServiceRetirement(t *testing.T) {
 func TestConnectUsesCallerDeadline(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		left, right := net.Pipe()
-		defer func() { _ = right.Close() }()
+		defer func() {
+			_ = right.Close()
+		}()
 		ctx, cancel := context.WithTimeout(t.Context(), 37*time.Second)
 		defer cancel()
 		start := time.Now()
@@ -400,7 +414,9 @@ func TestInfoUsesCallerDeadline(t *testing.T) {
 					}),
 				}
 				served := make(chan error, 1)
-				go func() { served <- server.Serve(listener) }()
+				go func() {
+					served <- server.Serve(listener)
+				}()
 				defer func() {
 					must(t, server.Close())
 					if err := <-served; !errors.Is(err, http.ErrServerClosed) {
@@ -409,7 +425,9 @@ func TestInfoUsesCallerDeadline(t *testing.T) {
 				}()
 				client, err := Connect(t.Context(), left)
 				must(t, err)
-				defer func() { _ = client.Close() }()
+				defer func() {
+					_ = client.Close()
+				}()
 				ctx, cancel := context.WithTimeout(t.Context(), 37*time.Second)
 				defer cancel()
 				start := time.Now()
@@ -434,7 +452,9 @@ type numberPeer struct {
 	replies   chan<- commandproto.NumbersAnswer
 }
 
-func (*numberPeer) Operations() []string { return []string{"numbers-peer"} }
+func (*numberPeer) Operations() []string {
+	return []string{"numbers-peer"}
+}
 
 func (p *numberPeer) Invoke(
 	ctx context.Context,

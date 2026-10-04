@@ -90,7 +90,9 @@ type Admission struct {
 }
 
 // Release lets this admission go. It is idempotent and does not wait.
-func (a *Admission) Release() { a.held.Release() }
+func (a *Admission) Release() {
+	a.held.Release()
+}
 
 // Admit wakes a stopped Cloud or joins boot, recovery or reset. Request
 // cancellation ends the wait, not an owned transition. The caller owns device.
@@ -130,9 +132,11 @@ func Admit(ctx context.Context, shard Shard, device database.DeviceRecord) (*Adm
 			continue
 		}
 		return &Admission{
-			Device:       device.ID,
-			held:         lease,
-			PerOperation: func() (*gates.Lease, error) { return c.admitOperation(m) },
+			Device: device.ID,
+			held:   lease,
+			PerOperation: func() (*gates.Lease, error) {
+				return c.admitOperation(m)
+			},
 		}, nil
 	}
 }
@@ -281,7 +285,9 @@ func (t *transition) wait(ctx context.Context) error {
 }
 
 // mark publishes a Cloud change only after its shard mutex has been released.
-func (m *machine) mark() { m.marks.Mark(pagesync.Part{Kind: pagesync.Cloud}) }
+func (m *machine) mark() {
+	m.marks.Mark(pagesync.Part{Kind: pagesync.Cloud})
+}
 
 // ensureRunning atomically chooses or joins the machine transition.
 func ensureRunning(ctx context.Context, s Shard, m *machine) (bool, error) {

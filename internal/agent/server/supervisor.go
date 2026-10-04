@@ -165,7 +165,9 @@ func (t *Tree[H]) startChild(
 	t.restoreChildren(ctx, node)
 	t.server.mu.Lock()
 	if !t.disposing {
-		t.workers.Go(func() { t.supervise(c) })
+		t.workers.Go(func() {
+			t.supervise(c)
+		})
 	}
 	t.server.mu.Unlock()
 	return nil

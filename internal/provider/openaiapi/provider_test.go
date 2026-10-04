@@ -17,7 +17,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const now types.Timestamp = "2026-09-18T14:00:00.000Z"
 
@@ -213,7 +215,9 @@ func TestCancelledMidStream(t *testing.T) {
 			reader := providertest.NewEventReader(
 				ctx,
 				t,
-				func(ctx context.Context) provider.Run { return runtime.Run(ctx, requestWith(user("hello"))) },
+				func(ctx context.Context) provider.Run {
+					return runtime.Run(ctx, requestWith(user("hello")))
+				},
 			)
 			event, ok := reader.NextEvent()
 			if !ok || !reflect.DeepEqual(event, &provider.TextDelta{Text: "hel"}) {

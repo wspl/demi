@@ -193,7 +193,9 @@ func (p *cloudIdle) Reserve(ctx context.Context) (idlewatch.Retirement, bool, er
 }
 
 // Changed subscribes before the idle watch tries reservation again.
-func (p *cloudIdle) Changed() <-chan struct{} { return p.m.gate.State().Changed() }
+func (p *cloudIdle) Changed() <-chan struct{} {
+	return p.m.gate.State().Changed()
+}
 
 type idleRetirement struct {
 	policy   *cloudIdle

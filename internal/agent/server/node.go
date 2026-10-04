@@ -25,7 +25,9 @@ type Node[H host.Host] struct {
 }
 
 // ID returns the node's identity.
-func (n *Node[H]) ID() types.NodeID { return n.record.ID }
+func (n *Node[H]) ID() types.NodeID {
+	return n.record.ID
+}
 
 // Record returns an owned snapshot of the node record.
 func (n *Node[H]) Record() store.NodeRecord {
@@ -40,15 +42,21 @@ func (n *Node[H]) Record() store.NodeRecord {
 }
 
 // Session returns the node's synchronized session handle.
-func (n *Node[H]) Session() *session.Session { return n.session }
+func (n *Node[H]) Session() *session.Session {
+	return n.session
+}
 
 // CWD returns the node's working directory.
-func (n *Node[H]) CWD() string { return n.runtime.access.Context.CWD }
+func (n *Node[H]) CWD() string {
+	return n.runtime.access.Context.CWD
+}
 
 // Commands returns the immutable command set the node's shell offers: the
 // product's commands with the runtime groups grafted. The backend dispatches
 // the node's rpc calls through this set.
-func (n *Node[H]) Commands() *host.CommandSet { return n.runtime.access.Commands }
+func (n *Node[H]) Commands() *host.CommandSet {
+	return n.runtime.access.Commands
+}
 
 // JobCaller binds a job started now to this node and its current generation.
 func (n *Node[H]) JobCaller() host.JobCaller {
@@ -105,13 +113,19 @@ func (r *nodeRuntime[H]) ReserveEdit(ctx context.Context) (*gates.Reservation, e
 }
 
 // SystemPrompt returns the instructions assembled with the node commands.
-func (r *nodeRuntime[H]) SystemPrompt(context.Context) (string, error) { return r.prompt, nil }
+func (r *nodeRuntime[H]) SystemPrompt(context.Context) (string, error) {
+	return r.prompt, nil
+}
 
 // Preamble returns the node role added to its user messages.
-func (r *nodeRuntime[H]) Preamble(context.Context) (*string, error) { return r.preamble, nil }
+func (r *nodeRuntime[H]) Preamble(context.Context) (*string, error) {
+	return r.preamble, nil
+}
 
 // Tools returns the tools available to the node model.
-func (r *nodeRuntime[H]) Tools() []provider.ToolDefinition { return tools.Definitions() }
+func (r *nodeRuntime[H]) Tools() []provider.ToolDefinition {
+	return tools.Definitions()
+}
 
 // InvokeTool runs a tool through the node shell access.
 func (r *nodeRuntime[H]) InvokeTool(ctx context.Context, call session.ToolInvocation) (session.ToolOutcome, error) {

@@ -107,7 +107,9 @@ func (c *conversation) Changed() <-chan struct{} {
 }
 
 // Released returns the conversation release notification.
-func (c *conversation) Released() <-chan struct{} { return c.released.Done() }
+func (c *conversation) Released() <-chan struct{} {
+	return c.released.Done()
+}
 
 func (c *conversation) ask(ctx context.Context, request browserRequest) (browserAnswer, error) {
 	request.reply = make(chan browserAnswer, 1)

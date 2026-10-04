@@ -46,7 +46,9 @@ type ActionAnswer struct{ result *actionResult }
 
 // Wait waits for the action's result. An action failure returns *ReportError;
 // a cancelled wait returns the context error. Multiple waiters share the result.
-func (a *ActionAnswer) Wait(ctx context.Context) (ActionEnd, error) { return a.wait(ctx) }
+func (a *ActionAnswer) Wait(ctx context.Context) (ActionEnd, error) {
+	return a.wait(ctx)
+}
 
 // Event is a change reported once complete, in commit order outside the state
 // lock. Its data remains immutable for every listener.
@@ -107,7 +109,11 @@ type Subscription struct {
 
 // Release ends the subscription, idempotently. It does not join a callback
 // already being delivered and is safe to call from that callback.
-func (s *Subscription) Release() { s.session.mutate(func(c *coreState) { delete(c.listeners, s.id) }) }
+func (s *Subscription) Release() {
+	s.session.mutate(func(c *coreState) {
+		delete(c.listeners, s.id)
+	})
+}
 
 // Settle says whether the session will do anything more by itself.
 type Settle uint8
@@ -134,4 +140,6 @@ type Status struct {
 
 // Changed closes after a newer status is published. Notifications may coalesce.
 // The snapshot and its notification are captured together, so no wake is lost.
-func (s Status) Changed() <-chan struct{} { return s.changed }
+func (s Status) Changed() <-chan struct{} {
+	return s.changed
+}

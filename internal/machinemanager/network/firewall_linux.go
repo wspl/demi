@@ -35,7 +35,9 @@ func applyFirewall(ctx context.Context, build func(*firewallBatch) error) error 
 		return err
 	}
 	// This descriptor is read-only and only pins the namespace until Flush returns.
-	defer func() { _ = namespace.Close() }()
+	defer func() {
+		_ = namespace.Close()
+	}()
 	conn, err := nftables.New(nftables.WithNetNSFd(int(namespace)))
 	if err != nil {
 		return firewallFailed(err)

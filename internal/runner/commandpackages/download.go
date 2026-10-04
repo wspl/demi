@@ -34,7 +34,9 @@ func (c *ArtifactCache) fetch(
 			err = artifacts.Copy(ctx, input, digestOf(artifact), measured)
 			return artifactError(errors.Join(err, input.Close()))
 		}
-		expired := func() bool { return source.ExpiresAt != nil && !source.ExpiresAt.After(time.Now()) }
+		expired := func() bool {
+			return source.ExpiresAt != nil && !source.ExpiresAt.After(time.Now())
+		}
 		if expired() {
 			if refreshed {
 				return &RuntimeError{Kind: LocationFailure, Detail: "the backend returned an expired URL"}

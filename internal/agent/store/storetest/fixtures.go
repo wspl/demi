@@ -33,7 +33,9 @@ func ModelReading(provider, model string, extensions []types.FileExtension) type
 }
 
 // TestModel selects test-model from provider stub.
-func TestModel() types.ModelSelection { return ModelOf("stub", "test-model") }
+func TestModel() types.ModelSelection {
+	return ModelOf("stub", "test-model")
+}
 
 // Text is a message's content of one text.
 func Text(text string) []types.UserContentBlock {

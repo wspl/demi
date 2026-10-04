@@ -114,7 +114,9 @@ func codexURL(base *url.URL, path string) *url.URL {
 }
 
 // Capabilities reports that Codex does not require a process Host.
-func (*Provider) Capabilities() provider.Capabilities { return provider.Capabilities{} }
+func (*Provider) Capabilities() provider.Capabilities {
+	return provider.Capabilities{}
+}
 
 // AuthStatus reads the stored sign-in without refreshing it.
 func (p *Provider) AuthStatus(ctx context.Context) types.AuthState {
@@ -138,10 +140,14 @@ func (*Provider) ReadFailure(d *types.ProviderErrorDiagnostics, now types.Timest
 }
 
 // Quota returns the account's quota source and snapshots.
-func (p *Provider) Quota() *provider.Quota { return p.quota }
+func (p *Provider) Quota() *provider.Quota {
+	return p.quota
+}
 
 // Accounts returns the entry's shared account operations.
-func (p *Provider) Accounts() provider.SubscriptionAccounts { return p.accounts }
+func (p *Provider) Accounts() provider.SubscriptionAccounts {
+	return p.accounts
+}
 
 // Runtime builds an independent session runtime.
 func (p *Provider) Runtime(env provider.RuntimeEnv) (provider.Runtime, error) {
@@ -154,10 +160,14 @@ type session struct {
 }
 
 // Fresh returns an independent runtime for another session.
-func (s *session) Fresh() provider.Runtime { return &session{p: s.p, http: s.http} }
+func (s *session) Fresh() provider.Runtime {
+	return &session{p: s.p, http: s.http}
+}
 
 // Close releases the runtime resources.
-func (*session) Close(context.Context) error { return nil }
+func (*session) Close(context.Context) error {
+	return nil
+}
 
 // RequestLimits returns the request limits for the model.
 func (*session) RequestLimits(types.Model) provider.RequestLimits {

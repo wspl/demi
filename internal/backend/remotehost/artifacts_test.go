@@ -98,7 +98,9 @@ func rpcCommands(t *testing.T, name, summary string) *host.CommandSet {
 					Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 				},
 				host.RPCHandlerFunc(
-					func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 0, nil },
+					func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
+						return 0, nil
+					},
 				),
 			),
 		),

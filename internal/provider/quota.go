@@ -83,10 +83,14 @@ func NewQuota(source QuotaSource, store QuotaSnapshotStore, clock types.Clock) *
 }
 
 // Latest reads the kept snapshot without probing.
-func (q *Quota) Latest() *types.QuotaSnapshot { return q.store.Latest() }
+func (q *Quota) Latest() *types.QuotaSnapshot {
+	return q.store.Latest()
+}
 
 // ProbeCost reports the probe cost; ok is false when the family cannot probe.
-func (q *Quota) ProbeCost() (ProbeCost, bool) { return q.source.ProbeCost() }
+func (q *Quota) ProbeCost() (ProbeCost, bool) {
+	return q.source.ProbeCost()
+}
 
 // Probe reads a free usage endpoint and merges its plan, label and windows.
 func (q *Quota) Probe(ctx context.Context) (*types.QuotaSnapshot, error) {

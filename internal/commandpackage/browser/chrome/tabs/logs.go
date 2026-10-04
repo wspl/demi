@@ -45,7 +45,9 @@ func observeConsole(tab *Tab) (*Console, error) {
 		"logs",
 		browserproto.ConsoleEntries,
 		browserproto.ConsoleBytes,
-		func(entry browserproto.LogEntry) uint64 { return entry.Sequence },
+		func(entry browserproto.LogEntry) uint64 {
+			return entry.Sequence
+		},
 		func(entry browserproto.LogEntry, sequence uint64) browserproto.LogEntry {
 			entry.Sequence = sequence
 			return entry

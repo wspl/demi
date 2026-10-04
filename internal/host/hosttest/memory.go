@@ -98,7 +98,9 @@ func (p *MemoryPort) FeedLive(chunk []byte) {
 }
 
 // Port returns the handler's port over this memory transport.
-func (p *MemoryPort) Port() host.RPCPort { return host.NewRPCPort(p) }
+func (p *MemoryPort) Port() host.RPCPort {
+	return host.NewRPCPort(p)
+}
 
 // Stdout returns a copy of captured stdout.
 func (p *MemoryPort) Stdout() []byte {

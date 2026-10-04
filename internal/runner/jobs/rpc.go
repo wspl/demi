@@ -48,7 +48,9 @@ func runningHint(ctx context.Context, h *Connection, job string, hint *string) (
 		return func() {}, nil
 	}
 	id := executionID()
-	clearHint := func() { h.retire(&runnerproto.JobRunningHint{JobID: job, InvocationID: id}) }
+	clearHint := func() {
+		h.retire(&runnerproto.JobRunningHint{JobID: job, InvocationID: id})
+	}
 	if err := h.send(ctx, &runnerproto.JobRunningHint{JobID: job, InvocationID: id, Hint: hint}); err != nil {
 		clearHint()
 		return nil, err
@@ -175,7 +177,9 @@ func rpcDownload(
 		return err
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
-	defer func() { _ = body.Close() }()
+	defer func() {
+		_ = body.Close()
+	}()
 	buffer := make([]byte, 65536)
 	for {
 		n, err := body.Read(buffer)

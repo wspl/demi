@@ -29,7 +29,9 @@ func TestUserStreamCloseDistinguishesReleaseFromRevocation(t *testing.T) {
 			output, reader := testPipe(t)
 			stream := &hostaccess.UserStream{ToHost: input, FromHost: reader, Lease: lease}
 			defer input.Fail("test ended")
-			defer func() { _ = reader.Close(context.Background()) }()
+			defer func() {
+				_ = reader.Close(context.Background())
+			}()
 			output.End()
 			// Force release before the edge can read EOF; no scheduler race is needed.
 			lease.Release()
@@ -44,7 +46,9 @@ func TestUserStreamCloseDistinguishesReleaseFromRevocation(t *testing.T) {
 					t.Error(err)
 					return
 				}
-				defer func() { _ = socket.CloseNow() }()
+				defer func() {
+					_ = socket.CloseNow()
+				}()
 				relayUserStream(r.Context(), socket, stream, nil, time.Second)
 			}))
 			defer server.Close()

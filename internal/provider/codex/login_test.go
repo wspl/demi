@@ -19,7 +19,9 @@ import (
 func TestDeviceLogin(t *testing.T) {
 	v := providertest.StartVendor(t)
 	pool := provider.NewMemoryCredentialPool()
-	p := configured(t, v, pool, func(c *codex.Config) { c.Account = nil })
+	p := configured(t, v, pool, func(c *codex.Config) {
+		c.Account = nil
+	})
 	v.Respond(answer(200, `{"device_auth_id":"dev_auth_1","user_code":"WXYZ-9876","interval":"0"}`))
 	v.Respond(answer(403, `{}`))
 	v.Respond(answer(200, `{"authorization_code":"authz_1","code_challenge":"challenge",`+
@@ -44,7 +46,9 @@ func TestDeviceLogin(t *testing.T) {
 	v.Respond(answer(200, string(data)))
 	equal(t, p.Accounts().Capability(), provider.AccountsCapability{Login: true})
 	var shown []types.LoginPending
-	info, err := p.Accounts().Login(t.Context(), func(pending types.LoginPending) { shown = append(shown, pending) })
+	info, err := p.Accounts().Login(t.Context(), func(pending types.LoginPending) {
+		shown = append(shown, pending)
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +104,9 @@ func TestDeviceLogin(t *testing.T) {
 func TestDeviceCodeMissingAndUnavailable(t *testing.T) {
 	v := providertest.StartVendor(t)
 	pool := provider.NewMemoryCredentialPool()
-	p := configured(t, v, pool, func(c *codex.Config) { c.Account = nil })
+	p := configured(t, v, pool, func(c *codex.Config) {
+		c.Account = nil
+	})
 	v.Respond(answer(200, `{"device_auth_id":"dev_auth_1"}`))
 	v.Respond(answer(404, `{}`))
 	for _, test := range []struct {
@@ -110,7 +116,9 @@ func TestDeviceCodeMissingAndUnavailable(t *testing.T) {
 	}, {
 		"Device-code login is not enabled for this Codex account",
 	}} {
-		_, err := p.Accounts().Login(t.Context(), func(types.LoginPending) { t.Error("unexpected code") })
+		_, err := p.Accounts().Login(t.Context(), func(types.LoginPending) {
+			t.Error("unexpected code")
+		})
 		if err == nil {
 			t.Fatal("login succeeded")
 		}
@@ -158,7 +166,9 @@ func TestDeviceLoginLifetime(t *testing.T) {
 func TestCancelDeviceLogin(t *testing.T) {
 	v := providertest.StartVendor(t)
 	pool := provider.NewMemoryCredentialPool()
-	p := configured(t, v, pool, func(c *codex.Config) { c.Account = nil })
+	p := configured(t, v, pool, func(c *codex.Config) {
+		c.Account = nil
+	})
 	v.Respond(answer(200, `{"device_auth_id":"dev_auth_1","usercode":"CODE-1","interval":5}`))
 	v.Respond(answer(403, `{}`))
 	ctx, cancel := context.WithCancel(t.Context())

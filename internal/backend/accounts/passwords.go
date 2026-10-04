@@ -188,7 +188,9 @@ func parsePHC(text string) (phc, error) {
 }
 
 // String keeps the dummy password hash out of diagnostics.
-func (*PasswordHasher) String() string { return "PasswordHasher(..)" }
+func (*PasswordHasher) String() string {
+	return "PasswordHasher(..)"
+}
 
 func (p *phc) parseParameters(text string) error {
 	seen := make(map[string]bool)

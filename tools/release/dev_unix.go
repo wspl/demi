@@ -77,7 +77,9 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, echo.close(context.WithoutCancel(ctx))) }()
+	defer func() {
+		err = errors.Join(err, echo.close(context.WithoutCancel(ctx)))
+	}()
 	managerCmd := exec.Command(
 		filepath.Join(programs, "scripted-machines"),
 		"--artifacts",
@@ -90,7 +92,9 @@ func (a *application) serveDev(ctx context.Context, o devOptions, root, programs
 	if err != nil {
 		return err
 	}
-	defer func() { _ = input.Close() }() // Idempotent shutdown after the manager's input is closed below.
+	defer func() {
+		_ = input.Close()
+	}() // Idempotent shutdown after the manager's input is closed below.
 	output, err := managerCmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -176,7 +180,9 @@ func (a *application) serveDevBackend(
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, backend.stop(context.Background(), true, 10*time.Second)) }()
+	defer func() {
+		err = errors.Join(err, backend.stop(context.Background(), true, 10*time.Second))
+	}()
 	client, err := devClient()
 	if err != nil {
 		return err

@@ -44,7 +44,9 @@ func bindListener(ctx context.Context) (*Listener, error) {
 		if err != nil {
 			return nil, err
 		}
-		defer func() { _ = windows.CloseHandle(event) }() // The event is private to this completed accept.
+		defer func() {
+			_ = windows.CloseHandle(event)
+		}() // The event is private to this completed accept.
 		overlapped := windows.Overlapped{HEvent: event}
 		err = connectNamedPipe(ctx, current, &overlapped)
 		if err != nil {
@@ -70,8 +72,13 @@ func bindListener(ctx context.Context) (*Listener, error) {
 // cmdsdk.PipeConn requires distinct input/output ownership; this is one handle.
 type acceptedPipe struct{ *os.File }
 
-func (*acceptedPipe) LocalAddr() net.Addr  { return &net.UnixAddr{Name: "local", Net: "pipe"} }
-func (*acceptedPipe) RemoteAddr() net.Addr { return &net.UnixAddr{Name: "peer", Net: "pipe"} }
+func (*acceptedPipe) LocalAddr() net.Addr {
+	return &net.UnixAddr{Name: "local", Net: "pipe"}
+}
+
+func (*acceptedPipe) RemoteAddr() net.Addr {
+	return &net.UnixAddr{Name: "peer", Net: "pipe"}
+}
 
 func createNamedPipe(name *uint16, first bool) (windows.Handle, error) {
 	flags := uint32(windows.PIPE_ACCESS_DUPLEX | windows.FILE_FLAG_OVERLAPPED)

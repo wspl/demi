@@ -259,4 +259,6 @@ func recentUse(now, used types.Timestamp, grace time.Duration) bool {
 }
 
 // prefix locates this user's objects without sharing another user's namespace.
-func (n *Namespace) prefix() string { return "blobs/" + string(n.user) + "/" }
+func (n *Namespace) prefix() string {
+	return "blobs/" + string(n.user) + "/"
+}

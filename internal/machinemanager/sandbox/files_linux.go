@@ -184,7 +184,9 @@ func createCredential(ctx context.Context, path string, data []byte, mode os.Fil
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, file.Close()) }()
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
 	if _, err := file.Write(data); err != nil {
 		return err
 	}

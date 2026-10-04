@@ -60,7 +60,9 @@ func BindSocket(ctx context.Context, path string) (*Socket, error) {
 type InFlight struct{ requests sync.WaitGroup }
 
 // Wait joins every request. Cancellation does not cut an operation short.
-func (f *InFlight) Wait(_ context.Context) { f.requests.Wait() }
+func (f *InFlight) Wait(_ context.Context) {
+	f.requests.Wait()
+}
 
 type connection struct {
 	socket *net.UnixConn
@@ -85,7 +87,9 @@ func Serve(ctx context.Context, socket *Socket, service Service, deaths <-chan m
 		// Closing stops accept and removes the socket; no buffered data is held.
 		_ = socket.listener.Close()
 	})
-	owned.Go(func() { broadcastDeaths(ctx, done, deaths, &mu, clients, flight) })
+	owned.Go(func() {
+		broadcastDeaths(ctx, done, deaths, &mu, clients, flight)
+	})
 	var connections sync.WaitGroup
 	for ctx.Err() == nil {
 		conn, err := socket.listener.AcceptUnix()
@@ -209,7 +213,9 @@ func broadcastDeaths(
 			}
 			mu.Unlock()
 			for _, c := range snapshot {
-				flight.requests.Go(func() { c.send(c.ctx, line) })
+				flight.requests.Go(func() {
+					c.send(c.ctx, line)
+				})
 			}
 		}
 	}

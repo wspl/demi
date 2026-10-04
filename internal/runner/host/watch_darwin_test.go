@@ -14,7 +14,9 @@ func TestFSEventsIgnoresReadsAndReleasesNativeStream(t *testing.T) {
 	}
 	before := activeStreams.Load()
 	events := make(chan WatchEvent, 1024)
-	watch, err := StartWatch(t.Context(), []string{root}, func(event WatchEvent) { events <- event })
+	watch, err := StartWatch(t.Context(), []string{root}, func(event WatchEvent) {
+		events <- event
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

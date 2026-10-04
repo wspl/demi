@@ -225,7 +225,9 @@ func (l *Link) RunningJobs() uint64 {
 
 // Sync waits for the runner's synchronization reply.
 func (l *Link) Sync(ctx context.Context) error {
-	_, err := l.call(ctx, "Sync", func(id string) runnerproto.Inbound { return &runnerproto.Sync{ID: id} })
+	_, err := l.call(ctx, "Sync", func(id string) runnerproto.Inbound {
+		return &runnerproto.Sync{ID: id}
+	})
 	return err
 }
 

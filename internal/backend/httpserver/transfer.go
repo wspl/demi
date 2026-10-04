@@ -43,7 +43,9 @@ func (s *bodyStream) Read(ctx context.Context, p []byte) (int, error) {
 }
 
 // Close releases the request body.
-func (s *bodyStream) Close(context.Context) error { return s.body.Close() }
+func (s *bodyStream) Close(context.Context) error {
+	return s.body.Close()
+}
 
 // copyUpload paces reads by the Host's acceptance, timing only one side at a
 // time. Failure leaves the Host's atomic upload uncommitted.
@@ -55,7 +57,9 @@ func copyUpload(
 ) error {
 	defer writer.Fail("the upload was cut short")
 	buffer := make([]byte, 64*1024)
-	changed := func() error { return apiFailure(409, "conversation_busy", "The conversation changed under the upload") }
+	changed := func() error {
+		return apiFailure(409, "conversation_busy", "The conversation changed under the upload")
+	}
 	for {
 		if ctx.Err() != nil {
 			return changed()
@@ -148,7 +152,9 @@ func serveDownload(
 ) error {
 	defer lease.Release()
 	// The copy reports IO failures; closing the source only releases resources.
-	defer func() { _ = body.Close(context.WithoutCancel(ctx)) }()
+	defer func() {
+		_ = body.Close(context.WithoutCancel(ctx))
+	}()
 	copying, cancel := context.WithCancel(lease.Context())
 	defer cancel()
 	ended := make(chan struct{})

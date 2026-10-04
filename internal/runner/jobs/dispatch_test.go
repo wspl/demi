@@ -40,7 +40,9 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	pipes, err := process.NewPipeClient(backend, func() (runnerproto.DeviceToken, bool) { return "", false })
+	pipes, err := process.NewPipeClient(backend, func() (runnerproto.DeviceToken, bool) {
+		return "", false
+	})
 	if err != nil {
 		t.Fatal(err)
 	}

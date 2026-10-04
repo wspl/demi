@@ -72,7 +72,9 @@ type targetHandler struct {
 }
 
 // Enabled admits records so Handle can apply target and field filters.
-func (*targetHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (*targetHandler) Enabled(context.Context, slog.Level) bool {
+	return true
+}
 
 // Handle filters a record using its target and fields before forwarding it.
 func (h *targetHandler) Handle(ctx context.Context, record slog.Record) error {

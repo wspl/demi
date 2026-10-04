@@ -23,7 +23,9 @@ func Capacity(ctx context.Context, image string) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer func() { _ = file.Close() }() // Read-only superblock descriptor.
+	defer func() {
+		_ = file.Close()
+	}() // Read-only superblock descriptor.
 	var block [1024]byte
 	if _, err := file.ReadAt(block[:], 1024); err != nil {
 		return 0, err

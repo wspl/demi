@@ -8,7 +8,9 @@ import (
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func TestResultReaders(t *testing.T) {
 	result := "status: running\ncommandId: 17\noutput:\nline\nprompt\n[... 10 bytes not shown so " +

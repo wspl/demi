@@ -31,14 +31,18 @@ func pipeServer(t *testing.T, client *PipeClient, handler func(*http.Request, ne
 		go func() {
 			defer workers.Done()
 			// Cleanup follows the operation result; cancellation may already have closed it.
-			defer func() { _ = remote.Close() }()
+			defer func() {
+				_ = remote.Close()
+			}()
 			request, err := http.ReadRequest(bufio.NewReader(remote))
 			if err != nil {
 				t.Errorf("read request: %v", err)
 				return
 			}
 			// Cleanup follows the operation result; cancellation may already have closed it.
-			defer func() { _ = request.Body.Close() }()
+			defer func() {
+				_ = request.Body.Close()
+			}()
 			handler(request, remote)
 		}()
 		return local, nil
@@ -57,7 +61,9 @@ func testPipeClient(t *testing.T, timeout time.Duration) *PipeClient {
 	}
 	client, err := NewPipeClientWithConnectTimeout(
 		origin,
-		func() (runnerproto.DeviceToken, bool) { return runnerproto.DeviceToken("test-token"), true },
+		func() (runnerproto.DeviceToken, bool) {
+			return runnerproto.DeviceToken("test-token"), true
+		},
 		timeout,
 	)
 	if err != nil {
@@ -121,7 +127,9 @@ func TestPipeQuietIOOutlivesConnectDeadline(t *testing.T) {
 		go func() {
 			defer close(sent)
 			// Cleanup follows the operation result; cancellation may already have closed it.
-			defer func() { _ = writer.Close() }()
+			defer func() {
+				_ = writer.Close()
+			}()
 			if _, err := writer.Write([]byte("first")); err != nil {
 				t.Error(err)
 				return
@@ -267,7 +275,9 @@ func TestPipeRetriesOnlyUnreadUploads(t *testing.T) {
 
 type failedUpload struct{}
 
-func (failedUpload) Read([]byte) (int, error) { return 0, commandsdk.Exhaustion() }
+func (failedUpload) Read([]byte) (int, error) {
+	return 0, commandsdk.Exhaustion()
+}
 
 func TestPipeEarlyRefusalInterruptsUpload(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
@@ -277,7 +287,9 @@ func TestPipeEarlyRefusalInterruptsUpload(t *testing.T) {
 		})
 		defer finish()
 		reader, writer := io.Pipe()
-		defer func() { _ = writer.Close() }()
+		defer func() {
+			_ = writer.Close()
+		}()
 		err := client.Put(t.Context(), "/pipe", reader)
 		if err == nil || err.Error() != "pipe refused (403 Forbidden): refused" {
 			t.Fatalf("early response: %v", err)

@@ -63,7 +63,9 @@ func applyPatch(ctx context.Context, cwd, diff string, recording *commandsdk.Rec
 	}
 	changes = slices.DeleteFunc(
 		changes,
-		func(c change) bool { return (c.before == nil) == (c.after == nil) && bytes.Equal(c.before, c.after) },
+		func(c change) bool {
+			return (c.before == nil) == (c.after == nil) && bytes.Equal(c.before, c.after)
+		},
 	)
 	if recording != nil {
 		for _, change := range changes {
@@ -132,7 +134,9 @@ func (e *rollbackError) Error() string {
 
 // Unwrap exposes only rollback failures: a failed rollback is a command failure
 // even if cancellation triggered it.
-func (e *rollbackError) Unwrap() []error { return e.failures }
+func (e *rollbackError) Unwrap() []error {
+	return e.failures
+}
 
 func applyHunks(ctx context.Context, original string, hunks []hunk) (string, error) {
 	lines := strings.SplitAfter(original, "\n")
@@ -251,8 +255,12 @@ func patchPathKey(path string) string {
 	if len(rest) > 0 && os.IsPathSeparator(rest[0]) {
 		prefix += "/"
 	}
-	components := strings.FieldsFunc(rest, func(r rune) bool { return r < 128 && os.IsPathSeparator(uint8(r)) })
-	components = slices.DeleteFunc(components, func(component string) bool { return component == "." })
+	components := strings.FieldsFunc(rest, func(r rune) bool {
+		return r < 128 && os.IsPathSeparator(uint8(r))
+	})
+	components = slices.DeleteFunc(components, func(component string) bool {
+		return component == "."
+	})
 	return prefix + strings.Join(components, "/")
 }
 

@@ -24,7 +24,9 @@ func (s *Session) admit(kind actionKind, content []types.UserContentBlock, id ty
 			}
 			if duplicate {
 				answer = newAction()
-				c.effects = append(c.effects, func() { answer.finish(Duplicate, nil) })
+				c.effects = append(c.effects, func() {
+					answer.finish(Duplicate, nil)
+				})
 				return
 			}
 		} else {
@@ -136,7 +138,9 @@ func (s *Session) writeInputsLocked(take inputSelection) bool {
 
 func (s *Session) writeInputs(ctx context.Context) error {
 	agents := false
-	s.mutate(func(_ *coreState) { agents = s.writeInputsLocked(allInputs) })
+	s.mutate(func(_ *coreState) {
+		agents = s.writeInputsLocked(allInputs)
+	})
 	if agents {
 		return s.Flush(ctx)
 	}

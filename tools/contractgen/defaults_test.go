@@ -37,7 +37,9 @@ func TestDefaultFields(t *testing.T) {
 		t.Run(format, func(t *testing.T) {
 			decode := presence.DecodeDefaults
 			encode := contract.EncodeJSON
-			wire := func(input string) []byte { return []byte(input) }
+			wire := func(input string) []byte {
+				return []byte(input)
+			}
 			if format == "MessagePack" {
 				decode = presence.DecodeDefaultsMsgpack
 				encode = contract.EncodeMsgpack

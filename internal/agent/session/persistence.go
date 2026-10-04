@@ -131,7 +131,9 @@ func (s *Session) rewrite(ctx context.Context, blocks []types.Block, revision ui
 	if err = s.deps.Store.Save(context.WithoutCancel(ctx), update, store.CommitGuard{}); err != nil {
 		return err
 	}
-	s.mutate(func(_ *coreState) { s.adoptLocked(blocks, commands) })
+	s.mutate(func(_ *coreState) {
+		s.adoptLocked(blocks, commands)
+	})
 	return nil
 }
 

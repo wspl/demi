@@ -58,7 +58,9 @@ func (g *generator) variants(name string) []*definition {
 		}
 	}
 	if g.defs[name].marks["union"] == "untagged" {
-		sort.SliceStable(out, func(i, j int) bool { return out[i].typ.Obj().Pos() < out[j].typ.Obj().Pos() })
+		sort.SliceStable(out, func(i, j int) bool {
+			return out[i].typ.Obj().Pos() < out[j].typ.Obj().Pos()
+		})
 	}
 	return out
 }

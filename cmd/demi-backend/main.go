@@ -9,4 +9,6 @@ import (
 	"github.com/wspl/demi/internal/version"
 )
 
-func main() { os.Exit(backend.Main(context.Background(), version.Release)) }
+func main() {
+	os.Exit(backend.Main(context.Background(), version.Release))
+}

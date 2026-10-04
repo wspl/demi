@@ -29,7 +29,9 @@ func StoreContract(t *testing.T, newStore func(t *testing.T) store.Tree) {
 		{"children_list_in_spawn_order_and_a_close_keeps_its_result", spawnOrder},
 	}
 	for _, scenario := range cases {
-		t.Run(scenario.name, func(t *testing.T) { scenario.run(t.Context(), contractTree{t: t, store: newStore(t)}) })
+		t.Run(scenario.name, func(t *testing.T) {
+			scenario.run(t.Context(), contractTree{t: t, store: newStore(t)})
+		})
 	}
 }
 

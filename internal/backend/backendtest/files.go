@@ -22,10 +22,14 @@ type CommandProbe struct {
 }
 
 // Manifest returns the scenario's declarations.
-func (p *CommandProbe) Manifest() plugin.Manifest { return p.Declaration }
+func (p *CommandProbe) Manifest() plugin.Manifest {
+	return p.Declaration
+}
 
 // Instance creates the stateless command printer.
-func (*CommandProbe) Instance() plugin.Plugin { return commandPrinter{} }
+func (*CommandProbe) Instance() plugin.Plugin {
+	return commandPrinter{}
+}
 
 type commandPrinter struct{}
 
@@ -68,7 +72,9 @@ func WaitFile(ctx context.Context, path string, ready func([]byte) bool) (err er
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, watcher.Close()) }()
+	defer func() {
+		err = errors.Join(err, watcher.Close())
+	}()
 	if err = watcher.Add(filepath.Dir(path)); err != nil {
 		return err
 	}

@@ -67,7 +67,9 @@ func runnerShell(
 	pages := hosttest.NewPages(false)
 	options := remotehost.NewEnvironmentOptions(
 		f.Host(),
-		func(context.Context) (commandproto.Context, error) { return hosttest.CommandContext(), nil },
+		func(context.Context) (commandproto.Context, error) {
+			return hosttest.CommandContext(), nil
+		},
 		pages,
 		&hosttest.CountingNumbers{},
 	)
@@ -175,7 +177,10 @@ type wireTap struct {
 	seen  []runnerproto.Outbound
 }
 
-func newWireTap() *wireTap { return &wireTap{input: make(chan runnerproto.Outbound, 1<<16)} }
+func newWireTap() *wireTap {
+	return &wireTap{input: make(chan runnerproto.Outbound, 1<<16)}
+}
+
 func (tap *wireTap) find(t *testing.T, match func(runnerproto.Outbound) bool) runnerproto.Outbound {
 	t.Helper()
 	for _, message := range tap.seen {
@@ -210,7 +215,9 @@ func TestRunnerPassesHostConformanceOverWire(t *testing.T) {
 	root := filepath.Join(f.Home(), "conformance")
 	requirePipe(t, os.Mkdir(root, 0o700))
 	for _, scenario := range hosttest.ConformanceCases(f.HostAt(root), root, "/usr/bin:/bin") {
-		t.Run(scenario.Name, func(t *testing.T) { requirePipe(t, scenario.Run(t.Context())) })
+		t.Run(scenario.Name, func(t *testing.T) {
+			requirePipe(t, scenario.Run(t.Context()))
+		})
 	}
 	if !f.Host().Online() {
 		t.Fatal("runner disconnected")

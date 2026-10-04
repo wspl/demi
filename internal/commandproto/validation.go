@@ -15,7 +15,9 @@ import (
 )
 
 // validateInvocation checks process inputs that require domain rules.
-func validateInvocation(v Invocation) error { return validateProcessInputs(v.Args, v.Cwd, v.Env) }
+func validateInvocation(v Invocation) error {
+	return validateProcessInputs(v.Args, v.Cwd, v.Env)
+}
 
 func validateLocalInvocation(v LocalInvocation) error {
 	return validateProcessInputs(v.Args, v.Cwd, v.Env)
@@ -117,8 +119,15 @@ func validateArchiveEntry(entry string) error {
 	}
 	return nil
 }
-func validateResourceArtifact(v ResourceArtifact) error { return validateArchiveEntry(v.Entry) }
-func validateArtifactArchive(v ArtifactArchive) error   { return validateArchiveEntry(v.Entry) }
+
+func validateResourceArtifact(v ResourceArtifact) error {
+	return validateArchiveEntry(v.Entry)
+}
+
+func validateArtifactArchive(v ArtifactArchive) error {
+	return validateArchiveEntry(v.Entry)
+}
+
 func validatePackageResource(v PackageResource) error {
 	if len(v.Targets) == 0 {
 		return errors.New("resource requires at least one target")
@@ -149,7 +158,10 @@ func validatePackageDescriptor(v PackageDescriptor) error {
 	}
 	return nil
 }
-func validateServiceInfo(v ServiceInfo) error { return validateOperations(v.Operations) }
+
+func validateServiceInfo(v ServiceInfo) error {
+	return validateOperations(v.Operations)
+}
 
 // validateOperations checks a service catalog for empty or repeated operation IDs.
 func validateOperations(operations []string) error {

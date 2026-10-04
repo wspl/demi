@@ -64,6 +64,8 @@ func AnswerNumbers(ctx context.Context, client *commandsdk.Client) error {
 	var c counters
 	return s.AnswerNumbers(
 		ctx,
-		func(_ context.Context, q commandproto.NumbersRequest) (uint64, error) { return c.take(q), nil },
+		func(_ context.Context, q commandproto.NumbersRequest) (uint64, error) {
+			return c.take(q), nil
+		},
 	)
 }

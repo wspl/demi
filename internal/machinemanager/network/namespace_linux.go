@@ -13,7 +13,9 @@ import (
 )
 
 // namespacePath names the bind that keeps a Cloud slot's namespace alive.
-func namespacePath(slot Slot) string { return filepath.Join("/run/netns", slot.Namespace()) }
+func namespacePath(slot Slot) string {
+	return filepath.Join("/run/netns", slot.Namespace())
+}
 
 // createNamespace binds a new Cloud namespace into the caller's mount namespace.
 func createNamespace(ctx context.Context, path string) error {
@@ -22,13 +24,17 @@ func createNamespace(ctx context.Context, path string) error {
 		return err
 	}
 	// Read-only namespace descriptors have no buffered writes to report.
-	defer func() { _ = mounts.Close() }()
+	defer func() {
+		_ = mounts.Close()
+	}()
 	_, err = system.RunNamespace(ctx, system.NewNetwork(), func(ctx context.Context) (struct{}, error) {
 		network, err := os.Open("/proc/thread-self/ns/net")
 		if err != nil {
 			return struct{}{}, err
 		}
-		defer func() { _ = network.Close() }()
+		defer func() {
+			_ = network.Close()
+		}()
 		return system.RunNamespace(ctx, system.Mount(mounts), func(ctx context.Context) (struct{}, error) {
 			if err := os.MkdirAll(filepath.Dir(path), 0o777); err != nil {
 				return struct{}{}, err

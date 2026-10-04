@@ -40,7 +40,9 @@ func TestCaptureReplacementAndCloseOwnership(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { _ = socket.CloseNow() })
+		t.Cleanup(func() {
+			_ = socket.CloseNow()
+		})
 		return socket
 	}
 	read := func(socket *websocket.Conn) browserproto.CaptureCommand {

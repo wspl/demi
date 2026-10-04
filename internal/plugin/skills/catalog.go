@@ -26,7 +26,9 @@ type catalogEntry struct{ name, description, location string }
 // renderCatalog shares the character budget equally among descriptions.
 func renderCatalog(entries []catalogEntry) string {
 	entries = slices.Clone(entries)
-	slices.SortStableFunc(entries, func(a, b catalogEntry) int { return strings.Compare(a.name, b.name) })
+	slices.SortStableFunc(entries, func(a, b catalogEntry) int {
+		return strings.Compare(a.name, b.name)
+	})
 	longest := 0
 	for _, entry := range entries {
 		longest = max(longest, utf8.RuneCountInString(entry.description))

@@ -53,7 +53,9 @@ func run(ctx context.Context, invocation host.RPCInvocation, port plugin.Port) (
 type refusal string
 
 // Error returns the refusal's text.
-func (r refusal) Error() string { return string(r) }
+func (r refusal) Error() string {
+	return string(r)
+}
 
 func add(ctx context.Context, args AddArgs, jsonOutput bool, port plugin.Port) (string, error) {
 	hosts, err := port.ConversationHosts(ctx)

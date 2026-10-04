@@ -395,7 +395,9 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 		t.Fatalf("host refusal lost: %v", err)
 	}
 	failure := &host.PortError{Kind: host.PortFailed, Message: "relay failed"}
-	shard.remove = func(context.Context, webapiproto.ExposeID) error { return failure }
+	shard.remove = func(context.Context, webapiproto.ExposeID) error {
+		return failure
+	}
 	if err := userPort.RemoveExpose(ctx, "expose"); !errors.Is(err, failure) {
 		t.Fatalf("product error lost: %v", err)
 	}

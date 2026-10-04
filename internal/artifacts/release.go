@@ -52,7 +52,9 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(stage)) }()
+	defer func() {
+		err = errors.Join(err, os.RemoveAll(stage))
+	}()
 	directories := map[string]bool{stage: true}
 	for _, file := range files {
 		destination := artifactPath(stage, file.Path)
@@ -71,15 +73,8 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 	); err != nil {
 		return err
 	}
-	ordered := make([]string, 0, len(directories))
-	for d := range directories {
-		ordered = append(ordered, d)
-	}
-	sort.Slice(ordered, func(i, j int) bool { return len(ordered[i]) > len(ordered[j]) })
-	for _, d := range ordered {
-		if err := syncDirectory(ctx, d); err != nil {
-			return err
-		}
+	if err := syncDeepestFirst(ctx, directories); err != nil {
+		return err
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -94,6 +89,24 @@ func PublishRelease(ctx context.Context, directory string, record ReleaseRecord,
 	return syncDirectory(context.WithoutCancel(ctx), parent)
 }
 
+// syncDeepestFirst syncs each directory, the deepest first, so a directory
+// is synced after the entries it holds.
+func syncDeepestFirst(ctx context.Context, directories map[string]bool) error {
+	ordered := make([]string, 0, len(directories))
+	for d := range directories {
+		ordered = append(ordered, d)
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		return len(ordered[i]) > len(ordered[j])
+	})
+	for _, d := range ordered {
+		if err := syncDirectory(ctx, d); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func stageReleaseFile(ctx context.Context, file ReleaseFile, destination string) (err error) {
 	parent, _ := Parent(destination)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
@@ -103,14 +116,18 @@ func stageReleaseFile(ctx context.Context, file ReleaseFile, destination string)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = input.Close() }() // Read-only source.
+	defer func() {
+		_ = input.Close()
+	}() // Read-only source.
 	// The release directory is already private staging: individual files need
 	// no second temporary or directory sync before the whole stage is committed.
 	output, err := os.OpenFile(destination, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o666)
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, output.Close()) }()
+	defer func() {
+		err = errors.Join(err, output.Close())
+	}()
 	if err := Copy(ctx, input, file.Digest, output); err != nil {
 		return err
 	}

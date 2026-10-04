@@ -27,10 +27,14 @@ func (e *WireError) Error() string {
 }
 
 // Unwrap returns the underlying cause.
-func (e *WireError) Unwrap() error { return e.Err }
+func (e *WireError) Unwrap() error {
+	return e.Err
+}
 
 // Path returns the offending field path, or a dot for the payload itself.
-func (e *WireError) Path() string { return e.Field }
+func (e *WireError) Path() string {
+	return e.Field
+}
 
 // DecodeUntagged reads only declared vendor fields. Nonpointer fields are
 // required unless tagged wire:"optional". Unknown fields are ignored.
@@ -106,7 +110,9 @@ func (n *NonEmpty) UnmarshalJSON(data []byte) error {
 // decodeVendor validates presence, exact field names and scalar kinds without
 // imposing Demi's strict unknown-field rules on vendor objects.
 func decodeVendor(data []byte, target reflect.Value, path string) error {
-	fail := func(err error) error { return &WireError{Field: path, Err: err} }
+	fail := func(err error) error {
+		return &WireError{Field: path, Err: err}
+	}
 	if target.Kind() == reflect.Pointer {
 		if contract.IsNull(data) {
 			return nil
@@ -240,7 +246,9 @@ func canonicalVendorJSON(data []byte, depth int) (json.RawMessage, error) {
 }
 
 func decodeVendorStruct(data []byte, target reflect.Value, path string) error {
-	fail := func(err error) error { return &WireError{Field: path, Err: err} }
+	fail := func(err error) error {
+		return &WireError{Field: path, Err: err}
+	}
 	fields := make(map[string]json.RawMessage)
 	known := make(map[string]bool)
 	for i := 0; i < target.NumField(); i++ {
@@ -272,7 +280,9 @@ func decodeVendorStruct(data []byte, target reflect.Value, path string) error {
 }
 
 func decodeVendorSequence(data []byte, target reflect.Value, path string) error {
-	fail := func(err error) error { return &WireError{Field: path, Err: err} }
+	fail := func(err error) error {
+		return &WireError{Field: path, Err: err}
+	}
 	// RawMessage implements Unmarshaler and is handled above.
 	var values []json.RawMessage
 	if err := json.Unmarshal(data, &values); err != nil {

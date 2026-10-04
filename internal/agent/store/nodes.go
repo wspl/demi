@@ -98,10 +98,16 @@ func (*Aborted) closePhase()   {}
 func (*Failed) closePhase()    {}
 
 // JobPhase returns the completed phase.
-func (*Completed) JobPhase() conversationproto.JobPhase { return conversationproto.JobPhaseCompleted }
+func (*Completed) JobPhase() conversationproto.JobPhase {
+	return conversationproto.JobPhaseCompleted
+}
 
 // JobPhase returns the aborted phase.
-func (*Aborted) JobPhase() conversationproto.JobPhase { return conversationproto.JobPhaseAborted }
+func (*Aborted) JobPhase() conversationproto.JobPhase {
+	return conversationproto.JobPhaseAborted
+}
 
 // JobPhase returns the error phase.
-func (*Failed) JobPhase() conversationproto.JobPhase { return conversationproto.JobPhaseError }
+func (*Failed) JobPhase() conversationproto.JobPhase {
+	return conversationproto.JobPhaseError
+}

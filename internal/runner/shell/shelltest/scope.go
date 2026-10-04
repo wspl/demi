@@ -29,7 +29,9 @@ func NewScope(ctx context.Context, commands *process.JobCommands) *Scope {
 }
 
 // Cancel requests cancellation of all work owned by the scope.
-func (s *Scope) Cancel() { s.cancel() }
+func (s *Scope) Cancel() {
+	s.cancel()
+}
 
 // Finish joins all owned work. Cancellation cancels the scope and still joins
 // before returning. Call Cancel first when abandoning unfinished work.
@@ -47,7 +49,9 @@ func (s *Scope) Finish(ctx context.Context) {
 }
 
 // Activity returns the event-based observation of the scope's interpreter work.
-func (s *Scope) Activity() *Activity { return &s.activity }
+func (s *Scope) Activity() *Activity {
+	return &s.activity
+}
 
 // Start starts a login shell in this scope. Commands and Edits come from the
 // scope. The returned job has the same output consumption and Wait obligations
@@ -121,7 +125,9 @@ func (a *Activity) Checks() uint64 {
 }
 
 // WaitWaiting waits until at least one interpreter unit is waiting for IO.
-func (a *Activity) WaitWaiting(ctx context.Context) error { return a.wait(ctx, 0) }
+func (a *Activity) WaitWaiting(ctx context.Context) error {
+	return a.wait(ctx, 0)
+}
 
 // WaitBlockedOrChecks waits for a unit waiting for IO or at least minChecks
 // cancellation checks. A test uses Checks plus its desired progress count to
@@ -153,10 +159,14 @@ func (a *Activity) wait(ctx context.Context, minChecks uint64) error {
 type observer struct{ activity *Activity }
 
 // Check reports interpreter progress to the scope activity.
-func (o observer) Check() { o.update(0, 1) }
+func (o observer) Check() {
+	o.update(0, 1)
+}
 
 // Waiting reports changes in interruptible IO waits to the scope activity.
-func (o observer) Waiting(delta int) { o.update(delta, 0) }
+func (o observer) Waiting(delta int) {
+	o.update(delta, 0)
+}
 
 func (o observer) update(waiting int, checks uint64) {
 	a := o.activity

@@ -43,7 +43,9 @@ func TestCommandGateDoesNotQueueAndReferencesNeverRecycle(t *testing.T) {
 	if _, ok := second.Session().References.Lookup(newer); !ok {
 		t.Fatal("session was not returned")
 	}
-	second.Session().References.Retain(func(tabs.Reference) bool { return false })
+	second.Session().References.Retain(func(tabs.Reference) bool {
+		return false
+	})
 	if _, ok := references.Lookup(newer); ok {
 		t.Fatal("discarded node retained")
 	}

@@ -29,7 +29,9 @@ func (b *s3Bucket) Close() error {
 }
 
 // ErrorCode preserves Go Cloud error classification for the adapter.
-func (*s3Bucket) ErrorCode(err error) gcerrors.ErrorCode { return gcerrors.Code(err) }
+func (*s3Bucket) ErrorCode(err error) gcerrors.ErrorCode {
+	return gcerrors.Code(err)
+}
 
 // Attributes translates portable object metadata into driver metadata.
 func (b *s3Bucket) Attributes(ctx context.Context, key string) (*driver.Attributes, error) {

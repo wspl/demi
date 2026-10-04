@@ -10,7 +10,9 @@ import (
 // Digest hashes the sorted mode, blob hash and path listing.
 func (d HostDirectory) Digest() string {
 	files := slices.Clone(d.Files)
-	slices.SortStableFunc(files, func(a, b DirectoryFile) int { return strings.Compare(a.Path, b.Path) })
+	slices.SortStableFunc(files, func(a, b DirectoryFile) int {
+		return strings.Compare(a.Path, b.Path)
+	})
 	var listing strings.Builder
 	for _, f := range files {
 		mode := "644"
@@ -23,7 +25,9 @@ func (d HostDirectory) Digest() string {
 }
 
 // HostName names the directory's contents on a Host.
-func (d HostDirectory) HostName() string { return d.Name + "-" + d.Digest()[:12] }
+func (d HostDirectory) HostName() string {
+	return d.Name + "-" + d.Digest()[:12]
+}
 
 // Path locates the directory below the Host's home.
 func (d HostDirectory) Path(plugin ID) string {

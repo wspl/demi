@@ -33,7 +33,9 @@ func shellFiles(t *testing.T, root, script string, configure func(*engine.Option
 			t.Fatal(err)
 		}
 		files[index] = file
-		defer func() { _ = file.Close() }() // Cleanup also runs after cancellation closes the file.
+		defer func() {
+			_ = file.Close()
+		}() // Cleanup also runs after cancellation closes the file.
 	}
 	options := engine.Options{
 		Cwd:    root,

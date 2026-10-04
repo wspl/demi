@@ -49,7 +49,11 @@ func (r *storedRow) count(column string) uint64 {
 	}
 	return uint64(v)
 }
-func (r *storedRow) boolean(column string) bool { return r.integer(column) != 0 }
+
+func (r *storedRow) boolean(column string) bool {
+	return r.integer(column) != 0
+}
+
 func (r *storedRow) bytes(column string) []byte {
 	v, ok := r.values[column].([]byte)
 	if !ok {
@@ -120,7 +124,9 @@ func queryRecords[T any](
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, rows.Close()) }()
+	defer func() {
+		err = errors.Join(err, rows.Close())
+	}()
 	columns, err := rows.Columns()
 	if err != nil {
 		return nil, err
@@ -184,4 +190,7 @@ func later(now types.Timestamp, by time.Duration) (types.Timestamp, error) {
 	}
 	return result, nil
 }
-func integer(value uint64) int64 { return int64(min(value, math.MaxInt64)) }
+
+func integer(value uint64) int64 {
+	return int64(min(value, math.MaxInt64))
+}

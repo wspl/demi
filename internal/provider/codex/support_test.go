@@ -15,7 +15,9 @@ import (
 )
 
 // These boundary scenarios use loopback or controlled IO; no vendor calls and no intentional wall-time waits.
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 const now types.Timestamp = "2026-09-18T14:00:00.000Z"
 
@@ -31,7 +33,11 @@ func accessToken(t *testing.T, expiry int64) string {
 		map[string]any{"exp": expiry, "https://api.openai.com/auth": map[string]any{"chatgpt_account_id": "acct-1"}},
 	)
 }
-func freshToken(t *testing.T) string { return accessToken(t, 1789740000+3600) }
+
+func freshToken(t *testing.T) string {
+	return accessToken(t, 1789740000+3600)
+}
+
 func document(t *testing.T, access, refresh string, last types.Timestamp) string {
 	t.Helper()
 	id := providertest.JWT(

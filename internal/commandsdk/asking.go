@@ -40,7 +40,13 @@ type asker[Q, R any] struct {
 func newAsker[Q, R any]() *asker[Q, R] {
 	return &asker[Q, R]{requests: make(chan Pending[Q, R], 64), done: make(chan struct{})}
 }
-func (a *asker[Q, R]) close() { a.once.Do(func() { close(a.done) }) }
+
+func (a *asker[Q, R]) close() {
+	a.once.Do(func() {
+		close(a.done)
+	})
+}
+
 func (a *asker[Q, R]) ask(ctx context.Context, q Q) (R, error) {
 	var zero R
 	p := Pending[Q, R]{Request: q, reply: make(chan answer[R], 1)}
@@ -76,7 +82,9 @@ func NumbersChannel() (*Numbers, <-chan Draw) {
 }
 
 // Close ends the source and wakes all callers.
-func (n *Numbers) Close() { n.source.close() }
+func (n *Numbers) Close() {
+	n.source.close()
+}
 
 // Draw reserves count consecutive numbers and returns the first.
 func (n *Numbers) Draw(
@@ -111,7 +119,9 @@ func ArtifactsChannel() (*Artifacts, <-chan ArtifactPending) {
 }
 
 // Close ends the source and wakes callers.
-func (a *Artifacts) Close() { a.source.close() }
+func (a *Artifacts) Close() {
+	a.source.close()
+}
 
 func (a *Artifacts) ask(ctx context.Context, q commandproto.ArtifactRequest) (commandproto.ArtifactAnswer, error) {
 	if err := q.Validate(); err != nil {
@@ -173,7 +183,9 @@ var numberCodec = askCodec[commandproto.NumbersRequest, uint64, commandproto.Num
 		q.ID = id
 		return q
 	},
-	id: func(q commandproto.NumbersRequest) uint64 { return q.ID },
+	id: func(q commandproto.NumbersRequest) uint64 {
+		return q.ID
+	},
 	answer: func(id, value uint64, err error) commandproto.NumbersAnswer {
 		r := commandproto.NumbersAnswer{ID: id}
 		if err != nil {
@@ -199,7 +211,9 @@ var artifactCodec = askCodec[commandproto.ArtifactRequest, commandproto.Artifact
 		q.ID = id
 		return q
 	},
-	id: func(q commandproto.ArtifactRequest) uint64 { return q.ID },
+	id: func(q commandproto.ArtifactRequest) uint64 {
+		return q.ID
+	},
 	answer: func(id uint64, value commandproto.ArtifactAnswer, err error) commandproto.ArtifactAnswer {
 		value.ID = id
 		if err != nil {
@@ -254,8 +268,12 @@ func relay[Q json.Marshaler, R any, A json.Marshaler](
 	var mu sync.Mutex
 	waiting := map[uint64]Pending[Q, R]{}
 	done := make(chan error, 2)
-	go func() { done <- sendRequests(ctx, source, requests, codec, o, &mu, waiting) }()
-	go func() { done <- receiveAnswers(ctx, codec, i, &mu, waiting) }()
+	go func() {
+		done <- sendRequests(ctx, source, requests, codec, o, &mu, waiting)
+	}()
+	go func() {
+		done <- receiveAnswers(ctx, codec, i, &mu, waiting)
+	}()
 	err := <-done
 	cancel()
 	<-done

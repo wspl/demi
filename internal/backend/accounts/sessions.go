@@ -37,7 +37,9 @@ type OpenedSession struct {
 type WebSessions struct{ control SessionStore }
 
 // NewWebSessions returns the web session service.
-func NewWebSessions(control SessionStore) *WebSessions { return &WebSessions{control: control} }
+func NewWebSessions(control SessionStore) *WebSessions {
+	return &WebSessions{control: control}
+}
 
 func sessionPolicy() database.SessionPolicy {
 	return database.SessionPolicy{Lifetime: 30 * 24 * time.Hour, RenewBelow: 15 * 24 * time.Hour}

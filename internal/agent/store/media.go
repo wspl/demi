@@ -130,7 +130,9 @@ func (v *ModelView) Held(blob types.BlobRef) (types.B64Bytes, bool) {
 }
 
 // MissingText renders a missing image, video or document for a model request.
-func MissingText(kind string) string { return "[missing " + kind + "]" }
+func MissingText(kind string) string {
+	return "[missing " + kind + "]"
+}
 
 // References lists the blobs a block's media reference, in part order.
 func References(block types.Block) []types.BlobRef {

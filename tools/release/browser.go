@@ -80,7 +80,9 @@ func (a *application) prepareBrowser(
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(dir)) }()
+	defer func() {
+		err = errors.Join(err, os.RemoveAll(dir))
+	}()
 	for _, platform := range chromePlatforms {
 		location := ""
 		found := false

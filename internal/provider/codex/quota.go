@@ -55,7 +55,9 @@ func (q *quotaSource) Probe(ctx context.Context) (provider.ProbeReading, error) 
 	if err != nil {
 		return provider.ProbeReading{}, fmt.Errorf("Codex usage request failed: %v", provider.WithoutURL(err))
 	}
-	defer func() { _ = response.Body.Close() }() // The reader reports IO failures; close releases the response.
+	defer func() {
+		_ = response.Body.Close()
+	}() // The reader reports IO failures; close releases the response.
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return provider.ProbeReading{}, fmt.Errorf("Codex usage request failed with HTTP %d", response.StatusCode)
 	}

@@ -130,7 +130,9 @@ func InsertAttachedHost(
 		tx,
 		"conversation_hosts",
 		"SELECT name FROM conversation_hosts WHERE conversation_id = ?",
-		func(r *storedRow) string { return r.text("name") },
+		func(r *storedRow) string {
+			return r.text("name")
+		},
 		conversation,
 	)
 	if err != nil {

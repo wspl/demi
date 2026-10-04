@@ -157,7 +157,9 @@ func (p requestPort) panelTabs(ctx context.Context) (plugin.PortAnswer, error) {
 	}
 	panel.Tabs = slices.DeleteFunc(
 		panel.Tabs,
-		func(tab webapiproto.PanelTab) bool { return !p.user.registry.plugins[p.index].ownsKind(tab.Kind) },
+		func(tab webapiproto.PanelTab) bool {
+			return !p.user.registry.plugins[p.index].ownsKind(tab.Kind)
+		},
 	)
 	return &plugin.PortAnswerPanel{Panel: panel}, nil
 }

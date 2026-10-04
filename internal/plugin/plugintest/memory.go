@@ -67,7 +67,9 @@ type TestDemi struct {
 }
 
 // New constructs Demi with no running Host and an available expose domain.
-func New() *TestDemi { return WithRPC(nil) }
+func New() *TestDemi {
+	return WithRPC(nil)
+}
 
 // WithRPC constructs Demi with the given command transport.
 func WithRPC(rpc host.PortTransport) *TestDemi {
@@ -79,7 +81,9 @@ func WithRPC(rpc host.PortTransport) *TestDemi {
 }
 
 // Port returns a port over this Demi; the request context owns cancellation.
-func (d *TestDemi) Port() plugin.Port { return plugin.NewPort(d) }
+func (d *TestDemi) Port() plugin.Port {
+	return plugin.NewPort(d)
+}
 
 // Until checks after each non-rpc message until check holds or ctx ends.
 func (d *TestDemi) Until(ctx context.Context, check func(*TestDemi) bool) error {
@@ -257,7 +261,9 @@ func (d *TestDemi) answerLocked(message plugin.PortMessage) (plugin.PortAnswer, 
 }
 
 // refused puts a domain refusal on the plugin wire.
-func refused(r plugin.PortRefusal) plugin.PortAnswer { return &plugin.PortAnswerRefused{Refusal: r} }
+func refused(r plugin.PortRefusal) plugin.PortAnswer {
+	return &plugin.PortAnswerRefused{Refusal: r}
+}
 
 // cloneDirectories detaches the memory transport's directory declarations.
 func cloneDirectories(directories []plugin.HostDirectory) []plugin.HostDirectory {

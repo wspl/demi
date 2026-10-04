@@ -39,4 +39,6 @@ func (s MachineImageState) WithBytes(volume Volume, size uint64) (MachineImageSt
 }
 
 // Volumes returns both volumes, system first.
-func Volumes() [2]Volume { return [2]Volume{VolumeSystem, VolumeHome} }
+func Volumes() [2]Volume {
+	return [2]Volume{VolumeSystem, VolumeHome}
+}

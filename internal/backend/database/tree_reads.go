@@ -47,7 +47,9 @@ FROM blocks
 WHERE node_id=? AND idx<? AND json_extract(block,'$.type') IN ('response','error','abort')
 ORDER BY idx DESC
 LIMIT 1`,
-		func(r *storedRow) types.Block { return storedJSON(r, "block", types.DecodeBlock) },
+		func(r *storedRow) types.Block {
+			return storedJSON(r, "block", types.DecodeBlock)
+		},
 		root.id,
 		root.count,
 	)

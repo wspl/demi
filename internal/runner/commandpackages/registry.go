@@ -74,7 +74,9 @@ func NewServiceRegistry(
 }
 
 // Installs observes the installs made by service starts and artifact requests.
-func (r *ServiceRegistry) Installs() *InstallsSubscription { return r.installs.Subscribe() }
+func (r *ServiceRegistry) Installs() *InstallsSubscription {
+	return r.installs.Subscribe()
+}
 
 // Close stops every service and joins the registry's work. If ctx ends first,
 // shutdown continues and a later Close can wait for it. Close is idempotent.
@@ -241,7 +243,9 @@ func (r *ServiceRegistry) StopAll(ctx context.Context) error {
 type ServiceLease struct{ release func() }
 
 // Release ends the claim exactly once; repeated calls do nothing.
-func (l *ServiceLease) Release() { l.release() }
+func (l *ServiceLease) Release() {
+	l.release()
+}
 
 // Invoking is a registered invocation whose release cancels its artifact waits.
 type Invoking struct {
@@ -270,7 +274,9 @@ func (i *Invoking) Release() {
 type Resident struct{ life *serviceLife }
 
 // Client returns the service's shared client. The registry owns and closes it.
-func (r *Resident) Client() *commandsdk.Client { return r.life.client }
+func (r *Resident) Client() *commandsdk.Client {
+	return r.life.client
+}
 
 // Failure resolves a transport failure to the service's exit and stderr tail when
 // the connection was lost, waiting for its process to be reaped.

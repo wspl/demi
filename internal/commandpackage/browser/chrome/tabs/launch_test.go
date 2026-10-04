@@ -10,7 +10,9 @@ import (
 	"go.uber.org/goleak"
 )
 
-func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
+func TestMain(m *testing.M) {
+	goleak.VerifyTestMain(m)
+}
 
 func TestCaptureExtensionIDIsItsManifestKey(t *testing.T) {
 	data, err := captureExtension.ReadFile("extension/manifest.json")

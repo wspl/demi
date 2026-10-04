@@ -38,7 +38,9 @@ type Answer struct {
 }
 
 // OK constructs a successful fixture with its Content-Length.
-func OK(body []byte) Answer { return Answer{Status: http.StatusOK, Body: body, Length: true} }
+func OK(body []byte) Answer {
+	return Answer{Status: http.StatusOK, Body: body, Length: true}
+}
 
 // Server owns a local fixture server and counts requests. Start registers cleanup.
 type Server struct {
@@ -103,13 +105,19 @@ func Start(t testing.TB, answers map[string]Answer) *Server {
 }
 
 // URL returns a fixture's local address.
-func (s *Server) URL(path string) string { return s.server.URL + path }
+func (s *Server) URL(path string) string {
+	return s.server.URL + path
+}
 
 // Requests counts requests received by this server.
-func (s *Server) Requests() uint64 { return s.requests.Load() }
+func (s *Server) Requests() uint64 {
+	return s.requests.Load()
+}
 
 // LockWaits counts installation acquisitions that found a held lock.
-func LockWaits() uint64 { return artifacts.InstallLockWaits() }
+func LockWaits() uint64 {
+	return artifacts.InstallLockWaits()
+}
 
 // Zip constructs an archive for a fixture; entries may deliberately be invalid.
 func Zip(t testing.TB, entries map[string][]byte) []byte {
@@ -152,12 +160,16 @@ func InstallUnpacked(
 	if err != nil || unpacking == nil {
 		return installed, err
 	}
-	defer func() { err = errors.Join(err, unpacking.Close()) }()
+	defer func() {
+		err = errors.Join(err, unpacking.Close())
+	}()
 	temporary, err := os.MkdirTemp(root, ".install-unpacked-")
 	if err != nil {
 		return "", err
 	}
-	defer func() { err = errors.Join(err, os.RemoveAll(temporary)) }()
+	defer func() {
+		err = errors.Join(err, os.RemoveAll(temporary))
+	}()
 	extracted := filepath.Join(temporary, "extracted")
 	if err := linkArtifactTree(ctx, source, extracted); err != nil {
 		return "", err
@@ -210,7 +222,9 @@ func copyArtifactFile(ctx context.Context, source, destination string) (err erro
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, input.Close()) }()
+	defer func() {
+		err = errors.Join(err, input.Close())
+	}()
 	info, err := input.Stat()
 	if err != nil {
 		return err
@@ -219,7 +233,9 @@ func copyArtifactFile(ctx context.Context, source, destination string) (err erro
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, output.Close()) }()
+	defer func() {
+		err = errors.Join(err, output.Close())
+	}()
 	if _, err := io.Copy(output, input); err != nil {
 		return err
 	}

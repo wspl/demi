@@ -49,7 +49,9 @@ func NewRequestView(view *store.ModelView, model types.Model, limits provider.Re
 }
 
 // Model returns the request's model.
-func (r *RequestView) Model() types.Model { return r.model }
+func (r *RequestView) Model() types.Model {
+	return r.model
+}
 
 // Replay renders blocks from the latest compaction boundary in order, preserving
 // signed reasoning and opaque data whole and marking reasoning kept past a summary.

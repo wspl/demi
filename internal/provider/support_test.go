@@ -23,7 +23,9 @@ func TestScriptedRuntimeSharesTurnsAndOwnsCancellation(t *testing.T) {
 		reader := providertest.NewEventReader(
 			t.Context(),
 			t,
-			func(ctx context.Context) provider.Run { return runtime.Run(ctx, request) },
+			func(ctx context.Context) provider.Run {
+				return runtime.Run(ctx, request)
+			},
 		)
 		event, ok := reader.NextEvent()
 		requireEqual(t, ok, true)
@@ -42,7 +44,9 @@ func TestScriptedRuntimeSharesTurnsAndOwnsCancellation(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		stopped := make(chan []provider.Event, 1)
-		go func() { stopped <- providertest.Run(ctx, t, runtime, request) }()
+		go func() {
+			stopped <- providertest.Run(ctx, t, runtime, request)
+		}()
 		synctest.Wait()
 		cancel()
 		requireEqual(t, <-stopped, []provider.Event{})

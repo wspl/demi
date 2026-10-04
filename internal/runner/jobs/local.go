@@ -103,7 +103,9 @@ func (l *Listener) Accept(ctx context.Context) (net.Conn, error) {
 
 // Close releases the endpoint and liveness resources and wakes Accept.
 func (l *Listener) Close() error {
-	l.once.Do(func() { l.err = l.close() })
+	l.once.Do(func() {
+		l.err = l.close()
+	})
 	return l.err
 }
 

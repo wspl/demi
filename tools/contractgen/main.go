@@ -191,9 +191,19 @@ func has(m map[string]string, key string) bool {
 	_, ok := m[key]
 	return ok
 }
-func quote(s string) string                       { return strconv.Quote(s) }
-func typeKey(t *types.Named) string               { return t.Obj().Pkg().Path() + "." + t.Obj().Name() }
-func (g *generator) typeName(t types.Type) string { return types.TypeString(t, g.qualifier) }
+
+func quote(s string) string {
+	return strconv.Quote(s)
+}
+
+func typeKey(t *types.Named) string {
+	return t.Obj().Pkg().Path() + "." + t.Obj().Name()
+}
+
+func (g *generator) typeName(t types.Type) string {
+	return types.TypeString(t, g.qualifier)
+}
+
 func (g *generator) qualifier(p *types.Package) string {
 	if p != nil && p.Path() == "encoding/json" {
 		g.imports[p.Path()] = "json"
@@ -224,7 +234,11 @@ func (g *generator) prefix(t *types.Named) string {
 	}
 	return ""
 }
-func (g *generator) line(s string, args ...any) { fmt.Fprintf(&g.goCode, s+"\n", args...) }
+
+func (g *generator) line(s string, args ...any) {
+	fmt.Fprintf(&g.goCode, s+"\n", args...)
+}
+
 func schema(name string) string {
 	name = tsName(name)
 	return strings.ToLower(name[:1]) + name[1:] + "Schema"

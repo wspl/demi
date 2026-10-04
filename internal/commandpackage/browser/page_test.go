@@ -76,7 +76,9 @@ func TestBrowserContractAndCleanup(t *testing.T) {
 		workers.Wait()
 	}()
 	waiting := make(chan error, 1)
-	workers.Go(func() { waiting <- pagetest.ClickCSS(ctx, current, "#disabled", 5*time.Second) })
+	workers.Go(func() {
+		waiting <- pagetest.ClickCSS(ctx, current, "#disabled", 5*time.Second)
+	})
 	f.waitBusy(t, tab)
 	independent, err := page.Evaluate(t.Context(), f.tab(t, other), "1+1", 5*time.Second)
 	cancel()
@@ -88,7 +90,9 @@ func TestBrowserContractAndCleanup(t *testing.T) {
 	if !errors.Is(canceled, context.Canceled) && cdp.ErrorCode(canceled) != "cancelled" {
 		t.Fatalf("cancelled click: %v", canceled)
 	}
-	workers.Go(func() { waiting <- pagetest.ClickCSS(pendingCtx, current, "#disabled", 5*time.Second) })
+	workers.Go(func() {
+		waiting <- pagetest.ClickCSS(pendingCtx, current, "#disabled", 5*time.Second)
+	})
 	f.waitBusy(t, tab)
 	_, busy := page.Evaluate(t.Context(), current, "1", 5*time.Second)
 	result := <-waiting

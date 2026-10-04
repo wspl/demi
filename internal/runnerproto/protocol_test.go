@@ -22,8 +22,12 @@ func TestDirectionalCorpus(t *testing.T) {
 		count  int
 		decode func([]byte) (any, error)
 	}{
-		{"backend-to-runner", 59, func(b []byte) (any, error) { return runnerproto.DecodeInbound(b) }},
-		{"runner-to-backend", 56, func(b []byte) (any, error) { return runnerproto.DecodeOutbound(b) }},
+		{"backend-to-runner", 59, func(b []byte) (any, error) {
+			return runnerproto.DecodeInbound(b)
+		}},
+		{"runner-to-backend", 56, func(b []byte) (any, error) {
+			return runnerproto.DecodeOutbound(b)
+		}},
 	} {
 		t.Run(suite.dir, func(t *testing.T) {
 			files, err := filepath.Glob("testdata/" + suite.dir + "/*.msgpack")
@@ -383,11 +387,21 @@ func TestInstallAndServiceBounds(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, mutate := range []func(*runnerproto.Install){
-		func(v *runnerproto.Install) { v.Done = 3 },
-		func(v *runnerproto.Install) { v.Total = 0 },
-		func(v *runnerproto.Install) { v.Name = strings.Repeat("😀", 26) },
-		func(v *runnerproto.Install) { v.Package = strings.Repeat("😀", 51) },
-		func(v *runnerproto.Install) { v.Version = strings.Repeat("😀", 26) },
+		func(v *runnerproto.Install) {
+			v.Done = 3
+		},
+		func(v *runnerproto.Install) {
+			v.Total = 0
+		},
+		func(v *runnerproto.Install) {
+			v.Name = strings.Repeat("😀", 26)
+		},
+		func(v *runnerproto.Install) {
+			v.Package = strings.Repeat("😀", 51)
+		},
+		func(v *runnerproto.Install) {
+			v.Version = strings.Repeat("😀", 26)
+		},
 	} {
 		changed := install
 		mutate(&changed)
@@ -433,7 +447,10 @@ func TestOversizedReplyFailsItsRequest(t *testing.T) {
 	}
 	same, err := runnerproto.WithinLimit(
 		reply,
-		func(string) ([]byte, error) { t.Fatal("refused a small reply"); return nil, nil },
+		func(string) ([]byte, error) {
+			t.Fatal("refused a small reply")
+			return nil, nil
+		},
 	)
 	if err != nil || !bytes.Equal(same, reply) {
 		t.Fatal("small reply changed")

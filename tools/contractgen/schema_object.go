@@ -32,7 +32,9 @@ func (s *schemaObject) get(name string) any {
 }
 
 func (s *schemaObject) remove(name string) {
-	s.fields = slices.DeleteFunc(s.fields, func(field contract.Field) bool { return field.Name == name })
+	s.fields = slices.DeleteFunc(s.fields, func(field contract.Field) bool {
+		return field.Name == name
+	})
 }
 
 func (s *schemaObject) clone() *schemaObject {
@@ -83,7 +85,9 @@ func serializedSchema(value any, properties bool) any {
 			}
 			slices.SortStableFunc(
 				out.fields,
-				func(a, b contract.Field) int { return cmp.Compare(rank(a.Name), rank(b.Name)) },
+				func(a, b contract.Field) int {
+					return cmp.Compare(rank(a.Name), rank(b.Name))
+				},
 			)
 		}
 		return out

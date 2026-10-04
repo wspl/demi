@@ -64,7 +64,9 @@ func fileName(name string) string {
 }
 
 func protectedPath(name string, kept ...string) bool {
-	normalize := func(value string) string { return path.Clean(strings.ReplaceAll(strings.ToLower(value), "\\", "/")) }
+	normalize := func(value string) string {
+		return path.Clean(strings.ReplaceAll(strings.ToLower(value), "\\", "/"))
+	}
 	top := normalize(name)
 	if top == "/" || len(top) == 2 && top[1:] == ":" {
 		return true

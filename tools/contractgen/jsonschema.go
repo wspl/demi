@@ -40,7 +40,9 @@ func (g *generator) jsonSchemas(references bool) (map[string][]byte, error) {
 		}
 		// A command schema's root keywords are sorted by name; nested objects keep
 		// their insertion order.
-		slices.SortFunc(object.fields, func(a, b contract.Field) int { return cmp.Compare(a.Name, b.Name) })
+		slices.SortFunc(object.fields, func(a, b contract.Field) int {
+			return cmp.Compare(a.Name, b.Name)
+		})
 		data, err := contract.EncodeJSON(object)
 		if err != nil {
 			return nil, fmt.Errorf("%s: %s: %w", d.position, d.name, err)
@@ -122,7 +124,9 @@ func schemaRules(s *schemaObject, marks map[string]string) error {
 	if values := marks["enum"]; values != "" {
 		next := strings.Fields(values)
 		if previous, ok := s.get("enum").([]string); ok {
-			next = slices.DeleteFunc(next, func(value string) bool { return !slices.Contains(previous, value) })
+			next = slices.DeleteFunc(next, func(value string) bool {
+				return !slices.Contains(previous, value)
+			})
 		}
 		if len(next) == 0 {
 			return fmt.Errorf("enum constraints have no common value")
@@ -516,7 +520,9 @@ func (e *schemaEmitter) unionSchema(d *definition, key string, s *schemaObject) 
 	variants := g.variants(key)
 	slices.SortFunc(
 		variants,
-		func(a, b *definition) int { return cmp.Compare(a.typ.Obj().Pos(), b.typ.Obj().Pos()) },
+		func(a, b *definition) int {
+			return cmp.Compare(a.typ.Obj().Pos(), b.typ.Obj().Pos())
+		},
 	)
 	for _, v := range variants {
 		child, err := e.schema(v.typ)

@@ -6,10 +6,14 @@ import (
 )
 
 // DecodeInbound decodes and validates one backend message, refusing trailing bytes.
-func DecodeInbound(data []byte) (Inbound, error) { return DecodeInboundMsgpack(data) }
+func DecodeInbound(data []byte) (Inbound, error) {
+	return DecodeInboundMsgpack(data)
+}
 
 // DecodeOutbound decodes and validates one runner message, refusing trailing bytes.
-func DecodeOutbound(data []byte) (Outbound, error) { return DecodeOutboundMsgpack(data) }
+func DecodeOutbound(data []byte) (Outbound, error) {
+	return DecodeOutboundMsgpack(data)
+}
 
 // Encode validates and encodes a wire message. The sender applies the size
 // limit with WithinLimit, so an oversized reply fails its own request.
@@ -51,38 +55,74 @@ func GitRequestID(message Inbound) (string, bool) {
 	return request.gitRequestID(), true
 }
 
-func (request *FSReadFile) fsRequestID() string { return request.ID }
+func (request *FSReadFile) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSWriteFile) fsRequestID() string { return request.ID }
+func (request *FSWriteFile) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSExists) fsRequestID() string { return request.ID }
+func (request *FSExists) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSStat) fsRequestID() string { return request.ID }
+func (request *FSStat) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSLstat) fsRequestID() string { return request.ID }
+func (request *FSLstat) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSReaddir) fsRequestID() string { return request.ID }
+func (request *FSReaddir) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSMkdir) fsRequestID() string { return request.ID }
+func (request *FSMkdir) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSRm) fsRequestID() string { return request.ID }
+func (request *FSRm) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSCp) fsRequestID() string { return request.ID }
+func (request *FSCp) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSMv) fsRequestID() string { return request.ID }
+func (request *FSMv) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSChmod) fsRequestID() string { return request.ID }
+func (request *FSChmod) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSSymlink) fsRequestID() string { return request.ID }
+func (request *FSSymlink) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSLink) fsRequestID() string { return request.ID }
+func (request *FSLink) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSReadlink) fsRequestID() string { return request.ID }
+func (request *FSReadlink) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSRealpath) fsRequestID() string { return request.ID }
+func (request *FSRealpath) fsRequestID() string {
+	return request.ID
+}
 
-func (request *FSUtimes) fsRequestID() string { return request.ID }
+func (request *FSUtimes) fsRequestID() string {
+	return request.ID
+}
 
-func (request *GitChangesMessage) gitRequestID() string { return request.ID }
+func (request *GitChangesMessage) gitRequestID() string {
+	return request.ID
+}
 
-func (request *GitShow) gitRequestID() string { return request.ID }
+func (request *GitShow) gitRequestID() string {
+	return request.ID
+}

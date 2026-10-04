@@ -113,7 +113,9 @@ func (d *panelDocument) apply(change PanelChange) (PanelEffect, bool, error) {
 }
 
 func (d *panelDocument) position(id string) int {
-	return slices.IndexFunc(d.Tabs, func(tab webapiproto.PanelTab) bool { return tab.ID == id })
+	return slices.IndexFunc(d.Tabs, func(tab webapiproto.PanelTab) bool {
+		return tab.ID == id
+	})
 }
 
 func (d *panelDocument) change(change PanelChange) (PanelEffect, bool, error) {
@@ -178,7 +180,9 @@ func (d *panelDocument) update(c PanelUpdate) (PanelEffect, bool, error) {
 		return PanelEffect{}, false, err
 	}
 	for _, field := range patch {
-		at := slices.IndexFunc(fields, func(f contract.Field) bool { return f.Name == field.Name })
+		at := slices.IndexFunc(fields, func(f contract.Field) bool {
+			return f.Name == field.Name
+		})
 		raw, err := contract.EncodeJSON(field.Value)
 		if err != nil {
 			return PanelEffect{}, false, err

@@ -393,7 +393,9 @@ func readRange(ctx context.Context, fs host.FS, file string, r host.ByteRange) (
 	if err != nil {
 		return nil, err
 	}
-	defer func() { err = errors.Join(err, stream.Close(context.WithoutCancel(ctx))) }()
+	defer func() {
+		err = errors.Join(err, stream.Close(context.WithoutCancel(ctx)))
+	}()
 	buffer := make([]byte, 32768)
 	for {
 		n, readErr := stream.Read(ctx, buffer)
@@ -410,7 +412,9 @@ func readRange(ctx context.Context, fs host.FS, file string, r host.ByteRange) (
 type failedReader struct{ err error }
 
 // Read returns the configured failure without bytes.
-func (r failedReader) Read([]byte) (int, error) { return 0, r.err }
+func (r failedReader) Read([]byte) (int, error) {
+	return 0, r.err
+}
 
 // writeStream proves streamed writes are atomic and return the stream's own failure.
 func (c conformance) writeStream(ctx context.Context) error {
@@ -553,7 +557,9 @@ func expectSpawn(end host.ProcessEnd, kind host.SpawnErrorKind) error {
 }
 
 // fileBytes supplies fixed conformance contents without a stream resource.
-func fileBytes(text string) host.FileContents { return host.FileContents{Bytes: []byte(text)} }
+func fileBytes(text string) host.FileContents {
+	return host.FileContents{Bytes: []byte(text)}
+}
 
 // readerStream adapts finite in-memory readers for the streaming conformance cases.
 // None of these readers block; real Host streams must support context cancellation.
@@ -568,7 +574,9 @@ func (s *readerStream) Read(ctx context.Context, data []byte) (int, error) {
 }
 
 // Close completes the resource-free in-memory stream.
-func (*readerStream) Close(context.Context) error { return nil }
+func (*readerStream) Close(context.Context) error {
+	return nil
+}
 
 // identity checks the named Host conformance behavior.
 func (c conformance) identity(context.Context) error {

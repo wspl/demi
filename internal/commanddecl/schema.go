@@ -60,7 +60,9 @@ func NewSchema(document json.RawMessage) (*Schema, error) {
 }
 
 // Document returns a copy of the schema as declared, retaining property order.
-func (s *Schema) Document() json.RawMessage { return bytes.Clone(s.document) }
+func (s *Schema) Document() json.RawMessage {
+	return bytes.Clone(s.document)
+}
 
 // Check validates a JSON document without conversion or insertion of defaults.
 // Failures name fields rather than disclose argument or output values.
@@ -354,7 +356,9 @@ func typeFailure(name string, reason *kind.Type) string {
 		order := []string{"null", "boolean", "integer", "number", "string", "array", "object"}
 		slices.SortFunc(
 			types,
-			func(a, b string) int { return cmp.Compare(slices.Index(order, a), slices.Index(order, b)) },
+			func(a, b string) int {
+				return cmp.Compare(slices.Index(order, a), slices.Index(order, b))
+			},
 		)
 		quoted := make([]string, len(types))
 		for i, value := range types {

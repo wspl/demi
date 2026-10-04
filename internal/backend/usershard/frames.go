@@ -24,7 +24,9 @@ type frameRefusalError struct {
 }
 
 // Error returns the frame refusal text shown to the client.
-func (r *frameRefusalError) Error() string { return r.message }
+func (r *frameRefusalError) Error() string {
+	return r.message
+}
 
 func (s *Shard) prepareFrame(
 	ctx context.Context,

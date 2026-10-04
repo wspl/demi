@@ -77,7 +77,9 @@ func TestUserChoicesCommandsAndInstances(t *testing.T) {
 				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
 			},
 			host.RPCHandlerFunc(
-				func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) { return 9, nil },
+				func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
+					return 9, nil
+				},
 			),
 		),
 	)
@@ -235,7 +237,9 @@ func TestPageContextTopicsAndStreamLifecycle(t *testing.T) {
 		}
 		return (&fakePlugin{}).Call(ctx, request, port)
 	}}
-	u, shard := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin { return p }}))
+	u, shard := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin {
+		return p
+	}}))
 	registration := shard.sync.Register(shard.user, database.TokenHash{})
 	defer registration.Release()
 	ctx := t.Context()
@@ -453,7 +457,9 @@ func TestPluginFailuresStayObservable(t *testing.T) {
 					return scenario.reply, scenario.failure
 				},
 			}
-			u, _ := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin { return p }}))
+			u, _ := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin {
+				return p
+			}}))
 			if _, err := u.PageState(t.Context(), "fail"); err == nil {
 				t.Fatal("state failure lost")
 			}
@@ -487,9 +493,13 @@ func TestCommandErrorsPreserveClassificationAndCause(t *testing.T) {
 			m := manifest(t, "command")
 			m.Commands = []plugin.Commands{command("command", plugin.PlacementDemi, nil)}
 			p := &fakePlugin{
-				call: func(context.Context, plugin.Request, plugin.Port) (plugin.Reply, error) { return nil, failure },
+				call: func(context.Context, plugin.Request, plugin.Port) (plugin.Reply, error) {
+					return nil, failure
+				},
 			}
-			u, _ := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin { return p }}))
+			u, _ := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin {
+				return p
+			}}))
 			set, err := u.Toolset(t.Context(), nil)
 			if err != nil {
 				t.Fatal(err)
@@ -524,7 +534,9 @@ func TestPageParametersMustBeAnObjectAndContextReplyMustMatch(t *testing.T) {
 	p := &fakePlugin{call: func(context.Context, plugin.Request, plugin.Port) (plugin.Reply, error) {
 		return &plugin.ReplyExit{}, nil
 	}}
-	u, _ := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin { return p }}))
+	u, _ := userFixture(t, registry(t, &fakeFactory{manifest: m, make: func() plugin.Plugin {
+		return p
+	}}))
 	_, err = u.PageCall(t.Context(), pluginhost.PageCall{Plugin: "schema", Method: "user", Params: []byte(`[]`)})
 	var invalid *pluginhost.PageCallError
 	if !errors.As(err, &invalid) || invalid.Kind != pluginhost.InvalidParams ||
@@ -572,7 +584,9 @@ func TestPanelNotificationsOwnWorkAndPortsOwnKinds(t *testing.T) {
 		t,
 		registry(
 			t,
-			&fakeFactory{manifest: m, make: func() plugin.Plugin { return instance }},
+			&fakeFactory{manifest: m, make: func() plugin.Plugin {
+				return instance
+			}},
 			&fakeFactory{manifest: other},
 		),
 	)

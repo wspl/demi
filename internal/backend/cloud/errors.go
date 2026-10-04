@@ -49,7 +49,9 @@ func (e *Error) Error() string {
 }
 
 // Unwrap returns the underlying failure.
-func (e *Error) Unwrap() error { return e.Err }
+func (e *Error) Unwrap() error {
+	return e.Err
+}
 
 // Code returns the web error code and HTTP status for a refused operation.
 func (e *Error) Code() (webapiproto.ErrorCode, int) {

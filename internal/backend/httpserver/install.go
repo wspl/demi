@@ -135,7 +135,9 @@ func immutableFile(w http.ResponseWriter, r *http.Request, path string) error {
 		return err
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = file.Close() }()
+	defer func() {
+		_ = file.Close()
+	}()
 	info, err := file.Stat()
 	if err != nil {
 		return err

@@ -40,7 +40,9 @@ func TestSparseCopyKeepsHolesAndEndData(t *testing.T) {
 	destination := filepath.Join(directory, "copy")
 	file, err := os.Create(source)
 	requireStorage(t, err)
-	defer func() { _ = file.Close() }() // Explicit close below reports write errors.
+	defer func() {
+		_ = file.Close()
+	}() // Explicit close below reports write errors.
 	for _, test := range []struct {
 		offset int64
 		data   []byte
@@ -64,7 +66,9 @@ func TestSparseCopyKeepsHolesAndEndData(t *testing.T) {
 	}
 	copiedFile, err := os.Open(destination)
 	requireStorage(t, err)
-	defer func() { _ = copiedFile.Close() }() // Read-only copy.
+	defer func() {
+		_ = copiedFile.Close()
+	}() // Read-only copy.
 	for _, test := range []struct {
 		offset int64
 		want   string
@@ -142,7 +146,9 @@ func compareImageCopies(ctx context.Context, t *testing.T, directory, source, fi
 	if err != nil {
 		return err
 	}
-	defer func() { err = errors.Join(err, device.Close()) }()
+	defer func() {
+		err = errors.Join(err, device.Close())
+	}()
 	force := "-f"
 	if filesystem == "ext4" {
 		force = "-F"
