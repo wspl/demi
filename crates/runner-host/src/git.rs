@@ -429,6 +429,12 @@ impl Owner {
                 &cancel,
             )
             .await;
+            if result.is_err() {
+                // The failed computation may have taken what the watch
+                // recorded, or adopted the watch, without a baseline to
+                // show for it: the next one walks the whole tree.
+                lock(&touched).whole = true;
+            }
             (path, state, result)
         });
     }
