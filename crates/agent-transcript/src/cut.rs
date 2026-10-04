@@ -6,40 +6,50 @@
 
 use demi_shared_types::{Block, BlockId, ToolCallStatus, TurnId, is_blank};
 
-use super::{latest_answer, opens_input_turn, replay_start};
+use super::{is_compaction, latest_answer, opens_input_turn, replay_start};
 
 /// Where re-inference restarts after a turn failed to finish.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ResumePoint {
-    /// The blocks from this index on are the unfinished attempt's leftovers.
+    /// The blocks from this index on are the unfinished attempt's leftovers,
+    /// but for the compaction blocks among them, which stay ([`unwind`]).
     pub cut: usize,
-    /// The whole turn was leftovers: `resume` reruns it as `retry` does.
-    pub full_rerun: bool,
+    /// The turn whose opening block the scan reached: the whole turn was
+    /// leftovers, and `resume` reruns it from that block as `retry` does.
+    pub rerun: Option<TurnId>,
 }
 
 /// Scans back from the end over what nobody can have acted on: thinking,
-/// redacted thinking, `error` blocks and blank text. The first other block
-/// stops the scan; reaching the block that opened the turn makes it a full
-/// rerun.
+/// redacted thinking, `error` blocks and blank text, passing over a
+/// compaction's boundary and marker. The first other block stops the scan;
+/// reaching the block that opened the turn makes it a rerun.
 pub fn resume_point(blocks: &[Block]) -> ResumePoint {
     for (index, block) in blocks.iter().enumerate().rev() {
         if opens_input_turn(block) {
             return ResumePoint {
                 cut: index + 1,
-                full_rerun: true,
+                rerun: turn_of(block).cloned(),
             };
         }
-        if !is_leftover(block) {
+        if !is_leftover(block) && !is_compaction(block) {
             return ResumePoint {
                 cut: index + 1,
-                full_rerun: false,
+                rerun: None,
             };
         }
     }
     ResumePoint {
         cut: blocks.len(),
-        full_rerun: false,
+        rerun: None,
     }
+}
+
+/// What `resume` keeps of `blocks` unwound to `cut`: the blocks before it,
+/// and the compaction blocks after it, which are history the user made, not
+/// leftovers.
+pub fn unwind(blocks: &[Block], cut: usize) -> Vec<Block> {
+    let compactions = blocks[cut..].iter().filter(|block| is_compaction(block));
+    blocks[..cut].iter().chain(compactions).cloned().collect()
 }
 
 /// Whether a block is a leftover of an attempt that nobody can have acted on.

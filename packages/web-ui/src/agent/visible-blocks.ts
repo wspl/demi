@@ -57,6 +57,11 @@ export function compactionSummaryTokens(blocks: readonly Block[]): Map<string, n
   return dividers
 }
 
+/** Whether a block is a compaction's boundary or marker, which ends no turn. */
+export function isCompactionDivider(block: { type: string }): boolean {
+  return block.type === 'compaction_marker' || block.type === 'compaction_boundary'
+}
+
 function markedBoundaries(blocks: readonly Block[]): Set<string> {
   const marked = new Set<string>()
   for (const block of blocks) {

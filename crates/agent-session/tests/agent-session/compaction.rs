@@ -505,6 +505,94 @@ async fn a_failed_compact_after_a_finished_answer_leaves_a_failure_record_that_e
     assert!(error.outside_turn, "{error:?}");
 }
 
+// One session and two scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_compact_stopped_after_a_finished_answer_leaves_no_stop_to_continue() {
+    let provider = ScriptedRuntime::new([answer("first"), Turn::pending()]);
+    let store = MemoryTreeStore::new();
+    let session = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
+    session
+        .send(long_message(), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    let compacting = session.compact().unwrap();
+    until(|| provider.requests().len() == 2).await;
+
+    let stopped = session.abort().await;
+
+    assert_eq!(stopped.target, Some(AbortTarget::ActiveCompaction));
+    assert_eq!(compacting.await, Ok(ActionEnd::Aborted));
+    // The answer had finished: no `abort` block offers Continue on it.
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "text", "response"]
+    );
+}
+
+// One session and four scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_failed_turn_compacted_afterwards_is_resumed_after_the_summary_and_keeps_the_divider() {
+    let provider = ScriptedRuntime::new([
+        answer("first"),
+        expired_key(),
+        answer("summary"),
+        answer("second"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
+    session
+        .send(long_message(), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    session
+        .send(text("again"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap_err();
+    session.compact().unwrap().await.unwrap();
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        [
+            "user",
+            "compaction_boundary",
+            "text",
+            "response",
+            "user",
+            "error",
+            "compaction_marker"
+        ]
+    );
+
+    session.resume().unwrap().await.unwrap();
+
+    // The failure left nothing but its record, so the turn reruns from its
+    // message, after the summary; the compaction stays where it was.
+    let requests = provider.requests();
+    assert_eq!(
+        requests[3].items.as_ref(),
+        [
+            summary_item("summary"),
+            answer_item("small-model", "first"),
+            user_item("again"),
+        ]
+    );
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        [
+            "user",
+            "compaction_boundary",
+            "text",
+            "response",
+            "user",
+            "compaction_marker",
+            "text",
+            "response"
+        ]
+    );
+}
+
 // One session and one scripted request: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
@@ -800,6 +888,98 @@ async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
             ("test-model", false)
         ]
     );
+}
+
+/// A session with two answered messages of 400 tokens each and a recorded
+/// switch to the 1,000-token window, which compacts before it lands.
+async fn switching_to_a_smaller_window(provider: &ScriptedRuntime, store: &Rc<MemoryTreeStore>) -> AgentSession {
+    let config = SessionConfig {
+        compaction: CompactionConfig::default(),
+        ..SessionConfig::default()
+    };
+    let session = start(provider, Vec::new(), store, config).await;
+    for (message, id) in [("a", "t1"), ("b", "t2")] {
+        session
+            .send(text(&message.repeat(1_600)), turn(id))
+            .unwrap()
+            .await
+            .unwrap();
+    }
+    session
+        .update_model(ModelSwitch {
+            model: Box::new(small_model()),
+            runtime: None,
+        })
+        .unwrap();
+    session
+}
+
+// One session and five scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_send_whose_switch_fails_to_compact_keeps_its_message_in_a_turn_that_resume_finishes() {
+    let provider = ScriptedRuntime::new([
+        answer("first"),
+        answer("second"),
+        expired_key(),
+        answer("summary by the large model"),
+        answer("third"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = switching_to_a_smaller_window(&provider, &store).await;
+
+    let failed = session.send(text("short"), turn("t3")).unwrap().await;
+
+    assert_eq!(failed.unwrap_err().code.as_deref(), Some("auth_expired"));
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        kinds(&blocks),
+        ["user", "text", "response", "user", "text", "response", "user", "error"]
+    );
+    let Some(Block::Error(error)) = blocks.last() else {
+        unreachable!("the kinds end with an error");
+    };
+    assert!(!error.outside_turn, "{error:?}");
+
+    session.resume().unwrap().await.unwrap();
+
+    // Resume lands the switch again, and the message reaches the new model.
+    let requests = provider.requests();
+    let models: Vec<(&str, bool)> = requests
+        .iter()
+        .map(|request| (request.model_id.as_str(), is_copy(request)))
+        .collect();
+    assert_eq!(
+        models,
+        [
+            ("test-model", false),
+            ("test-model", false),
+            ("test-model", true),
+            ("test-model", true),
+            ("small-model", false)
+        ]
+    );
+    assert_eq!(requests[4].items.last(), Some(&user_item("short")));
+}
+
+// One session and three scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_send_stopped_while_its_switch_compacts_keeps_its_message_before_the_stop() {
+    let provider = ScriptedRuntime::new([answer("first"), answer("second"), Turn::pending()]);
+    let store = MemoryTreeStore::new();
+    let session = switching_to_a_smaller_window(&provider, &store).await;
+    let running = session.send(text("short"), turn("t3")).unwrap();
+    until(|| provider.requests().len() == 3).await;
+
+    let stopped = session.abort().await;
+
+    assert_eq!(stopped.target, Some(AbortTarget::ActiveCompaction));
+    assert_eq!(running.await, Ok(ActionEnd::Aborted));
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        kinds(&blocks),
+        ["user", "text", "response", "user", "text", "response", "user", "abort"]
+    );
+    assert!(matches!(&blocks[6], Block::User(user) if user.turn_id == turn("t3")));
 }
 
 #[tokio::test(flavor = "local")]
