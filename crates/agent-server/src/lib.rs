@@ -6,8 +6,8 @@
 //! (`demi_agent_store`). A [`Connection`] handles the decoded frames of one
 //! conversation socket, which the backend owns.
 //!
-//! A product supplies the commands, instructions, profiles and context
-//! sources every node is assembled with, the Host its shell tools reach
+//! A product supplies the commands, instructions and context sources every
+//! node is assembled with, the user's subagent settings each spawn reads, the Host its shell tools reach
 //! ([`HostResolver`](demi_agent_tools::HostResolver)), each conversation's
 //! model selection and the provider runtimes ([`ProviderResolver`]) and a
 //! tree store per conversation. Everything here

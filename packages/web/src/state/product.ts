@@ -93,6 +93,8 @@ function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, providers: event.providers }
     case 'cloud':
       return { ...state, cloud: event.cloud }
+    case 'subagents':
+      return { ...state, subagents: event.subagents }
   }
 }
 

@@ -6,6 +6,7 @@
 //! [`live`].
 
 mod live;
+mod profiles;
 mod supervisor;
 
 use std::{
@@ -23,17 +24,18 @@ use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::RegisterError;
 use demi_shared_gates::{ActivityGate, KeyedSerialGate, Reservation};
-use demi_shared_types::{Clock, CommandId, NodeId, Profile};
+use demi_shared_types::{Clock, CommandId, NodeId};
 use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
+pub(crate) use self::profiles::ProfileListing;
 pub(crate) use self::supervisor::{AgentSnapshot, StartInput, TreeEntry};
 use self::{live::LiveOutput, supervisor::Child};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
     Node,
-    node::{self, AssembleError, NodeRole, NodeSpec},
+    node::{self, AssembleError, NodeRole, NodeSpec, Origin},
 };
 
 /// A conversation's live tree.
@@ -57,7 +59,6 @@ pub struct Tree<H: HostResolver> {
     /// Every action of the tree holds a lease on it, and so does a child's
     /// creation; a target switch or an archive reserves it.
     admission: ActivityGate,
-    profiles: Rc<[Profile]>,
     /// The revision of the toolset the tree opened with.
     toolset: Rc<str>,
     store: Rc<dyn AgentTreeStore>,
@@ -186,11 +187,6 @@ pub(crate) enum OpenError {
     Resolve(#[from] ResolveError),
     #[error(transparent)]
     Assemble(#[from] AssembleError),
-    #[error(
-        "subagent profile name \"{}\" is reserved: omitting --profile already inherits the parent",
-        Profile::INHERIT
-    )]
-    ReservedProfile,
     /// The product's commands cannot take the `demi agent` group.
     #[error("the demi agent commands cannot be added: {0}")]
     Commands(#[from] RegisterError),
@@ -218,29 +214,27 @@ impl<H: HostResolver> Tree<H> {
     ) -> Result<(Rc<Self>, Option<Continuation>), OpenError> {
         let deps = &server.deps;
         let toolset = deps.toolsets.current().await.map_err(OpenError::Toolset)?;
-        let profiles = toolset.profiles.clone();
-        if profiles
-            .iter()
-            .any(|profile| profile.name == Profile::INHERIT)
-        {
-            return Err(OpenError::ReservedProfile);
-        }
         let inherited = toolset.commands.clone();
-        let commands = Rc::new(commands::with_runtime_groups(
-            &inherited, server, true, &profiles,
-        )?);
+        let commands = Rc::new(commands::with_runtime_groups(&inherited, server, true)?);
         let store = (deps.stores)(root);
         let admission = ActivityGate::new();
         let model = deps.providers.selection(root).await?;
+        let stored = Origin::stored(store.as_ref(), root)
+            .await
+            .map_err(AssembleError::from)?;
+        let origin = stored.unwrap_or_else(|| Origin::New {
+            record: NodeRecord::root(root.clone(), deps.clock.now()),
+            cwd: cwd.to_owned(),
+            model: model.clone(),
+            first_message: None,
+        });
         let runtime = deps.providers.runtime(root, &model).await?;
         let sink = Rc::new(FrameSink::new());
         let live = LiveOutput::new(sink.clone());
         let assembled = node::assemble(NodeSpec {
-            record: NodeRecord::root(root.clone(), deps.clock.now()),
+            origin,
             role: NodeRole::Root,
             root: root.clone(),
-            cwd: cwd.to_owned(),
-            model: model.clone(),
             runtime,
             providers: deps.providers.clone(),
             hosts: deps.hosts.clone(),
@@ -249,7 +243,6 @@ impl<H: HostResolver> Tree<H> {
             context: deps.context.clone(),
             inherited,
             commands,
-            first_message: None,
             store: store.clone(),
             shells: deps.shells.clone(),
             feed: live.feed(None),
@@ -309,7 +302,6 @@ impl<H: HostResolver> Tree<H> {
                 starting: RefCell::new(HashMap::new()),
                 lifecycle: TaskTracker::new(),
                 admission,
-                profiles,
                 toolset: toolset.revision,
                 store,
                 clock: deps.clock.clone(),
@@ -341,6 +333,22 @@ impl<H: HostResolver> Tree<H> {
             .borrow()
             .get(id)
             .map(|child| child.node().clone())
+    }
+
+    /// The provider entries the tree's live nodes infer with, the root's
+    /// first: a child's profile may name another entry than its parent's
+    /// (`subagents.md` § Runtime).
+    pub fn providers(&self) -> Vec<String> {
+        let children = self.children.borrow();
+        let nodes = std::iter::once(&self.root).chain(children.values().map(|child| child.node()));
+        let mut providers: Vec<String> = Vec::new();
+        for node in nodes {
+            let provider = node.session().model().provider_id;
+            if !providers.contains(&provider) {
+                providers.push(provider);
+            }
+        }
+        providers
     }
 
     /// The tree's admission: every action of its nodes holds a lease, and a

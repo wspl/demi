@@ -15,6 +15,8 @@ use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
 use demi_agent_server::{ProviderResolver, ResolveError};
+use demi_agent_tools::{ProfileModel, Unavailable};
+use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_providers::llm::catalog::configured_selection;
 use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime};
 use demi_backend_providers::usage::rate_limit::RequestRateLimit;
@@ -23,7 +25,8 @@ use demi_provider_common::{
     ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv,
 };
-use demi_shared_types::{Model, ModelSelection, NodeId, effective_context_window};
+use demi_shared_types::{Model, ModelSelection, NodeId, UnavailableSetting, effective_context_window};
+use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{StreamExt as _, stream};
@@ -150,6 +153,53 @@ impl ProviderResolver for ConversationProviders {
                 .copied();
             effective_context_window(window, limit)
         })
+    }
+
+    /// The selection a profile's model settings make from the entry's
+    /// catalog now, as a model switch makes one; what is missing when a part
+    /// is gone.
+    fn profile_selection<'a>(
+        &'a self,
+        model: &'a ProfileModel,
+    ) -> LocalBoxFuture<'a, Result<ModelSelection, Unavailable>> {
+        Box::pin(async move {
+            let shard = self
+                .shard
+                .upgrade()
+                .ok_or_else(|| Unavailable::Failed("the backend is shutting down".into()))?;
+            let provider_id =
+                ProviderId::try_from(model.provider_id.as_str()).map_err(|_| Unavailable::Entry)?;
+            let chosen = ModelSettings {
+                provider_id,
+                model_id: model.model_id.clone(),
+                thinking_effort: model.thinking_effort.clone(),
+                service_tier_id: model.service_tier_id.clone(),
+            };
+            shard
+                .chosen_selection(&chosen)
+                .await
+                .map_err(|refusal| missing(&model.model_id, refusal))
+        })
+    }
+}
+
+/// What a profile's model settings miss, from why their selection was
+/// refused.
+fn missing(model: &str, refusal: ChangeRefusal) -> Unavailable {
+    match refusal {
+        ChangeRefusal::ProviderNotFound => Unavailable::Entry,
+        ChangeRefusal::ModelNotFound => Unavailable::Model(model.to_owned()),
+        ChangeRefusal::SettingUnavailable(UnavailableSetting::Effort(effort)) => {
+            Unavailable::Effort {
+                model: model.to_owned(),
+                effort,
+            }
+        }
+        ChangeRefusal::SettingUnavailable(UnavailableSetting::Tier(tier)) => Unavailable::Tier {
+            model: model.to_owned(),
+            tier,
+        },
+        other => Unavailable::Failed(other.to_string()),
     }
 }
 

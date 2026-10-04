@@ -5,6 +5,7 @@ mod compaction;
 mod connections;
 mod editing;
 mod live;
+mod profiles;
 mod subagents;
 mod support;
 mod title;

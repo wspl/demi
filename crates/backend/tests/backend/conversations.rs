@@ -387,7 +387,7 @@ pub(crate) fn events(frames: &[Value]) -> String {
 }
 
 /// A new API-key entry of the master's.
-async fn entry(backend: &TestBackend, master: &Session, body: Value) -> String {
+pub(crate) async fn entry(backend: &TestBackend, master: &Session, body: Value) -> String {
     let created = backend.post("/api/providers", Some(master), body).await;
     assert_eq!(
         created.status,
@@ -1914,7 +1914,7 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
 
 /// A configured model with the efforts `low` and `high`, whose Fast is the
 /// tier `fast` when there is one.
-fn leveled(id: &str, fast: Option<&str>) -> Value {
+pub(crate) fn leveled(id: &str, fast: Option<&str>) -> Value {
     json!({
         "id": id, "displayName": id.to_uppercase(), "contextWindow": 100000, "outputLimit": 4000,
         "thinkingEfforts": ["low", "high"], "acceptedExtensions": null, "fastTier": fast

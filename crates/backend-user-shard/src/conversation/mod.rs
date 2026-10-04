@@ -42,7 +42,7 @@ use demi_web_api_protocol::ids::UserId;
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub(crate) use self::product::ShardHosts;
-use self::product::{ExecutionContext, INSTRUCTIONS, PluginContext, ShardToolsets};
+use self::product::{ExecutionContext, INSTRUCTIONS, PluginContext, ShardSubagents, ShardToolsets};
 use self::providers::ConversationProviders;
 use self::titles::Titles;
 use self::wakeups::IndexedWakeup;
@@ -118,6 +118,9 @@ pub(crate) fn conversation_parts(
     let hosts: Weak<dyn HostShard> = shard.clone();
     let agent = AgentServer::new(ServerDeps {
         toolsets: Rc::new(ShardToolsets {
+            shard: shard.clone(),
+        }),
+        subagents: Rc::new(ShardSubagents {
             shard: shard.clone(),
         }),
         instructions: Rc::from(INSTRUCTIONS),

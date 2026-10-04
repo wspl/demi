@@ -16,6 +16,7 @@ mod plugins;
 
 pub use self::plugins::ReloadRefusal;
 mod policy;
+pub mod subagents;
 
 pub(crate) use self::page_socket::{PageGone, PageSocket};
 

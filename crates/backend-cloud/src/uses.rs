@@ -5,14 +5,16 @@
 //! conversation works; an idle stop and a reset hold the conversations that
 //! cannot work without the Cloud, the first two roles, and leave an
 //! attached one alone: it runs on its own target. The roles are read when
-//! the lifecycle needs them; the `provider` role follows from the
-//! conversation's provider, which the placement runs on the Cloud whenever
-//! it needs a process (`claude-code.md` § Where it runs).
+//! the lifecycle needs them; the `provider` role follows from the providers
+//! the conversation's nodes infer with, its root's and its live subagents',
+//! which the placement runs on the Cloud whenever one needs a process
+//! (`claude-code.md` § Where it runs).
 
 use std::collections::HashMap;
 use std::time::Duration;
 
 use demi_backend_database::StorageError;
+use demi_backend_database::managed::CloudUseRecord;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
 use crate::machine::CloudError;
@@ -51,12 +53,10 @@ impl dyn CloudShard {
         let mut process_providers: HashMap<ProviderId, bool> = HashMap::new();
         let mut uses = Vec::new();
         for conversation in conversations {
-            let provider = match &conversation.provider {
-                Some(provider) if !conversation.on_cloud => {
-                    self.runs_a_process(provider, &mut process_providers).await
-                }
-                _ => false,
-            };
+            let provider = !conversation.on_cloud
+                && self
+                    .needs_a_process(&conversation, &mut process_providers)
+                    .await;
             let role = if conversation.on_cloud {
                 Role::Target
             } else if provider {
@@ -71,6 +71,24 @@ impl dyn CloudShard {
             uses.push((conversation.id, role));
         }
         Ok(uses)
+    }
+
+    /// Whether a node of the conversation infers with a provider that runs
+    /// a process: the provider its record names, which its root infers
+    /// with, or one a live subagent of its tree infers with.
+    async fn needs_a_process(
+        &self,
+        conversation: &CloudUseRecord,
+        known: &mut HashMap<ProviderId, bool>,
+    ) -> bool {
+        let mut providers = self.tree_providers(&conversation.id);
+        providers.extend(conversation.provider.clone());
+        for provider in &providers {
+            if self.runs_a_process(provider, known).await {
+                return true;
+            }
+        }
+        false
     }
 
     /// Whether the provider entry's provider runs a process on a Host, which

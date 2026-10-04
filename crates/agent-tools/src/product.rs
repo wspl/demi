@@ -1,22 +1,21 @@
 //! What a product supplies for its agents (`runtime.md` § Sessions and
-//! turns) besides the data the agent server is given: the commands and
-//! profiles a tree opens with, the Host a node's shell tools reach, and the
-//! context sources asked before each request.
+//! turns) besides the data the agent server is given: the commands a tree
+//! opens with, the user's subagent settings each spawn reads, the Host a
+//! node's shell tools reach, and the context sources asked before each
+//! request.
 
 use std::rc::Rc;
 
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
-use demi_shared_types::{NodeId, Profile, TurnId};
+use demi_shared_types::{NodeId, TurnId};
 use futures_util::future::LocalBoxFuture;
 
-/// The commands every node of a tree starts from and the profiles its
-/// children may take, which a tree takes when it opens and keeps until it
-/// closes; `revision` tells two toolsets with other commands or profiles
-/// apart.
+/// The commands every node of a tree starts from, which a tree takes when
+/// it opens and keeps until it closes; `revision` tells two toolsets with
+/// other commands apart.
 #[derive(Clone)]
 pub struct Toolset {
     pub commands: Rc<CommandSet>,
-    pub profiles: Rc<[Profile]>,
     pub revision: Rc<str>,
 }
 
@@ -31,6 +30,89 @@ impl ToolsetSource for Toolset {
     fn current(&self) -> LocalBoxFuture<'_, Result<Toolset, String>> {
         let toolset = self.clone();
         Box::pin(async move { Ok(toolset) })
+    }
+}
+
+/// The user's subagent settings at one moment (`subagents.md` § Profiles):
+/// the Subagent switch and the user's profiles, in name order.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SubagentSettings {
+    /// Whether the user has subagents on.
+    pub enabled: bool,
+    pub profiles: Vec<Profile>,
+}
+
+/// One of the user's subagent profiles, as data.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Profile {
+    /// The `--profile` value.
+    pub name: String,
+    /// When the agent should use it, which `demi agent profiles` shows.
+    pub description: String,
+    /// The model settings a child infers with; none for its parent's model.
+    pub model: Option<ProfileModel>,
+    /// The text that replaces the instructions in a child's system prompt;
+    /// none for its parent's.
+    pub instructions: Option<String>,
+    /// Whether its children may spawn children of their own.
+    pub can_spawn: bool,
+    /// Whether agents may use it now.
+    pub enabled: bool,
+}
+
+/// A profile's model settings (`models.md` § A conversation's model
+/// settings): the provider entry, the model, the thinking effort and the
+/// service tier the user chose, which the product builds a child's model
+/// selection from at each spawn.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProfileModel {
+    pub provider_id: String,
+    pub model_id: String,
+    /// An effort the model listed, or thinking off; none only for a model
+    /// that lists no efforts.
+    pub thinking_effort: Option<String>,
+    /// A tier the model listed; none for the vendor's default.
+    pub service_tier_id: Option<String>,
+}
+
+/// What of a profile's model settings is missing now, which makes the
+/// profile unavailable (`subagents.md` § An unavailable profile). Each says
+/// what the user changes in settings.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum Unavailable {
+    #[error(
+        "its provider entry is gone or no longer available to the user; choose another model for the profile in settings"
+    )]
+    Entry,
+    #[error(
+        "model \"{0}\" is no longer in its provider entry's catalog; choose another model for the profile in settings"
+    )]
+    Model(String),
+    #[error(
+        "model \"{model}\" no longer offers the effort \"{effort}\"; choose another effort for the profile in settings"
+    )]
+    Effort { model: String, effort: String },
+    #[error(
+        "model \"{model}\" no longer offers the service tier \"{tier}\"; choose another service tier for the profile in settings"
+    )]
+    Tier { model: String, tier: String },
+    /// The settings could not be checked, such as a storage read that
+    /// failed; the spawn fails with it as with a missing part.
+    #[error("its model settings could not be checked: {0}")]
+    Failed(String),
+}
+
+/// Where the agent reads the user's subagent settings: at each spawn and
+/// each `demi agent profiles`, never once per tree.
+pub trait SubagentSource {
+    fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>>;
+}
+
+/// Settings that never change.
+impl SubagentSource for SubagentSettings {
+    fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>> {
+        let settings = self.clone();
+        Box::pin(async move { Ok(settings) })
     }
 }
 

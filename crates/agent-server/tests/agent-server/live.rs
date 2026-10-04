@@ -15,7 +15,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{
-    EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory, Toolset,
+    EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory, SubagentSettings, Toolset,
 };
 use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ServerFrame, ShellStatus};
@@ -249,8 +249,11 @@ async fn serving() -> (
     let server = AgentServer::new(ServerDeps {
         toolsets: Rc::new(Toolset {
             commands: Rc::new(CommandSet::new()),
-            profiles: Rc::new([]),
             revision: Rc::from("none"),
+        }),
+        subagents: Rc::new(SubagentSettings {
+            enabled: true,
+            profiles: Vec::new(),
         }),
         instructions: Rc::from("system prompt"),
         hosts: Rc::new(LiveHosts),

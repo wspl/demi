@@ -10,10 +10,10 @@ use std::{
 };
 
 use demi_agent_store::{media::HeldMedia, testing::test_model};
-use demi_agent_tools::HostResolver;
+use demi_agent_tools::{HostResolver, ProfileModel, Unavailable};
 use demi_conversation_socket_protocol::{ClientContent, ClientFrame, ServerFrame};
 use demi_provider_common::{ProviderRuntime, testing::ScriptedRuntime};
-use demi_shared_types::{ModelSelection, NodeId, UserContentBlock};
+use demi_shared_types::{ModelSelection, NodeId, ProviderModel, UnavailableSetting, UserContentBlock};
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
@@ -34,10 +34,11 @@ type Runtimes = Rc<dyn Fn() -> Box<dyn ProviderRuntime>>;
 /// Provider runtimes by provider id: every runtime of one provider plays
 /// that provider's one script, and a provider without one is unknown. Every
 /// conversation's record holds the selection a test chose last, else
-/// [`test_model`].
+/// [`test_model`]. A provider's catalog lists the models a test gave it.
 #[derive(Default)]
 pub struct ScriptedProviders {
     runtimes: RefCell<HashMap<String, Runtimes>>,
+    catalogs: RefCell<HashMap<String, Vec<ProviderModel>>>,
     selection: RefCell<Option<ModelSelection>>,
     /// Every resolution asked for: the conversation and the provider.
     pub calls: RefCell<Vec<(NodeId, String)>>,
@@ -61,6 +62,20 @@ impl ScriptedProviders {
             provider.to_owned(),
             Rc::new(move || Box::new(runtime.clone()) as Box<dyn ProviderRuntime>),
         );
+    }
+
+    /// `provider`'s catalog lists `models` from now on, in place of what it
+    /// listed.
+    pub fn list(&self, provider: &str, models: Vec<ProviderModel>) {
+        self.catalogs
+            .borrow_mut()
+            .insert(provider.to_owned(), models);
+    }
+
+    /// `provider` is gone from now on: it has no runtime and no catalog.
+    pub fn remove(&self, provider: &str) {
+        self.runtimes.borrow_mut().remove(provider);
+        self.catalogs.borrow_mut().remove(provider);
     }
 }
 
@@ -93,6 +108,46 @@ impl ProviderResolver for ScriptedProviders {
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
         let window = model.model.context_window;
         Box::pin(async move { window })
+    }
+
+    /// The selection the provider's catalog makes of `model`, as a backend
+    /// makes it: an entry without a runtime is gone.
+    fn profile_selection<'a>(
+        &'a self,
+        model: &'a ProfileModel,
+    ) -> LocalBoxFuture<'a, Result<ModelSelection, Unavailable>> {
+        let provider = &model.provider_id;
+        let known = self.runtimes.borrow().contains_key(provider);
+        let listed = self.catalogs.borrow().get(provider).and_then(|catalog| {
+            catalog
+                .iter()
+                .find(|listed| listed.id == model.model_id)
+                .cloned()
+        });
+        let selection = (|| {
+            if !known {
+                return Err(Unavailable::Entry);
+            }
+            let listed = listed.ok_or_else(|| Unavailable::Model(model.model_id.clone()))?;
+            let missing = |setting| match setting {
+                UnavailableSetting::Effort(effort) => Unavailable::Effort {
+                    model: model.model_id.clone(),
+                    effort,
+                },
+                UnavailableSetting::Tier(tier) => Unavailable::Tier {
+                    model: model.model_id.clone(),
+                    tier,
+                },
+            };
+            let thinking = listed
+                .thinking_for(model.thinking_effort.as_deref())
+                .map_err(missing)?;
+            let tier = listed
+                .tier_for(model.service_tier_id.as_deref())
+                .map_err(missing)?;
+            Ok(listed.selection(provider, thinking, tier))
+        })();
+        Box::pin(async move { selection })
     }
 }
 

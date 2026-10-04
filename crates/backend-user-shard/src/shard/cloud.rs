@@ -17,7 +17,7 @@ use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_shared_gates::Reservation;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::mpsc;
 use tokio_util::sync::WaitForCancellationFuture;
@@ -85,6 +85,17 @@ impl CloudShard for Shard {
 
     fn activity(&self, conversation: &ConversationId) -> Activity {
         self.conversation_activity(conversation)
+    }
+
+    fn tree_providers(&self, conversation: &ConversationId) -> Vec<ProviderId> {
+        let Some(tree) = self.agent.tree(&root_of(conversation)) else {
+            return Vec::new();
+        };
+        // An id that is empty names no entry, so no process.
+        tree.providers()
+            .into_iter()
+            .filter_map(|provider| ProviderId::try_from(provider).ok())
+            .collect()
     }
 
     fn attended(&self, conversation: &ConversationId) -> bool {

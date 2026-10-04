@@ -16,11 +16,11 @@ use demi_agent_session::{
 use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent, TranscriptPatch};
-use demi_host_interface::CommandSet;
+use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    Profile, QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId,
+    AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome,
+    ModelSelection, NodeId, QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId,
     UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
@@ -32,8 +32,8 @@ use tokio_util::task::AbortOnDropHandle;
 use super::Tree;
 use crate::{
     Node,
-    node::{self, NodeRole, NodeSpec},
-    server::commands::with_runtime_groups,
+    node::{self, NodeRole, NodeSpec, Origin},
+    server::{AgentServer, commands::with_runtime_groups},
 };
 
 /// The most live children one node has at once.
@@ -98,7 +98,6 @@ pub(crate) enum StartInput {
         prompt: String,
         profile_name: Option<String>,
         description: String,
-        is_spawn_forbidden: bool,
     },
     Resume {
         id: NodeId,
@@ -112,6 +111,24 @@ enum CloseKind {
     Completed,
     Aborted,
     Error,
+}
+
+/// Why a child's provider runtime could not be had.
+enum RuntimeError {
+    /// The owner is closing, so it forks nothing.
+    OwnerClosing,
+    /// The product could not build a runtime for the child's provider
+    /// entry, with why.
+    Unbuilt(String),
+}
+
+impl RuntimeError {
+    fn reason(self) -> String {
+        match self {
+            Self::OwnerClosing => OWNER_CLOSING.to_owned(),
+            Self::Unbuilt(reason) => reason,
+        }
+    }
 }
 
 /// What a supervision finds when it looks at its child.
@@ -165,28 +182,6 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    fn profile(&self, name: Option<&str>) -> Result<Option<&Profile>, String> {
-        let Some(name) = name else {
-            return Ok(None);
-        };
-        if let Some(profile) = self.profiles.iter().find(|profile| profile.name == name) {
-            return Ok(Some(profile));
-        }
-        let names: Vec<&str> = self
-            .profiles
-            .iter()
-            .map(|profile| profile.name.as_str())
-            .collect();
-        let available = if names.is_empty() {
-            "none; omit --profile to inherit the parent".to_owned()
-        } else {
-            names.join(", ")
-        };
-        Err(format!(
-            "unknown profile \"{name}\" (available: {available})"
-        ))
-    }
-
     fn check_capacity(&self, owner: &NodeId) -> Result<(), String> {
         if self.children_of(owner).len() >= MAX_LIVE_CHILDREN {
             return Err(format!(
@@ -224,17 +219,7 @@ impl<H: HostResolver> Tree<H> {
                     prompt,
                     profile_name,
                     description,
-                    is_spawn_forbidden,
-                } => {
-                    tree.spawn(
-                        &owner,
-                        prompt,
-                        profile_name,
-                        description,
-                        is_spawn_forbidden,
-                    )
-                    .await
-                }
+                } => tree.spawn(&owner, prompt, profile_name, description).await,
                 StartInput::Resume { id, message } => tree.reopen(&owner, id, message).await,
             }
         });
@@ -244,22 +229,28 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Spawns a child of `owner` with the next agent number and `prompt`
-    /// queued. Answers its number.
+    /// queued, under the user's current subagent settings and the profile
+    /// `profile_name`, none for the inherit profile. A check that fails
+    /// creates nothing. Answers its number.
     async fn spawn(
         self: &Rc<Self>,
         owner: &Rc<Node<H>>,
         prompt: String,
         profile_name: Option<String>,
         description: String,
-        is_spawn_forbidden: bool,
     ) -> Result<u64, String> {
         if !owner.record().can_spawn_subagents {
             return Err("this session may not spawn subagents".to_owned());
         }
+        let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        let setup = self
+            .spawn_setup(&server, owner, profile_name.as_deref())
+            .await?;
         self.check_capacity(owner.id())?;
-        let profile = self.profile(profile_name.as_deref())?;
-        let can_spawn =
-            !is_spawn_forbidden && profile.is_none_or(|profile| profile.can_spawn_subagents);
+        let runtime = self
+            .child_runtime(&server, owner, &setup.model)
+            .await
+            .map_err(RuntimeError::reason)?;
         let number = self
             .store
             .next_number(Sequence::Agent)
@@ -271,15 +262,48 @@ impl<H: HostResolver> Tree<H> {
             parent: Some(owner.id().clone()),
             description,
             profile: profile_name,
+            instructions: setup.instructions,
             round: 1,
             started_at: self.clock.now(),
-            can_spawn_subagents: can_spawn,
+            can_spawn_subagents: setup.can_spawn,
             closed: None,
             delivered: false,
         };
-        let brief = self.text_message(prompt);
-        self.start_child(owner, record, Some(brief)).await?;
+        let origin = Origin::New {
+            record,
+            cwd: owner.cwd().to_owned(),
+            model: setup.model,
+            first_message: Some(self.text_message(prompt)),
+        };
+        self.start_child(&server, owner, origin, runtime).await?;
         Ok(number)
+    }
+
+    /// The provider runtime of a child of `owner` that infers with `model`
+    /// (`subagents.md` § Runtime): a fork of the owner's runtime when that
+    /// serves the model's provider entry, else one the product builds for
+    /// the entry. Either way the runtime is the child's own, and its session
+    /// closes it.
+    async fn child_runtime(
+        &self,
+        server: &AgentServer<H>,
+        owner: &Node<H>,
+        model: &ModelSelection,
+    ) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
+        let fork = owner
+            .session()
+            .fork_runtime_for(&model.provider_id)
+            .await
+            .map_err(|_| RuntimeError::OwnerClosing)?;
+        match fork {
+            Some(runtime) => Ok(runtime),
+            None => server
+                .deps
+                .providers
+                .runtime(self.root.id(), model)
+                .await
+                .map_err(|error| RuntimeError::Unbuilt(error.to_string())),
+        }
     }
 
     /// Revives an archived child of `owner` in one commit, a new round with
@@ -315,24 +339,32 @@ impl<H: HostResolver> Tree<H> {
         if !record.delivered {
             return Err("The previous completion is not saved by the parent yet; retry resume after receiving it".to_owned());
         }
-        // A profile no plugin declares any more leaves the archive as it
-        // is.
-        self.profile(record.profile.as_deref())?;
+        let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        // The runtime comes first: a child whose provider entry is gone
+        // stays archived.
+        let archived = self.stored(&id).await?;
+        let runtime = self
+            .child_runtime(&server, owner, archived.model())
+            .await
+            .map_err(RuntimeError::reason)?;
         let round = record.round + 1;
         let started_at = self.clock.now();
         self.store
             .reopen_node(&id, round, started_at, self.text_message(message))
             .await
             .map_err(|error| error.to_string())?;
-        let live = NodeRecord {
-            round,
-            started_at,
-            closed: None,
-            delivered: false,
-            ..record
-        };
-        self.start_child(owner, live, None).await?;
+        // The reopen queued the message in its checkpoint.
+        let reopened = self.stored(&id).await?;
+        self.start_child(&server, owner, reopened, runtime).await?;
         Ok(number)
+    }
+
+    /// What the store holds of the child `id`, which it must hold.
+    async fn stored(&self, id: &NodeId) -> Result<Origin, String> {
+        Origin::stored(self.store.as_ref(), id)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or_else(|| format!("subagent {id} is not in the store"))
     }
 
     fn new_node_id(&self) -> NodeId {
@@ -348,45 +380,33 @@ impl<H: HostResolver> Tree<H> {
 
     /// Everything spawn, reopen and restore share: the child's node from the
     /// assembly, new with its brief queued in the create commit or from the
-    /// store; then its place in the directory and its frames, what it has
-    /// yet to run, its own children, and its supervision.
+    /// store, on `runtime`, with what it was spawned with; then its place in
+    /// the directory and its frames, what it has yet to run, its own
+    /// children, and its supervision.
     async fn start_child(
         self: &Rc<Self>,
+        server: &Rc<AgentServer<H>>,
         owner: &Rc<Node<H>>,
-        record: NodeRecord,
-        first_message: Option<QueuedMessage>,
+        origin: Origin,
+        runtime: Box<dyn ProviderRuntime>,
     ) -> Result<NodeId, String> {
-        let server = self.server.upgrade().ok_or("the agent server is gone")?;
         let deps = &server.deps;
-        let profile = self.profile(record.profile.as_deref())?;
         let activity = self.admission.enter(Purpose::Demand).await;
-        let runtime = owner
-            .session()
-            .fork_runtime()
-            .await
-            .map_err(|error| error.to_string())?;
-        let model = profile
-            .and_then(|profile| profile.model.clone())
-            .unwrap_or_else(|| owner.session().model());
-        let instructions = match profile.and_then(|profile| profile.instructions.as_deref()) {
-            Some(instructions) => Rc::from(instructions),
+        let record = origin.record();
+        let instructions = match &record.instructions {
+            Some(instructions) => Rc::from(instructions.as_str()),
             None => owner.instructions().clone(),
         };
-        let inherited = match profile {
-            Some(profile) => Rc::new(narrowed(profile, owner.inherited_commands())),
-            None => owner.inherited_commands().clone(),
-        };
+        let inherited = owner.inherited_commands().clone();
         let can_spawn = record.can_spawn_subagents;
-        let commands = with_runtime_groups(&inherited, &server, can_spawn, &self.profiles)
+        let commands = with_runtime_groups(&inherited, server, can_spawn)
             .map_err(|error| error.to_string())?;
         let preamble = subagent_preamble(record.number, owner.record().number, can_spawn);
         let feed = self.live.feed(Some(record.id.clone()));
         let assembled = node::assemble(NodeSpec {
-            record,
+            origin,
             role: NodeRole::Child,
             root: self.root.id().clone(),
-            cwd: owner.cwd().to_owned(),
-            model,
             runtime,
             providers: deps.providers.clone(),
             hosts: deps.hosts.clone(),
@@ -395,7 +415,6 @@ impl<H: HostResolver> Tree<H> {
             context: deps.context.clone(),
             inherited,
             commands: Rc::new(commands),
-            first_message,
             store: self.store.clone(),
             shells: deps.shells.clone(),
             feed,
@@ -481,14 +500,20 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Brings `owner`'s children back from the store (`subagents.md`
-    /// § Persistence): a closed child whose completion never reached the
-    /// owner is delivered now, a live one is restored and continues, and a
-    /// live one that cannot be rebuilt is deleted with its subtree.
+    /// § Persistence) from what each was spawned with, never from the
+    /// user's profiles: a closed child whose completion never reached the
+    /// owner is delivered now, and a live one is restored and continues. A
+    /// live one whose provider runtime cannot be built closes as an error
+    /// with the reason; one whose stored state does not rebuild is deleted
+    /// with its subtree.
     pub(super) fn restore_children<'a>(
         self: &'a Rc<Self>,
         owner: &'a Rc<Node<H>>,
     ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
+            let Some(server) = self.server.upgrade() else {
+                return;
+            };
             let _turn = self.starts.acquire(owner.id().clone()).await;
             let records = match self.store.children(owner.id()).await {
                 Ok(records) => records,
@@ -514,11 +539,85 @@ impl<H: HostResolver> Tree<H> {
                     continue;
                 }
                 let id = record.id.clone();
-                if let Err(error) = self.start_child(owner, record, None).await {
-                    tracing::warn!(node = %id, %error, "a live subagent could not be rebuilt and is deleted");
-                    if let Err(error) = self.store.delete_node(&id).await {
-                        self.report(format!("subagent {id} was not deleted: {error}"));
+                let origin = match self.stored(&id).await {
+                    Ok(origin) => origin,
+                    Err(error) => {
+                        self.delete_unbuilt(&id, &error).await;
+                        continue;
                     }
+                };
+                let runtime = match self.child_runtime(&server, owner, origin.model()).await {
+                    Ok(runtime) => runtime,
+                    // The owner is going away; the child stays live in the
+                    // store for the next restore.
+                    Err(RuntimeError::OwnerClosing) => return,
+                    Err(RuntimeError::Unbuilt(reason)) => {
+                        self.close_unbuilt(owner, record, reason).await;
+                        continue;
+                    }
+                };
+                if let Err(error) = self.start_child(&server, owner, origin, runtime).await {
+                    self.delete_unbuilt(&id, &error).await;
+                }
+            }
+        })
+    }
+
+    /// Deletes a live child whose stored state does not rebuild, with its
+    /// subtree.
+    async fn delete_unbuilt(&self, id: &NodeId, error: &str) {
+        tracing::warn!(node = %id, %error, "a live subagent could not be rebuilt and is deleted");
+        if let Err(error) = self.store.delete_node(id).await {
+            self.report(format!("subagent {id} was not deleted: {error}"));
+        }
+    }
+
+    /// Closes the stored live child `record` of `owner`, which no provider
+    /// runtime can be built for, as an error with `reason`: its live
+    /// descendants close as aborted first, as an abort closes them, and
+    /// `owner` receives the failed completion (`subagents.md`
+    /// § Persistence).
+    async fn close_unbuilt(&self, owner: &Node<H>, record: NodeRecord, reason: String) {
+        self.abort_stored_children(&record.id).await;
+        let close = NodeClose {
+            phase: ClosePhase::Error { failure: reason },
+            at: self.clock.now(),
+        };
+        if let Err(error) = self.store.close_node(&record.id, close.clone()).await {
+            self.report(format!("subagent {} did not close: {error}", record.id));
+            return;
+        }
+        let closed = NodeRecord {
+            closed: Some(close.clone()),
+            ..record
+        };
+        self.sink.emit(ServerFrame::Subagent {
+            event: SubagentEvent::Closed,
+            job: closed.job().expect("a child has a job"),
+        });
+        self.deliver(owner, &closed, &close).await;
+    }
+
+    /// Closes every live descendant the store holds of `parent`, deepest
+    /// first, as aborted. Their completions stay undelivered in the store,
+    /// for the round of `parent` that next restores its children.
+    fn abort_stored_children<'a>(&'a self, parent: &'a NodeId) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async move {
+            let children = match self.store.children(parent).await {
+                Ok(children) => children,
+                Err(error) => {
+                    self.report(format!("the children of {parent} were not closed: {error}"));
+                    return;
+                }
+            };
+            for child in children.into_iter().filter(|child| child.closed.is_none()) {
+                self.abort_stored_children(&child.id).await;
+                let close = NodeClose {
+                    phase: ClosePhase::Aborted,
+                    at: self.clock.now(),
+                };
+                if let Err(error) = self.store.close_node(&child.id, close).await {
+                    self.report(format!("subagent {} did not close: {error}", child.id));
                 }
             }
         })
@@ -1471,14 +1570,5 @@ impl ToolStatus {
             Self::Completed => "completed",
             Self::Error => "error",
         }
-    }
-}
-
-/// The parent's commands a child of `profile` keeps: all of them, or those
-/// under the profile's paths (`subagents.md` § Profiles).
-fn narrowed(profile: &Profile, commands: &CommandSet) -> CommandSet {
-    match &profile.commands {
-        None => commands.clone(),
-        Some(kept) => commands.filter(|leaf| kept.iter().any(|path| leaf.starts_with(path))),
     }
 }

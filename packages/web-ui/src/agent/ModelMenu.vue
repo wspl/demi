@@ -28,6 +28,12 @@ const props = defineProps<{
   models: Record<string, ModelInfo[]>
   /** The conversation's model settings; none while nothing is chosen. */
   settings?: ModelSettings | null
+  /**
+   * Leaves out the Context row, the user's limit on the model for all their
+   * conversations: for settings that hold only a model, its effort and its
+   * tier, such as a subagent profile's.
+   */
+  withoutContext?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -62,7 +68,7 @@ const fast = computed(() => isFastMode(selected.value?.model, props.settings?.se
 
 const contextOptions = computed(() => {
   const model = selected.value?.model
-  return model ? contextLimitOptions(model) : []
+  return model && !props.withoutContext ? contextLimitOptions(model) : []
 })
 const contextLabel = computed(() => formatTokens(contextWindowInUse(selected.value?.model)))
 

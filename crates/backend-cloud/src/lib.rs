@@ -32,7 +32,7 @@ use demi_backend_providers::llm::assembly::ProviderAssembly;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::public_url::PublicUrl;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::WaitForCancellationFuture;
 use tokio_util::task::TaskTracker;
@@ -93,6 +93,9 @@ pub trait CloudShard {
     /// What the conversation is doing: a turn of its tree, an operation
     /// holding its file gate, or a user stream someone has open.
     fn activity(&self, conversation: &ConversationId) -> Activity;
+    /// The provider entries the live nodes of the conversation's tree infer
+    /// with, a subagent's among them; none while its tree is not open.
+    fn tree_providers(&self, conversation: &ConversationId) -> Vec<ProviderId>;
     /// Whether someone attends the conversation: a turn of it is in
     /// flight, or a file transfer or user stream of it is open.
     fn attended(&self, conversation: &ConversationId) -> bool;

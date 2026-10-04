@@ -14,6 +14,7 @@ import type {
 import type { ExposeState } from '@demicodes/plugin-expose'
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import { commitOf } from './plugins'
+import { createSubagentState } from './subagent-profiles'
 import { ahead } from './time'
 
 /**
@@ -710,6 +711,7 @@ export function createSettingsState() {
       { id: 'expose', name: 'Host Expose', description: 'Shares a port on a host at a public address.', enabled: false },
       { id: 'skills', name: 'Skills', description: 'Workflows the agent follows, from git repositories and your repository.', enabled: true },
     ] as SettingsPlugin[],
+    subagents: createSubagentState(),
     servers: [
       {
         id: 'github', name: 'GitHub', transport: 'stdio', target: 'npx @modelcontextprotocol/server-github', state: 'connected', enabled: true,

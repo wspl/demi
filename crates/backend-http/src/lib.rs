@@ -33,6 +33,7 @@ mod runners;
 mod settings;
 mod sidebar;
 mod streams;
+mod subagents;
 mod sync;
 mod transfer;
 mod usage;
@@ -286,6 +287,12 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/plugins/{plugin}/calls/{method}", post(plugins::user_call))
         .route("/plugins/{plugin}", put(plugins::switch))
+        .route("/subagents", put(subagents::switch))
+        .route("/subagents/profiles", post(subagents::create))
+        .route(
+            "/subagents/profiles/{id}",
+            patch(subagents::patch).delete(subagents::delete),
+        )
         .route("/conversations/{id}/reload", post(plugins::reload))
         .route("/sidebar/reorder", post(sidebar::reorder))
         .route(

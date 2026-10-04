@@ -10,7 +10,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{
-    ContextSource, HostResolver, NodeContext, Toolset,
+    ContextSource, HostResolver, NodeContext, SubagentSettings, SubagentSource, Toolset,
     testing::{NoHost, NoShells},
 };
 use demi_agent_transcript::testing::SequentialIds;
@@ -23,18 +23,20 @@ use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits, UserPart,
     testing::{FixedClock, ScriptedRuntime, TokioClock, Turn},
 };
-use demi_shared_types::{Block, Clock, ModelSelection, NodeId, Profile, Timestamp, TurnId};
+use demi_shared_types::{
+    Block, Clock, ModelSelection, NodeId, ProviderModel, ServiceTier, Timestamp, TurnId,
+};
 use futures_util::{StreamExt, future::LocalBoxFuture, stream};
 use serde_json::{Value, json};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
-/// What the scenarios' product supplies: one command, the profiles the test
-/// declares, and a context source, the conversation's execution context,
-/// which the test can set.
-#[derive(Default)]
+/// What the scenarios' product supplies: one command, the user's subagent
+/// settings, which the test can change between two spawns, and a context
+/// source, the conversation's execution context, which the test can set.
 pub struct TestProduct {
-    pub profiles: Vec<Profile>,
+    /// Subagents on and no profile until the test sets them.
+    pub subagents: RefCell<SubagentSettings>,
     /// The execution context: each node whose transcript does not hold it
     /// yet is given it before its next request.
     pub context: RefCell<Option<String>>,
@@ -42,8 +44,28 @@ pub struct TestProduct {
     pub seen: RefCell<Vec<Vec<String>>>,
 }
 
+impl Default for TestProduct {
+    fn default() -> Self {
+        Self {
+            subagents: RefCell::new(SubagentSettings {
+                enabled: true,
+                profiles: Vec::new(),
+            }),
+            context: RefCell::default(),
+            seen: RefCell::default(),
+        }
+    }
+}
+
 impl HostResolver for TestProduct {
     type Host = NoHost;
+}
+
+impl SubagentSource for TestProduct {
+    fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>> {
+        let settings = self.subagents.borrow().clone();
+        Box::pin(async move { Ok(settings) })
+    }
 }
 
 impl ContextSource for TestProduct {
@@ -453,9 +475,9 @@ impl Fixture {
         let server = AgentServer::new(ServerDeps {
             toolsets: Rc::new(Toolset {
                 commands: Rc::new(greet()),
-                profiles: product.profiles.clone().into(),
                 revision: Rc::from("test"),
             }),
+            subagents: product.clone(),
             instructions: Rc::from("system prompt"),
             hosts: product.clone(),
             context: Rc::new([product.clone() as Rc<dyn ContextSource>]),
@@ -587,4 +609,34 @@ pub fn frame_type(frame: &ServerFrame) -> String {
         .as_str()
         .unwrap()
         .to_owned()
+}
+
+/// A catalog's model `id` that lists `efforts` and `tiers`.
+pub fn listed_model(id: &str, efforts: &[&str], tiers: &[&str]) -> ProviderModel {
+    ProviderModel {
+        id: id.into(),
+        display_name: id.into(),
+        description: None,
+        context_window: Some(200_000),
+        output_limit: None,
+        supports_tools: Some(true),
+        supports_attachments: None,
+        supports_video: None,
+        accepted_extensions: None,
+        supports_reasoning: None,
+        supported_thinking_efforts: (!efforts.is_empty())
+            .then(|| efforts.iter().map(|effort| (*effort).to_owned()).collect()),
+        can_disable_thinking: None,
+        service_tiers: tiers
+            .iter()
+            .map(|tier| ServiceTier {
+                id: (*tier).into(),
+                label: (*tier).into(),
+                description: None,
+                fast: false,
+            })
+            .collect(),
+        default_service_tier_id: None,
+        cost: None,
+    }
 }

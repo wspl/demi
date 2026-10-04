@@ -2,6 +2,7 @@ import {
   Archive,
   Bell,
   Blocks,
+  Bot,
   CircleUser,
   Database,
   Keyboard,
@@ -68,6 +69,18 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'codex',
           'base url',
           'catalog'
+        ]
+      },
+      {
+        id: 'subagents',
+        label: 'Subagent',
+        icon: Bot,
+        keywords: [
+          'subagent',
+          'profile',
+          'spawn',
+          'delegate',
+          'child agent'
         ]
       },
       {

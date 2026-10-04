@@ -27,6 +27,7 @@ import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDia
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import type { SettingsState } from '../fixtures/settings'
 import GallerySettingsProviders from './GallerySettingsProviders.vue'
+import GallerySubagents from './GallerySubagents.vue'
 
 /** One page of the full mock, chosen by the dialog's tab. All state lives in the fixture; timers stand in for the server. */
 const props = defineProps<{
@@ -347,6 +348,8 @@ function resetShortcuts() {
     :pending="pluginsPending"
     @switch="switchPlugin"
   />
+
+  <GallerySubagents v-else-if="tab === 'subagents'" :state="s.subagents" />
 
   <SettingsMcp
     v-else-if="tab === 'mcp'"

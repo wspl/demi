@@ -27,7 +27,7 @@ use demi_plugin_interface::{
     HostRead, PanelTabChange, Plugin, PluginError, PluginId, PluginPort, PluginTransport,
     PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope, StoredValue, Topic,
 };
-use demi_shared_types::{B64Bytes, BlobRef, NodeId, Profile, TurnId};
+use demi_shared_types::{B64Bytes, BlobRef, NodeId, TurnId};
 use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, ExposeId, UserId};
@@ -173,14 +173,12 @@ pub enum SwitchError {
     Storage(#[from] StorageError),
 }
 
-/// The commands, profiles and revision of the plugins a user has on, which
-/// a conversation's tree opens with.
+/// The commands and revision of the plugins a user has on, which a
+/// conversation's tree opens with.
 pub struct PluginToolset {
     pub commands: CommandSet,
-    pub profiles: Vec<Profile>,
-    /// The ids of the plugins on that declare commands or profiles, in
-    /// registration order: two sets of the same commands and profiles have
-    /// the same revision.
+    /// The ids of the plugins on that declare commands, in registration
+    /// order: two sets of the same commands have the same revision.
     pub revision: String,
 }
 
@@ -500,25 +498,15 @@ impl UserPlugins {
     }
 
     /// The toolset of the plugins the user has on: their commands, with the
-    /// product's `product` groups under `demi`, and their profiles.
+    /// product's `product` groups under `demi`.
     pub async fn toolset(&self, product: Vec<GroupBuilder>) -> Result<PluginToolset, StorageError> {
         let enabled = self.enabled().await?;
         let commands = compose(&self.0.registry, Some(&self.0), product, |index| {
             enabled[index]
         })
         .expect("the plugins' commands were checked at startup");
-        let profiles = self
-            .0
-            .registry
-            .plugins
-            .iter()
-            .zip(&enabled)
-            .filter(|(_, enabled)| **enabled)
-            .flat_map(|(registered, _)| registered.factory.manifest().profiles.clone())
-            .collect();
         Ok(PluginToolset {
             commands,
-            profiles,
             revision: self.revision_of(&enabled),
         })
     }
@@ -536,10 +524,7 @@ impl UserPlugins {
             .plugins
             .iter()
             .zip(enabled)
-            .filter(|(registered, enabled)| {
-                let profiles = &registered.factory.manifest().profiles;
-                **enabled && (!registered.commands.is_empty() || !profiles.is_empty())
-            })
+            .filter(|(registered, enabled)| **enabled && !registered.commands.is_empty())
             .map(|(registered, _)| registered.id().as_str())
             .collect();
         ids.join(",")

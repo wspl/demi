@@ -21,7 +21,10 @@ use std::{
 
 use demi_agent_session::{Continuation, ForkError, ModelSwitch, SessionConfig, fork_seed};
 use demi_agent_store::{AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, StoreError};
-use demi_agent_tools::{ContextSource, HostResolver, ShellEnvironmentFactory, ToolsetSource};
+use demi_agent_tools::{
+    ContextSource, HostResolver, ProfileModel, ShellEnvironmentFactory, SubagentSource, ToolsetSource,
+    Unavailable,
+};
 use demi_agent_transcript::IdSource;
 
 use demi_provider_common::ProviderRuntime;
@@ -63,6 +66,16 @@ pub trait ProviderResolver {
     /// `model` use: the model's context window, or the limit the user set on
     /// it (`models.md` § Context limit).
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32>;
+
+    /// The model selection a child of a profile with the model settings
+    /// `model` infers with, built from the entry's current catalog as a
+    /// conversation's is on a model switch (`subagents.md` § An unavailable
+    /// profile); what is missing when the entry, the model, its effort or
+    /// its tier is gone. Nothing falls back.
+    fn profile_selection<'a>(
+        &'a self,
+        model: &'a ProfileModel,
+    ) -> LocalBoxFuture<'a, Result<ModelSelection, Unavailable>>;
 }
 
 /// Why no runtime could be built.
@@ -119,9 +132,11 @@ impl Default for ServerConfig {
 /// while a node runs.
 pub struct ServerDeps<H: HostResolver> {
     /// What a tree opens with: the commands every node starts from, on
-    /// which the server grafts its own groups per node, and the named
-    /// subagent profiles.
+    /// which the server grafts its own groups per node.
     pub toolsets: Rc<dyn ToolsetSource>,
+    /// The user's Subagent switch and profiles, read at each spawn and each
+    /// `demi agent profiles`.
+    pub subagents: Rc<dyn SubagentSource>,
     /// The instructions of every node's system prompt, which a profile's
     /// replace.
     pub instructions: Rc<str>,

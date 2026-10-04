@@ -16,6 +16,16 @@ import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { useGalleryView } from '../gallery-views'
+import GallerySubagents from '../components/GallerySubagents.vue'
+import SubagentProfileDialog from '@demicodes/web-ui/settings/SubagentProfileDialog.vue'
+import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
+import {
+  createSubagentState,
+  demoSubagentProfiles,
+  subagentModels,
+  subagentProviders,
+} from '../fixtures/subagent-profiles'
+import { productWould } from '../product-would'
 
 const { view } = useGalleryView()
 
@@ -57,6 +67,10 @@ const anatomy: [string, string][] = [
     'The rail entry is disabled with an In development tooltip. The page specimen still shows servers in one list: status is a dot and a word; tools are tags on a third line. Adding opens a dialog.'
   ],
   [
+    'Subagent',
+    'A switch that turns subagents on or off for the user, then the user\'s profiles, each with its own switch. A row names the profile\'s model, its prompt and whether its children spawn; a profile whose provider entry, model, effort or tier is gone carries Unavailable, with the missing part as its tooltip. The editor chooses the parent\'s model or any provider\'s with its effort and tier, and the parent\'s prompt or text that replaces it.'
+  ],
+  [
     'Skills',
     'A plugin\'s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. Git sources are packs of SKILL.md files; a source\'s state is one status label after its name, and a skill\'s labels say why it is off or never offered. The showcase below pins every state at once.'
   ],
@@ -86,6 +100,36 @@ const fullNarrowTab = ref<SettingsTab>('skills')
 // as the product's settings dialog does.
 const fullOpen = ref(true)
 const fullNarrowOpen = ref(true)
+
+// The Subagent section with subagents turned off: the profiles stay, muted.
+const subagentsOff = createSubagentState(false)
+
+/** A profile pinned in its editor, which closes from its buttons and opens again from Open. */
+function pinnedEditor(id: string | null) {
+  const profile = demoSubagentProfiles().find((candidate) => candidate.id === id)
+  const draft: SettingsSubagentDraft = profile
+    ? {
+        name: profile.name,
+        description: profile.description,
+        model: profile.model,
+        instructions: profile.instructions,
+        canSpawn: profile.canSpawn,
+      }
+    : { name: '', description: '', model: null, instructions: null, canSpawn: true }
+  return { open: ref(true), draft }
+}
+const inheritEditor = pinnedEditor(null)
+const ownEditor = pinnedEditor('explore')
+
+function saved(editor: ReturnType<typeof pinnedEditor>, draft: SettingsSubagentDraft) {
+  editor.open.value = false
+  productWould(`The product would save the profile ${draft.name}`)
+}
+
+function deleted(editor: ReturnType<typeof pinnedEditor>) {
+  editor.open.value = false
+  productWould(`The product would delete the profile ${editor.draft.name}`)
+}
 
 </script>
 
@@ -122,6 +166,54 @@ const fullNarrowOpen = ref(true)
           >
             <GallerySettingsFull :tab="fullTab" :state="full" />
           </SettingsDialog>
+        </GalleryOverlayWell>
+      </GallerySection>
+
+      <GallerySection
+        title="Subagent · Off"
+        note="Subagents turned off: no agent spawns, the profiles stay and can still be edited. The disabled archivist's model is gone too, and the scout's effort is no longer offered."
+      >
+        <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
+          <GallerySubagents :state="subagentsOff" />
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Profile Editor · Inherits"
+        note="A new profile: the parent's model and prompt, its children may spawn. Create Profile stays off until the name and the description are filled."
+      >
+        <GalleryOverlayWell size="tall">
+          <Button v-if="!inheritEditor.open.value" size="md" @click="inheritEditor.open.value = true">Open</Button>
+          <SubagentProfileDialog
+            :is-open="inheritEditor.open.value"
+            :overlay-store="appOverlayStore"
+            mode="create"
+            :profile="inheritEditor.draft"
+            :providers="subagentProviders"
+            :models="subagentModels"
+            @close="inheritEditor.open.value = false"
+            @save="saved(inheritEditor, $event)"
+          />
+        </GalleryOverlayWell>
+      </GallerySection>
+
+      <GallerySection
+        title="Profile Editor · Own Prompt, Another Provider’s Model"
+        note="The explore profile: GPT-5 of OpenAI with Fast, while the conversations run on Anthropic, a prompt that replaces the parent's, and no spawning."
+      >
+        <GalleryOverlayWell size="tall">
+          <Button v-if="!ownEditor.open.value" size="md" @click="ownEditor.open.value = true">Open</Button>
+          <SubagentProfileDialog
+            :is-open="ownEditor.open.value"
+            :overlay-store="appOverlayStore"
+            mode="edit"
+            :profile="ownEditor.draft"
+            :providers="subagentProviders"
+            :models="subagentModels"
+            @close="ownEditor.open.value = false"
+            @save="saved(ownEditor, $event)"
+            @delete="deleted(ownEditor)"
+          />
         </GalleryOverlayWell>
       </GallerySection>
 

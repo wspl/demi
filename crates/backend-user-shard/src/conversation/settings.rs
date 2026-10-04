@@ -11,6 +11,7 @@
 use demi_agent_server::ResolveError;
 use demi_backend_database::conversation_index::{RecordChange, SettingsChange};
 use demi_shared_types::{ModelSelection, ProviderModel};
+use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 
 use crate::shard::Shard;
@@ -83,13 +84,32 @@ impl Shard {
             }
             return Ok(selection);
         };
-        let listed = self
-            .listed_model(&choice.provider_id, &choice.model_id)
-            .await?;
         let tier = change.service_tier_id.flatten();
-        let thinking = listed.thinking_for(change.thinking_effort.as_deref())?;
-        let tier = listed.tier_for(tier.as_deref())?;
-        Ok(listed.selection(choice.provider_id.as_str(), thinking, tier))
+        self.chosen_selection(&ModelSettings {
+            provider_id: choice.provider_id,
+            model_id: choice.model_id,
+            thinking_effort: change.thinking_effort,
+            service_tier_id: tier,
+        })
+        .await
+    }
+
+    /// The selection the model settings `chosen` make (`models.md` § A
+    /// conversation's model settings): the model's facts from the entry's
+    /// catalog now, with the effort it names, else the model's first, and
+    /// the tier it names, else the vendor's default. Each part is one the
+    /// catalog's model offers; a conversation's model switch and a
+    /// subagent profile's model build their selections here.
+    pub(crate) async fn chosen_selection(
+        &self,
+        chosen: &ModelSettings,
+    ) -> Result<ModelSelection, ChangeRefusal> {
+        let listed = self
+            .listed_model(&chosen.provider_id, &chosen.model_id)
+            .await?;
+        let thinking = listed.thinking_for(chosen.thinking_effort.as_deref())?;
+        let tier = listed.tier_for(chosen.service_tier_id.as_deref())?;
+        Ok(listed.selection(chosen.provider_id.as_str(), thinking, tier))
     }
 
     /// The model `model` of the user's entry `provider`, as the entry's

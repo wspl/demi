@@ -10,14 +10,14 @@ use demi_agent_tools::HostResolver;
 use demi_host_interface::{
     Call, CommandSet, GroupBuilder, LeafBuilder, RegisterError, RpcError, RpcPort, TypedRpc,
 };
-use demi_shared_types::{NodeId, Profile, is_blank, trim};
+use demi_shared_types::{NodeId, is_blank, trim};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use super::{
     AgentServer,
     shell_output::shell_group,
-    tree::{AgentSnapshot, StartInput, Tree, TreeEntry},
+    tree::{AgentSnapshot, ProfileListing, StartInput, Tree, TreeEntry},
 };
 
 /// The one description of a spawn's brief (`subagents.md` § Command help).
@@ -33,6 +33,13 @@ const RESUME_SUMMARY: &str = "Revive one of your own archived children with a ne
 
 const LIST_SUMMARY: &str = "Render the whole session tree from the root down, marking your own position. Live agents show phase, ages, execution, and activity; each node's archived (finished, revivable by its parent) children render beneath it. Every age is relative to now. A read, not a wait — not for polling loops.";
 
+const PROFILES_SUMMARY: &str = "List the user's enabled subagent profiles with when to use each, as the user's settings say now; an unavailable one says what is missing, and a line says so when the user turned subagents off. A read, not a wait.";
+
+/// The `--profile` option's description, which names no profile: the help
+/// is rendered once per tree, and the profiles change with the user's
+/// settings (`subagents.md` § Command help).
+const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles; `demi agent profiles` lists them with when to use each. Omit to inherit the parent's model, prompt, Host and commands.";
+
 const SHOW_SUMMARY: &str = "Bounded snapshot of any live agent in the tree (root excluded): execution state, recent tool titles with durations, last assistant text. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. A read, not a wait — not for polling loops.";
 
 /// The input of `demi agent spawn`.
@@ -43,9 +50,6 @@ struct SpawnArgs {
     profile: Option<String>,
     /// Short UI title distinguishing concurrent children.
     description: Option<String>,
-    /// Forbid this child from spawning subagents of its own; it can still
-    /// send, list, and show.
-    no_subagents: Option<bool>,
 }
 
 /// The input of `demi agent send`.
@@ -81,6 +85,11 @@ struct ResumeArgs {
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct ListArgs {}
+
+/// The input of `demi agent profiles`, which takes none.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct ProfilesArgs {}
 
 /// The input of `demi agent show`.
 #[derive(Deserialize, JsonSchema)]
@@ -130,11 +139,10 @@ pub(crate) fn with_runtime_groups<H: HostResolver>(
     product_commands: &CommandSet,
     server: &Rc<AgentServer<H>>,
     can_spawn: bool,
-    profiles: &[Profile],
 ) -> Result<CommandSet, RegisterError> {
     let mut commands = product_commands.clone();
     let groups = [
-        agent_group(Rc::downgrade(server), can_spawn, profiles),
+        agent_group(Rc::downgrade(server), can_spawn),
         shell_group(Rc::downgrade(server)),
     ];
     let has_demi = commands.declarations().any(|root| root.name() == "demi");
@@ -154,24 +162,11 @@ pub(crate) fn with_runtime_groups<H: HostResolver>(
 
 /// The `agent` group of a node: every verb, or communication and reads only
 /// when the node may not spawn.
-fn agent_group<H: HostResolver>(
-    server: Weak<AgentServer<H>>,
-    can_spawn: bool,
-    profiles: &[Profile],
-) -> GroupBuilder {
+fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -> GroupBuilder {
     let summary = if can_spawn {
         "Agent tree: spawn and manage your own children; send, list and show any live agent."
     } else {
         "Agent tree communication: this session may not spawn subagents; send, list and show any live agent."
-    };
-    let names: Vec<&str> = profiles
-        .iter()
-        .map(|profile| profile.name.as_str())
-        .collect();
-    let available = if names.is_empty() {
-        "none".to_owned()
-    } else {
-        names.join(", ")
     };
     let mut group = GroupBuilder::new("agent", summary);
     if can_spawn {
@@ -179,10 +174,7 @@ fn agent_group<H: HostResolver>(
             LeafBuilder::rpc("spawn", SPAWN_SUMMARY)
                 .input::<SpawnArgs>()
                 .describe("prompt", SPAWN_PROMPT)
-                .describe(
-                    "profile",
-                    format!("Named subagent profile; omit to inherit the parent's model, prompt, Host and commands. Available: {available}."),
-                )
+                .describe("profile", PROFILE_OPTION)
                 .stdin_field("prompt")
                 .success_output("stdout is \"subagentId: <id>\"; creation succeeded, not necessarily execution")
                 .failure_output("non-zero exit with the creation failure reason on stderr")
@@ -228,6 +220,11 @@ fn agent_group<H: HostResolver>(
                 .positionals(["id"])
                 .json_output::<Shown>()
                 .bind(TypedRpc::new(verb(server.clone(), show))),
+        )
+        .leaf(
+            LeafBuilder::rpc("profiles", PROFILES_SUMMARY)
+                .json_output::<ProfileListing>()
+                .bind(TypedRpc::new(verb(server.clone(), profiles))),
         )
 }
 
@@ -296,7 +293,6 @@ async fn spawn<H: HostResolver>(
         prompt: prompt.to_owned(),
         profile_name: call.args.profile,
         description: call.args.description.unwrap_or_default(),
-        is_spawn_forbidden: call.args.no_subagents.unwrap_or(false),
     };
     match call.tree.start(&call.caller, input).await {
         Ok(child) => started(&port, call.json, child).await,
@@ -409,6 +405,20 @@ async fn show<H: HostResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Res
         return json(&port, &Shown { agent: snapshot }).await;
     }
     out(&port, text).await
+}
+
+async fn profiles<H: HostResolver>(
+    call: Invoked<H, ProfilesArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
+    let listing = match call.tree.profiles().await {
+        Ok(listing) => listing,
+        Err(error) => return fail(&port, "profiles", &error).await,
+    };
+    if call.json {
+        return json(&port, &listing).await;
+    }
+    out(&port, listing.render()).await
 }
 
 async fn started(port: &RpcPort, json_output: bool, child: u64) -> Result<u8, RpcError> {

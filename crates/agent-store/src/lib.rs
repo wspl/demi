@@ -158,9 +158,13 @@ pub struct NodeRecord {
     pub parent: Option<NodeId>,
     /// A short title; empty for the root.
     pub description: String,
-    /// The profile the node was spawned with; none for the root and for a
-    /// node that inherits its parent's setup.
+    /// The name of the profile the node was spawned with; none for the root
+    /// and for a node that inherits its parent's setup.
     pub profile: Option<String>,
+    /// The instructions its profile replaced its parent's with when it was
+    /// spawned; none when it has its parent's. Restore and resume read them
+    /// here, never from the user's profiles (`subagents.md` § Persistence).
+    pub instructions: Option<String>,
     /// The node's current round: 1 for its first run, one more at each
     /// resume.
     pub round: u64,
@@ -208,6 +212,7 @@ impl NodeRecord {
             parent: None,
             description: String::new(),
             profile: None,
+            instructions: None,
             round: 1,
             started_at: now,
             can_spawn_subagents: true,
