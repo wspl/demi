@@ -1326,6 +1326,16 @@ no dependency cycle.
 - **Public boundary:** plain Go types and strict metadata decoding.
 - **Must not:** import generated contracts or contain contract markers.
 
+#### `tools/compactionfixture`
+
+- **Owns:** the hand-run compaction check: it opens the recorded large-context
+  conversation in its `testdata` as an agent server conversation and checks,
+  against a real model, that facts planted before compaction are recalled
+  ([Compaction](../agent/compaction.md)).
+- **Public boundary:** a command (`go run ./tools/compactionfixture recall|switch`)
+  that no test runs; every build compiles it.
+- **Must not:** run in any test or check, or be imported.
+
 #### `tools/archcheck`
 
 - **Owns:** the import-direction check over this document and `go list -deps
@@ -1960,6 +1970,7 @@ internal/backend/runners -> internal/artifacts, internal/backend/blobs, internal
 internal/backend/usershard -> internal/agent/server, internal/framewire, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/idlewatch, internal/backend/blobs, internal/backend/plugins, internal/backend/providers, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/declare, internal/core, internal/gates, internal/plugin, internal/backend/remotehost, internal/machinewire, internal/provider, internal/providers/claudecode, internal/runnerwire, internal/host, internal/webapi
 tools/release -> internal/framewire, internal/artifacts, internal/cmdpkg/browser/browserop, internal/cmdpkg/claudecode/claudecodeop, internal/commandwire, internal/core, internal/cmdpkg/file/fileop, internal/machinewire, internal/runnerwire, internal/webapi, internal/backend, internal/plugin, internal/version, internal/backend/runners
 tools/contractgen -> internal/contract, tools/contractgen/pagemeta
+tools/compactionfixture -> internal/agent/server, internal/agent/store, internal/agent/store/storetest, internal/agent/tools, internal/agent/tools/toolstest, internal/agent/transcript, internal/contract, internal/core, internal/framewire, internal/host, internal/provider, internal/providers/openaiapi
 tools/contractgen/manifests -> internal/backend, internal/plugin, tools/contractgen/pagemeta
 tools/contractgen/pagemeta -> none
 tools/archcheck -> none
