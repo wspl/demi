@@ -70,11 +70,30 @@ a skill.
 Each source is pinned to one commit:
 
 - **Adding** a source fetches the repository's default branch, pins its newest
-  commit and lists the skills that commit holds. Every skill starts off.
+  commit and lists the skills that commit holds. Each skill starts as a new
+  skill does, below.
 - **Updating** fetches again and pins the new newest commit. A skill that was
-  on stays on if the new commit still has a skill of that name; a skill the
-  commit no longer has is gone.
+  on stays on if the new commit still has a skill of that name, and one that
+  was off stays off; a skill the commit no longer has is gone. A skill whose
+  name the previous commit did not have, which is every skill when the first
+  fetch failed, is new.
 - **Removing** forgets the source and its skills.
+
+A new skill starts on, so that adding a source gives the agent what the user
+added it for, with two exceptions that start off:
+
+- A skill whose name another user skill that is on already has, in any
+  source, or earlier in this commit's order of paths. Two skills that are on
+  never share a name (below), so this one waits, and the page names the
+  other skill's source.
+- A skill that sets `disable-model-invocation`. The agent is never offered
+  it, so on it would only install its files on every Host and take its name
+  from another skill; the user can still turn it on.
+
+For example, the user has `review` from `acme/tools` on and adds
+`acme/more`, which holds `review` and `lint`: `lint` starts on, and `review`
+starts off with the page saying that a skill of that name from `acme/tools`
+is on.
 
 A source never changes by itself. Its skills change only when the user adds,
 updates, removes or turns on or off.
@@ -96,7 +115,35 @@ shutdown records nothing, so the source shows what it showed before.
 Two user skills that are on never have the same name. Turning on a skill
 whose name another user skill that is on already has is refused, and the
 refusal names the other skill's source. An update cannot break this: a skill
-stays on only under the name it was on with, and a new skill starts off.
+stays on only under the name it was on with, and a new skill whose name is
+taken starts off.
+
+### Updates available
+
+A source never updates by itself, but the page says when an update would
+change it. When the user opens the Skills page, the page asks the plugin to
+check (`check_updates`). For each source last checked more than five minutes
+ago, the plugin reads the commit the repository's default branch points to
+from the remote's ref advertisement: the list of refs and their commits a git
+server sends before any object, which `git ls-remote <url> HEAD` prints. It
+fetches no content, through the same library and with the same isolation as
+a fetch. When that commit differs from the pinned one, the page shows
+**Update available** on the source, until the user updates it.
+
+- The checks of one call run together, each on the blocking pool, and the
+  pages receive the new state once they all ended, if a source's newest
+  commit changed.
+- A check that fails is logged and changes nothing: the page shows what it
+  showed, and the source is checked again five minutes later.
+- A fetch that succeeds counts as a check that found the commit it pinned,
+  so a source just updated never shows an older check's result.
+- What the checks found is kept in the instance's memory, with when each
+  source was checked. A new instance, after a restart, checks again when the
+  page next opens.
+
+Five minutes keeps a user who opens and closes settings from sending a
+request to every repository each time, while a commit pushed during a session
+shows the next time the page opens after the interval.
 
 ### What the plugin keeps
 
@@ -117,8 +164,9 @@ do not count), so two origins of one repository are one source:
 | `failure` | The last fetch's failure, with its time and message; absent once a fetch succeeds |
 
 The files' bytes are blobs in the user's namespace, which the value names, so
-they stay as long as the source does. Whether a fetch is running is not
-stored: the plugin's instance holds it in memory.
+they stay as long as the source does. Whether a fetch is running, and the
+newest commit a check found, are not stored: the plugin's instance holds them
+in memory.
 
 Whenever the user skills that are on change, the plugin sets its user's
 [Host directories](../architecture/plugins.md#host-directories) to one
@@ -234,9 +282,18 @@ user skills; project skills belong to their repositories.
 
 The plugin's state for the user's pages holds every source, in the order they
 were added: its id, its origin, its commit and when it was fetched, whether a
-fetch is running, its failure, its skills with their names, descriptions,
-warnings, whether each is on, and whether it sets `disable-model-invocation`,
-which the page shows as never offered to the agent, and its skipped files.
+fetch is running, its failure, whether an update is available, its skills,
+and its skipped files. Each skill has its name, description and warnings,
+whether it is on, whether it sets `disable-model-invocation`, which the page
+shows as never offered to the agent, and, while it is off, the origin of the
+source whose skill that is on has its name, which the page shows as the
+reason it cannot be turned on.
+
+A source shows its state as one status label right after its name, so it
+never covers the origin under it at any width: **Updating** while a fetch
+runs, when its update button also turns; **Failed**, with the failure's
+message, until a fetch succeeds; or **Update available**. A source whose
+first fetch failed has no commit and no skills, and shows Failed alone.
 
 | Method | Parameters | Result |
 | --- | --- | --- |
@@ -245,6 +302,7 @@ which the page shows as never offered to the agent, and its skipped files.
 | `remove_source` | `source` | Nothing |
 | `set_enabled` | `source`, `skill`, `enabled` | Nothing |
 | `set_source_enabled` | `source`, `enabled` | Nothing; turns every skill of the source on or off, and refuses as `set_enabled` would |
+| `check_updates` | None | Nothing; checks the sources that are due ([Updates available](#updates-available)) after the call |
 
 An origin that is neither `owner/repo` nor an `https` URL, or that names a
 source the user has already added, is refused. A call that names a source or
@@ -253,8 +311,10 @@ fetch, sends the new state to each of the user's pages.
 
 ## Acceptance
 
-- Adding a source lists its skills, all off, with their warnings, and its
-  skipped files with their reasons; a skill whose name breaks its rule loads
+- Adding a source lists its skills, on, with their warnings, and its skipped
+  files with their reasons; a skill whose name another skill that is on has,
+  and a skill that sets `disable-model-invocation`, start off, the first
+  showing the other skill's source; a skill whose name breaks its rule loads
   with a warning; a source too large or without a skill shows its failure and
   keeps no skill.
 - A user skill turned on reaches the next request of every node of every
@@ -274,8 +334,11 @@ fetch, sends the new state to each of the user's pages.
   the skills left out.
 - After a compaction, the next request carries the catalog again.
 - An update keeps the skills that are on by name and drops the ones the new
-  commit lacks; a failed update leaves the source as it was and shows the
-  failure.
+  commit lacks; a new skill starts as an added one does; a failed update
+  leaves the source as it was and shows the failure.
+- Opening the page shows Update available on a source whose repository's
+  default branch points to another commit than the pinned one, and on no
+  other; a failed check shows nothing new.
 - Turning on a second user skill of a taken name is refused with the other
   skill's source.
 - A shutdown during a fetch leaves the source as it was before the fetch.

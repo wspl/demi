@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
 import type { SettingsSkillDraft, SettingsSkillSource } from './types'
@@ -8,6 +8,7 @@ import {
   addedSourceSchema,
   skillsStateSchema,
   type AddSource,
+  type CheckUpdates,
   type SetEnabled,
   type SetSourceEnabled,
   type SourceCall,
@@ -16,8 +17,14 @@ import {
 /**
  * The skills plugin's settings section (`skills.md` § The page): its
  * Skills page over the plugin's state and methods. Every change comes back
- * with the state the plugin sends to each of the user's pages.
+ * with the state the plugin sends to each of the user's pages. Opening it
+ * asks the plugin to check the sources for updates.
  */
+const props = defineProps<{
+  /** The sources shown open at first. */
+  open?: readonly string[]
+}>()
+
 const page = usePage()
 const plugin = page.plugin
 const state = plugin.state(skillsStateSchema)
@@ -29,10 +36,20 @@ const sources = computed<SettingsSkillSource[]>(() =>
     commit: source.commit ?? undefined,
     fetching: source.fetching,
     failure: source.failure ?? undefined,
-    skills: source.skills,
+    updateAvailable: source.updateAvailable,
+    skills: source.skills.map((skill) => ({ ...skill, takenBy: skill.takenBy ?? undefined })),
     skipped: source.skipped,
   })),
 )
+
+const openIds = ref<string[]>([...(props.open ?? [])])
+
+onMounted(() => {
+  plugin.call('check_updates', {} satisfies CheckUpdates, z.null()).catch((error: unknown) => {
+    // Nothing waits for it: a check that cannot start shows nothing new.
+    page.errors.defect('Could not check the sources for updates', error)
+  })
+})
 
 /** The sources with a call in flight, whose controls wait for it. */
 const pending = ref<string[]>([])
@@ -68,6 +85,7 @@ async function add(draft: SettingsSkillDraft): Promise<void> {
 
 <template>
   <SettingsSkills
+    v-model:open="openIds"
     :sources="sources"
     :pending="pending"
     :overlay-store="page.overlays"
