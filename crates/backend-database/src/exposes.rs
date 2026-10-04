@@ -151,6 +151,20 @@ impl ControlService {
         .await
     }
 
+    /// Deletes the expose `id` if it has expired by now, and answers whether
+    /// it did. The expiry is checked in the deletion itself, so a renewal that
+    /// came after the caller read the record keeps the expose.
+    pub async fn delete_expired_expose(&self, id: ExposeId) -> Result<bool, StorageError> {
+        self.call(move |connection, now| {
+            let deleted = connection.execute(
+                "DELETE FROM exposes WHERE id = ?1 AND expires_at <= ?2",
+                params![id.as_str(), now.as_millisecond()],
+            )?;
+            Ok(deleted > 0)
+        })
+        .await
+    }
+
     /// Deletes every expose on `device`; answers their ids.
     pub async fn delete_device_exposes(
         &self,
@@ -209,4 +223,65 @@ fn expose_row(row: &Row<'_>) -> Result<ExposeRecord, StorageError> {
         created_at: instant(row, TABLE, "created_at")?,
         expires_at: instant(row, TABLE, "expires_at")?,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use demi_provider_common::testing::ManualClock;
+    use demi_runner_protocol::wire::RunnerPlatform;
+    use demi_shared_types::Clock;
+
+    use super::*;
+    use crate::accounts::TokenHash;
+    use crate::control::testing::master;
+
+    /// An expose renewed after it was read, as a relay or the expiry watch
+    /// reads it before deleting it, is not deleted as expired once its first
+    /// hour passes; it is once the renewed hour passes (`expose.md` § Lifetime).
+    #[tokio::test]
+    async fn an_expose_renewed_after_it_was_read_is_not_deleted_as_expired() {
+        let data = tempfile::tempdir().unwrap();
+        let clock = Arc::new(ManualClock::new(
+            Timestamp::from_millisecond(1_790_000_000_000).unwrap(),
+        ));
+        let control = ControlService::open(&data.path().join("control.sqlite"), clock.clone())
+            .await
+            .unwrap();
+        let user = master(&control).await;
+        let device = control
+            .create_device(
+                user.id.clone(),
+                "laptop".into(),
+                RunnerPlatform::Linux,
+                TokenHash::of("token"),
+            )
+            .await
+            .unwrap();
+        let id = ExposeId::try_from("k7x2maqw4p3s6tavaw2y4z6aab").unwrap();
+        let hour = SignedDuration::from_hours(1);
+        let address = ExposeAddress::try_from("localhost:3000".to_owned()).unwrap();
+        control
+            .create_expose(id.clone(), user.id.clone(), device.id, address, hour)
+            .await
+            .unwrap();
+        let read = control.expose(id.clone()).await.unwrap().unwrap();
+        clock.advance(SignedDuration::from_mins(59));
+        control
+            .renew_expose(id.clone(), user.id.clone(), hour)
+            .await
+            .unwrap()
+            .unwrap();
+        clock.advance(SignedDuration::from_mins(2));
+        assert!(
+            read.expires_at <= clock.now(),
+            "the record read before the renewal looks expired"
+        );
+        assert!(!control.delete_expired_expose(id.clone()).await.unwrap());
+        assert!(control.expose(id.clone()).await.unwrap().is_some());
+        clock.advance(hour);
+        assert!(control.delete_expired_expose(id.clone()).await.unwrap());
+        assert!(control.expose(id).await.unwrap().is_none());
+    }
 }
