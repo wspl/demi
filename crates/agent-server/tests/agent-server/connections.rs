@@ -25,8 +25,8 @@ use futures_util::{StreamExt as _, stream};
 use crate::{
     editing::{edit, edit_outcome, said, user_block},
     support::{
-        Fixture, Gate, conversation, frame_type, held, is_context_usage, is_idle,
-        is_pending_steers, kinds, open, send, session_of, turn, until,
+        Fixture, Gate, conversation, frame_type, held, is_context_usage, is_idle, kinds, open,
+        send, session_of, turn, until,
     },
 };
 
