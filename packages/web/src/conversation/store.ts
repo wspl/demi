@@ -79,7 +79,7 @@ export const useConversations = defineStore('conversations', () => {
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
   const savedDrafts = new Map<string, string>()
   const uploads = createConversationUploads(saveDrafts, (error) =>
-    report('Could not upload the attachment', error),
+    report('Could Not Upload the Attachment', error),
   )
   const { uploadFile, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
   const draftSync = createDraftSync({
@@ -103,7 +103,7 @@ export const useConversations = defineStore('conversations', () => {
   function storageError(error: unknown): void {
     if (!storageErrorReported) {
       storageErrorReported = true
-      reportError('Drafts remain in this page but could not be saved', error, {
+      reportError('Drafts remain on this page but could not be saved.', error, {
         userVisible: true,
       })
     }
@@ -273,7 +273,7 @@ export const useConversations = defineStore('conversations', () => {
         }
         // Another page saved the draft since this one read it.
         if (current.savedDraft && record.draftRevision > current.savedDraft.revision) {
-          void draftSync.read(current).catch((error) => report('Could not read the draft', error))
+          void draftSync.read(current).catch((error) => report('Could Not Read the Draft', error))
         }
         if (
           revisionChanged &&
@@ -281,7 +281,7 @@ export const useConversations = defineStore('conversations', () => {
           !contextChanged &&
           !archiveChanged
         ) {
-          void loadHosts(current, cached.controller.signal).catch((error) => report('Could not load the conversation hosts', error))
+          void loadHosts(current, cached.controller.signal).catch((error) => report('Could Not Load the Conversation Hosts', error))
         }
         if (contextChanged || archiveChanged) {
           cache.delete(current.id)
@@ -585,7 +585,7 @@ export const useConversations = defineStore('conversations', () => {
     changedDraft(conversation.id, persisted(conversation))
     for (const file of conversation.files) {
       if (isComposerFile(file) && !file.upload) {
-        void uploadFile(file).catch((error) => report('Could not upload the attachment', error))
+        void uploadFile(file).catch((error) => report('Could Not Upload the Attachment', error))
       }
     }
   }
@@ -848,7 +848,7 @@ export const useConversations = defineStore('conversations', () => {
     const failed = result.results.flatMap((field) => field.status === 'failed' ? [field] : [])
     if (failed.length) {
       reportError(
-        'Some fields were not updated',
+        'Some fields were not updated.',
         failed.map((field) => `${field.field}: ${field.message}`).join('\n'),
         { userVisible: true, expected: true },
       )
@@ -943,7 +943,7 @@ export const useConversations = defineStore('conversations', () => {
           )
           if (failures.length) {
             success = false
-            reportError('Some conversations were not updated', failures.join('\n'), {
+            reportError('Some conversations were not updated.', failures.join('\n'), {
               userVisible: true,
               expected: true,
             })
@@ -952,7 +952,7 @@ export const useConversations = defineStore('conversations', () => {
         return success
       })
     } catch (error) {
-      report('Could not update conversations', error)
+      report('Could Not Update Conversations', error)
       return false
     }
   }
@@ -1098,7 +1098,7 @@ export const useConversations = defineStore('conversations', () => {
         return patch(id, { title })
       })
       .catch((error) => {
-        report('Could not rename the conversation', error)
+        report('Could Not Rename the Conversation', error)
         return false
       })
       .then((renamed) => {
@@ -1132,7 +1132,7 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       pendingRetitles.delete(conversation.id)
       conversation.titleGenerating = false
-      report('Could not update the title', error)
+      report('Could Not Update the Title', error)
     }
   }
 
@@ -1162,7 +1162,7 @@ export const useConversations = defineStore('conversations', () => {
         } satisfies SidebarReorder),
       })
     } catch (error) {
-      report('Could not reorder conversations', error)
+      report('Could Not Reorder Conversations', error)
     }
   }
 
@@ -1186,7 +1186,7 @@ export const useConversations = defineStore('conversations', () => {
       conversation.readRevision = Math.max(conversation.readRevision, revision)
       conversation.unread = conversation.revision > conversation.readRevision
     } catch (error) {
-      report('Could not update read status', error)
+      report('Could Not Update Read Status', error)
     }
   }
 
@@ -1221,7 +1221,7 @@ export const useConversations = defineStore('conversations', () => {
       )
       await loadHosts(conversation)
     } catch (error) {
-      report('Could not attach the device', error)
+      report('Could Not Attach the Device', error)
     }
   }
 
@@ -1237,7 +1237,7 @@ export const useConversations = defineStore('conversations', () => {
         { method: 'POST', signal: lifetime.signal },
       )
     } catch (error) {
-      report('Could not reload the conversation', error)
+      report('Could Not Reload the Conversation', error)
     }
   }
 
@@ -1264,7 +1264,7 @@ export const useConversations = defineStore('conversations', () => {
       )
       await loadHosts(conversation)
     } catch (error) {
-      report('Could not detach the device', error)
+      report('Could Not Detach the Device', error)
     }
   }
 
@@ -1296,7 +1296,7 @@ export const useConversations = defineStore('conversations', () => {
       )
       await loadHosts(conversation)
     } catch (error) {
-      report('Could not rename the project', error)
+      report('Could Not Rename the Project', error)
     }
   }
 
@@ -1341,7 +1341,7 @@ export const useConversations = defineStore('conversations', () => {
         }
       })
     } catch (error) {
-      report('Could not change the model', error)
+      report('Could Not Change the Model', error)
     }
   }
 
@@ -1434,7 +1434,7 @@ export const useConversations = defineStore('conversations', () => {
     saveDrafts()
     // The backend accepted the message: the draft it was written in goes too,
     // everywhere, and a change another page made meanwhile stays to restore.
-    void draftSync.save(conversation).catch((error) => report('Could not clear the draft', error))
+    void draftSync.save(conversation).catch((error) => report('Could Not Clear the Draft', error))
   }
 
   function reconcileSubmission(conversation: Conversation): void {
@@ -1453,7 +1453,7 @@ export const useConversations = defineStore('conversations', () => {
       .catch((error) => {
         // A turn that ran and failed is already a record in the transcript.
         if (!isRecordedTurnFailure(error)) {
-          report('The conversation did not accept the request', error)
+          report('The conversation did not accept the request.', error)
         }
       })
   }
@@ -1542,9 +1542,9 @@ export const useConversations = defineStore('conversations', () => {
     /** Saves the drafts that wait for typing to pause: when the page is hidden, or, with `keepalive`, closes. */
     flushDrafts: (keepalive = false) => draftSync.flush(items.value, keepalive),
     restoreReplaced: (conversation: Conversation) =>
-      void draftSync.act(conversation, 'restore').catch((error) => report('Could not restore the draft', error)),
+      void draftSync.act(conversation, 'restore').catch((error) => report('Could Not Restore the Draft', error)),
     dismissReplaced: (conversation: Conversation) =>
-      void draftSync.act(conversation, 'dismiss').catch((error) => report('Could not dismiss the draft', error)),
+      void draftSync.act(conversation, 'dismiss').catch((error) => report('Could Not Dismiss the Draft', error)),
     initialize,
     stopAll,
     abortSubagents: (conversation: Conversation) =>

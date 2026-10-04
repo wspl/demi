@@ -29,7 +29,7 @@ impl Expose {
     pub fn new() -> Self {
         let mut manifest = Manifest::new(
             PluginId::try_from("expose").expect("a valid plugin id"),
-            "Host expose",
+            "Host Expose",
             "Gives a service on one of your hosts a public URL for an hour, with `demi expose`.",
         );
         manifest.commands = commands::commands().manifest_commands();

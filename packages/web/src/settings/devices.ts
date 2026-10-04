@@ -48,7 +48,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       })
     } catch (error) {
       if (!current.signal.aborted) {
-        reportError('Could not revoke device', error, { userVisible: true })
+        reportError('Could Not Revoke Device', error, { userVisible: true })
       }
     } finally {
       if (current === lifetime) {

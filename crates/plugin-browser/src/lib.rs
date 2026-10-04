@@ -30,8 +30,8 @@ impl Browser {
     pub fn new() -> Self {
         let mut manifest = Manifest::new(
             PluginId::try_from("browser").expect("a valid plugin id"),
-            "Conversation browser",
-            "A browser on the conversation's Host that the agent drives with `demi browser` and the user watches in the work panel.",
+            "Conversation Browser",
+            "A browser on the conversation's host that the agent drives with `demi browser` and the user watches in the work panel.",
         );
         manifest.commands = commands().manifest_commands();
         manifest.streams = vec![live_stream()];

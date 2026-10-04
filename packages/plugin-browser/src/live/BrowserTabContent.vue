@@ -227,7 +227,7 @@ async function rebind(): Promise<void> {
       >
         <span>This page was closed on the device.</span>
         <span class="flex items-center gap-2">
-          <Button variant="default" size="sm" @click="emit('close')">Close tab</Button>
+          <Button variant="default" size="sm" @click="emit('close')">Close Tab</Button>
           <Button variant="default" size="sm" @click="rebind">Reload</Button>
         </span>
       </div>

@@ -3,6 +3,7 @@
  * pointer means in the tab (`live-view.md` § Modes). A Web tab is the
  * panel's own size; Mobile and Custom keep theirs, scaled to fit and centred.
  */
+import type { TitleText } from '@demicodes/plugin-sdk'
 import type { LiveTab, BrowserViewport } from '../generated/plugin'
 
 export interface PanelSize {
@@ -82,7 +83,7 @@ export function panelRect(
 /** What the viewport menu offers and shows for a tab. */
 export interface ViewportChoice {
   mode: BrowserViewport['mode']
-  label: string
+  label: TitleText
   /** Only the agent gives a tab its Custom size; the menu cannot choose one. */
   selectable: boolean
 }

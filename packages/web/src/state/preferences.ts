@@ -151,7 +151,7 @@ export const usePreferences = defineStore('preferences', () => {
         await save(patch, current.signal, true)
       } catch (error) {
         if (!current.signal.aborted) {
-          reportError('Could not update settings', error, { userVisible: true })
+          reportError('Could Not Update Settings', error, { userVisible: true })
         }
       } finally {
         if (!current.signal.aborted) {
@@ -197,7 +197,7 @@ export const usePreferences = defineStore('preferences', () => {
         await save({ locale }, current.signal)
       } catch (error) {
         if (!current.signal.aborted) {
-          reportError('Could not report the time zone and languages', error)
+          reportError('Could Not Report the Time Zone and Languages', error)
         }
       } finally {
         if (reporting === key) {
@@ -219,7 +219,7 @@ export const usePreferences = defineStore('preferences', () => {
         await save({ contextLimit: change }, current.signal)
       } catch (error) {
         if (!current.signal.aborted) {
-          reportError('Could not change the context limit', error, { userVisible: true })
+          reportError('Could Not Change the Context Limit', error, { userVisible: true })
         }
       } finally {
         pendingLimits.value = pendingLimits.value.filter((sent) => sent !== change)

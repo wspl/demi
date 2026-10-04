@@ -122,7 +122,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       return
     }
     if (!lifetime.signal.aborted) {
-      reportError('Provider operation failed', error, { userVisible: true })
+      reportError('Provider Operation Failed', error, { userVisible: true })
     }
   }
 
@@ -543,7 +543,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     void readCli(provider.id, false, lifetime.signal).catch((error) => {
       if (!lifetime.signal.aborted) {
-        reportError('Could not read the command-line tool', error)
+        reportError('Could Not Read the Command-Line Tool', error)
       }
     })
   }
@@ -596,7 +596,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     } catch (error) {
       // Automatic refresh stays silent unless the user explicitly joins it.
       if (!current.signal.aborted && refreshingUsage.value[provider.id]?.[accountId] === 'manual') {
-        reportError('Could not refresh usage', error, { userVisible: true })
+        reportError('Could Not Refresh Usage', error, { userVisible: true })
       }
     } finally {
       if (current === lifetime) {

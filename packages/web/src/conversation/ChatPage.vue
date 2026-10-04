@@ -121,7 +121,7 @@ const files = computed<ConversationFiles | undefined>(() => {
 async function fork(request: MessageForkRequest): Promise<void> {
   const sourceId = conversation.value?.id
   if (!sourceId) {
-    throw new Error('The source conversation is unavailable')
+    throw new Error('The source conversation is unavailable.')
   }
   const id = await store.fork(sourceId, request)
   if (route.params.id === sourceId) {

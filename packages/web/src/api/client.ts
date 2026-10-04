@@ -115,7 +115,7 @@ export function apiError(status: number, text: string): ApiError {
   return new ApiError(
     status,
     parsed.success ? parsed.data.code : null,
-    parsed.success ? parsed.data.message : `Request failed (${status})`,
+    parsed.success ? parsed.data.message : `Request failed (${status}).`,
     parsed.success ? parsed.data.reason ?? null : null,
   )
 }

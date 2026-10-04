@@ -134,7 +134,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
     props.conversation.files,
   )
   if (error) {
-    reportError("Couldn't attach", error, { userVisible: true, expected: true })
+    reportError("Couldn't Attach", error, { userVisible: true, expected: true })
     return
   }
   const item = { ...composerRemoteAttachment(file), deviceId: file.deviceId }

@@ -62,7 +62,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     let tabs = panels.get(conversationId)
     if (!tabs) {
       tabs = new PanelTabs(panelBackend(conversationId), (error) => {
-        reportError('Could not change the work panel', error, { userVisible: true })
+        reportError('Could Not Change the Work Panel', error, { userVisible: true })
       })
       panels.set(conversationId, tabs)
     }

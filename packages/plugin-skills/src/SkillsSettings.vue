@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
 import type { SettingsSkillDraft, SettingsSkillSource } from './types'
-import { pendingCalls, usePage } from '@demicodes/plugin-sdk'
+import { pendingCalls, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
   skillsStateSchema,
@@ -59,7 +59,7 @@ function change(
   source: string,
   method: string,
   params: SourceCall | SetEnabled | SetSourceEnabled,
-  couldNot: string,
+  couldNot: HeadlineText,
 ): void {
   void calls.run(source, couldNot, () => plugin.call(method, params, z.null()))
 }
@@ -68,7 +68,7 @@ async function add(draft: SettingsSkillDraft): Promise<void> {
   try {
     await plugin.call('add_source', { origin: draft.origin } satisfies AddSource, addedSourceSchema)
   } catch (error) {
-    page.errors.report('Could not add the source', error)
+    page.errors.report('Could Not Add the Source', error)
   }
 }
 </script>
@@ -80,9 +80,9 @@ async function add(draft: SettingsSkillDraft): Promise<void> {
     :pending="calls.pending.value"
     :overlay-store="page.overlays"
     @add="add"
-    @update="(source) => change(source, 'update_source', { source }, 'Could not update the source')"
-    @remove="(source) => change(source, 'remove_source', { source }, 'Could not remove the source')"
-    @switch="(source, skill, enabled) => change(source, 'set_enabled', { source, skill, enabled }, 'Could not switch the skill')"
-    @switch-source="(source, enabled) => change(source, 'set_source_enabled', { source, enabled }, 'Could not switch the skills')"
+    @update="(source) => change(source, 'update_source', { source }, 'Could Not Update the Source')"
+    @remove="(source) => change(source, 'remove_source', { source }, 'Could Not Remove the Source')"
+    @switch="(source, skill, enabled) => change(source, 'set_enabled', { source, skill, enabled }, 'Could Not Switch the Skill')"
+    @switch-source="(source, enabled) => change(source, 'set_source_enabled', { source, enabled }, 'Could Not Switch the Skills')"
   />
 </template>

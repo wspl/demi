@@ -22,29 +22,14 @@ export function placesFor(
       path: project.path,
       label: project.name,
     }))
-  return [
-    ...(device?.home
-      ? [
-          {
-            label: 'Quick access',
-            places: [
-              {
-                path: device.home,
-                label: 'Home',
-              },
-            ],
-          },
-        ]
-      : []),
-    ...(places.length
-      ? [
-          {
-            label: 'Workspaces',
-            places,
-          },
-        ]
-      : []),
-  ]
+  const groups: FileBrowserPlaceGroup[] = []
+  if (device?.home) {
+    groups.push({ label: 'Quick Access', places: [{ path: device.home, label: 'Home' }] })
+  }
+  if (places.length) {
+    groups.push({ label: 'Workspaces', places })
+  }
+  return groups
 }
 
 export function browserHosts(devices: Device[]): FileBrowserHost[] {

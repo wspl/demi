@@ -66,7 +66,7 @@ impl Skills {
         let mut manifest = Manifest::new(
             PluginId::try_from("skills").expect("a valid plugin id"),
             "Skills",
-            "Workflows the agent follows: skills from git repositories you add, and those your repository carries.",
+            "Workflows the agent follows: skills from Git repositories you add, and those your repository carries.",
         );
         manifest.context = true;
         manifest.page = Some(page());

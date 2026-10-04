@@ -108,7 +108,7 @@ async function rename(nickname: string): Promise<void> {
   } catch (error) {
     // The field keeps the draft; the toast says why it was not saved.
     nameSaving.value = false
-    report('Could not change your name', error)
+    report('Could Not Change Your Name', error)
   }
 }
 
@@ -172,7 +172,7 @@ async function submitEmail(email: string, password: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!emailOpen.value) {
-        report('Could not change email', error)
+        report('Could Not Change Email', error)
       }
       emailPhase.value = {
         ...previous,
@@ -235,7 +235,7 @@ async function verifyEmail(code: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!emailOpen.value) {
-        report('Could not change email', error)
+        report('Could Not Change Email', error)
       }
       emailPhase.value = {
         ...previous,
@@ -286,7 +286,7 @@ async function submitPassword(current: string, next: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!passwordOpen.value) {
-        report('Could not change password', error)
+        report('Could Not Change Password', error)
       }
       passwordPhase.value = {
         kind: 'form',
@@ -344,7 +344,7 @@ async function switchPlugin(id: string, enabled: boolean): Promise<void> {
       lifetime.signal,
     )
   } catch (error) {
-    report(enabled ? 'Could not turn the plugin on' : 'Could not turn the plugin off', error)
+    report(enabled ? 'Could Not Turn the Plugin On' : 'Could Not Turn the Plugin Off', error)
   } finally {
     wantedPlugins.value.delete(id)
   }

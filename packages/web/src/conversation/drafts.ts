@@ -96,7 +96,7 @@ function openStorage(): Promise<IDBDatabase> {
       const db = request.result
       if (failed || current !== generation) {
         db.close()
-        reject(new DOMException('Draft storage closed', 'AbortError'))
+        reject(new DOMException('Draft storage closed.', 'AbortError'))
         return
       }
       database = db
@@ -106,7 +106,7 @@ function openStorage(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error)
     request.onblocked = () => {
       failed = true
-      reject(new Error('Draft storage is blocked'))
+      reject(new Error('Draft storage is blocked.'))
     }
   }).finally(() => {
     if (current === generation) {
@@ -136,7 +136,7 @@ export async function draftStorage<T>(
     transaction.oncomplete = () => resolve(request.result)
     transaction.onerror = () => reject(transaction.error)
     transaction.onabort = () =>
-      reject(transaction.error ?? new Error('Draft write aborted'))
+      reject(transaction.error ?? new Error('Draft write aborted.'))
   })
 }
 
