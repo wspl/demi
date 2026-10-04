@@ -45,8 +45,12 @@
 // +demi:enum first second, +demi:timestamp and +demi:base64. An identifier uses
 // +demi:id (optionally pattern=<regexp>), which generates Parse<Type>. A type's
 // +demi:check <func> names a func(Type) error checked only in Go. JSON values use
-// encoding/json.RawMessage. Timestamp domain types remain named strings in
-// their owning contract package; their marker enforces canonical UTC milliseconds.
+// encoding/json.RawMessage. A +demi:object field uses json.RawMessage but accepts
+// only an object. Encoding normalizes whitespace, escapes and number spelling
+// through contract.EncodeJSON while retaining member order. It emits
+// z.record(z.string(), z.json()) and an object schema with arbitrary properties.
+// Timestamp domain types remain named strings in their owning contract package;
+// their marker enforces canonical UTC milliseconds.
 //
 // Named strings may use +demi:format trimmed or +demi:format email. Decoders
 // and Parse constructors trim JavaScript whitespace before length checks;

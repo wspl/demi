@@ -1,0 +1,11 @@
+{"required":["data"],"title":"Input","type":"object","properties":{"data":{"type":"object","additionalProperties":true}},"additionalProperties":false}
+{"input":"[]","error":"invalid type: sequence, expected a map at line 1 column 8"}
+{"input":"\"text\"","error":"invalid type: string \"text\", expected a map at line 1 column 14"}
+{"input":"null","error":"invalid type: null, expected a map at line 1 column 12"}
+{"input":"true","error":"invalid type: boolean `true`, expected a map at line 1 column 12"}
+{"input":"42","error":"invalid type: integer `42`, expected a map at line 1 column 10"}
+{"input":"1.5","error":"invalid type: floating point `1.5`, expected a map at line 1 column 11"}
+{"input":"1e2","error":"invalid type: floating point `100.0`, expected a map at line 1 column 11"}
+{"input":"-0","error":"invalid type: floating point `-0.0`, expected a map at line 1 column 10"}
+{"input":"18446744073709551616","error":"invalid type: floating point `1.8446744073709552e+19`, expected a map at line 1 column 28"}
+{"input":"\"\\u0000\\b\\f\\t\\n\\r\\u007f\\u2028é\"","error":"invalid type: string \"\\0\\u{8}\\u{c}\\t\\n\\r\\u{7f}\\u{2028}é\", expected a map at line 1 column 40"}
