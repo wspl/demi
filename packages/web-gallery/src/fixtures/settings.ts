@@ -706,14 +706,14 @@ export function createSettingsState() {
     selectedProviderId: null as string | null,
     providerDetailOpen: false,
     plugins: [
-      { id: 'file', name: 'Demi File Commands', description: 'Reads, writes, edits and searches the conversation’s files with `demi file`.', enabled: true },
+      { id: 'file', name: 'Demi File Commands', description: 'Reads, writes, edits and searches the conversation’s files with demi file.', enabled: true },
       {
         id: 'browser',
         name: 'Browser',
-        description: 'A browser on the conversation’s host that the agent drives with `demi browser` and the user watches in the work panel.',
+        description: 'A browser on the conversation’s host that the agent drives with demi browser and the user watches in the work panel.',
         enabled: true,
       },
-      { id: 'expose', name: 'Expose', description: 'Gives a service on one of your hosts a public URL for an hour, with `demi expose`.', enabled: false },
+      { id: 'expose', name: 'Expose', description: 'Gives a service on one of your hosts a public URL for an hour, with demi expose.', enabled: false },
       {
         id: 'skills',
         name: 'Skills',
