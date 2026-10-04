@@ -732,7 +732,8 @@ The root's interrupted turn is its client's to resume: the root records the
 interruption, and the web app offers Resume
 ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
 The root's queued messages run, and its pending agent input and due wakeups
-wake it only when its last turn was not interrupted.
+wake it only when its last turn was not interrupted and its checkpoint does
+not hold them after a Stop ([Stop](runtime.md#stop)).
 
 **Archive.** A closed child is archived: its rows stay, marked with the closed
 phase. `demi agent list` shows archived children, and restore skips them.

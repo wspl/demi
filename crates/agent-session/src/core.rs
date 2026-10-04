@@ -73,9 +73,10 @@ pub(crate) struct SessionCore {
     /// ends.
     pub(super) editing: Option<EditInFlight>,
     pub(super) activity: Activity,
-    /// The last turn was interrupted and the node has not acted since, as a
-    /// restored root whose turn the process died in: waiting input and due
-    /// wakeups wait for the user's next action.
+    /// Waiting input and due wakeups wait for the user's next action: the
+    /// user stopped an action that wrote nothing, or the session is a
+    /// restored root whose turn the process died in, and the node has not
+    /// acted since. The checkpoint keeps it.
     pub(super) held: bool,
     /// Dispose started: every admission is refused.
     pub(super) disposing: bool,
@@ -473,7 +474,10 @@ impl SessionCore {
             }
         };
         let cancel = TurnCancel::new();
-        self.held = false;
+        if self.held {
+            self.held = false;
+            self.mark_state_changed();
+        }
         let unwritten_media = match &kind {
             ActionKind::Send { content } => media::content_references(content).cloned().collect(),
             _ => Vec::new(),
@@ -503,6 +507,15 @@ impl SessionCore {
         }
         let stopped = matches!(self.transcript.blocks().last(), Some(Block::Abort(_)));
         self.inputs.has_fired_wakeup() || (self.inputs.has_agent_input() && !stopped)
+    }
+
+    /// Keeps waiting input and due wakeups for the user's next action; the
+    /// checkpoint keeps the hold.
+    pub(super) fn hold(&mut self) {
+        if !self.held {
+            self.held = true;
+            self.mark_state_changed();
+        }
     }
 
     /// Opens a continuation when waiting input wants one and nothing runs or
@@ -670,7 +683,7 @@ impl SessionCore {
         self.abort_executing_calls();
         match reason {
             CancelReason::Stop if self.action_began() => self.transcript.push_abort(&self.model),
-            CancelReason::Stop => self.held = true,
+            CancelReason::Stop => self.hold(),
             CancelReason::Shutdown => self.append_interruption(),
         }
         self.commit();
@@ -1377,6 +1390,7 @@ impl SessionCore {
             cwd: self.cwd.clone(),
             model: self.model.clone(),
             edits: self.edits.clone(),
+            held: self.held,
         }
     }
 

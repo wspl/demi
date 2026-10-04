@@ -228,6 +228,7 @@ impl Conversation {
                 cwd: fixture.cwd.clone(),
                 model: model.clone(),
                 edits: Vec::new(),
+                held: false,
             },
             changed_blocks: fixture.blocks.into_iter().enumerate().collect(),
             block_count,

@@ -460,10 +460,11 @@ fn write_checkpoint(
     // The old block count is the column's value before the update: rows
     // gone are a rewrite of the output.
     let wakeup = WakeupDue::earliest(&update.state).map(WakeupDue::column);
-    // A root saved under a turn restores interrupted, and its wakeups wait
-    // for the user to resume it (`runtime.md` § Yield wakeups): none of them
-    // fires by itself. A child resumes its interrupted turn on its own.
-    let interrupted = update.state.phase != SessionPhase::Idle;
+    // A root saved under a turn restores interrupted, and a held one holds
+    // its wakeups: either waits for the user (`runtime.md` § Yield wakeups),
+    // and none of its wakeups fires by itself. A child resumes its
+    // interrupted turn on its own.
+    let held = update.state.phase != SessionPhase::Idle || update.state.held;
     let changed = transaction.execute(
         "UPDATE nodes SET state = ?2, block_count = ?3,
            output_revision = output_revision + (CASE WHEN block_count > ?3 OR ?4 THEN 1 ELSE 0 END),
@@ -475,7 +476,7 @@ fn write_checkpoint(
             block_count,
             output,
             wakeup,
-            interrupted
+            held
         ],
     )?;
     if changed == 0 {
@@ -928,6 +929,7 @@ mod tests {
             cwd: "/w".into(),
             model: test_model(),
             edits: Vec::new(),
+            held: false,
         }
     }
 
@@ -1296,10 +1298,14 @@ mod tests {
         root.save(waiting(&[])).await.unwrap();
         tree.delete_node(&id("child")).await.unwrap();
         // A root saved under a turn holds its wakeups until the user resumes
-        // it; a child resumes on its own.
+        // it, and a held root until the user's next action; a child resumes
+        // on its own.
         let mut running = waiting(&[Some(9_000)]);
         running.state.phase = SessionPhase::Running;
         root.save(running.clone()).await.unwrap();
+        let mut held = waiting(&[Some(9_000)]);
+        held.state.held = true;
+        root.save(held).await.unwrap();
         tree.create_node(record("child", Some("root"), 1), running)
             .await
             .unwrap();
@@ -1310,6 +1316,7 @@ mod tests {
                 at(9_000),
                 at(5_000),
                 at(5_000),
+                None,
                 None,
                 None,
                 at(9_000)
