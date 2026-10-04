@@ -786,6 +786,61 @@ svg.lucide {
   overflow-y: hidden;
 }
 
+/* A code block, table or equation that scrolls sideways keeps its scrollbar out of
+   the layout, so a code block's padding stays even whether or not its line
+   overflows. The native bar, which a system that shows scrollbars would put below
+   the padding, is hidden. The thumb is painted as the scroller's background, which
+   stays in place while the content scrolls and never adds to what scrolls: 2px
+   above the bottom edge, inside a code block's padding, 6px thick with round ends,
+   while the pointer is on the scroller, as a ScrollArea draws its own.
+   `useScrollThumbs` sets where it starts and how long it is. */
+@property --scroll-thumb-color {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: transparent;
+}
+
+.markdown-body :is(pre, table, .katex-display) {
+  --thumb-x: var(--scroll-thumb-x, 0px);
+  --thumb-size: var(--scroll-thumb-size, 0px);
+  --thumb-cap: min(3px, var(--thumb-size) / 2);
+  scrollbar-width: none;
+  background-image:
+    radial-gradient(circle 3px at 100% 50%, var(--scroll-thumb-color) 2.5px, transparent 3px),
+    linear-gradient(var(--scroll-thumb-color), var(--scroll-thumb-color)),
+    radial-gradient(circle 3px at 0 50%, var(--scroll-thumb-color) 2.5px, transparent 3px);
+  background-repeat: no-repeat;
+  background-size:
+    var(--thumb-cap) 6px,
+    max(0px, var(--thumb-size) - 6px) 6px,
+    var(--thumb-cap) 6px;
+  background-position:
+    left var(--thumb-x) bottom 2px,
+    left calc(var(--thumb-x) + 3px) bottom 2px,
+    left calc(var(--thumb-x) + var(--thumb-size) - var(--thumb-cap)) bottom 2px;
+  transition: --scroll-thumb-color 250ms ease-out;
+}
+
+.markdown-body :is(pre, table, .katex-display)::-webkit-scrollbar {
+  display: none;
+}
+
+@media (hover: hover) {
+  .markdown-body :is(pre, table, .katex-display):hover {
+    --scroll-thumb-color: color-mix(in srgb, var(--color-overlay) 12%, transparent);
+  }
+}
+
+.markdown-body :is(pre, table, .katex-display)[data-scroll-thumb="drag"] {
+  --scroll-thumb-color: color-mix(in srgb, var(--color-overlay) 25%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown-body :is(pre, table, .katex-display) {
+    transition: none;
+  }
+}
+
 .markdown-body th,
 .markdown-body td {
   padding: 0.4em 0.75em;
