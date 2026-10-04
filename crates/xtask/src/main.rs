@@ -40,7 +40,7 @@ enum Command {
     /// Compares the vendored crates with their upstream releases.
     #[command(subcommand)]
     Vendor(vendor::Command),
-    /// Runs a development backend with a scripted Cloud and an echo model.
+    /// Runs a development backend with a scripted Cloud and the models `.env` turns on.
     #[cfg(unix)]
     Dev(dev::Options),
 }

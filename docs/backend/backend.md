@@ -623,8 +623,8 @@ differences.
 `cargo xtask dev` builds the one Cargo selection and runs, until Ctrl-C or a
 termination, a backend for the page to talk to. For example, a developer runs
 it, then starts the page with the command it prints, signs in with the
-account it prints, picks the model **Echo**, sends `hello`, and the answer
-`Echo: hello` streams in. It starts the backend with the scripted manager
+account the sign-in page fills in, picks the model the developer's `.env`
+names, asks for `uname -a`, and the agent runs it on the Cloud. It starts the backend with the scripted manager
 and in the order the
 [web app contract suite](../delivery/scenarios.md#web-app-contract-suite)
 uses:
@@ -642,13 +642,13 @@ uses:
   `demi-browser` and `demi-claude-code`, under the data directory and for
   this machine's target only. The command passes on none of its own
   `DEMI_*` variables.
-- An Anthropic-compatible Messages endpoint inside `xtask`, on a free port of
-  the loopback interface, that answers each request with
-  `Echo: <the last user message's text>` as a stream.
+- With `DEMI_DEV_ECHO=1`, an Anthropic-compatible Messages endpoint inside
+  `xtask`, on a free port of the loopback interface, that answers each
+  request with `Echo: <the last user message's text>` as a stream; without
+  it, none.
 
-Through the web API it seeds the master account and one provider entry of
-the `anthropic` family that points at the echo endpoint, with the one
-configured model `echo`; it selects nothing else. The account is the one
+Through the web API it seeds the master account and an entry for each
+development model `.env` turns on; it selects nothing else. The account is the one
 `DEMI_DEV_EMAIL` and `DEMI_DEV_PASSWORD` name in the repository's ignored
 `.env`, which the web app's sign-in page fills in during development; with
 neither set it is `developer@example.test` with the password `development`,
@@ -671,17 +671,17 @@ removes the data directory. A process that does not stop in time, 10 seconds
 for the backend and 5 for the manager, is killed. Only a kill of `xtask`
 itself leaves the backend running.
 
-A real model can stand beside Echo, so that a turn calls tools on the Cloud.
+A real model lets a turn call tools on the Cloud.
 When the command's environment sets all four of
 `DEMI_DEV_PROVIDER_BASE_URL`, `DEMI_DEV_PROVIDER_API_KEY`,
 `DEMI_DEV_PROVIDER_MODEL` and `DEMI_DEV_PROVIDER_CONTEXT_WINDOW`, it also seeds
 an `openai` entry labeled **Development** that speaks Chat Completions to that
-endpoint, with that one model and context window, and prints the entry beside
-Echo's. `DEMI_DEV_PROVIDER_THINKING_EFFORTS`, optional, lists the model's
+endpoint, with that one model and context window, and prints the entry.
+`DEMI_DEV_PROVIDER_THINKING_EFFORTS`, optional, lists the model's
 thinking efforts, comma-separated, as the endpoint names them; without it the
 model has none and the page offers no effort. Setting only some of them stops the command before it builds
 anything, naming the missing variables. The key reaches the backend only
-through the web API, like Echo's, and is never printed. A developer keeps the
+through the web API and is never printed. A developer keeps the
 four in the repository's ignored `.env` (`.env.example` lists them) and runs
 `bun run dev`, which loads `.env` and starts `cargo xtask dev` with it. For
 example, with Command Code's gateway:
@@ -696,6 +696,13 @@ DEMI_DEV_PROVIDER_THINKING_EFFORTS=low,medium,high
 
 A turn with that model is a real request and costs what the vendor charges;
 automated tests never use it.
+
+`DEMI_DEV_ECHO=1` adds the echo model: an entry of the `anthropic` family
+labeled **Echo** that points at the echo endpoint, with the one configured
+model `echo`, which answers `hello` with `Echo: hello` without calling any
+vendor; any other value stops the command before it builds anything. It is
+off by default. With neither a real model nor Echo the run seeds no model,
+and its printout says how to add one.
 
 It does not cover what needs the real services: the Cloud isolates nothing
 and has no image, so a Cloud reset or a guest's network rules do not behave

@@ -1293,7 +1293,7 @@ demi-backend (executable: configuration, composition)
   release packaging for every executable, the pinned Chrome for Testing
   release record, Cloud image packaging, and the comparison of the vendored
   crates with their upstream releases (`xtask vendor diff`), the one-command
-  development backend with its echo model (`xtask dev`;
+  development backend with its development models (`xtask dev`;
   [Development backend](../backend/backend.md#one-command-development-backend));
   and the crate boundary check, one
   of its tests ([Boundary checks](#boundary-checks)).

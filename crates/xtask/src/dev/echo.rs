@@ -22,6 +22,18 @@ pub struct Echo {
     _server: AbortOnDropHandle<()>,
 }
 
+/// The variable that turns the echo model on: `1`, or unset for off.
+const ECHO: &str = "DEMI_DEV_ECHO";
+
+/// Whether `var` turns the echo model on, or what is wrong with its value.
+pub fn enabled(var: impl Fn(&str) -> Option<String>) -> Result<bool, String> {
+    match var(ECHO).as_deref() {
+        None | Some("") => Ok(false),
+        Some("1") => Ok(true),
+        Some(other) => Err(format!("{ECHO} must be 1 or unset, not {other:?}")),
+    }
+}
+
 /// Starts the endpoint on a free port of the loopback interface.
 pub async fn start() -> std::io::Result<Echo> {
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
@@ -162,4 +174,18 @@ async fn messages(
         .into_iter()
         .map(|(name, data)| Event::default().event(name).json_data(data));
     Sse::new(futures_util::stream::iter(events))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_echo_model_is_off_unless_the_variable_is_1() {
+        let read = |value: Option<&str>| enabled(|_| value.map(str::to_owned));
+        assert_eq!(read(None), Ok(false));
+        assert_eq!(read(Some("")), Ok(false));
+        assert_eq!(read(Some("1")), Ok(true));
+        assert!(read(Some("true")).is_err());
+    }
 }

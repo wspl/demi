@@ -1,9 +1,10 @@
 //! `cargo xtask dev` (`backend.md` § One-command development backend): the
 //! backend executable on a temporary data directory, with the backend
 //! scenarios' scripted machine manager, whose runners run on this machine as
-//! the Cloud, and an echo model, set up as the web app contract suite starts
-//! the backend (`scenarios.md` § Web app contract suite), with a master
-//! account and a provider entry seeded through the web API.
+//! the Cloud, set up as the web app contract suite starts the backend
+//! (`scenarios.md` § Web app contract suite), with a master account and the
+//! development models `.env` turns on (a real one, the echo model) seeded
+//! through the web API.
 
 mod account;
 mod echo;
@@ -78,12 +79,13 @@ pub enum Error {
     Io(#[from] std::io::Error),
 }
 
-/// What the run seeds through the web API besides the echo entry, read from
-/// the environment before anything is built, so a partial setting stops the
-/// command at once.
+/// What the run seeds through the web API, read from the environment before
+/// anything is built, so a partial setting stops the command at once.
 struct Seed {
     account: Account,
     provider: Option<DevProvider>,
+    /// Whether the echo model runs and has an entry.
+    echo: bool,
 }
 
 pub fn run(options: Options) -> Result<(), Error> {
@@ -91,6 +93,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     let seed = Seed {
         account: Account::read(var).map_err(Error::Account)?,
         provider: DevProvider::read(var).map_err(Error::DevProvider)?,
+        echo: echo::enabled(var).map_err(Error::Seed)?,
     };
     build()?;
     crate::interruptible(|cancel| develop(options, seed, cancel))?
@@ -152,7 +155,7 @@ struct Manager {
     input: tokio::process::ChildStdin,
 }
 
-/// Starts the echo model, the manager and the backend under `root`, seeds
+/// Starts the echo model when it is on, the manager and the backend under `root`, seeds
 /// the account and the entries, and serves until `cancel` or until a process ends; then
 /// stops the backend before the manager, since the backend hibernates the
 /// Cloud through it as it shuts down.
@@ -162,10 +165,14 @@ async fn serve(
     root: &Path,
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
-    let echo = echo::start().await?;
+    let echo = match seed.echo {
+        true => Some(echo::start().await?),
+        false => None,
+    };
+    let echo_url = echo.as_ref().map(|echo| echo.url.as_str());
     let mut processes = Processes::default();
     let result = tokio::select! {
-        result = session(options, seed, root, &echo.url, &mut processes) => result,
+        result = session(options, seed, root, echo_url, &mut processes) => result,
         () = cancel.cancelled() => Ok(()),
     };
     if let Some(backend) = processes.backend.take() {
@@ -183,7 +190,7 @@ async fn session(
     options: &Options,
     seed: &Seed,
     root: &Path,
-    echo: &str,
+    echo: Option<&str>,
     processes: &mut Processes,
 ) -> Result<(), Error> {
     let manager = processes.manager.insert(spawn_manager()?);
@@ -202,22 +209,29 @@ async fn session(
     let http = reqwest::Client::builder().no_proxy().build()?;
     answering(&http, &origin, backend.as_mut()).await?;
     let cookies = setup(&http, &origin, &seed.account).await?;
-    let echo_entry = create_entry(&http, &origin, &cookies, &echo_entry(echo)).await?;
-    let development = match &seed.provider {
-        Some(provider) => {
-            let entry = create_entry(&http, &origin, &cookies, &provider.entry()).await?;
-            format!(
-                "\x20 Model:   {} of the provider entry {entry}, a real model that calls tools\n",
-                provider.model()
-            )
-        }
-        None => String::new(),
-    };
+    let mut models = String::new();
+    if let Some(provider) = &seed.provider {
+        let entry = create_entry(&http, &origin, &cookies, &provider.entry()).await?;
+        models.push_str(&format!(
+            "\x20 Model:   {} of the provider entry {entry}, a real model that calls tools\n",
+            provider.model()
+        ));
+    }
+    if let Some(echo) = echo {
+        let entry = create_entry(&http, &origin, &cookies, &echo_entry(echo)).await?;
+        models.push_str(&format!(
+            "\x20 Model:   {MODEL} of the provider entry {entry}, which answers \"Echo: <your message>\"\n"
+        ));
+    }
+    if models.is_empty() {
+        models.push_str(
+            "\x20 Model:   none; set DEMI_DEV_PROVIDER_* or DEMI_DEV_ECHO=1 in .env to add one\n",
+        );
+    }
     println!(
         "\nThe development backend serves at {origin}\n\
          \x20 Account: {}, password {}\n\
-         \x20 Model:   {MODEL} of the provider entry {echo_entry}, which answers \"Echo: <your message>\"\n\
-         {development}\
+         {models}\
          \x20 Data:    {}{}\n\
          Start the page in another terminal:\n\
          \x20 DEMI_BACKEND_URL={origin} {}bun run web:dev\n\
