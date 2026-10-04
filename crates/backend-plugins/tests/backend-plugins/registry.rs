@@ -1,4 +1,4 @@
-//! The registry (`plugins.md` § Commands and § Profiles): what stops the
+//! The registry (`plugins.md` § Commands): what stops the
 //! backend from starting, which trees are left out, and how a call through
 //! the composed command set reaches the plugin's instance.
 
@@ -14,7 +14,6 @@ use demi_plugin_interface::{
     CommandPlugin, Commands, Manifest, Placement, Plugin, PluginError, PluginFactory, PluginId,
     PluginPort, Reply, Request,
 };
-use demi_shared_types::Profile;
 use futures_util::future::LocalBoxFuture;
 
 use crate::support::user_plugins;
@@ -50,18 +49,6 @@ impl Probe {
         );
         let group = GroupBuilder::new(group, "A native group.").leaf(leaf);
         self.0.commands.push(tree(Placement::Demi, group));
-        self
-    }
-
-    fn profile(mut self, name: &str) -> Self {
-        self.0.profiles.push(Profile {
-            name: name.into(),
-            description: "A profile.".into(),
-            instructions: None,
-            commands: None,
-            can_spawn_subagents: true,
-            model: None,
-        });
         self
     }
 
@@ -216,17 +203,6 @@ fn a_manifest_that_breaks_a_rule_stops_the_start_and_names_the_plugin() {
             ],
             "plugin \"jira\" declares \"demi\", which is taken",
         ),
-        (
-            vec![Probe::new("notes").profile("default").boxed()],
-            "plugin \"notes\" declares the profile \"default\", which is reserved for inheriting the parent",
-        ),
-        (
-            vec![
-                Probe::new("one").profile("explorer").boxed(),
-                Probe::new("two").profile("explorer").boxed(),
-            ],
-            "plugin \"two\" declares the profile \"explorer\", which another plugin declares",
-        ),
     ];
     for (factories, refusal) in refusals {
         let error = registry(factories).err().expect("the start is refused");
@@ -241,19 +217,12 @@ async fn a_tree_bound_to_a_package_the_catalog_does_not_serve_is_left_out_whole(
             Probe::new("tools")
                 .native("served", "demi.file")
                 .native("unserved", "demi.missing")
-                .profile("explorer")
                 .boxed(),
         ],
         |operation| operation.package == "demi.file",
     )
     .unwrap();
 
-    let profiles: Vec<_> = registry
-        .profiles()
-        .iter()
-        .map(|p| p.name.as_str())
-        .collect();
-    assert_eq!(profiles, ["explorer"]);
     let (plugins, _data) = user_plugins(registry).await;
     let commands = plugins.toolset(Vec::new()).await.unwrap().commands;
 

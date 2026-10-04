@@ -11,7 +11,7 @@ use demi_agent_session::{
     AgentSession, Continuation, NewContext, RestoreError, SeenContext, SessionConfig, SessionDeps,
     SessionInit, SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome,
 };
-use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
+use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError};
 use demi_agent_tools::{
     CallError, ContextSource, Environments, HostResolver, NodeContext, ShellAccess,
     ShellEnvironmentFactory, StoreNumbers, definitions, stored_running_commands, system_prompt,
@@ -133,7 +133,7 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// The product's commands a child of this node inherits: this node's,
-    /// before the `demi agent` graft.
+    /// before the `demi agent` graft, which every node of the tree shares.
     pub(crate) fn inherited_commands(&self) -> &Rc<CommandSet> {
         &self.runtime.inherited
     }
@@ -331,14 +331,63 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     }
 }
 
+/// Where a node comes from: created now, or restored from what the tree
+/// store holds of it.
+pub(crate) enum Origin {
+    New {
+        record: NodeRecord,
+        cwd: String,
+        model: ModelSelection,
+        /// Its first message, queued in its create commit, so that a node
+        /// the process loses before its first save still has it.
+        first_message: Option<QueuedMessage>,
+    },
+    Stored {
+        record: NodeRecord,
+        checkpoint: Checkpoint,
+    },
+}
+
+impl Origin {
+    /// What the tree store holds of the node `id`; none when it holds no
+    /// such node.
+    pub(crate) async fn stored(
+        store: &dyn AgentTreeStore,
+        id: &NodeId,
+    ) -> Result<Option<Self>, StoreError> {
+        let Some(record) = store.node(id).await? else {
+            return Ok(None);
+        };
+        let checkpoint = store
+            .session_store(id)
+            .load()
+            .await?
+            .ok_or_else(|| StoreError::Corrupt(format!("node {id} has no checkpoint")))?;
+        Ok(Some(Self::Stored { record, checkpoint }))
+    }
+
+    pub(crate) fn record(&self) -> &NodeRecord {
+        match self {
+            Self::New { record, .. } | Self::Stored { record, .. } => record,
+        }
+    }
+
+    /// The model selection the node infers with: a new node's, or the one
+    /// its checkpoint saved.
+    pub(crate) fn model(&self) -> &ModelSelection {
+        match self {
+            Self::New { model, .. } => model,
+            Self::Stored { checkpoint, .. } => &checkpoint.state.model,
+        }
+    }
+}
+
 /// What makes a node itself, and what it is built with.
 pub(crate) struct NodeSpec<H: HostResolver> {
-    /// The record a new node is created with; a stored node keeps its own.
-    pub(crate) record: NodeRecord,
+    pub(crate) origin: Origin,
     pub(crate) role: NodeRole,
     pub(crate) root: NodeId,
-    pub(crate) cwd: String,
-    pub(crate) model: ModelSelection,
+    /// A runtime that serves the origin's model selection's provider entry.
     pub(crate) runtime: Box<dyn ProviderRuntime>,
     pub(crate) providers: Rc<dyn ProviderResolver>,
     pub(crate) hosts: Rc<H>,
@@ -346,14 +395,11 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     /// A child's identity, the text before each of its user turns.
     pub(crate) preamble: Option<String>,
     pub(crate) context: Rc<[Rc<dyn ContextSource>]>,
-    /// The product's commands, narrowed by a child's profile, before the
-    /// `demi agent` graft: what the node's own children inherit.
+    /// The product's commands before the `demi agent` graft: what the
+    /// node's own children inherit.
     pub(crate) inherited: Rc<CommandSet>,
     /// `inherited` with the node's `demi agent` group grafted.
     pub(crate) commands: Rc<CommandSet>,
-    /// A new node's first message, queued in its create commit, so that a
-    /// node the process loses before its first save still has it.
-    pub(crate) first_message: Option<QueuedMessage>,
     pub(crate) store: Rc<dyn AgentTreeStore>,
     pub(crate) shells: Rc<dyn ShellEnvironmentFactory<H::Host>>,
     /// Where the node's environments tell the pages of its commands: the
@@ -381,20 +427,18 @@ pub(crate) enum AssembleError {
     Restore(#[from] RestoreError),
 }
 
-/// The one way a node comes to exist: restored from the tree store when the
-/// store holds it, otherwise created, its record and first checkpoint in one
-/// commit. When assembly fails, the provider runtime it was given served no
-/// run, and dropping it releases what it holds, the provider contract's
-/// fallback for a runtime that is not closed.
+/// The one way a node comes to exist: restored from what the tree store
+/// holds of it, or created, its record and first checkpoint in one commit.
+/// When assembly fails, the provider runtime it was given served no run,
+/// and dropping it releases what it holds, the provider contract's fallback
+/// for a runtime that is not closed.
 pub(crate) async fn assemble<H: HostResolver>(
     spec: NodeSpec<H>,
 ) -> Result<Assembled<H>, AssembleError> {
     let NodeSpec {
-        record,
+        origin,
         role,
         root,
-        cwd,
-        model,
         runtime,
         providers,
         hosts,
@@ -403,7 +447,6 @@ pub(crate) async fn assemble<H: HostResolver>(
         context,
         inherited,
         commands,
-        first_message,
         store,
         shells,
         feed,
@@ -412,21 +455,12 @@ pub(crate) async fn assemble<H: HostResolver>(
         clock,
         config,
     } = spec;
-    let stored = store.node(&record.id).await?;
+    let record = origin.record().clone();
     let session_store = store.session_store(&record.id);
-    let checkpoint = match &stored {
-        Some(_) => {
-            let checkpoint = session_store.load().await?;
-            Some(checkpoint.ok_or_else(|| {
-                StoreError::Corrupt(format!("node {} has no checkpoint", record.id))
-            })?)
-        }
-        None => None,
+    let cwd = match &origin {
+        Origin::New { cwd, .. } => cwd.clone(),
+        Origin::Stored { checkpoint, .. } => checkpoint.state.cwd.clone(),
     };
-    let record = stored.unwrap_or(record);
-    let cwd = checkpoint
-        .as_ref()
-        .map_or(cwd, |checkpoint| checkpoint.state.cwd.clone());
     let system_prompt = system_prompt(&instructions, &commands.render_help());
     let node_runtime = Rc::new(NodeRuntime {
         node: record.id.clone(),
@@ -456,13 +490,17 @@ pub(crate) async fn assemble<H: HostResolver>(
         clock,
         config,
     };
-    let (session, continuation) = match checkpoint {
-        Some(checkpoint) => {
+    let (session, continuation) = match origin {
+        Origin::Stored { checkpoint, .. } => {
             let (session, continuation) =
                 AgentSession::restore(checkpoint, record.id.clone(), runtime, deps)?;
             (session, Some(continuation))
         }
-        None => {
+        Origin::New {
+            model,
+            first_message,
+            ..
+        } => {
             let init = SessionInit {
                 id: record.id.clone(),
                 cwd,

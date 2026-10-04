@@ -212,6 +212,10 @@ pub enum ErrorCode {
     InvalidOrder,
     /// No account has that id.
     UserNotFound,
+    /// The caller has no subagent profile of that id.
+    ProfileNotFound,
+    /// Another of the caller's subagent profiles has the name.
+    ProfileExists,
     /// The backend has no plugin of that id.
     UnknownPlugin,
     /// The plugin has no page method of that name for the route's scope.

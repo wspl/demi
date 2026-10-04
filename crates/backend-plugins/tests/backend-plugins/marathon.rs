@@ -117,7 +117,10 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
             "Stdin body: message",
             "cannot see this conversation",
             "State the exact shape of the last assistant text it should return.",
-            "Available: none",
+            "demi agent profiles",
+            // The help names no profile, since the user's profiles change
+            // while a tree is open (`subagents.md` § Command help).
+            "The name of one of the user's subagent profiles",
         ] {
             assert!(prompt.contains(taught), "{taught}");
         }

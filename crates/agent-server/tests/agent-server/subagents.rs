@@ -7,19 +7,19 @@ use std::{cell::RefCell, time::Duration};
 use demi_agent_server::ServerConfig;
 use demi_agent_store::{
     AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
-    testing::{MemoryTreeStore, model_of, test_model, text},
+    testing::{MemoryTreeStore, test_model, text},
 };
 use demi_conversation_socket_protocol::{
     ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch,
 };
-use demi_host_interface::RpcError;
 use demi_provider_common::{
     InferenceItem, UserPart,
     testing::{Turn, event},
 };
+use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
-    Profile, QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
+    QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
 };
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
@@ -27,22 +27,22 @@ use tokio_util::sync::CancellationToken;
 
 use crate::support::{
     CommandRun, Fixture, Gate, Model, TestProduct, agent, agent_call, conversation, held, is_idle,
-    is_pending_steers, named_node, open, request_text, send, texts, until,
+    is_pending_steers, listed_model, named_node, open, request_text, send, texts, until,
 };
 
-fn said(text: &str) -> Turn {
+pub(crate) fn said(text: &str) -> Turn {
     Turn::Events(vec![event::text(text), event::response(1, 1)])
 }
 
-fn held_said(gate: &Gate, text: &str) -> Turn {
+pub(crate) fn held_said(gate: &Gate, text: &str) -> Turn {
     held(gate, vec![event::text(text), event::response(1, 1)])
 }
 
-fn root() -> NodeId {
+pub(crate) fn root() -> NodeId {
     conversation()
 }
 
-fn fixture(model: &Model, product: TestProduct) -> Fixture {
+pub(crate) fn fixture(model: &Model, product: TestProduct) -> Fixture {
     Fixture::with_model(
         model,
         product,
@@ -51,7 +51,7 @@ fn fixture(model: &Model, product: TestProduct) -> Fixture {
     )
 }
 
-async fn spawn(fixture: &Fixture, caller: &NodeId, args: Value) -> NodeId {
+pub(crate) async fn spawn(fixture: &Fixture, caller: &NodeId, args: Value) -> NodeId {
     let run = agent(&fixture.server, caller, "spawn", args).await;
     assert_eq!(run.code, 0, "{run:?}");
     named_node(&fixture.store, &run)
@@ -59,7 +59,7 @@ async fn spawn(fixture: &Fixture, caller: &NodeId, args: Value) -> NodeId {
 
 /// A spawn as a job of `caller`, in a task of its own: a start waits for its
 /// parent's provider runtime, which the parent's running turn holds.
-fn spawn_during_turn(fixture: &Fixture, caller: &NodeId, args: Value) -> JoinHandle<NodeId> {
+pub(crate) fn spawn_during_turn(fixture: &Fixture, caller: &NodeId, args: Value) -> JoinHandle<NodeId> {
     let server = fixture.server.clone();
     let store = fixture.store.clone();
     let caller = caller.clone();
@@ -71,13 +71,13 @@ fn spawn_during_turn(fixture: &Fixture, caller: &NodeId, args: Value) -> JoinHan
 }
 
 /// The failure a call wrote.
-fn refused(run: &CommandRun) -> &str {
+pub(crate) fn refused(run: &CommandRun) -> &str {
     assert_eq!(run.code, 1, "{run:?}");
     &run.stderr
 }
 
 /// Each `subagent` frame as its event, child and phase.
-fn lifecycle(frames: &[ServerFrame]) -> Vec<(SubagentEvent, NodeId, JobPhase)> {
+pub(crate) fn lifecycle(frames: &[ServerFrame]) -> Vec<(SubagentEvent, NodeId, JobPhase)> {
     frames
         .iter()
         .filter_map(|frame| match frame {
@@ -90,7 +90,7 @@ fn lifecycle(frames: &[ServerFrame]) -> Vec<(SubagentEvent, NodeId, JobPhase)> {
 }
 
 /// The agent messages written into the root's transcript.
-fn root_receipts(fixture: &Fixture) -> Vec<AgentMessage> {
+pub(crate) fn root_receipts(fixture: &Fixture) -> Vec<AgentMessage> {
     fixture
         .server
         .tree(&root())
@@ -112,11 +112,11 @@ fn is_receipt_patch(frame: &ServerFrame) -> bool {
         if patches.iter().any(|patch| matches!(patch, TranscriptPatch::Add { value: Block::AgentMessage(_), .. })))
 }
 
-fn is_closed(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
+pub(crate) fn is_closed(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
     move |frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, job } if &job.subagent_id == child)
 }
 
-fn closed_phase(fixture: &Fixture, child: &NodeId) -> Option<ClosePhase> {
+pub(crate) fn closed_phase(fixture: &Fixture, child: &NodeId) -> Option<ClosePhase> {
     fixture
         .store
         .record(child)
@@ -666,6 +666,7 @@ pub(crate) fn child_record(
         parent: Some(NodeId::try_from(parent).unwrap()),
         description: id.into(),
         profile: profile.map(str::to_owned),
+        instructions: None,
         round: 1,
         started_at: Timestamp::UNIX_EPOCH,
         can_spawn_subagents: true,
@@ -703,16 +704,19 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         .create_node(root_record, checkpoint(Vec::new(), Vec::new()))
         .await
         .unwrap();
-    // Lost before its first save: the brief is still queued.
+    // Lost before its first save: the brief is still queued. It was spawned
+    // with a profile the user has deleted since, and restores with the
+    // instructions it was spawned with.
     let brief = QueuedMessage {
         id: TurnId::try_from("brief").unwrap(),
         content: text("task lost"),
     };
+    let lost = NodeRecord {
+        instructions: Some("retired prompt".into()),
+        ..child_record("lost", 1, "conversation", Some("retired"))
+    };
     store
-        .create_node(
-            child_record("lost", 1, "conversation", None),
-            checkpoint(vec![brief], Vec::new()),
-        )
+        .create_node(lost, checkpoint(vec![brief], Vec::new()))
         .await
         .unwrap();
     // Its final checkpoint saved, its close not yet.
@@ -742,41 +746,6 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     };
     let closed = NodeId::try_from("closed").unwrap();
     store.close_node(&closed, close).await.unwrap();
-    // A profile the product no longer declares: gone with its subtree.
-    store
-        .create_node(
-            child_record("orphan", 4, "conversation", Some("retired")),
-            checkpoint(Vec::new(), Vec::new()),
-        )
-        .await
-        .unwrap();
-    // Archived under that profile: its resume is refused and it stays.
-    let archived = NodeId::try_from("archived").unwrap();
-    store
-        .create_node(
-            child_record("archived", 5, "conversation", Some("retired")),
-            checkpoint(Vec::new(), Vec::new()),
-        )
-        .await
-        .unwrap();
-    store
-        .close_node(
-            &archived,
-            NodeClose {
-                phase: ClosePhase::Aborted,
-                at: Timestamp::UNIX_EPOCH,
-            },
-        )
-        .await
-        .unwrap();
-    store.mark_delivered(&archived, 1).await.unwrap();
-    store
-        .create_node(
-            child_record("orphan-child", 6, "orphan", None),
-            checkpoint(Vec::new(), Vec::new()),
-        )
-        .await
-        .unwrap();
     let model = Model::default();
     model.root([said("noted"), said("noted"), said("noted")]);
     model.child("task lost", [said("lost result")]);
@@ -813,26 +782,10 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
         );
         assert!(store.record(&id).unwrap().delivered, "{id}");
     }
-    assert!(store.record(&NodeId::try_from("orphan").unwrap()).is_none());
-    assert!(
-        store
-            .record(&NodeId::try_from("orphan-child").unwrap())
-            .is_none()
-    );
+    let restored = &model.requests_of("task lost")[0];
+    assert!(restored.system_prompt.starts_with("retired prompt\n"));
     let frames = client.received();
     assert!(frames.iter().any(is_pending_steers));
-    let resumed = agent(
-        &fixture.server,
-        &root(),
-        "resume",
-        json!({ "id": 5, "message": "again" }),
-    )
-    .await;
-    assert_eq!(
-        refused(&resumed),
-        "demi agent resume: unknown profile \"retired\" (available: none; omit --profile to inherit the parent)\n"
-    );
-    assert_eq!(closed_phase(&fixture, &archived), Some(ClosePhase::Aborted));
 }
 
 #[tokio::test(flavor = "local")]
@@ -924,163 +877,6 @@ async fn a_node_has_at_most_eight_live_children_and_the_web_app_aborts_them_all(
         .count();
     assert_eq!(closes, 8);
     assert_eq!(root_receipts(&fixture).len(), 8);
-}
-
-#[tokio::test(flavor = "local")]
-async fn profiles_and_the_spawn_restriction_shape_a_childs_prompt_and_commands() {
-    let explorer = Profile {
-        name: "explorer".into(),
-        description: "Reads, never edits.".into(),
-        instructions: Some("explorer prompt".into()),
-        commands: None,
-        can_spawn_subagents: false,
-        model: None,
-    };
-    let product = TestProduct {
-        profiles: vec![explorer],
-        ..TestProduct::default()
-    };
-    let model = Model::default();
-    model.root([said("noted"), said("noted"), said("noted")]);
-    model.child("task explore", [said("explored")]);
-    let (restricted_gate, resumed_gate) = (Gate::new(), Gate::new());
-    model.child(
-        "task restricted",
-        [
-            held_said(&restricted_gate, "restricted done"),
-            held_said(&resumed_gate, "more done"),
-        ],
-    );
-    let fixture = fixture(&model, product);
-    let mut client = fixture.opened().await;
-
-    let unknown = agent(
-        &fixture.server,
-        &root(),
-        "spawn",
-        json!({ "prompt": "task x", "profile": "nope" }),
-    )
-    .await;
-    let named_default = agent(
-        &fixture.server,
-        &root(),
-        "spawn",
-        json!({ "prompt": "task x", "profile": "default" }),
-    )
-    .await;
-    let explorer_child = spawn(
-        &fixture,
-        &root(),
-        json!({ "prompt": "task explore", "profile": "explorer" }),
-    )
-    .await;
-    let restricted = spawn(
-        &fixture,
-        &root(),
-        json!({ "prompt": "task restricted", "no-subagents": true }),
-    )
-    .await;
-    let from_restricted = agent_call(
-        &fixture.server,
-        &restricted,
-        "spawn",
-        json!({ "prompt": "task grandchild" }),
-        false,
-        CancellationToken::new(),
-    )
-    .await;
-    let restricted_lists = agent(&fixture.server, &restricted, "list", json!({})).await;
-    restricted_gate.open();
-    client.next_until(is_closed(&restricted)).await;
-    until(|| fixture.store.record(&restricted).unwrap().delivered).await;
-    agent(
-        &fixture.server,
-        &root(),
-        "resume",
-        json!({ "id": fixture.number(&restricted), "message": "more" }),
-    )
-    .await;
-    let after_resume = agent_call(
-        &fixture.server,
-        &restricted,
-        "spawn",
-        json!({ "prompt": "task grandchild" }),
-        false,
-        CancellationToken::new(),
-    )
-    .await;
-    resumed_gate.open();
-    client.next_until(is_closed(&restricted)).await;
-
-    assert_eq!(
-        refused(&unknown),
-        "demi agent spawn: unknown profile \"nope\" (available: explorer)\n"
-    );
-    assert_eq!(
-        refused(&named_default),
-        "demi agent spawn: unknown profile \"default\" (available: explorer)\n"
-    );
-    let explored = &model.requests_of("task explore")[0];
-    assert!(explored.system_prompt.starts_with("explorer prompt\n"));
-    assert!(explored.system_prompt.contains("demi agent send"));
-    assert!(!explored.system_prompt.contains("demi agent spawn"));
-    let explorer_preamble = request_text(explored);
-    assert!(explorer_preamble.starts_with("You are a subagent"));
-    assert!(explorer_preamble.contains("This session may not spawn subagents."));
-    assert_eq!(
-        fixture
-            .store
-            .record(&explorer_child)
-            .unwrap()
-            .profile
-            .as_deref(),
-        Some("explorer")
-    );
-    let restricted_asked = &model.requests_of("task restricted")[0];
-    assert!(
-        restricted_asked
-            .system_prompt
-            .starts_with("system prompt\n")
-    );
-    assert!(!restricted_asked.system_prompt.contains("demi agent spawn"));
-    assert!(request_text(restricted_asked).starts_with("You are a subagent"));
-    let is_missing_spawn = |call: &Result<CommandRun, RpcError>| matches!(call, Err(RpcError::Usage(message)) if message == "\"demi agent spawn\" is not an rpc command");
-    assert!(is_missing_spawn(&from_restricted), "{from_restricted:?}");
-    assert!(is_missing_spawn(&after_resume), "{after_resume:?}");
-    assert_eq!(restricted_lists.code, 0);
-    assert!(
-        !fixture
-            .store
-            .record(&restricted)
-            .unwrap()
-            .can_spawn_subagents
-    );
-
-    let reserved = Profile {
-        name: "default".into(),
-        description: String::new(),
-        instructions: None,
-        commands: None,
-        can_spawn_subagents: true,
-        model: None,
-    };
-    let refusing = self::fixture(
-        &Model::default(),
-        TestProduct {
-            profiles: vec![reserved],
-            ..TestProduct::default()
-        },
-    );
-    let mut refused_client = refusing.client();
-    refused_client.send(open()).await;
-    assert_eq!(
-        refused_client.received(),
-        [ServerFrame::Error {
-            message: "subagent profile name \"default\" is reserved: omitting --profile already inherits the parent".into(),
-            code: None,
-            diagnostics: None,
-        }]
-    );
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]
@@ -1273,18 +1069,24 @@ fn contexts(fixture: &Fixture, node: &NodeId) -> usize {
 #[tokio::test(flavor = "local")]
 async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_execution_context_itself()
  {
-    let mut worker_model = model_of("stub", "worker-model");
-    worker_model.model.context_window = 200_000;
     let worker = Profile {
         name: "worker".into(),
         description: "Works through a task list.".into(),
+        model: Some(ProfileModel {
+            provider_id: "stub".into(),
+            model_id: "worker-model".into(),
+            thinking_effort: None,
+            service_tier_id: None,
+        }),
         instructions: Some("worker prompt".into()),
-        commands: Some(Vec::new()),
-        can_spawn_subagents: true,
-        model: Some(worker_model),
+        can_spawn: true,
+        enabled: true,
     };
     let product = TestProduct {
-        profiles: vec![worker],
+        subagents: RefCell::new(SubagentSettings {
+            enabled: true,
+            profiles: vec![worker],
+        }),
         context: RefCell::new(Some(ON_THE_CLOUD.into())),
         ..TestProduct::default()
     };
@@ -1297,6 +1099,9 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     );
     model.child("task inner", [held_said(&inner_gate, "inner done")]);
     let fixture = fixture(&model, product);
+    fixture
+        .resolver
+        .list("stub", vec![listed_model("worker-model", &[], &[])]);
     let mut client = fixture.opened().await;
 
     let outer = spawn(
@@ -1314,12 +1119,11 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     client.next_until(is_idle).await;
 
     // Spawned without a profile under the worker, the grandchild runs the
-    // worker's prompt and model, and keeps the `demi agent` group, which the
-    // worker's narrowing of the product commands cannot take away.
+    // worker's prompt and model, with the commands every node has.
     let inner_asked = &model.requests_of("task inner")[0];
     assert!(inner_asked.system_prompt.starts_with("worker prompt\n"));
     assert!(inner_asked.system_prompt.contains("demi agent send"));
-    assert!(!inner_asked.system_prompt.contains("greet"));
+    assert!(inner_asked.system_prompt.contains("greet"));
     assert_eq!(inner_asked.model_id, "worker-model");
     assert_eq!(listed.code, 0, "{listed:?}");
     // Each node reads the execution context itself, once, whatever its

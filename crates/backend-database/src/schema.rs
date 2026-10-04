@@ -98,6 +98,28 @@ CREATE TABLE user_preferences (
   preferences TEXT NOT NULL
 ) STRICT;
 
+-- Each user's Subagent switch (`subagents.md` § Profiles): a user with no
+-- row has subagents on.
+CREATE TABLE user_subagents (
+  user_id TEXT PRIMARY KEY REFERENCES users (id),
+  enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
+) STRICT;
+
+-- Each user's subagent profiles: the model settings as JSON, null for the
+-- parent's model, and the instructions that replace the parent's, null for
+-- the parent's. A name is unique among its user's profiles.
+CREATE TABLE subagent_profiles (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users (id),
+  name         TEXT NOT NULL,
+  description  TEXT NOT NULL,
+  model        TEXT,
+  instructions TEXT,
+  can_spawn    INTEGER NOT NULL CHECK (can_spawn IN (0, 1)),
+  enabled      INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  UNIQUE (user_id, name)
+) STRICT;
+
 -- Devices and workspaces. The token hash is absent until the backend issues
 -- a token; one managed device per user.
 CREATE TABLE devices (
@@ -351,6 +373,9 @@ CREATE TABLE nodes (
   parent_id        TEXT REFERENCES nodes (id) ON DELETE CASCADE,
   description      TEXT NOT NULL,
   profile          TEXT,
+  -- The instructions the node's profile replaced its parent's with; null
+  -- when it has its parent's.
+  instructions     TEXT,
   round            INTEGER NOT NULL CHECK (round >= 1),
   started_at       INTEGER NOT NULL,
   can_spawn        INTEGER NOT NULL CHECK (can_spawn IN (0, 1)),
