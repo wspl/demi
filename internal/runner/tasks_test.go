@@ -11,6 +11,9 @@ import (
 )
 
 // These scenarios cost about a second each: they start a real runner and jobs.
+
+// A running job leaves filesystem requests served, and a kill ends the
+// blocked utility with SIGKILL.
 func TestFilesystemRequestsAndKillRemainAvailableDuringJob(t *testing.T) {
 	f := newRunner(t, nil, "")
 	f.online()
@@ -28,8 +31,9 @@ func TestFilesystemRequestsAndKillRemainAvailableDuringJob(t *testing.T) {
 		t.Fatalf("exists result: %#v", reply.Result)
 	}
 	f.send(&runnerwire.JobKill{JobID: "live", Signal: new(runnerwire.SignalKill)})
-	if exit, ok := f.frame().(*runnerwire.JobExit); !ok || exit.JobID != "live" {
-		t.Fatal("kill did not end job")
+	_, _, exit := f.jobOutput("live")
+	if exit.Signal == nil || *exit.Signal != "SIGKILL" {
+		t.Fatalf("killed job: %+v", exit)
 	}
 }
 
