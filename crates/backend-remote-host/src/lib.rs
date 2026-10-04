@@ -26,7 +26,7 @@ mod shell_environment;
 pub mod testing;
 
 pub use link::{
-    JobEnd, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions, LinkPolicy,
+    JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions, LinkPolicy,
     OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};

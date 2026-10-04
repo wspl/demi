@@ -13,7 +13,7 @@ use demi_shared_types::{CommandId, OutputChunk, OutputView, ShellId, StreamKind,
 use tokio::time::Instant;
 
 use crate::{
-    BinaryOutput, CommandState, CommandStatus, EditedFiles, Newest, Seen, WholeOutput, WholeView,
+    BinaryOutput, CommandMedium, CommandState, CommandStatus, EditedFiles, Newest, Seen, WholeOutput, WholeView,
 };
 
 /// How much of a stream's end a view carries.
@@ -100,6 +100,7 @@ enum Phase {
     Exited {
         exit_code: i32,
         binary_stdout: Option<BinaryOutput>,
+        media: Vec<CommandMedium>,
     },
     Aborted,
 }
@@ -218,15 +219,17 @@ impl CommandRecord {
         self.files = Some(files);
     }
 
-    /// Ends the command with its whole output; `page` is what the end adds
-    /// to the pages' view (`runtime.md` § Live output). True when the pages'
-    /// view changed: a command that had ended already keeps the end the
-    /// pages were shown.
+    /// Ends the command with its whole output, its binary stdout and the
+    /// media its commands returned; `page` is what the end adds to the
+    /// pages' view (`runtime.md` § Live output). True when the pages' view
+    /// changed: a command that had ended already keeps the end the pages
+    /// were shown.
     pub fn settle(
         &mut self,
         ending: Ending,
         whole: Arc<WholeOutput>,
         binary_stdout: Option<BinaryOutput>,
+        media: Vec<CommandMedium>,
         page: &str,
     ) -> bool {
         let running = self.is_running();
@@ -239,6 +242,7 @@ impl CommandRecord {
             Ending::Exited(exit_code) => Phase::Exited {
                 exit_code,
                 binary_stdout,
+                media,
             },
             Ending::Aborted => Phase::Aborted,
         };
@@ -323,9 +327,11 @@ impl CommandRecord {
             Phase::Exited {
                 exit_code,
                 binary_stdout,
+                media,
             } => CommandState::Exited {
                 exit_code: *exit_code,
                 binary_stdout: binary_stdout.clone(),
+                media: media.clone(),
             },
             Phase::Aborted => CommandState::Aborted,
         };

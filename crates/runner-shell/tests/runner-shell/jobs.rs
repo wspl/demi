@@ -48,6 +48,7 @@ async fn shell_cancellation_reports_the_requesting_signal() {
             root.path().into(),
             crate::home(root.path()),
             true,
+            true,
             scope.clone(),
             &ShellRuntime::current(),
         )
@@ -115,6 +116,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         root.path().into(),
         crate::home(root.path()),
         false,
+        true,
         Scope::new(CancellationToken::new(), None),
         runtime,
     )
@@ -152,6 +154,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
             format!("printf ready; {script}"),
             root.path().into(),
             crate::home(root.path()),
+            true,
             true,
             scope.clone(),
             runtime,
@@ -208,6 +211,7 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
             root.path().into(),
             crate::home(root.path()),
             false,
+            true,
             scope.clone(),
             &ShellRuntime::current(),
         )
@@ -254,6 +258,7 @@ async fn job_completion_preserves_process_substitution_output() {
         root.path().into(),
         crate::home(root.path()),
         false,
+        true,
         Scope::new(CancellationToken::new(), None),
         &ShellRuntime::current(),
     )

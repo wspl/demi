@@ -366,8 +366,12 @@ impl AgentTreeStore for SqliteTreeStore {
             let Some(row) = row else {
                 return Ok(None);
             };
-            let (blob, missing) = match row.output {
-                OutputRow::Stored { blob, missing } => (blob, missing),
+            let (blob, missing, media) = match row.output {
+                OutputRow::Stored {
+                    blob,
+                    missing,
+                    media,
+                } => (blob, missing, media),
                 OutputRow::NotStored(reason) => return Ok(Some(StoredOutput::NotStored(reason))),
                 OutputRow::Removed(at) => return Ok(Some(StoredOutput::Removed(at))),
             };
@@ -385,7 +389,7 @@ impl AgentTreeStore for SqliteTreeStore {
                             "the output of {command} does not decode: {error}"
                         ))
                     })?;
-            Ok(Some(StoredOutput::Stored(output)))
+            Ok(Some(StoredOutput::Stored { output, media }))
         })
     }
 }

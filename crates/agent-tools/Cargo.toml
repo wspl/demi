@@ -17,6 +17,7 @@ bench = false
 testing = ["demi-agent-session/testing"]
 
 [dependencies]
+demi-command-protocol = { path = "../command-protocol" }
 bytes.workspace = true
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-session = { path = "../agent-session" }

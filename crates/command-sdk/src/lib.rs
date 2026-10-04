@@ -26,6 +26,7 @@ pub use exchange::{Exchange, ExchangeError, InputSource, OutputSink};
 pub use launch::{COMMAND_SERVICE, Launch};
 pub use numbers::{Draw, Numbers, NumbersAsk};
 pub use server::{
-    ConversationContext, Handler, InvocationContext, Output, serve, serve_cancellable,
+    ConversationContext, Handler, InvocationContext, MediumRefused, Output, serve,
+    serve_cancellable,
 };
 pub use stream::{Input, ServiceError};

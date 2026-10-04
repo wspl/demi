@@ -2,29 +2,31 @@
 //! ended command's whole output is a blob of the conversation owner's
 //! namespace, in the kept output's records, and the conversation's
 //! `command_outputs` table holds one row per command, keyed by its id,
-//! which says when the command ended and whether its output is stored, was
-//! not stored and why, or was removed and when. A row is written once when
+//! which says when the command ended and whether its output is stored, with
+//! its media, was not stored and why, or was removed and when. A row is written once when
 //! its command ends, or copied into a Fork's destination, and changes only
 //! when the retention pass removes its output. The blobs whose rows a commit
 //! writes or removes are its uses, which it records before it commits
 //! (`storage.md` § Collecting blobs).
 
 use demi_agent_store::StoreError;
-use demi_host_interface::Missing;
+use demi_host_interface::{MediumKept, Missing, StoredMedium};
 use demi_shared_types::{BlobRef, Block, CommandId, Timestamp, ToolView};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
 use super::blob_refs::OwnerBlobs;
-use super::columns::{decode, instant};
+use super::columns::{decode, instant, json, to_json};
 
 /// What a conversation holds of an ended command's output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OutputRow {
-    /// Its blob, and the bytes at its end that the backend does not have.
+    /// Its blob, the bytes at its end that the backend does not have, and
+    /// the command's media by number.
     Stored {
         blob: BlobRef,
         missing: Option<Missing>,
+        media: Vec<StoredMedium>,
     },
     /// Why it was not stored.
     NotStored(String),
@@ -41,7 +43,7 @@ pub struct CommandOutput {
 }
 
 const COLUMNS: &str =
-    "command_id, ended_at, blob, missing_bytes, missing_reason, not_stored, removed_at";
+    "command_id, ended_at, blob, missing_bytes, missing_reason, media, not_stored, removed_at";
 
 /// Writes `rows` in one transaction; a command that has a row keeps it. The
 /// blobs they name are used before the commit.
@@ -54,14 +56,18 @@ pub fn insert(
     let mut touched = Vec::new();
     {
         let mut insert = transaction.prepare_cached(&format!(
-            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+            "INSERT INTO command_outputs ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT (command_id) DO NOTHING"
         ))?;
         for row in rows {
-            let (blob, missing, not_stored, removed) = match &row.output {
-                OutputRow::Stored { blob, missing } => (Some(blob), missing.as_ref(), None, None),
-                OutputRow::NotStored(reason) => (None, None, Some(reason), None),
-                OutputRow::Removed(at) => (None, None, None, Some(at.as_millisecond())),
+            let (blob, missing, media, not_stored, removed) = match &row.output {
+                OutputRow::Stored {
+                    blob,
+                    missing,
+                    media,
+                } => (Some(blob), missing.as_ref(), Some(media), None, None),
+                OutputRow::NotStored(reason) => (None, None, None, Some(reason), None),
+                OutputRow::Removed(at) => (None, None, None, None, Some(at.as_millisecond())),
             };
             let missing_bytes =
                 missing.map(|missing| i64::try_from(missing.bytes).unwrap_or(i64::MAX));
@@ -71,10 +77,12 @@ pub fn insert(
                 blob.map(BlobRef::as_str),
                 missing_bytes,
                 missing.map(|missing| missing.reason.as_str()),
+                media.map(to_json),
                 not_stored,
                 removed,
             ])?;
             touched.extend(blob.cloned());
+            touched.extend(media.into_iter().flat_map(|media| media_blobs(media)));
         }
     }
     if let Err(refused) = blobs.commit_uses(&touched) {
@@ -151,17 +159,18 @@ pub fn remove_expired(
     let mut released = Vec::new();
     {
         let mut select = transaction.prepare_cached(
-            "SELECT blob FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?1",
+            "SELECT blob, media FROM command_outputs WHERE blob IS NOT NULL AND ended_at < ?1",
         )?;
         let mut rows = select.query([expired])?;
         while let Some(row) = rows.next()? {
             released.push(blob(row.get(0)?)?);
+            released.extend(media_blobs(&stored_media(row.get(1)?)?));
         }
     }
     let removed = transaction
         .prepare_cached(
             "UPDATE command_outputs
-             SET blob = NULL, missing_bytes = NULL, missing_reason = NULL, removed_at = ?2
+             SET blob = NULL, missing_bytes = NULL, missing_reason = NULL, media = NULL, removed_at = ?2
              WHERE blob IS NOT NULL AND ended_at < ?1",
         )?
         .execute(params![expired, now.as_millisecond()])?;
@@ -172,16 +181,30 @@ pub fn remove_expired(
     Ok(Ok(removed))
 }
 
-/// The blobs the rows hold.
+/// The blobs the rows hold: each stored output's, and its media's.
 pub fn references(connection: &Connection) -> Result<Vec<BlobRef>, StorageError> {
-    let mut statement =
-        connection.prepare_cached("SELECT blob FROM command_outputs WHERE blob IS NOT NULL")?;
+    let mut statement = connection
+        .prepare_cached("SELECT blob, media FROM command_outputs WHERE blob IS NOT NULL")?;
     let mut rows = statement.query([])?;
     let mut references = Vec::new();
     while let Some(row) = rows.next()? {
         references.push(blob(row.get(0)?)?);
+        references.extend(media_blobs(&stored_media(row.get(1)?)?));
     }
     Ok(references)
+}
+
+/// The blobs of the media the backend stored.
+fn media_blobs(media: &[StoredMedium]) -> impl Iterator<Item = BlobRef> + '_ {
+    media.iter().filter_map(|medium| match &medium.kept {
+        MediumKept::Stored { blob } => Some(blob.clone()),
+        MediumKept::Missing { .. } => None,
+    })
+}
+
+/// A stored output's media, read back from their column.
+fn stored_media(text: String) -> Result<Vec<StoredMedium>, StorageError> {
+    json("command_outputs", "media", &text)
 }
 
 /// A row read back, decoded and checked.
@@ -199,10 +222,16 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
     let stored: Option<String> = row.get("blob")?;
     let missing_bytes: Option<i64> = row.get("missing_bytes")?;
     let missing_reason: Option<String> = row.get("missing_reason")?;
+    let media: Option<String> = row.get("media")?;
     let not_stored: Option<String> = row.get("not_stored")?;
     let removed: Option<i64> = row.get("removed_at")?;
     let output = match (stored, not_stored, removed) {
         (Some(stored), None, None) => {
+            let media = stored_media(media.ok_or_else(|| StorageError::Corrupt {
+                table: "command_outputs",
+                column: "media",
+                reason: "a stored output comes with its media".into(),
+            })?)?;
             let missing = match (missing_bytes, missing_reason) {
                 (Some(bytes), Some(reason)) => Some(Missing {
                     bytes: decode("command_outputs", "missing_bytes", u64::try_from(bytes))?,
@@ -220,6 +249,7 @@ fn decode_row(row: &Row<'_>) -> Result<CommandOutput, StorageError> {
             OutputRow::Stored {
                 blob: blob(stored)?,
                 missing,
+                media,
             }
         }
         (None, Some(reason), None) => OutputRow::NotStored(reason),

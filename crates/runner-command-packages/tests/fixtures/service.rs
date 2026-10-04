@@ -71,6 +71,36 @@ impl Handler for Fixture {
                         .stdout(Bytes::from(value.to_string()))
                         .await?;
                 }
+                // Prints `before`, returns `count` media, one by default,
+                // and prints `after` (`commands.md` § Return media). Medium
+                // `i` is a PNG signature followed by bytes of `i`, `size`
+                // bytes in all, 16 by default; with `kind` "text", bytes
+                // that are no medium.
+                "medium" => {
+                    let args = &context.request.args;
+                    let text = |name: &str| args.get(name).and_then(|value| value.as_str());
+                    let number = |name: &str, default: u64| {
+                        args.get(name)
+                            .and_then(|value| value.as_u64())
+                            .unwrap_or(default)
+                    };
+                    if let Some(before) = text("before") {
+                        context.output.stdout(Bytes::from(before.to_owned())).await?;
+                    }
+                    let size = usize::try_from(number("size", 16)).map_err(ServiceError::failed)?;
+                    for index in 1..=number("count", 1) {
+                        let mut medium = if text("kind") == Some("text") {
+                            b"not an image".to_vec()
+                        } else {
+                            b"\x89PNG\r\n\x1a\n".to_vec()
+                        };
+                        medium.resize(size.max(medium.len()), index as u8);
+                        context.output.medium(Bytes::from(medium)).await?;
+                    }
+                    if let Some(after) = text("after") {
+                        context.output.stdout(Bytes::from(after.to_owned())).await?;
+                    }
+                }
                 // Ends once a status or a release waits to answer.
                 "stalled" => stalled.notified().await,
                 "proceed" => proceed.notify_one(),

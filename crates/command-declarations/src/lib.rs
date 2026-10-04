@@ -86,6 +86,8 @@ pub struct Leaf<B = Binding> {
     pub stdin_field: Option<String>,
     pub rest_field: Option<String>,
     pub output: Option<LeafOutput>,
+    /// Whether the command may return media (`commands.md` § Return media).
+    pub media: bool,
     pub kind: LeafKind<B>,
 }
 
@@ -300,6 +302,7 @@ impl Node<NativeOperation> {
                 stdin_field: leaf.stdin_field.clone(),
                 rest_field: leaf.rest_field.clone(),
                 output: leaf.output.clone(),
+                media: leaf.media,
                 kind: match &leaf.kind {
                     LeafKind::Rpc => LeafKind::Rpc,
                     LeafKind::Native(operation) => LeafKind::Native(Binding {
@@ -477,6 +480,8 @@ struct RawLeaf<B> {
         with = "unwrap_or_skip"
     )]
     output: Option<LeafOutput>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    media: bool,
     kind: RawKind,
     #[serde(
         default,
@@ -514,6 +519,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
             stdin_field: raw.stdin_field,
             rest_field: raw.rest_field,
             output: raw.output,
+            media: raw.media,
             kind,
         })
     }
@@ -536,6 +542,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
             stdin_field: leaf.stdin_field,
             rest_field: leaf.rest_field,
             output: leaf.output,
+            media: leaf.media,
             kind,
             binding,
         }

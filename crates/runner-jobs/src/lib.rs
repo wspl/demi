@@ -8,6 +8,7 @@ pub mod commands;
 pub mod connection;
 pub mod edit_report;
 pub mod job_directories;
+pub mod job_media;
 pub mod kept_output;
 pub mod tasks;
 #[cfg(feature = "testing")]

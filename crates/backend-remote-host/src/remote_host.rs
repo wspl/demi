@@ -8,7 +8,9 @@
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
 use bytes::{Bytes, BytesMut};
-use demi_command_protocol::{ArtifactLocation, CommandContext, PackageArtifact, PackageDescriptor};
+use demi_command_protocol::{
+    ArtifactLocation, CommandContext, MAX_MEDIUM_BYTES, PackageArtifact, PackageDescriptor,
+};
 use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
     HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, JobCaller, MkdirOptions, Process,
@@ -28,7 +30,8 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     ArtifactResolver, Link,
     link::{
-        Answer, Expected, JobEnd, JobEntry, JobOrigin, JobOutput, ServiceEntry, Shared, SpawnEntry,
+        Answer, Expected, JobEnd, JobEntry, JobMedium, JobOrigin, JobOutput, ServiceEntry, Shared,
+        SpawnEntry,
     },
     manifest::CommandSelection,
     output_records::decode_output,
@@ -111,11 +114,13 @@ impl RemoteHost {
         let lease = self.admit()?;
         let id = uuid::Uuid::new_v4().simple().to_string();
         let shared = Shared::new();
+        let media = Rc::default();
         let Ok(link) = self.link() else {
             shared.finish(JobEnd::lost("runner disconnected"));
             return Ok(RemoteJob {
                 id,
                 shared,
+                media,
                 link: None,
             });
         };
@@ -129,6 +134,7 @@ impl RemoteHost {
                 id.clone(),
                 JobEntry {
                     shared: shared.clone(),
+                    media: media.clone(),
                     origin,
                     commands: job.commands.clone(),
                     cancel: CancellationToken::new(),
@@ -175,6 +181,7 @@ impl RemoteHost {
         Ok(RemoteJob {
             id,
             shared,
+            media,
             link: Some(link),
         })
     }
@@ -505,6 +512,8 @@ pub struct JobStart {
 pub struct RemoteJob {
     id: String,
     shared: Rc<Shared<JobEnd, JobOutput>>,
+    /// The media its commands returned, as the runner announced them.
+    media: Rc<RefCell<Vec<JobMedium>>>,
     /// The connection it runs on; none when it ended before it started.
     link: Option<Link>,
 }
@@ -593,6 +602,32 @@ impl RemoteJob {
         let bytes = collect(reader, wire::JOB_KEPT_READ_BYTES).await?;
         decode_output(&bytes, None)
             .map_err(|error| protocol(&format!("the job's kept output does not decode: {error}")))
+    }
+
+    /// The media the job's commands returned so far, in order: every one
+    /// once the job ended, even when its connection was lost.
+    pub fn media(&self) -> Vec<JobMedium> {
+        self.media.borrow().clone()
+    }
+
+    /// The bytes of medium `number` the job keeps (`runner.md` § Pipes and
+    /// output): while the job runs, and after it ended until its release.
+    pub async fn read_medium(&self, number: u32) -> Result<Bytes, HostError> {
+        let link = self
+            .link
+            .as_ref()
+            .ok_or_else(|| HostError::offline("the job's runner is not connected"))?;
+        let reader = filled(link, Expected::JobMediaRead, |id, output| {
+            Inbound::JobMediaRead {
+                id,
+                job_id: self.id.clone(),
+                number,
+                output,
+            }
+        })
+        .await?;
+        let limit = usize::try_from(MAX_MEDIUM_BYTES).expect("16 MiB fits");
+        collect(reader, limit).await
     }
 
     /// Tells the runner that the backend has what it needs of the ended job,
