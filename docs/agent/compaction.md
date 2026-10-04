@@ -338,7 +338,8 @@ a real model.
 | A medium a request carries as text: its model does not read it, or it is over half the body limit | The estimate for that model weighs the text, not the medium |
 | Signed thinking of 20,000 characters | It is replayed whole |
 
-A large recorded conversation, kept with the agent crate, is checked by hand
+The Go program [compactionfixture](../../tools/compactionfixture/README.md)
+at `tools/compactionfixture/` checks a large recorded conversation by hand
 against a real model: after several compactions the model still recalls facts
 planted at the start, and switching from a large window to a small one
 compacts with the large-window model while recall holds.
