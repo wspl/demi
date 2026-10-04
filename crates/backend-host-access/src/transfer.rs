@@ -77,7 +77,7 @@ pub struct OpenUpload {
 }
 
 impl dyn HostShard + '_ {
-    /// Admits a download of one file on the conversation's main Host, and
+    /// Admits a download of one file on the conversation's primary Host, and
     /// answers what the file's metadata decides: the part's bytes as a
     /// stream, or an answer without them.
     pub async fn open_download(
@@ -128,7 +128,7 @@ impl dyn HostShard + '_ {
         })
     }
 
-    /// Admits an upload of one file to the conversation's main Host: a
+    /// Admits an upload of one file to the conversation's primary Host: a
     /// directory at the path is never written over, and a file only when
     /// `replace` asks.
     pub async fn open_upload(

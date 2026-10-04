@@ -45,7 +45,7 @@ impl World {
     fn new() -> Self {
         let demi = TestDemi::new();
         demi.hosts.replace(vec![
-            host("laptop", HostRole::Main, true),
+            host("laptop", HostRole::Primary, true),
             host("ci", HostRole::Attached, true),
         ]);
         Self::over(demi)

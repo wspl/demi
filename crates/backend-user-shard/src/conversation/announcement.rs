@@ -1,6 +1,6 @@
 //! The context block a node reads before its next request once the
 //! conversation's execution context changed (`sessions-and-targets.md`
-//! § Switch the main target): after a switch, the departed and current
+//! § Switch the primary target): after a switch, the departed and current
 //! targets, that no files moved, and the departed device under the name it
 //! stays attached as; after a change of the attached hosts, that change.
 //! Either block ends with the attached hosts as they now stand, and a block

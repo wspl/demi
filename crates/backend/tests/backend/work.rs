@@ -787,7 +787,7 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
     let result = &pulled.received[0];
     assert!(
         result.contains(&format!(
-            "beta  {}  online  {}  (main)",
+            "beta  {}  online  {}  (primary)",
             beta.id(),
             b.display()
         )),

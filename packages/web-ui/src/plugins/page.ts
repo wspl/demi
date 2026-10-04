@@ -103,9 +103,9 @@ export interface PageHost {
     conversation: string | null,
     options?: PluginCallOptions,
   ): Promise<unknown>
-  /** The user stream `name` of `conversation`'s main Host. */
+  /** The user stream `name` of `conversation`'s primary Host. */
   stream(name: string, conversation: string): OpenUserStream
-  /** The installs of `plugin`'s packages on `conversation`'s main Host, read reactively. */
+  /** The installs of `plugin`'s packages on `conversation`'s primary Host, read reactively. */
   installs(plugin: string, conversation: string): readonly HostInstall[]
   files(conversation: string): ConversationFileService
   intents: IntentService
@@ -137,7 +137,7 @@ export interface ConversationPlugin {
   /** Calls a method of the conversation scope. */
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
   stream(name: string): OpenUserStream
-  /** The installs of the plugin's packages on the conversation's main Host, which a first call may wait for. */
+  /** The installs of the plugin's packages on the conversation's primary Host, which a first call may wait for. */
   readonly installs: ComputedRef<readonly HostInstall[]>
 }
 

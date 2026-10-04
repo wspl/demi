@@ -28,7 +28,7 @@ const items = computed(() =>
 )
 function disabledReason(device: HostDeviceOption): string | undefined {
   if (device.id === props.selectedId) {
-    return 'Current main host.'
+    return 'Current primary host.'
   }
   if (props.boundIds?.includes(device.id)) {
     return 'Already attached to this conversation.'

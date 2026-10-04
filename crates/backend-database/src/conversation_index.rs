@@ -68,8 +68,8 @@ pub enum ConversationChange {
     /// A change of the conversation's model settings, which the
     /// conversation's settings order applies against the catalog.
     Settings(SettingsChange),
-    /// A switch of the main target (`sessions-and-targets.md` § Switch the
-    /// main target), which the target compare-and-set commits.
+    /// A switch of the primary target (`sessions-and-targets.md` § Switch the
+    /// primary target), which the target compare-and-set commits.
     Target(ConversationTarget),
 }
 
@@ -797,7 +797,7 @@ fn target_row(row: &Row<'_>) -> Result<ConversationTarget, StorageError> {
 }
 
 /// A device attached to a conversation (`sessions-and-targets.md`
-/// § Attached hosts): a Host the conversation reaches besides its main one.
+/// § Attached hosts): a Host the conversation reaches besides its primary one.
 /// A Fork keeps its source's in its operation's metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -844,7 +844,7 @@ pub struct SwitchEnds {
     /// The device the switch leaves, attached afterwards where it was left.
     pub departed: Option<(DeviceId, String)>,
     /// The device the switch reaches, detached if it was attached: a Host is
-    /// main or attached, never both.
+    /// primary or attached, never both.
     pub arriving: Option<DeviceId>,
 }
 

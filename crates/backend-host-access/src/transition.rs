@@ -1,5 +1,5 @@
 //! The transitions that end a conversation's target
-//! (`sessions-and-targets.md` § Switch the main target, § Lifecycle
+//! (`sessions-and-targets.md` § Switch the primary target, § Lifecycle
 //! access): a target switch, an archive and a detach. Each runs while the
 //! conversation is held for it (`hold_for_transition`): the idle tree
 //! reserved by the shard, the file transfers, user streams and the one-shot
@@ -54,9 +54,9 @@ pub enum ChangeRefusal {
     /// Another switch changed the target first.
     #[error("Another target change came first")]
     Conflict,
-    /// The device to attach is the conversation's main Host.
-    #[error("That device is the conversation's main host")]
-    HostIsMain,
+    /// The device to attach is the conversation's primary Host.
+    #[error("That device is the conversation's primary host")]
+    HostIsPrimary,
     /// The device to rename is not attached.
     #[error("No such attached host")]
     NotAttached,
@@ -80,7 +80,7 @@ impl ChangeRefusal {
             Self::WorkspaceNotFound => (ErrorCode::WorkspaceNotFound, 404),
             Self::DeviceNotFound => (ErrorCode::DeviceNotFound, 404),
             Self::Conflict => (ErrorCode::TargetConflict, 409),
-            Self::HostIsMain => (ErrorCode::HostIsMain, 409),
+            Self::HostIsPrimary => (ErrorCode::HostIsPrimary, 409),
             Self::NotAttached => (ErrorCode::HostNotAttached, 404),
             Self::NameTaken => (ErrorCode::NameTaken, 409),
             Self::Runtime(_) | Self::Storage(_) => (ErrorCode::OperationFailed, 500),
@@ -98,7 +98,7 @@ pub struct TransitionHold {
 }
 
 impl dyn HostShard + '_ {
-    /// Holds the conversation for a transition (§ Switch the main target,
+    /// Holds the conversation for a transition (§ Switch the primary target,
     /// steps 2 to 4) once the shard reserved its idle tree, `tree`: its
     /// transfers and streams ended and their release awaited, and its file
     /// gate reserved. A busy file gate refuses.
@@ -168,9 +168,9 @@ impl dyn HostShard + '_ {
         Ok(())
     }
 
-    /// The held switch's steps 4 to 6 (§ Switch the main target): the device
+    /// The held switch's steps 4 to 6 (§ Switch the primary target): the device
     /// it leaves hears the conversation release and stays attached where it
-    /// was left, the device it reaches is main alone, and the commit is
+    /// was left, the device it reaches is primary alone, and the commit is
     /// against the target the switch started from.
     pub async fn switch_target(
         &self,
@@ -241,7 +241,7 @@ impl dyn HostShard + '_ {
         self.commit(&record.id, RecordChange::Detach(device)).await
     }
 
-    /// The conversation release on every Host the conversation reaches, main
+    /// The conversation release on every Host the conversation reaches, primary
     /// and attached, for an archive and for its idle watch. Only reading the
     /// Hosts fails it: a Host that did not take the release hears it again
     /// (`release_on`).

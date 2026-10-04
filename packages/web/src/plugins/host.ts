@@ -17,7 +17,7 @@ import { conversationStates } from './states'
  * plugin's user state from the product state the sync channel keeps, which
  * drops a plugin the user turned off; its conversation states by revision;
  * its calls over the plugin call routes (`web-api.md` § Plugin calls); its
- * user streams; the installs of its packages on a conversation's main Host,
+ * user streams; the installs of its packages on a conversation's primary Host,
  * from that device's in the product state; and the shell's own services:
  * the conversations' files, intents and panels, and the settings dialog.
  */

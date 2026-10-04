@@ -68,7 +68,7 @@ pub enum PortMessage {
     SetDirectories {
         directories: Vec<HostDirectory>,
     },
-    /// Reads paths on the request's conversation's main Host, if it is
+    /// Reads paths on the request's conversation's primary Host, if it is
     /// running, without waking it.
     ReadHostFiles {
         reads: Vec<HostRead>,
@@ -79,13 +79,13 @@ pub enum PortMessage {
         scope: Scope,
     },
     /// Runs one operation of a package the plugin's commands bind, on the
-    /// request's conversation's main Host.
+    /// request's conversation's primary Host.
     PackageCall {
         operation: NativeOperation,
         args: Map<String, Value>,
         kind: CallKind,
     },
-    /// The request's conversation's main and attached Hosts.
+    /// The request's conversation's primary and attached Hosts.
     ConversationHosts,
     /// The user's live exposes, soonest expiry first.
     ListExposes,
@@ -398,7 +398,7 @@ pub struct ConversationHost {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum HostRole {
-    Main,
+    Primary,
     Attached,
 }
 
@@ -462,7 +462,7 @@ pub enum PortRefusal {
     /// The operation needs a conversation, and the request has none.
     #[error("the request has no conversation")]
     NoConversation,
-    /// The conversation's main Host is not running: a stopped Cloud, or a
+    /// The conversation's primary Host is not running: a stopped Cloud, or a
     /// device whose runner is not connected. A read never wakes it.
     #[error("the conversation's Host is not running")]
     NotRunning,
@@ -624,7 +624,7 @@ impl PluginPort {
         }
     }
 
-    /// Reads `reads` on the conversation's main Host, one answer per read;
+    /// Reads `reads` on the conversation's primary Host, one answer per read;
     /// [`PortRefusal::NotRunning`] when the Host is not running.
     pub async fn read_host_files(
         &self,

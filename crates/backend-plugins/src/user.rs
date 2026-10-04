@@ -44,7 +44,7 @@ use crate::commands::compose;
 /// a conversation's Hosts through its host access, and the user's exposes.
 /// The user's shard implements it.
 pub trait ProductPort {
-    /// Runs `operation` once on the conversation's main Host for the user,
+    /// Runs `operation` once on the conversation's primary Host for the user,
     /// waking it or not as `kind` says, and answers its JSON result.
     fn package_call<'a>(
         &'a self,
@@ -60,7 +60,7 @@ pub trait ProductPort {
         conversation: &'a ConversationId,
     ) -> LocalBoxFuture<'a, Result<Vec<ConversationHost>, PortFailure>>;
 
-    /// Reads `reads` on the conversation's main Host in the form that never
+    /// Reads `reads` on the conversation's primary Host in the form that never
     /// wakes it; [`PortRefusal::NotRunning`] when it is not running.
     fn read_host_files<'a>(
         &'a self,
