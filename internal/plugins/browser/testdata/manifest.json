@@ -7017,7 +7017,7 @@
               "properties": {
                 "code": {
                   "type": "string",
-                  "description": "A browser failure's code, [`CAPTURE_UNAVAILABLE`] or [`CAPTURE_FAILED`]."
+                  "description": "A browser failure's code, `capture_unavailable` or `capture_failed`."
                 },
                 "message": {
                   "type": "string"

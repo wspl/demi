@@ -520,6 +520,7 @@ func TestConversationNullablePatch(t *testing.T) {
 func TestPanelRequestsValidateIDsAndObjectData(t *testing.T) {
 	for _, body := range []string{
 		`{"id":"a","kind":"page","data":{}}`,
+		`{"id":"a","kind":"page","data":{},"index":null}`,
 		`{"id":"a","kind":"page","data":{"nested":[null,1]},"index":64}`,
 	} {
 		if _, err := webapi.DecodeCreatePanelTab([]byte(body)); err != nil {
@@ -531,7 +532,6 @@ func TestPanelRequestsValidateIDsAndObjectData(t *testing.T) {
 		`{"id":"a","kind":"page","data":null}`,
 		`{"id":"a","kind":"page","data":[]}`,
 		`{"id":"a","kind":"page","data":{},"index":65}`,
-		`{"id":"a","kind":"page","data":{},"index":null}`,
 	} {
 		if _, err := webapi.DecodeCreatePanelTab([]byte(body)); err == nil {
 			t.Errorf("got valid; want refusal for %s", body)

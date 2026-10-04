@@ -529,9 +529,9 @@ func (*PortMessageCreatePanelTab) portMessage() {}
 
 // Sets the fields of `data` in the tab's data, removing the null ones.
 // +demi:variant PortMessage update_panel_tab
-// +demi:check validatePanelUpdate
 type PortMessageUpdatePanelTab struct {
-	ID   string          `json:"id"`
+	ID string `json:"id"`
+	// +demi:object
 	Data json.RawMessage `json:"data"`
 }
 

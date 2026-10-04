@@ -188,8 +188,9 @@ func TestJobSyncUsesStableIDsAndMarksMissingTabsClosed(t *testing.T) {
 		t,
 		func(context.Context, declare.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
 			return json.RawMessage(
-				`{"tabs":[{"id":"t1","title":"A","url":"https://a.test","createdBy":{"kind":"user"}},` +
-					`{"id":"t2","title":"B","url":"https://b.test","createdBy":{"kind":"agent","number":1}}],"truncated":false}`,
+				`{"tabs":[{"id":"t1","title":"A","url":"https://a.test","createdBy":{"kind":"user"},"loading":false},` +
+					`{"id":"t2","title":"B","url":"https://b.test",` +
+					`"createdBy":{"kind":"agent","number":1},"loading":false}],"truncated":false}`,
 			), nil
 		},
 	)

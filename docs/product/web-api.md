@@ -347,7 +347,7 @@ when the revision is higher than its own
 applies the changes of a conversation one at a time, the page's and the
 plugin's alike, so `revision` orders them all.
 
-A panel holds at most 64 tabs and 64 KiB of `data` in all: a create past
+A panel holds at most 64 tabs and 64 KiB of tabs as the backend stores them: a create past
 either answers 409 `panel_full`, and an update past the size 413
 `too_large`. A create of a `kind` no plugin the user has on declares answers
 400 `unknown_panel_kind`. Archived conversations allow the read and refuse

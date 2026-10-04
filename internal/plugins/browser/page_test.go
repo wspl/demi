@@ -95,7 +95,8 @@ func TestEachMethodCallsItsOperationWithoutWakingHost(t *testing.T) {
 				return json.RawMessage(`{"tab":"t1","url":"about:blank"}`), nil
 			case "browser.tabs":
 				return json.RawMessage(
-					`{"tabs":[{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}],"truncated":false}`,
+					`{"tabs":[{"id":"t1","title":"","url":"about:blank",` +
+						`"createdBy":{"kind":"user"},"loading":false}],"truncated":false}`,
 				), nil
 			default:
 				return json.RawMessage(`{}`), nil
@@ -108,7 +109,8 @@ func TestEachMethodCallsItsOperationWithoutWakingHost(t *testing.T) {
 		demi,
 	); string(
 		listed,
-	) != `{"tabs":[{"id":"t1","title":"","url":"about:blank","createdBy":{"kind":"user"}}]}` {
+	) != `{"tabs":[{"id":"t1","title":"","url":"about:blank",`+
+		`"createdBy":{"kind":"user"},"loading":false}]}` {
 		t.Fatalf("tabs: %s", listed)
 	}
 

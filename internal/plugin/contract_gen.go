@@ -5104,11 +5104,8 @@ func contractValidatePortMessageUpdatePanelTab(v PortMessageUpdatePanelTab, dept
 	if err := contract.Text(string(v.ID), 0, -1, ""); err != nil {
 		return contract.At("id", err)
 	}
-	if err := contract.CheckJSON(v.Data); err != nil {
+	if _, err := contract.JSONObject(v.Data); err != nil {
 		return contract.At("data", err)
-	}
-	if err := validatePanelUpdate(v); err != nil {
-		return err
 	}
 	return nil
 }

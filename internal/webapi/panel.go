@@ -1,10 +1,6 @@
 package webapi
 
-import (
-	"encoding/json"
-
-	"github.com/wspl/demi/internal/contract"
-)
+import "encoding/json"
 
 // The most bytes of one work panel's tabs, as the backend stores them.
 const (
@@ -26,34 +22,35 @@ type WorkPanel struct {
 
 // One tab of the panel: its kind, and what the page and the kind's plugin
 // keep for it.
-// +demi:check validatePanelTab
 type PanelTab struct {
 	// +demi:length chars min=1 max=64
 	ID string `json:"id"`
 	// +demi:length chars min=1
-	Kind string          `json:"kind"`
+	Kind string `json:"kind"`
+	// +demi:object
 	Data json.RawMessage `json:"data"`
 }
 
 // `POST /conversations/:id/panel/tabs`: a new tab at `index`, after the
 // others without one.
 // +demi:root direction=send output=web
-// +demi:check validateCreatePanelTab
 type CreatePanelTab struct {
 	// +demi:length chars min=1 max=64
 	ID string `json:"id"`
 	// +demi:length chars min=1
-	Kind string          `json:"kind"`
+	Kind string `json:"kind"`
+	// +demi:object
 	Data json.RawMessage `json:"data"`
 	// +demi:range max=64
+	// +demi:nullable
 	Index *uint64 `json:"index,omitempty"`
 }
 
 // `PATCH /conversations/:id/panel/tabs/:tab`: the fields of the tab's
 // `data` to set, a null one to remove.
 // +demi:root direction=send output=web
-// +demi:check validateUpdatePanelTab
 type UpdatePanelTab struct {
+	// +demi:object
 	Data json.RawMessage `json:"data"`
 }
 
@@ -75,18 +72,3 @@ type PanelRevision struct {
 
 // EmptyWorkPanel returns the panel of a conversation that never changed one.
 func EmptyWorkPanel() WorkPanel { return WorkPanel{Tabs: []PanelTab{}} }
-
-func validatePanelTab(tab PanelTab) error {
-	_, err := contract.ObjectFields(tab.Data)
-	return err
-}
-
-func validateCreatePanelTab(tab CreatePanelTab) error {
-	_, err := contract.ObjectFields(tab.Data)
-	return err
-}
-
-func validateUpdatePanelTab(tab UpdatePanelTab) error {
-	_, err := contract.ObjectFields(tab.Data)
-	return err
-}

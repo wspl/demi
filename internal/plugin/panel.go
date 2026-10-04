@@ -44,7 +44,3 @@ func (p Port) panelChange(ctx context.Context, asked string, message PortMessage
 	}
 	return 0, unexpected(asked, answer)
 }
-
-func validatePanelUpdate(message PortMessageUpdatePanelTab) error {
-	return (webapi.UpdatePanelTab{Data: message.Data}).Validate()
-}

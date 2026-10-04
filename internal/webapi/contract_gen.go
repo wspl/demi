@@ -4994,16 +4994,13 @@ func contractValidateCreatePanelTab(v CreatePanelTab, depth int) error {
 	if err := contract.Text(string(v.Kind), 1, -1, ""); err != nil {
 		return contract.At("kind", err)
 	}
-	if err := contract.CheckJSON(v.Data); err != nil {
+	if _, err := contract.JSONObject(v.Data); err != nil {
 		return contract.At("data", err)
 	}
 	if v.Index != nil {
 		if (*v.Index) > 64 {
 			return contract.At("index", fmt.Errorf("outside numeric bounds"))
 		}
-	}
-	if err := validateCreatePanelTab(v); err != nil {
-		return err
 	}
 	return nil
 }
@@ -5062,11 +5059,13 @@ func (v *CreatePanelTab) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["index"]
 		if ok {
-			value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
-			if err != nil {
-				return contract.At("index", err)
+			if !contract.IsNull(raw) {
+				value, err := func(b []byte) (*uint64, error) { return contract.Pointer(b, contract.Decode[uint64]) }(raw)
+				if err != nil {
+					return contract.At("index", err)
+				}
+				next.Index = value
 			}
-			next.Index = value
 		}
 	}
 	if err := next.Validate(); err != nil {
@@ -9710,11 +9709,8 @@ func contractValidatePanelTab(v PanelTab, depth int) error {
 	if err := contract.Text(string(v.Kind), 1, -1, ""); err != nil {
 		return contract.At("kind", err)
 	}
-	if err := contract.CheckJSON(v.Data); err != nil {
+	if _, err := contract.JSONObject(v.Data); err != nil {
 		return contract.At("data", err)
-	}
-	if err := validatePanelTab(v); err != nil {
-		return err
 	}
 	return nil
 }
@@ -15420,11 +15416,8 @@ func contractValidateUpdatePanelTab(v UpdatePanelTab, depth int) error {
 	if depth > 1000 {
 		return fmt.Errorf("validation nesting exceeds 1000")
 	}
-	if err := contract.CheckJSON(v.Data); err != nil {
+	if _, err := contract.JSONObject(v.Data); err != nil {
 		return contract.At("data", err)
-	}
-	if err := validateUpdatePanelTab(v); err != nil {
-		return err
 	}
 	return nil
 }
