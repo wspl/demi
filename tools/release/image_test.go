@@ -31,7 +31,7 @@ func TestEmbeddedUVPinMatchesSource(t *testing.T) {
 	if !bytes.Equal(uvPin, source) {
 		t.Fatal(
 			"tools/release/uv.json is stale; run CGO_ENABLED=0 " +
-				"GOFLAGS=-mod=readonly go generate ./tools/release from the repository " +
+				"go generate ./tools/release from the repository " +
 				"root",
 		)
 	}

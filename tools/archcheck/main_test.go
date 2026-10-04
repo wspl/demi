@@ -49,7 +49,7 @@ func TestArchitecture(t *testing.T) {
 			name:   "load failure",
 			file:   "internal/core/core.go",
 			source: "package core\nimport _ \"missing.test/package\"",
-			want:   "import lookup disabled by -mod=readonly",
+			want:   "missing.test/package",
 		},
 		{
 			name:   "platform test import",

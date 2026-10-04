@@ -40,7 +40,7 @@ build tags as `docs/delivery/testing.md` defines them.>
 
 Run from the repository root, all must pass:
 
-    scripts/gomig/check.sh <package patterns>
+    scripts/check.sh <package patterns>
 
 <Any further check, such as a corpus or a generated-TypeScript comparison.>
 

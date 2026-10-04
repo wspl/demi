@@ -16,7 +16,7 @@ func (a *application) buildGo(ctx context.Context, target, source, destination s
 	args = append(args, "-o", destination, source)
 	command := exec.CommandContext(ctx, "go", args...)
 	command.Dir = a.Root
-	command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOFLAGS=-mod=readonly")
+	command.Env = append(os.Environ(), "CGO_ENABLED=0")
 	if target != "" {
 		platform, arch := goTarget(target)
 		command.Env = append(command.Env, "GOOS="+platform, "GOARCH="+arch)

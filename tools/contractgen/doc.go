@@ -7,8 +7,7 @@
 // Or pass package patterns from the repository root. The -check flag compares
 // generated files without writing them. The -ts flag discovers root markers
 // under ./... by default and writes the frontend's established destinations.
-// -ts-dir redirects those destinations for fixture comparisons. Generation
-// requires GOFLAGS=-mod=readonly: the repository's vendor directory is not a Go vendor tree.
+// -ts-dir redirects those destinations for fixture comparisons.
 //
 // Entry points for private types are private camel-case names (decodeSecret,
 // parseIssuer, validateRawBinding); exported types retain exported entry points.

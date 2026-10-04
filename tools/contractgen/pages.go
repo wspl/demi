@@ -21,7 +21,7 @@ const pageScope = "@demicodes/"
 func readPages(ctx context.Context, repository string) ([]pagemeta.Page, error) {
 	cmd := exec.CommandContext(ctx, "go", "run", "./tools/contractgen/manifests")
 	cmd.Dir = repository
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOFLAGS=-mod=readonly")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	data, err := cmd.Output()
