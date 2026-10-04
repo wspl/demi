@@ -2,14 +2,17 @@
 //! preferences). Preferences hold saved overrides only: whatever is absent
 //! uses the web app's defaults.
 
+use std::collections::BTreeMap;
+
 use demi_command_protocol::CommandLocale;
+use demi_shared_types::{Nullable, is_context_limit};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
 
 use crate::conversations::ModelSettings;
-use crate::ids::DeviceId;
+use crate::ids::{DeviceId, ProviderId};
 
 /// Who configures providers, fixed for the instance's lifetime
 /// (`product.md` § Instance mode).
@@ -232,6 +235,54 @@ pub struct Preferences {
     #[schemars(with = "CommandLocale")]
     #[garde(dive)]
     pub locale: Option<CommandLocale>,
+    /// The limit the user set on the context window of each model, in
+    /// tokens, by provider entry id and then model id (`models.md` § Context
+    /// limit); a model it does not name uses its full window.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[garde(custom(stored_limits))]
+    pub context_limits: ContextLimits,
+}
+
+/// The context limits of a user, by provider entry id and then model id.
+pub type ContextLimits = BTreeMap<ProviderId, BTreeMap<String, u32>>;
+
+/// Every stored limit is one a window offers.
+fn stored_limits(limits: &ContextLimits, (): &()) -> garde::Result {
+    let offered = limits
+        .values()
+        .flat_map(BTreeMap::values)
+        .all(|tokens| is_context_limit(*tokens));
+    if offered {
+        Ok(())
+    } else {
+        Err(garde::Error::new("a context limit no window offers"))
+    }
+}
+
+/// One model's context limit, as a preferences patch changes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContextLimitChange {
+    #[garde(skip)]
+    pub provider_id: ProviderId,
+    #[garde(length(chars, min = 1))]
+    pub model_id: String,
+    /// 500000, 300000 or 200000 tokens; null removes the limit, so the model
+    /// uses its full window.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u32>")]
+    #[garde(custom(offered_limit))]
+    pub tokens: Option<u32>,
+}
+
+/// A limit to store is one a window offers.
+fn offered_limit(tokens: &Option<u32>, (): &()) -> garde::Result {
+    match tokens {
+        Some(tokens) if !is_context_limit(*tokens) => Err(garde::Error::new(format!(
+            "{tokens} is not a context limit: 500000, 300000 or 200000"
+        ))),
+        _ => Ok(()),
+    }
 }
 
 /// `PATCH /settings/preferences`: the overrides to change; everything absent
@@ -282,6 +333,15 @@ pub struct PreferencesPatch {
     #[schemars(with = "CommandLocale")]
     #[garde(dive)]
     pub locale: Option<CommandLocale>,
+    /// One model's context limit; the other models keep theirs.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ContextLimitChange")]
+    #[garde(dive)]
+    pub context_limit: Option<ContextLimitChange>,
 }
 
 /// `{ preferences }`: the answer of `GET` and `PATCH /settings/preferences`.

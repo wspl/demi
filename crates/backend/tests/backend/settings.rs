@@ -97,6 +97,7 @@ async fn preference_patches_merge_field_by_field_refuse_what_is_invalid_and_surv
         json!({ "lastModel": { "providerId": "", "modelId": "chosen-model", "thinkingEffort": null, "serviceTierId": null } }),
         json!({ "lastModel": { "providerId": "codex-account", "modelId": "chosen-model" } }),
         json!({ "lastProjectHost": { "kind": "laptop" } }),
+        json!({ "contextLimit": { "providerId": "codex-account", "modelId": "chosen-model", "tokens": 400000 } }),
         json!({ "remember": true }),
     ] {
         let answer = backend.patch(PREFERENCES, &device, refused.clone()).await;

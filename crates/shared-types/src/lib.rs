@@ -18,6 +18,7 @@ mod block;
 mod bytes;
 mod catalog;
 mod content;
+mod context_limit;
 mod failure;
 mod file_types;
 mod ids;
@@ -47,6 +48,10 @@ pub use content::{
     ToolResultContentBlock, UserContentBlock, attachment_tag, char_offset, is_blank, trim,
 };
 pub use failure::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};
+pub use context_limit::{
+    CONTEXT_LIMIT_STEPS, ContextLimitStep, applied_context_limit, context_limits,
+    effective_context_window, is_context_limit,
+};
 pub use file_types::{PREVIEW_TYPES, PreviewType, preview_media_type, shows_in_place};
 #[doc(hidden)]
 pub use ids::__private;

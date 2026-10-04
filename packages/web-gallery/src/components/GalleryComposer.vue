@@ -29,6 +29,7 @@ import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 import { demoUsage } from '../fixtures/blocks'
 import { demoModels, demoProviders } from '../fixtures/catalog'
+import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
 
@@ -319,7 +320,7 @@ onBeforeUnmount(() => {
     :attachments="attached"
     :upload="upload"
     :providers="props.providers ?? demoProviders"
-    :models="props.models ?? demoModels"
+    :models="withContextLimits(props.models ?? demoModels)"
     :can-configure="canConfigure !== false"
     :archived="archived"
     :hold="hold"
@@ -342,6 +343,7 @@ onBeforeUnmount(() => {
     @arrange-attachments="arrange"
     @retry-attachment="retry"
     @change-model="changeModel"
+    @change-context-limit="setGalleryContextLimit"
     @stop="emit('stop')"
     @compact="emit('compact')"
   />

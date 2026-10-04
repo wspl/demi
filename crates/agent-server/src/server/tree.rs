@@ -242,6 +242,7 @@ impl<H: HostResolver> Tree<H> {
             cwd: cwd.to_owned(),
             model: model.clone(),
             runtime,
+            providers: deps.providers.clone(),
             hosts: deps.hosts.clone(),
             instructions: deps.instructions.clone(),
             preamble: None,

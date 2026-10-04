@@ -6,6 +6,7 @@ import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   userPreferencesSchema,
   type CommandLocale,
+  type ContextLimitChange,
   type PreferencesPatch,
 } from '../api/generated/web-api'
 import { useProduct } from './product'
@@ -35,6 +36,9 @@ export const usePreferences = defineStore('preferences', () => {
   let timer: ReturnType<typeof setTimeout> | null = null
   let controller = new AbortController()
 
+  /** Context limits sent and not answered yet, oldest first, which the menu shows at once. */
+  const pendingLimits = ref<ContextLimitChange[]>([])
+
   const lastModel = computed(() =>
     pending.value.lastModel ?? product.snapshot?.preferences.lastModel,
   )
@@ -42,6 +46,34 @@ export const usePreferences = defineStore('preferences', () => {
     pending.value.lastProjectHost ??
     product.snapshot?.preferences.lastProjectHost,
   )
+
+  /**
+   * The limit the user stored on the model `modelId` of the entry
+   * `providerId`, the latest one in flight first; null for none, which is
+   * the model's full window (`models.md` § Context limit).
+   */
+  function contextLimit(providerId: string, modelId: string): number | null {
+    const sent = pendingLimits.value
+      .filter((change) => change.providerId === providerId && change.modelId === modelId)
+      .at(-1)
+    if (sent) {
+      return sent.tokens
+    }
+    return product.snapshot?.preferences.contextLimits?.[providerId]?.[modelId] ?? null
+  }
+
+  /** Saves `patch` and hands the stored preferences to the product state. */
+  async function save(patch: PreferencesPatch, signal: AbortSignal, keepalive = false): Promise<void> {
+    const sentAt = product.sent()
+    const response = await apiRequest('/settings/preferences', {
+      method: 'PATCH',
+      keepalive,
+      ...jsonBody(patch),
+      signal,
+    })
+    const { preferences } = await readResponse(response, userPreferencesSchema)
+    product.answered(sentAt, { type: 'preferences', preferences })
+  }
 
   const appearance = computed(() => ({
     theme: 'system' as const,
@@ -116,15 +148,7 @@ export const usePreferences = defineStore('preferences', () => {
         return
       }
       try {
-        const sentAt = product.sent()
-        const response = await apiRequest('/settings/preferences', {
-          method: 'PATCH',
-          keepalive: true,
-          ...jsonBody(patch),
-          signal: current.signal,
-        })
-        const { preferences } = await readResponse(response, userPreferencesSchema)
-        product.answered(sentAt, { type: 'preferences', preferences })
+        await save(patch, current.signal, true)
       } catch (error) {
         if (!current.signal.aborted) {
           reportError('Could not update settings', error, { userVisible: true })
@@ -170,14 +194,7 @@ export const usePreferences = defineStore('preferences', () => {
     const current = controller
     await writes.run(async () => {
       try {
-        const sentAt = product.sent()
-        const response = await apiRequest('/settings/preferences', {
-          method: 'PATCH',
-          ...jsonBody({ locale } satisfies PreferencesPatch),
-          signal: current.signal,
-        })
-        const { preferences } = await readResponse(response, userPreferencesSchema)
-        product.answered(sentAt, { type: 'preferences', preferences })
+        await save({ locale }, current.signal)
       } catch (error) {
         if (!current.signal.aborted) {
           reportError('Could not report the time zone and languages', error)
@@ -186,6 +203,26 @@ export const usePreferences = defineStore('preferences', () => {
         if (reporting === key) {
           reporting = null
         }
+      }
+    })
+  }
+
+  /**
+   * Stores the user's context limit on one model, for every conversation
+   * with it; the menu shows it before the backend answers.
+   */
+  async function setContextLimit(change: ContextLimitChange): Promise<void> {
+    pendingLimits.value = [...pendingLimits.value, change]
+    const current = controller
+    await writes.run(async () => {
+      try {
+        await save({ contextLimit: change }, current.signal)
+      } catch (error) {
+        if (!current.signal.aborted) {
+          reportError('Could not change the context limit', error, { userVisible: true })
+        }
+      } finally {
+        pendingLimits.value = pendingLimits.value.filter((sent) => sent !== change)
       }
     })
   }
@@ -199,11 +236,14 @@ export const usePreferences = defineStore('preferences', () => {
     }
     timer = null
     pending.value = {}
+    pendingLimits.value = []
   }
 
   return {
     lastModel,
     lastProjectHost,
+    contextLimit,
+    setContextLimit,
     appearance,
     keys,
     update,

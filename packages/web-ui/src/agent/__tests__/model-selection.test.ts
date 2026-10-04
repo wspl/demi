@@ -15,6 +15,7 @@ function model(id: string): ModelInfo {
     id,
     name: id.toUpperCase(),
     contextWindow: null,
+    contextLimit: null,
     inputLimit: null,
     acceptedExtensions: [],
     reasoning: null,

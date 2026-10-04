@@ -2,8 +2,10 @@ import { describe, expect, test } from 'bun:test'
 import { resolve } from 'node:path'
 import { z } from 'zod'
 import {
+  appliedContextLimit,
   blockSchema,
   clientFrameSchema,
+  contextLimits,
   previewMediaType,
   serverFrameSchema,
   showsInPlace,
@@ -112,6 +114,11 @@ const fileTypes = await read('shared-types/tests/shared-types/fixtures/file-type
   showsInPlace: z.array(z.tuple([z.string(), z.boolean()])),
 }))
 
+const contextLimitCases = await read('shared-types/tests/shared-types/fixtures/context-limits.json', z.strictObject({
+  contextLimits: z.array(z.tuple([z.number(), z.array(z.number())])),
+  appliedContextLimit: z.array(z.tuple([z.number(), z.number().nullable(), z.number().nullable()])),
+}))
+
 describe('blocks', () => {
   test('every block kind keeps its wire shape', () => {
     for (const block of blocks) {
@@ -160,6 +167,20 @@ describe('file types', () => {
   test('the page shows media in place and renders Markdown from its text', () => {
     for (const [mediaType, expected] of fileTypes.showsInPlace) {
       expect({ mediaType, inPlace: showsInPlace(mediaType) }).toEqual({ mediaType, inPlace: expected })
+    }
+  })
+})
+
+describe('context limits', () => {
+  test('a window over 500K offers 300K and 200K, and one of 1M also 500K', () => {
+    for (const [window, expected] of contextLimitCases.contextLimits) {
+      expect({ window, offered: contextLimits(window) }).toEqual({ window, offered: expected })
+    }
+  })
+
+  test('a stored limit applies only while the window offers it', () => {
+    for (const [window, limit, expected] of contextLimitCases.appliedContextLimit) {
+      expect({ window, limit, applied: appliedContextLimit(window, limit) }).toEqual({ window, limit, applied: expected })
     }
   })
 })

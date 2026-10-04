@@ -1,11 +1,12 @@
 //! The lookups the backend and the web app share: which files the page shows
-//! and how, which media a model reads, and how an attachment is named to the
-//! model.
+//! and how, which media a model reads, how an attachment is named to the
+//! model, and which context limits a model offers.
 
 use demi_shared_types::{
-    Attachment, FileExtension, MODEL_MEDIA_TYPES, Model, ModelMediaKind, attachment_tag,
-    file_extension_support, is_blank, model_accepts_media_type, model_accepts_video,
-    preview_media_type, shows_in_place, sniff_model_media_type, trim,
+    Attachment, FileExtension, MODEL_MEDIA_TYPES, Model, ModelMediaKind, applied_context_limit,
+    attachment_tag, context_limits, effective_context_window, file_extension_support, is_blank,
+    model_accepts_media_type, model_accepts_video, preview_media_type, shows_in_place,
+    sniff_model_media_type, trim,
 };
 use serde_json::Value;
 
@@ -174,4 +175,52 @@ fn a_trim_removes_the_white_space_javascript_trims() {
     assert_eq!(trim("\u{feff}  New name \t\r\n\u{3000}"), "New name");
     assert_eq!(trim("\u{85}name\u{85}"), "\u{85}name\u{85}");
     assert_eq!(trim(" \t "), "");
+}
+
+/// The cases of `fixtures/context-limits.json`, which the page's generated
+/// lookups are checked with too.
+fn context_limit_cases(lookup: &str) -> Vec<Value> {
+    let cases: Value = serde_json::from_str(include_str!("fixtures/context-limits.json")).unwrap();
+    cases[lookup].as_array().unwrap().clone()
+}
+
+/// A case's number, or none for null.
+fn tokens(value: &Value) -> Option<u32> {
+    value.as_u64().map(|tokens| u32::try_from(tokens).unwrap())
+}
+
+#[test]
+fn a_window_over_500k_offers_300k_and_200k_and_one_of_1m_also_500k() {
+    // Among the cases: a window of exactly 500,000 tokens offers nothing,
+    // nor does an unknown one.
+    for case in context_limit_cases("contextLimits") {
+        let window = tokens(&case[0]).unwrap();
+        let expected: Vec<u32> = case[1]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(tokens)
+            .collect();
+        assert_eq!(
+            context_limits(window).collect::<Vec<_>>(),
+            expected,
+            "{window}"
+        );
+    }
+}
+
+#[test]
+fn a_stored_limit_applies_only_while_the_window_offers_it() {
+    for case in context_limit_cases("appliedContextLimit") {
+        let (window, limit) = (tokens(&case[0]).unwrap(), tokens(&case[1]));
+        assert_eq!(
+            applied_context_limit(window, limit),
+            tokens(&case[2]),
+            "{window} {limit:?}"
+        );
+        assert_eq!(
+            effective_context_window(window, limit),
+            tokens(&case[2]).unwrap_or(window)
+        );
+    }
 }

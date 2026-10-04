@@ -181,10 +181,12 @@ async fn stream(
         }
         let request_id = request.request_id.clone();
         let start = s.read(|core| core.transcript.blocks().len());
+        let model = s.read(|core| core.model.clone());
+        let window = compaction::window_in_use(s, &model, cancel).await?;
         let mut runtime = s
             .update(|core| core.provider.take())
             .expect("the provider runtime is in its slot between runs");
-        let read = read(s, cancel, runtime.run(request)).await;
+        let read = read(s, cancel, window, runtime.run(request)).await;
         s.return_runtime(runtime);
         let failure = match read? {
             Ok(recover) => {
@@ -295,10 +297,11 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
 /// open answer text completes when anything but more text follows it. The
 /// run's failure is handed back unrecorded, for the retry to decide on; the
 /// inner result says whether a response's usage reached the compaction
-/// threshold.
+/// threshold of `window`, the window in use for the run's model.
 async fn read(
     s: &SessionShared,
     cancel: &TurnCancel,
+    window: u32,
     mut events: ProviderRun<'_>,
 ) -> Result<Result<bool, ProviderFailure>, TurnError> {
     let mut thinking_started = false;
@@ -318,7 +321,6 @@ async fn read(
                     complete_text(s);
                 }
                 if let ProviderEvent::Response(usage) = &event {
-                    let window = s.read(|core| core.model.model.context_window);
                     recover |= s.config.compaction.reached(window, usage);
                 }
                 s.update(|core| core.apply_event(event, thinking_started));

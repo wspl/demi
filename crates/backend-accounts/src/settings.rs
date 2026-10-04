@@ -3,7 +3,9 @@
 //! what is saved.
 
 use demi_command_protocol::CommandLocale;
-use demi_web_api_protocol::settings::{Preferences, PreferencesPatch};
+use demi_web_api_protocol::settings::{
+    ContextLimitChange, ContextLimits, Preferences, PreferencesPatch,
+};
 use icu_locale::{Locale, LocaleCanonicalizer};
 use icu_time::zone::iana::IanaParserExtended;
 
@@ -59,8 +61,8 @@ fn canonical(locale: CommandLocale) -> Result<CommandLocale, LocaleError> {
 }
 
 /// `preferences` with `patch` applied: a field the patch holds replaces the
-/// saved one, a `null` shortcut removes that override, and everything the
-/// patch leaves out stays.
+/// saved one, a `null` shortcut removes that override, a context limit
+/// changes that one model's, and everything the patch leaves out stays.
 pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) -> Preferences {
     if let Some(appearance) = patch.appearance {
         let saved = &mut preferences.appearance;
@@ -84,5 +86,36 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
     preferences.last_model = patch.last_model.or(preferences.last_model);
     preferences.last_project_host = patch.last_project_host.or(preferences.last_project_host);
     preferences.locale = patch.locale.or(preferences.locale);
+    if let Some(change) = patch.context_limit {
+        set_context_limit(&mut preferences.context_limits, change);
+    }
     preferences
+}
+
+/// Stores the limit `change` names for its model, or removes the model's
+/// limit, and with it its entry's map once that is empty, so a model the
+/// user returned to its full window has no stored limit.
+fn set_context_limit(limits: &mut ContextLimits, change: ContextLimitChange) {
+    let ContextLimitChange {
+        provider_id,
+        model_id,
+        tokens,
+    } = change;
+    match tokens {
+        Some(tokens) => {
+            limits
+                .entry(provider_id)
+                .or_default()
+                .insert(model_id, tokens);
+        }
+        None => {
+            let Some(models) = limits.get_mut(&provider_id) else {
+                return;
+            };
+            models.remove(&model_id);
+            if models.is_empty() {
+                limits.remove(&provider_id);
+            }
+        }
+    }
 }

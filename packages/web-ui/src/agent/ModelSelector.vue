@@ -11,6 +11,7 @@ import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { isFastMode } from './fast-mode'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
+import type { ContextLimitChange } from './context-limit'
 import { buildReasoningState, reasoningOptionLabel } from './reasoning'
 import ModelMenu from './ModelMenu.vue'
 
@@ -26,6 +27,8 @@ const emit = defineEmits<{
   retry: []
   /** One change of the model settings, naming only the parts it changes. */
   change: [change: ModelSettingsChange]
+  /** The user's context limit on the selected model, for all their conversations with it. */
+  contextLimit: [change: ContextLimitChange]
 }>()
 
 const state = computed(() =>
@@ -127,6 +130,7 @@ const compact = useRoomLabel(label, () => labelText.value)
           :models="models"
           :settings="settings"
           @change="(change) => emit('change', change)"
+          @context-limit="(change) => emit('contextLimit', change)"
         />
       </template>
     </Dropdown>

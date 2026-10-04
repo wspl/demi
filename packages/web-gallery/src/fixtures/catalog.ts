@@ -21,6 +21,7 @@ const fastTier = [{ id: 'priority', label: 'Fast', fast: true }]
 function model(partial: Pick<ModelInfo, 'id' | 'name'> & Partial<ModelInfo>): ModelInfo {
   return {
     contextWindow: 200_000,
+    contextLimit: null,
     inputLimit: 180_000,
     acceptedExtensions: ['png', 'pdf', 'md'],
     reasoning: null,
@@ -43,6 +44,8 @@ export const demoModels: Record<string, ModelInfo[]> = {
     model({
       id: 'claude-opus',
       name: 'Claude Opus',
+      // Over 500K: its menu offers the Context row.
+      contextWindow: 1_000_000,
       reasoning: {
         efforts: ['low', 'medium', 'high'],
         canDisable: false,

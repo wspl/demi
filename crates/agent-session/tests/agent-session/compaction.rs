@@ -222,6 +222,47 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     assert_eq!(provider.closes(), 1);
 }
 
+// One session and four scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_limit_on_the_models_window_lowers_the_token_threshold_from_the_next_check() {
+    let provider = ScriptedRuntime::new([
+        answer("first answer"),
+        answer("second answer"),
+        answer("summary of the first turns"),
+        answer("third answer"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let runtime = test_runtime(Vec::new());
+    let window = runtime.window_in_use.clone();
+    let session = start_on(&provider, runtime, &store, SessionConfig::default()).await;
+    session
+        .update_model(ModelSwitch {
+            model: Box::new(small_model()),
+            runtime: None,
+        })
+        .unwrap();
+    session
+        .send(text(&"x".repeat(2_000)), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+    // About 510 tokens: under 800, the threshold of the model's own window.
+    session.send(text("second"), turn("t2")).unwrap().await.unwrap();
+
+    // The user limits the model's window to 600 tokens; the next turn's
+    // check compacts at 480.
+    window.set(Some(600));
+    session.send(text("third"), turn("t3")).unwrap().await.unwrap();
+
+    let copies: Vec<bool> = provider.requests().iter().map(is_copy).collect();
+    assert_eq!(copies, [false, false, true, false]);
+    let kinds = kinds(&session.transcript().blocks);
+    assert!(
+        kinds.iter().any(|kind| kind == "compaction_boundary"),
+        "{kinds:?}"
+    );
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_its_summary_and_a_restored_session_asks_the_same()
  {

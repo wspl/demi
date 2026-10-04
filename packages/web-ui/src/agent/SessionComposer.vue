@@ -22,6 +22,7 @@ import ComposerShell from './ComposerShell.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import ModelSelector from './ModelSelector.vue'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
+import { contextWindowInUse, type ContextLimitChange } from './context-limit'
 import SessionNoticeBar from './SessionNoticeBar.vue'
 import ReplacedDraftNotice from './ReplacedDraftNotice.vue'
 import PluginsChangedNotice from './PluginsChangedNotice.vue'
@@ -98,6 +99,8 @@ const emit = defineEmits<{
   retryAttachment: [id: string]
   /** One change of the model settings, naming only the parts it changes. */
   changeModel: [change: ModelSettingsChange]
+  /** The user's context limit on a model, for all their conversations with it. */
+  changeContextLimit: [change: ContextLimitChange]
   configure: []
   restore: []
   'update:messageEdit': [state: MessageEditState | null]
@@ -425,13 +428,14 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               :models="models"
               :settings="modelSettings"
               @change="emit('changeModel', $event)"
+              @context-limit="emit('changeContextLimit', $event)"
             />
           </div>
         </template>
         <template #actions>
           <ContextUsageIndicator
             :usage="usage"
-            :context-window="selected?.contextWindow"
+            :context-window="contextWindowInUse(selected)"
             :input-limit="selected?.inputLimit"
             :is-compacting="compacting"
             :is-clickable="!messageEdit && !running"

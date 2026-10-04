@@ -18,6 +18,7 @@ import { composerModel } from '@demicodes/web-ui/agent/model-selection'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
+import { usePreferences } from '../state/preferences'
 import { placesFor } from '../devices/files'
 import { fileSource } from '../api/files'
 import { uploadAttachment } from '../api/uploads'
@@ -27,6 +28,7 @@ import { cliPackageOf } from '../state/installs'
 const props = defineProps<{ conversation: Conversation }>()
 const store = useConversations()
 const resources = useResources()
+const preferences = usePreferences()
 const product = useProduct()
 
 const modelState = computed(() =>
@@ -190,6 +192,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @arrange-attachments="store.arrangeFiles(conversation, $event)"
       @retry-attachment="store.retryFile(conversation, $event)"
       @change-model="store.changeModel(conversation, $event)"
+      @change-context-limit="preferences.setContextLimit($event)"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
     />

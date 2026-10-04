@@ -4,6 +4,12 @@ import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { buildReasoningState, reasoningOptionIndex, reasoningOptionLabel } from './reasoning'
 import { fastServiceTier, isFastMode } from './fast-mode'
 import {
+  contextLimitOptions,
+  contextWindowInUse,
+  type ContextLimitChange,
+} from './context-limit'
+import { formatTokens } from '../ui/token-count'
+import {
   availableProviders,
   composerModel,
   modelSwitch,
@@ -27,6 +33,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** One change of the model settings, naming only the parts it changes. */
   change: [change: ModelSettingsChange]
+  /** The user's context limit on the selected model, for all their conversations with it. */
+  contextLimit: [change: ContextLimitChange]
 }>()
 
 const providersWithModels = computed(() => availableProviders(props.providers, props.models))
@@ -52,6 +60,12 @@ const reasoningState = computed(() => buildReasoningState(selected.value?.model 
 const fastTier = computed(() => fastServiceTier(selected.value?.model))
 const fast = computed(() => isFastMode(selected.value?.model, props.settings?.serviceTierId))
 
+const contextOptions = computed(() => {
+  const model = selected.value?.model
+  return model ? contextLimitOptions(model) : []
+})
+const contextLabel = computed(() => formatTokens(contextWindowInUse(selected.value?.model)))
+
 const reasoningIndex = computed(() => {
   const state = reasoningState.value
   return state ? reasoningOptionIndex(state, effort.value) : 0
@@ -75,6 +89,13 @@ function setFast(enabled: boolean) {
 
 function setEffort(next: string) {
   emit('change', { thinkingEffort: next })
+}
+
+function setContextLimit(tokens: number | null) {
+  const current = selected.value
+  if (!current || current.model.contextLimit === tokens)
+    return
+  emit('contextLimit', { providerId: current.providerId, modelId: current.modelId, tokens })
 }
 
 // A switch is one change: the menu decides what of the settings the new model keeps.
@@ -119,7 +140,25 @@ function selectModel(providerId: string, model: ModelInfo) {
         </Menu>
       </template>
     </MenuItem>
-    <MenuDivider v-if="fastTier || reasoningState" />
+    <MenuItem
+      v-if="contextOptions.length"
+      label="Context"
+      :value="contextLabel"
+    >
+      <template #submenu>
+        <Menu iconless>
+          <MenuItem
+            v-for="option in contextOptions"
+            :key="option.window"
+            :label="formatTokens(option.window)"
+            choice
+            :is-selected="(selected?.model.contextLimit ?? null) === option.tokens"
+            @select="setContextLimit(option.tokens)"
+          />
+        </Menu>
+      </template>
+    </MenuItem>
+    <MenuDivider v-if="fastTier || reasoningState || contextOptions.length" />
     <MenuItem label="Model" :value="selectedModelLabel">
       <template #submenu>
         <Menu iconless>

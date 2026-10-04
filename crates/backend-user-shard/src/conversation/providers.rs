@@ -23,7 +23,7 @@ use demi_provider_common::{
     ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv,
 };
-use demi_shared_types::{Model, ModelSelection, NodeId};
+use demi_shared_types::{Model, ModelSelection, NodeId, effective_context_window};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use futures_util::{StreamExt as _, stream};
@@ -120,6 +120,35 @@ impl ProviderResolver for ConversationProviders {
                 .await
                 .map_err(|failure| ResolveError::Failed(failure.message))?;
             Ok(Box::new(runtime) as Box<dyn ProviderRuntime>)
+        })
+    }
+
+    /// The model's window, or the limit the user stored on the model while
+    /// its window offers it, read from the user's preferences at each check.
+    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
+        Box::pin(async move {
+            let window = model.model.context_window;
+            let preferences = match self.services.control.preferences(self.user.clone()).await {
+                Ok(preferences) => preferences,
+                Err(error) => {
+                    // The model's own window is what the session used before
+                    // any limit, and a history too large for the vendor still
+                    // compacts when its request is refused.
+                    tracing::warn!(
+                        user = %self.user,
+                        %error,
+                        "the context limits could not be read; the model's window is used"
+                    );
+                    return window;
+                }
+            };
+            let limit = preferences
+                .context_limits
+                .iter()
+                .find(|(provider, _)| provider.as_str() == model.provider_id)
+                .and_then(|(_, models)| models.get(&model.model.id))
+                .copied();
+            effective_context_window(window, limit)
         })
     }
 }
