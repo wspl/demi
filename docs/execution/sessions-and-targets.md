@@ -368,8 +368,9 @@ lifecycle does to conversations follows from the role alone:
 | `provider` | where the process of its model's provider runs | keeps it awake | The turn is interrupted and the conversation is held |
 | `attached` | an extra Host the conversation can reach | keeps it awake | Nothing: it runs on its own target |
 
-The `provider` role is derived, never stored: the conversation's selected
-provider needs a process on a Host, and the
+The `provider` role is derived, never stored: a node of the conversation's
+tree, the root or any subagent ([Runtime](../agent/subagents.md#runtime)),
+infers with a provider that needs a process on a Host, and the
 [placement](../providers/claude-code.md#where-it-runs) says which device that
 process runs on. The same placement starts the process, so the role and the
 process cannot name different machines. A conversation on a paired device whose
