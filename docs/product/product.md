@@ -5,6 +5,11 @@ or the user's connected machines. Conversation history belongs to the backend;
 project files belong to execution devices. Changing a conversation's target
 changes where subsequent work runs without moving its history or copying files.
 
+Demi does not support MCP servers: a user cannot add one, and no conversation
+reaches one. Demi speaks MCP only inside its Claude Code provider, to serve
+its own tools to the CLI it drives
+([The SDK MCP channel](../providers/claude-code.md#the-sdk-mcp-channel)).
+
 ## Instance mode: shared vs isolated
 
 `DEMI_INSTANCE_MODE` selects whose provider entries a user infers with. The
@@ -505,7 +510,7 @@ A profile whose provider entry, model, effort or tier is gone is marked as
 unavailable, with the part that is missing, until the user fixes it.
 Skills have a settings section of their own, which the sidebar also opens
 ([Skills](../agent/skills.md#the-page)).
-Notifications, MCP, data/privacy actions, language switching, and account
+Notifications, data/privacy actions, language switching, and account
 deletion are also deferred.
 
 The selected scope excludes public sharing, collaboration, search, offline mode,
