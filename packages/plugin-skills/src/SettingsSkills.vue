@@ -130,7 +130,7 @@ const empty = computed(() => props.sources.length === 0)
           <div class="select-none">
             <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Sources</h3>
           </div>
-          <Button size="sm" @click="addOpen = true">Add source</Button>
+          <Button size="sm" @click="addOpen = true">Add Source…</Button>
         </header>
       </template>
       <div v-for="source in sources" :key="source.id">
@@ -240,7 +240,7 @@ const empty = computed(() => props.sources.length === 0)
         v-if="empty"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
-        No sources yet.
+        No Sources Yet
       </div>
     </SettingsGroup>
     <AddSkillSourceDialog

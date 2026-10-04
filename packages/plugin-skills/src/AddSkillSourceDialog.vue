@@ -45,19 +45,19 @@ function submit() {
     :is-open="isOpen"
     :overlay-store="overlayStore"
     size="wide"
-    label="Add source"
+    label="Add Source"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add source</h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A git repository. Every SKILL.md in it becomes a skill you can turn on.</p>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">Add Source</h3>
+        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A Git repository. Every SKILL.md in it becomes a skill you can turn on.</p>
       </header>
 
       <div
         class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
       >
-        <SettingsRow label="Repository" description="owner/repo or a git URL.">
+        <SettingsRow label="Repository" description="owner/repo or a Git URL.">
           <TextInput
             v-model="origin"
             focused
@@ -76,7 +76,7 @@ function submit() {
             variant="primary"
             :disabled="!canAdd"
             @click="submit"
-          >Add source</Button>
+          >Add Source</Button>
         </div>
       </div>
     </div>
