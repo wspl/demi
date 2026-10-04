@@ -58,6 +58,7 @@ Only when the user says to enter parallel development mode:
 - Prefer diagrams for structures, relationships, and flows when they clarify the explanation; use ASCII diagrams when practical. Labels must be understandable from the accompanying explanation.
 - Explain responsibilities, boundaries, observable behavior, and design rationale. Leave implementation details that code can express clearly to code.
 - Distinguish verified facts, suspected problems, proposals, and open decisions.
+- UI text follows macOS capitalization: the gallery's Writing page (`packages/web-gallery/src/sections/WritingSection.vue`) is the rule, and the UI text check in `bun run test` applies it.
 - Follow the [Google Developer Documentation Style Guide](https://developers.google.com/style). Use Diátaxis, arc42, and C4 as optional aids to clarity and completeness, not as mandatory directories, sections, or deliverables.
 
 # Design Documentation

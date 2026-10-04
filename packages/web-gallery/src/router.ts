@@ -1,9 +1,11 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 import OverviewSection from './sections/OverviewSection.vue'
 import SignInSection from './sections/SignInSection.vue'
 import SurfacesSection from './sections/SurfacesSection.vue'
 import PrimitivesSection from './sections/PrimitivesSection.vue'
 import ControlLayoutSection from './sections/ControlLayoutSection.vue'
+import WritingSection from './sections/WritingSection.vue'
 import ErrorsSection from './sections/ErrorsSection.vue'
 import MotionSection from './sections/MotionSection.vue'
 import OverlaysSection from './sections/OverlaysSection.vue'
@@ -19,13 +21,14 @@ export type GalleryLayout = 'catalog' | 'session' | 'preview'
 
 export const NAV: {
   path: string;
-  label: string
+  label: TitleText
 }[] = [
   { path: '/overview', label: 'Overview' },
   { path: '/signin', label: 'Sign in' },
   { path: '/surfaces', label: 'Surfaces' },
   { path: '/primitives', label: 'Primitives' },
   { path: '/control-layout', label: 'Control layout' },
+  { path: '/writing', label: 'Writing' },
   { path: '/errors', label: 'Errors' },
   { path: '/motion', label: 'Motion' },
   { path: '/overlays', label: 'Overlays' },
@@ -59,6 +62,7 @@ export const router = createRouter({
       meta: { layout: 'catalog' }
     },
     { path: '/control-layout', component: ControlLayoutSection, meta: { layout: 'catalog' } },
+    { path: '/writing', component: WritingSection, meta: { layout: 'catalog' } },
     { path: '/errors', component: ErrorsSection, meta: { layout: 'catalog' } },
     { path: '/motion', component: MotionSection, meta: { layout: 'catalog' } },
     {

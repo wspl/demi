@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PlaceholderText } from '@demicodes/web-ui/ui/ui-text'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { previewMediaType, type ContextUsage, type UserContentBlock } from '@demicodes/protocol'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
@@ -35,7 +36,7 @@ import { galleryUploads } from '../fixtures/upload-sweep'
 
 const props = withDefaults(
   defineProps<{
-    placeholder: string
+    placeholder: PlaceholderText
     running?: boolean
     compacting?: boolean
     disabled?: boolean

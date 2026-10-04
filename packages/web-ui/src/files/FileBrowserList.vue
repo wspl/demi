@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { TitleText } from '../ui/ui-text'
 import { computed, nextTick, ref, watch } from 'vue'
 import {
   ChevronDown,
@@ -57,7 +58,7 @@ const emit = defineEmits<{
 
 const columns: {
   key: FileBrowserSortKey
-  label: string
+  label: TitleText
   class: string
 }[] = [
   { key: 'name', label: 'Name', class: '' },

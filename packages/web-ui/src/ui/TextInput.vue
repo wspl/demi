@@ -5,12 +5,13 @@ import { disabledTooltip } from './disabled'
 import IconButton from './IconButton.vue'
 import Tooltip from './Tooltip.vue'
 import { useAutofocus } from './autofocus'
+import type { PlaceholderText, SentenceText } from './ui-text'
 
 defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(defineProps<{
   modelValue?: string
-  placeholder?: string
+  placeholder?: PlaceholderText
   /** Take focus on mount: the field a dialog or form opens on. The ring follows real focus. */
   focused?: boolean
   /** Paint the focus ring without holding focus, for a catalog specimen. */
@@ -32,7 +33,7 @@ const props = withDefaults(defineProps<{
   bare?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
 }>(), {
   size: 'md',
 })

@@ -3,6 +3,7 @@ import { ChevronLeft } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import type { TitleText } from '../ui/ui-text'
 
 /**
  * A list beside the thing it selects, inside one settings page. Wide hosts show
@@ -11,7 +12,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
  */
 defineProps<{
   /** Title of the open detail, for the narrow back row. */
-  detailTitle?: string
+  detailTitle?: TitleText
 }>()
 
 const detailOpen = defineModel<boolean>('detailOpen', { default: false })

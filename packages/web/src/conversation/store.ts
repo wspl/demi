@@ -1,6 +1,7 @@
 import { computed, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
+import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
@@ -90,7 +91,7 @@ export const useConversations = defineStore('conversations', () => {
   let storageErrorReported = false
 
   // A failed operation is a toast; server state is never replaced by a message.
-  function report(title: string, error: unknown): void {
+  function report(title: HeadlineText, error: unknown): void {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return
     }

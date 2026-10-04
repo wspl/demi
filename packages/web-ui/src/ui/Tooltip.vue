@@ -22,6 +22,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayFamilyKey } from '../overlay/overlayFamily'
 import { useOverlay } from '../composables/useOverlay'
+import type { SentenceText } from './ui-text'
 
 /**
  * Tooltip copy, one style everywhere:
@@ -41,7 +42,7 @@ defineOptions({
 })
 
 const props = withDefaults(defineProps<{
-  content?: string
+  content?: SentenceText
   placement?: Placement
   offset?: number
   disabled?: boolean
