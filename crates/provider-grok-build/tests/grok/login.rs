@@ -178,7 +178,14 @@ async fn tokens_that_act_for_a_team_make_the_team_the_accounts_user_without_an_e
             )),
         ),
     );
-    vendor.respond_at(USER, json_answer(404, json!({})));
+    // The proxy describes the member who signed in; the account is the team's.
+    vendor.respond_at(
+        USER,
+        json_answer(
+            200,
+            json!({ "userId": "user-42", "email": "member@example.com" }),
+        ),
+    );
     let pool = MemoryCredentialPool::new();
     let provider = provider(&vendor, &pool, None);
     let report = |_: LoginPending| {};
