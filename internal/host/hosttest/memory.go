@@ -8,7 +8,6 @@ import (
 	"sort"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/core"
@@ -217,10 +216,8 @@ func (p *Pages) Changed(record *host.CommandRecord) {
 	p.told = make(chan struct{})
 }
 
-// Next waits for the next reported change with a ten-second hang guard.
+// Next waits for the next reported change or the end of ctx.
 func (p *Pages) Next(ctx context.Context) (host.PageView, error) {
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	for {
 		p.mu.Lock()
 		if len(p.views) > 0 {
