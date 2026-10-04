@@ -125,6 +125,22 @@ const focused = ref(false)
 watch(() => props.messageEdit?.request.operationId, () => {
   focused.value = false
 })
+/**
+ * The user sent the edit shown. Its editor takes no typing while it is sent,
+ * and gives way to the draft's once the edit ends: the draft's takes the
+ * focus then, so the next message is typed at once, as after a send, unless
+ * the user has put the focus elsewhere meanwhile.
+ */
+let editSent = false
+watch(editor, (current) => {
+  if (!current || props.messageEdit || !editSent) {
+    return
+  }
+  editSent = false
+  if (document.activeElement === document.body) {
+    current.focus()
+  }
+})
 /** The message holds more than one line, so the composer grows to hold it. */
 const multiline = ref(false)
 const fileInput = ref<HTMLInputElement>()
@@ -235,10 +251,13 @@ function submit() {
     return
   }
   if (props.messageEdit) {
+    editSent = true
     emit('submitEdit')
-  } else {
-    emit('submit')
+    return
   }
+  emit('submit')
+  // The next message is typed at once, wherever the focus was when it was sent.
+  editor.value?.focus()
 }
 
 function pickFiles(close: () => void) {
@@ -458,6 +477,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @keydown.enter.space.prevent="edit.cancel"
             />
           </Tooltip>
+          <!-- A press on the send button takes no focus: the message keeps it. -->
           <Tooltip
             v-if="hasDraft"
             :content="submitLabel"
@@ -472,6 +492,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               :loading="messageEdit?.phase === 'sending'"
               :disabled-reason="sendBlockReason"
               :aria-label="submitLabel"
+              @mousedown.prevent
               @click="submit"
             />
           </Tooltip>
