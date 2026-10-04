@@ -8,6 +8,7 @@
  * tree's M, and a staged type change alone (`T `) shows nothing, since VS Code
  * files no index resource for it. The words and letters are VS Code's own.
  */
+import type { SentenceText } from '../ui/ui-text'
 
 /** VS Code's `Status` for a resource, the ignored one aside: git lists no ignored file here. */
 export type GitResourceStatus =
@@ -79,7 +80,7 @@ export type GitMarkColor = 'added' | 'modified' | 'deleted' | 'renamed' | 'untra
 export interface GitMark {
   letter: string
   /** VS Code's words for the status, its tooltip. */
-  text: string
+  text: SentenceText
   color: GitMarkColor
   /** VS Code strikes a deleted file's name through. */
   strike: boolean

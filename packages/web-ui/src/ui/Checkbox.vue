@@ -3,14 +3,15 @@ import { computed } from 'vue'
 import { checkboxMark, nextCheckbox } from './checkbox'
 import { disabledTooltip } from './disabled'
 import Tooltip from './Tooltip.vue'
+import type { SentenceText } from './ui-text'
 
 defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
-  label: string
+  label: SentenceText
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
 }>()
 
 const checked = defineModel<boolean>({ required: true })

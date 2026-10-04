@@ -8,6 +8,7 @@ import Tree from './Tree.vue'
 import { changeTreeRows, type ChangeSetSource, type ChangeTreeRow } from './changes'
 import { gitMark } from './git-status'
 import { baseName } from './paths'
+import type { HeadlineText } from '../ui/ui-text'
 
 /**
  * The changed files as a tree beside the diff, on a `Tree`: directories on
@@ -29,7 +30,7 @@ const props = defineProps<{
   /** The selected file, by path relative to the workspace. */
   selected: string | null
   /** What the tree says when there are no files. */
-  emptyText: string
+  emptyText: HeadlineText
 }>()
 
 const emit = defineEmits<{

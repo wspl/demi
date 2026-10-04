@@ -4,6 +4,7 @@ import DropOutline from '../ui/DropOutline.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TreeRow from './TreeRow.vue'
 import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, treeBlock, type TreeDropTarget, type TreeRow as Row } from './tree'
+import type { SentenceText } from '../ui/ui-text'
 
 /**
  * A tree of rows laid out by its host: a caption, then the rows, on the
@@ -29,7 +30,7 @@ const props = defineProps<{
   /** The tree's name, heading it as a plain caption. */
   caption: string
   /** What the caption stands for, on hover. */
-  captionTitle?: string
+  captionTitle?: SentenceText
   /** The selected row, by path. */
   selected: string | null
   /** The row whose menu is open, by path; it keeps its hover look until the menu closes. */

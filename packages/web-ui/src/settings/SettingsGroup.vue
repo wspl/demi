@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { SentenceText, TitleText } from '../ui/ui-text'
 /**
  * A titled card of rows. Rows separate themselves with hairlines. A `header` slot
  * replaces the title when the group's subject needs its own controls, such as an
@@ -6,8 +7,8 @@
  * such as a live preview of what the rows change.
  */
 defineProps<{
-  title?: string
-  description?: string
+  title?: TitleText
+  description?: SentenceText
 }>()
 </script>
 

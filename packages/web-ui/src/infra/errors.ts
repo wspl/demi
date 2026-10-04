@@ -1,4 +1,5 @@
 import { showToast } from './toast'
+import type { HeadlineText } from '../ui/ui-text'
 
 export interface ReportErrorOptions {
   userVisible?: boolean
@@ -7,7 +8,7 @@ export interface ReportErrorOptions {
 }
 
 export function reportError(
-  title: string,
+  title: HeadlineText,
   error: unknown,
   options: ReportErrorOptions = {}
 ): void {
