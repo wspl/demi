@@ -418,7 +418,7 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
 // Several seconds: a real device installs the builtin package, and two
 // conversations run two turns each on it at once.
 #[tokio::test]
-async fn two_conversations_on_one_device_keep_their_directories_shells_and_todos_apart() {
+async fn two_conversations_on_one_device_keep_their_directories_and_shells_apart() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
@@ -433,9 +433,9 @@ async fn two_conversations_on_one_device_keep_their_directories_shells_and_todos
     let mut a = Driven::open(&backend, &master, &vendor, FIRST, &first_model, "/a").await;
     let mut b = Driven::open(&backend, &master, &vendor, SECOND, &second_model, "/b").await;
 
-    // A moves into a directory, sets a variable and writes todos while B,
-    // at the same time, does none of it.
-    let moving = "mkdir -p sub && cd sub && MARK=from-a && echo \"a: $(pwd) $MARK\" && demi todo add \"draft the outline\" && demi todo add \"run the suite\"";
+    // A moves into a directory and sets a variable while B, at the same
+    // time, does neither.
+    let moving = "mkdir -p sub && cd sub && MARK=from-a && echo \"a: $(pwd) $MARK\"";
     let staying = "echo \"b: $(pwd) mark=${MARK:-unset}\"";
     let (first, second) = tokio::join!(
         a.turn(vec![shell("a1", moving, 10_000), say("a moved")]),
@@ -454,33 +454,19 @@ async fn two_conversations_on_one_device_keep_their_directories_shells_and_todos
     );
 
     // A's shell carries its directory to the next turn and nothing else;
-    // B's never moved. The todos last across turns, and stay with the
-    // conversation that wrote them.
-    let todos = "echo \"a: $(pwd) mark=${MARK:-unset}\" && demi todo list --json";
+    // B's never moved.
+    let again = "echo \"a: $(pwd) mark=${MARK:-unset}\"";
     let (third, fourth) = tokio::join!(
-        a.turn(vec![shell("a2", todos, 10_000), say("a again")]),
-        b.turn(vec![
-            shell("b2", &format!("{staying} && demi todo list --json"), 10_000),
-            say("b again")
-        ]),
+        a.turn(vec![shell("a2", again, 10_000), say("a again")]),
+        b.turn(vec![shell("b2", staying, 10_000), say("b again")]),
     );
     assert!(
         third.received[0].contains(&format!("a: {} mark=unset", sub.display())),
         "{}",
         third.received[0]
     );
-    let listed = &third.received[0];
-    assert!(
-        listed.contains("draft the outline") && listed.contains("run the suite"),
-        "{listed}"
-    );
     assert!(
         fourth.received[0].contains(&format!("b: {} mark=unset", home.display())),
-        "{}",
-        fourth.received[0]
-    );
-    assert!(
-        fourth.received[0].contains("{\"todos\":[]}"),
         "{}",
         fourth.received[0]
     );

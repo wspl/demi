@@ -20,17 +20,15 @@ use std::{
 };
 
 use demi_agent_session::{Continuation, ForkError, ModelSwitch, SessionConfig, fork_seed};
-use demi_agent_store::{
-    AgentTreeStore, Checkpoint, CheckpointUpdate, CommandStateHistory, NodeRecord, StoreError,
-};
+use demi_agent_store::{AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, StoreError};
 use demi_agent_tools::{ContextSource, HostResolver, ShellEnvironmentFactory, ToolsetSource};
 use demi_agent_transcript::IdSource;
-use demi_host_interface::{JobCaller, PortError, StorageOp, StorageReply};
+
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::KeyedSerialGate;
 use demi_shared_types::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
 use futures_util::future::{LocalBoxFuture, join_all};
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
+use tokio_util::task::TaskTracker;
 
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
@@ -259,35 +257,10 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// The live node `node` of the conversation `root`: where the backend's
-    /// command router dispatches a job's `rpc` calls (`Node::commands`); its
-    /// command storage goes through [`command_storage`](Self::command_storage).
-    /// A job of a node that is not live has none.
+    /// command router dispatches a job's `rpc` calls (`Node::commands`). A
+    /// job of a node that is not live has none.
     pub fn node(&self, root: &NodeId, node: &NodeId) -> Option<Rc<Node<H>>> {
         self.tree(root)?.node(node)
-    }
-
-    /// Serves one command-storage message of a job `caller` started, while
-    /// its call `call` lives: the job's node and the generation it recorded
-    /// (`command-state-history.md` § Mutation API and concurrency). A job of
-    /// a node that is not live, or of a generation a rewrite or dispose
-    /// ended, cannot read or write.
-    pub async fn command_storage(
-        &self,
-        root: &NodeId,
-        caller: &JobCaller,
-        op: StorageOp,
-        call: CancellationToken,
-    ) -> Result<StorageReply, PortError> {
-        let node = self
-            .node(root, &caller.node)
-            .ok_or_else(|| PortError::Storage(StoreError::Invalidated.to_string()))?;
-        node.session()
-            .job_storage(caller.generation, op, call)
-            .await
-    }
-
-    fn new_id(&self) -> String {
-        self.deps.ids.next_id()
     }
 
     /// A Fork's seed from the root `source` through its completed text
@@ -313,9 +286,7 @@ impl<H: HostResolver> AgentServer<H> {
             .await
             .map_err(fork_store)?
             .ok_or(ForkError::NoCheckpoint)?;
-        let commands = CommandStateHistory::restore(checkpoint.command_state)
-            .map_err(|error| ForkError::Store(error.to_string()))?;
-        fork_seed(&checkpoint.transcript, &commands, checkpoint.state, target)
+        fork_seed(&checkpoint.transcript, checkpoint.state, target)
     }
 
     /// Stores a Fork's seed as the first checkpoint of the new root
@@ -339,7 +310,6 @@ impl<H: HostResolver> AgentServer<H> {
         let block_count = seed.transcript.len();
         let initial = CheckpointUpdate {
             state: seed.state,
-            command_state: Some(seed.command_state),
             changed_blocks: seed.transcript.into_iter().enumerate().collect(),
             block_count,
         };

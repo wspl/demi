@@ -6,10 +6,7 @@
 
 use std::rc::Rc;
 
-use demi_agent_store::{
-    BoundaryEdge, Checkpoint, CheckpointState, CheckpointUpdate, CommandStateHistory, CommitGuard,
-    EditReceipt,
-};
+use demi_agent_store::{Checkpoint, CheckpointState, CheckpointUpdate, EditReceipt};
 use demi_agent_transcript::{CutError, TranscriptLog, before_user, through_assistant};
 use demi_command_protocol::canonical_digest;
 use demi_conversation_socket_protocol::{EditRequest, MediaRef, TranscriptVersion};
@@ -134,10 +131,9 @@ pub fn edit_digest(request: &EditRequest) -> String {
 
 /// The edit action (`message-editing.md` § Behavior and ownership):
 /// prepares the replacement turn beside the accepted history, commits it
-/// with its receipt and the command state before the target in one save,
-/// adopts it, closes the runtimes it discarded, and runs the replacement's
-/// turn on a runtime fork. Until the save commits, nothing of the history
-/// changes.
+/// with its receipt in one save, adopts it, closes the runtimes it
+/// discarded, and runs the replacement's turn on a runtime fork. Until the
+/// save commits, nothing of the history changes.
 pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     // Held until the edit is accepted or rejected: the replacement's turn
     // may start and close children again.
@@ -158,7 +154,6 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
     let preamble = cancel.guard(s.runtime.preamble()).await?;
     let Candidate {
         blocks,
-        commands,
         mut runtime,
         update,
         receipt,
@@ -170,11 +165,7 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
         let _turn = s.persist_gate.acquire().await;
         match cancel.check() {
             // A save that started always finishes: its outcome decides.
-            Ok(()) => s
-                .store
-                .save(update, &CommitGuard::default())
-                .await
-                .map_err(TurnError::from),
+            Ok(()) => s.store.save(update).await.map_err(TurnError::from),
             Err(stopped) => Err(stopped),
         }
     };
@@ -185,7 +176,7 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
         return Err(error);
     }
     // Nothing awaits between the commit and the adoption.
-    let discarded = s.update(|core| core.adopt_edit(blocks, commands, runtime, model, receipt));
+    let discarded = s.update(|core| core.adopt_edit(blocks, runtime, model, receipt));
     // The callers waiting for the acceptance answer before the replacement's
     // turn writes anything, so an `edit_result` precedes its turn's frames.
     tokio::task::yield_now().await;
@@ -201,7 +192,6 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
 /// An edit's replacement history, prepared beside the accepted one.
 struct Candidate {
     blocks: Vec<Block>,
-    commands: CommandStateHistory,
     runtime: Box<dyn ProviderRuntime>,
     update: CheckpointUpdate,
     receipt: EditReceipt,
@@ -243,25 +233,11 @@ impl Candidate {
                 }
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let revision = core
-            .commands
-            .boundary(&submission.target, BoundaryEdge::BeforeUser)
-            .ok_or_else(|| {
-                EditError::Failed(format!(
-                    "No command-state boundary before {}",
-                    submission.target
-                ))
-            })?;
         let model = core.landing_selection().clone();
         let turn = core.turn();
         let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
-        let user = candidate.push_user(turn.clone(), &model, content, preamble);
+        candidate.push_user(turn.clone(), &model, content, preamble);
         let blocks = candidate.blocks().to_vec();
-        let mut commands =
-            CommandStateHistory::restore(core.commands.select(&blocks, revision, false))
-                .expect("a cut of a valid command state is valid");
-        commands.capture(user.clone(), BoundaryEdge::BeforeUser, revision);
-        commands.capture(user, BoundaryEdge::AfterBlock, revision);
         let runtime = core
             .switch
             .as_ref()
@@ -284,13 +260,11 @@ impl Candidate {
                 model: model.clone(),
                 ..core.checkpoint_state()
             },
-            command_state: Some(commands.snapshot(None)),
             changed_blocks: blocks.iter().cloned().enumerate().collect(),
             block_count: blocks.len(),
         };
         Ok(Self {
             blocks,
-            commands,
             runtime,
             update,
             receipt,
@@ -335,8 +309,6 @@ fn referenced_media(
 pub enum ForkError {
     #[error(transparent)]
     Target(#[from] CutError),
-    #[error("No command-state boundary after the Fork target")]
-    NoBoundary,
     #[error("The Fork source must be a root session")]
     NotRoot,
     #[error("No matching Fork source checkpoint")]
@@ -348,19 +320,14 @@ pub enum ForkError {
 }
 
 /// A Fork's seed (`conversation-fork.md` § The fork seed): a root checkpoint
-/// of the history through the completed text `target`, with the command
-/// state bound to that text's completion and the versions its boundaries
-/// refer to, idle, with nothing waiting.
+/// of the history through the completed text `target`
+/// (`conversation-fork.md` § Eligibility), idle, with nothing waiting.
 pub fn fork_seed(
     blocks: &[Block],
-    commands: &CommandStateHistory,
     state: CheckpointState,
     target: &BlockId,
 ) -> Result<Checkpoint, ForkError> {
     let prefix = through_assistant(blocks, target)?.to_vec();
-    let revision = commands
-        .boundary(target, BoundaryEdge::AfterAssistant)
-        .ok_or(ForkError::NoBoundary)?;
     Ok(Checkpoint {
         state: CheckpointState {
             phase: demi_shared_types::SessionPhase::Idle,
@@ -370,7 +337,6 @@ pub fn fork_seed(
             edits: Vec::new(),
             ..state
         },
-        command_state: commands.select(&prefix, revision, true),
         transcript: prefix,
     })
 }

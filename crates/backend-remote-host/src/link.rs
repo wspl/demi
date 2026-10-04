@@ -19,9 +19,8 @@ use std::{
 use bytes::Bytes;
 use demi_command_protocol::{ArtifactLocation, CommandContext, PackageDescriptor, ServiceSequence};
 use demi_host_interface::{
-    HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, PortError, ProcessEnd,
-    ProcessOutput, RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind, StorageOp,
-    StorageReply,
+    HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, ProcessEnd, ProcessOutput,
+    RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
 };
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, FsResult, GitResult, Inbound, Install, LogLine, Outbound, VolumeName,
@@ -69,15 +68,6 @@ pub trait LinkPolicy {
         port: RpcPort,
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>>;
 
-    /// One operation on the command storage `job` is bound to, for a call
-    /// that lives while `call` does: a write commits only while it lives.
-    fn storage(
-        &self,
-        job: Rc<JobOrigin>,
-        op: StorageOp,
-        call: CancellationToken,
-    ) -> LocalBoxFuture<'static, Result<StorageReply, PortError>>;
-
     /// A managed guest asks for a larger volume.
     fn grow_volume(
         &self,
@@ -103,7 +93,7 @@ pub struct JobOrigin {
     pub host: HostKey,
     /// What the job's declared commands receive.
     pub context: CommandContext,
-    /// Whose command storage its `rpc` calls reach; none for a job no agent
+    /// The agent node its `rpc` calls act for; none for a job no agent
     /// started.
     pub caller: Option<JobCaller>,
 }

@@ -112,7 +112,7 @@ pub struct ExecRequest {
     pub script: String,
     pub shell: ShellTarget,
     pub window: ObservationWindow,
-    /// Whose command storage the job's `rpc` calls reach.
+    /// The agent node the job's `rpc` calls act for.
     pub caller: JobCaller,
     /// The `shell_exec` call that runs the script, which the pages' view of
     /// the command names.
@@ -156,14 +156,12 @@ impl Default for ObservationWindow {
     }
 }
 
-/// The command storage a job's `rpc` calls reach: the calling node and the
-/// history generation it was at when the job started
-/// (`command-state-history.md` § Mutation API and concurrency).
+/// The agent node a job runs for, whose commands its `rpc` calls reach
+/// (`sessions-and-targets.md` § Bind jobs to their caller).
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct JobCaller {
     pub node: NodeId,
-    pub generation: u64,
 }
 
 /// A command's status and its output since the last look.

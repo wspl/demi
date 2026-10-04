@@ -8,17 +8,13 @@
 use std::collections::BTreeSet;
 
 use demi_conversation_socket_protocol::TranscriptPatch;
-use demi_shared_types::{Block, BlockId};
+use demi_shared_types::Block;
 
 /// The patches of one commit, which advances the revision by one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatchBatch {
     pub revision: u64,
     pub patches: Vec<TranscriptPatch>,
-    /// The blocks the patches added or changed, in the order they were
-    /// changed: the session records their command-state boundaries by id,
-    /// since a later patch of the batch can move a block's index.
-    pub touched: Vec<BlockId>,
     /// The rows the patches moved or changed.
     pub rows: DirtyRows,
 }
@@ -73,13 +69,11 @@ impl DirtyRows {
 #[derive(Debug, Default)]
 pub(super) struct Journal {
     patches: Vec<TranscriptPatch>,
-    touched: Vec<BlockId>,
     rows: DirtyRows,
 }
 
 impl Journal {
     pub(super) fn add(&mut self, index: usize, block: &Block) {
-        self.touch(block.id());
         self.rows.move_from(index);
         self.patches.push(TranscriptPatch::Add {
             index: patch_index(index),
@@ -88,7 +82,6 @@ impl Journal {
     }
 
     pub(super) fn replace_block(&mut self, index: usize, block: &Block) {
-        self.touch(block.id());
         self.rows.change(index);
         self.patches.push(TranscriptPatch::ReplaceBlock {
             index: patch_index(index),
@@ -97,8 +90,7 @@ impl Journal {
     }
 
     /// Consecutive appends to one block merge into one patch.
-    pub(super) fn append_text(&mut self, index: usize, id: &BlockId, delta: &str) {
-        self.touch(id);
+    pub(super) fn append_text(&mut self, index: usize, delta: &str) {
         self.rows.change(index);
         let index = patch_index(index);
         if let Some(TranscriptPatch::AppendText {
@@ -122,23 +114,12 @@ impl Journal {
         if self.patches.is_empty() {
             return None;
         }
-        let Journal {
-            patches,
-            touched,
-            rows,
-        } = std::mem::take(self);
+        let Journal { patches, rows } = std::mem::take(self);
         Some(PatchBatch {
             revision,
             patches,
-            touched,
             rows,
         })
-    }
-
-    fn touch(&mut self, id: &BlockId) {
-        if self.touched.last() != Some(id) {
-            self.touched.push(id.clone());
-        }
     }
 }
 

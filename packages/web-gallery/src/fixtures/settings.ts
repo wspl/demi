@@ -603,7 +603,6 @@ export function createSettingsState() {
     providerDetailOpen: false,
     plugins: [
       { id: 'file', name: 'File', description: 'Reads and edits files on a Host.', enabled: true },
-      { id: 'todo', name: 'Todo', description: 'A todo list the agent keeps for the conversation.', enabled: true },
       { id: 'browser', name: 'Browser', description: 'A browser on a Host the agent and you can drive.', enabled: true },
       { id: 'expose', name: 'Expose', description: 'Shares a port on a Host at a public address.', enabled: false },
       { id: 'skills', name: 'Skills', description: 'Workflows the agent follows, from git repositories and your repository.', enabled: true },

@@ -6,14 +6,13 @@ use std::{cell::RefCell, time::Duration};
 
 use demi_agent_server::ServerConfig;
 use demi_agent_store::{
-    AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot, NodeClose,
-    NodeRecord,
+    AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
     testing::{MemoryTreeStore, model_of, test_model, text},
 };
 use demi_conversation_socket_protocol::{
     ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch,
 };
-use demi_host_interface::{RpcError, StorageOp, StorageReply};
+use demi_host_interface::RpcError;
 use demi_provider_common::{
     InferenceItem, UserPart,
     testing::{Turn, event},
@@ -27,9 +26,8 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    CommandRun, Fixture, Gate, Model, TestProduct, agent, agent_call, command_storage,
-    conversation, held, is_idle, is_pending_steers, named_node, open, request_text, send, texts,
-    until, until_answered,
+    CommandRun, Fixture, Gate, Model, TestProduct, agent, agent_call, conversation, held, is_idle,
+    is_pending_steers, named_node, open, request_text, send, texts, until,
 };
 
 fn said(text: &str) -> Turn {
@@ -650,7 +648,6 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             model: test_model(),
             edits: Vec::new(),
         },
-        command_state: Some(CommandStateSnapshot::initial()),
         block_count: blocks.len(),
         changed_blocks: blocks.into_iter().enumerate().collect(),
     }
@@ -839,62 +836,31 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
+async fn a_start_under_way_outlives_a_cancelled_call() {
     let model = Model::default();
     let root_gate = Gate::new();
-    model.root([
-        held_said(&root_gate, "busy"),
-        said("noted first"),
-        said("noted second"),
-        said("noted third"),
-    ]);
-    model.child(
-        "first task",
-        [
-            said("first done"),
-            Turn::Respond(Box::new(|request| {
-                let seen = request_text(request);
-                assert!(seen.contains("first done") && seen.contains("second task"));
-                vec![event::text("second done"), event::response(1, 1)]
-            })),
-            said("third done"),
-        ],
-    );
+    model.root([held_said(&root_gate, "busy"), said("noted")]);
+    model.child("first task", [said("first done")]);
     let fixture = fixture(&model, TestProduct::default());
     let mut client = fixture.opened().await;
     client.send(send("m1", "work")).await;
     until(|| model.root_requests().len() == 1).await;
 
-    // The call is cancelled after its reservation committed, while the start
-    // waits for the busy parent's runtime.
+    // The call reaches the start, which waits for the busy parent's
+    // runtime; then the call is cancelled and dropped.
     let cancel = CancellationToken::new();
-    let call = tokio::task::spawn_local({
-        let server = fixture.server.clone();
-        let cancel = cancel.clone();
-        async move {
-            agent_call(
-                &server,
-                &root(),
-                "spawn",
-                json!({ "prompt": "first task", "request-id": "r1" }),
-                false,
-                cancel,
-            )
-            .await
-        }
-    });
-    let reservation = || async {
-        let read = StorageOp::Read {
-            key: "agent.start.r1".into(),
-        };
-        match command_storage(&fixture.server, &root(), read).await {
-            Ok(StorageReply::Value { value, .. }) => value,
-            other => panic!("{other:?}"),
-        }
-    };
-    until_answered(|| async { reservation().await.is_some() }).await;
+    let caller = root();
+    let mut call = Box::pin(agent_call(
+        &fixture.server,
+        &caller,
+        "spawn",
+        json!({ "prompt": "first task" }),
+        false,
+        cancel.clone(),
+    ));
+    assert!(futures_util::poll!(&mut call).is_pending());
     cancel.cancel();
-    call.abort();
+    drop(call);
     root_gate.open();
     let frames = client
         .next_until(|frame| {
@@ -907,83 +873,15 @@ async fn a_start_request_is_safe_to_retry_and_outlives_a_cancelled_call() {
             )
         })
         .await;
+    client.next_until(is_idle).await;
+
     let child = lifecycle(&frames)[0].1.clone();
-    client.next_until(is_idle).await;
-    // The receipts are the root's command storage: they outlive its tree.
-    client.send(ClientFrame::Close {}).await;
-    client
-        .next_until(|frame| *frame == ServerFrame::Closed)
-        .await;
-    let mut client = fixture.opened().await;
-
-    let retried = agent(
-        &fixture.server,
-        &root(),
-        "spawn",
-        json!({ "prompt": "first task", "request-id": "r1" }),
-    )
-    .await;
-    let conflicting = agent(
-        &fixture.server,
-        &root(),
-        "spawn",
-        json!({ "prompt": "other task", "request-id": "r1" }),
-    )
-    .await;
-    let first_round = fixture.store.record(&child).unwrap().round;
-    let resumed = agent(
-        &fixture.server,
-        &root(),
-        "resume",
-        json!({ "id": fixture.number(&child), "message": "second task", "request-id": "r2" }),
-    )
-    .await;
-    client.next_until(is_closed(&child)).await;
-    client.next_until(is_idle).await;
-    let second_round = fixture.store.record(&child).unwrap().round;
-    let resumed_again = agent(
-        &fixture.server,
-        &root(),
-        "resume",
-        json!({ "id": fixture.number(&child), "message": "second task", "request-id": "r2" }),
-    )
-    .await;
-    let third = agent(
-        &fixture.server,
-        &root(),
-        "resume",
-        json!({ "id": fixture.number(&child), "message": "third task", "request-id": "r3" }),
-    )
-    .await;
-    client.next_until(is_closed(&child)).await;
-    client.next_until(is_idle).await;
-    let superseded = agent(
-        &fixture.server,
-        &root(),
-        "resume",
-        json!({ "id": fixture.number(&child), "message": "second task", "request-id": "r2" }),
-    )
-    .await;
-
-    for run in [&retried, &resumed, &resumed_again, &third] {
-        assert_eq!(named_node(&fixture.store, run), child, "{run:?}");
-    }
     assert_eq!(
-        refused(&conflicting),
-        "demi agent spawn: request-id already belongs to different agent arguments\n"
+        closed_phase(&fixture, &child),
+        Some(ClosePhase::Completed {
+            result: "first done".into()
+        })
     );
-    assert_eq!(
-        refused(&superseded),
-        "demi agent resume: resume request has been superseded by a later round\n"
-    );
-    assert!(second_round > first_round);
-    let rounds: Vec<u64> = root_receipts(&fixture)
-        .into_iter()
-        .map(|message| message.sender.round)
-        .collect();
-    let third_round = fixture.store.record(&child).unwrap().round;
-    assert_eq!(rounds, [first_round, second_round, third_round]);
-    assert_eq!(model.requests_of("first task").len(), 3);
     assert!(model.is_done());
 }
 

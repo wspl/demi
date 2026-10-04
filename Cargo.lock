@@ -1404,11 +1404,9 @@ dependencies = [
  "image",
  "serde",
  "serde_json",
- "serde_json_canonicalizer",
  "sha2",
  "thiserror",
  "tokio",
- "tokio-util",
 ]
 
 [[package]]
@@ -1488,7 +1486,6 @@ dependencies = [
  "demi-plugin-file-browser",
  "demi-plugin-interface",
  "demi-plugin-skills",
- "demi-plugin-todo",
  "demi-provider-anthropic-api",
  "demi-provider-claude-code",
  "demi-provider-codex",
@@ -1769,7 +1766,6 @@ dependencies = [
  "demi-host-interface",
  "demi-plugin-file",
  "demi-plugin-interface",
- "demi-plugin-todo",
  "demi-provider-common",
  "demi-shared-types",
  "demi-web-api-protocol",
@@ -2307,20 +2303,6 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "demi-plugin-todo"
-version = "0.1.3"
-dependencies = [
- "demi-command-declarations",
- "demi-host-interface",
- "demi-plugin-interface",
- "demi-web-api-protocol",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]

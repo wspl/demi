@@ -1,8 +1,8 @@
 //! Message editing through a conversation (`message-editing.md` § Commit and
 //! idempotency, § Durability and failure boundaries): an edit the page sends
 //! over the socket replaces its message and what followed it, gives the model
-//! only the history it kept, restores the todos to the point before the
-//! edited message and leaves the files the removed turns wrote. Sent again
+//! only the history it kept, and leaves the files the removed turns wrote.
+//! Sent again
 //! over another socket of the conversation, or after a restart of the
 //! backend, the same edit answers its receipt without asking the model again,
 //! and an edit from the old snapshot is refused. While the edit's commit is
@@ -21,7 +21,7 @@ use demi_shared_types::{Block, SessionPhase, UserContentBlock};
 use serde_json::json;
 
 use crate::conversations::{
-    FIRST, Socket, answer, anthropic, choose, create, on_device, send, tool_result, tool_use,
+    FIRST, Socket, answer, anthropic, choose, create, on_device, send, tool_use,
     transcript,
 };
 use crate::support::Harness;
@@ -87,8 +87,7 @@ fn idle(frame: &ServerFrame) -> bool {
 // Over a second: a real device runs the turns' jobs, and its runner comes back
 // after the backend's restart.
 #[tokio::test]
-async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_another_socket_and_after_a_restart()
- {
+async fn an_edit_keeps_the_files_and_answers_its_receipt_on_another_socket_and_after_a_restart() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -107,10 +106,7 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
     };
     vendor.respond(answer(&["answer-A-kept"], 1, 1));
     socket.chat("m1", "A-kept").await;
-    vendor.respond(shell(
-        "toolu_effects",
-        "printf permanent > sentinel.txt && demi todo add \"permanent todo\"",
-    ));
+    vendor.respond(shell("toolu_effects", "printf permanent > sentinel.txt"));
     vendor.respond(answer(&["answer-B-removed"], 1, 1));
     socket.chat("m2", "B-removed").await;
     vendor.respond(answer(&["answer-C-removed"], 1, 1));
@@ -185,18 +181,6 @@ async fn an_edit_restores_the_todos_keeps_the_files_and_answers_its_receipt_on_a
         asked + 1,
         "no edit asked the model again"
     );
-
-    // The todos are as they were before the edited message; the file stays.
-    let before = vendor.requests().len();
-    vendor.respond(shell("toolu_check", "cat sentinel.txt && demi todo list"));
-    vendor.respond(answer(&["checked"], 1, 1));
-    third.chat("m4", "Verify the effects").await;
-    let checked = tool_result(&vendor.requests()[before + 1].json(), "toolu_check");
-    assert!(
-        checked.contains("permanent") && checked.contains("No todos"),
-        "{checked}"
-    );
-    assert!(!checked.contains("permanent todo"), "{checked}");
     backend.close().await;
 }
 

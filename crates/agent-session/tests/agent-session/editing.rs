@@ -5,7 +5,6 @@
 //! replacement's turn fails.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
-use demi_host_interface::{PortError, StorageOp};
 use demi_provider_common::testing::TokioClock;
 use demi_shared_types::BlockId;
 
@@ -132,13 +131,6 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     assert_eq!(
         session.accept_agent_message(agent_message("m1")).await,
         Err(AgentMessageError::Editing)
-    );
-    let read = StorageOp::Read { key: "todo".into() };
-    assert_eq!(
-        session.storage(read, Vec::new()).await,
-        Err(PortError::Storage(
-            "Command storage is reserved for a transcript edit".into()
-        ))
     );
     gate.release();
 

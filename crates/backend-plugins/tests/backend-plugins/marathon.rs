@@ -1,6 +1,5 @@
-//! The coding agent at work: the model edits files with `demi file`, tracks
-//! its work with `demi todo`, and controls running commands with the shell
-//! tools, on a real runner.
+//! The coding agent at work: the model edits files with `demi file` and
+//! controls running commands with the shell tools, on a real runner.
 
 use std::{cell::RefCell, rc::Rc};
 
@@ -15,20 +14,19 @@ use serde_json::json;
 
 use crate::support::{Fixture, exec, is_idle, last_result, reply, scripts, turn, within};
 
-// Several seconds: six scripts over two messages run a shell job each, and
+// Several seconds: five scripts over two messages run a shell job each, and
 // the first `demi file` starts the `demi.file` service.
 #[tokio::test(flavor = "local")]
-async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_messages() {
+async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
     within(async {
         let (turns, recorded) = scripts(&[
             &[
                 "demi file create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
-                "demi todo add \"Run tests\" --json",
                 "grep -q 'value = 2' src/app.ts",
                 "demi file edit src/app.ts --old \"1\" --new \"2\" && cd src",
                 "grep -q 'value = 2' app.ts && echo passed",
             ],
-            &["demi todo done T1 && pwd"],
+            &["pwd"],
         ]);
         let script = ScriptedRuntime::new(turns);
         let fixture = Fixture::start(&script).await;
@@ -37,29 +35,24 @@ async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_m
         turn(
             &mut client,
             "message-1",
-            "Create the app file, track its test, then fix the value.",
+            "Create the app file, then fix the value.",
         )
         .await;
         let results = recorded.borrow().clone();
-        assert_eq!(results.len(), 5, "{results:#?}");
+        assert_eq!(results.len(), 4, "{results:#?}");
         for result in &results {
             assert!(result.starts_with("status: exited\n"), "{result}");
         }
         assert_eq!(field(&results[0], "exitCode"), "0");
         assert_eq!(shown_output(&results[0]), "Created src/app.ts\n");
-        assert_eq!(
-            serde_json::from_str::<serde_json::Value>(&shown_output(&results[1])).unwrap(),
-            json!({"todo": {"id": "T1", "text": "Run tests", "status": "pending"}})
-        );
         // The failing check, then the fix and the passing one.
-        assert_eq!(field(&results[2], "exitCode"), "1");
-        assert_eq!(shown_output(&results[3]), "Edited src/app.ts\n");
-        assert_eq!(shown_output(&results[4]), "passed\n");
+        assert_eq!(field(&results[1], "exitCode"), "1");
+        assert_eq!(shown_output(&results[2]), "Edited src/app.ts\n");
+        assert_eq!(shown_output(&results[3]), "passed\n");
         assert_eq!(
             fixture.kinds(),
             [
                 "user",
-                "tool_call:completed",
                 "tool_call:completed",
                 "tool_call:completed",
                 "tool_call:completed",
@@ -83,14 +76,10 @@ async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_m
             "{answer:?}"
         );
 
-        // The next message finds the todo and the directory the last script
-        // ended in.
-        turn(&mut client, "message-2", "Mark the test done.").await;
-        let last = recorded.borrow()[5].clone();
-        assert_eq!(
-            shown_output(&last),
-            format!("[x] T1 Run tests\n{}/src\n", fixture.workspace)
-        );
+        // The next message finds the directory the last script ended in.
+        turn(&mut client, "message-2", "Where are you?").await;
+        let last = recorded.borrow()[4].clone();
+        assert_eq!(shown_output(&last), format!("{}/src\n", fixture.workspace));
         assert_eq!(
             std::fs::read_to_string(format!("{}/src/app.ts", fixture.workspace)).unwrap(),
             "export const value = 2\n"
@@ -117,7 +106,6 @@ async fn a_coding_workflow_edits_files_tracks_todos_and_keeps_its_shell_across_m
             "You are a coding agent.",
             "Registered commands:",
             "demi file create",
-            "demi todo update <id> [--text <text>] [--status <pending|in_progress|done>] [--json]",
             "demi agent spawn",
             "demi agent abort",
             "demi agent list",
