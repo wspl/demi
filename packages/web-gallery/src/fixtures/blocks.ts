@@ -81,6 +81,18 @@ export const agentReceiptMessages: AgentMessage[] = [
   event,
 }))
 
+/** The user's decisions on permission requests, as the agent that asked received them. */
+export const permissionReceiptMessages: AgentMessage[] = [
+  { outcome: 'allowed' as const, text: 'The user allowed this conversation to manage skills; the command `demi skills add vercel-labs/agent-skills --skill web-design-guidelines` can now run.' },
+  { outcome: 'denied' as const, text: 'The user denied this conversation permission to manage skills; the command `demi skills remove acme/tools` was not run.' },
+].map(({ outcome, text }, index) => ({
+  id: `permission:pr-${index}`,
+  recipientId: 'gallery-parent',
+  timestamp: '2026-09-12T12:05:00.000Z',
+  content: text,
+  event: { type: 'permission' as const, outcome, action: 'manage skills' },
+}))
+
 export const demoImageUrl = '/fixtures/attachment-thumb.png'
 
 export const longUserText = [

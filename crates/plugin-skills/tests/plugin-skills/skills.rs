@@ -588,12 +588,13 @@ fn a_shutdown_during_a_fetch_leaves_the_source_as_it_was() {
             .unwrap();
         let source = added["source"].as_str().unwrap().to_owned();
         // The shard closes with the fetch under way.
-        let Plugged { plugin, demi } = first;
+        let Plugged { plugin, demi, root } = first;
         drop(plugin);
 
         let second = Plugged {
             plugin: loopback(skills.instance()),
             demi: demi.clone(),
+            root,
         };
         let other = second.add("acme/other").await;
         demi.until(|demi| {

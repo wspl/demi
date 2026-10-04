@@ -16,6 +16,7 @@ import { useConversations } from './store'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { useWorkPanel } from './work'
+import { usePermissions } from './permissions'
 import { conversationFileRoutes, rawFileContents } from '../api/files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
@@ -25,6 +26,7 @@ const store = useConversations()
 const resources = useResources()
 const product = useProduct()
 const work = useWorkPanel()
+const permissions = usePermissions()
 const route = useRoute()
 const router = useRouter()
 const conversation = computed(() =>
@@ -52,6 +54,16 @@ watch(
   { immediate: true },
 )
 onUnmounted(() => void store.activate(null))
+// A conversation the backend has a record of has permissions to read.
+watch(
+  () => conversation.value?.persistence === 'synced' ? conversation.value.id : null,
+  (id) => {
+    if (id) {
+      permissions.follow(id)
+    }
+  },
+  { immediate: true },
+)
 async function create() {
   const id = await store.create()
   if (id) {
@@ -139,6 +151,9 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :fork="fork"
     :select-edit="selectEdit"
     :files="files"
+    :permission-requests="permissions.stateFor(conversation.id).requests"
+    :deciding-permission="permissions.stateFor(conversation.id).deciding"
+    @decide-permission="(id, decision) => permissions.decide(conversation!.id, id, decision)"
     :pending-submission="
       conversation.pendingSend
         ? {

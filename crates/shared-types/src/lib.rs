@@ -32,7 +32,8 @@ mod time;
 mod view;
 
 pub use agent_message::{
-    AgentMessage, AgentMessageEvent, CompletionId, CompletionOutcome, NotCompletionId, Sender,
+    AgentMessage, AgentMessageEvent, CompletionId, CompletionOutcome, NotCompletionId,
+    PermissionOutcome, Sender,
 };
 pub use block::{
     AbortBlock, AgentMessageBlock, Block, CompactionBoundaryBlock, CompactionMarkerBlock,

@@ -31,6 +31,7 @@ demi-backend-runners = { path = "../backend-runners" }
 demi-backend-user-shard = { path = "../backend-user-shard" }
 demi-backend-database = { path = "../backend-database" }
 demi-backend-page-sync = { path = "../backend-page-sync" }
+demi-backend-permissions = { path = "../backend-permissions" }
 demi-backend-plugins = { path = "../backend-plugins" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-command-protocol = { path = "../command-protocol" }

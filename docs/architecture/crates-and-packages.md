@@ -1559,7 +1559,7 @@ plugin-interface -> command-declarations, shared-types, host-interface, web-api-
 plugin-file -> plugin-interface, command-declarations, command-package-file-protocol, host-interface
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
 plugin-expose -> plugin-interface, host-interface, shared-types, web-api-protocol
-plugin-skills -> plugin-interface, shared-types
+plugin-skills -> plugin-interface, host-interface, shared-types
 plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface

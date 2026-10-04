@@ -19,6 +19,7 @@ pub mod exposes;
 pub mod forks;
 pub mod managed;
 pub mod panels;
+pub mod permissions;
 pub mod plugin_values;
 pub mod providers;
 mod schema;

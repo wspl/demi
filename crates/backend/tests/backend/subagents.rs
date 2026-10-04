@@ -40,12 +40,12 @@ use crate::cloud::reset;
 use crate::support::{Harness, Session, TestBackend, eventually};
 
 /// One scripted answer: the events of one request.
-type Answer = Vec<ProviderEvent>;
+pub(crate) type Answer = Vec<ProviderEvent>;
 
 /// The answers of each node: a root's by its session, which is its
 /// conversation's id, and each child's in the order the children first ask.
 #[derive(Default)]
-struct Scripts {
+pub(crate) struct Scripts {
     state: Mutex<ScriptState>,
 }
 
@@ -62,7 +62,7 @@ struct ScriptState {
 }
 
 impl Scripts {
-    fn root(&self, conversation: &str, answers: Vec<Answer>) {
+    pub(crate) fn root(&self, conversation: &str, answers: Vec<Answer>) {
         let mut state = self.state.lock().unwrap();
         state
             .roots
@@ -71,7 +71,7 @@ impl Scripts {
             .extend(answers);
     }
 
-    fn child(&self, answers: Vec<Answer>) {
+    pub(crate) fn child(&self, answers: Vec<Answer>) {
         self.state
             .lock()
             .unwrap()
@@ -80,7 +80,7 @@ impl Scripts {
     }
 
     /// What the requests of the sessions `keep` accepts carried, in order.
-    fn asked(&self, keep: impl Fn(&str) -> bool) -> Vec<String> {
+    pub(crate) fn asked(&self, keep: impl Fn(&str) -> bool) -> Vec<String> {
         let state = self.state.lock().unwrap();
         state
             .asked
@@ -117,7 +117,7 @@ impl Scripts {
 }
 
 /// The model's shell call `id` running `script`.
-fn shell(id: &str, script: &str) -> Answer {
+pub(crate) fn shell(id: &str, script: &str) -> Answer {
     vec![
         event::tool_call(
             id,
@@ -129,7 +129,7 @@ fn shell(id: &str, script: &str) -> Answer {
 }
 
 /// The model's closing words.
-fn say(text: &str) -> Answer {
+pub(crate) fn say(text: &str) -> Answer {
     vec![event::text(text), event::response(1, 1)]
 }
 
@@ -242,6 +242,21 @@ async fn tree(
     String,
     String,
 ) {
+    tree_on(scripts, Harness::new()).await
+}
+
+/// [`tree`] on `harness`, such as one with skill repositories.
+pub(crate) async fn tree_on(
+    scripts: &Arc<Scripts>,
+    harness: Harness,
+) -> (
+    Harness,
+    TestBackend,
+    Session,
+    crate::support::Paired,
+    String,
+    String,
+) {
     let tree = |process| Tree {
         scripts: scripts.clone(),
         process,
@@ -249,7 +264,7 @@ async fn tree(
     let families = demi_backend::families::builtin()
         .with("tree", tree(false))
         .with("tree-process", tree(true));
-    let harness = Harness::new().with_families(families);
+    let harness = harness.with_families(families);
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post(
@@ -290,7 +305,7 @@ async fn tree(
 }
 
 /// The shell that waits until the file `go` appears where it works.
-const WAIT: &str = "until [ -f go ]; do sleep 0.05; done";
+pub(crate) const WAIT: &str = "until [ -f go ]; do sleep 0.05; done";
 
 // Several seconds: a parent and its child run five shell jobs on a real device,
 // the child's across its parent's turns.

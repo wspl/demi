@@ -597,12 +597,12 @@ pub mod store_contract {
         };
         let message = AgentMessage {
             id: completion.block_id(),
-            sender: Sender {
+            sender: Some(Sender {
                 id: id(child),
                 number: 1,
                 description: child.into(),
                 round,
-            },
+            }),
             recipient_id: id("root"),
             timestamp: Timestamp::UNIX_EPOCH,
             content: format!("{child} done"),

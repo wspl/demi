@@ -18,6 +18,7 @@ use demi_backend_cloud::reset::recover_resets;
 use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, web_build};
 use demi_backend_user_shard::conversation::{rearm_wakeups, recover_forks};
+use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::lifecycle::retention;
 use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
@@ -218,6 +219,15 @@ impl Backend {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
                 "the saved wakeups cannot be listed"
+            );
+        }
+        // Each permission decision whose message a restart cut off reaches
+        // the agent that asked (`permissions.md` § The decision's message).
+        // A failure does not stop the start: the next start delivers it.
+        if let Err(error) = deliver_decisions(&services.control, &shards.shards()).await {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the undelivered permission decisions cannot be listed"
             );
         }
         let state = AppState {

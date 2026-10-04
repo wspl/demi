@@ -6,7 +6,8 @@
 use std::{future::Future, marker::PhantomData, rc::Rc};
 
 use demi_command_declarations::{
-    Group, Leaf, LeafKind, LeafOutput, NativeOperation, Node, Schema, command_schema_settings,
+    Category, Group, Leaf, LeafKind, LeafOutput, NativeOperation, Node, Schema,
+    command_schema_settings,
 };
 use futures_util::future::{LocalBoxFuture, ready};
 use schemars::JsonSchema;
@@ -19,6 +20,7 @@ use crate::{Declared, RpcError, RpcHandler, RpcInvocation, RpcPort};
 pub struct GroupBuilder {
     name: String,
     summary: String,
+    permissions: Vec<Category>,
     children: Vec<Declared>,
 }
 
@@ -27,8 +29,27 @@ impl GroupBuilder {
         Self {
             name: name.into(),
             summary: summary.into(),
+            permissions: Vec::new(),
             children: Vec::new(),
         }
+    }
+
+    /// Declares a permission category the group's leaves may name
+    /// (`permissions.md` § Categories): `id` is `<group>.<name>`, `action`
+    /// completes "Allow this conversation to …", and `description` says
+    /// what a grant allows.
+    pub fn permission(
+        mut self,
+        id: impl Into<String>,
+        action: impl Into<String>,
+        description: impl Into<String>,
+    ) -> Self {
+        self.permissions.push(Category {
+            id: id.into(),
+            action: action.into(),
+            description: description.into(),
+        });
+        self
     }
 
     pub fn leaf(mut self, leaf: LeafBuilder) -> Self {
@@ -64,6 +85,7 @@ impl From<GroupBuilder> for Declared {
             tree: Node::Group(Group {
                 name: group.name,
                 summary: group.summary,
+                permissions: group.permissions,
                 subcommands,
             }),
             handlers,
@@ -109,6 +131,7 @@ impl LeafBuilder {
                 rest_field: None,
                 output: None,
                 media: false,
+                permission: None,
                 kind,
             },
             handler: None,
@@ -201,6 +224,14 @@ impl LeafBuilder {
             Ok(json) => self.leaf.output = Some(LeafOutput { json: Some(json) }),
             Err(error) => self.refuse(error),
         }
+        self
+    }
+
+    /// The permission category the command needs, which one of its groups
+    /// declares: the backend's dispatch runs the handler only in a
+    /// conversation the user allowed it for.
+    pub fn permission(mut self, category: impl Into<String>) -> Self {
+        self.leaf.permission = Some(category.into());
         self
     }
 

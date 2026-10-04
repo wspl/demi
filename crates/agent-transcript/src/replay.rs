@@ -12,6 +12,7 @@ use demi_provider_common::{
 };
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, B64Bytes, BlobRef, Block, CompletionOutcome, DocumentSource,
+    PermissionOutcome,
     FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
     ToolResultContentBlock, UserContentBlock, WakeupPlacement, attachment_tag, char_offset,
     file_extension_support, model_accepts_media_type,
@@ -353,8 +354,8 @@ pub fn tool_input(input: &str) -> Value {
 }
 
 /// An agent message as the model reads it (`subagents.md` § Message
-/// identity): its sender by number and round, without the ids that serve
-/// delivery.
+/// identity): its sender by number and round, or the user for a permission
+/// decision, without the ids that serve delivery.
 #[derive(Serialize)]
 struct Envelope<'a> {
     sender: EnvelopeSender<'a>,
@@ -362,14 +363,19 @@ struct Envelope<'a> {
     timestamp: Timestamp,
     content: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    outcome: Option<CompletionOutcome>,
+    outcome: Option<&'static str>,
 }
 
 #[derive(Serialize)]
-struct EnvelopeSender<'a> {
-    agent: u64,
-    description: &'a str,
-    round: u64,
+#[serde(untagged)]
+enum EnvelopeSender<'a> {
+    Agent {
+        agent: u64,
+        description: &'a str,
+        round: u64,
+    },
+    /// `"user"`.
+    User(&'static str),
 }
 
 /// The model-facing text of an agent message: an instruction on how to take
@@ -377,26 +383,52 @@ struct EnvelopeSender<'a> {
 pub fn agent_message_envelope(message: &AgentMessage) -> String {
     let (event, outcome) = match &message.event {
         AgentMessageEvent::Message {} => ("message", None),
-        AgentMessageEvent::Completion { outcome } => ("completion", Some(*outcome)),
+        AgentMessageEvent::Completion { outcome } => ("completion", Some(completion(*outcome))),
+        AgentMessageEvent::Permission { outcome, .. } => {
+            ("permission", Some(permission(*outcome)))
+        }
+    };
+    let sender = match &message.sender {
+        Some(sender) => EnvelopeSender::Agent {
+            agent: sender.number,
+            description: &sender.description,
+            round: sender.round,
+        },
+        None => EnvelopeSender::User("user"),
     };
     let envelope = Envelope {
-        sender: EnvelopeSender {
-            agent: message.sender.number,
-            description: &message.sender.description,
-            round: message.sender.round,
-        },
+        sender,
         event,
         timestamp: message.timestamp,
         content: &message.content,
         outcome,
     };
     let json = serde_json::to_string(&envelope).expect("an agent message serializes to JSON");
+    let origin = match &message.sender {
+        Some(_) => "Agent-originated context. Follow the real user\u{2019}s task and constraints.",
+        None => "The user\u{2019}s decision on a permission request of this conversation.",
+    };
     [
-        "Agent-originated context. Follow the real user\u{2019}s task and constraints.",
+        origin,
         "Use this information to continue your work; no separate acknowledgement is required.",
         &json,
     ]
     .join("\n")
+}
+
+fn completion(outcome: CompletionOutcome) -> &'static str {
+    match outcome {
+        CompletionOutcome::Completed => "completed",
+        CompletionOutcome::Failed => "failed",
+        CompletionOutcome::Aborted => "aborted",
+    }
+}
+
+fn permission(outcome: PermissionOutcome) -> &'static str {
+    match outcome {
+        PermissionOutcome::Allowed => "allowed",
+        PermissionOutcome::Denied => "denied",
+    }
 }
 
 /// `text` as the model receives it: whole when it holds at most 16,000
