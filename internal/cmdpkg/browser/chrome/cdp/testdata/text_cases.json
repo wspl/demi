@@ -27,7 +27,8 @@
           "createdBy": {
             "kind": "agent",
             "number": 0
-          }
+          },
+          "loading": false
         },
         {
           "id": "t2",
@@ -36,7 +37,8 @@
           "createdBy": {
             "kind": "page",
             "opener": "t1"
-          }
+          },
+          "loading": true
         }
       ],
       "truncated": false

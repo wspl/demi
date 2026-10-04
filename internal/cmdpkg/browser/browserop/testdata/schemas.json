@@ -215,6 +215,10 @@
                   ]
                 }
               ]
+            },
+            "loading": {
+              "description": "Whether the browser loads the tab's top-level page.",
+              "type": "boolean"
             }
           },
           "additionalProperties": false,
@@ -222,7 +226,8 @@
             "id",
             "title",
             "url",
-            "createdBy"
+            "createdBy",
+            "loading"
           ]
         }
       },

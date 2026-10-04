@@ -32,8 +32,18 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 	if executable == "" {
 		t.Skip("DEMI_TEST_CHROME supplies real Chrome for acceptance")
 	}
+	loadingRequest := make(chan struct{})
+	loadingResponse := make(chan struct{})
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if r.URL.Path == "/loading" {
+			close(loadingRequest)
+			select {
+			case <-loadingResponse:
+			case <-r.Context().Done():
+				return
+			}
+		}
 		if r.URL.Path == "/redirect" {
 			http.Redirect(w, r, "/next", http.StatusFound)
 			return
@@ -75,6 +85,66 @@ func TestChromeEnvironmentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Logf("opened %s and %s", first.ID(), second.ID())
+
+	t.Run("loading", func(t *testing.T) {
+		navigationCtx, stop := context.WithCancel(ctx)
+		finished := make(chan struct{})
+		var navigationErr error
+		go func() {
+			defer close(finished)
+			operation := cdp.NewOperation(navigationCtx, first.Context(), 10*time.Second)
+			defer operation.Close()
+			_, err := first.Navigate(
+				navigationCtx,
+				&tabs.Visit{URL: server.URL + "/loading"},
+				browserop.LoadLoad,
+				operation,
+				&tabs.References{},
+			)
+			navigationErr = err
+		}()
+		defer func() {
+			stop()
+			<-finished
+		}()
+		defer close(loadingResponse)
+		select {
+		case <-loadingRequest:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		for {
+			_, changed := environment.Changes()
+			if first.Loading() {
+				break
+			}
+			select {
+			case <-changed:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+		}
+		select {
+		case loadingResponse <- struct{}{}:
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+		for {
+			_, changed := environment.Changes()
+			if !first.Loading() {
+				break
+			}
+			select {
+			case <-changed:
+			case <-ctx.Done():
+				t.Fatal(ctx.Err())
+			}
+		}
+		<-finished
+		if navigationErr != nil {
+			t.Fatal(navigationErr)
+		}
+	})
 
 	t.Run("registry and locale", func(t *testing.T) {
 		listed, err := environment.Listed(ctx, 5*time.Second)

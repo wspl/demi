@@ -263,7 +263,13 @@ func listTabs(ctx context.Context, environment *tabs.Environment, input *browser
 	for _, row := range listing.Tabs[offset:end] {
 		rows = append(
 			rows,
-			browserop.BrowserTab{ID: row.Tab.ID(), URL: row.URL, Title: row.Title, CreatedBy: row.Tab.CreatedBy()},
+			browserop.BrowserTab{
+				ID:        row.Tab.ID(),
+				URL:       row.URL,
+				Title:     row.Title,
+				CreatedBy: row.Tab.CreatedBy(),
+				Loading:   row.Tab.Loading(),
+			},
 		)
 	}
 	return resultOutput(browserop.TabsResult{Tabs: rows, Truncated: end < uint(len(listing.Tabs))}, nil)
