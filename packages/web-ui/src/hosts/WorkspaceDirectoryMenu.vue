@@ -131,7 +131,7 @@ defineExpose({ browse })
             <MenuDivider />
             <MenuItem
               :icon="Folder"
-              label="Choose another directory…"
+              label="Choose Another Directory…"
               :disabled="locked || !browseEnabled"
               @select="browse()"
             />
@@ -150,7 +150,7 @@ defineExpose({ browse })
       :places="browsingHost.places"
       :hosts="hosts"
       :host-id="browsingDevice ?? undefined"
-      confirm-label="Use this folder"
+      confirm-label="Use This Folder"
       :confirm-disabled="locked"
       :confirm-pending="pending"
       @select="selectFolder"

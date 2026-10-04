@@ -26,7 +26,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  /** Stop all: every live child. */
+  /** Stop All: every live child. */
   abort: []
   /** The close on a running tab: that child and its subtree. */
   abortAgent: [id: string]
@@ -90,7 +90,7 @@ function closeTab(agent: SubagentRecord): void {
           @click="emit('abort')"
         >
           <CircleStop :size="ICON_PX.in24" aria-hidden="true" />
-          Stop all
+          Stop All
         </Button>
       </Tooltip>
       <SubagentHistoryMenu

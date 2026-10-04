@@ -6,6 +6,6 @@ export async function copyConversationId(id: string): Promise<void> {
     await navigator.clipboard.writeText(id)
     showToast({ title: 'Copied', tone: 'success' })
   } catch (error) {
-    reportError('Failed to copy conversation ID', error, { userVisible: true })
+    reportError('Failed to Copy Conversation ID', error, { userVisible: true })
   }
 }

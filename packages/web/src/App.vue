@@ -57,7 +57,7 @@ const folded = computed({
     resources.local.foldedProjects = value
   },
 })
-// Connect new device, from the host menu or elsewhere, pairs right here rather than in settings.
+// Connect New Device, from the host menu or elsewhere, pairs right here rather than in settings.
 const pairing = useDevicePairing(claimDevice)
 const installation = useDeviceInstallation()
 watch(

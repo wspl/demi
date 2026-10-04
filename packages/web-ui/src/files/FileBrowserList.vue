@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { TitleText } from '../ui/ui-text'
-import { computed, nextTick, ref, watch } from 'vue'
+import type { HeadlineText, TitleText } from '../ui/ui-text'
+import { computed, nextTick, ref, watch, type Component } from 'vue'
 import {
   ChevronDown,
   ChevronUp,
@@ -62,7 +62,7 @@ const columns: {
   class: string
 }[] = [
   { key: 'name', label: 'Name', class: '' },
-  { key: 'modifiedAt', label: 'Date modified', class: 'hidden @md:flex' },
+  { key: 'modifiedAt', label: 'Date Modified', class: 'hidden @md:flex' },
   { key: 'size', label: 'Size', class: 'text-right' },
 ]
 
@@ -172,7 +172,7 @@ watch(
   },
 )
 
-const failureCopy = computed(() => {
+const failureCopy = computed<{ icon: Component; title: HeadlineText } | null>(() => {
   const failure = props.failure
   if (!failure) {
     return null

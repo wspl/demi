@@ -23,7 +23,7 @@ const emit = defineEmits<{
   <Menu>
     <MenuItem
       :icon="SquarePen"
-      label="New conversation here"
+      label="New Conversation Here"
       @select="emit('create')"
     />
     <MenuItem
@@ -34,14 +34,14 @@ const emit = defineEmits<{
     />
     <MenuItem
       :icon="ListChecks"
-      label="Select conversations"
+      label="Select Conversations"
       :disabled="count === 0"
       @select="emit('selectAll')"
     />
     <MenuDivider />
     <MenuItem
       :icon="Trash2"
-      label="Remove project"
+      label="Remove Project"
       is-danger
       @select="emit('remove')"
     />

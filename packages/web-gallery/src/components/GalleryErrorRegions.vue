@@ -103,7 +103,7 @@ const usageLimitPayload = JSON.stringify({
         <GallerySpecimen wide variant="Archived">
           <SessionNoticeBar
             label="This conversation is archived."
-            action="Restore conversation"
+            action="Restore Conversation"
           />
         </GallerySpecimen>
         <GallerySpecimen wide variant="Model catalog failed · beside the chip">
