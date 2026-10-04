@@ -81,10 +81,11 @@ impl fmt::Display for PluginId {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Manifest {
     pub id: PluginId,
-    /// Its name in settings: a feature's name, so in title style, such as
-    /// `Conversation Browser` (the gallery's Writing page has the rule).
+    /// Its name in settings, such as `File Browser` or `Demi File Commands`
+    /// (`plugins.md` § What a plugin contributes has the rule).
     pub name: String,
-    /// What it does, in one sentence in sentence style, which settings show.
+    /// What it does for the user, in one sentence in sentence style, which
+    /// settings show.
     pub description: String,
     /// Its command groups and roots (`plugins.md` § Commands).
     #[serde(default)]
