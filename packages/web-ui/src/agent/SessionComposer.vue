@@ -55,7 +55,7 @@ const props = withDefaults(
     modelSettings?: ModelSettings | null
     /** How full the next request is, as the backend reports it. */
     usage?: ContextUsage | null
-    /** When no model can send, show Configure models. Hide the action if the user cannot open that page. */
+    /** When no model can send, show Configure Models. Hide the action if the user cannot open that page. */
     canConfigure?: boolean
     /** Replaces the input with the archive bar. */
     archived?: boolean
@@ -201,7 +201,7 @@ const sendBlockReason = computed(() => {
 // refused edit is the product's toast.
 watch(edit.attachmentError, (message) => {
   if (message) {
-    showToast({ title: "Couldn't attach", message, tone: 'danger' })
+    showToast({ title: "Couldn't Attach", message, tone: 'danger' })
   }
 })
 /** The replaced version as the offer shows it; none while there is none, or while a message is edited. */
@@ -304,7 +304,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       v-if="archived"
       key="archived"
       label="This conversation is archived."
-      action="Restore conversation"
+      action="Restore Conversation"
       @action="emit('restore')"
     />
     <SessionNoticeBar
@@ -320,7 +320,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       key="none"
       label="No models available."
       :action="
-        canConfigure !== false ? 'Configure models' : undefined
+        canConfigure !== false ? 'Configure Models' : undefined
       "
       @action="emit('configure')"
     />
@@ -413,13 +413,13 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               <Menu>
                 <MenuItem
                   :icon="FileIcon"
-                  :label="remoteFiles ? 'Attach local files' : 'Attach files'"
+                  :label="remoteFiles ? 'Attach Local Files…' : 'Attach Files…'"
                   @select="pickFiles(close)"
                 />
                 <MenuItem
                   v-if="remoteFiles && !messageEdit"
                   :icon="HardDrive"
-                  label="Attach remote file…"
+                  label="Attach Remote File…"
                   @select="attachRemote"
                 />
               </Menu>

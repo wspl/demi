@@ -7,7 +7,7 @@ import { baseName } from '../files/paths'
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import Button from '../ui/Button.vue'
-import ChoiceCards from '../ui/ChoiceCards.vue'
+import ChoiceCards, { type ChoiceCardOption } from '../ui/ChoiceCards.vue'
 import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -32,7 +32,7 @@ import {
  * starts from a clean form on the user's last choice of kind and device,
  * the Cloud the first time (`product.md` § Conversations and projects); the
  * host remembers it from `choose`. Switching between existing projects is the
- * sidebar's Move to and the conversation header's workspace control, not this
+ * sidebar's Move To and the conversation header's workspace control, not this
  * dialog.
  */
 const props = defineProps<{
@@ -56,7 +56,7 @@ const emit = defineEmits<{
   create: [draft: WorkspaceDraft]
   /** The user chose a kind or a device: the choice the next opening starts on. */
   choose: [choice: WorkspaceHostChoice]
-  /** The Add device button beside the device menu: the host starts pairing. */
+  /** The Add Device button beside the device menu: the host starts pairing. */
   connectDevice: []
 }>()
 
@@ -74,12 +74,7 @@ const kindOptions = [
     description: 'A directory on one of your devices.',
     icon: Monitor,
   },
-] as const satisfies readonly {
-  value: Kind
-  label: string
-  description: string
-  icon: typeof Cloud
-}[]
+] as const satisfies readonly ChoiceCardOption<Kind>[]
 
 const opening = openingChoice(props.lastHost, props.devices)
 const kind = ref<Kind>(opening.kind)
@@ -190,7 +185,7 @@ function selectDevice(id: string, close: () => void): void {
     :is-open="isOpen"
     :overlay-store="overlayStore"
     :size="browsing ? 'lg' : 'md'"
-    label="New project"
+    label="New Project"
     hide-close
     @close="emit('close')"
   >
@@ -198,7 +193,7 @@ function selectDevice(id: string, close: () => void): void {
       <header
         class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2"
       >
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Select folder</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">Select Folder</h3>
         <IconButton
           :icon="X"
           variant="ghost"
@@ -224,7 +219,7 @@ function selectDevice(id: string, close: () => void): void {
       <header
         class="flex select-none items-center justify-between border-b border-line px-4 py-3"
       >
-        <h2 class="text-[15px] font-medium text-fg-emphasis">New project</h2>
+        <h2 class="text-[15px] font-medium text-fg-emphasis">New Project</h2>
         <IconButton
           :icon="X"
           variant="ghost"
@@ -261,7 +256,7 @@ function selectDevice(id: string, close: () => void): void {
               <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
                 Device
                 <span class="flex items-center gap-2">
-                  <!-- The menu fills the row, the way the file browser's device picker does; Add device sits after it. -->
+                  <!-- The menu fills the row, the way the file browser's device picker does; Add Device sits after it. -->
                   <Dropdown
                     :overlay-store="overlayStore"
                     :disabled="pending"
@@ -289,7 +284,7 @@ function selectDevice(id: string, close: () => void): void {
                           :label="entry.name"
                           :indicator="entry.online ? 'success' : 'muted'"
                           :indicator-label="entry.online ? 'Online' : 'Offline'"
-                          :note="entry.online ? undefined : 'offline'"
+                          :note="entry.online ? undefined : 'Offline'"
                           :disabled="!entry.online"
                           disabled-reason="This device is offline."
                           choice
@@ -311,7 +306,7 @@ function selectDevice(id: string, close: () => void): void {
                     @click="emit('connectDevice')"
                   >
                     <Plus :size="14" />
-                    Add device
+                    Add Device
                   </Button>
                 </span>
               </div>
@@ -347,7 +342,7 @@ function selectDevice(id: string, close: () => void): void {
                 :disabled="!canCreate && !pending"
                 :loading="pending"
                 @click="create"
-                >Create project</Button
+                >Create Project</Button
               >
             </div>
           </form>

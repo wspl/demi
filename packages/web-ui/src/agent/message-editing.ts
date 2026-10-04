@@ -165,7 +165,7 @@ export async function submitMessageEdit(host: {
       host.set({ phase: rejected ? 'editing' : 'uncertain', request })
     }
     reportError(
-      rejected ? 'The edit was not accepted' : 'Could not confirm the edit',
+      rejected ? 'The edit was not accepted.' : 'Could Not Confirm the Edit',
       error,
       { userVisible: true, expected: rejected },
     )

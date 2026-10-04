@@ -91,7 +91,7 @@ project or device directory affects subsequent execution; target-switch admissio
 and context announcements are defined in
 [Sessions and targets](../execution/sessions-and-targets.md).
 
-New project asks where the project lives, with Cloud as the first choice and
+New Project asks where the project lives, with Cloud as the first choice and
 Device beside it. The first time, Cloud is chosen. After that the dialog
 starts with what the user last chose: the kind, Cloud or Device, and the
 device last chosen in its device menu, kept even while Cloud is chosen. A
@@ -237,10 +237,10 @@ rename at any time ──► title = what the user typed               origin: u
 
 Later the conversation turns to the login test and the title no longer says
 what it is about. The Rename button beside the title opens a menu of two ways
-to name the conversation: **Detect title** asks the model for a new one, and
+to name the conversation: **Detect Title** asks the model for a new one, and
 **Rename** lets the user type it where the title stands, which a double-click
 on the title does too. While the model writes, the Rename button shows that it
-is busy; then the title changes, and Detect title is unavailable until the
+is busy; then the title changes, and Detect Title is unavailable until the
 user sends another message.
 
 Every title records its origin, one of `placeholder` ("New conversation",
@@ -257,13 +257,13 @@ The request:
 
 | Aspect | Rule |
 | --- | --- |
-| When | At the first send, concurrently with the first turn: it neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. After that only when the user asks, with Detect title. One request per conversation at a time; asking while one runs joins it. |
+| When | At the first send, concurrently with the first turn: it neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. After that only when the user asks, with Detect Title. One request per conversation at a time; asking while one runs joins it. |
 | Model | The provider and model selected for the conversation at that moment. No separate title model is configured. The messages therefore go only where the user already chose to send them. |
 | Effort | The lowest thinking effort the model offers, the default service tier, and an output limit of 1,024 tokens, room for that effort's thinking and one line, or the model's own [output limit](../providers/models.md#output-limit) when it is lower. |
 | Input | A fixed title instruction as the system prompt, and one user message holding the text of every message the user has sent, oldest first and numbered. Each is cut to its first 400 characters, and the whole to 4,000: when they do not fit, the first message and the most recent ones stay and the middle is left out, since the first says what the conversation set out to do and the last what it has become. No agent system prompt, no tools, no assistant output, no attachments or images, no file references. The input stays short so that the title arrives quickly. At the first send the input is that one message. |
 | Path | The same metered provider runtime a turn uses, so the request counts in the user's usage ledger and obeys the same limits. It is not a session turn: nothing is added to the transcript and no session event is emitted. |
 | Output | The first non-empty line of the text response, without surrounding quotes, cut to 80 characters. Thinking output is ignored. An empty result writes nothing. |
-| Failure | A refused, failed or empty request is logged and ends there; the title in place stays, and is already usable. Nothing retries by itself: Detect title stays available, and choosing it again is the retry. |
+| Failure | A refused, failed or empty request is logged and ends there; the title in place stays, and is already usable. Nothing retries by itself: Detect Title stays available, and choosing it again is the retry. |
 | Release | The request is aborted when the conversation is archived or the backend closes. |
 
 The limits of 80, 400 and 4,000 characters count Unicode scalar values, and a
@@ -278,7 +278,7 @@ examples show the result. It also asks for natural grammar,
 exact technical terms, file names, numbers and error codes kept, no tool
 names, no leading "the" or "my", and something meaningful even for a greeting.
 
-Detect title is available exactly when a new title could differ from the last
+Detect Title is available exactly when a new title could differ from the last
 one the model wrote. The backend counts the user's messages on the conversation (a
 send, a steer, an edit and resend) and records, when a request finishes with a
 usable line, how many the request had seen. The title is current while the two

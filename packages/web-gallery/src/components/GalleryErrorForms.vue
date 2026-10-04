@@ -165,7 +165,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               @choose="failedProjectHost = $event"
               @close="close"
               @create="(draft) => productWould(draft.kind === 'cloud' ? `Create the Cloud project ${draft.name}` : `Create the project at ${draft.path}`)"
-              @connect-device="productWould('Connect new device')"
+              @connect-device="productWould('Connect New Device')"
               @retry="productWould('Load the devices again')"
             />
           </GalleryDialogFrame>

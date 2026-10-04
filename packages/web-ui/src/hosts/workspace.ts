@@ -29,7 +29,7 @@ export type WorkspaceDraft =
   }
 
 /**
- * Where New project starts: the kind the user last chose and the device last
+ * Where New Project starts: the kind the user last chose and the device last
  * chosen in its device menu, kept while the Cloud is chosen
  * (`product.md` § Conversations and projects).
  */
@@ -39,7 +39,7 @@ export interface WorkspaceHostChoice {
 }
 
 /**
- * The choice a New project form opens on: the remembered kind, the Cloud the
+ * The choice a New Project form opens on: the remembered kind, the Cloud the
  * first time, and the remembered device while the user still has it, else no
  * device.
  */

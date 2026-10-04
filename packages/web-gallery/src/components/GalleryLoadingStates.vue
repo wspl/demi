@@ -51,7 +51,7 @@ const selected = ref<string | null>('loading-provider')
             ><Save :size="14" /> Save changes</Button
           >
           <Button variant="primary" :loading="saving" @click="saving = true"
-            >Create project</Button
+            >Create Project</Button
           >
           <Button variant="danger" :loading="saving" @click="saving = true"
             >Remove</Button

@@ -41,7 +41,7 @@ export function useMessageForks(
       if (states.value === scope) {
         failedRequests.set(blockId, request)
       }
-      reportError('Could not fork from this message', error, { userVisible: true })
+      reportError('Could Not Fork from This Message', error, { userVisible: true })
     } finally {
       scope.delete(blockId)
     }

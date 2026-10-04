@@ -9,7 +9,7 @@ import type { ChangeFile } from '../../files/changes'
  * line counts. A new file carries a green dot on its icon; a deleted file is
  * struck through; a renamed file names its old path in the tooltip.
  * Collapsed, the pills stop after `maxRows` rows and a "+N files" pill at
- * the end of the last row shows the rest; "Show less" folds them again.
+ * the end of the last row shows the rest; "Show Less" folds them again.
  */
 const props = withDefaults(
   defineProps<{
@@ -124,6 +124,6 @@ watch([() => props.files, expanded], () => { void measure() })
       type="button"
       class="btn inline-flex h-[22px] cursor-default select-none items-center rounded-full px-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out hover:text-fg-body"
       @click="expanded = !expanded"
-    >{{ expanded ? 'Show less' : `+${hidden} files` }}</button>
+    >{{ expanded ? 'Show Less' : `+${hidden} Files` }}</button>
   </div>
 </template>

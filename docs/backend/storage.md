@@ -80,7 +80,7 @@ input, which the multi-worker control service also relies on
   lockout to [Backend](backend.md#authentication-and-ownership).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
   overrides, the last explicit model settings for new conversations, where
-  New project last pointed, the locale the web app last reported, and the
+  New Project last pointed, the locale the web app last reported, and the
   context limit the user set on each model
   ([Context limit](../providers/models.md#context-limit)). A patch merges specified fields in one
   transaction so independent edits do not overwrite each other.

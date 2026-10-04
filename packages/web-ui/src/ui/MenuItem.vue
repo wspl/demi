@@ -27,8 +27,8 @@ const props = defineProps<{
   value?: string
   /** A status dot: alone in the gutter, or on the icon's corner when there is one. */
   indicator?: MenuIndicator
-  indicatorLabel?: string
-  /** A quiet qualifier after the label, in parentheses: `offline`, `read-only`. */
+  indicatorLabel?: SentenceText
+  /** A quiet qualifier after the label, in parentheses: `Offline`, `Read-Only`. */
   note?: TitleText
   isDanger?: boolean
   disabled?: boolean

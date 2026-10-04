@@ -105,7 +105,7 @@ function connect() {
       <Menu>
         <MenuItem
           :icon="primaryHost.kind === 'cloud' ? Cloud : Monitor"
-          label="Primary host"
+          label="Primary Host"
           :indicator="primaryHost.kind === 'cloud' ? undefined : primaryHost.online ? 'success' : 'muted'"
           :indicator-label="primaryHost.online ? 'Online' : 'Offline'"
           :value="primaryHost.name"
@@ -122,7 +122,7 @@ function connect() {
             />
           </template>
         </MenuItem>
-        <MenuGroup v-if="attachedHosts.length" label="Attached hosts">
+        <MenuGroup v-if="attachedHosts.length" label="Attached Hosts">
           <MenuItem
             v-for="host in attachedHosts"
             :key="host.id"
@@ -130,13 +130,13 @@ function connect() {
             :label="host.name"
             :indicator="host.kind === 'cloud' ? undefined : host.online ? 'success' : 'muted'"
             :indicator-label="host.online ? 'Online' : 'Offline'"
-            :note="host.kind === 'device' && !host.online ? 'offline' : undefined"
+            :note="host.kind === 'device' && !host.online ? 'Offline' : undefined"
             has-submenu
           >
             <template #submenu>
               <Menu>
                 <MenuItem
-                  label="Use as primary environment…"
+                  label="Use as Primary Environment…"
                   :icon="host.kind === 'cloud' ? Cloud : Monitor"
                   :disabled="primaryLocked || (host.kind === 'device' && !host.online)"
                   @select="selectPrimary(host.id)"
@@ -154,7 +154,7 @@ function connect() {
         </MenuGroup>
         <MenuDivider />
         <MenuItem
-          label="Attach device…"
+          label="Attach Device"
           :icon="Plus"
           has-submenu
           :disabled="attachmentsLocked"
@@ -168,7 +168,7 @@ function connect() {
             />
           </template>
         </MenuItem>
-        <MenuItem label="Connect new device…" :icon="Link" @select="connect" />
+        <MenuItem label="Connect New Device…" :icon="Link" @select="connect" />
       </Menu>
     </template>
   </Dropdown>

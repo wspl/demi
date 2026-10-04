@@ -403,7 +403,7 @@ function itemLabel(id: string, list: {
             :devices="hostDevices"
             :bound-ids="['build']"
             @select="productWould(`Selected ${$event}`)"
-            @connect="productWould('Connect new device')"
+            @connect="productWould('Connect New Device')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="status dots · virtual list without icons">
@@ -422,7 +422,7 @@ function itemLabel(id: string, list: {
             @switch-primary="productWould(`Move the conversation to ${deviceName($event)}`)"
             @attach="productWould(`Attach ${deviceName($event)}`)"
             @detach="productWould(`Detach ${deviceName($event)}`)"
-            @connect="productWould('Connect new device')"
+            @connect="productWould('Connect New Device')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="session tools · live exposes with a countdown; gone with the last one">
@@ -444,7 +444,7 @@ function itemLabel(id: string, list: {
             @switch-primary="switchPrimaryHost"
             @attach="attachHost"
             @detach="detachHost"
-            @connect="productWould('Connect new device')"
+            @connect="productWould('Connect New Device')"
           />
         </GallerySpecimen>
         <div class="specimen-row specimen-row-wide items-start">
@@ -544,7 +544,7 @@ function itemLabel(id: string, list: {
               filterable
               :autofocus="false"
               filter-placeholder="Filter options"
-              empty-text="No items found"
+              empty-text="No Items Found"
               :items="tallOptions"
               initial-query="zzz"
               :selected-id="filterEmptySelected"
@@ -686,8 +686,8 @@ function itemLabel(id: string, list: {
                 <Menu @click="close">
                   <MenuItem
                     :icon="Plus"
-                    label="Attach files"
-                    @select="productWould('Attach files')"
+                    label="Attach Files…"
+                    @select="productWould('Attach Files')"
                   />
                 </Menu>
               </template>
@@ -844,7 +844,7 @@ function itemLabel(id: string, list: {
             <div class="w-80">
               <Toast
                 v-if="pinNeutralToast"
-                title="Not in this workspace"
+                title="Not in This Workspace"
                 message="The tree shows /Users/zan/.demi/acceptance-workspace only."
                 tone="neutral"
                 @dismiss="pinNeutralToast = false"

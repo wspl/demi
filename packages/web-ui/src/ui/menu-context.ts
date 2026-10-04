@@ -1,5 +1,20 @@
 import { readonly, ref } from 'vue'
-import type { ComputedRef, InjectionKey, Ref } from 'vue'
+import type { Component, ComputedRef, InjectionKey, Ref } from 'vue'
+import type { MenuIndicator } from './MenuItem.vue'
+import type { SentenceText, TitleText } from './ui-text'
+
+/** A row of a Menu's `items`: what the row shows, as MenuItem's props of the same names. */
+export interface MenuListItem {
+  id: string
+  /** Often content, such as a device's name, so its style is the caller's. */
+  label: string
+  icon?: Component
+  note?: TitleText
+  value?: string
+  indicator?: MenuIndicator
+  indicatorLabel?: SentenceText
+  disabledReason?: SentenceText
+}
 
 export const menuIconlessKey: InjectionKey<ComputedRef<boolean>> = Symbol('menuIconless')
 

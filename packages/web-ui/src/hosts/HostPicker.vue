@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { Cloud, Monitor, Plus } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
+import type { MenuListItem } from '@demicodes/web-ui/ui/menu-context'
+import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 import type { HostDeviceOption } from './types'
 
 const props = defineProps<{
@@ -15,18 +17,18 @@ const emit = defineEmits<{
   select: [id: string];
   connect: []
 }>()
-const items = computed(() =>
+const items = computed((): MenuListItem[] =>
   props.devices.map((device) => ({
     ...device,
     label: device.name,
     icon: Monitor,
-    note: device.online ? undefined : 'offline',
+    note: device.online ? undefined : 'Offline',
     indicator: device.online ? 'success' as const : 'muted' as const,
     indicatorLabel: device.online ? 'Online' : 'Offline',
     disabledReason: disabledReason(device),
   })),
 )
-function disabledReason(device: HostDeviceOption): string | undefined {
+function disabledReason(device: HostDeviceOption): SentenceText | undefined {
   if (device.id === props.selectedId) {
     return 'Current primary host.'
   }
@@ -48,7 +50,7 @@ function disabledReason(device: HostDeviceOption): string | undefined {
     :is-item-disabled="(item) => !!item.disabledReason"
     filterable
     filter-placeholder="Search hosts…"
-    empty-text="No hosts found"
+    empty-text="No Hosts Found"
     @select="emit('select', $event)"
   >
     <template #header>
@@ -61,7 +63,7 @@ function disabledReason(device: HostDeviceOption): string | undefined {
       />
       <MenuItem
         :icon="Plus"
-        label="Connect new device"
+        label="Connect New Device…"
         @select="emit('connect')"
       />
     </template>

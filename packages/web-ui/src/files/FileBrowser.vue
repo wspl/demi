@@ -383,7 +383,7 @@ onBeforeUnmount(() => pending?.abort())
                 :indicator-label="host.online ? 'Online' : 'Offline'"
                 :note="
                   host.id !== CLOUD_HOST_ID && !host.canWake && !host.online
-                    ? 'offline'
+                    ? 'Offline'
                     : undefined
                 "
                 :disabled="host.id !== CLOUD_HOST_ID && !host.online && !host.canWake"

@@ -1,4 +1,4 @@
-<script setup lang="ts" generic="T extends { id: string; label: string; icon?: import('vue').Component; note?: string; value?: string; indicator?: import('./MenuItem.vue').MenuIndicator; indicatorLabel?: string; disabledReason?: string }">
+<script setup lang="ts" generic="T extends import('./menu-context').MenuListItem">
 import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Search, CircleX } from '@lucide/vue'
@@ -22,8 +22,8 @@ const props = withDefaults(defineProps<{
   /** Drop the reserved icon column. Default for item lists that have no icons. */
   iconless?: boolean
 }>(), {
-  filterPlaceholder: 'Search...',
-  emptyText: 'No items found',
+  filterPlaceholder: 'Search…',
+  emptyText: 'No Items Found',
   autofocus: true,
   iconless: undefined,
 })
