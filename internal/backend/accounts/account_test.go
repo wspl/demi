@@ -1,4 +1,4 @@
-package accounts
+package accounts_test
 
 import (
 	"context"
@@ -7,12 +7,13 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/wspl/demi/internal/backend/accounts"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/webapi"
 )
 
 type accountStore struct {
-	Store
+	accounts.Store
 	account        *database.Account
 	lookups        int
 	passwordWrites int
@@ -83,9 +84,9 @@ func (p *testPasswords) Hash(context.Context, webapi.Password) (database.Passwor
 
 type sessionOpener struct{ users []webapi.UserID }
 
-func (s *sessionOpener) Open(_ context.Context, user webapi.UserID) (OpenedSession, error) {
+func (s *sessionOpener) Open(_ context.Context, user webapi.UserID) (accounts.OpenedSession, error) {
 	s.users = append(s.users, user)
-	return OpenedSession{Token: "cookie"}, nil
+	return accounts.OpenedSession{Token: "cookie"}, nil
 }
 
 func TestLoginLocksKnownAndUnknownAddresses(t *testing.T) {
@@ -102,15 +103,17 @@ func TestLoginLocksKnownAndUnknownAddresses(t *testing.T) {
 				}
 				passwords := &testPasswords{}
 				sessions := &sessionOpener{}
-				service := New(store, passwords, sessions, NewLoginLimiter())
+				limiter := accounts.NewLoginLimiter()
+				service := accounts.New(store, passwords, sessions, limiter)
 				credentials := webapi.Credentials{Email: "ana@example.test", Password: "incorrect"}
 				for range 5 {
-					if _, err := service.Login(t.Context(), credentials); !errors.Is(err, ErrInvalidCredentials) {
+					_, err := service.Login(t.Context(), credentials)
+					if !errors.Is(err, accounts.ErrInvalidCredentials) {
 						t.Fatalf("failure: %v", err)
 					}
 				}
 				passwords.valid = true
-				if _, err := service.Login(t.Context(), credentials); !errors.Is(err, ErrTooManyAttempts) {
+				if _, err := service.Login(t.Context(), credentials); !errors.Is(err, accounts.ErrTooManyAttempts) {
 					t.Fatalf("lock: %v", err)
 				}
 				if passwords.verified != 5 || store.lookups != 5 || len(sessions.users) != 0 {
@@ -122,10 +125,10 @@ func TestLoginLocksKnownAndUnknownAddresses(t *testing.T) {
 					if err != nil || signed.User.ID != "ana" || signed.Session.Token != "cookie" {
 						t.Fatalf("unlocked login: %+v %v", signed, err)
 					}
-					if service.limiter.Locked(credentials.Email) {
+					if limiter.Locked(credentials.Email) {
 						t.Fatal("success retained lock")
 					}
-				} else if !errors.Is(err, ErrInvalidCredentials) || passwords.dummy != 6 {
+				} else if !errors.Is(err, accounts.ErrInvalidCredentials) || passwords.dummy != 6 {
 					t.Fatalf("unknown account did not verify dummy: %v", err)
 				}
 			})
@@ -136,10 +139,10 @@ func TestLoginLocksKnownAndUnknownAddresses(t *testing.T) {
 func TestAccountAdministrationChecksRolesBeforeHashing(t *testing.T) {
 	store := &accountStore{account: &database.Account{User: webapi.UserDTO{ID: "target", Role: webapi.RoleAdmin}}}
 	passwords := &testPasswords{}
-	service := New(store, passwords, &sessionOpener{}, NewLoginLimiter())
+	service := accounts.New(store, passwords, &sessionOpener{}, accounts.NewLoginLimiter())
 	admin := webapi.UserDTO{Role: webapi.RoleAdmin}
 	create := webapi.CreateUser{Email: "new@example.test", Password: "password123", Role: webapi.NewRoleAdmin}
-	if _, err := service.Create(t.Context(), admin, create); !errors.Is(err, ErrOnlyMaster) {
+	if _, err := service.Create(t.Context(), admin, create); !errors.Is(err, accounts.ErrOnlyMaster) {
 		t.Fatalf("admin creating admin: %v", err)
 	}
 	if err := service.ResetPassword(
@@ -149,7 +152,7 @@ func TestAccountAdministrationChecksRolesBeforeHashing(t *testing.T) {
 		webapi.PasswordReset{Password: "password123"},
 	); !errors.Is(
 		err,
-		ErrLowerRolesOnly,
+		accounts.ErrLowerRolesOnly,
 	) {
 		t.Fatalf("peer reset: %v", err)
 	}
@@ -180,17 +183,17 @@ func TestSetupAndPasswordChange(t *testing.T) {
 	store := &accountStore{}
 	passwords := &testPasswords{}
 	sessions := &sessionOpener{}
-	service := New(store, passwords, sessions, NewLoginLimiter())
+	service := accounts.New(store, passwords, sessions, accounts.NewLoginLimiter())
 	request := webapi.SetupRequest{Email: "master@example.test", Password: "password123"}
 	signed, err := service.Setup(t.Context(), request)
 	if err != nil || signed.User.Role != webapi.RoleMaster || len(sessions.users) != 1 {
 		t.Fatalf("setup: %+v %v", signed, err)
 	}
-	if _, err := service.Setup(t.Context(), request); !errors.Is(err, ErrAlreadySetUp) {
+	if _, err := service.Setup(t.Context(), request); !errors.Is(err, accounts.ErrAlreadySetUp) {
 		t.Fatalf("second setup: %v", err)
 	}
 	change := webapi.PasswordChange{Current: "wrong", Next: "nextpassword"}
-	if err := service.ChangePassword(t.Context(), "master", change); !errors.Is(err, ErrCurrentPassword) {
+	if err := service.ChangePassword(t.Context(), "master", change); !errors.Is(err, accounts.ErrCurrentPassword) {
 		t.Fatalf("wrong password: %v", err)
 	}
 	if store.passwordWrites != 0 {

@@ -1,8 +1,9 @@
-package accounts
+package accounts_test
 
 import (
 	"testing"
 
+	"github.com/wspl/demi/internal/backend/accounts"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/database/databasetest"
 	"github.com/wspl/demi/internal/core"
@@ -17,7 +18,7 @@ func TestWebSessionLifecycle(t *testing.T) {
 	clock := &accountClock{at: "2026-01-01T00:00:00.000Z"}
 	control := databasetest.Control(t.Context(), t, clock)
 	user := databasetest.Master(t.Context(), t, control)
-	sessions := NewWebSessions(control)
+	sessions := accounts.NewWebSessions(control)
 	opened, err := sessions.Open(t.Context(), user.ID)
 	if err != nil {
 		t.Fatal(err)
