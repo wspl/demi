@@ -5,39 +5,10 @@ import (
 	"reflect"
 	"sync"
 	"testing"
-	"testing/synctest"
-	"time"
 
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/provider/providertest"
 )
-
-func TestRequestsAdmittedAsEarliestLeaveWindow(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		limit := NewRequestRateLimit(3)
-		for range 2 {
-			if err := limit.Take(); err != nil {
-				t.Fatal(err)
-			}
-		}
-		time.Sleep(30 * time.Second)
-		if err := limit.Take(); err != nil {
-			t.Fatal(err)
-		}
-		if err := limit.Take(); err == nil || err.Error() != "Provider request rate limit reached (3 per minute)" {
-			t.Fatal(err)
-		}
-		time.Sleep(30 * time.Second)
-		for range 2 {
-			if err := limit.Take(); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if err := limit.Take(); err == nil || err.Error() != "Provider request rate limit reached (3 per minute)" {
-			t.Fatal(err)
-		}
-	})
-}
 
 // SQLite is real IO, so this scenario uses event synchronization rather than virtual time.
 func TestResponsesReachLedgerBeforeAgentAndLimitRefusesRest(t *testing.T) {

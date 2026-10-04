@@ -1,4 +1,4 @@
-package providers
+package providers_test
 
 import (
 	"net/http"
@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/wspl/demi/internal/backend/providers"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/provider"
 )
@@ -32,7 +33,7 @@ func TestVendorCatalogMapsOnlySupportedProtocolsAndDoesNotFallback(t *testing.T)
 		}
 	}))
 	defer server.Close()
-	vendors := NewVendorCatalog(provider.NewModelsDevClient(server.Client(), server.URL, core.SystemClock{}))
+	vendors := providers.NewVendorCatalog(provider.NewModelsDevClient(server.Client(), server.URL, core.SystemClock{}))
 	list, err := vendors.Vendors(t.Context())
 	if err != nil || len(list) != 4 {
 		t.Fatal(list, err)
