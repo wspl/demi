@@ -11,6 +11,7 @@ import type {
   FileBrowserPlaceGroup,
   FileBrowserSource,
 } from './types'
+import type { HeadlineText, TitleText } from '../ui/ui-text'
 
 /**
  * The file browser as a modal: a plain title bar over the file browser, which
@@ -23,12 +24,12 @@ const props = defineProps<{
   mode: FileBrowserMode
   source: FileBrowserSource
   /** Defaults to `Open file` or `Select folder`. */
-  title?: string
+  title?: HeadlineText
   initialPath?: string
   places?: FileBrowserPlaceGroup[]
   hosts?: FileBrowserHost[]
   hostId?: string
-  confirmLabel?: string
+  confirmLabel?: TitleText
   confirmDisabled?: boolean
   confirmPending?: boolean
 }>()

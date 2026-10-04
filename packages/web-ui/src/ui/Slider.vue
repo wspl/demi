@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import { clamp } from '@demicodes/utils'
 import { disabledTooltip } from './disabled'
 import Tooltip from './Tooltip.vue'
+import type { SentenceText } from './ui-text'
 
 const props = withDefaults(defineProps<{
   modelValue: number
@@ -11,7 +12,7 @@ const props = withDefaults(defineProps<{
   step?: number
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
   /** The current value, formatted by the host, read out beside the track. */
   valueLabel?: string
 }>(), {

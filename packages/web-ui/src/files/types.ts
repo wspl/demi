@@ -7,6 +7,7 @@
  * convention translates at its boundary.
  */
 import type { Component } from 'vue'
+import type { SentenceText } from '../ui/ui-text'
 
 /** One row of a directory listing. Size and time are shown when the source knows them. */
 export interface FileBrowserEntry {
@@ -26,7 +27,7 @@ export interface FileBrowserEntry {
  */
 export interface FileBrowserFailure {
   kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'other'
-  message?: string
+  message?: SentenceText
 }
 
 export class FileBrowserError extends Error {

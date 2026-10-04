@@ -2,16 +2,17 @@
 import { computed } from 'vue'
 import { disabledTooltip } from './disabled'
 import Tooltip from './Tooltip.vue'
+import type { SentenceText } from './ui-text'
 
 defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(defineProps<{
   modelValue: boolean
-  label?: string
+  label?: SentenceText
   size?: 'sm' | 'md'
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
 }>(), {
   size: 'md',
 })

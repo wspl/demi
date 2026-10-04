@@ -22,6 +22,7 @@ import type { SettingsNavGroup, SettingsNavItem } from '../settings/types'
 import type { SidebarEntry } from '../sidebar/types'
 import type { IntentName, IntentPayloads, IntentRequest } from './intents'
 import type { OpenUserStream } from './streams'
+import type { HeadlineText, TitleText } from '../ui/ui-text'
 
 /**
  * A plugin's page (`plugin-pages.md`): the object it declares with
@@ -159,7 +160,7 @@ export interface PageContext {
   readonly settings: { open(section: string): void }
   readonly errors: {
     /** An error the user sees. */
-    report(message: string, error: unknown): void
+    report(message: HeadlineText, error: unknown): void
     /** A defect of the page itself, which only the console shows. */
     defect(message: string, error: unknown): void
   }
@@ -195,7 +196,7 @@ export interface PanelKind<Data, Session = undefined> {
    */
   content: Component
   /** The kind is offered on the strip's new-tab control; `data` is a new tab's. */
-  create?: { label: string; icon: Component; data(): Data }
+  create?: { label: TitleText; icon: Component; data(): Data }
   /**
    * The kind has one tab in every conversation's panel, ahead of the user's
    * tabs, which is never created, closed or saved; its data starts here and
@@ -215,7 +216,7 @@ export interface PanelKind<Data, Session = undefined> {
 
 export interface PluginSettingsSection {
   /** The label of the rail's group it joins. */
-  group: string
+  group: TitleText
   item: SettingsNavItem
   component: Component
   /**

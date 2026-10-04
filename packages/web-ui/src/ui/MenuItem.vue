@@ -8,6 +8,7 @@ import Popover from './Popover.vue'
 import Tooltip from './Tooltip.vue'
 import { ICON_PX } from './icon-metrics'
 import { disabledTooltip } from './disabled'
+import type { SentenceText, TitleText } from './ui-text'
 import {
   createSubmenuController,
   menuIconlessKey,
@@ -22,17 +23,17 @@ defineOptions({ inheritAttrs: false })
 
 const props = defineProps<{
   icon?: Component
-  label?: string
+  label?: TitleText
   value?: string
   /** A status dot: alone in the gutter, or on the icon's corner when there is one. */
   indicator?: MenuIndicator
   indicatorLabel?: string
   /** A quiet qualifier after the label, in parentheses: `offline`, `read-only`. */
-  note?: string
+  note?: TitleText
   isDanger?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
-  disabledReason?: string
+  disabledReason?: SentenceText
   shortcut?: string
   /** A choice row: shows the check gutter, reports aria-checked, and keeps the menu tree open. */
   choice?: boolean

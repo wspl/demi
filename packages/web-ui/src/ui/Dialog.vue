@@ -9,6 +9,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
 import { useOverlay } from '../composables/useOverlay'
+import type { HeadlineText } from './ui-text'
 
 /**
  * Size: md is the default compact panel, wide fits a settings row beside a
@@ -27,7 +28,7 @@ const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   size?: 'md' | 'wide' | 'lg' | 'xl' | 'full'
-  label?: string
+  label?: HeadlineText
   /** Every dialog closes from its top-right corner; a flow that must finish can hide it. */
   hideClose?: boolean
   /** False when the slot owns a body scroller beneath a fixed header. */
