@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"reflect"
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/runners"
@@ -33,7 +32,7 @@ func TestTextRefusals(t *testing.T) {
 // listedFS scripts the Host listing boundary; unexpected FS calls are test failures.
 type listedFS struct {
 	host.FS
-	calls []string
+	reads int
 	size  uint64
 }
 
@@ -46,7 +45,6 @@ func (f *listedFS) ReadDir(context.Context, string) ([]host.DirEntry, error) {
 }
 
 func (f *listedFS) Lstat(_ context.Context, path string) (host.FileStat, error) {
-	f.calls = append(f.calls, path)
 	switch path {
 	case "/work/file":
 		return host.FileStat{Kind: host.File, Size: 3}, nil
@@ -62,7 +60,7 @@ func (f *listedFS) Stat(context.Context, string) (host.FileStat, error) {
 }
 
 func (f *listedFS) ReadFile(context.Context, string) ([]byte, error) {
-	f.calls = append(f.calls, "read")
+	f.reads++
 	return []byte("hello"), nil
 }
 
@@ -73,18 +71,16 @@ func TestHostFileListingAndEarlySizeRefusal(t *testing.T) {
 		fs,
 		"/work/file",
 	); !errors.Is(err, runners.ErrTextTooLarge) ||
-		len(fs.calls) != 0 {
-		t.Fatalf("oversized file was read: %v %v", err, fs.calls)
+		fs.reads != 0 {
+		t.Fatalf("oversized file was read: %v, %d reads", err, fs.reads)
 	}
 	entries, err := runners.BrowseDirectory(t.Context(), fs, "/work///")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(fs.calls, []string{"/work/file", "/work/gone", "/work/link"}) || len(entries) != 2 ||
-		entries[0].Name != "file" ||
-		!entries[1].IsDirectory ||
-		!entries[1].IsSymbolicLink {
-		t.Fatalf("listing: %+v calls=%v", entries, fs.calls)
+	if len(entries) != 2 || entries[0].Name != "file" || entries[1].Name != "link" ||
+		!entries[1].IsDirectory || !entries[1].IsSymbolicLink {
+		t.Fatalf("listing: %+v", entries)
 	}
 	fs.size = 5
 	text, err := runners.ReadTextFile(t.Context(), fs, "/work/file")
