@@ -1,4 +1,4 @@
-package plugin
+package plugin_test
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/host"
+	"github.com/wspl/demi/internal/plugin"
 )
 
 // TestCommandPlacement protects tree-relative dispatch and checks without
@@ -33,7 +34,7 @@ func TestCommandPlacement(t *testing.T) {
 			handler,
 		),
 	)
-	p, err := NewCommandPlugin(PlacementDemi, []host.Declared{tree})
+	p, err := plugin.NewCommandPlugin(plugin.PlacementDemi, []host.Declared{tree})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,24 +42,25 @@ func TestCommandPlacement(t *testing.T) {
 	if err := p.Check(inv); err != nil {
 		t.Fatal(err)
 	}
-	reply, err := p.Call(t.Context(), &RequestCommand{Invocation: inv}, Port{})
+	reply, err := p.Call(t.Context(), &plugin.RequestCommand{Invocation: inv}, plugin.Port{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reply.(*ReplyExit).Code != 7 || strings.Join(inv.Path, " ") != "file list" {
+	if reply.(*plugin.ReplyExit).Code != 7 || strings.Join(inv.Path, " ") != "file list" {
 		t.Fatalf("reply %v, path %v", reply, inv.Path)
 	}
 	commands := p.ManifestCommands()
-	if len(commands) != 1 || declare.Name(commands[0].Tree.Node) != "file" || commands[0].Placement != PlacementDemi {
+	if len(commands) != 1 || declare.Name(commands[0].Tree.Node) != "file" ||
+		commands[0].Placement != plugin.PlacementDemi {
 		t.Fatalf("commands = %#v", commands)
 	}
-	_, err = p.Call(t.Context(), &RequestContext{}, Port{})
-	var failed *ErrorFailed
+	_, err = p.Call(t.Context(), &plugin.RequestContext{}, plugin.Port{})
+	var failed *plugin.ErrorFailed
 	if !errors.As(err, &failed) || failed.Message != "the plugin declares no context source" {
 		t.Fatalf("context = %v", err)
 	}
 	inv.Path = []string{"file", "missing"}
-	var usage *ErrorUsage
+	var usage *plugin.ErrorUsage
 	if err := p.Check(inv); !errors.As(err, &usage) {
 		t.Fatalf("unknown command = %v", err)
 	}
@@ -68,11 +70,11 @@ func TestCommandPlacement(t *testing.T) {
 // the directory/path rules at the Host installation boundary.
 func TestDirectoryIdentity(t *testing.T) {
 	blob := core.BlobRefOf([]byte("contents"))
-	d := HostDirectory{
+	d := plugin.HostDirectory{
 		Name:  "test",
-		Files: []DirectoryFile{{Path: "b", Blob: blob}, {Path: "a", Blob: blob, Executable: true}},
+		Files: []plugin.DirectoryFile{{Path: "b", Blob: blob}, {Path: "a", Blob: blob, Executable: true}},
 	}
-	reverse := HostDirectory{Name: "test", Files: []DirectoryFile{d.Files[1], d.Files[0]}}
+	reverse := plugin.HostDirectory{Name: "test", Files: []plugin.DirectoryFile{d.Files[1], d.Files[0]}}
 	if d.Digest() != reverse.Digest() {
 		t.Fatal("digest depends on declaration order")
 	}
@@ -83,17 +85,17 @@ func TestDirectoryIdentity(t *testing.T) {
 	if d.Digest() == reverse.Digest() {
 		t.Fatal("mode is missing from digest")
 	}
-	for _, dirs := range [][]HostDirectory{
+	for _, dirs := range [][]plugin.HostDirectory{
 		{{Name: "UPPER"}},
 		{{Name: "same"}, {Name: "same"}},
-		{{Name: "valid", Files: []DirectoryFile{{Path: "../escape"}}}},
-		{{Name: "valid", Files: []DirectoryFile{{Path: "a"}, {Path: "a"}}}},
+		{{Name: "valid", Files: []plugin.DirectoryFile{{Path: "../escape"}}}},
+		{{Name: "valid", Files: []plugin.DirectoryFile{{Path: "a"}, {Path: "a"}}}},
 	} {
-		if err := CheckDirectories(dirs); err == nil {
+		if err := plugin.CheckDirectories(dirs); err == nil {
 			t.Fatalf("invalid directory set accepted: %#v", dirs)
 		}
 	}
-	if err := CheckDirectories([]HostDirectory{d}); err != nil {
+	if err := plugin.CheckDirectories([]plugin.HostDirectory{d}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -101,25 +103,25 @@ func TestDirectoryIdentity(t *testing.T) {
 // TestErrorClassification protects the refusal and cancellation distinctions
 // used by the web and rpc adapters.
 func TestErrorClassification(t *testing.T) {
-	ended := RequestError(&host.PortError{Kind: host.PortEnded, Message: "cancelled"})
-	if _, ok := ended.(*ErrorEnded); !ok {
+	ended := plugin.RequestError(&host.PortError{Kind: host.PortEnded, Message: "cancelled"})
+	if _, ok := ended.(*plugin.ErrorEnded); !ok {
 		t.Fatalf("ended = %T", ended)
 	}
 	var port *host.PortError
-	if err := RPCError(ended); !errors.As(err, &port) || port.Kind != host.PortEnded {
+	if err := plugin.RPCError(ended); !errors.As(err, &port) || port.Kind != host.PortEnded {
 		t.Fatalf("rpc ended = %v", err)
 	}
-	conflict := &PortRefusalConflict{}
-	converted := RequestError(conflict)
+	conflict := &plugin.PortRefusalConflict{}
+	converted := plugin.RequestError(conflict)
 	if !errors.Is(converted, conflict) {
 		t.Fatal("refusal identity lost")
 	}
-	for _, r := range []Request{
-		&RequestCommand{}, &RequestContext{}, &RequestPageState{},
-		&RequestPageCall{}, &RequestPanelTab{}, &RequestTopic{},
+	for _, r := range []plugin.Request{
+		&plugin.RequestCommand{}, &plugin.RequestContext{}, &plugin.RequestPageState{},
+		&plugin.RequestPageCall{}, &plugin.RequestPanelTab{}, &plugin.RequestTopic{},
 	} {
-		_, err := (NoRequests{}).Call(t.Context(), r, Port{})
-		var failed *ErrorFailed
+		_, err := (plugin.NoRequests{}).Call(t.Context(), r, plugin.Port{})
+		var failed *plugin.ErrorFailed
 		if !errors.As(err, &failed) {
 			t.Fatalf("identity plugin accepted %T", r)
 		}
@@ -130,21 +132,21 @@ func TestErrorClassification(t *testing.T) {
 // alone would otherwise allow to be scalar, and validates plugin identifiers.
 func TestMessageObjectBoundaries(t *testing.T) {
 	for _, id := range []string{"", "execution", "UPPER", strings.Repeat("a", 33), "é"} {
-		_, err := ParseID(id)
+		_, err := plugin.ParseID(id)
 		want := `"` + id + `" is not a plugin id: 1 to 32 lowercase letters, digits and hyphens, not "execution"`
 		if err == nil || err.Error() != want {
 			t.Fatalf("id %q = %v", id, err)
 		}
 	}
-	if _, err := ParseID("a-1"); err != nil {
+	if _, err := plugin.ParseID("a-1"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := DecodeRequest(
+	if _, err := plugin.DecodeRequest(
 		[]byte(`{"type":"page_call","user":"aaaaaaaaaaaaaaaaaaaaaaaaaa","method":"x","params":[]}`),
 	); err == nil {
 		t.Fatal("array page params accepted")
 	}
-	if _, err := DecodePortMessage(
+	if _, err := plugin.DecodePortMessage(
 		[]byte(`{"type":"package_call","operation":{"package":"x","operation":"y"},"args":false,"kind":"looks"}`),
 	); err == nil {
 		t.Fatal("boolean package args accepted")
@@ -152,26 +154,26 @@ func TestMessageObjectBoundaries(t *testing.T) {
 }
 
 type answerTransport struct {
-	answer PortAnswer
+	answer plugin.PortAnswer
 	err    error
 }
 
-func (a answerTransport) Request(context.Context, PortMessage) (PortAnswer, error) {
+func (a answerTransport) Request(context.Context, plugin.PortMessage) (plugin.PortAnswer, error) {
 	return a.answer, a.err
 }
 
 // TestPortFailureRouting protects the distinction between a refusal, a broken
 // transport and an answer to the wrong operation, including the nested rpc port.
 func TestPortFailureRouting(t *testing.T) {
-	p := NewPort(answerTransport{answer: &PortAnswerDone{}})
+	p := plugin.NewPort(answerTransport{answer: &plugin.PortAnswerDone{}})
 	_, _, err := p.Value(t.Context(), "x")
 	var wrong *host.PortError
 	if !errors.As(err, &wrong) || wrong.Kind != host.UnexpectedReply || wrong.Asked != "read_value" ||
 		wrong.Answered != "done" {
 		t.Fatalf("wrong answer = %v", err)
 	}
-	refusal := &PortRefusalNotRunning{}
-	p = NewPort(answerTransport{answer: &PortAnswerRefused{Refusal: refusal}})
+	refusal := &plugin.PortRefusalNotRunning{}
+	p = plugin.NewPort(answerTransport{answer: &plugin.PortAnswerRefused{Refusal: refusal}})
 	_, _, err = p.Value(t.Context(), "x")
 	if !errors.Is(err, refusal) {
 		t.Fatalf("refusal = %v", err)
@@ -181,11 +183,11 @@ func TestPortFailureRouting(t *testing.T) {
 		t.Fatalf("rpc refusal = %v", err)
 	}
 	failure := errors.New("disconnected")
-	p = NewPort(answerTransport{err: failure})
+	p = plugin.NewPort(answerTransport{err: failure})
 	if err := p.RemoveExpose(t.Context(), ""); !errors.Is(err, failure) {
 		t.Fatalf("transport = %v", err)
 	}
-	p = NewPort(answerTransport{answer: &PortAnswerRPC{Response: &host.PortWritten{}}})
+	p = plugin.NewPort(answerTransport{answer: &plugin.PortAnswerRPC{Response: &host.PortWritten{}}})
 	if err := p.RPC().Stdout(t.Context(), []byte("x")); err != nil {
 		t.Fatal(err)
 	}
