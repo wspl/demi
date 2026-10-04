@@ -146,23 +146,18 @@ impl ProviderModel {
     /// conversation's model settings makes on this model (`models.md` § A
     /// conversation's model settings): an effort the model lists becomes its
     /// thinking setting at that effort, with the default summary;
-    /// [`THINKING_OFF`] turns thinking off when the model can; none is no
-    /// setting, the model's default, except on a model that cannot turn
-    /// thinking off, which thinks at its [`unnamed_effort`](Self::unnamed_effort).
+    /// [`THINKING_OFF`] turns thinking off when the model can; none is the
+    /// first effort the model lists, and no setting only on a model that
+    /// lists none.
     pub fn thinking_for(
         &self,
         effort: Option<&str>,
     ) -> Result<Option<ThinkingConfig>, UnavailableSetting> {
-        let effort = match effort {
-            Some(effort) => effort.to_owned(),
-            None => match self.unnamed_effort() {
-                Some(effort) => effort,
-                None => return Ok(None),
-            },
-        };
-        let effort = effort.as_str();
-        let unavailable = || UnavailableSetting::Effort(effort.to_owned());
         let capabilities = self.thinking_capabilities();
+        let Some(effort) = effort.or_else(|| first_effort(&capabilities)) else {
+            return Ok(None);
+        };
+        let unavailable = || UnavailableSetting::Effort(effort.to_owned());
         if effort == THINKING_OFF {
             // Off is a choice beside the efforts of a model that levels its
             // thinking.
@@ -178,7 +173,7 @@ impl ProviderModel {
             return Ok(Some(ThinkingConfig::Disabled {}));
         }
         capabilities
-            .into_iter()
+            .iter()
             .find_map(|capability| match capability {
                 ThinkingCapability::Adaptive { efforts, .. }
                     if efforts.iter().any(|listed| listed == effort) =>
@@ -194,40 +189,13 @@ impl ProviderModel {
                 } if efforts.iter().any(|listed| listed == effort) => {
                     Some(ThinkingConfig::Effort {
                         effort: effort.to_owned(),
-                        summary: default_summary,
+                        summary: *default_summary,
                     })
                 }
                 _ => None,
             })
             .map(Some)
             .ok_or_else(unavailable)
-    }
-
-    /// The thinking effort a conversation's model settings hold on this
-    /// model when a change names none (`models.md` § A conversation's model
-    /// settings). A model that cannot turn thinking off thinks at its default
-    /// effort when it lists it, else at the first it lists. A model that can
-    /// turn thinking off has none: its default is to send no thinking setting.
-    pub fn unnamed_effort(&self) -> Option<String> {
-        if self.can_disable_thinking != Some(false) {
-            return None;
-        }
-        self.thinking_capabilities()
-            .into_iter()
-            .find_map(|capability| match capability {
-                ThinkingCapability::Adaptive {
-                    efforts,
-                    default_effort,
-                }
-                | ThinkingCapability::Effort {
-                    efforts,
-                    default_effort,
-                    ..
-                } => default_effort
-                    .filter(|effort| efforts.contains(effort))
-                    .or_else(|| efforts.into_iter().next()),
-                _ => None,
-            })
     }
 
     /// The service tier `tier` of a conversation's model settings on this
@@ -293,6 +261,18 @@ impl ProviderModel {
             default_summary: None,
         }]
     }
+}
+
+/// The effort a conversation's model settings hold when a change names none
+/// (`models.md` § A conversation's model settings): the first the model's
+/// thinking capabilities list.
+fn first_effort(capabilities: &[ThinkingCapability]) -> Option<&str> {
+    capabilities.iter().find_map(|capability| match capability {
+        ThinkingCapability::Adaptive { efforts, .. } | ThinkingCapability::Effort { efforts, .. } => {
+            efforts.first().map(String::as_str)
+        }
+        _ => None,
+    })
 }
 
 /// A part of a conversation's model settings that its model does not offer.

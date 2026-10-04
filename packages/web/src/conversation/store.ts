@@ -815,6 +815,19 @@ export const useConversations = defineStore('conversations', () => {
     conversation.attachedHosts = result.hosts
   }
 
+  /**
+   * The patch that writes the whole of `settings` to a record. A model that
+   * lists no efforts has none to name; the backend chooses the first effort
+   * of one whose settings name none.
+   */
+  function settingsPatch(settings: ModelSettings): ConversationPatch {
+    return {
+      model: { providerId: settings.providerId, modelId: settings.modelId },
+      ...(settings.thinkingEffort === null ? {} : { thinkingEffort: settings.thinkingEffort }),
+      serviceTierId: settings.serviceTierId,
+    }
+  }
+
   async function patch(id: string, changes: ConversationPatch): Promise<boolean> {
     const signal = lifetime.signal
     const sentAt = product.sent()
@@ -1013,8 +1026,9 @@ export const useConversations = defineStore('conversations', () => {
     const result = await readResponse(response, conversationAnswerSchema)
     signal.throwIfAborted()
     product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
-    // The first send writes the conversation's model settings to its record,
-    // each part its model no longer offers as the model's default.
+    // The first send writes the conversation's model settings to its record:
+    // for a part its model no longer offers, the model's first effort and the
+    // vendor's default tier.
     const shown = shownSettings(conversation)
     const listed = lookupSelectedModel(resources.modelsFor(), shown.providerId, shown.modelId)
     const settings = listed ? offeredSettings(shown, listed.model) : null
@@ -1023,13 +1037,7 @@ export const useConversations = defineStore('conversations', () => {
         title: conversation.title,
         target: conversation.target,
         pinned: conversation.pinned,
-        ...(settings
-          ? {
-              model: { providerId: settings.providerId, modelId: settings.modelId },
-              thinkingEffort: settings.thinkingEffort,
-              serviceTierId: settings.serviceTierId,
-            }
-          : {}),
+        ...(settings ? settingsPatch(settings) : {}),
       }))
     ) {
       throw new Error(
@@ -1318,13 +1326,7 @@ export const useConversations = defineStore('conversations', () => {
     try {
       await writes.run(async () => {
         signal.throwIfAborted()
-        const body = settings
-          ? {
-              model: { providerId: settings.providerId, modelId: settings.modelId },
-              thinkingEffort: settings.thinkingEffort,
-              serviceTierId: settings.serviceTierId,
-            }
-          : change
+        const body = settings ? settingsPatch(settings) : change
         if (!(await patch(conversation.id, body))) {
           return
         }

@@ -1871,7 +1871,7 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
         service_tier_id: tier.map(str::to_owned),
     };
     let chosen = choose(&backend, &master, FIRST, &provider, "m").await;
-    assert_eq!(chosen.model, Some(settings("m", None, None)));
+    assert_eq!(chosen.model, Some(settings("m", Some("low"), None)));
 
     // Page A raises the effort, and page B, another sign-in that has not
     // read that, turns Fast on: the value ends with both, and page A reads
@@ -2000,22 +2000,26 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
     backend.close().await;
 }
 
-/// A model that cannot turn thinking off always thinks at an effort its
-/// settings name (`models.md` § A conversation's model settings): a choice
-/// that names none takes the model's default, else the first effort it
-/// lists, so what every page shows is what the request sends.
+/// A change that names no effort takes the first effort the model lists,
+/// on a model that can turn thinking off too (`models.md` § A conversation's
+/// model settings): the settings never leave thinking to the vendor, and the
+/// request carries the effort every page shows. A patch cannot name no
+/// effort with null.
 #[tokio::test]
-async fn a_model_that_cannot_turn_thinking_off_shows_the_effort_its_requests_carry() {
+async fn a_change_that_names_no_effort_takes_the_first_effort_the_model_lists() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
-    // The provider's own directory: its models level their thinking, cannot
-    // turn it off, and name no default effort.
-    let provider = anthropic(&backend, &master, &vendor).await;
+    // Configured models can turn thinking off and list `low` first.
+    let body = json!({
+        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "baseUrl": vendor.url("/v1"), "models": [leveled("m", None), leveled("n", None)]
+    });
+    let provider = entry(&backend, &master, body).await;
     create(&backend, &master, FIRST).await;
-    let chosen = choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let effort =
         |summary: ConversationSummary| summary.model.and_then(|model| model.thinking_effort);
+    let chosen = choose(&backend, &master, FIRST, &provider, "m").await;
     assert_eq!(effort(chosen).as_deref(), Some("low"));
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
@@ -2027,17 +2031,29 @@ async fn a_model_that_cannot_turn_thinking_off_shows_the_effort_its_requests_car
         (&json!("adaptive"), &json!("low"))
     );
 
-    // Asking for the model's default names that effort again.
+    // A switch from thinking off that names no effort takes the new model's
+    // first effort as well.
     let path = format!("/api/conversations/{FIRST}");
-    backend
-        .patch(&path, &master, json!({ "thinkingEffort": "high" }))
+    let off = backend
+        .patch(&path, &master, json!({ "thinkingEffort": "disabled" }))
         .await;
-    let reset = backend
+    assert_eq!(
+        effort(off.json::<ConversationUpdate>().conversation).as_deref(),
+        Some("disabled")
+    );
+    let switch = json!({ "model": { "providerId": provider, "modelId": "n" } });
+    let switched = backend.patch(&path, &master, switch).await;
+    assert_eq!(
+        effort(switched.json::<ConversationUpdate>().conversation).as_deref(),
+        Some("low")
+    );
+
+    let null = backend
         .patch(&path, &master, json!({ "thinkingEffort": null }))
         .await;
     assert_eq!(
-        effort(reset.json::<ConversationUpdate>().conversation).as_deref(),
-        Some("low")
+        null.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
     );
     backend.close().await;
 }

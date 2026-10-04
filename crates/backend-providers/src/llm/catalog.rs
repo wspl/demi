@@ -170,7 +170,6 @@ impl ProviderAssembly {
             .into_iter()
             .map(|model| CatalogModel {
                 selection: model.selection(entry.id.as_str(), None, None),
-                unnamed_effort: model.unnamed_effort(),
                 model,
             })
             .collect();
