@@ -236,7 +236,7 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 | `agent spawn` | none | profile, description, JSON output | task brief |
 | `agent send`, `resume` | id | JSON output | message |
 | `agent abort`, `show` | id | JSON output | unused |
-| `agent list` | none | JSON output | unused |
+| `agent list`, `profiles` | none | JSON output | unused |
 | `host shell` | one quoted script | host | streamed to the remote program |
 | `host list`, `current` | none | none | unused |
 
