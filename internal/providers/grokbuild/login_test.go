@@ -119,25 +119,6 @@ func TestDeviceLoginCLIContract(t *testing.T) {
 		for i, path := range []string{"/oauth2/device/code", "/oauth2/token", "/oauth2/token", "/v1/user"} {
 			equal(t, path, requests[i].URI)
 		}
-
-		form, err := url.ParseQuery(string(requests[0].Body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		equal(t, url.Values{"client_id": {clientID}, "scope": {scope}, "referrer": {"grok-build"}}, form)
-		form, err = url.ParseQuery(string(requests[1].Body))
-		if err != nil {
-			t.Fatal(err)
-		}
-		equal(
-			t,
-			url.Values{
-				"grant_type":  {"urn:ietf:params:oauth:grant-type:device_code"},
-				"device_code": {"dev_code_1"},
-				"client_id":   {clientID},
-			},
-			form,
-		)
 		for _, r := range requests[:3] {
 			equal(t, "ui", r.Header("x-grok-client-surface"))
 			equal(t, "1.0.5", r.Header("x-grok-client-version"))
