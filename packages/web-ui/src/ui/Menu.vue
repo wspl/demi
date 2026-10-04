@@ -5,6 +5,7 @@ import { Search, CircleX } from '@lucide/vue'
 import HighlightText from './HighlightText.vue'
 import MenuItem from './MenuItem.vue'
 import { createSubmenuController, menuIconlessKey, menuSubmenuKey } from './menu-context'
+import { provideLayerElevation } from '../overlay/layerElevation'
 import { ICON_PX } from './icon-metrics'
 import type { HeadlineText, PlaceholderText } from './ui-text'
 
@@ -69,6 +70,8 @@ const iconless = computed(() => {
 })
 
 provide(menuIconlessKey, iconless)
+
+const elevation = provideLayerElevation()
 
 const submenus = createSubmenuController()
 provide(menuSubmenuKey, submenus)
@@ -158,6 +161,7 @@ function handleKeydown(event: KeyboardEvent) {
     ref="panelRef"
     class="overlay-panel overlay-menu rounded-lg text-fg outline-none"
     :class="filterable ? 'min-w-48' : 'min-w-40'"
+    :style="{ '--elevation': elevation }"
     tabindex="-1"
     @keydown="handleKeydown"
   >

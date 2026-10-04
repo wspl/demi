@@ -8,6 +8,7 @@ import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
+import { provideLayerElevation } from '../overlay/layerElevation'
 import { useOverlay } from '../composables/useOverlay'
 import type { HeadlineText } from './ui-text'
 
@@ -50,6 +51,8 @@ const family = createOverlayFamily()
 provide(overlayFamilyKey, family)
 const nested = inject(dialogNestingKey, false)
 provide(dialogNestingKey, true)
+// What opens in the dialog floats above it and its cards.
+provideLayerElevation()
 
 const id = useOverlay(
   props.overlayStore,

@@ -21,6 +21,7 @@ import { onClickOutside } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayFamilyKey } from '../overlay/overlayFamily'
+import { useLayerElevation } from '../overlay/layerElevation'
 import { useOverlay } from '../composables/useOverlay'
 import type { SentenceText } from './ui-text'
 
@@ -74,6 +75,7 @@ const slots = useSlots()
 const overlayStore = computed(() => props.overlayStore ?? appOverlayStore)
 // A trigger inside an exclusive panel (a menu row) may still hint; triggers outside yield to it.
 const family = inject(overlayFamilyKey, null)
+const elevation = useLayerElevation()
 const blockedByExclusive = computed(() => family == null && overlayStore.value.hasExclusive())
 const hasOverlay = computed(() => !!slots.overlay)
 const hasContent = computed(() => !!props.content?.trim() || hasOverlay.value)
@@ -288,7 +290,7 @@ onBeforeUnmount(() => {
             ? 'max-w-xs p-2'
             : 'max-w-xs px-3 py-2 text-xs leading-relaxed'
           : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4'"
-        :style="floatingStyles"
+        :style="{ ...floatingStyles, '--elevation': elevation }"
         role="tooltip"
       >
         <slot v-if="hasOverlay" name="overlay" />

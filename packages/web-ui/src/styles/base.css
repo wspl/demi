@@ -60,6 +60,8 @@
   --surface-float: #303030;
   /* Large modal panels sit one step above the page, not on the menu layer. */
   --surface-dialog: var(--surface-raised);
+  /* How much lighter each floating layer is than the one it floats over (floating layers, below). */
+  --elevation-step: 8%;
   --overlay: white;
   --fg-emphasis: #f5f5f5;
   --fg: #e5e5e5;
@@ -143,6 +145,8 @@
   --surface-raised: #edeef3;
   --surface-float: #ffffff;
   --surface-dialog: var(--surface-float);
+  /* Light layers are white; they part by their hairline and shadow, not by fill. */
+  --elevation-step: 0%;
   --overlay: black;
   --fg-emphasis: #1a1d24;
   --fg: #2e3138;
@@ -276,11 +280,23 @@ svg.lucide {
   background: var(--accent-fill);
 }
 
-/* Floating shell: one step above raised + a hairline brighter
-   than the fill. Composer stays on surface-raised; menus must not. */
+/* Floating layers. A layer that floats over another is lighter than what it sits on, as
+   macOS dark menus are: a submenu over a menu over a dialog over the page, each a step up,
+   so no two layers that touch share a fill. A floating surface's fill is surface-float
+   mixed toward white by one --elevation-step for each layer under it; --elevation is the
+   surface's own count, 1 over the page, set by useLayerElevation
+   (overlay/layerElevation.ts). A dialog counts as a layer, so a menu opened in it steps
+   above the dialog's float cards, but keeps its surface-dialog fill: its scrim already
+   sets it apart from whatever is beneath, a dialog included. An edge is a light hairline
+   over a dark one, then a drop (--shadow-overlay; --shadow-2xl for dialogs).
+   Composer stays on surface-raised; menus must not. */
 .overlay-shell,
 .overlay-panel {
-  background: var(--surface-float);
+  background: color-mix(
+    in oklab,
+    var(--surface-float),
+    white calc((var(--elevation, 1) - 1) * var(--elevation-step))
+  );
   box-shadow: var(--shadow-overlay);
 }
 
