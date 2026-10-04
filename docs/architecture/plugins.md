@@ -94,8 +94,9 @@ exposes from Expose. A plugin that only gives the agent a `demi <group>`
 command group and shows nothing is named Demi *Group* Commands, such as Demi
 File Commands. The description is one full sentence, in sentence style, that
 says what the plugin does for the user and names its command when it has one,
-such as "Gives a service on one of your hosts a public URL for an hour, with
-`demi expose`." The gallery's Writing page has the capitalization rules.
+as plain text since settings show it as written, such as "Gives a service on
+one of your hosts a public URL for an hour, with demi expose." The gallery's
+Writing page has the capitalization rules.
 
 ### Commands
 
