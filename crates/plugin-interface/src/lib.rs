@@ -24,4 +24,4 @@ pub use port::{
     ExposeRefusal, HostDirectory, HostEntry, HostFile, HostRead, HostRole, PluginPort,
     PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, StoredValue,
 };
-pub use request::{PluginError, Reply, Request};
+pub use request::{PanelTabChange, PluginError, Reply, Request};

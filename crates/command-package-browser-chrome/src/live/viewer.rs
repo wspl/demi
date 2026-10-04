@@ -549,6 +549,7 @@ impl Session<'_> {
                 url: listed.url.clone(),
                 created_by: listed.tab.created_by().clone(),
                 viewport: listed.tab.viewport(),
+                loading: listed.tab.loading(),
             })
             .collect();
         self.writer

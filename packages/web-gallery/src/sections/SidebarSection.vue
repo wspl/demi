@@ -36,7 +36,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Row',
-    'A title and one quiet dot: breathing while running, blue for a result waiting to be read, orange when the conversation needs the user, a faint ring when settled. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline.'
+    'A title and one quiet dot: breathing while running, blue for a result waiting to be read, orange when the conversation needs the user, a faint ring when settled. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list\'s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
@@ -44,7 +44,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Keys',
-    'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌘⇧P pins; Alt+↑↓ reorders the focused entry.'
+    'The list is one tab stop. ↑↓ move and select, Shift+↑↓ extend, ⌘↑↓ jump to the ends, Space toggles, Enter opens a row or folds a project, ← → fold and unfold, ⌘A selects all, Esc collapses to the open conversation, F2 renames, ⌘⇧P pins; Alt+↑↓ reorders the focused entry. The focused entry scrolls into view, clear of the headings that stick above it.'
   ],
   [
     'Bottom',

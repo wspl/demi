@@ -131,6 +131,21 @@ impl Socket {
         self.socket.send(Message::Text(text.into())).await.unwrap();
     }
 
+    /// Sends `text`, which the backend may refuse while it is still on its
+    /// way: the socket's failure then reaches the send first, as a broken
+    /// pipe or a reset, and the next read finds the socket closed.
+    pub(crate) async fn send_refused_text(&mut self, text: String) {
+        match self.socket.send(Message::Text(text.into())).await {
+            Ok(()) => {}
+            Err(tokio_tungstenite::tungstenite::Error::Io(error))
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::BrokenPipe | std::io::ErrorKind::ConnectionReset
+                ) => {}
+            Err(error) => panic!("the send failed otherwise: {error}"),
+        }
+    }
+
     async fn next(&mut self) -> Received {
         loop {
             let message = tokio::time::timeout(self.patience, self.socket.next())

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { TAB_HISTORY } from '@demicodes/web-ui/agent/tab-close'
 
 const localStateSchema = z.object({
   hiddenProviders: z.array(z.string()),
@@ -7,11 +8,12 @@ const localStateSchema = z.object({
   foldedProjects: z.array(z.string()),
   /** The sidebar's width in px; absent until the reader resizes it. */
   sidebarWidth: z.number().int().optional(),
-  /** The work panel's width in px; absent until the reader resizes it. */
   /** The work panel's share of the width it splits with the conversation. */
   asideShare: z.number().min(0).max(1).optional(),
   /** Whether the work panel is open, keyed by conversation id. */
   workPanelOpen: z.record(z.string(), z.boolean()).optional(),
+  /** What this page's work panel selected, tabs' ids and pinned kinds', the newest last, keyed by conversation id. */
+  workPanelHistory: z.record(z.string(), z.array(z.string()).max(TAB_HISTORY)).optional(),
 })
 export type LocalState = z.infer<typeof localStateSchema>
 

@@ -5,10 +5,11 @@
 use demi_host_interface::{PortError, RpcError, RpcInvocation};
 use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::panel::PanelTab;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{PortFailure, PortRefusal};
+use crate::{PortFailure, PortRefusal, Topic};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -54,6 +55,32 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         conversation: Option<ConversationId>,
     },
+    /// The user created or removed a tab of one of the plugin's panel
+    /// kinds; the backend applied the change and answered the page
+    /// (`plugins.md` § Panel kinds). `tab` is the tab as it was created, or
+    /// as it was when it was removed.
+    PanelTab {
+        user: UserId,
+        conversation: ConversationId,
+        change: PanelTabChange,
+        tab: PanelTab,
+    },
+    /// A topic the plugin is told about fired, for the user or for
+    /// `conversation` (`plugins.md` § Topics).
+    Topic {
+        user: UserId,
+        topic: Topic,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        conversation: Option<ConversationId>,
+    },
+}
+
+/// What the user did to a tab of the plugin's panel kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PanelTabChange {
+    Created,
+    Removed,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,6 +102,8 @@ pub enum Reply {
     State { state: Value },
     /// A page call's result, valid against the method's result schema.
     Result { result: Value },
+    /// A request that answers nothing, such as a `panel_tab` or a `topic`.
+    Done,
 }
 
 /// Why a plugin gave up on a request.

@@ -210,8 +210,6 @@ export interface PanelKind<Data, Session = undefined> {
     file?(payload: IntentPayloads['file'], current: Data | null): Data
     edit?(payload: IntentPayloads['edit'], current: Data | null): Data
   }
-  /** The user closed a tab of this kind; the panel has already removed it. */
-  removed?(data: Data, tab: KindTab<Session>): void
 }
 
 export interface PluginSettingsSection {
@@ -438,7 +436,7 @@ function bindKind(
         })
     },
   })
-  const { badge, picked, removed } = kind
+  const { badge, picked } = kind
   return {
     kind: kind.kind,
     schema: kind.schema,
@@ -457,7 +455,6 @@ function bindKind(
           },
         })
       : undefined,
-    removed: removed && ((data) => removed(data, tab)),
   }
 }
 

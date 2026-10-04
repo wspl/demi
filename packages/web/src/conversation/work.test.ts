@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { deferred } from '@demicodes/utils'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { useSession } from '../auth/session'
@@ -7,8 +6,9 @@ import { identitySchema } from '../api/generated/web-api'
 import { readLocalState } from '../state/local'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
-import { productState } from '../__tests__/product-state'
-import type { PanelState } from '@demicodes/web-ui/agent/panel-tabs'
+import { conversationSummary, productState } from '../__tests__/product-state'
+import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
+import { useConversations } from './store'
 import { useWorkPanel } from './work'
 
 const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
@@ -92,7 +92,7 @@ test('a retained edit opens in the Change view with the panel, only while the ch
   await nextTick()
   expect(readLocalState('one').workPanelOpen?.a).toBe(true)
   // The edit takes the selection in the Change view's pinned tab; nothing is saved over a panel that was never read.
-  expect(state.panel.selection).toBe('change')
+  expect(state.panel.history).toEqual(['change'])
   expect(state.pinned.change).toMatchObject({ mode: 'conversation', call: { commandId: 'call' } })
   signIn('two')
   await nextTick()
@@ -102,55 +102,99 @@ test('a retained edit opens in the Change view with the panel, only while the ch
   expect(state.open).toBe(true)
 })
 
-test('the saved panel is read once, keeps what the user did before it arrived, and saves leave in order', async () => {
-  signIn('one')
-  const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch')
-  let stored: PanelState = { selection: 'change', tabs: [{ id: 'tab-1', kind: 'browser', data: { url: 'about:blank' } }] }
-  let reads = 0
-  const puts: unknown[] = []
-  let heldRead: ReturnType<typeof deferred<void>> | null = null
-  globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
-    if (init?.method === 'PUT') {
-      const body = JSON.parse(String(init.body))
-      puts.push(body)
-      stored = body
-      return new Response(null, { status: 204 })
+/**
+ * Answers the work panel's routes as the backend does, from `stored`,
+ * counting its reads and keeping each change it was sent.
+ */
+function stubPanelRoutes(stored: { revision: number; tabs: PanelTab[] }) {
+  const route = { stored, reads: 0, sent: [] as { method: string; path: string; body: unknown }[] }
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const path = new URL(String(input), 'http://page.test').pathname
+    const method = init?.method ?? 'GET'
+    if (method === 'GET') {
+      route.reads += 1
+      return Response.json(route.stored)
     }
-    reads += 1
-    const answer = JSON.stringify(stored)
-    await heldRead?.promise
-    return new Response(answer, { status: 200, headers: { 'content-type': 'application/json' } })
+    route.sent.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : null })
+    route.stored = { ...route.stored, revision: route.stored.revision + 1 }
+    return Response.json({ revision: route.stored.revision })
   }) as typeof fetch
-  try {
-    const work = useWorkPanel()
-    // The read is on its way while the user already acts: what they did stays.
-    heldRead = deferred<void>()
-    const reading = work.load('a')
-    work.add('a', 'page', { url: 'https://example.test/', expose: null }, { select: true })
-    heldRead.resolve()
-    await reading
-    expect(work.stateFor('a').panel.tabs.map((tab) => tab.kind)).toEqual(['browser', 'page'])
+  return route
+}
 
-    // The panel is not read again: the page's state is the newest there is.
-    work.update('a', 'tab-1', { url: 'about:blank', tab: 't_bound' })
-    await work.load('a')
-    expect(reads).toBe(1)
-    expect(work.stateFor('a').panel.tabs[0]!.data).toEqual({ url: 'about:blank', tab: 't_bound' })
+const fetchDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'fetch')
 
-    // Changes made while a save is out leave afterwards, the latest last.
-    work.update('a', 'tab-1', { url: 'https://example.test/', tab: 't_bound' })
-    work.select('a', 'tab-1')
-    for (let turn = 0; turn < 10; turn++) {
-      await Promise.resolve()
-    }
-    expect(puts.at(-1)).toMatchObject({
-      selection: 'tab-1',
-      tabs: [{ id: 'tab-1', kind: 'browser', data: { url: 'https://example.test/', tab: 't_bound' } }, { kind: 'page' }],
-    })
-    expect(stored).toEqual(work.stateFor('a').panel)
-  } finally {
-    if (fetchDescriptor) {
-      Object.defineProperty(globalThis, 'fetch', fetchDescriptor)
-    }
+afterEach(() => {
+  if (fetchDescriptor) {
+    Object.defineProperty(globalThis, 'fetch', fetchDescriptor)
   }
+})
+
+async function settled(): Promise<void> {
+  for (let turn = 0; turn < 20; turn++) {
+    await Promise.resolve()
+  }
+}
+
+test('a new conversation\'s panel reads and sends nothing until its first send creates the record', async () => {
+  signIn('one')
+  const route = stubPanelRoutes({ revision: 0, tabs: [] })
+  const conversations = useConversations()
+  const id = conversations.create()
+  const work = useWorkPanel()
+  work.load(id)
+  const tab = work.add(id, 'page', { url: 'https://example.test/' })
+  await settled()
+  // The tab shows at once, selected, and nothing reached the backend.
+  expect(work.stateFor(id).panel).toEqual({ history: [tab], tabs: [{ id: tab, kind: 'page', data: { url: 'https://example.test/' } }] })
+  expect(work.recorded(id)).toBe(false)
+  expect(route.reads).toBe(0)
+  expect(route.sent).toEqual([])
+
+  // What the first send's record does: the panel is read, and what the user opened before is sent.
+  conversations.items.find((item) => item.id === id)!.persistence = 'synced'
+  work.load(id)
+  await settled()
+  expect(route.reads).toBeGreaterThan(0)
+  expect(route.sent).toEqual([{
+    method: 'POST',
+    path: `/api/conversations/${id}/panel/tabs`,
+    body: { id: tab, kind: 'page', data: { url: 'https://example.test/' } },
+  }])
+})
+
+test('the selection is this page\'s own, and a higher revision in the summary reads the panel again', async () => {
+  signIn('one')
+  const route = stubPanelRoutes({ revision: 1, tabs: [{ id: 'p1', kind: 'page', data: { url: 'https://a.test/' } }] })
+  const conversations = useConversations()
+  const id = conversations.create()
+  conversations.items.find((item) => item.id === id)!.persistence = 'synced'
+  const product = useProduct()
+  const summary = (panelRevision: number) => productState({ conversations: [conversationSummary(id, '', { panelRevision })] })
+  product.snapshot = summary(1)
+  const work = useWorkPanel()
+  work.load(id)
+  await settled()
+  expect(work.stateFor(id).panel.tabs.map((tab) => tab.id)).toEqual(['p1'])
+  work.select(id, 'p1')
+  await nextTick()
+  expect(readLocalState('one').workPanelHistory).toEqual({ [id]: ['p1'] })
+
+  // Another page added a tab: its summary's revision rose.
+  route.stored = { revision: 2, tabs: [...route.stored.tabs, { id: 'p2', kind: 'page', data: { url: 'https://b.test/' } }] }
+  product.snapshot = summary(2)
+  await settled()
+  expect(work.stateFor(id).panel).toEqual({
+    history: ['p1'],
+    tabs: [
+      { id: 'p1', kind: 'page', data: { url: 'https://a.test/' } },
+      { id: 'p2', kind: 'page', data: { url: 'https://b.test/' } },
+    ],
+  })
+
+  // Closing the tab the page went to last leaves the one before it, which a reload shows again.
+  work.select(id, 'p2')
+  work.closeTabs(id, ['p2'])
+  await nextTick()
+  expect(readLocalState('one').workPanelHistory).toEqual({ [id]: ['p1'] })
 })

@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { FolderTree } from '@lucide/vue'
-import { useElementSize } from '@vueuse/core'
+import { useElementSize, usePreferredReducedMotion } from '@vueuse/core'
 import IconButton from '../ui/IconButton.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import { CONTENT_MIN_WIDTH, TREE_WIDTH } from './file-view'
+import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
 
 /**
  * The frame a file view sits in: a header row, and under it the view with a
@@ -15,7 +15,10 @@ import { CONTENT_MIN_WIDTH, TREE_WIDTH } from './file-view'
  * `width`). A frame too narrow for that hides the tree on its own, and the
  * control then shows it over the view at the same width, until the control,
  * a click on the view beside it or a pick in it (`dismiss`) puts it away.
- * Once the frame is wide enough again, the tree docks if `open`.
+ * Once the frame is wide enough again, the tree docks if `open`. Showing
+ * and hiding move: a docked tree grows from the end and the view gives way,
+ * and a tree over the view slides in from the end. A hidden tree stays
+ * mounted, so it shows again as it was left, with no reading.
  */
 defineProps<{
   /** The tree in its control's words: `file tree` reads "Show file tree". */
@@ -68,6 +71,60 @@ function dismiss(): void {
   over.value = false
 }
 
+const motion = usePreferredReducedMotion()
+
+/**
+ * The tree's keyframes from hidden to shown: a docked tree grows its width
+ * from nothing, which the view beside it gives up; one over the view slides
+ * in from the end.
+ */
+function shownFrames(): Keyframe[] {
+  if (docks.value) {
+    const docked = `${width.value}px`
+    return [
+      { flexBasis: '0px', width: '0px' },
+      { flexBasis: docked, width: docked },
+    ]
+  }
+  return [{ transform: 'translateX(100%)' }, { transform: 'none' }]
+}
+
+/** The tree's move under way, which a show or hide in its midst turns around. */
+let moving: Animation | null = null
+
+/**
+ * Moves the tree to shown, or back to hidden, and ends the transition when it
+ * is there. A move that turns another around starts where that one was: the
+ * reversed curve is the same at the mirrored time.
+ */
+function move(element: Element, direction: PlaybackDirection, done: () => void): void {
+  const turned = moving?.currentTime
+  // The turned move's transition was cancelled before this one began, so its end is never reported.
+  moving?.cancel()
+  moving = null
+  if (motion.value === 'reduce') {
+    done()
+    return
+  }
+  const animation = element.animate(shownFrames(), {
+    duration: TREE_MOTION_MS,
+    easing: 'ease-out',
+    direction,
+  })
+  if (typeof turned === 'number') {
+    animation.currentTime = TREE_MOTION_MS - turned
+  }
+  moving = animation
+  // A cancelled move rejects; whoever cancelled it has its own transition under way.
+  animation.finished.then(
+    () => {
+      moving = null
+      done()
+    },
+    () => {},
+  )
+}
+
 defineExpose({ show, dismiss })
 </script>
 
@@ -85,14 +142,15 @@ defineExpose({ show, dismiss })
         />
       </Tooltip>
     </div>
-    <div ref="body" class="relative flex min-h-0 flex-1 border-t border-line">
+    <!-- It clips a tree on its way in or out at the end. -->
+    <div ref="body" class="relative flex min-h-0 flex-1 overflow-hidden border-t border-line">
       <!-- Its own stacking context: nothing in the view rises over a tree shown above it. -->
       <div class="relative isolate min-w-0 flex-1">
         <slot />
       </div>
-      <template v-if="$slots.tree && shown">
+      <template v-if="$slots.tree">
         <ResizeHandle
-          v-if="docks"
+          v-if="shown && docks"
           v-model="width"
           side="end"
           :min="TREE_WIDTH.min"
@@ -100,16 +158,27 @@ defineExpose({ show, dismiss })
           :default-value="TREE_WIDTH.default"
           :label="name"
         />
-        <!-- Behind a tree shown over the view: a click beside the tree puts it away. -->
-        <div v-else class="absolute inset-0 z-10 bg-black/50" @click="dismiss" />
-        <!-- The tree's width is the divider's; flex must not grow or shrink it. -->
-        <div
-          class="border-l border-line"
-          :class="docks ? '' : 'absolute inset-y-0 right-0 z-10 max-w-full'"
-          :style="{ flex: `0 0 ${width}px`, width: `${width}px` }"
+        <!-- Behind a tree shown over the view: a click beside the tree puts it away. The view stays as it is,
+             as beside an open menu; the tree's shadow sets it above. -->
+        <div v-else-if="shown" class="absolute inset-0 z-10" @click="dismiss" />
+        <Transition
+          :css="false"
+          @enter="(element, done) => move(element, 'normal', done)"
+          @leave="(element, done) => move(element, 'reverse', done)"
         >
-          <slot name="tree" />
-        </div>
+          <!-- The tree's width is the divider's; flex must not grow or shrink it. While a docked tree grows or
+               shrinks, its content keeps that width and the frame cuts it. -->
+          <div
+            v-show="shown"
+            class="overflow-hidden border-l border-line"
+            :class="docks ? '' : 'absolute inset-y-0 right-0 z-10 max-w-full shadow-lg'"
+            :style="{ flex: `0 0 ${width}px`, width: `${width}px` }"
+          >
+            <div class="h-full" :class="docks ? '' : 'w-full'" :style="docks ? { width: `${width}px` } : undefined">
+              <slot name="tree" />
+            </div>
+          </div>
+        </Transition>
       </template>
     </div>
   </div>

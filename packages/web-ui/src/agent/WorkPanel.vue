@@ -26,6 +26,11 @@ const props = defineProps<{
   /** The pinned tabs' data, by kind. */
   pinned: PinnedTabs
   kinds: readonly PanelTabKind[]
+  /**
+   * The conversation's first send has not created it yet, so it has no
+   * working directory: the body says when files and changes appear.
+   */
+  beforeFirstMessage?: boolean
 }>()
 const emit = defineEmits<{
   select: [selection: string]
@@ -163,9 +168,9 @@ function closeScope(scope: TabCloseScope): void {
       </div>
       <div
         v-else
-        class="flex flex-1 select-none flex-col items-center justify-center gap-1 text-[13px] text-fg-faint"
+        class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-6 text-center text-[13px] text-fg-faint"
       >
-        <span>Nothing open</span>
+        <span>{{ beforeFirstMessage ? 'Files and changes appear after the first message.' : 'Nothing open' }}</span>
       </div>
       </slot>
     </div>

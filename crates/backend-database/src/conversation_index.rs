@@ -46,6 +46,9 @@ pub struct ConversationRecord {
     pub updated_at: Timestamp,
     /// The revision of the conversation's draft, 0 before its first save.
     pub draft_revision: u64,
+    /// The revision of the conversation's work panel, 0 before its first
+    /// change.
+    pub panel_revision: u64,
 }
 
 /// A conversation whose tree saved a yield wakeup, with its owner and when
@@ -201,7 +204,8 @@ const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
      target_path, target_workspace_id, context_version, model, user_messages, titled_messages,
      created_at, updated_at,
-     COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision";
+     COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
+     COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision";
 
 /// A target as its typed columns: the kind and what the kind names.
 pub struct TargetColumns {
@@ -742,6 +746,11 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             "conversation_drafts",
             "revision",
             u64::try_from(row.get::<_, i64>("draft_revision")?),
+        )?,
+        panel_revision: decode(
+            "conversation_panels",
+            "revision",
+            u64::try_from(row.get::<_, i64>("panel_revision")?),
         )?,
     })
 }

@@ -55,6 +55,9 @@ pub(crate) fn page() -> Page {
         .user_state(State::new::<ExposeState>().follows(Topic::Exposes))
         .method(Method::new::<ExposeCall, ()>("renew", Scope::User))
         .method(Method::new::<ExposeCall, ()>("remove", Scope::User))
+        // The `page` tabs an expose opens: the page keeps them, and nothing
+        // follows from their creation or removal on the backend.
+        .panel_kind("page")
 }
 
 pub(crate) async fn state(port: &PluginPort) -> Result<Value, PluginError> {

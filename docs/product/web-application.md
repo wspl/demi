@@ -71,6 +71,35 @@ The gallery is the reference for components, appearance, layout, and interaction
 examples. Those details are not duplicated in design documents. This document
 covers only the web app's technology and architectural boundaries.
 
+## Responding to the user
+
+The page shows what an action of the user does the moment the user acts, in
+the form it will keep, and lets the backend and the Host catch up behind it.
+For example, the user presses the work panel's new-tab control: the browser tab
+stands in the strip at once, selected, with its address bar on `about:blank`
+and a blank page, which is what a new tab shows. The tab in the conversation
+browser opens behind it, and its first picture replaces the blank page without
+anything else changing. If the user types an address and presses Enter before
+that tab exists, the address bar shows the address at once, the page shows that
+it loads, and the tab opens on the address the user last asked for.
+
+- **What the page knows, it shows.** A result the page can tell beforehand,
+  such as a new tab, a closed tab, a moved tab or a typed address, is shown
+  at once and never as a loading state.
+- **What it cannot know, it shows as loading, in its place.** A page that
+  loads, a file being read or a list not yet received is unknown until it
+  arrives. Its loading shows where the result will stand, such as a progress
+  line over the page a tab still shows, and never replaces what is already
+  known: a tab keeps its last picture while the next page loads or while the
+  view reconnects.
+- **Later wishes wait their turn.** An action that needs an earlier one to
+  land first, such as navigating a tab that is still opening, is kept as the
+  user's latest wish and carried out once it can be; a wish the user replaced
+  before then is never carried out.
+- **Only a failure interrupts.** When the backend or the Host refuses what
+  the user did, the page says so where it happened and offers to try again,
+  and shows what is really there again.
+
 ## Work panel
 
 The work panel shows one tab at a time. Its frame belongs to the shell; every
@@ -78,8 +107,8 @@ tab it shows is of a kind a plugin registers ([Work panel kinds](../architecture
 
 ```text
 pinned      one tab of each pinned kind, in the page's memory: change, file
-tabs        [{ id, kind, data }], in the user's order, saved
-selection   a tab's id or a pinned kind's id, saved
+tabs        [{ id, kind, data }], in order, the backend's, with a revision
+history     the tabs' and pinned kinds' ids this page selected, newest last
 ```
 
 - **Pinned tabs.** A pinned kind, such as the Change view's `change` and the
@@ -87,10 +116,13 @@ selection   a tab's id or a pinned kind's id, saved
   user's tabs. It is never created, closed, listed or saved; its `data`, such
   as the file it shows and what Back returns to, stays in memory for the
   page's lifetime. Its id is its kind's id.
-- **Tabs.** A tab is a saved fact: a tab of this kind stands here, with this
-  `data`. It has no status, no error and no stored title. Whether its content
-  is loading, disconnected or refused is the content's own runtime state, shown
-  inside the tab's content and never written to the tab.
+- **Tabs.** A tab is a fact the backend keeps for the conversation: a tab of
+  this kind stands here, with this `data`. The user, from any page, and the
+  plugin that owns the kind change the tabs, and the backend orders every
+  change ([Work panel state](web-api.md#work-panel-state)), so every page
+  shows the same tabs. A tab's `data` is what its kind needs to show it
+  again; whether its content is loading or disconnected right now is the
+  content's own runtime state and is not written to the tab.
 - **Kinds.** A kind registers what the panel needs to show its tabs: the
   mark, the title derived from `data`, the content component, a schema for
   `data`, whether the user can create one from the strip, whether it is
@@ -98,26 +130,49 @@ selection   a tab's id or a pinned kind's id, saved
   else about a kind. What protocol, stream or route a tab's content uses is
   the kind's own business, behind its content component. A new kind is a new
   registration and changes neither the panel nor the tab state.
-- **Selection.** The saved selection names a tab or a pinned kind. When it
-  names nothing the page shows, as for a conversation that never saved or a
-  plugin turned off, the panel selects its first tab.
+- **Selection.** Each page keeps its own selection history for each
+  conversation, in the account's local preferences beside whether the panel
+  is open, so two pages never take the selection from each other. Selecting
+  a tab moves it to the newest end; a closed tab leaves the history; it keeps
+  at most 100 entries, more than a panel has tabs. The panel shows the newest
+  entry it still shows. So closing the shown tab shows the tab selected
+  before it: a user who went from File to tab A to tab B and closes B sees A,
+  and closing A then shows File. The same holds for a tab another page
+  closed or a plugin turned off. When no entry is left, the panel shows its
+  first tab, the Change view.
+- **Before the first send.** A new conversation has no backend record yet,
+  and so no working directory on a Host
+  ([Persistence and adapters](#persistence-and-adapters)). Its panel binds no
+  plugin page and neither reads nor saves the panel: it shows its frame,
+  which says that files and changes appear once the first message is sent.
+  When the first send creates the record, the pinned tabs appear and the
+  panel's tabs are read, as for any conversation.
 
-The tab state is ordinary state with `add`, `update`, `remove`, `move` and
-`select`. Every change applies to the page first and is then saved
-([Work panel state](web-api.md#work-panel-state)); a save that fails is
-reported as any failed save is and retried with the next change. A kind's
-content reaches its own tab only through `update` of its `data`.
+The page changes the tabs with four operations: `create`, `update`, which
+sets some of a tab's `data` fields and leaves the others, `remove` and
+`move`. The page shows each change at once
+([Responding to the user](#responding-to-the-user)) and sends it to the
+backend, one at a time and in order. What the page shows is the panel it last
+read with the changes not yet in it applied on top: a change leaves that list
+once the page has read a panel whose revision is at least the one the
+change's answer named. A panel read after the page removed a tab therefore
+never brings the tab back, and a tab the page created keeps its id, its place
+and its content when the backend's panel takes it over. A change the backend
+refuses leaves the list, the page shows the panel as the backend has it, and
+the refusal is reported as any failed write is. A kind's content reaches its
+own tab only through `update` of its `data`.
 
-For example, the user presses the strip's new-tab control. The panel adds
-`{ id, kind: 'browser', data: { url: 'about:blank' } }`, selects it and saves.
-The tab is there at once, whatever the Host is doing. Its content then asks
-for a tab in the conversation browser, writes that tab's id into `data`, and
-shows the page live; while that takes time or fails, the content says so and
-offers to try again ([Live browser view](../browser/live-view.md#a-browser-tab-in-the-panel)).
+For example, the user presses the strip's new-tab control. The page creates
+`{ id, kind: 'browser', data: { url: 'about:blank' } }` with a new id, selects
+it and sends the change. The tab is there at once, whatever the Host is doing.
+The browser plugin, told by the backend that its user created the tab, opens a
+tab in the conversation browser and writes that tab's id into `data`; the
+content shows the page live from then on
+([Live browser view](../browser/live-view.md#a-browser-tab-in-the-panel)).
 
-A tab is removed only by its user. A tab whose `data` does not fit its kind's
-schema, or whose kind the page does not know, stays in the strip and its
-content says that it cannot be shown; the page never repairs or drops it.
+A tab whose `data` does not fit its kind's schema, or whose kind the page does
+not know, stays in the strip and its content says that it cannot be shown;
+the page never repairs or drops it.
 
 The kinds:
 
@@ -125,7 +180,7 @@ The kinds:
 | --- | --- | --- | --- |
 | `change` | `changes` | Pinned: the conversation's changes, in Uncommitted and Conversation mode ([Changes](file-previews.md#changes)) | The `edit` intent |
 | `file` | `file-browser` | Pinned: one file of the conversation's Host, with its tree ([File previews](file-previews.md)) | The `file` intent |
-| `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The strip's new-tab control; the agent's `open`, which the kind adds as a tab |
+| `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The strip's new-tab control; the plugin, for a tab the agent or a page opened |
 | `page` | `expose` | A page in the user's own browser, in a sandboxed iframe | Only an [expose](../execution/expose.md#product-surface), on its URL |
 
 A `page` tab loads the `http` or `https` address the user submits in its
@@ -271,6 +326,7 @@ Each synced state follows the copy with its own rule:
 | Read state | Each summary's `readRevision` and `unread` | An acknowledgement only moves forward |
 | Model settings | Each summary's `model` | A change names only the part its user changed ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)) |
 | Drafts | Each summary's `draftRevision` | A page that shows the conversation reads the draft when the revision is higher than its own ([Drafts](#drafts)) |
+| Work panel tabs | Each summary's `panelRevision` | A page whose panel is open reads the tabs when the revision is higher than its own, and shows its own changes over them ([Work panel](#work-panel)) |
 | Preferences | `preferences` | A change shows at once, and the part it changed stays as the user set it until its write is answered |
 | The account, workspaces, devices, providers, the Cloud and each plugin's state | Their parts | The page shows what the backend holds |
 
@@ -375,8 +431,7 @@ same upload adapter ([Attachments](product.md#attachments)); no message
 carries a file's bytes. The product reports the time zone and languages of the
 user's browser to the user's preferences when they change.
 The work panel keeps one file selection and one change selection per
-conversation. Closing the selected tab selects its nearest remaining
-predecessor, then the first remaining tab, then Change.
+conversation.
 The change summary comes from the uncommitted working-tree source, refreshed
 while the panel is visible, independently of which section is selected.
 Historical edit selection follows

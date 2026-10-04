@@ -75,51 +75,78 @@ User's browser (Demi web)   Backend                        Host (Cloud or paired
 ## A browser tab in the panel
 
 The live view is the content of the work panel's `browser`
-[tab kind](../product/web-application.md#work-panel). The panel's tabs are the user's
-saved state and know nothing of this document; everything below is the kind's
-own business. A `browser` tab's `data` is `{ url, tab? }`: the address it
-shows, and the id of the conversation browser's tab it is bound to, once it
-has one.
+[tab kind](../product/web-application.md#work-panel). The backend keeps the
+panel's tabs ([Work panel state](../product/web-api.md#work-panel-state)), and
+`plugin-browser` takes part in its kind's tabs on the backend
+([Panel kinds](../architecture/plugins.md#panel-kinds)). A `browser` tab's
+`data` is:
+
+| Field | Written by | Meaning |
+| --- | --- | --- |
+| `url` | The page, and the plugin | The address the tab shows, or the one the user last asked for while the tab has no browser tab yet |
+| `tab` | The plugin | The id of the conversation browser's tab it shows, once it has one |
+| `closed` | The plugin | The browser no longer has that tab |
+| `failure` | The plugin | `{ code, message }`: why the plugin could not open a browser tab for it |
 
 ```text
-work panel tab state        browser kind                         backend / Host
-  add / update / remove  <-- tab source: list, open, close  -->  plugin-browser's tab methods
-                         <-- content: one view, while shown <==> browser user stream
+page                         backend (panel, plugin-browser)            Host
+ create { url } ───────────▶ panel: the tab, at once
+                             plugin: open on the latest url ──────────▶ browser.open
+                             panel: { tab: "t3" } ◀──────────────────── t3
+ view: watch t3 ◀═══════════════════ browser user stream ═════════════▶ pictures, tab list
 ```
 
-- **Opening.** The strip's control adds a tab with `url: 'about:blank'` and no
-  `tab`. Its content, once shown, asks the backend to
-  [open a tab](#the-tab-methods) on that URL and writes the
-  answer's id into `data`. That request is ordinary demand: it wakes a stopped
-  Cloud and starts the environment as the agent's first `open` does. Meanwhile
-  the content shows that the browser is starting; a refusal shows its message
-  with Retry. None of this is written to the tab.
-- **Showing.** A bound tab's content opens the view (below) and watches its
-  `tab`. The address bar follows the page and saves the URL into `data` as it
-  changes.
-- **Closing.** The user's close removes the panel tab at once and then asks
-  the backend to close the browser's tab; closing the last one ends the
-  environment, as the agent's `close` does.
-- **The agent's tabs.** The page's panel session follows the plugin's
-  conversation state, the browser's [tab list](#the-tab-methods), which the
-  page reads when the panel opens and whenever its revision rises: after each
-  job of the conversation ends, since the agent's commands open and close
-  tabs, and after each of the user's own calls. It also takes the list from
-  every `state` message of an open view. A browser tab that no panel tab is
-  bound to is added as a panel tab, after the others and without taking the
-  selection.
+- **Opening.** The strip's control creates a tab with `url: 'about:blank'`
+  and selects it. Its content shows at once what a new tab is: the address
+  bar on `about:blank` and a blank page
+  ([Responding to the user](../product/web-application.md#responding-to-the-user)).
+  The backend tells the plugin, which opens a browser tab on the tab's `url`
+  as it is when the open starts, starting the environment when needed and
+  waking a stopped Cloud as the agent's first `open` does, and writes the
+  browser's tab id into `tab`. If the user asked for another address
+  meanwhile, the plugin then loads the address the user last asked for. If
+  the user closed the panel tab meanwhile, the plugin closes the browser's
+  tab. The first picture replaces the blank page.
+- **Navigating.** The user's address writes `url` at once and shows the page
+  loading; once the tab has a browser tab, the content also asks the browser
+  to load it ([The tab methods](#the-tab-methods)). Back, Forward and Reload
+  are requests on the bound tab. While the browser loads the tab's page, the
+  content shows a progress line over the picture it still shows, from the
+  user's request until the tab list says the page stopped loading. The
+  address bar follows the page and writes its URL into `url` as it changes.
+- **Showing.** A tab with a browser tab shows it on the page's one view
+  (below). A view that reconnects keeps the last picture and its address, and
+  a stall shows as a quiet note over it; the content never replaces a picture
+  with a waiting message. A view waiting to reconnect connects at once when
+  the shown tab gets a browser tab, so a view that ended while the browser
+  did not run never makes a new tab wait.
+- **Closing.** The user's close removes the panel tab at once. The backend
+  tells the plugin, which closes the browser's tab; closing the last one ends
+  the environment, as the agent's `close` does.
+- **The agent's tabs.** When a job of the conversation ends, the plugin reads
+  the browser's [tab list](#the-tab-methods) and creates a panel tab for each
+  tab it did not open for a panel tab, with the id `browser-<tab>`, after the
+  others. A tab id is used once per conversation, so a tab the user closed
+  never comes back, and a tab is added once however often the list is read.
 - **A tab gone from the Host.** The agent closed it, the browser ended, the
-  Cloud stopped, or the Host restarted. The panel tab stays: the kind never
-  removes a tab. Its content says that the page was closed on the device and
-  offers two ways on: Close tab, and Reload, which opens a new browser tab on
-  the saved URL and binds to it. A reopened page shares storage only while the
-  same browser environment remains alive. Retirement removes its temporary
-  profile; a new environment starts with fresh storage
-  ([Lifetime](browser.md#lifetime)).
+  Cloud stopped, or the Host restarted. When the plugin reads the list and a
+  panel tab's browser tab is missing, it sets `closed`. The panel tab stays:
+  its content says that the page was closed on the device and offers Close
+  tab, and Reload, which asks the plugin to open a new browser tab on the
+  saved URL. A view that finds its watched tab gone asks the plugin to read
+  the list. A reopened page shares storage only while the same browser
+  environment remains alive. Retirement removes its temporary profile; a new
+  environment starts with fresh storage ([Lifetime](browser.md#lifetime)).
+- **One conversation's work in order.** The plugin opens, closes and reads
+  the list for one conversation one piece of work at a time, so it never
+  adds a tab for a browser tab it is opening for a panel tab, and never marks
+  a tab closed on a list read before the tab opened.
 - **A Host that cannot be reached.** A stopped Cloud, an offline device, or a
-  lost connection changes no tab. The content of the shown tab says what is
-  wrong, reconnects by itself where that can help, and offers Retry where it
-  cannot.
+  lost connection changes no tab. The content keeps what it shows and says
+  over it what is wrong, reconnects by itself where that can help, and offers
+  Retry where it cannot.
+- **A plugin that could not open a browser tab** sets `failure`; the content
+  shows the message with Retry, which asks the plugin to open it again.
 - **A user's browser that cannot decode the pictures.** The page decodes the
   pictures, H.264 High ([Capture](#capture)), with the viewer's WebCodecs, and
   some users' browsers have no decoder for them: a Chromium built without
@@ -433,6 +460,17 @@ themselves only. Interleaving is expected behavior:
 Keys and buttons held down are tracked per source, each viewer and each agent
 command. A source's end releases only what it holds.
 
+The page takes the newest input, never a backlog of old input. Chrome answers
+a dispatched event only once the page's renderer has handled it, and a busy
+renderer answers slowly, while a trackpad sends a wheel turn every frame. So
+input that arrives while the tab is still taking the previous event does not
+wait behind it to be delivered one by one: consecutive wheel turns with the
+same modifiers become one turn with their deltas summed, at the latest point,
+and consecutive pointer moves with the same buttons become the latest one.
+For example, a two-second flick that queued 200 small turns behind a busy page
+scrolls the whole distance in the next turn Chrome takes, and stops when the
+fingers stop. Any other input ends the merge, and is delivered in order.
+
 | Input | Delivery |
 | --- | --- |
 | Keys | One key event per key, carrying the character it types; Enter carries `\r`, so newlines, form submission and button activation work. The key mapping is the one the agent's `key` and `type` commands use. |
@@ -530,23 +568,28 @@ been checked either.
 ## The tab methods
 
 The `browser` kind reads the conversation browser's tabs as
-`plugin-browser`'s conversation state, and opens, closes and navigates them
-through its page methods, called for the conversation the panel shows
-([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins),
-[Plugin calls](../product/web-api.md#plugin-calls)). The state and each method
-run the operation the agent's command runs, `browser.tabs`, `browser.open`, `browser.close`,
-`browser.goto`, `browser.back`, `browser.forward` or `browser.reload`, with a
-`user` caller, as a [package call](../architecture/plugins.md#calling-its-command-package).
+`plugin-browser`'s conversation state, for the tabs' titles, and moves its
+bound tabs through the plugin's page methods, called for the conversation the
+panel shows ([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins),
+[Plugin calls](../product/web-api.md#plugin-calls)). Opening and closing
+browser tabs for panel tabs is the plugin's own work on the backend
+([A browser tab in the panel](#a-browser-tab-in-the-panel)). The state, the
+methods and that work run the operations the agent's commands run,
+`browser.tabs`, `browser.open`, `browser.close`, `browser.goto`,
+`browser.back`, `browser.forward` and `browser.reload`, with a `user` caller,
+as [package calls](../architecture/plugins.md#calling-its-command-package).
 What happens inside a tab travels on the plugin's `browser` user stream. A
 user waits in the panel, not in a script: for a `user` caller `open`, `goto`,
 `back`, `forward` and `reload` start their work and answer at once, without
-waiting for the page to load, and the tab's content shows the loading.
+waiting for the page to load, and the tab's content shows the loading. Each
+tab in the tab list and in the view's `state` carries `loading`: whether the
+browser is loading its top-level page.
 
 | State or method | Parameters | Does | A stopped Cloud |
 | --- | --- | --- | --- |
-| Conversation state | None | `{ tabs: [{ id, title, url, createdBy }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
-| `open` | `url`, optional, `about:blank` by default | Opens a tab, starting the environment when needed, and returns `{ tab }` | Is woken: opening a tab is ordinary demand |
-| `close` | `tab` | Closes the tab, also when the browser no longer has it | Is not woken: returns nothing |
+| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
+| `bind` | `panelTab` | Opens a browser tab for a panel tab that has none, or whose browser tab is closed or failed to open, as for a new tab | Is woken: opening a tab is ordinary demand |
+| `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a job | Is not woken: every bound tab is closed |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |
 | `history` | `tab`, `action`: `back`, `forward` or `reload` | Moves the tab or reloads it | Is not woken: refused with `host_stopped` |
 
@@ -571,12 +614,12 @@ crate and package; for the live view:
 | `command-package-browser-protocol` | The live protocol: its message types, the frame kinds, the frame header, the frame limit and the video codec; the capture extension's messages. The web app receives the live protocol as generated TypeScript in `@demicodes/protocol`. |
 | `command-package-browser-chrome`'s `live` | The live view module: viewers, capture control, delivery and congestion, heartbeat, input, viewport modes and screen ratio, and the page observers of watched tabs with their script, served by the live hub and the capture channel. |
 | `command-package-browser-chrome`'s `driver` | The capture extension as an embedded resource, the capture channel it connects to, and launch configuration. |
-| `command-package-browser-chrome`'s `tabs` | Each tab's viewport, dialog and the upload directory the viewers' files go to. |
+| `command-package-browser-chrome`'s `tabs` | Each tab's viewport, dialog, whether it loads its top-level page, and the upload directory the viewers' files go to. |
 | `demi-browser` | Starting the live hub of each browser it runs, and the conversation browser that the viewer trait reaches. |
 | `command-protocol`, `command-sdk`, the runner's crates, `runner-protocol`, `backend-remote-host` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
-| `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream; its conversation state, the tab list, following the `jobs` topic, and the [tab methods](#the-tab-methods), which call the browser's own operations and hold no browser logic. |
+| `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream and the `browser` panel kind; its conversation state, the tab list, following the `jobs` topic; the [tab methods](#the-tab-methods); and its kind's tabs: opening and closing browser tabs for the panel tabs its user creates and closes, adding the agent's tabs and marking gone ones, one conversation's work at a time. It calls the browser's own operations and holds no browser logic. |
 | `backend` | The user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the plugin call routes and the conversation state route. None names the browser. |
-| `@demicodes/plugin-browser` | The `browser` tab kind: its panel session, which follows the plugin's conversation state and adds the agent's tabs; opening and closing tabs through the plugin's tab methods; and its content, the live view over the plugin's `browser` user stream: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab is opening, gone, or out of reach, or in a user's browser that cannot decode the pictures. The live protocol's schemas are generated into the package. It is built from the plugin SDK's primitives ([Plugin pages](../architecture/plugin-pages.md)). |
+| `@demicodes/plugin-browser` | The `browser` tab kind: its panel session, which follows the plugin's conversation state for the tabs' titles and keeps the page's one view; and its content, the live view over the plugin's `browser` user stream: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab opens or loads, is gone or out of reach, or in a user's browser that cannot decode the pictures. The live protocol's schemas are generated into the package. It is built from the plugin SDK's primitives ([Plugin pages](../architecture/plugin-pages.md)). |
 | `web`, `web-gallery` | The product's page context over the plugin call routes, the conversation state route and the user stream route; a gallery client that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
 | `cloud-guest-image` | Fonts for Chinese, Japanese and Korean text in the Cloud guest image. |
 

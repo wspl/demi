@@ -13,6 +13,7 @@ use demi_host_interface::{PortError, PortTransport};
 use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use demi_web_api_protocol::exposes::ExposeAddress;
 use demi_web_api_protocol::ids::{DeviceId, ExposeId};
+use demi_web_api_protocol::panel::{Applied, PanelChange, PanelDocument, PanelTab, WorkPanel};
 use futures_util::future::LocalBoxFuture;
 use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
@@ -88,8 +89,8 @@ pub struct PackageCall {
 /// plugin's values and the blobs they name, the user's blobs, the plugin's
 /// Host directories, the files of the conversation's main Host, the
 /// conversation's Hosts, the user's exposes on a clock the test sets, the
-/// package calls a test answers, and how often the plugin marked its state
-/// as changed.
+/// package calls a test answers, how often the plugin marked its state
+/// as changed, and the conversation's work panel.
 pub struct TestDemi {
     /// The plugin whose port this is, which names its directories' paths.
     pub plugin: RefCell<PluginId>,
@@ -113,6 +114,9 @@ pub struct TestDemi {
     /// Each package call the plugin made.
     pub called: RefCell<Vec<PackageCall>>,
     changed: Cell<u32>,
+    /// The conversation's work panel and its revision, which the plugin's
+    /// changes and a test's, as the page's, go through.
+    panel: RefCell<(u64, PanelDocument)>,
     /// Woken at each port message the plugin sends.
     answered: tokio::sync::Notify,
 }
@@ -143,6 +147,7 @@ impl TestDemi {
             package_calls: RefCell::default(),
             called: RefCell::default(),
             changed: Cell::new(0),
+            panel: RefCell::default(),
             answered: tokio::sync::Notify::new(),
         }
     }
@@ -196,6 +201,37 @@ impl TestDemi {
         self.changed.get()
     }
 
+    /// The conversation's work panel.
+    pub fn panel(&self) -> WorkPanel {
+        let (revision, document) = &*self.panel.borrow();
+        WorkPanel {
+            revision: *revision,
+            tabs: document.tabs.clone(),
+        }
+    }
+
+    /// The tab `id` of the work panel, if it has one.
+    pub fn panel_tab(&self, id: &str) -> Option<PanelTab> {
+        self.panel
+            .borrow()
+            .1
+            .tabs
+            .iter()
+            .find(|tab| tab.id == id)
+            .cloned()
+    }
+
+    /// Applies `change` to the work panel, as a page's change or the
+    /// plugin's goes through the backend, and answers what it came to.
+    pub fn change_panel(&self, change: PanelChange) -> Applied {
+        let mut panel = self.panel.borrow_mut();
+        let applied = panel.1.apply(change);
+        if matches!(applied, Applied::Effect(_)) {
+            panel.0 += 1;
+        }
+        applied
+    }
+
     /// The live exposes, as the port lists them.
     pub fn live_exposes(&self) -> Vec<ExposeRecord> {
         let now = self.now.get();
@@ -210,6 +246,22 @@ impl TestDemi {
         self.exposes
             .borrow_mut()
             .retain(|expose| expose.device != *device);
+    }
+
+    fn panel_answer(&self, change: PanelChange) -> Result<PortAnswer, PortRefusal> {
+        let code = match self.change_panel(change) {
+            Applied::Effect(_) | Applied::Nothing => {
+                return Ok(PortAnswer::PanelRevision {
+                    revision: self.panel.borrow().0,
+                });
+            }
+            Applied::Full => demi_web_api_protocol::error::ErrorCode::PanelFull,
+            Applied::TooLarge => demi_web_api_protocol::error::ErrorCode::TooLarge,
+        };
+        Err(PortRefusal::Panel {
+            code,
+            message: "the work panel refused the change".into(),
+        })
     }
 
     fn answer(&self, message: PortMessage) -> Result<PortAnswer, PortRefusal> {
@@ -299,6 +351,14 @@ impl TestDemi {
                 });
                 PortAnswer::Called { result: result? }
             }
+            PortMessage::PanelTabs => PortAnswer::Panel {
+                panel: self.panel(),
+            },
+            PortMessage::CreatePanelTab { tab } => self.panel_answer(PanelChange::Create(tab))?,
+            PortMessage::UpdatePanelTab { id, data } => {
+                self.panel_answer(PanelChange::Update { id, data })?
+            }
+            PortMessage::RemovePanelTab { id } => self.panel_answer(PanelChange::Remove { id })?,
             PortMessage::ConversationHosts => PortAnswer::Hosts {
                 hosts: self.hosts.borrow().clone(),
             },

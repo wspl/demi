@@ -197,6 +197,14 @@ pub struct Page {
     pub conversation: Option<State>,
     #[serde(default)]
     pub methods: Vec<Method>,
+    /// The work panel kinds whose tabs the backend keeps and the plugin
+    /// takes part in (`plugins.md` § Panel kinds).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub panel_kinds: Vec<String>,
+    /// The topics the plugin itself is told about, with a `topic` request
+    /// (`plugins.md` § Topics).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub told: Vec<Topic>,
 }
 
 impl Page {
@@ -207,7 +215,22 @@ impl Page {
             user: None,
             conversation: None,
             methods: Vec::new(),
+            panel_kinds: Vec::new(),
+            told: Vec::new(),
         }
+    }
+
+    /// The backend keeps the tabs of the work panel kind `kind`, which the
+    /// plugin takes part in.
+    pub fn panel_kind(mut self, kind: impl Into<String>) -> Self {
+        self.panel_kinds.push(kind.into());
+        self
+    }
+
+    /// The plugin is told when `topic` fires.
+    pub fn told(mut self, topic: Topic) -> Self {
+        self.told.push(topic);
+        self
     }
 
     pub fn user_state(mut self, state: State) -> Self {

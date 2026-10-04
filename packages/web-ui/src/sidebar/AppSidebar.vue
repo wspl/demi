@@ -8,6 +8,7 @@ import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import { copyConversationId } from '../agent/copy-conversation-id'
 import type {
   ListLoad,
@@ -63,8 +64,11 @@ const emit = defineEmits<{
 const collapsedProjects = defineModel<string[]>('collapsedProjects', { default: () => [] })
 const renamingId = ref<string | null>(null)
 const listRef = ref<HTMLElement>()
+const scrollArea = ref<InstanceType<typeof ScrollArea>>()
+/** The element the list scrolls in. */
+const scroller = computed(() => scrollArea.value?.el)
 const drag = useSidebarDrag(
-  listRef,
+  scroller,
   () => props.projects,
   () => props.conversations,
   request => emit('reorder', request),
@@ -112,7 +116,7 @@ watch(drag.source, async (source, previous, onCleanup) => {
   if (cancelled)
     return
 
-  const container = listRef.value
+  const container = scroller.value
   if (!container)
     return
   const rows = container.querySelectorAll<HTMLElement>('[data-sidebar-kind="project"]')
@@ -183,6 +187,45 @@ const list = useSidebarList(entries, computed(() => props.activeId), {
   },
   togglePin,
 })
+
+/**
+ * Scrolls only the list, not the page around the sidebar. TypeScript's DOM
+ * types do not list `container` yet (CSSOM View's ScrollIntoViewOptions).
+ */
+const SCROLL_IN_LIST: ScrollIntoViewOptions & { container: 'nearest' } = {
+  block: 'nearest',
+  container: 'nearest',
+}
+
+/**
+ * The entry keyboard focus moves to, or that a key reorders, scrolls into
+ * view, clear of the headings that stick above it: the list's heading (the
+ * viewport's scroll padding) and, for a project's row, its project header
+ * (the row's scroll margin). It scrolls once the update and the entry's
+ * glide are done: the TransitionGroup compares each row's place before and
+ * after an update, and a scroll in between would read as every row moving.
+ */
+watch(
+  () => [list.focusedId.value, list.keyboardNav.value, entries.value] as const,
+  async ([id, keyboard], _previous, onCleanup) => {
+    if (!keyboard || id === null)
+      return
+    let cancelled = false
+    onCleanup(() => {
+      cancelled = true
+    })
+    await nextTick()
+    const entry = scroller.value?.querySelector<HTMLElement>(`[data-sidebar-id="${CSS.escape(id)}"]`)
+    if (!entry)
+      return
+    // A reordered entry glides from its old place first; it scrolls into view where it lands.
+    // A cancelled glide still lands, and the next key's scroll supersedes this one.
+    await Promise.allSettled(entry.getAnimations().map((animation) => animation.finished))
+    if (cancelled || !entry.isConnected)
+      return
+    entry.scrollIntoView(SCROLL_IN_LIST)
+  },
+)
 
 // The open conversation is the selection until the user makes a wider one.
 watch(() => props.activeId, (id) => {
@@ -312,20 +355,21 @@ function selectProjectConversations(project: SidebarProject): void {
   <aside
     class="flex h-full w-[var(--sidebar-width,16rem)] shrink-0 select-none flex-col bg-surface-base text-fg"
   >
-    <div class="sidebar-column flex h-11 shrink-0 items-center pl-2.5">
+    <div class="flex h-11 shrink-0 items-center px-2">
       <span
-        class="min-w-0 flex-1 truncate text-chrome font-medium text-fg-emphasis"
+        class="min-w-0 flex-1 truncate pl-2.5 text-chrome font-medium text-fg-emphasis"
       >Demi</span>
     </div>
 
-    <!-- Every block of the sidebar is a `sidebar-column`: it reserves the scrollbar's width on
-         both edges, so a row's background ends the same distance from the left edge as from the
-         right, scrollbar or not, and the list scrolls without shifting anything. A row's content
+    <!-- Every block of the sidebar keeps 8px from both edges, so a row's background ends the same
+         distance from the left edge as from the right. The list scrolls in a ScrollArea, whose
+         scrollbar takes no room, so the inset is the same whether the system shows scrollbars or
+         overlays them, and the list scrolls without shifting anything. A row's content
          starts 10px inside that, so the title, entries, headings, project headers and conversation
          rows align at one line while a lit row has room around its status dot. Row actions sit 2px
          inside the row's end, the same as their 2px above and below in the 28px row. -->
     <!-- The entries: one primary action, then the two settings sections a conversation reaches for. -->
-    <div class="sidebar-column flex shrink-0 flex-col gap-px">
+    <div class="flex shrink-0 flex-col gap-px px-2">
       <SidebarNavItem
         :icon="SquarePen"
         label="New"
@@ -347,121 +391,129 @@ function selectProjectConversations(project: SidebarProject): void {
     </div>
 
     <!-- Plain conversations first, then the projects. One focusable list; rows are not tab stops. -->
-    <div
-      ref="listRef"
-      class="sidebar-column mt-4 min-h-0 flex-1 pb-2 outline-none"
-      :class="list.keyboardNav.value ? 'is-keyboard' : ''"
-      tabindex="0"
-      role="listbox"
-      aria-multiselectable="true"
-      :aria-busy="listStatus === 'loading' || undefined"
-      @keydown="onListKeydown"
-      @pointerdown="onListPointerDown"
-      @click.capture="drag.click"
-
+    <ScrollArea
+      ref="scrollArea"
+      class="mt-4 min-h-0 flex-1"
+      viewport-class="flex scroll-pt-[30px] flex-col px-2"
     >
-      <RegionStatus
-        v-if="listStatus === 'loading' || listStatus === 'failed'"
-        class="h-full min-h-40"
-        :busy="listStatus === 'loading'"
-        :failed="listStatus === 'failed'"
-        :label="listStatus === 'loading' ? 'Loading conversations' : 'Couldn\'t load conversations.'"
-        :action="listStatus === 'failed' ? 'Retry' : undefined"
-        @action="emit('retryList')"
-      />
-      <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
-      <TransitionGroup
-        v-else
-        name="sidebar-items"
-        tag="div"
-        class="relative flex flex-col gap-px"
-        @before-enter="beforeEnterEntry"
-        @enter="enterEntry"
-        @after-enter="afterEnterEntry"
-        @enter-cancelled="afterEnterEntry"
-        @before-leave="beforeLeaveEntry"
-        @leave="leaveEntry"
+      <div
+        ref="listRef"
+        class="flex-1 pb-2 outline-none"
+        :class="list.keyboardNav.value ? 'is-keyboard' : ''"
+        tabindex="0"
+        role="listbox"
+        aria-multiselectable="true"
+        :aria-busy="listStatus === 'loading' || undefined"
+        @keydown="onListKeydown"
+        @pointerdown="onListPointerDown"
+        @click.capture="drag.click"
+
       >
-        <div
-          v-for="(entry, index) in displayEntries"
-          :key="entry.id"
-          class="sidebar-entry relative"
-          :class="[
-            entry.kind === 'project' && displayEntries[index - 1]?.id !== 'projects-heading' ? 'mt-3' : '',
-            // Headings stick to the top of the list; a project's header sticks just under the 30px Projects heading.
-            // The gap above Projects is a margin on the entry, outside the sticky box, so both headings stick the same.
-            entry.kind === 'heading' ? 'sticky top-0 z-20 bg-surface-base' : entry.kind === 'project' ? 'sticky top-[30px] z-10 bg-surface-base' : '',
-            entry.id === 'projects-heading' ? 'mt-4' : '',
-            drag.source.value?.id === entry.id ? 'opacity-40' : '',
-            drag.target.value?.id === entry.id ? (drag.target.value.after ? 'drop-after' : 'drop-before') : '',
-          ]"
-          :data-sidebar-id="entry.id"
-          :data-sidebar-kind="entry.kind"
-          @pointerdown="entry.kind !== 'heading' && renamingId !== entry.id && drag.start($event, entry)"
+        <RegionStatus
+          v-if="listStatus === 'loading' || listStatus === 'failed'"
+          class="h-full min-h-40"
+          :busy="listStatus === 'loading'"
+          :failed="listStatus === 'failed'"
+          :label="listStatus === 'loading' ? 'Loading conversations' : 'Couldn\'t load conversations.'"
+          :action="listStatus === 'failed' ? 'Retry' : undefined"
+          @action="emit('retryList')"
+        />
+        <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
+        <TransitionGroup
+          v-else
+          name="sidebar-items"
+          tag="div"
+          class="relative flex flex-col gap-px"
+          @before-enter="beforeEnterEntry"
+          @enter="enterEntry"
+          @after-enter="afterEnterEntry"
+          @enter-cancelled="afterEnterEntry"
+          @before-leave="beforeLeaveEntry"
+          @leave="leaveEntry"
         >
           <div
-            v-if="entry.kind === 'heading'"
-            class="group/projects mb-1.5 flex h-6 items-center pl-2.5 pr-0.5 text-[11px] uppercase tracking-wide text-fg-subtle"
+            v-for="(entry, index) in displayEntries"
+            :key="entry.id"
+            class="sidebar-entry relative"
+            :class="[
+              entry.kind === 'project' && displayEntries[index - 1]?.id !== 'projects-heading' ? 'mt-3' : '',
+              // Headings stick to the top of the list; a project's header sticks just under the 30px Projects heading.
+              // The gap above Projects is a margin on the entry, outside the sticky box, so both headings stick the same.
+              entry.kind === 'heading' ? 'sticky top-0 z-20 bg-surface-base' : entry.kind === 'project' ? 'sticky top-[30px] z-10 bg-surface-base' : '',
+              entry.id === 'projects-heading' ? 'mt-4' : '',
+              // A project's row scrolls into view below its project header, which sticks under the 30px heading.
+              entry.kind === 'conversation' && entry.projectId !== null ? 'scroll-mt-7' : '',
+              drag.source.value?.id === entry.id ? 'opacity-40' : '',
+              drag.target.value?.id === entry.id ? (drag.target.value.after ? 'drop-after' : 'drop-before') : '',
+            ]"
+            :data-sidebar-id="entry.id"
+            :data-sidebar-kind="entry.kind"
+            @pointerdown="entry.kind !== 'heading' && renamingId !== entry.id && drag.start($event, entry)"
           >
-            <span class="flex-1">{{ entry.id === 'projects-heading' ? 'Projects' : 'Conversations' }}</span>
-            <Tooltip
-              v-if="entry.id === 'projects-heading'"
-              content="Add project"
-              placement="right"
+            <div
+              v-if="entry.kind === 'heading'"
+              class="group/projects mb-1.5 flex h-6 items-center pl-2.5 pr-0.5 text-[11px] uppercase tracking-wide text-fg-subtle"
             >
-              <IconButton
-                :icon="FolderPlus"
-                size="xs"
-                variant="ghost"
-                aria-label="Add project"
-                class="opacity-0 transition-opacity group-hover/projects:opacity-100"
-                @click="emit('addProject')"
-              />
-            </Tooltip>
-            <Tooltip
+              <span class="flex-1">{{ entry.id === 'projects-heading' ? 'Projects' : 'Conversations' }}</span>
+              <Tooltip
+                v-if="entry.id === 'projects-heading'"
+                content="Add project"
+                placement="right"
+              >
+                <IconButton
+                  :icon="FolderPlus"
+                  size="xs"
+                  variant="ghost"
+                  aria-label="Add project"
+                  class="opacity-0 transition-opacity group-hover/projects:opacity-100"
+                  @click="emit('addProject')"
+                />
+              </Tooltip>
+              <Tooltip
+                v-else
+                content="New conversation"
+                placement="right"
+              >
+                <IconButton
+                  :icon="SquarePen"
+                  size="xs"
+                  variant="ghost"
+                  aria-label="New conversation"
+                  class="opacity-0 transition-opacity group-hover/projects:opacity-100"
+                  @click="emit('create', null)"
+                />
+              </Tooltip>
+            </div>
+            <SidebarProjectHeader
+              v-else-if="entry.kind === 'project'"
+              :project="projectById.get(entry.id)!"
+              :collapsed="isFolded(entry.id)"
+              :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
+              @toggle="list.onProjectClick(entry.id)"
+              @create="emit('create', entry.id)"
+              @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
+            />
+            <SidebarRow
               v-else
-              content="New conversation"
-              placement="right"
-            >
-              <IconButton
-                :icon="SquarePen"
-                size="xs"
-                variant="ghost"
-                aria-label="New conversation"
-                class="opacity-0 transition-opacity group-hover/projects:opacity-100"
-                @click="emit('create', null)"
-              />
-            </Tooltip>
+              :conversation="byId.get(entry.id)!"
+              :pending="pendingIds?.includes(entry.id)"
+              :open="entry.id === activeId"
+              :selected="list.isSelected(entry.id)"
+              :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
+              :menu-open="rowMenuOpenFor(entry.id)"
+              :renaming="renamingId === entry.id"
+              @click="(event) => list.onRowClick(entry.id, event)"
+              @contextmenu="(event) => openRowMenu(entry.id, event)"
+              @archive="emit('archive', [entry.id])"
+              @rename-start="renamingId = entry.id"
+              @rename-submit="(title) => submitRename(entry.id, title)"
+              @rename-cancel="renamingId = null"
+              @toggle-pin="togglePin([entry.id])"
+            />
           </div>
-          <SidebarProjectHeader
-            v-else-if="entry.kind === 'project'"
-            :project="projectById.get(entry.id)!"
-            :collapsed="isFolded(entry.id)"
-            :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
-            @toggle="list.onProjectClick(entry.id)"
-            @create="emit('create', entry.id)"
-            @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
-          />
-          <SidebarRow
-            v-else
-            :conversation="byId.get(entry.id)!"
-            :pending="pendingIds?.includes(entry.id)"
-            :open="entry.id === activeId"
-            :selected="list.isSelected(entry.id)"
-            :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
-            :menu-open="rowMenuOpenFor(entry.id)"
-            :renaming="renamingId === entry.id"
-            @click="(event) => list.onRowClick(entry.id, event)"
-            @contextmenu="(event) => openRowMenu(entry.id, event)"
-            @archive="emit('archive', [entry.id])"
-            @rename-start="renamingId = entry.id"
-            @rename-submit="(title) => submitRename(entry.id, title)"
-            @rename-cancel="renamingId = null"
-            @toggle-pin="togglePin([entry.id])"
-          />
-        </div>
-      </TransitionGroup>
-    </div>
+        </TransitionGroup>
+      </div>
+    </ScrollArea>
     <Teleport to="body">
       <div
         v-if="drag.source.value"
@@ -475,7 +527,7 @@ function selectProjectConversations(project: SidebarProject): void {
 
     <!-- The account, and settings. -->
     <div
-      class="sidebar-column flex shrink-0 items-center gap-1 border-t border-line py-2"
+      class="flex shrink-0 items-center gap-1 border-t border-line px-2 py-2"
     >
       <SidebarAccountRow
         :account="account"
@@ -568,11 +620,6 @@ function selectProjectConversations(project: SidebarProject): void {
 </template>
 
 <style scoped>
-.sidebar-column {
-  overflow-y: auto;
-  scrollbar-gutter: stable both-edges;
-}
-
 .sidebar-items-move,
 .sidebar-items-enter-active,
 .sidebar-items-leave-active {

@@ -24,24 +24,35 @@ export function tabsToClose(
 }
 
 /**
- * The tabs and active tab after `ids` close. When the active tab goes, the
- * nearest remaining tab before it takes over, else the first that remains.
+ * The most selections a tab history keeps: more than a work panel holds tabs
+ * (64) and pinned tabs, so every tab still there is in it.
  */
+export const TAB_HISTORY = 100
+
+/** `history` with `id` its newest entry: each tab once, the newest last. */
+export function selectTab(history: readonly string[], id: string): string[] {
+  return [...history.filter((entry) => entry !== id), id].slice(-TAB_HISTORY)
+}
+
+/**
+ * The active tab of `ids`: the newest entry of `history` still among them,
+ * so closing the active tab activates the one selected before it, and the
+ * one before that if it closed too; the first of `ids` when none is left.
+ */
+export function activeTab(ids: readonly string[], history: readonly string[]): string | null {
+  const present = new Set(ids)
+  return history.findLast((id) => present.has(id)) ?? ids[0] ?? null
+}
+
+/** The tabs and their history after `ids` close: a closed tab leaves both. */
 export function closeTabs<T extends { id: string }>(
   tabs: readonly T[],
-  activeId: string | null,
+  history: readonly string[],
   ids: readonly string[],
-): { tabs: T[]; activeId: string | null } {
+): { tabs: T[]; history: string[] } {
   const closing = new Set(ids)
-  const remaining = tabs.filter((tab) => !closing.has(tab.id))
-  if (activeId !== null && !closing.has(activeId)) {
-    return { tabs: remaining, activeId }
+  return {
+    tabs: tabs.filter((tab) => !closing.has(tab.id)),
+    history: history.filter((id) => !closing.has(id)),
   }
-  const activeIndex = tabs.findIndex((tab) => tab.id === activeId)
-  const before = tabs
-    .slice(0, Math.max(0, activeIndex))
-    .reverse()
-    .find((tab) => !closing.has(tab.id))
-  const next = before ?? remaining[0] ?? null
-  return { tabs: remaining, activeId: next?.id ?? null }
 }

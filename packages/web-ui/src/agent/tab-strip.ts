@@ -220,6 +220,10 @@ export function beforeLeaveTab(el: Element): void {
   if (tab.parentElement) {
     leaveParents.set(tab, tab.parentElement)
   }
+  // A closing tab is no tab any more: the selection has passed on, so it fades out as an unselected one and
+  // the strip shows one selected tab throughout.
+  tab.setAttribute('aria-selected', 'false')
+  tab.style.setProperty('--tab-active', 'var(--tab-row)')
   lockSiblingWidths(tab)
   tab.style.width = `${tab.getBoundingClientRect().width}px`
   tab.style.minWidth = '0'

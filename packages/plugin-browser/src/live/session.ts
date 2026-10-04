@@ -89,10 +89,12 @@ export class LiveSession {
   /** The watch over the stream's silence, while there is a stream. */
   private silence: SilenceWatch | null = null
   private pictures: PictureSink | null = null
-  private generation = 0
+  /** The pictures the stream sends now: their tab, generation and size in device pixels; none before its first. */
+  private video: { tab: string; generation: number; width: number; height: number } | null = null
   private uploads = 0
   private received: number
-  private resynced = 0
+  /** When the page last asked for a key frame; never, at first. */
+  private resynced = Number.NEGATIVE_INFINITY
   /** Views that ended in a row since one last worked. */
   private failures = 0
   private reopening: ReconnectWait | null = null
@@ -106,6 +108,13 @@ export class LiveSession {
   attach(pictures: PictureSink): void {
     this.pictures?.stop()
     this.pictures = pictures
+    // A canvas that comes after its stream started missed the generation's key frame, and a still page
+    // sends no other: it starts on the generation, from a key frame it asks for. Pictures of a tab the
+    // view no longer watches are not this canvas's.
+    if (this.video && this.video.tab === this.state.watched) {
+      pictures.start(this.video.generation, this.video.width, this.video.height)
+      this.resync()
+    }
   }
 
   private time(): number {
@@ -149,6 +158,21 @@ export class LiveSession {
     }
   }
 
+  /**
+   * A view waiting to reconnect connects at once, its waits started over:
+   * what it waited for, such as a browser that did not run yet, may be there
+   * now (`live-view.md` § A browser tab in the panel).
+   */
+  reconnect(): void {
+    if (this.reopening === null) {
+      return
+    }
+    this.reopening.cancel()
+    this.reopening = null
+    this.failures = 0
+    this.start()
+  }
+
   /** The page is done with the view: nothing reopens it, and it has nothing to tell. */
   close(): void {
     this.reopening?.cancel()
@@ -162,6 +186,7 @@ export class LiveSession {
     this.silence?.stop()
     this.silence = null
     this.pictures?.stop()
+    this.video = null
     const stream = this.stream
     this.stream = null
     stream?.close()
@@ -250,7 +275,7 @@ export class LiveSession {
           }
           break
         case 'stream':
-          this.generation = message.generation
+          this.video = { tab: message.tab, generation: message.generation, width: message.width, height: message.height }
           // Video generations change independently of the watched document's controls.
           this.pictures?.start(message.generation, message.width, message.height)
           break
@@ -281,7 +306,7 @@ export class LiveSession {
   }
 
   private picture(frame: LiveVideoFrame): void {
-    if (frame.generation !== this.generation) {
+    if (frame.generation !== this.video?.generation) {
       return
     }
     this.pictures?.show(frame)
@@ -293,7 +318,7 @@ export class LiveSession {
 
   /** The page showed a frame; the module paces itself by these. */
   showed(generation: number, sequence: number, decodeQueue: number): void {
-    if (generation === this.generation) {
+    if (generation === this.video?.generation) {
       this.send({ type: 'ack', generation, sequence, decodeQueue })
     }
   }
@@ -301,11 +326,11 @@ export class LiveSession {
   /** The decoder lost the stream: the next frame must be a key frame. */
   resync(): void {
     const now = this.time()
-    if (now - this.resynced < 1000) {
+    if (!this.video || now - this.resynced < 1000) {
       return
     }
     this.resynced = now
-    this.send({ type: 'keyframe', generation: this.generation })
+    this.send({ type: 'keyframe', generation: this.video.generation })
   }
 
   /**

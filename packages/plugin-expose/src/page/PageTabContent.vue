@@ -25,8 +25,9 @@ const HISTORY_UNAVAILABLE = 'A framed page keeps its history to itself'
 const address = ref(props.data.url)
 // Remounting the frame is the only reload the parent has over a cross-origin page.
 const reloads = ref(0)
+// Each source is compared on its own: the tab's data comes anew with every panel the page reads.
 watch(
-  () => [props.tabId, props.data.url],
+  [() => props.tabId, () => props.data.url],
   () => {
     address.value = props.data.url
     reloads.value = 0

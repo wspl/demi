@@ -45,6 +45,8 @@ pub struct TabState {
     /// The open dialog and the input it holds back.
     pub dialog: DialogInput,
     pub viewport: watch::Sender<crate::tabs::viewport::Viewports>,
+    /// Whether the tab loads its top-level page.
+    pub loading: watch::Sender<bool>,
     /// Counts the changes to what the browser shows, the environment's.
     pub changes: watch::Sender<u64>,
     /// The environment's tasks, which retirement joins: work for the tab that
@@ -64,6 +66,8 @@ impl TabState {
             .event_listener::<EventJavascriptDialogOpening>()
             .await?;
         let console = crate::tabs::logs::observe(page, ended.clone(), tasks).await?;
+        let loading =
+            crate::tabs::loading::observe(page, ended.clone(), tasks, changes.clone()).await?;
         let dialog = DialogInput::start(page.clone(), opening, ended, tasks, failure.clone());
         Ok(Arc::new(Self {
             failure,
@@ -72,6 +76,7 @@ impl TabState {
             console,
             dialog,
             viewport: watch::channel(Default::default()).0,
+            loading,
             changes,
             tasks: tasks.clone(),
         }))

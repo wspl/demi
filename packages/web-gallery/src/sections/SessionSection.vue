@@ -17,16 +17,16 @@ import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
 import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, showChange } from '@demicodes/plugin-changes/data'
-import { addTab, emptyPanelState, removeTabs, selectInPanel, selectedTab, updateTab, type PanelState } from '@demicodes/web-ui/agent/panel-tabs'
+import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { pageTabKind } from '@demicodes/plugin-expose/page/page'
 import { exposePageTab } from '@demicodes/plugin-expose/page/page-data'
-import { browserTabDataSchema, type BrowserTabsApi } from '@demicodes/plugin-browser/live/tabs'
+import { browserTabDataSchema } from '@demicodes/plugin-browser/live/tabs'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
-import { galleryBrowserTabs } from '../fixtures/live-browser'
+import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { productWould } from '../product-would'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
@@ -151,14 +151,14 @@ const panelActiveConversationId = ref<string | null>('c-login')
  * the web browser decodes the pictures.
  */
 function useWorkTabs(
-  selection: string | null,
-  { path = 'src/auth/cookie.ts', tabs = galleryBrowserTabs(), pictures }: {
+  selection: string,
+  { path = 'src/auth/cookie.ts', browser = galleryBrowser(), pictures }: {
     path?: string
-    tabs?: BrowserTabsApi
+    browser?: GalleryBrowser
     pictures?: () => Promise<boolean>
   } = {},
 ) {
-  const work = useGalleryWork(selection, { files, tabs, pictures })
+  const work = useGalleryWork(selection, { files, browser, pictures })
   if (path) {
     work.openIn({ intent: 'file', payload: { path: `${workspace.root}/${path}` } })
     work.select(selection)
@@ -223,7 +223,7 @@ function fileViewGoForward() {
 }
 // The frame's conversation has opened no browser tab yet: its strip starts
 // empty, and its Host installs the browser before the first tab opens.
-const panelWork = useWorkTabs('change', { tabs: galleryBrowserTabs([], { install: true }) })
+const panelWork = useWorkTabs('change', { browser: galleryBrowser([], { install: true }) })
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
 const sessionFiles: ConversationFiles = {
   imageUrl: (path) => workspace.source.contents.url(path),
@@ -234,7 +234,7 @@ const sessionFiles: ConversationFiles = {
   },
 }
 // The tabs specimen starts on an empty strip, with the globe-plus add control.
-const exhibitWork = useWorkTabs('file', { tabs: galleryBrowserTabs([]) })
+const exhibitWork = useWorkTabs('file', { browser: galleryBrowser([]) })
 const editWork = useWorkTabs('change')
 // The gallery's own conversation browser stands behind every specimen's `browser`
 // kind, which lists its tabs as it is made.
@@ -271,21 +271,22 @@ browserWork.add(pageTabKind.kind, exposePageTab({
 }))
 /** The browser tab the specimen shows, as its kind reads it. */
 const shownBrowserTab = computed(() => {
-  const tab = selectedTab(browserWork.panel.value)
+  const tab = selectedTab(browserWork.panel.value, browserWork.kinds)
   const parsed = tab?.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
   return parsed?.success ? (parsed.data.tab ?? null) : null
 })
-/** Closes the page behind the panel's back, as the agent's `close` would; the tab list follows as the plugin's state. */
-async function closeOnDevice() {
+/** Closes the page behind the panel's back, as the agent's `close` would; the view finds it gone and the plugin marks it. */
+function closeOnDevice() {
   const tab = shownBrowserTab.value
-  if (tab === null) {
-    return
+  if (tab !== null) {
+    browserWork.browser.closeOnDevice(tab)
   }
-  await browserWork.tabs.close(tab)
 }
 // The same conversation browser, viewed in a web browser that cannot decode H.264, such as a Chromium without
 // proprietary codecs.
 const undecodedWork = useWorkTabs('change', { path: '', pictures: async () => false })
+// A conversation its first send has not created: no page is bound beside it.
+const unstartedWork = useGalleryWork(null, { files, pages: [] })
 // The Session view is the product's ChatSession over a scripted runtime; Turns and Stream replay one flow each.
 const sessionFlow = useTurnFlow({
   id: 'gallery-session',
@@ -1698,7 +1699,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Work panel"
-        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized buttons outside the tab strip that are never created, closed or saved, never shrink or scroll with the strip, and only compete with its tabs for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, on about:blank, and its content says the browser is starting until its picture arrives; the gallery's browser takes about a second, as a Host takes a moment. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the Host refuses shows its message with Retry. While a view connects the content only says that it waits. A viewer's browser that cannot decode the Host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again."
+        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized buttons outside the tab strip that are never created, closed or saved, never shrink or scroll with the strip, and only compete with its tabs for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, as what a new tab is: its address bar on about:blank and a blank page, which its first picture replaces; the gallery's browser takes about a second, as a Host takes a moment. An address typed before then shows at once with a thin loading line, and the tab opens there. A page that loads keeps the picture it had under the loading line until the browser says it stopped loading. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the Host refuses shows its message with Retry. A view that reconnects keeps its last picture under a quiet note. A viewer's browser that cannot decode the Host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. Beside a new conversation, before its first message, the panel binds no plugin and says that files and changes appear after the first message; Close is its only control."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1721,11 +1722,16 @@ onBeforeUnmount(() => {
               <GalleryWorkPanel class="w-full" :work="undecodedWork" @close="productWould('The work panel closes')" />
             </div>
           </GallerySpecimen>
+          <GallerySpecimen variant="before the first message · nothing to show yet" wide>
+            <div class="gallery-frame flex h-[24rem] overflow-hidden">
+              <GalleryWorkPanel class="w-full" :work="unstartedWork" before-first-message @close="productWould('The work panel closes')" />
+            </div>
+          </GallerySpecimen>
         </div>
       </GallerySection>
       <GallerySection
         title="File view"
-        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens read-only in the code editor, colored by its language, with folding and the first lines of the enclosing blocks kept at the top while scrolling. Mod-f in the text opens a find bar below it: the query with its match count, Match case, Match whole word and Use regular expression, and Previous and Next, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows ? while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the path, a relative one starting from the workspace: Enter opens a file, or finds a folder in the tree, unfolding down to it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. A right-click in the tree downloads a file, or uploads into a folder, or into the workspace from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree. A view that would keep less than 320px beside the tree hides it by itself; the control then shows the tree over the file, and the control, a click beside the tree or a file picked in it puts it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture's latency, so the text and each directory show their loading state first."
+        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens read-only in the code editor, colored by its language, with folding and the first lines of the enclosing blocks kept at the top while scrolling. Mod-f in the text opens a find bar below it: the query with its match count, Match case, Match whole word and Use regular expression, and Previous and Next, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows ? while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the path, a relative one starting from the workspace: Enter opens a file, or finds a folder in the tree, unfolding down to it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. A right-click in the tree downloads a file, or uploads into a folder, or into the workspace from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left. A view that would keep less than 320px beside the tree hides it by itself; the control then slides the tree in over the file, which stays as it is, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture's latency, so the text and each directory show their loading state first."
       >
         <div class="flex flex-wrap gap-1">
           <Button v-for="file in previewFiles" :key="file" size="sm" @click="showInFileView(`${workspace.root}/${file}`)">{{ file }}</Button>

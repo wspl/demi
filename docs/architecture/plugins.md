@@ -261,8 +261,8 @@ already offers ([User streams](../execution/native-runtime.md#user-streams)):
 
 - **A package call** runs one operation once, with a `user` caller and the
   operation's arguments, and answers its JSON result. For example,
-  `plugin-browser`'s page method `open` calls `browser.open`, so a tab the
-  user opens in the work panel is the tab the agent's `demi browser open`
+  `plugin-browser` calls `browser.open` for a browser tab its user creates
+  in the work panel, so that tab is the tab the agent's `demi browser open`
   would have made. A call that starts work is ordinary demand through the
   conversation's host access and wakes a stopped Cloud; any other uses the
   form that never wakes a Host, and a stopped Host answers that it is
@@ -308,6 +308,40 @@ A topic belongs to the product service whose change it is: `exposes` to the
 expose relay, `jobs` to host access. A topic joins when a plugin's state needs
 it, as a slot of the page does.
 
+A manifest can also name the topics the plugin itself is told about: when one
+fires, the plugin host sends the plugin a `topic` request for its scope, after
+it marked the state changed. `plugin-browser` is told about `jobs`, since a job
+of the agent may have opened or closed tabs that the work panel shows
+([Panel kinds](#panel-kinds)).
+
+### Panel kinds
+
+A plugin's page shows [work panel](../product/web-application.md#work-panel)
+tabs of kinds it declares, and the manifest names the kinds whose tabs the
+backend keeps, such as `plugin-browser`'s `browser`. The backend keeps each
+conversation's tabs ([Work panel state](../product/web-api.md#work-panel-state))
+and lets the plugin that names a kind take part in its tabs:
+
+- **The user's changes reach the plugin.** When the user creates or removes a
+  tab of the plugin's kind, the backend applies the change, answers the page,
+  and then sends the plugin a `panel_tab` request with the tab as it was
+  created or as it was when it was removed. The page never waits for the
+  plugin. For example, the browser plugin opens a tab in the conversation
+  browser for a tab its user created, and closes the browser's tab of one its
+  user removed.
+- **The plugin changes its own tabs.** Through the port, the plugin lists,
+  creates, updates and removes the tabs of its kinds in the request's
+  conversation, as the page does, with ids that are used once
+  ([Work panel state](../product/web-api.md#work-panel-state)). For example,
+  the browser plugin writes the browser's tab id into the tab it opened, and
+  adds a tab for each tab the agent opened.
+
+The backend applies a conversation's panel changes one at a time, the page's
+and the plugin's alike. A plugin whose work on one conversation's tabs takes
+several port operations, such as reading the browser's tabs and then adding
+the missing ones, does that work one piece at a time per conversation, so a
+change it makes is never based on what it read before its own earlier change.
+
 ## The contract
 
 A plugin is a factory and the instances it makes. The factory is shared by
@@ -346,13 +380,16 @@ Each request names its user, since a plugin process would serve every user:
 | `context` | The conversation, the node, its working directory, the id of its current input turn, and the text of the source's blocks the model receives | New text, or none |
 | `page_state` | The scope: the user, or one of the user's conversations | The plugin's state of that scope, valid against the scope's declared schema |
 | `page_call` | The method, its parameters, already valid against the method's schema, and the conversation when the page called for one | The result, valid against the method's result schema |
+| `panel_tab` | The conversation, `created` or `removed`, and the tab, of one of the plugin's [panel kinds](#panel-kinds) | Nothing |
+| `topic` | The topic that fired, and the conversation for a conversation's topic | Nothing |
 
 The port is the plugin's side of a request, and every operation is one
 request and one reply, as for an rpc handler
 ([Handle an rpc call](../execution/commands.md#handle-an-rpc-call)). Its
 operations are grouped by the service that answers them. A
 conversation's operations need a request about a conversation: a `command`, a
-`context`, or a `page_state` or `page_call` of the conversation scope.
+`context`, a `page_state` or `page_call` of the conversation scope, a
+`panel_tab`, or a `topic` of a conversation.
 
 | Service | Operations | Requests | Meaning |
 | --- | --- | --- | --- |
@@ -365,6 +402,7 @@ conversation's operations need a request about a conversation: a `command`, a
 | | Call a package | A conversation's | One operation of a package the manifest names, waking the Host or not ([Calling its command package](#calling-its-command-package)) |
 | Exposes | List, create, renew, remove | Every request | The user's [exposes](../execution/expose.md#the-expose-record), the backend's public relays to a device's address |
 | Pages | Changed | Every request | Mark one scope of the plugin's page state, the user's or one conversation's, as changed, so the pages that show it read it again ([The page](#the-page)) |
+| Panel | List, create, update, remove | A conversation's | The conversation's work panel tabs of the plugin's own [panel kinds](#panel-kinds); a change answers the panel's revision |
 | Request | Cancellation | Every request | Whether, and when, the request was cancelled |
 
 A product service a plugin may use is one service of the port: its
