@@ -1,10 +1,11 @@
-package file
+package file_test
 
 import (
 	"bytes"
 	"os"
 	"testing"
 
+	"github.com/wspl/demi/internal/plugins/file"
 	"go.uber.org/goleak"
 )
 
@@ -12,7 +13,7 @@ func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
 
 // The registration bytes are read by the plugin host; budget below one second.
 func TestManifestMatchesGolden(t *testing.T) {
-	f, err := New()
+	f, err := file.New()
 	if err != nil {
 		t.Fatal(err)
 	}
