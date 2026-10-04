@@ -117,7 +117,6 @@ fn flash(window: u32) -> ModelSelection {
             id,
             name: "DeepSeek V4 Flash".into(),
             context_window: window,
-            input_limit: None,
             output_limit: None,
             thinking: Vec::new(),
             accepted_extensions: Some(Vec::new()),
