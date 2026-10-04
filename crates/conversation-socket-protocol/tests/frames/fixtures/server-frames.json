@@ -219,6 +219,14 @@
     "phase": "running"
   },
   {
+    "type": "context_usage",
+    "usage": {
+      "tokens": 23000,
+      "window": 100000,
+      "compactFrom": 50000
+    }
+  },
+  {
     "type": "queue",
     "queue": [
       {

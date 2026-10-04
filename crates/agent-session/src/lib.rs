@@ -43,7 +43,7 @@ use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, Transcript
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
-    AgentMessage, Block, BlockId, Clock, ModelSelection, NodeId, PendingSteer,
+    AgentMessage, Block, BlockId, Clock, ContextUsage, ModelSelection, NodeId, PendingSteer,
     ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, TurnId,
     UserContentBlock,
 };
@@ -52,7 +52,7 @@ use serde::Serialize;
 use tokio::sync::{Notify, oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;
 
-pub use compaction::CompactionConfig;
+pub use compaction::{CompactionConfig, compaction_refusal};
 pub use editing::ForkError;
 pub use editing::{
     EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed,
@@ -64,6 +64,7 @@ pub use runtime::{
 
 use self::{
     bus::EventBus,
+    cancel::TurnCancel,
     core::{AbortStep, ActionKind, CoreParts, SessionCore},
     input::{InputQueue, Wakeups},
 };
@@ -289,6 +290,11 @@ pub enum SessionEvent {
     },
     QueueChanged {
         queue: Vec<QueuedMessage>,
+    },
+    /// The estimate of the next request after a response, a compaction
+    /// pass or an action.
+    ContextUsageChanged {
+        usage: ContextUsage,
     },
     /// The human steers waiting for a boundary changed.
     PendingSteersChanged {
@@ -679,6 +685,27 @@ impl AgentSession {
     /// Unwinds the unfinished turn to its resume point and continues it.
     pub fn resume(&self) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| core.admit(ActionKind::Resume))
+    }
+
+    /// The estimate of the next request with the window its thresholds use
+    /// (`compaction.md` § Context estimate). It reads the media the session
+    /// does not hold yet, as after a restore.
+    pub async fn context_usage(&self) -> Result<ContextUsage, ErrorReport> {
+        // Outside an action nothing stops the read.
+        let unstoppable = TurnCancel::new();
+        compaction::context_usage(&self.shared, &unstoppable)
+            .await
+            .map_err(|error| match error {
+                TurnError::Failed(report) => *report,
+                TurnError::Cancelled => unreachable!("a token nothing cancels"),
+            })
+    }
+
+    /// The usage as [`context_usage`](Self::context_usage) says it, without
+    /// reading a blob: none while the session holds nothing for a replayed
+    /// medium, as after a restore.
+    pub fn held_context_usage(&self) -> Option<ContextUsage> {
+        self.shared.read(compaction::held_context_usage)
     }
 
     /// Runs one compaction pass (`compaction.md` § Compaction).

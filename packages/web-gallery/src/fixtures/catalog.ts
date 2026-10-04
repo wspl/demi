@@ -1,4 +1,4 @@
-import type { TokenUsage } from '@demicodes/protocol'
+import type { ContextUsage } from '@demicodes/protocol'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 
 export const demoProviders: ProviderInfo[] = [
@@ -57,12 +57,14 @@ export const demoModels: Record<string, ModelInfo[]> = {
   ],
 }
 
-export function usageAt(ratio: number): TokenUsage {
-  const used = Math.round(180_000 * ratio)
+/** The window the gallery's conversations use, as the backend reports it. */
+const DEMO_WINDOW = 200_000
+
+/** The backend's usage at `ratio` of `window`, the window in use, which takes Compact from half. */
+export function usageAt(ratio: number, window = DEMO_WINDOW): ContextUsage {
   return {
-    inputTokens: used,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
+    tokens: Math.round(window * ratio),
+    window,
+    compactFrom: Math.floor(window / 2),
   }
 }
