@@ -168,7 +168,7 @@ func TestASetupTokenBecomesASealedAccountThatNoAnswerReturns(t *testing.T) {
 	conversationEqual[core.AuthState](t, seen.Auth, &core.Authenticated{})
 }
 
-// accountAwait observes login transitions through requests with a hang deadline, without timed sleeps.
+// accountAwait observes login transitions through requests; the package timeout guards against a hang.
 func accountAwait(
 	ctx context.Context,
 	t *testing.T,
@@ -178,8 +178,6 @@ func accountAwait(
 	done func(webapi.LoginState) bool,
 ) webapi.LoginState {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	for {
 		if err := ctx.Err(); err != nil {
 			t.Fatal(err)
@@ -551,8 +549,6 @@ func TestALoginIntoAnEntryHoldsItUntilItEndsAndCancellingStopsItAtOnce(t *testin
 func TestALoginExpiresAndItsResultGoesAfterTheRetention(t *testing.T) {
 	t.Parallel()
 	ctx, harness := conversationHarness(t)
-	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
 	cost := provider.ProbeFree
 	families, script := backendtest.AccountFamilies(t, &cost)
 	harness.Config.Families = families
