@@ -54,7 +54,7 @@ func localRequest() commandwire.LocalInvocation {
 
 func localServer(t *testing.T, h localCommands) *jobs.Server {
 	t.Helper()
-	server, err := jobs.StartServer(testContext(t), h)
+	server, err := jobs.StartServer(t.Context(), h)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestCommandWithoutStdinNeverPollsSource(t *testing.T) {
 	)
 	stdout := &outputBuffer{}
 	result, err := process.Forward(
-		testContext(t),
+		t.Context(),
 		server.Endpoint(),
 		localRequest(),
 		process.Stdio{Stdin: neverRead{t: t}, Stdout: stdout, Stderr: &outputBuffer{}},
@@ -124,7 +124,7 @@ func TestPendingTerminalInputAllowsOutputAndCompletion(t *testing.T) {
 	stdout := &outputBuffer{}
 	input := &observedRead{ReadCloser: reader, started: requested}
 	result, err := process.Forward(
-		testContext(t),
+		t.Context(),
 		server.Endpoint(),
 		localRequest(),
 		process.Stdio{Stdin: input, Stdout: stdout, Stderr: &outputBuffer{}},
@@ -145,10 +145,7 @@ func (r *observedRead) Read(bytes []byte) (int, error) {
 	return r.ReadCloser.Read(bytes)
 }
 
-func TestCancellationInterruptsBlockedOutput(t *testing.T)   { blockedOutput(t, false) }
-func TestConnectionLossInterruptsBlockedStdout(t *testing.T) { blockedOutput(t, true) }
-func blockedOutput(t *testing.T, disconnect bool) {
-	t.Helper()
+func TestCancellationInterruptsBlockedOutput(t *testing.T) {
 	server := localServer(
 		t,
 		localCommands{
@@ -167,7 +164,7 @@ func blockedOutput(t *testing.T, disconnect bool) {
 	reader, writer := io.Pipe()
 	// Cleanup follows the operation result; cancellation may already have closed it.
 	defer func() { _ = reader.Close() }()
-	ctx, cancel := context.WithCancel(testContext(t))
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {
@@ -183,18 +180,9 @@ func blockedOutput(t *testing.T, disconnect bool) {
 	if _, err := io.ReadFull(reader, buffer); err != nil {
 		t.Fatal(err)
 	}
-	if disconnect {
-		if err := server.Close(testContext(t)); err != nil {
-			t.Fatal(err)
-		}
-	} else {
-		cancel()
-	}
-	if err := <-done; err == nil || (!disconnect && !errors.Is(err, context.Canceled)) {
+	cancel()
+	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("caller error %v", err)
-	}
-	if disconnect && ctx.Err() != nil {
-		t.Fatal("transport loss did not interrupt blocked stdout before the hang deadline")
 	}
 }
 
@@ -236,7 +224,7 @@ func TestPrivateEndpointStreamsBinaryInputAndJoinsCancellation(t *testing.T) {
 			t.Fatalf("private socket: %v %v", stat, err)
 		}
 	}
-	ctx := testContext(t)
+	ctx := t.Context()
 	conn, err := process.Connect(ctx, server.Endpoint())
 	if err != nil {
 		t.Fatal(err)

@@ -13,7 +13,7 @@ import (
 
 // This file-only scenario writes 32 MiB and uses no external programs.
 func TestKeptSnapshotSurvivesTailRotation(t *testing.T) {
-	ctx := testContext(t)
+	ctx := t.Context()
 	directory := filepath.Join(t.TempDir(), "kept")
 	output, err := jobs.CreateKeptOutput(ctx, directory)
 	if err != nil {
