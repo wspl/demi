@@ -23,17 +23,21 @@ import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow } from '../turn-flow'
 
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
-// The product asks the backend for a title and hides the button until the
-// user's next message; here a timer stands in for the model.
+// The product asks the backend for a title and disables Detect Title until the
+// user's next message; here a timer stands in for the model. As in the
+// backend, a rename made while the model writes wins over its title.
 const retitle = ref<'available' | 'running' | null>('available')
 let retitleTimer: ReturnType<typeof setTimeout> | undefined
 function updateTitle(): void {
   retitle.value = 'running'
+  const asked = session.title
   clearTimeout(retitleTimer)
   retitleTimer = setTimeout(() => {
-    session.title = session.title === 'Login test fix' ? 'Session cookie rename' : 'Login test fix'
+    if (session.title === asked) {
+      session.title = asked === 'Login test fix' ? 'Session cookie rename' : 'Login test fix'
+    }
     retitle.value = null
-    // A message sent now would bring the button back; the specimen does it after a pause.
+    // A message sent now would offer Detect Title again; the specimen does it after a pause.
     retitleTimer = setTimeout(() => { retitle.value = 'available' }, 3000)
   }, 1500)
 }
