@@ -107,7 +107,7 @@ const fullNarrowOpen = ref(true)
       </GallerySection>
 
       <GallerySection
-        title="Full agent settings"
+        title="Full Agent Settings"
         note="A stress test: expiring auth, an unreachable local model, a crashed MCP server, a quota nearly spent, disabled entries, nested rows, long paths. Visible accounts reuse usage requests for one minute. Automatic refresh keeps existing meters and buttons still and enabled. Only a manual refresh spins its button; it bypasses the TTL or joins an automatic request already running."
       >
         <GalleryOverlayWell size="tall">
@@ -126,7 +126,7 @@ const fullNarrowOpen = ref(true)
       </GallerySection>
 
       <GallerySection
-        title="Full · narrow"
+        title="Full · Narrow"
         note="The long rail becomes a picker; the page still reads at this width."
       >
         <GalleryOverlayWell size="narrow">
@@ -145,7 +145,7 @@ const fullNarrowOpen = ref(true)
       </GallerySection>
 
       <GallerySection
-        title="Skills · every state"
+        title="Skills · Every State"
         note="Every source state and every skill state, pinned. Sources: all on, some on, all off, updating, update available, failed after a good fetch (keeps its skills), first fetch failed (no commit, no skills), skipped files. Skills, in web-kit: on, off, a warning, a taken name, never offered to the agent. Every control acts on the showcase's own state."
       >
         <GallerySpecimen variant="Wide" wide>
