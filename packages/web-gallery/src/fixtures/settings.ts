@@ -67,7 +67,6 @@ export function demoExposeState(): ExposeState {
 /** The shared model plus what the mock knows but the page does not show. */
 export interface MockModel extends SettingsProviderModel {
   tools: boolean | null
-  defaultEffort: string | null
 }
 
 export interface MockProvider extends SettingsProviderEntry {
@@ -86,7 +85,6 @@ function model(partial: Partial<MockModel> & Pick<MockModel, 'id'>): MockModel {
     tools: null,
     extensions: [],
     efforts: [],
-    defaultEffort: null,
     fastTier: null,
     enabled: true,
     ...partial,
@@ -288,8 +286,7 @@ export function mockProviders(): MockProvider[] {
               '.webp',
               '.pdf'
             ],
-            efforts: ['low', 'medium', 'high', 'max'],
-            defaultEffort: 'high'
+            efforts: ['low', 'medium', 'high', 'max']
           }
         ),
         model(
@@ -308,7 +305,6 @@ export function mockProviders(): MockProvider[] {
               '.pdf'
             ],
             efforts: ['low', 'medium', 'high', 'max'],
-            defaultEffort: 'medium',
             fastTier: 'fast'
           }
         ),
@@ -352,8 +348,7 @@ export function mockProviders(): MockProvider[] {
               '.webp',
               '.pdf'
             ],
-            efforts: ['low', 'medium', 'high'],
-            defaultEffort: 'medium'
+            efforts: ['low', 'medium', 'high']
           }
         ),
       ],
@@ -395,8 +390,7 @@ export function mockProviders(): MockProvider[] {
               '.webp',
               '.pdf'
             ],
-            efforts: ['low', 'medium', 'high'],
-            defaultEffort: 'high'
+            efforts: ['low', 'medium', 'high']
           }
         ),
         model(
@@ -414,8 +408,7 @@ export function mockProviders(): MockProvider[] {
               '.webp',
               '.pdf'
             ],
-            efforts: ['low', 'medium', 'high'],
-            defaultEffort: 'medium'
+            efforts: ['low', 'medium', 'high']
           }
         ),
         model(
@@ -478,7 +471,6 @@ export function mockProviders(): MockProvider[] {
               '.pdf'
             ],
             efforts: ['minimal', 'low', 'medium', 'high'],
-            defaultEffort: 'medium',
             fastTier: 'priority'
           }
         ),
@@ -497,8 +489,7 @@ export function mockProviders(): MockProvider[] {
               '.webp',
               '.pdf'
             ],
-            efforts: ['minimal', 'low', 'medium', 'high'],
-            defaultEffort: 'low'
+            efforts: ['minimal', 'low', 'medium', 'high']
           }
         ),
       ],
@@ -516,8 +507,7 @@ export function mockProviders(): MockProvider[] {
             outputLimit: 32_000,
             tools: true,
             extensions: [],
-            efforts: ['low', 'high'],
-            defaultEffort: 'high'
+            efforts: ['low', 'high']
           }
         ),
         model({ id: 'kimi-k2-turbo-preview' }),

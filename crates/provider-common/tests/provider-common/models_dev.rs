@@ -197,7 +197,6 @@ async fn a_vendors_models_become_catalog_models_with_what_the_document_states() 
             accepted_extensions: None,
             supports_reasoning: Some(true),
             supported_thinking_efforts: Some(vec!["low".into(), "high".into()]),
-            default_thinking_effort: None,
             can_disable_thinking: None,
             service_tiers: Vec::new(),
             default_service_tier_id: None,
