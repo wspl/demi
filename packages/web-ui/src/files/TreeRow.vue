@@ -2,6 +2,7 @@
 import { ChevronRight } from '@lucide/vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import FileIcon from './FileIcon.vue'
 import { isHiddenName } from './paths'
 import type { TreeRow } from './tree'
@@ -59,7 +60,9 @@ defineEmits<{
       </span>
       <span class="flex min-w-0" :class="isHiddenName(row.name) ? 'faded' : ''">
         <slot name="name">
-          <span class="truncate">{{ row.name }}</span>
+          <!-- The row's own tip (why it failed) says more than its name, so it keeps the hover. -->
+          <span v-if="tooltip" class="truncate">{{ row.name }}</span>
+          <TruncatedText v-else :text="row.name" />
         </slot>
       </span>
       <slot name="trailing" />

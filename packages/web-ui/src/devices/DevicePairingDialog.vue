@@ -7,6 +7,7 @@ import Dialog from '../ui/Dialog.vue'
 import Button from '../ui/Button.vue'
 import CopyCode from '../ui/CopyCode.vue'
 import TextInput from '../ui/TextInput.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import InlineError from '../ui/InlineError.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
 import Segmented from '../ui/Segmented.vue'
@@ -117,7 +118,7 @@ function submit() {
         class="flex items-center gap-2 rounded-xl border border-line bg-surface-float p-4 text-chrome text-fg"
       >
         <Check :size="14" class="shrink-0 text-on-success" />
-        <span class="min-w-0 truncate">{{ phase.device.name }}</span>
+        <TruncatedText :text="phase.device.name" />
       </div>
       <div class="flex justify-end gap-2">
         <Button

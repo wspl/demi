@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Trash2 } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
+import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 
 /** One entry in a SettingsSplit list: its mark (the `leading` slot), the name, and a dot when its state matters. */
 defineProps<{
@@ -45,11 +46,11 @@ const emit = defineEmits<{
       />
     </span>
     <span class="flex min-w-0 flex-1 flex-col leading-4">
-      <span
-        class="truncate text-chrome"
+      <TruncatedText
+        class="text-chrome"
         :class="selected ? 'text-fg-emphasis' : 'text-fg'"
-        >{{ label }}</span
-      >
+        :text="label"
+      />
     </span>
     <span
       v-if="removable"

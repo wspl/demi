@@ -33,6 +33,7 @@ import CommitTextInput from '../ui/CommitTextInput.vue'
 import TitleInput from '../ui/TitleInput.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AddProviderDialog from './AddProviderDialog.vue'
@@ -427,10 +428,10 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     <template v-else>
                       <!-- A name that can be changed is also changed by a double-click on it. -->
                       <h3
-                        class="min-w-0 truncate text-[15px] font-medium text-fg-emphasis"
+                        class="min-w-0 text-[15px] font-medium text-fg-emphasis"
                         @dblclick="selected.kind === 'api_key' && (renaming = true)"
                       >
-                        {{ selected.name }}
+                        <TruncatedText :text="selected.name" />
                       </h3>
                       <Tooltip
                         v-if="selected.kind === 'api_key'"
