@@ -6,7 +6,7 @@ in `testdata` so it can be supplied independently to the Go maintainers; run it
 explicitly from the repository root:
 
 ```sh
-GOFLAGS=-mod=readonly CGO_ENABLED=0 go test -race ./internal/cmdsdk/testdata/http2-reset -count=50 -timeout=30s
+CGO_ENABLED=0 go test -race ./internal/cmdsdk/testdata/http2-reset -count=50 -timeout=30s
 ```
 
 On Linux, use `CGO_ENABLED=1` and add `-tags netgo,osusergo` for the race runtime.
