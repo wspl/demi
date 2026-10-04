@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	protocol "github.com/chromedp/cdproto/cdp"
@@ -26,6 +27,7 @@ type Tab struct {
 	ctx         context.Context
 	cancel      context.CancelCauseFunc
 	gate        Gate
+	loading     atomic.Bool
 	console     *Console
 	dialog      *DialogInput
 	// mu protects task admission, lazy debug access and viewport publications.
@@ -206,7 +208,7 @@ func (t *Tab) StartTask(work func(context.Context)) error {
 	return err
 }
 
-// setUpTab subscribes to page state before enabling events and admitting commands.
+// setUpTab observes page state before admitting commands.
 func (e *Environment) setUpTab(
 	ctx context.Context,
 	id target.ID,
@@ -257,6 +259,9 @@ func (e *Environment) setUpTab(
 		if err := enable(renderer); err != nil {
 			return nil, err
 		}
+	}
+	if err := t.observeLoading(ctx); err != nil {
+		return nil, err
 	}
 	if err := t.SetViewport(ctx, view); err != nil {
 		return nil, err
