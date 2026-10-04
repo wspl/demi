@@ -698,7 +698,7 @@ $ demi browser find t1 --role button --name 'Sign in' --json
 
 | Outcome | stdout | stderr | Exit code |
 | --- | --- | --- | --- |
-| Success, default | Readable result or pure media bytes | Necessary diagnostics | 0 |
+| Success, default | Readable result, or a returned medium ([Images and large outputs](#images-and-large-outputs)) | Necessary diagnostics | 0 |
 | Success, `--json` | One schema-validated JSON value | Necessary diagnostics | 0 |
 | Normal empty result | Empty-result text or valid empty collection | None | 0 |
 | Normal false value | The false value | None | 0 |
@@ -717,18 +717,29 @@ booleans such as `clicked`, `submitted`, and `actionCompleted`.
 
 ### Images and large outputs
 
-`screenshot <tab>` writes pure PNG bytes to stdout. The shell's media
-adapter detects the binary format and applies the model's media support and
-size limits. Do not put status text before or after PNG bytes. If the model
-cannot accept the image, keep the adapter's explicit diagnostic; do not
-claim that the agent saw it.
+`screenshot <tab>` without `--output` returns its PNG as a medium, which goes
+where its stdout goes
+([Media a command returns](../agent/runtime.md#media-a-command-returns)).
+When its stdout is the job's output, the command prints what it captured, as
+the `--output` form does, and the job's result attaches the image; otherwise
+the PNG's bytes are its whole stdout, so `> shot.png` saves them and
+`| convert - png:-` processes them, and it prints nothing else. If the model
+cannot accept the image, the result says so; do not claim that the agent saw
+it.
 
 ```bash
 demi browser screenshot t1
+for t in t1 t2 t3; do demi browser screenshot "$t"; done
 ```
 
+One `screenshot` captures one tab. Several tabs are a loop in one shell call,
+whose result attaches every screenshot in the loop's order: Bash composes the
+calls, so the command has no list of tabs, and with a stdout that goes
+elsewhere it never has several images to put in it.
+
 With `--output`, save the file and return file information instead. To show the
-saved image, use the file command:
+saved image, use the file command, which returns an image file as a medium in
+the same way:
 
 ```bash
 demi browser screenshot t1 --output /tmp/login.png
@@ -740,10 +751,8 @@ stdout. A webpage must not be able to cause file reads by forging output text.
 `screenshot --json` requires `--output`; it returns metadata, not base64 image
 content. `probe --output` likewise returns an annotated image path plus matches.
 
-One shell stdout is one byte stream. Concatenating PNGs, or mixing log text with
-PNG bytes, does not produce multiple media results. Save multiple images and
-read them separately. Downloads, large page content, and bundles should also
-be files rather than enormous inline results.
+Downloads, large page content, and bundles are files rather than enormous
+inline results.
 
 ### Limits, timeouts, and cancellation
 
@@ -1104,7 +1113,10 @@ A missing attribute returns null. Reading a protected input's value fails with
 
 ```text
 $ demi browser screenshot t1
-<PNG bytes; the shell media adapter displays an image>
+Screenshot of t1
+Image: 1280 × 720 px, one pixel per CSS pixel
+Viewport: 1280 × 720 CSS px, device pixel ratio 2, web
+[medium 1: image/png, 412000 bytes]
 
 $ demi browser screenshot t1 --output /tmp/login.png
 Screenshot saved: /tmp/login.png
@@ -1942,8 +1954,8 @@ demi browser viewport reset t1
 ```
 
 A script needing restoration on every exit should use a shell trap and surface
-cleanup failures. Then read `/tmp/mobile.png` separately with `demi file read`
-to inspect the image. Browser commands do not add another batch language or a
+cleanup failures. To inspect the image, `demi file read /tmp/mobile.png`
+returns it to the model, in the same script or a later one. Browser commands do not add another batch language or a
 persistent JavaScript REPL; Bash already composes their operations.
 
 ## Acceptance
@@ -2018,8 +2030,11 @@ part of every acceptance that touches the browser, not an optional run.
    without closing unrelated tabs or claiming rollback of completed effects.
 9. Text preserves hierarchy; JSON validates independently. Truncation preserves
    valid JSON. Page text cannot forge terminal controls or tool metadata.
-10. PNG stdout follows the shell's media handling. Mixed streams are not misread as
-    images. A printed path never triggers an automatic Host read.
+10. A screenshot follows [Media a command returns](../agent/runtime.md#media-a-command-returns):
+    a loop over three tabs attaches three images in order, `> shot.png` saves
+    the PNG and attaches nothing, and `| convert - png:-` attaches only
+    `convert`'s image. Mixed streams are not misread as images. A printed path
+    never triggers an automatic Host read.
 11. Run workflow fixtures through the embedded brush and jq, checking error exits,
     pipefail, empty matches, and business failure separately.
 12. Read-only eval rejects DOM/storage/network side effects. Validate CDP scope,
