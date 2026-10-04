@@ -32,7 +32,7 @@ const { view } = useGalleryView()
 const anatomy: [string, string][] = [
   [
     'Shell',
-    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, Data & privacy. A plugin\'s section is on the rail while its plugin is on. Below a phone width the rail becomes a row.'
+    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, Data & privacy. A plugin\'s section is on the rail while its plugin is on. On a narrow screen, where the app\'s side panes become overlays, the dialog fills the window: square corners, no scrim around it. Below a phone width the rail becomes a row.'
   ],
   [
     'Page',
@@ -215,7 +215,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Full · Narrow"
-        note="The long rail becomes a picker; the page still reads at this width."
+        note="A phone-width window: the dialog fills it edge to edge with square corners and no scrim around it, the close button stays in its corner, and the long rail becomes a picker."
       >
         <GalleryOverlayWell size="narrow">
           <Button v-if="!fullNarrowOpen" size="md" @click="fullNarrowOpen = true">Open</Button>
