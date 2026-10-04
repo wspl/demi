@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { inject, provide } from 'vue'
+import { computed, inject, provide } from 'vue'
 import { X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
 import ScrollArea from './ScrollArea.vue'
@@ -16,6 +16,12 @@ import type { HeadlineText } from './ui-text'
  * Size: md is the default compact panel, wide fits a settings row beside a
  * long input, lg is an editor, xl is the settings shell, full is a viewer
  * that fills the window.
+ * Narrow: where the scrim is narrower than the app's medium breakpoint (the
+ * width at which the app's side panes become overlays), an xl or full panel
+ * fills the scrim edge to edge with square corners and no margin of scrim,
+ * keeping its content inside the device's safe area. Smaller sizes stay
+ * floating panels. The scrim, not the viewport, is measured, so a catalog
+ * host of phone width shows the same.
  * Inline (a catalog host provides `overlayInlineKey`): the panel renders in flow at its
  * own size, with no scrim and no centering.
  * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
@@ -54,6 +60,9 @@ provide(dialogNestingKey, true)
 // What opens in the dialog floats above it and its cards.
 provideLayerElevation()
 
+// A shell or a viewer is a page of its own: on a narrow screen it takes the whole window.
+const fillsWhenNarrow = computed(() => props.size === 'xl' || props.size === 'full')
+
 const id = useOverlay(
   props.overlayStore,
   () => (container ? false : props.isOpen),
@@ -79,20 +88,21 @@ onKeyStroke('Escape', (event) => {
     <Transition name="dialog" appear>
       <div
         v-if="isOpen"
-        :class="inline ? 'dialog-scrim relative grid' : 'dialog-scrim fixed inset-0 z-50 grid place-items-center bg-black/40'"
+        :class="inline ? 'dialog-scrim relative grid' : 'dialog-scrim dialog-host fixed inset-0 z-50 grid place-items-center bg-black/40'"
         @click.self="!inline && emit('close')"
       >
         <div
           class="dialog-panel relative flex flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl"
           :class="[
             inline ? 'w-full' : 'max-h-[calc(100%-2rem)] w-[calc(100%-2rem)]',
+            !inline && fillsWhenNarrow && 'dialog-fill',
             size === 'full' ? 'h-[calc(100%-2rem)]' : size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : size === 'wide' ? 'max-w-xl' : 'max-w-md',
           ]"
           role="dialog"
           aria-modal="true"
           :aria-label="label"
         >
-          <div v-if="!hideClose" class="absolute right-3 top-3 z-10">
+          <div v-if="!hideClose" class="dialog-close absolute right-3 top-3 z-10">
             <IconButton
               :icon="X"
               variant="ghost"
@@ -135,6 +145,35 @@ onKeyStroke('Escape', (event) => {
 .dialog-leave-to .dialog-panel {
   opacity: 0;
   transform: scale(0.95);
+}
+
+/* The scrim is the container a panel fills; an inline panel has no scrim to fill. */
+.dialog-host {
+  container-type: inline-size;
+}
+
+/* 48rem is Tailwind's md breakpoint, the app's narrow width (SidebarLayout). */
+@container (width < 48rem) {
+  .dialog-fill {
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    max-height: none;
+    border-radius: 0;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* The close button keeps its corner inset inside the safe area. */
+  .dialog-fill .dialog-close {
+    top: calc(0.75rem + env(safe-area-inset-top));
+    right: calc(0.75rem + env(safe-area-inset-right));
+  }
+
+  /* A panel that fills the window fades without scaling, so no scrim shows at its edges. */
+  .dialog-enter-from .dialog-fill,
+  .dialog-leave-to .dialog-fill {
+    transform: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

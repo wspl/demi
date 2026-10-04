@@ -25,6 +25,7 @@ import type {
  * The settings surface: one large dialog with a section rail and one page at a time.
  * The rail sits on the page surface, the page on the dialog surface, so the two read
  * as the app's own sidebar and content. Layout follows the dialog width, not the viewport.
+ * On a narrow screen the dialog fills the window (Dialog's xl size).
  */
 const props = withDefaults(defineProps<{
   isOpen: boolean
@@ -95,12 +96,13 @@ const initials = computed(() =>
     :overlay-store="overlayStore"
     size="xl"
     label="Settings"
+    :scroll-content="false"
     @close="emit('close')"
   >
     <!-- The query container must be an ancestor of what it sizes, so it wraps the row. -->
-    <!-- min-h-0 lets the body shrink to the panel's cap, so the rail and the page scroll
-         on their own instead of the whole dialog. -->
-    <div class="@container h-[36rem] min-h-0 shrink">
+    <!-- The rail and the page scroll on their own. min-h-0 lets the body shrink to a
+         floating panel's cap; grow lets it fill a panel that fills a narrow window. -->
+    <div class="@container h-[36rem] min-h-0 shrink grow">
       <div class="flex h-full flex-col overflow-hidden @md:flex-row">
       <!-- Wide: a rail beside the page. Narrow: a compact header and the sections in one row or a picker. -->
       <!-- The account and the filter stay put; only the section list scrolls. -->
