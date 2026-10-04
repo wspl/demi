@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"math"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,13 +16,20 @@ import (
 	"github.com/wspl/demi/tools/contractgen/testdata/orderedobject"
 )
 
-// Object fields retain opaque bytes through decoding, validation and nested
-// encoding. No services or waits; budget <1 second.
+// Object fields preserve member order and use the reference encoding through
+// containing contracts and arrays. Local fixture only; budget <1 second.
 func TestOrderedObjectRoundTrip(t *testing.T) {
-	for _, raw := range []string{
-		`{}`,
-		`{ "z": [null,true,1e+02], "a": {"b":"\u003c>&\u2028","a":2} }`,
-	} {
+	data, err := os.ReadFile("testdata/orderedobject/encodings.jsonl")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		var row struct{ Input, Object, Contract string }
+		if err := json.Unmarshal(scanner.Bytes(), &row); err != nil {
+			t.Fatal(err)
+		}
+		raw := row.Input
 		wire := `{"data":` + raw + `}`
 		value, err := orderedobject.DecodeInput([]byte(wire))
 		if err != nil {
@@ -29,6 +37,10 @@ func TestOrderedObjectRoundTrip(t *testing.T) {
 		}
 		if string(value.Data) != raw {
 			t.Fatalf("data got %s, want %s", value.Data, raw)
+		}
+		encoded, err := value.MarshalJSON()
+		if err != nil || string(encoded) != row.Contract {
+			t.Fatalf("MarshalJSON got %s, %v; want %s", encoded, err, row.Contract)
 		}
 		fields, err := contract.ObjectFields(value.Data)
 		if err != nil {
@@ -41,9 +53,11 @@ func TestOrderedObjectRoundTrip(t *testing.T) {
 			value any
 			want  string
 		}{
-			{value, wire},
-			{orderedobject.Envelope{Input: value}, `{"input":` + wire + `}`},
-			{[]orderedobject.Input{value}, `[` + wire + `]`},
+			{value.Data, row.Object},
+			{oracleJSON(" \n" + strings.ReplaceAll(row.Object, "<", `\u003c`) + "\n "), row.Object},
+			{value, row.Contract},
+			{orderedobject.Envelope{Input: value}, `{"input":` + row.Contract + `}`},
+			{[]orderedobject.Input{value}, `[` + row.Contract + `]`},
 		} {
 			got, err := contract.EncodeJSON(tc.value)
 			if err != nil || string(got) != tc.want {
@@ -51,7 +65,15 @@ func TestOrderedObjectRoundTrip(t *testing.T) {
 			}
 		}
 	}
+	if err := scanner.Err(); err != nil {
+		t.Fatal(err)
+	}
 }
+
+// oracleJSON exercises an opaque codec that returns the original JSON spelling.
+type oracleJSON json.RawMessage
+
+func (v oracleJSON) MarshalJSON() ([]byte, error) { return []byte(v), nil }
 
 // The fixture records the object schema and non-object errors from the reference
 // decoder. Local fixture only; budget <1 second.
@@ -120,5 +142,32 @@ func TestOrderedObjectTypeScript(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("TypeScript got %s, want %s", got, want)
+	}
+}
+
+// Generated scalar and collection codecs retain float32 spelling even when a
+// surrounding encoder normalizes raw JSON. Local oracle fixture; budget <1 second.
+func TestOrderedObjectNumberEncoding(t *testing.T) {
+	data, err := os.ReadFile("testdata/orderedobject/numbers.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var row struct{ Scalar, List, Contract string }
+	if err := json.Unmarshal(data, &row); err != nil {
+		t.Fatal(err)
+	}
+	values := []orderedobject.Float32{1e13, 1.5, orderedobject.Float32(math.Copysign(0, -1))}
+	for _, tc := range []struct {
+		value any
+		want  string
+	}{
+		{values[0], row.Scalar},
+		{values, row.List},
+		{orderedobject.FloatValues{Values: values}, row.Contract},
+	} {
+		got, err := contract.EncodeJSON(tc.value)
+		if err != nil || string(got) != tc.want {
+			t.Fatalf("encoding got %s, %v; want %s", got, err, tc.want)
+		}
 	}
 }

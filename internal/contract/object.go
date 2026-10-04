@@ -44,35 +44,17 @@ func JSONObject(data []byte) (json.RawMessage, error) {
 	return nil, fmt.Errorf("invalid type: %s, expected a map", unexpected)
 }
 
-// OrderedObject encodes object bytes verbatim after checking their shape.
-// Generated encoders use this wrapper while fields remain json.RawMessage.
-type OrderedObject json.RawMessage
-
-// MarshalJSON returns the validated object without rewriting member bytes.
-func (v OrderedObject) MarshalJSON() ([]byte, error) {
-	return JSONObject(v)
-}
-
 // objectErrorNumber spells a refused numeric token in the decoder's diagnostic format.
 func objectErrorNumber(value json.Number) (string, error) {
-	text := string(value)
-	if !strings.ContainsAny(text, ".eE") && text != "-0" {
-		if _, err := strconv.ParseInt(text, 10, 64); err == nil {
-			return "integer `" + text + "`", nil
-		}
-		if _, err := strconv.ParseUint(text, 10, 64); err == nil {
-			return "integer `" + text + "`", nil
-		}
-	}
-	number, err := value.Float64()
+	encoded, err := normalizeJSONNumber(string(value))
 	if err != nil {
-		return "", fmt.Errorf("decode refused number: %w", err)
+		return "", err
 	}
-	encoded, err := formatJSONFloat(number, 64)
-	if err != nil {
-		return "", fmt.Errorf("format refused number: %w", err)
+	kind := "integer"
+	if bytes.ContainsAny(encoded, ".eE") {
+		kind = "floating point"
 	}
-	return "floating point `" + string(encoded) + "`", nil
+	return kind + " `" + string(encoded) + "`", nil
 }
 
 // objectErrorString uses the decoder's quoted diagnostic spelling, including

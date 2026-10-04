@@ -84,11 +84,7 @@ func (g *generator) emitJSONFields(d *definition, st *types.Struct, tag, variant
 				g.line("if v.%s{", f.Name())
 			}
 		}
-		value := "v." + f.Name()
-		if has(d.fields[f.Name()], "object") {
-			value = "contract.OrderedObject(" + value + ")"
-		}
-		g.line("fields=append(fields,contract.Field{Name:%s,Value:%s})", quote(opts[0]), value)
+		g.line("fields=append(fields,contract.Field{Name:%s,Value:v.%s})", quote(opts[0]), f.Name())
 		if len(opts) > 1 {
 			g.line("}")
 		}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/wspl/demi/internal/contract"
+	math "math"
 )
 
 func DecodeEnvelope(data []byte) (Envelope, error) { return contract.Decode[Envelope](data) }
@@ -59,6 +60,96 @@ func (v Envelope) MarshalJSON() ([]byte, error) {
 	fields = append(fields, contract.Field{Name: "input", Value: v.Input})
 	return contract.EncodeObject(fields)
 }
+func DecodeFloat32(data []byte) (Float32, error) { return contract.Decode[Float32](data) }
+func (v Float32) Validate() error                { return contractValidateFloat32(v, 0) }
+func contractValidateFloat32(v Float32, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) {
+		return contract.At("", fmt.Errorf("number must be finite"))
+	}
+	return nil
+}
+func (v *Float32) UnmarshalJSON(data []byte) error {
+	value, err := contract.Decode[float32](data)
+	if err != nil {
+		return err
+	}
+	next := Float32(value)
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v Float32) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	return contract.EncodeJSON(float32(v))
+}
+func DecodeFloatValues(data []byte) (FloatValues, error) { return contract.Decode[FloatValues](data) }
+func (v FloatValues) Validate() error                    { return contractValidateFloatValues(v, 0) }
+func contractValidateFloatValues(v FloatValues, depth int) error {
+	if depth > 1000 {
+		return fmt.Errorf("validation nesting exceeds 1000")
+	}
+	if v.Values == nil {
+		return contract.At("values", fmt.Errorf("required array is nil"))
+	}
+	for i, item := range v.Values {
+		_ = i
+		_ = item
+		if err := contractValidateFloat32(item, depth+1); err != nil {
+			return contract.At(fmt.Sprintf("%s[%d]", "values", i), err)
+		}
+		if math.IsNaN(float64(item)) || math.IsInf(float64(item), 0) {
+			return contract.At(fmt.Sprintf("%s[%d]", "values", i), fmt.Errorf("number must be finite"))
+		}
+	}
+	return nil
+}
+func (v *FloatValues) UnmarshalJSON(data []byte) error {
+	obj, err := contract.Decode[map[string]json.RawMessage](data)
+	if err != nil {
+		return err
+	}
+	var next FloatValues
+	for key := range obj {
+		switch key {
+		case "values":
+		default:
+			return contract.At(key, fmt.Errorf("unknown field"))
+		}
+	}
+	{
+		raw, ok := obj["values"]
+		if !ok {
+			return contract.At("values", fmt.Errorf("required field is absent"))
+		}
+		if ok {
+			value, err := func(b []byte) ([]Float32, error) { return contract.List(b, contract.Decode[Float32]) }(raw)
+			if err != nil {
+				return contract.At("values", err)
+			}
+			next.Values = value
+		}
+	}
+	if err := next.Validate(); err != nil {
+		return err
+	}
+	*v = next
+	return nil
+}
+func (v FloatValues) MarshalJSON() ([]byte, error) {
+	if err := v.Validate(); err != nil {
+		return nil, err
+	}
+	fields := []contract.Field{}
+	fields = append(fields, contract.Field{Name: "values", Value: v.Values})
+	return contract.EncodeObject(fields)
+}
 func DecodeInput(data []byte) (Input, error) { return contract.Decode[Input](data) }
 func (v Input) Validate() error              { return contractValidateInput(v, 0) }
 func contractValidateInput(v Input, depth int) error {
@@ -107,7 +198,7 @@ func (v Input) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	fields := []contract.Field{}
-	fields = append(fields, contract.Field{Name: "data", Value: contract.OrderedObject(v.Data)})
+	fields = append(fields, contract.Field{Name: "data", Value: v.Data})
 	return contract.EncodeObject(fields)
 }
 func InputJSONSchema() json.RawMessage {

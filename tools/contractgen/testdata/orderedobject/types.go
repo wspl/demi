@@ -13,3 +13,11 @@ type Input struct {
 type Envelope struct {
 	Input Input `json:"input"`
 }
+
+// +demi:root
+type Float32 float32
+
+// +demi:root
+type FloatValues struct {
+	Values []Float32 `json:"values"`
+}
