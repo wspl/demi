@@ -894,15 +894,14 @@ plugin's [conversation state](#conversation-state-of-plugins), as
 `{ plugin, revision }` for every plugin that declares one, in registration
 order, so turning a plugin on or off changes no summary. `workingTreeRevision`
 rises each time a job of the conversation ends, since any job may change the
-working tree; it is counted in memory from the backend's start, as
-`pluginRevisions` is, and the page lists the working tree again when it rises
+working tree, and the page lists the working tree again when it changes
 ([File text and working tree changes](#file-text-and-working-tree-changes)).
 `permissionRequests` counts the conversation's undecided
 [permission requests](#conversation-permissions), which the sidebar shows as
 the needs-you mark, and `permissionsRevision` rises with each change of its
-requests, counted in memory as `pluginRevisions` is; a page that
-shows the conversation reads them when it is higher than the revision it
-holds.
+requests; a page that shows the conversation reads them when it is newer
+than the revision it holds. `pluginRevisions`, `workingTreeRevision` and
+`permissionsRevision` are [counted in memory](#revisions-counted-in-memory).
 
 `POST /api/conversations/:id/title`, without a body, asks the conversation's
 model selection for a new title from every message the user sent and answers
@@ -983,9 +982,11 @@ archived conversations, the Cloud's state, `subagents`, the user's
 [Subagent switch and profiles](#subagents), `plugins`, the plugin list, and
 `pluginStates`, the user state of each plugin the user has on that declares
 one, by plugin id, `publicUrl`,
-the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), and `webBuild`, the
+the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), `webBuild`, the
 build of the web app the backend serves, or null when it serves none
-([A page of another build](web-application.md#a-page-of-another-build)). Each provider entry carries its
+([A page of another build](web-application.md#a-page-of-another-build)), and
+`run`, the id of this run of the backend
+([Revisions counted in memory](#revisions-counted-in-memory)). Each provider entry carries its
 `details`: `{ type: "read", ... }` with what `GET /api/providers/:id/status`
 answers, or `{ type: "failed", message }` for an entry whose provider could
 not be read, which leaves the others intact. Reading the state never starts
@@ -1046,6 +1047,28 @@ The backend closes the channel with a code and a reason:
 The channel never renews its session; only requests do
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
 
+### Revisions counted in memory
+
+Three revisions of a conversation's summary count changes in the backend's
+memory rather than in storage: each of `pluginRevisions`,
+`workingTreeRevision` and `permissionsRevision`. The answers of the
+permissions and plugin state reads carry the same counts. A backend that
+starts again counts from 0, so a count compares only with counts of the same
+run. The product state's `run` names the run: an id the backend chooses when
+it starts.
+
+A page holds each such revision together with the `run` of the snapshot it
+held when it took it, and a revision of another run is older than any
+revision of the current one. For example, a page shows `c_81` and holds its
+requests at `permissionsRevision` 5. The backend restarts; the page connects
+again, and the snapshot carries a new `run` and `permissionsRevision: 1`. The
+page reads the requests again, though 1 is lower than 5. Comparing the
+numbers alone, it would keep the requests it held until the count passed 5.
+
+An answer belongs to the run of the snapshot the page holds when it arrives:
+a run's answers are all sent before it exits, and the next run starts, and
+sends its first snapshot, only after that.
+
 ## A user's plugins
 
 The plugin list is every plugin of the backend, in its order of
@@ -1085,10 +1108,9 @@ GET /api/conversations/c_81/plugins/browser/state
 The state matches the conversation state schema of the plugin's manifest. A
 page takes an answer only when its revision is higher than the one it holds,
 since a call's answer and a read can reach it in either order. The revision
-counts the changes the plugin marked since the backend started, in the
-plugin host's memory; a backend that restarts starts again at 0, and every
-page then receives a new `snapshot`, which replaces what it held, so it reads
-the state again ([Page synchronization](#page-synchronization)). An unknown plugin answers 404
+counts the changes the plugin marked, in the plugin host's memory, so it
+compares only within one run of the backend
+([Revisions counted in memory](#revisions-counted-in-memory)). An unknown plugin answers 404
 `unknown_plugin`, one without a conversation state 404 `unknown_plugin`, and a
 plugin the user has off 409 `plugin_disabled`; the route needs a conversation
 the user owns, as every conversation route does. A read is admitted as a

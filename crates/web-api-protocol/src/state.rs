@@ -52,6 +52,12 @@ pub struct ProductState {
     /// build is out of date (`web-application.md` § A page of another
     /// build).
     pub web_build: Option<String>,
+    /// This run of the backend, an id it chooses when it starts. The
+    /// revisions it counts in memory, such as a summary's
+    /// `permissionsRevision`, compare only within one run: a page holding
+    /// one of another run reads again (`web-api.md` § Revisions counted in
+    /// memory).
+    pub run: String,
 }
 
 /// A message of the page's synchronization channel, `WS /sync`: the whole
