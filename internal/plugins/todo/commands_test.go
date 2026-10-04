@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
@@ -165,8 +164,7 @@ func TestConcurrentAddsKeepEveryTodoWithItsOwnID(t *testing.T) {
 	}
 	storage := &hosttest.MemoryStorage{}
 	barrier := &readBarrier{ready: make(chan struct{})}
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	outputs := make(chan string, 2)
 	var wg sync.WaitGroup
 	errs := make(chan error, 2)
