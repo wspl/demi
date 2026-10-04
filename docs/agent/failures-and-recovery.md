@@ -160,8 +160,7 @@ not, because a product may have posted it, and a second attempt would post a
 second answer beside it. An empty lifecycle event, such as the start of a
 reasoning item, is not written to the transcript unless material output
 follows it. Completed tool calls from earlier requests of the turn remain and
-are not run again. Unwinding also returns command state to the version
-recorded where the attempt began ([Command state history](command-state-history.md)).
+are not run again.
 
 The wait before a retry is the vendor's wait when it named one. Otherwise it is
 random, from zero up to a cap that starts at 1 second and doubles with each
@@ -229,8 +228,7 @@ opened by a `user`, `context` or new-turn `wakeup` block
 ([Block types](runtime.md#block-types)). A rerun spares the model a
 continuation attached to a stub of its own aborted output.
 
-Otherwise, the leftovers are dropped, command state returns to its version at
-the cut, the latest stopped marker is marked as resumed, a `resume` block is
+Otherwise, the leftovers are dropped, the latest stopped marker is marked as resumed, a `resume` block is
 appended, and inference continues after the preserved progress. The model
 receives the `resume` block as "Continue from where you left off."
 

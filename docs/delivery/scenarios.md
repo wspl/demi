@@ -110,14 +110,13 @@ common checks do not establish.
 | File workflow | Create, read, edit, and list agree with bytes on the selected target |
 | Output view | Long/binary output and nonzero exits preserve full target files while bounding model-visible previews |
 | Long jobs | Status, stdin, abort, and background jobs retain attribution and do not leave orphan processes; observation timeout does not cancel work |
-| Command storage | Todo RPC reaches the invoking node; state survives turns and remains separate across nodes and conversations |
-| Subagents | Inherited execution target, independent command state, completion events, and cross-host callbacks retain child identity |
+| Subagents | Inherited execution target, completion events, and cross-host callbacks retain child identity |
 | Target exchange | Cloud/device/project changes update each node's context; files stay on their original device; same-device changes do not duplicate bindings |
 | Transitions | While a reset, target change, or archive holds a conversation, opening it, a message, a metadata change, and a Host operation wait and then proceed; a conversation that only has the Cloud attached keeps running through a Cloud reset ([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)) |
 | Concurrent conversations | cwd and job handles stay scoped while filesystem data is shared on the same machine |
 | Attachments | Provider requests receive authorized bytes; the upload answer carries the detected media type and, for a text file, its snippet; persisted references and blob reads enforce ownership |
 | Client disconnect | Backend work continues and the client can reattach to persisted results |
-| Editing and Fork | History and command-state boundaries are durable and retries are idempotent; external file effects and source children are not replayed or cloned |
+| Editing and Fork | Rewritten and forked history is durable and retries are idempotent; external file effects and source children are not replayed or cloned |
 | First Cloud use | History-only access does not boot a machine; concurrent execution joins one allocation and wake |
 | Multiple Cloud projects | Project directories share one user's managed device and can read each other's files |
 | User isolation | Another account cannot resolve, reset, read, or invoke commands on the first account's resources |
@@ -137,7 +136,7 @@ fixture must not define an alternative execution contract.
 
 | Failure | Required result |
 |---|---|
-| Idle backend restart | History and command state restore, devices reconnect, and new work runs |
+| Idle backend restart | History restores, devices reconnect, and new work runs |
 | Backend restart after dispatch but before a result | The call has an explicit unknown outcome and is never silently replayed |
 | Backend shutdown | Every shutdown step runs even when one fails; open transfers and user streams end before the user's Cloud hibernates, so the Cloud still saves ([Startup and shutdown](../backend/backend.md#startup-and-shutdown)) |
 | Runner death | Its running jobs fail; reconnect permits new work; persistent files remain |
@@ -158,7 +157,7 @@ a suite that runs one backend cannot demonstrate it.
 No check runs by itself when a scenario closes: each scenario asserts what it
 protects, such as the requests its scripted model received. The world does not
 compare the live transcript with the cold one; tests for content, media,
-queue, and command-state correctness assert those values explicitly on the
+and queue correctness assert those values explicitly on the
 cold transcript.
 
 The world does not bound the `job_output` bytes a job sends. The runner's wire
