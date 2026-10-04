@@ -8,6 +8,7 @@ use tokio_util::sync::CancellationToken;
 use demi_command_package_browser_protocol::browser::{
     ActionProgress, AssetsExportResult, BrowserErrorCode, ErrorDetails,
 };
+use demi_command_protocol::MAX_MEDIUM_BYTES;
 
 pub const CONTROL_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -52,6 +53,23 @@ pub enum BrowserError {
     OutputExists(String),
     #[error("result exceeds the browser output limit")]
     ResultTooLarge,
+    /// A screenshot of more bytes than a medium can be, which the command
+    /// would return as one (`browser.md` § Images and large outputs).
+    #[error(
+        "the screenshot is {0} bytes, more than the {MAX_MEDIUM_BYTES} a command returns as an image; save it to a file with --output <file>"
+    )]
+    ScreenshotTooLarge(usize),
+    /// A CDP response over the connection's limit, which failed only the
+    /// request it answers (`browser.md` § Native driver).
+    #[error("Chrome's answer is too large: {0}")]
+    MessageTooLarge(String),
+    /// A capture whose CDP response is over the connection's limit, so
+    /// that even `--output` cannot keep it (`browser.md` § Images and large
+    /// outputs).
+    #[error(
+        "the screenshot is too large for Chrome to send: {0}; capture a part of the page with --clip x,y,width,height"
+    )]
+    CaptureTooLarge(String),
     #[error("password values are protected")]
     ProtectedValue,
     #[error("browser could not start: {0}")]
@@ -292,7 +310,10 @@ impl BrowserError {
             Self::HistoryBoundary => BrowserErrorCode::HistoryBoundary,
             Self::NavigationFailed(_) => BrowserErrorCode::NavigationFailed,
             Self::OutputExists(_) => BrowserErrorCode::OutputExists,
-            Self::ResultTooLarge => BrowserErrorCode::ResultTooLarge,
+            Self::ResultTooLarge
+            | Self::ScreenshotTooLarge(_)
+            | Self::MessageTooLarge(_)
+            | Self::CaptureTooLarge(_) => BrowserErrorCode::ResultTooLarge,
             Self::UnsupportedCapability(_) => BrowserErrorCode::UnsupportedCapability,
             Self::ProtectedValue => BrowserErrorCode::ProtectedValue,
             Self::Unavailable(_) | Self::Installation(_) | Self::Root => {
@@ -360,6 +381,9 @@ impl From<CdpError> for BrowserError {
                     .contains("Running as root without --no-sandbox is not supported") =>
             {
                 Self::Root
+            }
+            CdpError::Chrome(error) if error.code == chromiumoxide::conn::MESSAGE_TOO_LARGE => {
+                Self::MessageTooLarge(error.message)
             }
             // Chrome provides only a message for a closed target session.
             CdpError::Chrome(ref error) if error.message == "Session with given id not found." => {

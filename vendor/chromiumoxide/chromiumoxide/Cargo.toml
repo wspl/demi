@@ -225,7 +225,7 @@ version = "0.6"
 maintainer = "demi-command-package-browser-chrome"
 patches = [
     "Bounded event subscriptions whose loss is an explicit lag error, in place of unbounded channels",
-    "Bounded CDP websocket messages (16 MiB); an oversized message fails the connection",
+    "Bounded CDP websocket messages (64 MiB): an oversized message is read off the socket and discarded, and fails only the request it answers (error code MESSAGE_TOO_LARGE), or the connection when it is an event",
     "Evaluation keeps an explicit execution context or scope",
     "Chrome starts through a caller's spawn hook (launch_with), so the service puts it in its own process group with its profile marker",
     "A launch reads what Chrome wrote before it reports Chrome's exit, so the reason a Chrome that exits at once gave (such as running as root) is not lost to a random choice between the two, nor on Unix to an exit reaped before the reactor reported the pipe readable (macOS): the pipe is drained without waiting before the exit is reported",
