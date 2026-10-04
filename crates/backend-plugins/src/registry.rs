@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use demi_command_declarations::{LeafKind, NativeOperation, Node};
 use demi_host_interface::RegisterError;
 use demi_plugin_interface::{
-    Commands, Manifest, Page, Placement, PluginFactory, PluginId, Scope, State, Stream, Topic,
+    Commands, DEMI_ROOT, Manifest, Page, Placement, PluginFactory, PluginId, Scope, State, Stream, Topic,
 };
 use demi_shared_types::Profile;
 
@@ -175,18 +175,25 @@ impl Registry {
     }
 
     /// Composes the command set once, with no instance behind it, so a name
-    /// taken twice is found now and never while a conversation runs.
+    /// taken twice is found now and never while a conversation runs. The
+    /// `demi` root is the plugin host's, so a root of that name is taken
+    /// whichever plugin comes first.
     fn check(&self) -> Result<(), RegistryError> {
         let mut demi = BTreeSet::new();
         for registered in &self.plugins {
             for commands in &registered.commands {
                 let name = commands.tree.name();
-                let taken = commands.placement == Placement::Demi
-                    && (TAKEN_GROUPS.contains(&name) || !demi.insert(name.to_owned()));
+                let (taken, command) = match commands.placement {
+                    Placement::Demi => (
+                        TAKEN_GROUPS.contains(&name) || !demi.insert(name.to_owned()),
+                        format!("{DEMI_ROOT} {name}"),
+                    ),
+                    Placement::Root => (name == DEMI_ROOT, name.to_owned()),
+                };
                 if taken {
                     return Err(RegistryError::Taken {
                         plugin: registered.id().clone(),
-                        command: format!("demi {name}"),
+                        command,
                     });
                 }
             }
