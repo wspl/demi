@@ -506,7 +506,8 @@ impl AgentSession {
     /// still marked executing completes as interrupted and never runs again;
     /// the session is idle, with its wakeups armed, and hands back its queue
     /// and whether a turn was interrupted. Waiting input and due wakeups of an
-    /// interrupted turn wait for the node's next action.
+    /// interrupted turn, or of a session saved holding them after a Stop,
+    /// wait for the node's next action.
     pub fn restore(
         checkpoint: Checkpoint,
         id: NodeId,
@@ -550,7 +551,7 @@ impl AgentSession {
             inputs: InputQueue::restored(state.agent_inputs),
             wakeups,
             edits: state.edits,
-            held: interrupted,
+            held: interrupted || state.held,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
         };
@@ -820,7 +821,7 @@ impl AgentSession {
     /// child admits what its own children deliver, keeps it in its final
     /// checkpoint, and runs nothing more.
     pub fn hold(&self) {
-        self.shared.update(|core| core.held = true);
+        self.shared.update(SessionCore::hold);
     }
 
     /// Stops one thing (`runtime.md` § Stop): the running action, which has
