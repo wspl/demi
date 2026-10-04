@@ -92,7 +92,6 @@ function connect() {
             <CornerDot
               v-if="primaryHost.kind === 'device'"
               :tone="primaryHost.online ? 'success' : 'muted'"
-              ring="button"
               :label="primaryHost.online ? 'Online' : 'Offline'"
             />
           </span>

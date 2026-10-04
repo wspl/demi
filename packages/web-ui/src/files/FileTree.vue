@@ -519,7 +519,7 @@ defineExpose({
         </Tooltip>
       </template>
       <template #mark="{ row }">
-        <CornerDot v-if="failureOf(row)" tone="danger" size="xs" ring="editor" :label="failureText(row)" />
+        <CornerDot v-if="failureOf(row)" tone="danger" size="xs" :label="failureText(row)" />
       </template>
       <template #trailing="{ row }">
         <IndeterminateSpinner

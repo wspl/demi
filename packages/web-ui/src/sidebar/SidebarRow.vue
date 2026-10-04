@@ -172,7 +172,7 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     <!-- While renaming the field has the whole row: no actions, no pin glyph over it. -->
     <span
       v-if="!renaming"
-      class="absolute inset-y-0 right-0.5 flex items-center gap-0.5 transition-opacity"
+      class="on-fill absolute inset-y-0 right-0.5 flex items-center gap-0.5 transition-opacity"
       :class="
         menuOpen || pending
           ? 'opacity-100'

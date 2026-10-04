@@ -37,7 +37,7 @@ const emit = defineEmits<{
       <slot name="leading" />
       <span
         v-if="badge"
-        class="absolute -right-px -top-px size-1.5 rounded-full ring-1 ring-surface"
+        class="absolute -right-px -top-px size-1.5 rounded-full ring-1 ring-(--fill-color)"
         :class="{
           'bg-on-success': badge === 'success',
           'bg-on-warning': badge === 'warning',
@@ -54,7 +54,7 @@ const emit = defineEmits<{
     </span>
     <span
       v-if="removable"
-      :class="removing ? 'flex shrink-0' : 'hidden shrink-0 group-hover:flex'"
+      :class="removing ? 'on-fill flex shrink-0' : 'on-fill hidden shrink-0 group-hover:flex'"
     >
       <IconButton
         :icon="Trash2"
