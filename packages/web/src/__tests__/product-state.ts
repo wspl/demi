@@ -34,6 +34,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     subagents: { enabled: true, profiles: [] },
     plugins: [{ id: 'expose', name: 'Expose', description: 'Exposes a Host port.', enabled: true, packages: [] }],
     pluginStates: { expose: { available: false, exposes: [] } },
+    run: 'run-1',
     ...parts,
   })
 }

@@ -46,9 +46,10 @@ function answer(revision: number, tabs: string[]): () => Promise<Response> {
   return async () => Response.json({ revision, state: { tabs } })
 }
 
-/** The product state with the conversation's summary carrying `revision` of the browser's state. */
-function at(revision: number): ProductState {
+/** The product state of the backend's `run` with the conversation's summary carrying `revision` of the browser's state. */
+function at(revision: number, run = 'run-1'): ProductState {
   return productState({
+    run,
     conversations: [conversationSummary(CONVERSATION, 'Work', { pluginRevisions: [{ plugin: 'browser', revision }] })],
   })
 }
@@ -87,16 +88,18 @@ test('a failed read keeps the last state and says why, until a read succeeds', a
   feed.stop()
 })
 
-test('a backend that started again counts from 0, and its next answer is the state', async () => {
+test('after the backend started again, its count is read whatever the revision held', async () => {
   const snapshot = shallowRef(at(5))
   const states = conversationStates(() => snapshot.value)
   answers.push(answer(5, ['t1']))
   const feed = states.follow('browser', CONVERSATION)
   await shows(feed, { tabs: ['t1'] })
 
-  answers.push(answer(0, []))
-  snapshot.value = at(0)
+  // The new run counted five changes too: the same number, another state.
+  answers.push(answer(5, []))
+  snapshot.value = at(5, 'run-2')
   await shows(feed, { tabs: [] })
+  expect(reads.value).toBe(2)
   feed.stop()
 })
 

@@ -119,12 +119,14 @@ pub struct ConversationSummary {
     pub panel_revision: u64,
     /// The revision of each plugin's conversation state, in registration
     /// order (`web-api.md` § Conversation state of plugins): a page reads a
-    /// state only when its revision is higher than the one it holds.
+    /// state only when its revision is newer than the one it holds, counted
+    /// in memory (`web-api.md` § Revisions counted in memory).
     #[garde(dive)]
     pub plugin_revisions: Vec<PluginRevision>,
-    /// How many of the conversation's jobs ended since the backend started:
-    /// a page lists the working tree again when it changes (`web-api.md`
-    /// § File text and working tree changes).
+    /// How many of the conversation's jobs ended in this run of the
+    /// backend: a page lists the working tree again when it changes
+    /// (`web-api.md` § File text and working tree changes, § Revisions
+    /// counted in memory).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub working_tree_revision: u64,
     /// How many permission requests of the conversation wait for the user,
@@ -132,9 +134,10 @@ pub struct ConversationSummary {
     /// § Conversation permissions).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permission_requests: u64,
-    /// Rises with each change of the conversation's permission requests
-    /// since the backend started: a page reads them only when this is
-    /// higher than the revision it holds.
+    /// Rises with each change of the conversation's permission requests in
+    /// this run of the backend: a page reads them only when this is newer
+    /// than the revision it holds (`web-api.md` § Revisions counted in
+    /// memory).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permissions_revision: u64,
 }
