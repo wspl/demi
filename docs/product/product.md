@@ -123,10 +123,11 @@ resources are released ([Retention](../backend/storage.md#retention)).
 The conversation interface exposes steering, queued messages, stop,
 [recovery of an unfinished turn](#recovering-an-unfinished-turn), manual
 compaction, model switching, message editing, Fork, and child/terminal
-inspection. When an agent asks to act on Demi itself, such as to manage the
-user's skills, the conversation shows the request as a card above its
-composer and a needs-you mark in the sidebar until the user allows or denies
-it for that conversation
+inspection. When an agent's command would act on Demi itself, such as managing the
+user's skills, without the user's permission, the command fails, and the
+conversation shows the request as a card above its composer and a needs-you
+mark in the sidebar until the user allows or denies it for that
+conversation; the agent is told the decision
 ([Conversation permissions](../agent/permissions.md)).
 [Message editing](../agent/message-editing.md) and
 [Conversation Fork](../agent/conversation-fork.md) define their history

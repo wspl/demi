@@ -314,52 +314,45 @@ fetch, sends the new state to each of the user's pages.
 The agent manages the user's skills with the `demi skills` group, the only
 way it installs a skill. For example, asked to "set up Vercel's web design
 skill", it runs `demi skills add vercel-labs/agent-skills --skill
-web-design-guidelines`, the user allows it once for the conversation, and the
-skill is in the catalog of the next request of every node of every
-conversation of the user.
+web-design-guidelines`; once the user has allowed the conversation to manage
+skills ([Conversation permissions](permissions.md)), the skill is in the
+catalog of the next request of every node of every conversation of the user.
 
 The group's help tells the model to install and manage skills only with these
 commands, never with other tools such as `npx skills add`: Demi does not see
 a skill another tool installs, which would reach no other Host and no other
-conversation. A source is named by its repository, written as `add` takes it;
-any spelling of the same repository names the same source
-([What the plugin keeps](#what-the-plugin-keeps)).
+conversation. A source is named by its repository, written as the page's
+`add_source` takes it; any spelling of the same repository names the same
+source ([What the plugin keeps](#what-the-plugin-keeps)).
 
-| Command | Does | Permission |
-| --- | --- | --- |
-| `list [--json]` | Prints every source with its origin, commit and failure, and its skills with whether each is on and its description | None |
-| `add <repository> [--skill <name>...]` | Fetches the repository and pins its newest commit, then records the source with the named skills on, or every skill of the source without `--skill` | Manage skills |
-| `update <repository>` | Fetches the source again; when its newest commit differs, pins it as [updating](#user-skills) does | Manage skills |
-| `remove <repository>` | Forgets the source and its skills | Manage skills |
-| `enable <repository> [--skill <name>...]`, `disable <repository> [--skill <name>...]` | Turns the named skills of the source on or off, or every skill of it without `--skill` | Manage skills |
+| Command | Does |
+| --- | --- |
+| `list [--json]` | Prints every source with its origin, commit, failure and whether an update is available, and its skills with whether each is on, its description and, while it is off for a taken name, the other skill's source |
+| `add <repository> [--skill <name>...]` | [Adds](#user-skills) the source and waits for its first fetch; with `--skill`, only the named skills are on |
+| `update <repository>` | Updates the source and waits for the fetch |
+| `remove <repository>` | Removes the source and its skills |
+| `enable <repository> [--skill <name>...]`, `disable <repository> [--skill <name>...]` | Turns the named skills of the source on or off, or every skill of it without `--skill` |
 
-`Manage skills` is the plugin's one [category](permissions.md#categories),
-`skills.manage`. A command that needs it fetches and checks first and asks
-only for a change that would succeed, with the operation's details, so the
-user is asked about exactly what will happen
-([An operation that needs a category](permissions.md#an-operation-that-needs-a-category)):
+The group declares one [category](permissions.md#categories), `skills.manage`,
+Manage skills: "add, update and remove skill sources and turn skills on or
+off", with the description the card shows. Every command but `list` names it,
+so in a conversation without the grant it fails before it fetches or changes
+anything, and the user is asked ([The check](permissions.md#the-check)). With
+the grant, a command acts as the page's method does and fails as it would:
 
-- `add` refuses, without asking, an origin the rules of the page refuse or one
-  already added, a fetch that fails, a `--skill` the commit does not hold, and
-  a skill whose name a skill that is on already has, naming the other skill's
-  source. Otherwise it asks with the repository, the commit, each skill it
-  will turn on with its description, and the count of their files and of the
-  executable ones. It keeps the fetched files in the call's memory while it
-  waits and stores them only once allowed.
-- `update` of a source whose newest commit is the pinned one prints that it
-  is up to date and asks nothing. Otherwise it asks with both commits, the
-  skills that stay on, the ones that are gone and the new ones, which start
-  off.
-- `remove` asks with the commit and the skills that are on.
-- `enable` and `disable` change only the skills not already as asked, and ask
-  nothing when there are none; `enable` refuses a taken name as the page's
-  `set_enabled` does.
-- A fetch the command makes records nothing in the source, a failure
-  included: the command fails with the failure on stderr, and the page shows
-  the source as it was.
-- When the source changed between the ask and the write, because the user or
-  another agent changed it meanwhile, the command fails and asks the agent to
-  run it again, rather than writing over that change.
+- `add` fails for an origin the page refuses or one already added, and when
+  the fetch fails, with the failure on stderr; the source then stays, showing
+  its failure, as one the page added does. A `--skill` the commit does not
+  hold, or one whose name a skill that is on already has, fails the command
+  after the fetch and leaves the source with its skills as the
+  [start rule](#user-skills) sets them; the error names each such skill and,
+  for a taken name, the other skill's source.
+- `update` of a source at its newest commit pins the same commit and prints
+  that nothing changed.
+- `enable` refuses a taken name as the page's `set_enabled` does, and names
+  the other skill's source.
+- Every command prints what changed: the commit pinned, and the skills turned
+  on or off.
 
 A change made by a command reaches the pages and the agents as one the user
 made on the page does.
@@ -397,9 +390,8 @@ made on the page does.
 - Turning on a second user skill of a taken name is refused with the other
   skill's source.
 - A shutdown during a fetch leaves the source as it was before the fetch.
-- `demi skills add` asks before it records anything, with the commit it will
-  pin; once allowed, the source holds that commit and the named skills are on;
-  denied, the user's skills are unchanged. A failed fetch or a taken name
-  fails the command without asking.
-- `demi skills update` of a source at its newest commit, and an `enable` of a
-  skill that is on, succeed without asking.
+- In a conversation without the grant of `skills.manage`, every
+  `demi skills` command but `list` fails before it fetches or changes
+  anything; with it, `demi skills add --skill` leaves exactly the named skills
+  of the new source on, and a `--skill` that names a taken name fails the
+  command with the other skill's source.
