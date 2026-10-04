@@ -1,12 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Archive, FolderPlus, Settings, SquarePen, WandSparkles } from '@lucide/vue'
+import { Archive, FolderPlus, Settings, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Popover from '@demicodes/web-ui/ui/Popover.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import { copyConversationId } from '../agent/copy-conversation-id'
@@ -14,6 +13,7 @@ import type {
   ListLoad,
   SidebarAccount,
   SidebarConversation,
+  SidebarEntry,
   SidebarProject,
   SidebarReorder
 } from './types'
@@ -30,8 +30,8 @@ import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
 
 /**
- * Top: the app and its entries: New, then Skills (disabled, in development) and Archived,
- * which opens its settings section. Middle: plain
+ * Top: the app and its entries: New, then the entries the host gives, such as a plugin's
+ * settings section, then Archived; each but New opens its settings section. Middle: plain
  * conversations, then every project as a collapsible group of its conversations, with one
  * selection across all of them. Bottom: the account and settings.
  */
@@ -43,6 +43,8 @@ const props = defineProps<{
   pendingIds?: string[]
   /** `loading` is a spinner, not a first-run empty list. */
   listStatus?: ListLoad
+  /** The entries between New and Archived, each opening its settings section. */
+  sectionEntries?: readonly SidebarEntry[]
 }>()
 
 const emit = defineEmits<{
@@ -55,7 +57,7 @@ const emit = defineEmits<{
   pin: [ids: string[], pinned: boolean]
   moveToProject: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
-  /** Settings, on a section when an entry names one (`skills`, `archived`). */
+  /** Settings, on a section when an entry names one (`archived`, or an entry's own). */
   openSettings: [section?: string]
   signOut: []
   retryList: []
@@ -368,7 +370,7 @@ function selectProjectConversations(project: SidebarProject): void {
          starts 10px inside that, so the title, entries, headings, project headers and conversation
          rows align at one line while a lit row has room around its status dot. Row actions sit 2px
          inside the row's end, the same as their 2px above and below in the 28px row. -->
-    <!-- The entries: one primary action, then the two settings sections a conversation reaches for. -->
+    <!-- The entries: one primary action, then the settings sections a conversation reaches for. -->
     <div class="flex shrink-0 flex-col gap-px px-2">
       <SidebarNavItem
         :icon="SquarePen"
@@ -378,10 +380,11 @@ function selectProjectConversations(project: SidebarProject): void {
         @click="emit('create', null)"
       />
       <SidebarNavItem
-        :icon="WandSparkles"
-        label="Skills"
-        disabled
-        :disabled-reason="IN_DEVELOPMENT"
+        v-for="entry in sectionEntries"
+        :key="entry.section"
+        :icon="entry.icon"
+        :label="entry.label"
+        @click="emit('openSettings', entry.section)"
       />
       <SidebarNavItem
         :icon="Archive"

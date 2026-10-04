@@ -12,7 +12,9 @@ import { useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, wireApi } from './catalog'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
-import { isSettingsSectionEnabled } from '@demicodes/web-ui/settings/sections'
+import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
+import { PLUGIN_PAGES } from '../plugins/generated/pages'
+import { pluginEnabled } from '../plugins/enabled'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
@@ -48,13 +50,21 @@ export const useResources = defineStore('resources', () => {
   const providerDetailOpen = ref(false)
   const settingsTab = ref('general')
   const settingsOpen = ref(false)
-  /** Opens the settings dialog, on `tab` when it names an enabled section. */
+  /**
+   * Opens the settings dialog, on `tab` when one is named. The dialog shows
+   * General instead when the rail has no enabled `tab`, so a plugin's section
+   * opens while its plugin is on and no other time.
+   */
   function openSettings(tab?: string) {
-    if (tab && isSettingsSectionEnabled(tab)) {
+    if (tab) {
       settingsTab.value = tab
     }
     settingsOpen.value = true
   }
+  /** The sidebar's entries of the plugin pages the user has on, each opening its settings section. */
+  const sectionEntries = computed(() =>
+    sidebarEntries(PLUGIN_PAGES, (plugin) => pluginEnabled(product.snapshot, plugin)),
+  )
   const targetOpen = ref(false)
   const pairingOpen = ref(false)
   const sidebarOpen = ref(false)
@@ -258,6 +268,7 @@ export const useResources = defineStore('resources', () => {
     settingsTab,
     settingsOpen,
     openSettings,
+    sectionEntries,
     targetOpen,
     pairingOpen,
     sidebarOpen,

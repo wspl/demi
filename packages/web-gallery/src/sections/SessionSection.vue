@@ -28,6 +28,8 @@ import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
 import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { productWould } from '../product-would'
+import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
+import { PLUGIN_PAGES } from '../generated/pages'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
@@ -1654,7 +1656,9 @@ onBeforeUnmount(() => {
                   :projects="panelProjects"
                   :conversations="panelConversations"
                   :active-id="panelActiveConversationId"
+                  :section-entries="sidebarEntries(PLUGIN_PAGES, () => true)"
                   @select="(id) => (panelActiveConversationId = id)"
+                  @open-settings="(section) => productWould(section ? `Open ${section} settings` : 'Open settings')"
                 />
               </template>
               <ChatSession
