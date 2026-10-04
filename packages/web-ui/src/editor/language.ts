@@ -52,7 +52,7 @@ export async function loadFileLanguage(path: string): Promise<Extension> {
   try {
     return await load()
   } catch (error) {
-    reportError('Syntax colors are unavailable', error)
+    reportError('Syntax Colors Are Unavailable', error)
     return []
   }
 }

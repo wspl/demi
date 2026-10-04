@@ -40,7 +40,7 @@ createHighlighter({
     highlighter.value = instance
     renderVersion.value += 1
   },
-  (error: unknown) => reportError('Code highlighting is unavailable', error),
+  (error: unknown) => reportError('Code Highlighting Is Unavailable', error),
 )
 
 // Code shows in the app's mode, so a mode switch is a new render too. The

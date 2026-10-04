@@ -55,12 +55,12 @@ function submit() {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Add server"
+    label="Add Server"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add server</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">Add Server</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A command the host runs, or a URL that is already listening.</p>
       </header>
 
@@ -102,7 +102,7 @@ function submit() {
           variant="primary"
           :disabled="!canAdd"
           @click="submit"
-        >Add server</Button>
+        >Add Server</Button>
       </div>
     </div>
   </Dialog>

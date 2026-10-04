@@ -51,13 +51,13 @@ function submit() {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Add device"
+    label="Add Device"
     :stack="stack"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add device</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">Add Device</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           {{
             phase.kind === 'setup'
@@ -143,7 +143,7 @@ function submit() {
             :disabled="!code.trim()"
             :loading="phase.kind === 'pairing'"
             @click="submit"
-            >Pair device</Button
+            >Pair Device</Button
           >
         </template>
       </div>
