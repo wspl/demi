@@ -80,7 +80,7 @@ function select(value: T) {
   >
     <div
       ref="segments"
-      class="relative grid w-max shrink-0 auto-cols-fr grid-flow-col rounded-md bg-overlay/6 p-[2px]"
+      class="relative grid w-max shrink-0 auto-cols-fr grid-flow-col rounded-md bg-(--fill-color) p-[2px] [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_6%)] *:on-fill"
       :class="disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : ''"
       role="radiogroup"
       :aria-disabled="disabled || undefined"
@@ -124,13 +124,13 @@ function select(value: T) {
 </template>
 
 <style scoped>
+/* The thumb sits on the track: its fill is the track's, one step on. */
 .segmented-thumb {
-  background: var(--btn-bg);
+  background: color-mix(in srgb, var(--surface-current), var(--btn-mix));
   box-shadow: var(--shadow-btn);
 }
 
 html[data-theme="dark"] .segmented-thumb {
-  /* Blend with the actual parent surface so the thumb stays lighter on panels. */
-  background: color-mix(in srgb, var(--color-overlay) 20%, transparent);
+  background: color-mix(in srgb, var(--surface-current), var(--overlay) 20%);
 }
 </style>

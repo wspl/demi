@@ -172,7 +172,7 @@ const toneClass = computed(() => {
           :size="ICON_PX.in28"
         />
         <!-- The dot rides the icon's corner, or stands alone in the gutter. -->
-        <CornerDot v-if="indicator && icon" :tone="indicator" ring="float" :label="indicatorLabel" />
+        <CornerDot v-if="indicator && icon" :tone="indicator" :label="indicatorLabel" />
         <span
           v-else-if="indicator"
           class="size-1.5 shrink-0 rounded-full"
@@ -186,7 +186,7 @@ const toneClass = computed(() => {
           :aria-label="indicatorLabel"
         />
       </span>
-      <span class="menu-cell-label" :class="faded ? 'faded' : ''">
+      <span class="menu-cell-label on-fill" :class="faded ? 'faded' : ''">
         <slot>
           <span class="min-w-0 truncate">{{ label }}</span>
         </slot>
@@ -205,7 +205,7 @@ const toneClass = computed(() => {
         class="menu-cell-suffix flex items-center justify-end"
       >
         <!-- Trailing `xs` icon buttons go here, never in `suffix`: this cell owns their inset from the row's edge. -->
-        <span v-if="hasActions" class="menu-cell-actions">
+        <span v-if="hasActions" class="menu-cell-actions on-fill">
           <slot name="actions" />
         </span>
         <slot v-else name="suffix">
