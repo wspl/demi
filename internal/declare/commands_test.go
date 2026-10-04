@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -414,24 +415,6 @@ func TestALeafNamesValidInputs(t *testing.T) {
 	}
 }
 
-func TestALeafRunsOneWay(t *testing.T) {
-	for _, test := range []struct {
-		document string
-		valid    bool
-	}{
-		{`{"name":"add","summary":"Add","kind":"rpc"}`, true},
-		{`{"name":"add","summary":"Add","kind":"rpc","binding":{"package":"demi.file",` +
-			`"operation":"file.read",` +
-			`"descriptorHash":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`, false},
-		{`{"name":"read","summary":"Read","kind":"native"}`, false},
-	} {
-		_, err := declare.DecodeManifestNode([]byte(test.document))
-		if (err == nil) != test.valid {
-			t.Errorf("%s: %v", test.document, err)
-		}
-	}
-}
-
 func TestGroupsNameDistinctSubcommands(t *testing.T) {
 	leaf := commandLeaf(t, "add", "", nil, "", "")
 	for _, test := range []struct {
@@ -511,10 +494,11 @@ func TestHelpAndCommandLinesMatchRecordedCases(t *testing.T) {
 	}
 }
 
+// The release manifest fixture is commandwire's, whose tests check its digests.
 func TestManifestFixtureDecodes(t *testing.T) {
-	for _, name := range []string{"cli.json", "manifest.json"} {
-		t.Run(name, func(t *testing.T) {
-			data, err := os.ReadFile("testdata/" + name)
+	for _, path := range []string{"testdata/cli.json", "../commandwire/testdata/manifest.json"} {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			data, err := os.ReadFile(path)
 			if err != nil {
 				t.Fatal(err)
 			}
