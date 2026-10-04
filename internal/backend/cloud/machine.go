@@ -26,7 +26,7 @@ type Cloud struct {
 	stopped bool
 	workers sync.WaitGroup
 	closing *transition
-	records records // Immutable storage boundary; nil selects CloudShard.Control.
+	records records // Immutable storage boundary; nil selects Shard.Control.
 }
 type machine struct {
 	device     database.DeviceRecord
