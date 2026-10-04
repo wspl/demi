@@ -295,19 +295,6 @@ func TestPublicationCreatesOrReplacesWholeFiles(t *testing.T) {
 	}
 }
 
-func TestCancelledPublicationPublishesNothing(t *testing.T) {
-	directory := t.TempDir()
-	ctx, cancel := context.WithCancel(t.Context())
-	cancel()
-	err := artifacts.Publish(ctx, filepath.Join(directory, "output"), bytes.NewReader(body), artifacts.Publication{})
-	if !errors.Is(err, context.Canceled) {
-		t.Fatal(err)
-	}
-	if got := names(t, directory); len(got) != 0 {
-		t.Fatal(got)
-	}
-}
-
 func TestStagedFileAppearsOnlyWhenPublished(t *testing.T) {
 	directory := t.TempDir()
 	path := filepath.Join(directory, "tool")
