@@ -119,10 +119,18 @@ func TestServiceAnswersOneDocumentPerInvocation(t *testing.T) {
 			if request.Install != nil {
 				return commandwire.ArtifactAnswer{Path: &path}, nil
 			}
+			if request.Installed == nil || request.Installed.Name != "Claude Code" {
+				return commandwire.ArtifactAnswer{}, fmt.Errorf("unexpected request: %+v", request)
+			}
+			// The runner lists the newest install first; status keeps that order.
 			installed := []commandwire.InstalledArtifact{{
 				Version: "2.1.278",
 				Path:    path,
 				SHA256:  fmt.Sprintf("%x", sha256.Sum256([]byte("claude"))),
+			}, {
+				Version: "2.1.10",
+				Path:    "/cache/2.1.10",
+				SHA256:  fmt.Sprintf("%x", sha256.Sum256([]byte("2.1.10"))),
 			}}
 			return commandwire.ArtifactAnswer{Installed: &installed}, nil
 		})
@@ -178,8 +186,11 @@ func TestServiceAnswersOneDocumentPerInvocation(t *testing.T) {
 	want := claudecodeop.StatusReply(
 		&claudecodeop.StatusDone{
 			Status: claudecodeop.Status{
-				Platform:  currentPlatform(),
-				Installed: []claudecodeop.Installed{{Version: "2.1.278", Path: "/cache/claude<&\u2028>"}},
+				Platform: currentPlatform(),
+				Installed: []claudecodeop.Installed{
+					{Version: "2.1.278", Path: "/cache/claude<&\u2028>"},
+					{Version: "2.1.10", Path: "/cache/2.1.10"},
+				},
 			},
 		},
 	)

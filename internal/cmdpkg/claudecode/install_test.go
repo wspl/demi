@@ -99,43 +99,6 @@ func TestUnsupportedPlatformAndRunnerFailure(t *testing.T) {
 	}
 }
 
-func TestStatusAnswersRunnerVersions(t *testing.T) {
-	artifacts := cmdsdktest.ArtifactsFrom(
-		t,
-		func(_ context.Context, request commandwire.ArtifactRequest) (commandwire.ArtifactAnswer, error) {
-			if request.Installed == nil || request.Installed.Name != "Claude Code" {
-				return commandwire.ArtifactAnswer{}, fmt.Errorf("unexpected request: %+v", request)
-			}
-			installed := []commandwire.InstalledArtifact{}
-			for _, version := range []string{"2.1.278", "2.1.10"} {
-				installed = append(
-					installed,
-					commandwire.InstalledArtifact{
-						Version: version,
-						Path:    "/cache/" + version,
-						SHA256:  fmt.Sprintf("%x", sha256.Sum256([]byte(version))),
-					},
-				)
-			}
-			return commandwire.ArtifactAnswer{Installed: &installed}, nil
-		},
-	)
-	result, err := status(t.Context(), artifacts)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := claudecodeop.Status{
-		Platform: currentPlatform(),
-		Installed: []claudecodeop.Installed{
-			{Version: "2.1.278", Path: "/cache/2.1.278"},
-			{Version: "2.1.10", Path: "/cache/2.1.10"},
-		},
-	}
-	if got, want := result, want; !reflect.DeepEqual(got, want) {
-		t.Fatalf("got %#v, want %#v", got, want)
-	}
-}
-
 func assertCode(t *testing.T, err error, code claudecodeop.ErrorCode) {
 	t.Helper()
 	var failure *operationError
@@ -144,36 +107,20 @@ func assertCode(t *testing.T, err error, code claudecodeop.ErrorCode) {
 	}
 }
 
+// The contract's own checks are tested in claudecodeop; this adds the HTTPS
+// rule parseRelease enforces and the code every refusal carries.
 func TestMalformedRecordsAreInvalid(t *testing.T) {
 	record := string(releaseRecord("2.1.278", "linux-x64"))
-	digest := fmt.Sprintf("%x", sha256.Sum256([]byte("claude")))
-	invalid := []string{
-		`"not a record"`, `{"version":"2.1.278"}`, `{"version":"2.1.278","platforms":{},"extra":true}`,
-		strings.Replace(record, `"size":6`, `"extra":1,"size":6`, 1),
+	for _, input := range []string{
+		"{",
+		string(releaseRecord("../2.1.278", "linux-x64")),
 		strings.Replace(record, "https://downloads.claude.ai/claude", "http://downloads.claude.ai/claude", 1),
-		strings.Replace(record, "https://downloads.claude.ai/claude", "http://127.0.0.1/claude", 1),
-		strings.Replace(record, `"size":6`, `"size":0`, 1),
-		strings.Replace(record, digest, "abc", 1), strings.Replace(record, digest, strings.ToUpper(digest), 1), "{",
-	}
-	for i, input := range invalid {
-		t.Run(fmt.Sprint(i), func(t *testing.T) {
+		strings.Replace(record, "https://downloads.claude.ai/claude", "ftp://127.0.0.1/claude", 1),
+	} {
+		t.Run(input, func(t *testing.T) {
 			_, err := parseRelease([]byte(input))
 			assertCode(t, err, claudecodeop.InvalidRelease)
 		})
-	}
-	for _, version := range []string{
-		"", "2.1", "2.1.278.1", "v2.1.278", "2.1.x", "../2.1.278", "2.1.278/..",
-		"2.1.278-", "2.1.278-a/b", "2.1.278+build", " 2.1.278",
-	} {
-		t.Run(version, func(t *testing.T) {
-			_, err := parseRelease(releaseRecord(version, "linux-x64"))
-			assertCode(t, err, claudecodeop.InvalidRelease)
-		})
-	}
-	for _, version := range []string{"2.1.278", "0.0.0", "10.20.30-beta.1", "1.0.0-rc-1"} {
-		if _, err := parseRelease(releaseRecord(version, "linux-x64")); err != nil {
-			t.Fatalf("%s: %v", version, err)
-		}
 	}
 }
 
