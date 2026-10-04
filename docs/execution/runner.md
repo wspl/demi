@@ -214,7 +214,9 @@ as the user's global ignore file, apply from the next whole walk. When the
 watch cannot be created (an inotify limit, permissions, an unsupported
 filesystem) or fails, the runner walks the whole tree for every request; when
 it lost events or the platform asks for a rescan, the next request walks the
-whole tree. `watched` reports whether a watch is running.
+whole tree, and so does the one after a computation that failed or timed out,
+since that computation had already taken the paths the watch recorded.
+`watched` reports whether a watch is running.
 
 The runner keeps at most eight watched directories per connection and drops one
 after fifteen minutes without a request; closing the connection drops them all.

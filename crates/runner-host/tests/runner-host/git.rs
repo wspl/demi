@@ -486,6 +486,61 @@ async fn a_staged_rename_stays_one_entry_across_watched_requests() {
     assert_eq!(statuses(&touched), git_status(&repo));
 }
 
+/// A computation that fails has consumed what the watch recorded; the next
+/// request still lists those changes.
+#[tokio::test]
+async fn a_failed_computation_leaves_its_changes_to_the_next_request() {
+    // The clone keeps its objects in the store, outside the watched trees,
+    // so taking a blob away and back changes nothing the watch sees.
+    let (_store_dir, store) = committed_repo();
+    let clone_dir = tempfile::tempdir().unwrap();
+    let repo = std::fs::canonicalize(clone_dir.path()).unwrap();
+    let clone = ["clone", "-q", "--shared", store.to_str().unwrap(), repo.to_str().unwrap()];
+    git(&store, &clone);
+    let blob = Command::new("git")
+        .args(["rev-parse", "HEAD:a.txt"])
+        .current_dir(&repo)
+        .output()
+        .unwrap();
+    let blob = String::from_utf8(blob.stdout).unwrap().trim().to_owned();
+    let object = store.join(".git/objects").join(&blob[..2]).join(&blob[2..]);
+    let aside = store.join("blob-aside");
+    let service = GitService::default();
+    watching(&service, &repo).await;
+
+    // The request that examines the edit cannot read the last commit's
+    // copy of the file; those before it answer from the baseline.
+    std::fs::rename(&object, &aside).unwrap();
+    std::fs::write(repo.join("a.txt"), "1\n2\n3\nmore\n").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        match service.changes(&repo, &CancellationToken::new()).await {
+            Err(error) => {
+                assert_eq!(error.code(), "internal", "{error}");
+                break;
+            }
+            Ok(result) => {
+                assert!(result.files.is_empty(), "{:?}", summary(&result));
+                assert!(Instant::now() < deadline, "the edit never failed a request");
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        }
+    }
+
+    std::fs::rename(&aside, &object).unwrap();
+    assert_eq!(
+        summary(&changes(&service, &repo).await),
+        vec![(
+            "a.txt".into(),
+            " M".into(),
+            ChangeKind::Modified,
+            None,
+            1,
+            0
+        )]
+    );
+}
+
 #[derive(Deserialize)]
 struct Reply {
     #[serde(rename = "type")]
