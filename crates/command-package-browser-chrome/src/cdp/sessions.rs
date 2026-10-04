@@ -571,9 +571,7 @@ pub(crate) async fn roundtrip(
 fn reply(response: chromiumoxide::types::Response) -> Result<Value> {
     match (response.result, response.error) {
         (Some(value), None) => Ok(value),
-        (None, Some(error)) => Err(BrowserError::Cdp(chromiumoxide::error::CdpError::Chrome(
-            error,
-        ))),
+        (None, Some(error)) => Err(chromiumoxide::error::CdpError::Chrome(error).into()),
         _ => Err(BrowserError::Cdp(chromiumoxide::error::CdpError::msg(
             "malformed CDP response envelope",
         ))),
@@ -597,5 +595,93 @@ impl Method for WireEvent {
 impl EventMessage for WireEvent {
     fn session_id(&self) -> Option<&str> {
         self.session_id.as_deref()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chromiumoxide::conn::MAX_CDP_MESSAGE_BYTES;
+    use demi_command_package_browser_protocol::browser::BrowserErrorCode;
+    use futures_util::SinkExt;
+    use tokio_tungstenite::tungstenite::Message as WsMessage;
+
+    use super::*;
+
+    /// The id of the next command the peer's `socket` receives.
+    async fn command_id(
+        socket: &mut tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    ) -> u64 {
+        let message = socket.next().await.unwrap().unwrap();
+        let command: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+        command["id"].as_u64().unwrap()
+    }
+
+    /// About 0.1 s: two messages just over the 64 MiB limit cross the
+    /// loopback.
+    ///
+    /// Planted defect this catches: a message over the limit rejected from
+    /// its frame header, which leaves its payload on the socket and loses
+    /// the connection, and with it the browser.
+    #[tokio::test]
+    async fn a_response_over_the_limit_fails_only_its_request_and_an_event_over_it_ends_the_connection()
+     {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let address = listener.local_addr().unwrap();
+        let peer = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.unwrap();
+            let mut socket = tokio_tungstenite::accept_async(stream).await.unwrap();
+            let id = command_id(&mut socket).await;
+            let data = "x".repeat(MAX_CDP_MESSAGE_BYTES);
+            let oversized = format!(r#"{{"id":{id},"result":{{"data":"{data}"}}}}"#);
+            socket.send(WsMessage::text(oversized)).await.unwrap();
+            let id = command_id(&mut socket).await;
+            let version = json!({"id": id, "result": {
+                "protocolVersion": "1.3",
+                "product": "Chrome/153.0.8010.36",
+                "revision": "@0",
+                "userAgent": "Mozilla/5.0",
+                "jsVersion": "15.3",
+            }});
+            socket
+                .send(WsMessage::text(version.to_string()))
+                .await
+                .unwrap();
+            let event = format!(r#"{{"method":"Page.frameNavigated","params":{{"data":"{data}"}}}}"#);
+            // The client may close before the whole event is written.
+            let _ = socket.send(WsMessage::text(event)).await;
+        });
+        let mut connection = Connection::<WireEvent>::connect(format!("ws://{address}"))
+            .await
+            .unwrap();
+
+        // The oversized response fails its request with a message naming
+        // its size and the limit.
+        let failure = roundtrip(&mut connection, "Browser.getVersion", json!({}), None)
+            .await
+            .unwrap_err();
+        assert_eq!(failure.code(), BrowserErrorCode::ResultTooLarge, "{failure}");
+        let size = MAX_CDP_MESSAGE_BYTES + r#"{"id":0,"result":{"data":""}}"#.len();
+        assert_eq!(
+            failure.to_string(),
+            format!(
+                "Chrome's answer is too large: the CDP message is {size} bytes, more than the {MAX_CDP_MESSAGE_BYTES} bytes a message may have"
+            )
+        );
+
+        // The connection goes on: the next request is answered.
+        let version = roundtrip(&mut connection, "Browser.getVersion", json!({}), None)
+            .await
+            .unwrap();
+        assert_eq!(version["product"], "Chrome/153.0.8010.36");
+
+        // An event answers no request, so losing it would leave its
+        // listeners out of date: the connection ends with the reason.
+        let ended = connection.next().await.unwrap().unwrap_err();
+        assert!(
+            ended.to_string().contains("and it answers no request"),
+            "{ended}"
+        );
+        drop(connection);
+        peer.await.unwrap();
     }
 }

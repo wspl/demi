@@ -7,15 +7,29 @@ use futures::stream::Stream;
 use futures::task::{Context, Poll};
 use futures::{SinkExt, StreamExt};
 use tokio::net::TcpStream;
+use tokio_tungstenite::tungstenite::client::IntoClientRequest;
+use tokio_tungstenite::tungstenite::error::{Error as WsError, UrlError};
 use tokio_tungstenite::tungstenite::Message as WsMessage;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::protocol::WebSocketConfig};
+use tokio_tungstenite::{WebSocketStream, tungstenite::protocol::WebSocketConfig};
 use chromiumoxide_cdp::cdp::browser_protocol::target::SessionId;
 use chromiumoxide_types::{CallId, EventMessage, Message, MethodCall, MethodId};
 
 use crate::error::CdpError;
 use crate::error::Result;
 
-const MAX_CDP_MESSAGE_BYTES: usize = 16 * 1024 * 1024;
+mod frames;
+
+use frames::LimitedFrames;
+
+/// The largest CDP message the connection reads. A larger response is read
+/// off the socket and discarded, and the request it answers fails with
+/// [`MESSAGE_TOO_LARGE`]; a larger event fails the connection.
+pub const MAX_CDP_MESSAGE_BYTES: usize = 64 * 1024 * 1024;
+
+/// The error code of the response the connection gives a request whose
+/// response was over [`MAX_CDP_MESSAGE_BYTES`]. Chrome's own errors use
+/// the JSON-RPC codes and -32000 and -32001, never this one.
+pub const MESSAGE_TOO_LARGE: i64 = -32099;
 
 /// Exchanges the messages with the websocket
 #[must_use = "streams do nothing unless polled"]
@@ -24,7 +38,7 @@ pub struct Connection<T: EventMessage> {
     /// Queue of commands to send.
     pending_commands: VecDeque<MethodCall>,
     /// The websocket of the chromium instance
-    ws: WebSocketStream<MaybeTlsStream<TcpStream>>,
+    ws: WebSocketStream<LimitedFrames<TcpStream>>,
     /// The identifier for a specific command
     next_id: usize,
     needs_flush: bool,
@@ -39,12 +53,19 @@ impl<T: EventMessage + Unpin> Connection<T> {
             .max_message_size(Some(MAX_CDP_MESSAGE_BYTES))
             .max_frame_size(Some(MAX_CDP_MESSAGE_BYTES));
 
-        let (ws, _) = tokio_tungstenite::connect_async_with_config(
-            debug_ws_url.as_ref(),
-            Some(config),
-            false,
-        )
-        .await?;
+        // DevTools serves a plain `ws://` socket on the local machine.
+        let request = debug_ws_url.as_ref().into_client_request()?;
+        let host = request
+            .uri()
+            .host()
+            .ok_or(WsError::Url(UrlError::NoHostName))?;
+        let port = request.uri().port_u16().unwrap_or(80);
+        let socket = TcpStream::connect(format!("{host}:{port}"))
+            .await
+            .map_err(WsError::Io)?;
+        let socket = LimitedFrames::new(socket, MAX_CDP_MESSAGE_BYTES, MESSAGE_TOO_LARGE);
+        let (ws, _) =
+            tokio_tungstenite::client_async_with_config(request, socket, Some(config)).await?;
 
         Ok(Self {
             pending_commands: Default::default(),
@@ -157,51 +178,6 @@ impl<T: EventMessage + Unpin> Stream for Connection<T> {
                 // ws connection closed
                 Poll::Ready(None)
             }
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chromiumoxide_cdp::cdp::CdpEventMessage;
-
-    #[tokio::test]
-    async fn rejects_oversized_cdp_input() {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let send = tokio::spawn(async move {
-            let (stream, _) = listener.accept().await.unwrap();
-            let mut socket = tokio_tungstenite::accept_async(stream)
-                .await
-                .unwrap();
-            socket
-                .send(WsMessage::Text(
-                    "x".repeat(MAX_CDP_MESSAGE_BYTES + 1).into(),
-                ))
-                .await
-        });
-        let mut connection = Connection::<CdpEventMessage>::connect(format!("ws://{address}"))
-            .await
-            .unwrap();
-        let result = tokio::time::timeout(std::time::Duration::from_secs(5), connection.next())
-            .await
-            .unwrap();
-        assert!(matches!(
-            result,
-            Some(Err(CdpError::Ws(
-                tokio_tungstenite::tungstenite::Error::Capacity(_)
-            )))
-        ));
-        // The client can reject the frame header before the peer finishes writing.
-        // Either a completed send or a closed connection is expected here.
-        drop(connection);
-        let peer = send.await.unwrap();
-        if let Err(error) = peer {
-            assert!(matches!(
-                error,
-                tokio_tungstenite::tungstenite::Error::Io(_)
-            ));
         }
     }
 }

@@ -385,9 +385,17 @@ vendoring rules of [Crates and packages](../architecture/crates-and-packages.md#
 Its event subscriptions use bounded buffers and explicitly report
 lost events. A slow listener must not stop control requests from progressing.
 Loss of registry events invalidates the affected observation and must be
-reconciled before further operations; log consumers report truncation. CDP
-messages also have a finite transport size limit. An oversized message fails the connection
-and enters normal browser-loss cleanup.
+reconciled before further operations; log consumers report truncation.
+
+A CDP message has a size limit
+([Limits, timeouts, and cancellation](#limits-timeouts-and-cancellation)). The
+connection reads a message over it off the socket and discards it as it
+arrives, so the message never takes more memory than one read and the socket
+stays in step. A response over the limit fails only the request it answers,
+with `result_too_large` and a message naming its size and the limit; the
+browser, its tabs and their other calls go on. An event over the limit answers
+no request, and losing it silently would leave observations out of date, so it
+fails the connection, which enters normal browser-loss cleanup.
 
 Read-only eval uses Chrome's enforced side-effect checking. The driver rejects
 unsupported results and never falls back to unrestricted evaluation. Cancellation
@@ -746,6 +754,25 @@ demi browser screenshot t1 --output /tmp/login.png
 demi file read /tmp/login.png
 ```
 
+A full-page screenshot can be large, and two bounds apply to it:
+
+- A medium is at most 16 MiB
+  ([Bounds and cut output](../agent/runtime.md#bounds-and-cut-output)). A job's
+  command whose PNG is larger fails with `result_too_large`, wherever its
+  stdout goes, and its message names the PNG's size and says to save it with
+  `--output <file>`, which keeps the whole capture in a file.
+- Chrome sends the PNG in one CDP message, in base64, a third larger than the
+  PNG. A capture whose message is over the CDP message limit fails with
+  `result_too_large`, with or without `--output`, and its message names the
+  message's size and says to capture a part of the page with `--clip`. The
+  browser and the tab go on ([Native driver](#native-driver)).
+
+For example, a full page 1280 pixels wide and 6000 tall whose pixels do not
+compress makes a PNG of about 23 MB: `demi browser screenshot t1 --full-page`
+fails and says so, and `--full-page --output /tmp/page.png` saves it. A page
+14000 pixels tall makes about 54 MB, over 64 MiB in base64, and only parts of
+it taken with `--clip` fit.
+
 Never discover artifacts by parsing `Screenshot saved:` or arbitrary paths from
 stdout. A webpage must not be able to cause file reads by forging output text.
 `screenshot --json` requires `--output`; it returns metadata, not base64 image
@@ -768,6 +795,7 @@ The browser contract defines these defaults and limits once:
 | List `--limit` | Default 100, maximum 1000 |
 | One `content fetch` | At most 10 URLs |
 | CDP event buffer per tab | At most 10000 events and 8 MiB, whichever comes first |
+| One CDP message | At most 64 MiB |
 | Console buffer per tab | At most 1000 entries and 1 MiB |
 | Finite text/JSON stdin | At most 1 MiB; binary clipboard input is not text |
 

@@ -1,0 +1,19 @@
+<!doctype html>
+<title>Noise</title>
+<style>body { margin: 0 } canvas { display: block }</style>
+<canvas id="noise" width="1280"></canvas>
+<script>
+// Pixels no PNG compresses, about 3 bytes each: a full-page capture of the
+// default 6000 rows is over 16 MiB; ?height= sets the rows.
+const canvas = document.getElementById('noise');
+canvas.height = Number(new URLSearchParams(location.search).get('height') ?? 6000);
+const context = canvas.getContext('2d');
+const image = context.createImageData(canvas.width, canvas.height);
+const pixels = new Uint32Array(image.data.buffer);
+let seed = 1;
+for (let index = 0; index < pixels.length; index++) {
+  seed = (Math.imul(seed, 1103515245) + 12345) >>> 0;
+  pixels[index] = (seed >>> 8) | 0xff000000;
+}
+context.putImageData(image, 0, 0);
+</script>

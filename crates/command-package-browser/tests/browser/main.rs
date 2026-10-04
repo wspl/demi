@@ -27,6 +27,7 @@ mod fidelity;
 mod live;
 mod repairs;
 mod retirement;
+mod screenshots;
 mod tabs;
 mod upload;
 mod webmcp;

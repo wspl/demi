@@ -30,7 +30,8 @@ use demi_command_package_browser_chrome::tabs::{
 };
 use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
-    CommandLocale, Completion, ConversationRequest, ConversationStatus, StdoutTarget,
+    CommandLocale, Completion, ConversationRequest, ConversationStatus, MAX_MEDIUM_BYTES,
+    StdoutTarget,
 };
 use demi_command_sdk::{ConversationContext, InvocationContext, Numbers, ServiceError};
 
@@ -797,6 +798,9 @@ impl Conversations {
         operation: std::result::Result<BrowserOperation, OperationError>,
     ) -> std::result::Result<Completion, ServiceError> {
         let json = context.request.json == Some(true);
+        // Only a job's command returns media; another call's PNG is its
+        // stdout.
+        let returns_media = context.request.stdout.is_some();
         let result = async {
             let command =
                 operation.map_err(|error| BrowserError::Configuration(error.to_string()))?;
@@ -829,6 +833,13 @@ impl Conversations {
             }?;
             match produced {
                 CommandOutput::Json(value) => Ok((output::render(&command, value, json)?, None)),
+                // A medium is at most 16 MiB (`runtime.md` § Bounds and cut
+                // output); a file has no such bound.
+                CommandOutput::Medium { png, .. }
+                    if returns_media && png.len() as u64 > MAX_MEDIUM_BYTES =>
+                {
+                    Err(BrowserError::ScreenshotTooLarge(png.len()))
+                }
                 CommandOutput::Medium { text, png } => {
                     Ok((text.unwrap_or_default().into_bytes(), Some(png)))
                 }
@@ -839,7 +850,7 @@ impl Conversations {
             Ok((text, medium)) => {
                 context.output.stdout(Bytes::from(text)).await?;
                 match medium {
-                    Some(png) if context.request.stdout.is_some() => {
+                    Some(png) if returns_media => {
                         context.output.medium(Bytes::from(png)).await?;
                     }
                     // A call that is no job's command returns no media: the
