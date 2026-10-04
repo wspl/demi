@@ -348,8 +348,6 @@ its own copy of every shared dependency.
 | Command | What it runs |
 | --- | --- |
 | `cargo check --workspace --all-targets --features demi-runner/test-fixtures` | The type check of every crate, test and example |
-| `cargo fmt --all --check` | The formatting of every crate, which `rustfmt`'s defaults decide; `cargo fmt --all` applies it |
-| `cargo clippy --workspace --all-targets --features demi-runner/test-fixtures` | Clippy's default lints over the same selection, which pass with no warning; a lint that is wrong at one place is allowed there with its reason (`#[allow(clippy::<lint>, reason = "...")]`) |
 | `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release, unpacked; they run as an ordinary user, since Chrome refuses root on Linux with its sandbox |
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored real_browser` | The browser suite's scenario through the backend and a paired device's runner ([Browser suite](scenarios.md#browser-suite)), as an ordinary user with the same executable |
