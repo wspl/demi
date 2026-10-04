@@ -60,8 +60,9 @@ impl Shard {
 
     /// The selection `change` makes of the conversation's selection
     /// `current`: a switch takes the new model's facts from the entry's
-    /// catalog with the parts it names, and null for the others; a change of
-    /// parts keeps the model's facts and changes those parts. Each part it
+    /// catalog with the parts it names, the model's first effort when it
+    /// names none, and the vendor's default tier when it names none; a change
+    /// of parts keeps the model's facts and changes those parts. Each part it
     /// names is one the catalog's model offers.
     async fn settings_selection(
         &self,
@@ -75,7 +76,7 @@ impl Shard {
             let listed = self.listed_model(&provider, &current.model.id).await?;
             let mut selection = current.clone();
             if let Some(effort) = change.thinking_effort {
-                selection.thinking = listed.thinking_for(effort.as_deref())?;
+                selection.thinking = listed.thinking_for(Some(&effort))?;
             }
             if let Some(tier) = change.service_tier_id {
                 selection.service_tier_id = listed.tier_for(tier.as_deref())?;
@@ -85,9 +86,8 @@ impl Shard {
         let listed = self
             .listed_model(&choice.provider_id, &choice.model_id)
             .await?;
-        let effort = change.thinking_effort.flatten();
         let tier = change.service_tier_id.flatten();
-        let thinking = listed.thinking_for(effort.as_deref())?;
+        let thinking = listed.thinking_for(change.thinking_effort.as_deref())?;
         let tier = listed.tier_for(tier.as_deref())?;
         Ok(listed.selection(choice.provider_id.as_str(), thinking, tier))
     }

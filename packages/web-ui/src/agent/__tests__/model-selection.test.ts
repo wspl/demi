@@ -51,12 +51,12 @@ test('new conversations keep independent complete choices including unavailable 
 function leveled(id: string, efforts: string[], options: { canDisable?: boolean; fast?: string } = {}): ModelInfo {
   return {
     ...model(id),
-    reasoning: { efforts, unnamedEffort: options.canDisable === false ? efforts[0]! : null, canDisable: options.canDisable ?? true },
+    reasoning: { efforts, canDisable: options.canDisable ?? true },
     serviceTiers: options.fast ? [{ id: options.fast, label: 'Fast', fast: true }] : null,
   }
 }
 
-test('a switch keeps the effort and Fast the new model offers, and leaves the rest to its defaults', () => {
+test('a switch keeps the effort and Fast the new model offers, else names its first effort and leaves the tier to the vendor', () => {
   const current = leveled('a', ['low', 'high'], { fast: 'priority' })
   const on = { thinkingEffort: 'high', serviceTierId: 'priority' }
   const off = { thinkingEffort: 'disabled', serviceTierId: null }
@@ -64,10 +64,10 @@ test('a switch keeps the effort and Fast the new model offers, and leaves the re
     // The new model lists the effort and has a Fast tier of its own.
     [on, leveled('b', ['high'], { fast: 'flex' }), { thinkingEffort: 'high', serviceTierId: 'flex' }],
     // It lists neither.
-    [on, leveled('b', ['medium']), {}],
+    [on, leveled('b', ['medium']), { thinkingEffort: 'medium' }],
     // Thinking stays off where it can be turned off.
     [off, leveled('b', ['low']), { thinkingEffort: 'disabled' }],
-    [off, leveled('b', ['low'], { canDisable: false }), {}],
+    [off, leveled('b', ['low'], { canDisable: false }), { thinkingEffort: 'low' }],
     // Fast that was off stays off.
     [off, leveled('b', ['low'], { fast: 'priority' }), { thinkingEffort: 'disabled' }],
   ]
@@ -76,10 +76,10 @@ test('a switch keeps the effort and Fast the new model offers, and leaves the re
   }
 })
 
-test('a first send names only the parts its model still offers', () => {
+test('a first send keeps the parts its model still offers, and names its first effort for one it does not', () => {
   const settings = { providerId: 'p', modelId: 'a', thinkingEffort: 'xhigh', serviceTierId: 'priority' }
   expect(offeredSettings(settings, leveled('a', ['low'], { fast: 'priority' })))
-    .toEqual({ ...settings, thinkingEffort: null })
+    .toEqual({ ...settings, thinkingEffort: 'low' })
   expect(offeredSettings({ ...settings, thinkingEffort: 'low' }, leveled('a', ['low'])))
     .toEqual({ ...settings, thinkingEffort: 'low', serviceTierId: null })
 })

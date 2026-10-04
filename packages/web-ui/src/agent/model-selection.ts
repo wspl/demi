@@ -15,7 +15,10 @@ export const THINKING_OFF = 'disabled'
 export const modelSettingsSchema = z.object({
   providerId: z.string(),
   modelId: z.string(),
-  /** An effort the model lists, `disabled` for thinking off, or null for the model's default. */
+  /**
+   * An effort the model lists, or `disabled` for thinking off; null only for
+   * a model that lists no efforts, and in a draft before a model is chosen.
+   */
   thinkingEffort: z.string().nullable(),
   /** A tier the model lists, or null for the vendor's default. */
   serviceTierId: z.string().nullable(),
@@ -25,13 +28,14 @@ export type ModelSettings = z.infer<typeof modelSettingsSchema>
 
 /**
  * One change of model settings, naming the parts it changes. A switch names
- * the model, with the effort and the tier it keeps; a part it leaves out is
- * null, the new model's default. A change without a model sets the parts it
- * names and keeps the others.
+ * the model, with the effort and the tier it keeps; for a part it leaves out
+ * the backend takes the new model's first effort and the vendor's default
+ * tier. A change without a model sets the parts it names and keeps the
+ * others.
  */
 export interface ModelSettingsChange {
   model?: { providerId: string; modelId: string }
-  thinkingEffort?: string | null
+  thinkingEffort?: string
   serviceTierId?: string | null
 }
 
@@ -45,7 +49,11 @@ export function initialModelSettings(previous?: ModelSettings): ModelSettings {
   }
 }
 
-/** `settings` with `change` made, as the backend makes it of a record's. */
+/**
+ * `settings` with `change` made, as the backend makes it of a record's. A
+ * switch that names no effort holds none here, which the page shows and a
+ * first send writes as the model's first effort.
+ */
 export function applyModelChange(settings: ModelSettings, change: ModelSettingsChange): ModelSettings {
   if (change.model) {
     return {
@@ -60,6 +68,15 @@ export function applyModelChange(settings: ModelSettings, change: ModelSettingsC
     ...(change.thinkingEffort === undefined ? {} : { thinkingEffort: change.thinkingEffort }),
     ...(change.serviceTierId === undefined ? {} : { serviceTierId: change.serviceTierId }),
   }
+}
+
+/**
+ * The effort a model's settings hold when no change names one: the first the
+ * model lists (`models.md` § A conversation's model settings), or null when
+ * it lists none.
+ */
+export function firstEffort(model: ModelInfo): string | null {
+  return model.reasoning?.efforts[0] ?? null
 }
 
 /** Whether `model` offers the effort `effort`: one it lists, or thinking off when it can turn thinking off. */
@@ -79,9 +96,9 @@ export function offersTier(model: ModelInfo, tier: string): boolean {
 /**
  * The change a switch to the model `next` of the entry `providerId` makes of
  * `settings`, whose model is `current` (`models.md` § A conversation's model
- * settings): it keeps the effort when the new model offers it, and Fast when
- * Fast is on and the new model has a Fast tier of its own; the new model's
- * defaults stand for the rest.
+ * settings): it keeps the effort when the new model offers it, else names the
+ * new model's first effort, and keeps Fast when Fast is on and the new model
+ * has a Fast tier of its own; the vendor's default tier stands otherwise.
  */
 export function modelSwitch(
   settings: Pick<ModelSettings, 'thinkingEffort' | 'serviceTierId'> | null | undefined,
@@ -90,8 +107,8 @@ export function modelSwitch(
   next: ModelInfo,
 ): ModelSettingsChange {
   const change: ModelSettingsChange = { model: { providerId, modelId: next.id } }
-  const effort = settings?.thinkingEffort ?? null
-  if (effort !== null && offersEffort(next, effort)) {
+  const effort = offeredEffort(settings?.thinkingEffort ?? null, next)
+  if (effort !== null) {
     change.thinkingEffort = effort
   }
   const fast = fastServiceTier(next)
@@ -103,17 +120,21 @@ export function modelSwitch(
 
 /**
  * The settings a new conversation's first send writes to its record: each
- * part its model still offers, and null, the model's default, for a part it
- * no longer does.
+ * part its model still offers; for one it no longer offers, the model's first
+ * effort and the vendor's default tier.
  */
 export function offeredSettings(settings: ModelSettings, model: ModelInfo): ModelSettings {
-  const effort = settings.thinkingEffort
   const tier = settings.serviceTierId
   return {
     ...settings,
-    thinkingEffort: effort !== null && offersEffort(model, effort) ? effort : null,
+    thinkingEffort: offeredEffort(settings.thinkingEffort, model),
     serviceTierId: tier !== null && offersTier(model, tier) ? tier : null,
   }
+}
+
+/** `effort` when `model` offers it, else the model's first effort. */
+function offeredEffort(effort: string | null, model: ModelInfo): string | null {
+  return effort !== null && offersEffort(model, effort) ? effort : firstEffort(model)
 }
 
 export interface SelectedModel {

@@ -150,8 +150,8 @@ pub struct ModelSettings {
     pub provider_id: ProviderId,
     #[garde(length(chars, min = 1))]
     pub model_id: String,
-    /// An effort the model lists, `disabled` for thinking off, or null for
-    /// the model's default.
+    /// An effort the model lists, or `disabled` for thinking off; null only
+    /// for a model that lists no efforts.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
@@ -279,7 +279,8 @@ pub struct ConversationPatch {
     #[garde(skip)]
     pub pinned: Option<bool>,
     /// A switch to this model, with the effort and the tier this patch
-    /// names and the model's defaults for a part it leaves out.
+    /// names, and the model's first effort and the vendor's default tier for
+    /// a part it leaves out.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -288,16 +289,16 @@ pub struct ConversationPatch {
     #[schemars(with = "ModelChoice")]
     #[garde(dive)]
     pub model: Option<ModelChoice>,
-    /// The conversation's thinking effort: one its model lists, `disabled`
-    /// for thinking off, or null for the model's default.
+    /// The conversation's thinking effort: one its model lists, or
+    /// `disabled` for thinking off.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
-        with = "double_option"
+        with = "unwrap_or_skip"
     )]
-    #[schemars(with = "Option<String>")]
+    #[schemars(with = "String")]
     #[garde(length(chars, min = 1))]
-    pub thinking_effort: Option<Option<String>>,
+    pub thinking_effort: Option<String>,
     /// The conversation's service tier: one its model lists, or null for the
     /// vendor's default.
     #[serde(
