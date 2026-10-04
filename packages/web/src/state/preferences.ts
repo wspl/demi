@@ -38,6 +38,10 @@ export const usePreferences = defineStore('preferences', () => {
   const lastModel = computed(() =>
     pending.value.lastModel ?? product.snapshot?.preferences.lastModel,
   )
+  const lastProjectHost = computed(() =>
+    pending.value.lastProjectHost ??
+    product.snapshot?.preferences.lastProjectHost,
+  )
 
   const appearance = computed(() => ({
     theme: 'system' as const,
@@ -97,13 +101,17 @@ export const usePreferences = defineStore('preferences', () => {
       }
       const patch = {
         ...(pending.value.lastModel ? { lastModel: pending.value.lastModel } : {}),
+        ...(pending.value.lastProjectHost
+          ? { lastProjectHost: pending.value.lastProjectHost }
+          : {}),
         appearance: { ...pending.value.appearance },
         shortcuts: { ...pending.value.shortcuts },
       } satisfies PreferencesPatch
       if (
         !Object.keys(patch.appearance).length &&
         !Object.keys(patch.shortcuts).length &&
-        !patch.lastModel
+        !patch.lastModel &&
+        !patch.lastProjectHost
       ) {
         return
       }
@@ -125,6 +133,9 @@ export const usePreferences = defineStore('preferences', () => {
         if (!current.signal.aborted) {
           if (pending.value.lastModel === patch.lastModel) {
             delete pending.value.lastModel
+          }
+          if (pending.value.lastProjectHost === patch.lastProjectHost) {
+            delete pending.value.lastProjectHost
           }
           for (const field of ['appearance', 'shortcuts'] as const) {
             const queued = pending.value[field] as Record<string, unknown>
@@ -192,6 +203,7 @@ export const usePreferences = defineStore('preferences', () => {
 
   return {
     lastModel,
+    lastProjectHost,
     appearance,
     keys,
     update,

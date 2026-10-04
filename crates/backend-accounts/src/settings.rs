@@ -82,6 +82,7 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
         }
     }
     preferences.last_model = patch.last_model.or(preferences.last_model);
+    preferences.last_project_host = patch.last_project_host.or(preferences.last_project_host);
     preferences.locale = patch.locale.or(preferences.locale);
     preferences
 }

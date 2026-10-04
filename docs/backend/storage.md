@@ -79,8 +79,8 @@ input, which the multi-worker control service also relies on
   contract to [Web API](../product/web-api.md#account-api), and sessions and
   lockout to [Backend](backend.md#authentication-and-ownership).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
-  overrides, the last explicit model settings for new conversations, and the
-  locale the web app last reported. A patch merges specified fields in one
+  overrides, the last explicit model settings for new conversations, where
+  New project last pointed, and the locale the web app last reported. A patch merges specified fields in one
   transaction so independent edits do not overwrite each other.
 - **Devices and workspaces:** `devices` stores ownership, kind, name and
   platform, the hash of the device's current token, and claim and last-seen

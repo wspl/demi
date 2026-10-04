@@ -27,3 +27,30 @@ export type WorkspaceDraft =
     deviceId: string;
     path: string
   }
+
+/**
+ * Where New project starts: the kind the user last chose and the device last
+ * chosen in its device menu, kept while the Cloud is chosen
+ * (`product.md` § Conversations and projects).
+ */
+export interface WorkspaceHostChoice {
+  kind: 'cloud' | 'device'
+  deviceId?: string
+}
+
+/**
+ * The choice a New project form opens on: the remembered kind, the Cloud the
+ * first time, and the remembered device while the user still has it, else no
+ * device.
+ */
+export function openingChoice(
+  remembered: WorkspaceHostChoice | undefined,
+  devices: readonly WorkspaceDevice[],
+): WorkspaceHostChoice {
+  const kind = remembered?.kind ?? 'cloud'
+  const deviceId = remembered?.deviceId
+  if (deviceId && devices.some((device) => device.id === deviceId)) {
+    return { kind, deviceId }
+  }
+  return { kind }
+}
