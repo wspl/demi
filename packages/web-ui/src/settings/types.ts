@@ -229,7 +229,7 @@ export const THINKING_EFFORTS = [
 
 export const EXTENSION_PRESETS: {
   id: string
-  label: string
+  label: SentenceText
   extensions: string[]
 }[] = [
   {

@@ -103,13 +103,13 @@ function submit() {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Change password"
+    label="Change Password"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">
-          Change password
+          Change Password
         </h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           <template v-if="phase.kind === 'form'"
@@ -186,7 +186,7 @@ function submit() {
             :disabled="!canSubmit && !phase.busy"
             :loading="phase.busy"
             @click="submit"
-            >Change password</Button
+            >Change Password</Button
           >
         </template>
       </div>

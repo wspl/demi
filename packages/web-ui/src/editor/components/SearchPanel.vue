@@ -5,6 +5,7 @@ import IconButton from '../../ui/IconButton.vue'
 import TextInput from '../../ui/TextInput.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import type { FindOptions } from '../searchPanel'
+import type { SentenceText } from '../../ui/ui-text'
 
 /**
  * The code view's find bar, below the text: the query with its match count,
@@ -29,14 +30,14 @@ const emit = defineEmits<{
 
 type Toggle = 'caseSensitive' | 'wholeWord' | 'regexp'
 
-const toggles: readonly { key: Toggle; icon: Component; label: string }[] = [
+const toggles: readonly { key: Toggle; icon: Component; label: SentenceText }[] = [
   { key: 'caseSensitive', icon: CaseSensitive, label: 'Match case' },
   { key: 'wholeWord', icon: WholeWord, label: 'Match whole word' },
   { key: 'regexp', icon: Regex, label: 'Use regular expression' },
 ]
 
 const status = computed(() => props.count === 0
-  ? 'No results'
+  ? 'No Results'
   : `${props.current || '?'}/${props.count}${props.complete ? '' : '+'}`)
 
 function flip(key: Toggle): void {

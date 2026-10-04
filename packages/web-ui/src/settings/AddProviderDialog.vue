@@ -8,6 +8,7 @@ import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import type { TitleText } from '../ui/ui-text'
 import {
   WIRE_API_LABELS,
   type SettingsVendor,
@@ -39,7 +40,7 @@ const query = ref('')
 
 const q = computed(() => query.value.trim().toLowerCase())
 const protocols = (Object.keys(WIRE_API_LABELS) as SettingsWireApi[]).map(
-  (value) => ({
+  (value): { value: SettingsWireApi; label: TitleText } => ({
     value,
     label: `${WIRE_API_LABELS[value]} API`,
   }),
@@ -65,14 +66,14 @@ const results = computed(() =>
     v-model:query="query"
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Add provider"
+    label="Add Provider"
     @close="emit('close')"
   >
     <div v-if="protocolResults.length">
       <div
         class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
       >
-        Any endpoint
+        Any Endpoint
       </div>
       <div
         class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float"

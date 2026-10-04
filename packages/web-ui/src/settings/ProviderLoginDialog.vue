@@ -53,13 +53,13 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    :label="`Sign in to ${vendorName}`"
+    :label="`Sign In to ${vendorName}`"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-5 p-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">
-          Sign in to {{ vendorName }}
+          Sign In to {{ vendorName }}
         </h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           <template v-if="phase.kind === 'device'"
@@ -110,7 +110,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <Button variant="primary" @click="emit('open', phase.url)">
-            Open in browser
+            Open in Browser
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
           <!-- For a web browser on another machine, or another profile: the link alone. -->
@@ -206,7 +206,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
         <template v-else>
           <Button @click="emit('close')">Cancel</Button>
           <Button v-if="phase.kind === 'failed'" @click="emit('retry')"
-            >Try again</Button
+            >Try Again</Button
           >
         </template>
       </div>

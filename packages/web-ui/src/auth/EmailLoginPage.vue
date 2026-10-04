@@ -49,7 +49,7 @@ function submit() {
         class="flex min-h-0 flex-1 flex-col justify-center px-8 py-12 lg:px-14"
       >
         <header class="select-none">
-          <h1 class="text-[22px] font-medium text-fg-emphasis">Sign in</h1>
+          <h1 class="text-[22px] font-medium text-fg-emphasis">Sign In</h1>
           <p class="mt-1 text-[13px] leading-5 text-fg-muted">
             <template v-if="phase.reason === 'expired'"
               >Your session ended. Sign in again.</template
@@ -92,7 +92,7 @@ function submit() {
             :loading="phase.busy"
             @click="submit"
           >
-            Sign in
+            Sign In
           </Button>
         </form>
       </div>
@@ -102,7 +102,7 @@ function submit() {
         <h2
           class="max-w-lg select-none text-[32px] font-medium leading-10 text-fg-emphasis"
         >
-          A place to think and build
+          A Place to Think and Build
         </h2>
         <p
           class="mt-4 max-w-md select-none text-[15px] leading-6 text-fg-muted"

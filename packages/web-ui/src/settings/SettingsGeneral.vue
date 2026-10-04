@@ -6,7 +6,7 @@ import { PRODUCT_ACCENTS, PRODUCT_TONES, type ProductAccent, type ProductTone } 
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
-import Segmented from '../ui/Segmented.vue'
+import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Slider from '../ui/Slider.vue'
 import SwatchPicker from '../ui/SwatchPicker.vue'
 import AppearancePreview from './AppearancePreview.vue'
@@ -27,11 +27,11 @@ const tone = defineModel<ProductTone>('tone', { required: true })
 const accent = defineModel<ProductAccent>('accent', { required: true })
 const fontSize = defineModel<number>('fontSize', { required: true })
 
-const themeOptions = [
+const themeOptions: readonly SegmentedOption<ThemeChoice>[] = [
   { value: 'light', label: 'Light', icon: Sun },
   { value: 'dark', label: 'Dark', icon: Moon },
   { value: 'system', label: 'System', icon: Monitor },
-] as const
+]
 const toneOptions = PRODUCT_TONES.map((entry) => ({ value: entry.id, label: entry.label }))
 </script>
 
@@ -68,10 +68,9 @@ const toneOptions = PRODUCT_TONES.map((entry) => ({ value: entry.id, label: entr
       </SettingsRow>
       <SettingsRow label="Theme">
         <Segmented
+          v-model="theme"
           size="sm"
-          :model-value="theme"
           :options="themeOptions"
-          @update:model-value="theme = $event as ThemeChoice"
         />
       </SettingsRow>
       <SettingsRow label="Tone">

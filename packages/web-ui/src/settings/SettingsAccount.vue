@@ -134,17 +134,17 @@ const initial = computed(() => accountInitial(name.value, props.email))
         label="Sign out"
         description="Ends this browser's session. Conversations stay on the server."
       >
-        <Button size="sm" @click="emit('signOut')">Sign out</Button>
+        <Button size="sm" @click="emit('signOut')">Sign Out</Button>
       </SettingsRow>
     </SettingsGroup>
-    <SettingsGroup title="Danger zone">
+    <SettingsGroup title="Danger Zone">
       <SettingsRow
         label="Delete account"
         description="Removes your account, devices and every conversation. This cannot be undone."
         disabled
         :disabled-reason="IN_DEVELOPMENT"
       >
-        <Button size="sm" variant="danger" disabled>Delete account</Button>
+        <Button size="sm" variant="danger" disabled>Delete Account</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

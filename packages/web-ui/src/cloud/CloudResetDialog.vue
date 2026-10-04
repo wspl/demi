@@ -13,7 +13,7 @@ import { resetPhaseLabels } from './reset-phases'
 /**
  * The Cloud reset, confirmed and then followed step by step: what it stops,
  * what it keeps, and one status line that is a spinner while a step runs, a
- * check when the Cloud is back, or the failure with Retry reset. A failed
+ * check when the Cloud is back, or the failure with Retry Reset. A failed
  * reset stays in the dialog, because the dialog is where it was asked for.
  */
 const props = defineProps<{
@@ -44,12 +44,12 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Reset Cloud environment"
+    label="Reset Cloud Environment"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 p-5">
       <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">
-        Reset Cloud environment
+        Reset Cloud Environment
       </h3>
       <p class="text-[13px] leading-5 text-fg-muted">
         This stops all your Cloud tasks and replaces installed system packages and
@@ -82,7 +82,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
           variant="danger"
           :disabled="busy"
           @click="emit('reset')"
-          >{{ submitted ? 'Retry reset' : 'Reset environment' }}</Button
+          >{{ submitted ? 'Retry Reset' : 'Reset Environment' }}</Button
         >
       </div>
     </div>
