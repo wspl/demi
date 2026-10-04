@@ -1,4 +1,4 @@
-package plugintest
+package plugintest_test
 
 import (
 	"bytes"
@@ -12,6 +12,7 @@ import (
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin"
+	"github.com/wspl/demi/internal/plugin/plugintest"
 	"github.com/wspl/demi/internal/webapi"
 )
 
@@ -24,8 +25,8 @@ func (s scenario) Call(ctx context.Context, r plugin.Request, p plugin.Port) (pl
 // TestStorageThroughLoopback protects compare-and-set, blob retention and
 // detached JSON values through the same transport used by plugins' tests.
 func TestStorageThroughLoopback(t *testing.T) {
-	d := New()
-	p := Loopback(scenario(func(ctx context.Context, _ plugin.Request, p plugin.Port) (plugin.Reply, error) {
+	d := plugintest.New()
+	p := plugintest.Loopback(scenario(func(ctx context.Context, _ plugin.Request, p plugin.Port) (plugin.Reply, error) {
 		blob, err := p.PutBlob(ctx, core.B64Bytes("payload"))
 		if err != nil {
 			return nil, err
@@ -103,7 +104,7 @@ func TestStorageThroughLoopback(t *testing.T) {
 // TestHostFilesAndDirectories covers stopped Hosts, truncation, implicit
 // directories and the content-addressed installation path without processes.
 func TestHostFilesAndDirectories(t *testing.T) {
-	d := New()
+	d := plugintest.New()
 	p := d.Port()
 	_, err := p.ReadHostFiles(t.Context(), []plugin.HostRead{{Path: "/a", Limit: 2}})
 	var stopped *plugin.PortRefusalNotRunning
@@ -151,7 +152,7 @@ func TestHostFilesAndDirectories(t *testing.T) {
 // TestExposes uses a manually advanced clock for create, renew, expiry,
 // availability and device-stop semantics; it never waits for real time.
 func TestExposes(t *testing.T) {
-	d := New()
+	d := plugintest.New()
 	device, err := webapi.ParseDeviceID("aaaaaaaaaaaaaaaaaaaaaaaaaa")
 	if err != nil {
 		t.Fatal(err)
@@ -204,7 +205,7 @@ func TestExposes(t *testing.T) {
 // without a lock or goroutine escaping its owner.
 func TestUntilAndPackageCalls(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		d := New()
+		d := plugintest.New()
 		d.PackageCalls = func(
 			_ context.Context,
 			_ declare.NativeOperation,
@@ -217,7 +218,7 @@ func TestUntilAndPackageCalls(t *testing.T) {
 		ctx, cancel := context.WithCancel(t.Context())
 		defer cancel()
 		done := make(chan error, 1)
-		go func() { done <- d.Until(ctx, func(d *TestDemi) bool { return d.Changes() == 1 }) }()
+		go func() { done <- d.Until(ctx, func(d *plugintest.TestDemi) bool { return d.Changes() == 1 }) }()
 		synctest.Wait()
 		if err := d.Port().Changed(ctx, plugin.ScopeUser); err != nil {
 			t.Fatal(err)
@@ -235,7 +236,7 @@ func TestUntilAndPackageCalls(t *testing.T) {
 		if len(d.Called()) != 1 {
 			t.Fatal("package call was not recorded")
 		}
-		go func() { done <- d.Until(ctx, func(*TestDemi) bool { return false }) }()
+		go func() { done <- d.Until(ctx, func(*plugintest.TestDemi) bool { return false }) }()
 		synctest.Wait()
 		cancel()
 		if err := <-done; !errors.Is(err, context.Canceled) {

@@ -1,4 +1,4 @@
-package plugintest
+package plugintest_test
 
 import (
 	"strings"
@@ -6,6 +6,7 @@ import (
 
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin"
+	"github.com/wspl/demi/internal/plugin/plugintest"
 )
 
 // TestCommandLine checks the test adapter's placement, native pinning and
@@ -20,7 +21,7 @@ func TestCommandLine(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	roots, err := Roots(
+	roots, err := plugintest.Roots(
 		plugin.Manifest{
 			Commands: []plugin.Commands{{Placement: plugin.PlacementDemi, Tree: plugin.Declaration{Node: node}}},
 		},
@@ -31,7 +32,7 @@ func TestCommandLine(t *testing.T) {
 	if len(roots) != 1 {
 		t.Fatalf("roots = %d", len(roots))
 	}
-	parsed, err := Parse(roots[0], []string{"file", "read"}, nil)
+	parsed, err := plugintest.Parse(roots[0], []string{"file", "read"}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestCommandLine(t *testing.T) {
 	if !native || binding.DescriptorHash != strings.Repeat("0", 64) {
 		t.Fatalf("binding = %#v", binding)
 	}
-	help, err := Help(roots[0], []string{"file", "read"})
+	help, err := plugintest.Help(roots[0], []string{"file", "read"})
 	if err != nil {
 		t.Fatal(err)
 	}
