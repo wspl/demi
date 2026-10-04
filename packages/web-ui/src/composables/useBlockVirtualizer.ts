@@ -29,7 +29,8 @@ const BLOCK_HEIGHT_ESTIMATES: Record<string, number> = {
   error: 28,
   abort: 28,
   compaction_boundary: 36,
-  compaction_marker: 0,
+  compaction_marker: 36,
+  compaction_progress: 36,
 }
 
 export interface ScrollAnchor {

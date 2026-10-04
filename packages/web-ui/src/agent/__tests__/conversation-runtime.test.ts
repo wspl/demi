@@ -18,6 +18,7 @@ function state(): RuntimeState {
     load: 'loading',
     pendingAction: null,
     failures: {},
+    contextUsage: null,
   }
 }
 
@@ -42,6 +43,21 @@ test('the current edit version reacts to connection, snapshots, patches and disc
   expect(version.value).toEqual({ epoch: 'epoch', revision: 2 })
   runtime.dispose()
   expect(version.value).toBeNull()
+})
+
+test('the usage the composer shows is the one the session reports, not one read from the transcript', async () => {
+  const h = clientHarness()
+  const current = state()
+  const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
+  await runtime.connect()
+  try {
+    // A response before the compaction still measures the history the summary replaced.
+    h.receive({ type: 'transcript_reset', version: { epoch: 'epoch', revision: 1 }, blocks: [] })
+    h.receive({ type: 'context_usage', usage: { tokens: 6_000, window: 100_000, compactFrom: 50_000 } })
+    expect(current.contextUsage).toEqual({ tokens: 6_000, window: 100_000, compactFrom: 50_000 })
+  } finally {
+    runtime.dispose()
+  }
 })
 
 for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] as const) {

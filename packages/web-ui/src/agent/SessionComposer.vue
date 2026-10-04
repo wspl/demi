@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import type { TokenUsage } from '@demicodes/protocol'
+import type { ContextUsage } from '@demicodes/protocol'
 import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -22,7 +22,7 @@ import ComposerShell from './ComposerShell.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import ModelSelector from './ModelSelector.vue'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
-import { contextWindowInUse, type ContextLimitChange } from './context-limit'
+import type { ContextLimitChange } from './context-limit'
 import SessionNoticeBar from './SessionNoticeBar.vue'
 import ReplacedDraftNotice from './ReplacedDraftNotice.vue'
 import PluginsChangedNotice from './PluginsChangedNotice.vue'
@@ -52,7 +52,8 @@ const props = withDefaults(
     models: Record<string, ModelInfo[]>
     /** The conversation's model settings; none while nothing is chosen. */
     modelSettings?: ModelSettings | null
-    usage?: TokenUsage | null
+    /** How full the next request is, as the backend reports it. */
+    usage?: ContextUsage | null
     /** When no model can send, show Configure models. Hide the action if the user cannot open that page. */
     canConfigure?: boolean
     /** Replaces the input with the archive bar. */
@@ -208,11 +209,16 @@ const replacedPreview = computed(() =>
     ? draftPreview(props.replaced.markdown, props.replaced.fileNames)
     : null,
 )
-const selected = computed(() =>
-  props.models[props.modelSettings?.providerId ?? '']?.find(
-    (model) => model.id === props.modelSettings?.modelId,
-  ),
-)
+/** Why Compact cannot run now apart from how full the context is: the session takes it only while idle. */
+const compactUnavailable = computed(() => {
+  if (props.messageEdit) {
+    return 'Compaction is available after the edit.'
+  }
+  if (props.running) {
+    return 'Compaction is available once the turn ends.'
+  }
+  return null
+})
 const submitLabel = computed(() => props.messageEdit
   ? props.messageEdit.phase === 'uncertain' ? 'Retry' : 'Save and resend'
   : props.running ? 'Queue' : 'Send',
@@ -435,10 +441,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         <template #actions>
           <ContextUsageIndicator
             :usage="usage"
-            :context-window="contextWindowInUse(selected)"
-            :input-limit="selected?.inputLimit"
             :is-compacting="compacting"
-            :is-clickable="!messageEdit && !running"
+            :unavailable-reason="compactUnavailable"
             @compact="emit('compact')"
           />
           <Tooltip v-if="messageEdit" content="Cancel edit">

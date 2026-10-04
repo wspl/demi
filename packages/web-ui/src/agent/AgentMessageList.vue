@@ -4,11 +4,11 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize, useScroll } from '@vueuse/core'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
-import { getVisibleBlocks } from './visible-blocks'
+import { compactionSummaryTokens, getVisibleBlocks } from './visible-blocks'
 import { assistantFooterIds } from './assistant-footer'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
-import { pendingSteersToRenderBlocks, type MessageListBlock } from './pending-steers'
-import { queuedMessagesToRenderBlocks } from './queued-messages'
+import type { MessageListBlock } from './pending-steers'
+import { listTailBlocks } from './list-tail'
 import { activitySlotKind, type PendingAction } from './activity-slot'
 import { useActivityHandoff } from './useActivityHandoff'
 import { useChromeEntrance } from './useChromeEntrance'
@@ -88,15 +88,14 @@ const transcriptBlocks = computed(() => {
   return visible
 })
 const editableUserId = computed(() => lastEditableUserMessageId(props.blocks))
-const tailBlocks = computed<MessageListBlock[]>(() => [
-  ...pendingSteersToRenderBlocks(props.pendingSteers),
-  ...queuedMessagesToRenderBlocks(props.queue),
-  ...(props.pendingSubmission ? [{
-    type: 'pending_submission' as const,
-    id: `pending-submission:${props.pendingSubmission.id}`,
-    submission: props.pendingSubmission,
-  }] : []),
-])
+const tailBlocks = computed(() => listTailBlocks({
+  phase: props.phase,
+  pendingSteers: props.pendingSteers,
+  queue: props.queue,
+  pendingSubmission: props.pendingSubmission,
+}))
+// The summary size each compaction divider tells, by the id of the block that shows it.
+const summaryTokens = computed(() => compactionSummaryTokens(props.blocks))
 const slotKind = computed(() => activitySlotKind({
   load: props.load ?? 'ready',
   phase: props.phase,
@@ -259,6 +258,7 @@ defineExpose({
                 :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
                 :failure="failures?.[renderBlocks[item.index]!.id]"
+                :summary-tokens="summaryTokens.get(renderBlocks[item.index]!.id)"
                 :entering="isEntering(renderBlocks[item.index]!.id)"
                 :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"

@@ -231,6 +231,7 @@ export const useConversations = defineStore('conversations', () => {
       load: 'loading',
       pendingAction: null,
       failures: {},
+      contextUsage: null,
     }
   }
 

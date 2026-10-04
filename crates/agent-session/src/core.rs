@@ -1129,25 +1129,27 @@ impl SessionCore {
                     ProviderEvent::Response(usage) => {
                         self.transcript.push_response(&self.model, usage)
                     }
-                    ProviderEvent::Error(failure) => self.push_failure(&failure),
+                    ProviderEvent::Error(failure) => self.push_failure(&(&failure).into()),
                 }
             }
         }
         self.commit();
     }
 
-    /// Records a provider failure as an `error` block.
-    pub(super) fn record_failure(&mut self, failure: &ProviderFailure) {
+    /// Records a failed provider request, the turn's own or a compaction's
+    /// summary request, as an `error` block
+    /// (`failures-and-recovery.md` § The failure record).
+    pub(super) fn record_failure(&mut self, failure: &ErrorReport) {
         self.push_failure(failure);
         self.commit();
     }
 
-    fn push_failure(&mut self, failure: &ProviderFailure) {
+    fn push_failure(&mut self, failure: &ErrorReport) {
         self.transcript.push_error(
             &self.model,
             failure.message.clone(),
-            failure.code.as_ref().map(|code| code.as_str().to_owned()),
-            failure.diagnostics.as_deref().cloned(),
+            failure.code.clone(),
+            failure.diagnostics.clone(),
         );
     }
 

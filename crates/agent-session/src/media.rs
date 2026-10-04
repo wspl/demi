@@ -11,24 +11,22 @@ use super::{SessionShared, TurnError, cancel::TurnCancel, core::SessionCore};
 /// replayed media it holds nothing for, which after a restore is every one.
 /// A stop ends the reads, and what they found is dropped.
 ///
-/// One read covers the view: only the running action changes the
-/// transcript, and the action that asked for the view is waiting here.
-/// Steers, agent messages and queued messages wait outside the transcript
-/// until that action writes them, and what the session holds only grows
-/// meanwhile.
+/// Inside an action one read covers the view: only the running action
+/// changes the transcript, and the action that asked for the view is
+/// waiting here. A view asked for outside an action, the usage a page
+/// opens with, may see an action change the transcript during its read; it
+/// then reads what is still missing.
 pub(super) async fn model_view(
     s: &SessionShared,
     cancel: &TurnCancel,
 ) -> Result<ModelView, TurnError> {
     s.update(SessionCore::release_media);
-    let unheld = match s.read(SessionCore::model_view) {
-        Ok(view) => return Ok(view),
-        Err(unheld) => unheld,
-    };
-    let found = cancel.guard(media::read(s.store.blobs(), unheld)).await??;
-    Ok(s.update(|core| {
-        core.media.absorb(found);
-        core.model_view()
-            .expect("the read covered every medium the replayed blocks reference")
-    }))
+    loop {
+        let unheld = match s.read(SessionCore::model_view) {
+            Ok(view) => return Ok(view),
+            Err(unheld) => unheld,
+        };
+        let found = cancel.guard(media::read(s.store.blobs(), unheld)).await??;
+        s.update(|core| core.media.absorb(found));
+    }
 }

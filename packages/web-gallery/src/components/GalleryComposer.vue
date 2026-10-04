@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { previewMediaType, type TokenUsage, type UserContentBlock } from '@demicodes/protocol'
+import { previewMediaType, type ContextUsage, type UserContentBlock } from '@demicodes/protocol'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
@@ -27,9 +27,9 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '@demicodes/web-ui/agent/model-selection'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
-import { demoUsage } from '../fixtures/blocks'
-import { demoModels, demoProviders } from '../fixtures/catalog'
+import { demoModels, demoProviders, usageAt } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
+import { productWould } from '../product-would'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
 
@@ -51,7 +51,8 @@ const props = withDefaults(
     selectedProviderId?: string
     selectedModelId?: string
     serviceTierId?: string | null
-    usage?: TokenUsage
+    /** How full the context is; past half by default, so Compact is offered. */
+    usage?: ContextUsage
     providers?: ProviderInfo[]
     models?: Record<string, ModelInfo[]>
     canConfigure?: boolean
@@ -64,6 +65,8 @@ const props = withDefaults(
     replaced?: string
     /** Plugins changed since the conversation opened: the composer offers a reload. */
     pluginsChanged?: boolean
+    /** Compacts the specimen's conversation; without it, a toast says what the product would do. */
+    onCompact?: () => void
   }>(),
   {
     draft: '',
@@ -77,7 +80,6 @@ const emit = defineEmits<{
   send: [content: UserContentBlock[]]
   queue: [content: UserContentBlock[]]
   stop: []
-  compact: []
   configure: []
   restore: []
   retryModels: []
@@ -111,6 +113,14 @@ function reloadPlugins() {
 }
 /** Counts the drafts shown from outside, here the restored ones. */
 const shown = ref(0)
+/** Compact from the meter's card: the specimen's own conversation, or a toast when it has none. */
+function compact() {
+  if (props.onCompact) {
+    props.onCompact()
+    return
+  }
+  productWould('Compact the conversation')
+}
 const composer = ref<InstanceType<typeof SessionComposer>>()
 const uploads = new AttachmentUploadQueue()
 const host = galleryUploads()
@@ -136,7 +146,7 @@ const settings = ref<ModelSettings>({
 })
 /** What the composer takes of the specimen's props: the model it starts with is the settings'. */
 const composerProps = computed(() => {
-  const { selectedProviderId: _provider, selectedModelId: _model, serviceTierId: _tier, ...rest } = props
+  const { selectedProviderId: _provider, selectedModelId: _model, serviceTierId: _tier, onCompact: _compact, ...rest } = props
   return rest
 })
 
@@ -325,7 +335,7 @@ onBeforeUnmount(() => {
     :archived="archived"
     :hold="hold"
     :model-settings="settings"
-    :usage="props.usage ?? demoUsage"
+    :usage="props.usage ?? usageAt(0.62)"
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
     :plugins-changed="pluginsChanged"
@@ -345,7 +355,7 @@ onBeforeUnmount(() => {
     @change-model="changeModel"
     @change-context-limit="setGalleryContextLimit"
     @stop="emit('stop')"
-    @compact="emit('compact')"
+    @compact="compact"
   />
   <RemoteFilePicker
     ref="remotePicker"
