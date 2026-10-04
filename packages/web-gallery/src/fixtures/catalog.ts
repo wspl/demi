@@ -22,7 +22,6 @@ function model(partial: Pick<ModelInfo, 'id' | 'name'> & Partial<ModelInfo>): Mo
   return {
     contextWindow: 200_000,
     contextLimit: null,
-    inputLimit: 180_000,
     acceptedExtensions: ['png', 'pdf', 'md'],
     reasoning: null,
     serviceTiers: null,
@@ -60,11 +59,16 @@ export const demoModels: Record<string, ModelInfo[]> = {
 /** The window the gallery's conversations use, as the backend reports it. */
 const DEMO_WINDOW = 200_000
 
-/** The backend's usage at `ratio` of `window`, the window in use, which takes Compact from half. */
-export function usageAt(ratio: number, window = DEMO_WINDOW): ContextUsage {
+/** The usage the backend reports at `tokens` of `window`, the window in use: Compact is taken from half. */
+export function usageOf(tokens: number, window: number): ContextUsage {
   return {
-    tokens: Math.round(window * ratio),
+    tokens,
     window,
     compactFrom: Math.floor(window / 2),
   }
+}
+
+/** The backend's usage at `ratio` of the gallery conversations' window. */
+export function usageAt(ratio: number): ContextUsage {
+  return usageOf(Math.round(DEMO_WINDOW * ratio), DEMO_WINDOW)
 }

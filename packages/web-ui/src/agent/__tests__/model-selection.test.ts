@@ -16,7 +16,6 @@ function model(id: string): ModelInfo {
     name: id.toUpperCase(),
     contextWindow: null,
     contextLimit: null,
-    inputLimit: null,
     acceptedExtensions: [],
     reasoning: null,
     serviceTiers: null

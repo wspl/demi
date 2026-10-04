@@ -32,7 +32,6 @@ export interface ModelInfo {
    * window offers it; null uses the full window (`models.md` § Context limit).
    */
   contextLimit: number | null
-  inputLimit: number | null
   acceptedExtensions: string[] | null
   reasoning: ModelReasoning | null
   /** Provider-advertised speed tiers. Fast Mode is the tier flagged `fast`; models without one have no Fast switch. */

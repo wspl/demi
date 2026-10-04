@@ -687,9 +687,10 @@ impl AgentSession {
         self.shared.update(|core| core.admit(ActionKind::Resume))
     }
 
-    /// The estimate of the next request with the window its thresholds use
-    /// (`compaction.md` § Context estimate). It reads the media the session
-    /// does not hold yet, as after a restore.
+    /// The estimate of the next request with the window in use
+    /// (`compaction.md` § Context estimate). It reads the media of the
+    /// blocks the estimate weighs when the session holds nothing for them,
+    /// as after a restore.
     pub async fn context_usage(&self) -> Result<ContextUsage, ErrorReport> {
         // Outside an action nothing stops the read.
         let unstoppable = TurnCancel::new();
@@ -702,10 +703,13 @@ impl AgentSession {
     }
 
     /// The usage as [`context_usage`](Self::context_usage) says it, without
-    /// reading a blob: none while the session holds nothing for a replayed
-    /// medium, as after a restore.
-    pub fn held_context_usage(&self) -> Option<ContextUsage> {
-        self.shared.read(compaction::held_context_usage)
+    /// reading a blob: none while a block the estimate weighs references a
+    /// medium the session holds nothing for, as a restored session can.
+    /// The estimate is read when the window in use is known, with nothing
+    /// awaited after it, so it is the session's estimate at the moment this
+    /// returns.
+    pub async fn held_context_usage(&self) -> Option<ContextUsage> {
+        compaction::held_context_usage(&self.shared).await
     }
 
     /// Runs one compaction pass (`compaction.md` § Compaction).

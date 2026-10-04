@@ -184,8 +184,16 @@ async fn every_page_sees_a_commands_output_as_it_comes_and_its_end() {
                 (long.clone(), true, "long-ready\n".to_owned())
             ]
         );
+        // The live commands' views end the handshake; the usage follows it.
         assert!(
-            matches!(handshake.last(), Some(ServerFrame::ShellOutput { .. })),
+            matches!(
+                handshake.as_slice(),
+                [
+                    ..,
+                    ServerFrame::ShellOutput { .. },
+                    ServerFrame::ContextUsage { .. }
+                ]
+            ),
             "{handshake:?}"
         );
         // The command prints after its call returned: both pages see it.

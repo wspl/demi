@@ -54,7 +54,7 @@ export const demoModel: ModelSelection = {
     name: 'Demo model',
     contextWindow: 200_000,
     outputLimit: null,
-    inputLimit: 180_000,
+    inputLimit: null,
     thinking: [],
     acceptedExtensions: [],
   },

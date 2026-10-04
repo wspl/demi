@@ -6,7 +6,8 @@ use std::borrow::Cow;
 
 use demi_provider_common::{InferenceItem, MediaBytes, Medium, ResultPart, UserPart};
 use demi_shared_types::{
-    B64Bytes, Block, DocumentSource, ModelMediaKind, ToolResultContentBlock, UserContentBlock,
+    B64Bytes, Block, DocumentSource, Model, ModelMediaKind, ToolResultContentBlock,
+    UserContentBlock,
 };
 
 use super::{
@@ -38,23 +39,48 @@ pub fn block_tokens(block: &Block, request: &RequestView) -> u64 {
     text_tokens(&text) + media
 }
 
-/// The estimate of `request`, the next request of its model. It is anchored
-/// on the latest usage a provider reported after the last compaction: that
-/// usage plus the estimates of the blocks after it. There is no anchor when
-/// a compaction came after that response, when the last compaction has no
-/// marker yet, or when the usage is larger than the model's context window,
-/// which one request's usage cannot be; then the estimate is the sum of the
-/// blocks from the last compaction boundary on.
+/// Where the estimate of the next request starts weighing blocks
+/// (`compaction.md` § Context estimate): the latest usage a provider
+/// reported, and the first block after its `response`; or no usage and the
+/// last compaction boundary.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ContextAnchor {
+    /// The reported usage the estimate starts from; zero without one.
+    pub tokens: u64,
+    /// The index, in the blocks the anchor was found in, of the first block
+    /// whose estimate is added: only these blocks' media weigh.
+    pub from: usize,
+}
+
+/// The anchor of the next request of `model` over the replayed `blocks`.
+/// There is none when a compaction came after the latest response, when the
+/// last compaction has no marker yet, or when the usage is larger than the
+/// model's own context window, which one request's usage cannot be.
+pub fn context_anchor(blocks: &[Block], model: &Model) -> ContextAnchor {
+    let window = model.context_window;
+    match usage_anchor(blocks).filter(|(_, tokens)| window == 0 || *tokens <= u64::from(window)) {
+        Some((index, tokens)) => ContextAnchor {
+            tokens,
+            from: index + 1,
+        },
+        None => ContextAnchor {
+            tokens: 0,
+            from: replay_start(blocks),
+        },
+    }
+}
+
+/// The estimate of `request`, the next request of its model: its
+/// [`context_anchor`] plus the estimates of the blocks from the anchor on.
 pub fn context_tokens(request: &RequestView) -> u64 {
     let blocks = request.blocks();
-    let window = request.model().context_window;
-    let anchor =
-        usage_anchor(blocks).filter(|(_, tokens)| window == 0 || *tokens <= u64::from(window));
-    let estimate = |block: &Block| block_tokens(block, request);
-    if let Some((index, tokens)) = anchor {
-        return tokens + blocks[index + 1..].iter().map(estimate).sum::<u64>();
-    }
-    blocks[replay_start(blocks)..].iter().map(estimate).sum()
+    let anchor = context_anchor(blocks, request.model());
+    anchor.tokens + blocks_tokens(&blocks[anchor.from..], request)
+}
+
+/// The estimates of `blocks`, summed, each as `request` carries it.
+pub fn blocks_tokens(blocks: &[Block], request: &RequestView) -> u64 {
+    blocks.iter().map(|block| block_tokens(block, request)).sum()
 }
 
 /// What a request weighs as its vendor receives it (`compaction.md`
