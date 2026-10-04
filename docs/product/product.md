@@ -497,9 +497,10 @@ list the backend's plugins, each with a switch that turns it on or off for
 the user, and an open conversation whose commands a switch changed offers a
 reload ([A user's plugins](../architecture/plugins.md#a-users-plugins)).
 Settings also list the user's [subagent profiles](../agent/subagents.md#profiles),
-where the user creates, edits and deletes them. A profile whose model is gone
-is marked as needing a model, and an open conversation whose tree took other
-profiles offers the same reload.
+where the user creates, edits and deletes them; the next spawn of every
+conversation uses the change. A profile whose model is gone is marked as
+needing a model, and one whose effort or tier is no longer offered has that
+part marked.
 Skills have a settings section of their own, which the sidebar also opens
 ([Skills](../agent/skills.md#the-page)).
 Notifications, MCP, data/privacy actions, language switching, and account

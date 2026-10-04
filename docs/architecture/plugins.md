@@ -517,25 +517,21 @@ moment that does not change something the model already relies on:
 Commands wait for a tree to open because a tree takes them once: a node's
 command help is part of its system prompt, which is rendered once
 ([Prompt text and context](#prompt-text-and-context)). A change in the middle
-of a conversation would change what the model was told it may run. A tree
-takes the user's [subagent profiles](../agent/subagents.md#profiles) at the
-same moment, for the same reason: the `demi agent spawn` help lists them.
+of a conversation would change what the model was told it may run.
 
 **The plugin set.** The plugins a user has on, at one moment, are the user's
 **plugin set**, with a revision that changes whenever the set's commands
 change. Turning on a plugin that declares none, such as one that contributes
 only a context source and a settings section, changes the set without
-changing its revision. A tree records the revision it opened with, and the
-profiles it took.
+changing its revision. A tree records the revision it opened with.
 
-**Reload.** While a conversation's tree is open with a plugin set revision
-that is not the user's current one, or with profiles that differ from the
-user's current ones, the conversation's summary says which, and the page
+**Reload.** While a conversation's tree is open with a revision that is not
+the user's current one, the conversation's summary says so, and the page
 offers to reload it. A reload closes the tree and opens it again, as a
 backend restart would; it waits for nothing and is refused while the tree
 works, as an archive is. The conversation's history, queue and children
-are kept; the model's next request is the first with the new commands and
-profiles, and the new help reaches it as a changed system prompt, once. A tree that is
+are kept; the model's next request is the first with the new commands, and
+the new help reaches it as a changed system prompt, once. A tree that is
 disposed after it has been idle opens with the current set the next time
 anyone opens it, so a reload is never needed for a conversation nobody
 looks at.

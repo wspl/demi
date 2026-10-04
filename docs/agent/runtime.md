@@ -57,18 +57,19 @@ Sessions run on the user's shard thread, where no other work runs while a
 session changes its state.
 
 The agent runtime knows no product and no plugin. The product gives the
-agent server what every node is assembled from, and answers two questions
-while a node runs. The command set and the profiles may change while the
-server runs: a tree takes them when it opens and keeps them until it closes,
+agent server what every node is assembled from, and answers three questions
+while a node runs. The command set may change while the server runs: a tree
+takes it when it opens, records its revision, and keeps it until it closes,
 so a change reaches a conversation when its tree opens again
-([A user's plugins](../architecture/plugins.md#a-users-plugins),
-[Profiles](subagents.md#profiles)).
+([A user's plugins](../architecture/plugins.md#a-users-plugins)). The
+profiles are asked at each spawn instead, so a change reaches the next spawn
+([Profiles](subagents.md#profiles)).
 
 | The product supplies | What it is | Where it comes from in Demi |
 | --- | --- | --- |
 | The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The commands of the plugins the user has on, and the `demi host` group ([Plugins](../architecture/plugins.md#commands)) |
 | Instructions | The text that opens the system prompt, before the runtime's rules for its tools | The product's instructions; a plugin adds only its commands' help ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
-| Profiles | The named [subagent profiles](subagents.md#profiles), as data | The user's profiles, which the user edits in settings |
+| Profiles | The named [subagent profiles](subagents.md#profiles), as data, asked at each spawn and each `demi agent profiles` | The user's current profiles, which the user edits in settings |
 | Provider runtimes | A node's model selection and the runtime that serves it: the root's from the conversation's record, a child's from its profile's model settings or its parent's ([Runtime](subagents.md#runtime)) | The backend's provider assembly ([Inference admission and runtime ownership](../providers/providers.md#inference-admission-and-runtime-ownership)) |
 | The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
 | Context sources | What the model must learn before a request, asked before each one ([Context](#context)) | The conversation's execution context, then each plugin that is a context source, while the user has it on |

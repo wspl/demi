@@ -48,7 +48,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
-| Plugins | `PUT /plugins/:plugin { enabled }` turns a plugin on or off for the caller ([A user's plugins](#a-users-plugins)); `GET /conversations/:id/plugins/:plugin/state` reads a plugin's [state for one conversation](#conversation-state-of-plugins); `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation; `POST /conversations/:id/reload` reopens the conversation's tree with the user's current plugins and profiles |
+| Plugins | `PUT /plugins/:plugin { enabled }` turns a plugin on or off for the caller ([A user's plugins](#a-users-plugins)); `GET /conversations/:id/plugins/:plugin/state` reads a plugin's [state for one conversation](#conversation-state-of-plugins); `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation; `POST /conversations/:id/reload` reopens the conversation's tree with the user's current plugins |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
@@ -542,7 +542,7 @@ the product state, as `profiles`, in name order. Each is
 |---|---|
 | `id` | The backend's id for the profile, which its name can change under |
 | `name`, `description` | The `--profile` value and when the agent should use the profile |
-| `model` | null for the parent's model, or model settings `{ providerId, modelId, thinkingEffort, serviceTierId }`, as a conversation's ([Sidebar mutations and read state](#sidebar-mutations-and-read-state)) |
+| `model` | null for the parent's model, or model settings `{ providerId, modelId, thinkingEffort, serviceTierId }`, as a conversation's ([Sidebar mutations and read state](#sidebar-mutations-and-read-state)); `thinkingEffort` is always an effort the model lists or `disabled`, never null |
 | `instructions` | null for the parent's instructions, or the text that replaces them |
 | `canSpawn` | Whether the profile's children may spawn children of their own |
 
@@ -563,15 +563,12 @@ writes:
   settings are, with the same answers: 404 `provider_not_found` for an entry
   outside the caller's scope, 404 `model_not_found`, and 409
   `setting_unavailable` for an effort or a tier the model does not offer. A
-  model that cannot turn thinking off gets its default effort when the body
-  names none ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+  body whose model names no effort gets the first effort the model lists
+  ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
 
 Each change reaches every page of the user as the `profiles` message of the
-[synchronization channel](#page-synchronization), with the summary of every
-conversation whose tree is open, whose `profilesChanged` says whether the
-tree's profiles still match the user's
-([Sidebar mutations and read state](#sidebar-mutations-and-read-state)). A
-change reaches no open conversation before its tree opens again
+[synchronization channel](#page-synchronization), and the next spawn of
+every conversation, an open one included
 ([Profiles](../agent/subagents.md#profiles)). A profile is the user's in both
 instance modes; on a shared instance its model names one of the master's
 entries, as every model a user picks does.
@@ -836,10 +833,8 @@ An unfinished checkpoint without a live session is interrupted. `titleCurrent`
 says whether the title has read every message the user sent, when asking for a
 new one could say nothing new, and `titleGenerating` whether a title request is
 in flight. `pluginsChanged` says whether the conversation's tree is open
-with commands of plugins the user has since turned on or off, and
-`profilesChanged` whether it is open with subagent profiles other than the
-user's current ones, so a reload would change them
-([Reload](../architecture/plugins.md#a-users-plugins)). `draftRevision` is
+with commands of plugins the user has since turned on or off, so a reload
+would change them ([Reload](#a-users-plugins)). `draftRevision` is
 the revision of the conversation's
 [draft](#conversation-drafts), 0 before its first save: the page reads the
 draft itself only when this number is higher than the revision it holds, so a
@@ -906,7 +901,7 @@ later one is the current value of one part of it that changed:
 | Message | Carries | Sent when |
 | --- | --- | --- |
 | `snapshot` | `state`, the product state below | First, on every connection |
-| `conversation` | `conversation`, the conversation's summary as the conversation lists carry it | Its record changes: a patch or a batch item, an archive, a restore or a target switch once it completes, a read acknowledgement, a draft saved, restored or dismissed, a message sent, a title requested or written. It is created or forked. Its tree saves a checkpoint, starts or stops working, or is disposed. The user's subagent profiles change while its tree is open |
+| `conversation` | `conversation`, the conversation's summary as the conversation lists carry it | Its record changes: a patch or a batch item, an archive, a restore or a target switch once it completes, a read acknowledgement, a draft saved, restored or dismissed, a message sent, a title requested or written. It is created or forked. Its tree saves a checkpoint, starts or stops working, or is disposed |
 | `conversation_order` | `ids`, the id of every conversation, in the product state's order | A conversation is created, forked, moved, pinned or unpinned, archived or restored |
 | `preferences` | `preferences` | A preferences patch |
 | `user` | `user` | The nickname or the email address changes |
@@ -1008,12 +1003,12 @@ unknown plugin answers 404 `unknown_plugin`. What each change does, and when, is
 [A user's plugins](../architecture/plugins.md#a-users-plugins)'s.
 
 `POST /api/conversations/:id/reload`, without a body, closes the
-conversation's tree and opens it again with the user's current plugins and
-[subagent profiles](#subagent-profiles), and answers 204. A conversation socket that was attached to the tree receives
+conversation's tree and opens it again with the user's current plugins, and
+answers 204. A conversation socket that was attached to the tree receives
 `closed` and connects again, as when another page's socket disposed the tree
 ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)). A
 conversation whose tree is not open answers 204 and changes nothing: it opens
-with the current plugins and profiles anyway. A tree that works answers 409
+with the current plugins anyway. A tree that works answers 409
 `turn_in_flight`, and an archived conversation 409 `conversation_archived`.
 
 ## Conversation state of plugins
