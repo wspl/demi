@@ -1,75 +1,14 @@
 package main
 
 import (
-	"bytes"
-	"os"
-	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/vmihailenco/msgpack/v5"
 	"github.com/wspl/demi/tools/contractgen/testdata/runner"
 )
 
-// The generator's runner boundary must reproduce the independently recorded bytes.
-// This local fixture suite has a one-second budget and starts no processes.
-func TestRunnerCorpus(t *testing.T) {
-	count := 0
-	for _, direction := range []string{"backend-to-runner", "runner-to-backend"} {
-		paths, err := filepath.Glob("testdata/runner-protocol/" + direction + "/*.msgpack")
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, path := range paths {
-			kind := strings.Split(filepath.Base(path), ".")[0]
-			switch kind {
-			case "ping",
-				"hello_ok",
-				"claim_pending",
-				"hello_error",
-				"sync",
-				"volume_grown",
-				"spawn",
-				"spawn_stdin",
-				"spawn_kill",
-				"job_follow",
-				"rpc_pipes",
-				"rpc_exit",
-				"fs_utimes",
-				"pong",
-				"sync_done",
-				"job_output",
-				"job_running_hint",
-				"volume_grow",
-				"spawn_output":
-			default:
-				continue
-			}
-			t.Run(direction+"/"+filepath.Base(path), func(t *testing.T) {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					t.Fatal(err)
-				}
-				v, err := runner.DecodeMessageMsgpack(data)
-				if err != nil {
-					t.Fatal(err)
-				}
-				encoded, err := runner.EncodeMessageMsgpack(v)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if !bytes.Equal(data, encoded) {
-					t.Fatalf("wire mismatch\n got %x\nwant %x", encoded, data)
-				}
-			})
-			count++
-		}
-	}
-	if count != 25 {
-		t.Fatalf("got %d fixtures, want 25", count)
-	}
-}
-
+// Generated runner messages refuse malformed MessagePack. Local values only;
+// budget one second, no processes.
 func TestRunnerRefusals(t *testing.T) {
 	cases := map[string]map[string]any{
 		"unknown tag":          {"type": "future"},

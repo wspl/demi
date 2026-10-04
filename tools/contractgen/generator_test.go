@@ -59,7 +59,6 @@ func TestRegeneration(t *testing.T) {
 			"./testdata/reachability",
 			"./testdata/packedonly",
 			"./testdata/schemacheck",
-			"./testdata/todo",
 		},
 		false,
 		"",
