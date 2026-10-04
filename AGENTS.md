@@ -48,7 +48,7 @@ Only when the user says to enter parallel development mode:
 
 - Hand each independent work item to a background subagent and stay free to talk with the user. Items that change the same files run one after another.
 - Each subagent works in its own worktree under `../demi-worktrees/`, clones the warm `target/` with `cp -c` (APFS copy-on-write; skip `target/debug/incremental`), commits on its own branch and never pushes.
-- The lead reviews each result, merges it into the branch of the user's own checkout, tests and pushes from there, then removes the worktree.
+- The lead reviews each result, merges it into the branch of the user's own checkout, tests and pushes from there, then removes the worktree. After each merge it rebuilds and restarts the development backend and web front end from the checkout (`bun run dev`, `bun run web:dev`), so the user sees the new code at once.
 
 # Writing and Communication
 
