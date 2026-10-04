@@ -1,8 +1,9 @@
 //! Conversation permissions (`permissions.md`): the check every `rpc` call
 //! passes in the backend's dispatch before its handler; the requests a
-//! refused call raises; the user's decisions, the grants an allow records
-//! and the message each decision sends the agent that asked, delivered again
-//! at start when a restart cut it off; and revocation.
+//! refused call raises; the user's decisions, the grants an allow records,
+//! each kept for the conversation's life, and the message each decision
+//! sends the agent that asked, delivered again at start when a restart cut
+//! it off.
 //!
 //! Every command source passes through the check, a plugin's, the product's
 //! and the agent runtime's alike, so it belongs to none of them. What it
@@ -15,7 +16,7 @@ use std::rc::Rc;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::permissions::{
-    AskingAgent, Checked, PermissionRefusal, StoredGrant, StoredRequest,
+    AskingAgent, Checked, PermissionRefusal, StoredRequest,
 };
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::Category;
@@ -23,8 +24,8 @@ use demi_host_interface::{RpcError, RpcInvocation};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::permissions::{
-    ConversationPermissions, PermissionCategory, PermissionDecision, PermissionGrant,
-    PermissionRequest, PermissionRequestId,
+    ConversationPermissions, PermissionCategory, PermissionDecision, PermissionRequest,
+    PermissionRequestId,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -36,7 +37,7 @@ pub trait PermissionShard {
     /// pages.
     fn marks(&self) -> UserMarks;
 
-    /// The revision of each conversation's requests and grants.
+    /// The revision of each conversation's requests.
     fn revisions(&self) -> &Revisions;
 
     /// The permission categories of the command set the user's
@@ -71,8 +72,8 @@ pub trait PermissionShard {
     fn this(&self) -> Rc<dyn PermissionShard>;
 }
 
-/// How many times each conversation's requests or grants changed since the
-/// shard started; a conversation without an entry has changed none
+/// How many times each conversation's requests changed since the shard
+/// started; a conversation without an entry has changed none
 /// (`web-api.md` § Conversation permissions).
 #[derive(Default)]
 pub struct Revisions(RefCell<HashMap<ConversationId, u64>>);
@@ -87,7 +88,7 @@ impl Revisions {
     }
 }
 
-/// Why a page's read, decision or revocation failed.
+/// Why a page's read or decision failed.
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionError {
     #[error("The conversation is archived")]
@@ -152,15 +153,15 @@ fn command_line(invocation: &RpcInvocation) -> Result<String, RpcError> {
         .map_err(|error| RpcError::Usage(error.to_string()))
 }
 
-/// The conversation's undecided requests and its grants, as a page reads
-/// them, with the revision read before them: a change made during the read
-/// raises the revision past it.
+/// The conversation's undecided requests, as a page reads them, with the
+/// revision read before them: a change made during the read raises the
+/// revision past it.
 pub async fn read(
     shard: &dyn PermissionShard,
     conversation: &ConversationId,
 ) -> Result<ConversationPermissions, PermissionError> {
     let revision = shard.revisions().of(conversation);
-    let (requests, grants) = shard.control().permissions(conversation.clone()).await?;
+    let requests = shard.control().permission_requests(conversation.clone()).await?;
     let categories = declared(shard).await;
     let category = |id: &str| {
         let declared = categories.iter().find(|category| category.id == id);
@@ -180,13 +181,6 @@ pub async fn read(
                 command: request.command,
                 agent: request.agent.subagent,
                 created_at: request.created_at,
-            })
-            .collect(),
-        grants: grants
-            .into_iter()
-            .map(|StoredGrant { category: id, granted_at }| PermissionGrant {
-                category: category(&id),
-                granted_at,
             })
             .collect(),
     })
@@ -218,24 +212,7 @@ pub async fn decide(
     Ok(())
 }
 
-/// Revokes the conversation's grant of `category`; the next call of the
-/// category raises a request, and a call already dispatched finishes.
-pub async fn revoke(
-    shard: &dyn PermissionShard,
-    conversation: &ConversationId,
-    category: String,
-) -> Result<(), PermissionError> {
-    let revoked = shard
-        .control()
-        .revoke_permission(conversation.clone(), category)
-        .await??;
-    if revoked {
-        changed(shard, conversation);
-    }
-    Ok(())
-}
-
-/// The conversation's requests or grants changed, as an archive that
+/// The conversation's requests changed, as an archive that
 /// withdrew its requests changes them: its revision rises and every page
 /// receives its summary.
 pub fn changed(shard: &dyn PermissionShard, conversation: &ConversationId) {

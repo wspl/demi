@@ -1,7 +1,6 @@
-//! A conversation's permission requests and grants (`web-api.md`
-//! § Conversation permissions, `permissions.md`): what a page reads to show
-//! the card above the composer and the Permissions dialog, and the decision
-//! it sends.
+//! A conversation's permission requests (`web-api.md` § Conversation
+//! permissions, `permissions.md`): what a page reads to show the card above
+//! the composer, and the decision it sends.
 
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
@@ -63,18 +62,8 @@ pub struct PermissionRequest {
     pub created_at: Timestamp,
 }
 
-/// A category the user allowed for the conversation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct PermissionGrant {
-    #[garde(dive)]
-    pub category: PermissionCategory,
-    #[garde(skip)]
-    pub granted_at: Timestamp,
-}
-
 /// `GET /conversations/:id/permissions`: the undecided requests, oldest
-/// first, and the grants, with the revision they were read at.
+/// first, with the revision they were read at.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ConversationPermissions {
@@ -82,8 +71,6 @@ pub struct ConversationPermissions {
     pub revision: u64,
     #[garde(dive)]
     pub requests: Vec<PermissionRequest>,
-    #[garde(dive)]
-    pub grants: Vec<PermissionGrant>,
 }
 
 /// The user's answer to a request.

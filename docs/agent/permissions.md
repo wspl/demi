@@ -6,7 +6,7 @@ and the working directory. It asks only before an agent acts on Demi itself,
 on what the user owns beyond the conversation: today, managing the user's
 skills; later, for example, reading another conversation. Each such power is
 one broad **category**, and a user who allows a category allows it for one
-conversation, for good.
+conversation ([Grants](#grants)).
 
 ## A request, end to end
 
@@ -131,9 +131,6 @@ never sees a permission.
   any failing command does, so the observation window, the turn and the
   Host's idle rules are those of any command.
 
-A revocation takes effect at the next check: a call already dispatched
-finishes.
-
 ## Requests
 
 A request records one refused call:
@@ -206,11 +203,11 @@ names the subagent that asked.
 
 A grant is one category allowed in one conversation. It covers every agent
 of the conversation's tree, the root and every subagent, those spawned later
-included, and every command of the category. It never expires.
-
-The user sees a conversation's grants, and revokes any of them, under
-**Permissions** in the conversation's menu in the sidebar. A conversation
-without grants shows that Demi asks when an agent first needs a permission.
+included, and every command of the category. It lasts for the
+conversation's life: it never expires, and nothing revokes it. The product
+shows no list of grants: the card asks once, and the receipt row in the
+transcript records the answer. A user who wants to decide again works in
+another conversation.
 
 Archiving keeps a conversation's grants, so a restored conversation has them.
 Fork copies none: a forked conversation is a new one, and the user decides for
@@ -246,20 +243,16 @@ receipt row, as an agent message does ([Product
 rendering](subagents.md#product-rendering)): "You allowed this conversation to
 manage skills", which expands to the message.
 
-**Permissions.** The conversation's menu in the sidebar opens Permissions: a
-dialog that lists the conversation's grants, each with its title, its
-description, when it was granted and **Revoke**.
-
-`web-ui` owns the card, the mark, the receipt row and the dialog as components
-over a request's, a message's and a grant's data; the gallery shows each
-state. `web` supplies the requests, the grants and the decisions over the
+`web-ui` owns the card, the mark and the receipt row as components over a
+request's and a message's data; the gallery shows each state. `web` supplies
+the requests and the decisions over the
 [Web API](../product/web-api.md#conversation-permissions).
 
 ## Responsibilities
 
 `backend-permissions` owns this document's mechanism: the check in the
 dispatch, the requests and their replacement, the decisions and their
-messages with the delivery after a restart, the grants and their revocation.
+messages with the delivery after a restart, and the grants.
 It is its own crate because every command source passes through it, plugins,
 the product and the agent runtime alike, so it belongs to none of them: the
 plugin host would make the product's commands go through plugins, and host
@@ -271,13 +264,13 @@ domains do ([Backend libraries](../architecture/crates-and-packages.md#backend-l
 | --- | --- |
 | `command-declarations` | A group's categories and a leaf's `permission`, their registration checks and the help line |
 | A command group, such as `plugin-skills`'s `demi skills` | Its categories and the leaves that name them; nothing at run time |
-| `backend-permissions` | The check, requests, decisions and their messages, grants and revocation, and `PermissionShard` |
+| `backend-permissions` | The check, requests, decisions and their messages, grants, and `PermissionShard` |
 | `backend-database` | The stored requests and grants |
 | `backend-user-shard` | Calling the check from the rpc dispatch; `PermissionShard`: the control service, the user's change marks, the user's command set, and the admission of a decision's message into the asking agent's session, opening its tree when it is closed; the summary's count of requests |
 | `shared-types`, `agent-transcript` | The `permission` event of an agent message, sent by the user, and its envelope on replay |
 | `agent-server` | The admission of the message into the asking node, or its nearest live ancestor |
 | `backend-http` | The routes |
-| `web-ui`, `web`, `web-gallery` | The card, the needs-you mark, the receipt row and the Permissions dialog; their data over HTTP and the synchronization channel; the specimens |
+| `web-ui`, `web`, `web-gallery` | The card, the needs-you mark and the receipt row; their data over HTTP and the synchronization channel; the specimens |
 
 ## Acceptance
 
@@ -298,10 +291,9 @@ calls a real model.
 | A subagent asked and closed before the decision | Its parent receives the message, naming the subagent |
 | The backend restarts with a request undecided | After the start the request is listed; a decision then reaches the agent |
 | The backend stops after a decision is stored and before its message is admitted | At the start, the message is delivered once |
-| A grant is revoked | The next command of the category raises a request; a command already dispatched finishes |
 | A product command with a `permission`, in a test command set | It passes the same check as a plugin's |
 | A leaf names an undeclared category, or a `native` leaf names one | Registration refuses the command set |
 | An archive of a conversation with a request | The request is gone; the grants stay after a restore |
 | A Fork of a conversation with a grant | The fork has no grant and no request |
 | Two pages decide one request at once | One decision applies; the other answers 404 `permission_request_not_found` |
-| Gallery | The card with one request, with a queue and for a subagent; the needs-you mark; both receipt rows; the Permissions dialog with grants and empty; every button acts on the specimen's state |
+| Gallery | The card with one request, with a queue and for a subagent; the needs-you mark; both receipt rows; every button acts on the specimen's state |

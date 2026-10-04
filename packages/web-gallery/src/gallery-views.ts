@@ -10,7 +10,6 @@ export type GalleryViewOption = {
 export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
   '/errors': [
     { value: 'primitives', label: 'Primitives' },
-    { value: 'conversation', label: 'Conversation' },
     { value: 'messages', label: 'Messages & Uploads' },
     { value: 'forms', label: 'Forms & Settings' },
     { value: 'files', label: 'Files' },
@@ -143,7 +142,6 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
     { value: 'devices', label: 'Devices' },
     { value: 'workspace', label: 'Workspace' },
     { value: 'cloud', label: 'Cloud' },
-    { value: 'conversation', label: 'Conversation' },
     { value: 'skills', label: 'Skills' },
   ],
   '/markdown': [

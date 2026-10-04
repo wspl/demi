@@ -1,7 +1,7 @@
 /**
  * Conversation permissions as the page shows them (`permissions.md` § What
- * the user sees): a request an agent's command raised, the user's answer to
- * it, and a category the user allowed. The host maps its data to these.
+ * the user sees): a request an agent's command raised and the user's answer
+ * to it. The host maps its data to these.
  */
 
 /** A permission category: its id, and its action and description while the user's command set declares it. */
@@ -21,13 +21,6 @@ export interface PermissionRequestView {
   command: string
   /** The subagent that ran it; null for the root. */
   subagent: { number: number; description: string } | null
-}
-
-/** A category the user allowed for the conversation. */
-export interface PermissionGrantView {
-  category: PermissionCategoryView
-  /** When it was granted, as an ISO time. */
-  grantedAt: string
 }
 
 export type PermissionDecision = 'allow' | 'deny'
