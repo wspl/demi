@@ -45,6 +45,11 @@ pub struct ProductState {
     /// The state of each plugin the user has on that gives one, valid
     /// against the schema its page package's types are generated from.
     pub plugin_states: BTreeMap<String, Value>,
+    /// The build of the web app the backend serves, from its `build.json`,
+    /// or none when it serves none, as in development: a page of another
+    /// build is out of date (`web-application.md` § A page of another
+    /// build).
+    pub web_build: Option<String>,
 }
 
 /// A message of the page's synchronization channel, `WS /sync`: the whole

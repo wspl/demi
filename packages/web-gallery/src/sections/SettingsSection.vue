@@ -8,6 +8,7 @@ import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GallerySkillsShowcase from '../components/GallerySkillsShowcase.vue'
+import GallerySkillsCalls from '../components/GallerySkillsCalls.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { createSettingsState } from '../fixtures/settings'
@@ -155,6 +156,17 @@ const fullNarrowOpen = ref(true)
         <GallerySpecimen variant="Narrow · 360px">
           <div class="w-[360px] max-w-full rounded-xl border border-line bg-surface-dialog p-4">
             <GallerySkillsShowcase />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+
+      <GallerySection
+        title="Skills · Calls and Unreadable States"
+        note="A control waits for its call's answer, success or failure, and then shows the plugin's state again. Turning on web-kit's review is refused, since review-kit's review is on: a toast says why and the switch stays off. Backend of an Earlier Build sends the plugin's state without updateAvailable, as a backend from before that field would: a toast says once that the page cannot read it, the page keeps the last state it read, and every control still waits only for its own answer."
+      >
+        <GallerySpecimen variant="Wide" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GallerySkillsCalls />
           </div>
         </GallerySpecimen>
       </GallerySection>

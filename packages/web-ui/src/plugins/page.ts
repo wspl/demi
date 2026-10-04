@@ -6,12 +6,14 @@ import {
   inject,
   onScopeDispose,
   provide,
+  shallowRef,
+  watch,
   type Component,
   type ComputedRef,
   type InjectionKey,
   type PropType,
 } from 'vue'
-import type { z } from 'zod'
+import { z } from 'zod'
 import type { PanelTabKind } from '../agent/panel-kinds/kind'
 import type { HostInstall } from '../devices/installs'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
@@ -124,8 +126,9 @@ export interface PageHost {
 
 /** A plugin's state, validated with the page's schema: null until it arrives. */
 export interface PluginState<T> {
+  /** The last state that read with the page's schema. */
   readonly value: ComputedRef<T | null>
-  /** Why the last read failed, until one succeeds. */
+  /** Why the last read failed, or the last state did not read, until one succeeds. */
   readonly error: ComputedRef<PluginCallError | null>
   /** Reads the state again now. */
   read(): void
@@ -144,7 +147,10 @@ export interface ConversationPlugin {
 
 /** The page's own plugin. */
 export interface PagePlugin {
-  /** The user state, from the product state. */
+  /**
+   * The user state, from the product state: the last one that read with
+   * the page's schema. One that does not read is reported to the user.
+   */
   state<T>(schema: z.ZodType<T>): ComputedRef<T | null>
   /** Calls a method of the user scope. */
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
@@ -295,7 +301,46 @@ export function providePage(context: PageContext): void {
   provide(PAGE_CONTEXT, context)
 }
 
-/** Calls `method` of `plugin` over `host` and validates its result. */
+/** The failure of a value that does not read with its schema: `reason`, and what did not read. */
+function unreadable(reason: string, error: z.ZodError): PluginCallError {
+  return new PluginCallError(reason, z.prettifyError(error))
+}
+
+/**
+ * `raw` read with `schema` while the calling scope lives
+ * (`plugin-pages.md` § Calls and states): the last state that read, null
+ * while there is none, and why the latest did not read, until one does. A
+ * state that does not read never reaches the page's components, and the
+ * last one that read stays shown.
+ */
+function readState<T>(raw: () => unknown, schema: z.ZodType<T>) {
+  const value = shallowRef<T | null>(null)
+  const refusal = shallowRef<PluginCallError | null>(null)
+  watch(
+    raw,
+    (next) => {
+      if (next === undefined) {
+        value.value = null
+        refusal.value = null
+        return
+      }
+      const read = schema.safeParse(next)
+      if (read.success) {
+        value.value = read.data
+        refusal.value = null
+        return
+      }
+      refusal.value = unreadable('unreadable_state', read.error)
+    },
+    { immediate: true, flush: 'sync' },
+  )
+  return { value, refusal }
+}
+
+/**
+ * Calls `method` of `plugin` over `host` and validates its result: an
+ * answer the page cannot read fails the call, as a refusal does.
+ */
 async function validatedCall<T>(
   host: PageHost,
   plugin: string,
@@ -305,7 +350,11 @@ async function validatedCall<T>(
   conversation: string | null,
   options?: PluginCallOptions,
 ): Promise<T> {
-  return result.parse(await host.call(plugin, method, params, conversation, options))
+  const read = result.safeParse(await host.call(plugin, method, params, conversation, options))
+  if (!read.success) {
+    throw unreadable('unreadable_answer', read.error)
+  }
+  return read.data
 }
 
 /** `plugin` for `conversation`, over `host`. */
@@ -314,12 +363,10 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
     state<T>(schema: z.ZodType<T>): PluginState<T> {
       const feed = host.followState(plugin, conversation)
       onScopeDispose(() => feed.stop())
+      const state = readState(() => feed.value(), schema)
       return {
-        value: computed(() => {
-          const raw = feed.value()
-          return raw === undefined ? null : schema.parse(raw)
-        }),
-        error: computed(() => feed.error()),
+        value: computed(() => state.value.value),
+        error: computed(() => feed.error() ?? state.refusal.value),
         read: () => feed.read(),
       }
     },
@@ -337,13 +384,26 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       throw new Error(`the page of ${page.plugin} has no kind ${kind}`)
     }
   }
+  const errors: PageContext['errors'] = {
+    report: (message, error) => reportError(message, error, { userVisible: true }),
+    defect: (message, error) => reportError(message, error),
+  }
   return {
     plugin: {
       state<T>(schema: z.ZodType<T>) {
-        return computed(() => {
-          const raw = host.userState(page.plugin)
-          return raw === undefined ? null : schema.parse(raw)
-        })
+        const state = readState(() => host.userState(page.plugin), schema)
+        // The user state has no place of its own on a page, so the page
+        // says once, in a toast, that it stopped reading it.
+        watch(
+          () => state.refusal.value !== null,
+          (refused) => {
+            if (refused) {
+              errors.report(`Could not read the state of the ${page.plugin} plugin.`, state.refusal.value)
+            }
+          },
+          { immediate: true, flush: 'sync' },
+        )
+        return computed(() => state.value.value)
       },
       call: (method, params, result, options) =>
         validatedCall(host, page.plugin, method, params, result, null, options),
@@ -361,10 +421,7 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       },
     },
     settings: { open: (section) => host.openSettings(section) },
-    errors: {
-      report: (message, error) => reportError(message, error, { userVisible: true }),
-      defect: (message, error) => reportError(message, error),
-    },
+    errors,
     overlays: host.overlays,
     files: (conversation) => host.files(conversation),
   }

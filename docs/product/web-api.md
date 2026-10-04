@@ -883,8 +883,10 @@ and `done` and `total` count bytes
 the summaries of the active and then the
 archived conversations, the Cloud's state, `plugins`, the plugin list, and
 `pluginStates`, the user state of each plugin the user has on that declares
-one, by plugin id, and `publicUrl`,
-the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`). Each provider entry carries its
+one, by plugin id, `publicUrl`,
+the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), and `webBuild`, the
+build of the web app the backend serves, or null when it serves none
+([A page of another build](web-application.md#a-page-of-another-build)). Each provider entry carries its
 `details`: `{ type: "read", ... }` with what `GET /api/providers/:id/status`
 answers, or `{ type: "failed", message }` for an entry whose provider could
 not be read, which leaves the others intact. Reading the state never starts
@@ -1174,7 +1176,11 @@ meanwhile, and on its Refresh control. It never polls while idle.
 ## Serving the web app build
 
 With `DEMI_WEB_DIRECTORY` set, the backend serves that built web app directory
-alongside the API and conversation sockets. Extensionless HTML navigations
+alongside the API and conversation sockets. The directory's `build.json`,
+`{ "build": "<id>" }`, which `vite build` writes, names the build; the
+backend reads it as it starts, refuses to start without it, and sends it in
+every snapshot as `webBuild`
+([A page of another build](web-application.md#a-page-of-another-build)). Extensionless HTML navigations
 fall back to index.html, enabling deep-page refresh. Missing assets and
 `/api/*` misses remain 404. The product frontend builds separately and uses a
 Vite proxy during development; its fetch and WebSocket adapters connect the

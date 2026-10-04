@@ -1,6 +1,6 @@
 import { reactive } from 'vue'
 import { createId } from '@demicodes/utils'
-import type { HeadlineText, SentenceText } from '../ui/ui-text'
+import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
 
 /**
  * A toast is only for an outcome that has nowhere else to go: the menu already
@@ -11,14 +11,22 @@ import type { HeadlineText, SentenceText } from '../ui/ui-text'
  * what was asked (Copied); `neutral`, a fact about the request, which neither
  * worked nor failed (a folder outside the workspace); `danger`, it failed. Every
  * toast names its tone, so none claims a success by default.
+ *
+ * A toast may offer one action, such as Reload, which closes it.
  */
 export type ToastTone = 'success' | 'neutral' | 'danger'
+
+export interface ToastAction {
+  label: TitleText
+  run(): void
+}
 
 export interface Toast {
   id: string
   title: HeadlineText
   message?: SentenceText
   tone: ToastTone
+  action?: ToastAction
 }
 
 export const TOAST_DURATION_MS = 6000
@@ -31,7 +39,9 @@ export function showToast(input: {
   title: HeadlineText
   message?: SentenceText
   tone: ToastTone
+  /** How long it stays; 0 keeps it until it is closed. */
   durationMs?: number
+  action?: ToastAction
 }): string {
   const id = createId()
   toasts.push({
@@ -39,6 +49,7 @@ export function showToast(input: {
     title: input.title,
     message: input.message,
     tone: input.tone,
+    action: input.action,
   })
   const duration = input.durationMs ?? TOAST_DURATION_MS
   if (duration > 0) {
