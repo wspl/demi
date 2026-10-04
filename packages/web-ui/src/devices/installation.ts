@@ -1,3 +1,5 @@
+import type { SegmentedOption } from '../ui/Segmented.vue'
+
 export type DeviceSystem = 'linux' | 'macos' | 'windows'
 
 /** Where a device fetches the runner's installer for its system. */
@@ -6,11 +8,11 @@ export interface DeviceInstallation {
   powershellInstallerUrl: string
 }
 
-export const deviceSystems = [
+export const deviceSystems: readonly SegmentedOption<DeviceSystem>[] = [
   { value: 'linux', label: 'Linux' },
   { value: 'macos', label: 'macOS' },
   { value: 'windows', label: 'Windows' },
-] as const
+]
 
 /**
  * The installers of the backend whose public URL is `publicUrl`, the URL its

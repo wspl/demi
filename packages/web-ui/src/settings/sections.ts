@@ -58,7 +58,7 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
     items: [
       {
         id: 'models',
-        label: 'Models & providers',
+        label: 'Models & Providers',
         icon: Sparkles,
         keywords: [
           'api key',
@@ -78,7 +78,7 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
       },
       {
         id: 'mcp',
-        label: 'MCP servers',
+        label: 'MCP Servers',
         icon: Plug,
         keywords: [
           'tools',
@@ -119,7 +119,7 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
       },
       {
         id: 'data',
-        label: 'Data & privacy',
+        label: 'Data & Privacy',
         icon: Database,
         keywords: [
           'transcripts',

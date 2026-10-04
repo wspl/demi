@@ -28,7 +28,7 @@ const emit = defineEmits<{
 
 <template>
   <SettingsPage
-    title="Data & privacy"
+    title="Data & Privacy"
     description="What is kept, for how long, and who can see it."
   >
     <SettingsGroup title="Conversations">
@@ -67,7 +67,7 @@ const emit = defineEmits<{
         label="Export everything"
         description="Transcripts and settings as a zip. Ready in a few minutes."
       >
-        <Button size="sm" @click="emit('export')">Request export</Button>
+        <Button size="sm" @click="emit('export')">Request Export</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Diagnostics">
@@ -78,7 +78,7 @@ const emit = defineEmits<{
         <Switch v-model="telemetry" />
       </SettingsRow>
     </SettingsGroup>
-    <SettingsGroup title="Danger zone">
+    <SettingsGroup title="Danger Zone">
       <SettingsRow
         label="Delete all conversations"
         description="From your account. Projects and settings stay."
@@ -87,7 +87,7 @@ const emit = defineEmits<{
           size="sm"
           variant="danger"
           @click="emit('deleteAll')"
-        >Delete all</Button>
+        >Delete All</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

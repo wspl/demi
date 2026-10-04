@@ -76,7 +76,7 @@ function reset() {
         size="sm"
         :disabled="cloud.state === 'resetting'"
         @click="begin"
-        >Reset environment</Button
+        >Reset Environment</Button
       >
     </SettingsRow>
     <SettingsRow label="Storage" :description="storage" />
