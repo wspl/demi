@@ -17,6 +17,7 @@
     "packages/web"
   ],
   "scripts": {
+    "dev": "bun scripts/dev.ts",
     "check:registry": "bun run scripts/check-public-registry.ts",
     "contracts": "cargo build --workspace --all-targets --features demi-runner/test-fixtures && target/debug/xtask contracts",
     "typecheck": "bun run contracts && tsgo --noEmit",

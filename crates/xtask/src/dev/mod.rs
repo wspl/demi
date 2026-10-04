@@ -6,6 +6,7 @@
 //! account and a provider entry seeded through the web API.
 
 mod echo;
+mod provider;
 
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::{Path, PathBuf};
@@ -22,6 +23,7 @@ use tokio::signal::unix::SignalKind;
 use tokio_util::sync::CancellationToken;
 
 use crate::native::{Executable, development_package};
+use provider::DevProvider;
 
 /// The master account `xtask dev` seeds.
 const EMAIL: &str = "developer@example.test";
@@ -65,6 +67,8 @@ pub enum Error {
     Backend(String),
     #[error("{0}")]
     Seed(String),
+    #[error("{0}")]
+    DevProvider(String),
     #[error("a command program's development release: {0}")]
     Release(#[from] crate::native::Error),
     #[error(transparent)]
@@ -74,8 +78,10 @@ pub enum Error {
 }
 
 pub fn run(options: Options) -> Result<(), Error> {
+    let provider =
+        DevProvider::read(|name| std::env::var(name).ok()).map_err(Error::DevProvider)?;
     build()?;
-    crate::interruptible(|cancel| develop(options, cancel))?
+    crate::interruptible(|cancel| develop(options, provider, cancel))?
 }
 
 /// Builds the one Cargo selection, which holds the backend, the scripted
@@ -101,9 +107,13 @@ fn build() -> Result<(), Error> {
 
 /// Runs the development backend until `cancel`, then removes its data
 /// directory unless `--keep` keeps it, however the run ended.
-async fn develop(options: Options, cancel: CancellationToken) -> Result<(), Error> {
+async fn develop(
+    options: Options,
+    provider: Option<DevProvider>,
+    cancel: CancellationToken,
+) -> Result<(), Error> {
     let root = tempfile::Builder::new().prefix("demi-dev-").tempdir()?;
-    let served = serve(&options, root.path(), &cancel).await;
+    let served = serve(&options, provider.as_ref(), root.path(), &cancel).await;
     let removed = if options.keep {
         println!("Kept the data directory {}", root.keep().display());
         Ok(())
@@ -131,14 +141,19 @@ struct Manager {
 }
 
 /// Starts the echo model, the manager and the backend under `root`, seeds
-/// the account, and serves until `cancel` or until a process ends; then
+/// the account and the entries, and serves until `cancel` or until a process ends; then
 /// stops the backend before the manager, since the backend hibernates the
 /// Cloud through it as it shuts down.
-async fn serve(options: &Options, root: &Path, cancel: &CancellationToken) -> Result<(), Error> {
+async fn serve(
+    options: &Options,
+    provider: Option<&DevProvider>,
+    root: &Path,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
     let echo = echo::start().await?;
     let mut processes = Processes::default();
     let result = tokio::select! {
-        result = session(options, root, &echo.url, &mut processes) => result,
+        result = session(options, provider, root, &echo.url, &mut processes) => result,
         () = cancel.cancelled() => Ok(()),
     };
     if let Some(backend) = processes.backend.take() {
@@ -154,6 +169,7 @@ async fn serve(options: &Options, root: &Path, cancel: &CancellationToken) -> Re
 /// error, when a start or the seeding fails or a process ends by itself.
 async fn session(
     options: &Options,
+    provider: Option<&DevProvider>,
     root: &Path,
     echo: &str,
     processes: &mut Processes,
@@ -173,11 +189,23 @@ async fn session(
 
     let http = reqwest::Client::builder().no_proxy().build()?;
     answering(&http, &origin, backend.as_mut()).await?;
-    let provider = seed(&http, &origin, echo).await?;
+    let cookies = setup(&http, &origin).await?;
+    let echo_entry = create_entry(&http, &origin, &cookies, &echo_entry(echo)).await?;
+    let development = match provider {
+        Some(provider) => {
+            let entry = create_entry(&http, &origin, &cookies, &provider.entry()).await?;
+            format!(
+                "\x20 Model:   {} of the provider entry {entry}, a real model that calls tools\n",
+                provider.model()
+            )
+        }
+        None => String::new(),
+    };
     println!(
         "\nThe development backend serves at {origin}\n\
          \x20 Account: {EMAIL}, password {PASSWORD}\n\
-         \x20 Model:   {MODEL} of the provider entry {provider}, which answers \"Echo: <your message>\"\n\
+         \x20 Model:   {MODEL} of the provider entry {echo_entry}, which answers \"Echo: <your message>\"\n\
+         {development}\
          \x20 Data:    {}{}\n\
          Start the page in another terminal:\n\
          \x20 DEMI_BACKEND_URL={origin} DEMI_DEV_EMAIL={EMAIL} DEMI_DEV_PASSWORD={PASSWORD} bun run web:dev\n\
@@ -350,10 +378,9 @@ async fn answering(
     }
 }
 
-/// Creates the master account, which setup signs in, and with its session
-/// the echo model's provider entry, of the `anthropic` family with one
-/// configured model; answers the entry's id.
-async fn seed(http: &reqwest::Client, origin: &str, echo: &str) -> Result<String, Error> {
+/// Creates the master account, which setup signs in; answers its session's
+/// cookies.
+async fn setup(http: &reqwest::Client, origin: &str) -> Result<String, Error> {
     let setup = json!({ "email": EMAIL, "password": PASSWORD });
     let answer = http
         .post(format!("{origin}/api/setup"))
@@ -362,9 +389,13 @@ async fn seed(http: &reqwest::Client, origin: &str, echo: &str) -> Result<String
         .send()
         .await?;
     let answer = success(answer, "setup").await?;
-    let cookies = session_cookies(&answer);
+    Ok(session_cookies(&answer))
+}
 
-    let entry = json!({
+/// The echo model's provider entry, of the `anthropic` family with one
+/// configured model.
+fn echo_entry(echo: &str) -> serde_json::Value {
+    json!({
         "source": "custom",
         "providerType": "anthropic",
         "label": "Echo",
@@ -379,7 +410,17 @@ async fn seed(http: &reqwest::Client, origin: &str, echo: &str) -> Result<String
             "acceptedExtensions": null,
             "fastTier": null,
         }],
-    });
+    })
+}
+
+/// Creates the provider entry `entry` with the session's `cookies`; answers
+/// its id. The entry's key reaches the backend only in this request.
+async fn create_entry(
+    http: &reqwest::Client,
+    origin: &str,
+    cookies: &str,
+    entry: &serde_json::Value,
+) -> Result<String, Error> {
     let answer = http
         .post(format!("{origin}/api/providers"))
         .header(CONTENT_TYPE, "application/json")
