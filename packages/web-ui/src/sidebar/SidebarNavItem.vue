@@ -6,8 +6,8 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 
 /**
- * One entry outside the list: a primary action or a management surface (plugins, skills,
- * settings), or a place in a rail.
+ * One entry outside the list: a primary action or a settings section it opens, or a place in
+ * a rail.
  */
 const props = defineProps<{
   icon?: Component

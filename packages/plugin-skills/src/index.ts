@@ -1,6 +1,6 @@
 // The `skills` plugin's page (`plugin-pages.md`, `skills.md` § The
-// page): its settings section, and the types of its state, parameters and
-// results, generated from the plugin's manifest.
+// page): its settings section with its sidebar entry, and the types of its
+// state, parameters and results, generated from the plugin's manifest.
 import { WandSparkles } from '@lucide/vue'
 import { definePage } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
@@ -19,6 +19,7 @@ export const skillsPage = definePage({
       keywords: ['skill', 'workflow', 'git', 'SKILL.md'],
     },
     component: SkillsSettings,
+    sidebar: true,
   },
 })
 

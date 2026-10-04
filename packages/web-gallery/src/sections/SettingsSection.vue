@@ -19,7 +19,7 @@ const { view } = useGalleryView()
 const anatomy: [string, string][] = [
   [
     'Shell',
-    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, MCP servers, Skills, Data & privacy. Below a phone width the rail becomes a row.'
+    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, MCP servers, Data & privacy. Below a phone width the rail becomes a row.'
   ],
   [
     'Page',
@@ -55,7 +55,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Skills',
-    'The rail and sidebar entries are disabled with an In development tooltip. The page specimen still shows git sources as packs of SKILL.md files.'
+    'A plugin\'s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. It shows git sources as packs of SKILL.md files.'
   ],
   [
     'Data',

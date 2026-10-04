@@ -227,8 +227,10 @@ the model is told the catalog again.
 ## The page
 
 The settings section is `@demicodes/plugin-skills`, which composes `web-ui`'s
-Skills page ([The page](../architecture/plugins.md#the-page)). It shows user
-skills; project skills belong to their repositories.
+Skills page ([The page](../architecture/plugins.md#the-page)), and the
+sidebar's Skills entry opens it
+([The page object](../architecture/plugin-pages.md#the-page-object)). It shows
+user skills; project skills belong to their repositories.
 
 The plugin's state for the user's pages holds every source, in the order they
 were added: its id, its origin, its commit and when it was fetched, whether a

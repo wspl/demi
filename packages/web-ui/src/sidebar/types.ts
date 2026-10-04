@@ -1,3 +1,4 @@
+import type { Component } from 'vue'
 import type { ConversationStatus } from '@demicodes/web-ui/agent/conversation-status'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 
@@ -26,12 +27,19 @@ export interface SidebarConversation {
   unread: boolean
 }
 
-/** One installed extension entry: a plugin (tools and integrations) or a skill (a packaged workflow). */
+/** The signed-in account the sidebar's foot shows. */
 export interface SidebarAccount {
   name: string
   email: string
 }
 
+/** An entry of the sidebar's top group that opens a section of the settings dialog. */
+export interface SidebarEntry {
+  /** The settings section it opens. */
+  section: string
+  label: string
+  icon: Component
+}
 
 /** Reordering stays within a project and pin partition; it never changes execution bindings. */
 export interface SidebarReorder {

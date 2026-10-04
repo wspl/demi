@@ -567,7 +567,7 @@ not use.
 | `file` | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
 | `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
 | `expose` | `plugin-expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
-| `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; user state and five methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |
+| `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; user state and five methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
 | `changes` | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
 | `file-browser` | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 
@@ -584,10 +584,11 @@ Besides the plugins, the components that carry them are:
 ## The page
 
 A plugin can give the web app a part of its own: the page package its
-manifest names, which fills the shell's slots with a settings section, a
-conversation header tool or work panel kinds. [Plugin pages](plugin-pages.md)
-owns that side: the page object, the page context, intents, the plugin kit,
-registration and versions. This section owns what the backend gives a page.
+manifest names, which fills the shell's slots with a settings section and
+its sidebar entry, a conversation header tool or work panel kinds.
+[Plugin pages](plugin-pages.md) owns that side: the page object, the page
+context, intents, the plugin kit, registration and versions. This section
+owns what the backend gives a page.
 
 A plugin's page state has two scopes, each declared with its schema in the
 manifest, and each marked changed on its own, through the port or by a

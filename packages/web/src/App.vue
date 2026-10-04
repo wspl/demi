@@ -170,6 +170,7 @@ useAppShortcuts(
         :active-id="activeId"
         :list-status="conversations.listStatus"
         :pending-ids="conversations.pendingChanges"
+        :section-entries="resources.sectionEntries"
         @retry-list="conversations.reloadList"
         @reorder="reorder"
         @select="open"
