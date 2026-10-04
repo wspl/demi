@@ -121,6 +121,8 @@ func TestResourceSelectionAndDescriptorValidation(t *testing.T) {
 	}
 	for _, mutate := range []func(*commandwire.PackageDescriptor){
 		func(p *commandwire.PackageDescriptor) { p.ID = "invalid" },
+		func(p *commandwire.PackageDescriptor) { p.Version = "" },
+		func(p *commandwire.PackageDescriptor) { p.Operations = []string{} },
 		func(p *commandwire.PackageDescriptor) { p.ProtocolVersion = 2 },
 		func(p *commandwire.PackageDescriptor) { p.Operations = []string{"open", "open"} },
 		func(p *commandwire.PackageDescriptor) { p.Operations = []string{""} },
