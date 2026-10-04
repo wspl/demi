@@ -284,7 +284,10 @@ async fn a_tool_image_summarized_a_day_before_goes_after_30_days_once_its_page_l
     socket.until_idle().await;
     // A long message fills the history compaction keeps, so the pass
     // summarizes the first turn: its images lie before the boundary.
-    vendor.respond(say("Read."));
+    // Its answer measures more than half the model's million-token window,
+    // from which the user may compact (`compaction.md` § When compaction
+    // runs).
+    vendor.respond(answer(&["Read."], 600_000, 1));
     socket.chat("m2", &"a long note ".repeat(2_000)).await;
     vendor.respond(answer(&["The user showed two images."], 1, 1));
     socket.send(&ClientFrame::Compact {}).await;

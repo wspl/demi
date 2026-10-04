@@ -6,7 +6,7 @@ use std::{future::Future, rc::Rc, sync::Arc};
 
 use demi_agent_store::{
     Checkpoint, CheckpointUpdate, SessionStore, StoreError,
-    media::{BlobStore, HeldMedia},
+    media::{BlobStore, HeldMedia, ModelView},
 };
 use demi_agent_transcript::{
     RequestView, TranscriptLog, compaction_window,
@@ -16,7 +16,8 @@ use demi_agent_transcript::{
 use demi_provider_common::{ErrorCode, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
-    B64Bytes, BlobRef, Block, ModelSelection, TokenUsage, TurnId, UserContentBlock,
+    B64Bytes, BlobRef, Block, ContextUsage, Model, ModelSelection, TokenUsage, TurnId,
+    UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -37,6 +38,22 @@ pub const COMPACTION_SUMMARY_INSTRUCTION: &str = "Summarize the conversation abo
 
 /// How many passes a model switch runs to fit the new model's window.
 const MAX_FIT_PASSES: usize = 8;
+
+/// The share of the threshold window, in percent, from which the user may
+/// compact (`compaction.md` § When compaction runs).
+const MANUAL_COMPACTION_PERCENT: u8 = 50;
+
+/// The window a conversation's thresholds use, in tokens: the model's
+/// context window, or none for a model that reports none. Every threshold
+/// and the usage the page shows are shares of it.
+pub(crate) fn threshold_window(model: &Model) -> Option<u64> {
+    (model.context_window > 0).then(|| u64::from(model.context_window))
+}
+
+/// `percent` of `window`, rounded down.
+fn share(window: u64, percent: u8) -> u64 {
+    window * u64::from(percent) / 100
+}
 
 /// When a session compacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +167,59 @@ pub(super) async fn compacting<T>(
     result
 }
 
+/// The usage the page shows: the estimate of the next request of the
+/// current model, with the window its thresholds use and the estimate from
+/// which the user may compact. A model without a window has no such
+/// estimate: no threshold relieves it, so the user may always compact.
+pub(super) async fn context_usage(
+    s: &SessionShared,
+    cancel: &TurnCancel,
+) -> Result<ContextUsage, TurnError> {
+    let view = model_view(s, cancel).await?;
+    Ok(s.read(|core| usage_of(core, &view)))
+}
+
+/// The usage as [`context_usage`] says it, without reading a blob: none
+/// while the session holds nothing for a replayed medium, as after a
+/// restore, since opening a conversation reads no blob (`runtime.md`
+/// § Media).
+pub(super) fn held_context_usage(core: &SessionCore) -> Option<ContextUsage> {
+    let view = core.model_view().ok()?;
+    Some(usage_of(core, &view))
+}
+
+fn usage_of(core: &SessionCore, view: &ModelView) -> ContextUsage {
+    let request = core.request_view(view);
+    let window = threshold_window(request.model());
+    ContextUsage {
+        tokens: context_tokens(&request),
+        window,
+        compact_from: window.map(|window| share(window, MANUAL_COMPACTION_PERCENT)),
+    }
+}
+
+/// Tells the clients the usage after a response, a pass or an action
+/// (`runtime.md` § Server frames). A media read that fails here leaves the
+/// clients with the usage they had: the next request reads the same media
+/// and reports its failure where the turn can act on it.
+pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel) {
+    if let Ok(usage) = context_usage(s, cancel).await {
+        s.emit(SessionEvent::ContextUsageChanged { usage });
+    }
+}
+
+/// Why a `compact` frame is refused at `usage`, or none when it is taken.
+pub fn compaction_refusal(usage: &ContextUsage) -> Option<String> {
+    if usage.admits_compaction() {
+        return None;
+    }
+    let window = usage.window?;
+    Some(format!(
+        "Compaction is available from {MANUAL_COMPACTION_PERCENT}% context usage (now {}%)",
+        usage.tokens * 100 / window
+    ))
+}
+
 /// Before a turn: one pass when the history is over the current model's
 /// token threshold; a request's size is checked before each request.
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
@@ -244,7 +314,11 @@ pub(super) async fn run_pass(
             let held = core.media.select(&compacted);
             (compacted, held)
         });
-        match summarize(s, compacted, held, cancel).await? {
+        let summary = match summarize(s, compacted, held, cancel).await {
+            Err(TurnError::Failed(report)) => return Err(record_failure(s, report)),
+            summary => summary?,
+        };
+        match summary {
             Summary::Written(summary) if summary.is_empty() => return Ok(false),
             Summary::Written(summary) => {
                 s.update(|core| {
@@ -264,6 +338,7 @@ pub(super) async fn run_pass(
                     core.release_media();
                 });
                 persist::flush(s).await?;
+                report_context_usage(s, cancel).await;
                 return Ok(true);
             }
             Summary::TooLong(report) => {
@@ -272,12 +347,20 @@ pub(super) async fn run_pass(
                 // overflow fails the pass like any other failure of the
                 // summary request.
                 if cut <= first + 1 {
-                    return Err(TurnError::Failed(report));
+                    return Err(record_failure(s, report));
                 }
                 cut = (start + (cut - start) / 2).max(first + 1);
             }
         }
     }
+}
+
+/// A failed summary request fails the pass as a failed request fails a
+/// turn: it is recorded as an `error` block
+/// (`failures-and-recovery.md` § The failure record).
+fn record_failure(s: &SessionShared, report: Box<ErrorReport>) -> TurnError {
+    s.update(|core| core.record_failure(&report));
+    TurnError::Failed(report)
 }
 
 /// What a summary request came back with.

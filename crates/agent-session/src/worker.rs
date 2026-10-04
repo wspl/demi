@@ -117,6 +117,10 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
             outcome
         }
     };
+    // Clients see the usage the action left before the phase goes idle. A
+    // stopped action's token is cancelled, so the estimate reads with one
+    // nothing stops.
+    compaction::report_context_usage(s, &TurnCancel::new()).await;
     let result = match outcome {
         Outcome::Completed => Ok(ActionEnd::Completed),
         Outcome::Aborted => Ok(ActionEnd::Aborted),

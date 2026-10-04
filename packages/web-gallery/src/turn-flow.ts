@@ -1,5 +1,5 @@
 import { onBeforeUnmount, reactive, shallowRef } from 'vue'
-import type { Block, UserContentBlock } from '@demicodes/protocol'
+import type { Block, ContextUsage, UserContentBlock } from '@demicodes/protocol'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
@@ -8,6 +8,7 @@ import type { ChatSessionState, ConversationState } from '@demicodes/web-ui/agen
 import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { demoModel, shellView } from './fixtures/blocks'
+import { usageAt } from './fixtures/catalog'
 import { CLAUDE_CLI_ARTIFACTS, playInstalls } from './fixtures/installs'
 import { printLive } from './live-command'
 
@@ -55,6 +56,8 @@ export interface TurnFlowOptions {
   blocks?: Block[]
   subagents?: SubagentRecord[]
   terminals?: TerminalRecord[]
+  /** How full the context starts; the composer's meter and Compact read it. */
+  contextUsage?: ContextUsage
 }
 
 export function useTurnFlow(options: TurnFlowOptions = {}) {
@@ -76,6 +79,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     load: 'ready',
     pendingAction: null,
     failures: {},
+    contextUsage: options.contextUsage ?? usageAt(0.62),
     archived: false,
     scroll: null,
     subagents: options.subagents ?? [],
@@ -361,7 +365,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     })
   }
 
-  /** Compact from the context meter: the conversation compacts for a moment, then is idle. */
+  /**
+   * Compact from the context meter's card, as the backend does: the summary
+   * goes in before the latest message, the marker after the last block, where
+   * the divider then shows, and the context is small again.
+   */
   function compact(): void {
     if (state.phase !== 'idle') {
       return
@@ -369,6 +377,29 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     const run = token
     state.phase = 'compacting'
     at(run, COMPACT_MS, () => {
+      const boundaryId = nextId('boundary')
+      const cut = Math.max(0, state.blocks.findLastIndex((block) => block.type === 'user'))
+      state.blocks = [
+        ...state.blocks.slice(0, cut),
+        {
+          type: 'compaction_boundary',
+          id: boundaryId,
+          createdAt: now(),
+          model: demoModel,
+          summary: 'The login test expects the renamed session cookie.',
+          summaryTokens: 2400,
+        },
+        ...state.blocks.slice(cut),
+        {
+          type: 'compaction_marker',
+          id: nextId('marker'),
+          createdAt: now(),
+          model: demoModel,
+          boundaryId,
+          compactedTokens: state.contextUsage?.tokens ?? 0,
+        },
+      ]
+      state.contextUsage = usageAt(0.06)
       state.phase = 'idle'
     })
   }

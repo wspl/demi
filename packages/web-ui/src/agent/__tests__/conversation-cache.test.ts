@@ -8,7 +8,7 @@ function fixture(id: string) {
   const state: RuntimeState = {
     blocks: [], phase: 'idle', queue: [], pendingSteers: [],
     lastError: null, load: 'loading', pendingAction: null,
-    failures: {},
+    failures: {}, contextUsage: null,
   }
   const harnesses: ReturnType<typeof clientHarness>[] = []
   const runtime = new ConversationRuntime({

@@ -9,7 +9,9 @@ use std::{
     rc::Rc,
 };
 
-use demi_agent_session::{AgentSession, EditCheck, EditSubmission, accepted, edit_digest};
+use demi_agent_session::{
+    AgentSession, EditCheck, EditSubmission, accepted, compaction_refusal, edit_digest,
+};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
     ClientFrame, ClientFrameKind, EditOutcome, EditRequest, ServerFrame, SteerOutcome,
@@ -352,10 +354,23 @@ impl<H: HostResolver> Connection<H> {
                 }
             }
             ClientFrame::Retry {} | ClientFrame::Resume {} | ClientFrame::Compact {} => {
-                let phase = session.phase();
-                if phase != SessionPhase::Idle {
-                    self.reject(kind, format!("Session is busy ({phase})"));
+                if let Some(reason) = busy(session) {
+                    self.reject(kind, reason);
                     return;
+                }
+                // The user compacts only a context that is full enough
+                // (`compaction.md` § When compaction runs). The estimate may
+                // read media, during which an action can start, so the phase
+                // is checked again with nothing awaited before the admission.
+                if kind == ClientFrameKind::Compact {
+                    let refusal = match session.context_usage().await {
+                        Ok(usage) => compaction_refusal(&usage).or_else(|| busy(session)),
+                        Err(report) => Some(report.message),
+                    };
+                    if let Some(reason) = refusal {
+                        self.reject(kind, reason);
+                        return;
+                    }
                 }
                 let admitted = match kind {
                     ClientFrameKind::Retry => session.retry(),
@@ -443,4 +458,11 @@ impl<H: HostResolver> Drop for Connection<H> {
     fn drop(&mut self) {
         self.detach();
     }
+}
+
+/// Why a session refuses an action that needs it idle, or none when it is
+/// idle (`runtime.md` § Actions).
+fn busy(session: &AgentSession) -> Option<String> {
+    let phase = session.phase();
+    (phase != SessionPhase::Idle).then(|| format!("Session is busy ({phase})"))
 }

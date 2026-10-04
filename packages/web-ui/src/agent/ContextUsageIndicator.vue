@@ -1,59 +1,40 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { TokenUsage } from '@demicodes/protocol'
-import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
-import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import type { ContextUsage } from '@demicodes/protocol'
+import Button from '../ui/Button.vue'
+import HoverCard from '../ui/HoverCard.vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import { formatTokens } from '../ui/token-count'
+import { compactionRefusal, contextPercent } from './context-usage'
 
+/**
+ * The composer's context meter: a ring of how full the next request is, as
+ * the backend estimates it. Pointing at it or focusing it opens a card with
+ * the numbers and Compact; a click on the ring itself does nothing.
+ */
 const props = defineProps<{
-  usage?: TokenUsage | null
-  contextWindow?: number | null
-  inputLimit?: number | null
+  usage?: ContextUsage | null
   isCompacting?: boolean
-  isClickable?: boolean
+  /** Why Compact cannot run now apart from the usage, such as a running turn. */
+  unavailableReason?: string | null
+  /** The card shows without the pointer, as a gallery specimen pins it. */
+  pinned?: boolean
 }>()
 
 const emit = defineEmits<{
   compact: []
 }>()
 
-const EMPTY_USAGE: TokenUsage = {
-  inputTokens: 0,
-  outputTokens: 0,
-  cacheReadTokens: 0,
-  cacheWriteTokens: 0
-}
-
-const displayUsage = computed(() => props.usage ?? EMPTY_USAGE)
-const isUsageAvailable = computed(() => props.usage != null)
-const isTokenLimitAvailable = computed(() =>
-  (props.inputLimit != null && props.inputLimit > 0)
-  || (props.contextWindow != null && props.contextWindow > 0),
-)
-const usedTokens = computed(() =>
-  displayUsage.value.inputTokens + displayUsage.value.outputTokens
-  + (displayUsage.value.cacheReadTokens ?? 0) + (displayUsage.value.cacheWriteTokens ?? 0),
-)
-const effectiveLimit = computed(() => {
-  if (props.inputLimit != null && props.inputLimit > 0)
-    return props.inputLimit
-  if (props.contextWindow != null && props.contextWindow > 0)
-    return props.contextWindow
-  return 1
-})
-const ratio = computed(() => {
-  if (!isTokenLimitAvailable.value)
-    return 0
-  return Math.min(usedTokens.value / effectiveLimit.value, 1)
-})
-const percentage = computed(() => Math.round(ratio.value * 100))
+const percent = computed(() => contextPercent(props.usage ?? null))
+const ratio = computed(() => (percent.value ?? 0) / 100)
+const blockedReason = computed(() => props.unavailableReason ?? compactionRefusal(props.usage ?? null))
 
 const radius = 5.5
 const circumference = 2 * Math.PI * radius
 const strokeDashoffset = computed(() => circumference * (1 - ratio.value))
 
 const ringColor = computed(() => {
-  if (!isTokenLimitAvailable.value)
+  if (percent.value == null)
     return 'text-fg-subtle'
   if (ratio.value >= 0.9)
     return 'text-on-danger'
@@ -61,24 +42,14 @@ const ringColor = computed(() => {
     return 'text-on-warning'
   return 'text-fg-muted'
 })
-
-function handleClick() {
-  if (!props.isClickable || props.isCompacting)
-    return
-  emit('compact')
-}
 </script>
 
 <template>
-  <Tooltip>
-    <span
-      class="relative flex size-hit cursor-default items-center justify-center rounded-md transition-colors"
-      :class="[
-        isClickable && !isCompacting
-          ? 'hover:bg-hover'
-          : '',
-      ]"
-      @click="handleClick"
+  <HoverCard :pinned="pinned">
+    <button
+      type="button"
+      aria-label="Context usage"
+      class="relative flex size-hit cursor-default items-center justify-center rounded-md transition-colors hover:bg-hover"
     >
       <IndeterminateSpinner v-if="isCompacting" />
       <svg
@@ -106,21 +77,24 @@ function handleClick() {
           :class="ringColor"
         />
       </svg>
-    </span>
-    <template #overlay>
-      <template v-if="isCompacting">
-        <div class="text-fg-body">Compacting context…</div>
-      </template>
-      <template v-else>
-        <template v-if="isTokenLimitAvailable">
-          <div class="text-fg">{{ percentage }}% used <span
-              class="text-fg-subtle"
-            >({{ formatTokens(usedTokens) }} / {{ formatTokens(effectiveLimit) }})</span></div>
-          <div v-if="!isUsageAvailable" class="mt-0.5 text-fg-subtle">No usage recorded yet</div>
-        </template>
-        <div v-else class="text-fg-muted">Context usage unavailable</div>
-        <div v-if="isClickable" class="mt-1 text-fg-subtle">Click to compact context</div>
-      </template>
+    </button>
+    <template #card>
+      <span v-if="isCompacting" class="text-fg-body">Compacting context…</span>
+      <span v-else-if="usage && percent != null" class="whitespace-nowrap">
+        {{ percent }}% used
+        <span class="text-fg-subtle">({{ formatTokens(usage.tokens) }} / {{ formatTokens(usage.window) }})</span>
+      </span>
+      <span v-else class="text-fg-muted">Context usage unavailable</span>
     </template>
-  </Tooltip>
+    <template v-if="!isCompacting" #action>
+      <Button
+        size="sm"
+        :disabled="blockedReason != null"
+        :disabled-reason="blockedReason ?? undefined"
+        @click="emit('compact')"
+      >
+        Compact
+      </Button>
+    </template>
+  </HoverCard>
 </template>

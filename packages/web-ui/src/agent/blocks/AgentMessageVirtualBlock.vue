@@ -30,6 +30,8 @@ const props = defineProps<{
   failure?: ProviderFailureFacts
   /** The block just arrived in a live transcript: a chrome row slides in from the left as it fades in. */
   entering?: boolean
+  /** The summary size a compaction divider tells. */
+  summaryTokens?: number
 }>()
 
 const emit = defineEmits<{
@@ -144,8 +146,12 @@ const entersAsChrome = computed(() =>
       <AbortedBlock />
     </div>
     <CompactionBlock
-      v-else-if="block.type === 'compaction_boundary'"
-      :summary-tokens="block.summaryTokens"
+      v-else-if="block.type === 'compaction_marker' || block.type === 'compaction_boundary'"
+      :summary-tokens="summaryTokens"
+    />
+    <CompactionBlock
+      v-else-if="block.type === 'compaction_progress'"
+      running
     />
   </div>
 </template>
