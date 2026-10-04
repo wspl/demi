@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
 import { defineComponent, effectScope, ref, shallowRef, watch } from 'vue'
 import { z } from 'zod'
 import type { SettingsNavGroup } from '../../settings/types'
@@ -122,6 +122,7 @@ const skillsState = z.object({
 
 test('a user state the page cannot read is reported once, and the page goes on with the last one it read', () => {
   for (const toast of [...toasts]) dismissToast(toast.id)
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
   const sent = shallowRef<unknown>({ sources: [{ id: 'src_1', updateAvailable: false }] })
   const context = pageContext(host({ userState: () => sent.value }), definePage({ plugin: 'skills' }))
   const scope = effectScope()
@@ -134,13 +135,18 @@ test('a user state the page cannot read is reported once, and the page goes on w
   expect(state.value?.sources.map((source) => source.id)).toEqual(['src_1'])
   sent.value = { sources: [{ id: 'src_3' }] }
   expect(state.value?.sources.map((source) => source.id)).toEqual(['src_1'])
-  expect(toasts.map((toast) => [toast.title, toast.tone])).toEqual([['Could not read the state of the skills plugin.', 'danger']])
-  expect(toasts[0]!.message).toContain('updateAvailable')
+  // The toast speaks plainly; what did not read is for a developer, in the
+  // console.
+  expect(toasts.map((toast) => [toast.title, toast.message, toast.tone])).toEqual([
+    ['Could Not Read the Plugin’s Data', 'Reloading the page may help.', 'danger'],
+  ])
+  expect(logged.mock.calls.flat().join(' ')).toContain('updateAvailable')
 
   sent.value = { sources: [{ id: 'src_2', updateAvailable: true }] }
   expect(state.value?.sources.map((source) => source.id)).toEqual(['src_2'])
   expect(toasts).toHaveLength(1)
   scope.stop()
+  logged.mockRestore()
   for (const toast of [...toasts]) dismissToast(toast.id)
 })
 
