@@ -82,11 +82,12 @@ impl From<RecordChange> for ConversationChange {
 /// A change of a conversation's model settings: the parts a patch names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SettingsChange {
-    /// A switch to this model, with the effort and the tier below and the
-    /// model's defaults for a part they leave out.
+    /// A switch to this model, with the effort and the tier below, and the
+    /// model's first effort and the vendor's default tier for a part they
+    /// leave out.
     pub model: Option<ModelChoice>,
-    /// The thinking effort, or null for the model's default.
-    pub thinking_effort: Option<Option<String>>,
+    /// The thinking effort: one the model lists, or thinking off.
+    pub thinking_effort: Option<String>,
     /// The service tier, or null for the vendor's default.
     pub service_tier_id: Option<Option<String>>,
 }
