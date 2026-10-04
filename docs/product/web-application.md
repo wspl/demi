@@ -328,7 +328,7 @@ Each synced state follows the copy with its own rule:
 | Drafts | Each summary's `draftRevision` | A page that shows the conversation reads the draft when the revision is higher than its own ([Drafts](#drafts)) |
 | Work panel tabs | Each summary's `panelRevision` | A page whose panel is open reads the tabs when the revision is higher than its own, and shows its own changes over them ([Work panel](#work-panel)) |
 | Preferences | `preferences` | A change shows at once, and the part it changed stays as the user set it until its write is answered |
-| The account, workspaces, devices, providers, the Cloud and each plugin's state | Their parts | The page shows what the backend holds |
+| The account, workspaces, devices, providers, subagent profiles, the Cloud and each plugin's state | Their parts | The page shows what the backend holds |
 
 **A page's own writes.** A write's answer carries the state as the write left
 it, and the page applies it to its copy at once, through the same module,

@@ -515,7 +515,7 @@ Each crate implements the provider contract for one vendor family.
   implements it: the factory and instance traits (`PluginFactory`,
   `Plugin`); the manifest (`Manifest`): a plugin's id, its command groups and
   roots as declarations with their placement, whether it is a context
-  source, its profiles as data, and its page state and page
+  source, and its page state and page
   methods with their schemas; the requests and replies; the port
   (`PluginPort`) with its messages and the transport they travel through
   (`PluginTransport`), whose command operations are the rpc port's; and the
@@ -616,7 +616,8 @@ Each crate implements the provider contract for one vendor family.
     hands it each decoded client frame, and its bounded outbox (`FrameRx`)
     carries every server frame back;
   - the `demi agent` and `demi shell` command groups;
-  - where a session's provider runtimes come from (`ProviderResolver`), the
+  - where a session's model selection and provider runtimes come from,
+    a child's from its profile's model settings (`ProviderResolver`), the
     notice to the product that a live tree started or stopped working or was
     disposed (`ServerDeps::status_changed`), the resolution of the files a
     frame's content refers to, which the backend answers
@@ -910,10 +911,12 @@ demi-backend (executable: configuration, composition)
 #### `backend-accounts`
 
 - **Owns:** accounts, password hashing, web sessions, login lockout and
-  email-change delivery, and each user's preferences
+  email-change delivery, and each user's preferences and subagent profile
+  records with their name and text rules
   ([Authentication and ownership](../backend/backend.md#authentication-and-ownership),
-  [User preferences](../product/web-api.md#user-preferences)).
-- **Public boundary:** the account, session and preference services. The key
+  [User preferences](../product/web-api.md#user-preferences),
+  [Subagent profiles](../product/web-api.md#subagent-profiles)).
+- **Public boundary:** the account, session, preference and profile services. The key
   that email codes are derived from is given to it; it does not derive keys.
 - **Must not:** know conversations, devices or providers.
 
@@ -1026,7 +1029,7 @@ demi-backend (executable: configuration, composition)
   the registry of plugin factories with the checks of their manifests; the
   command set every node starts from, with its `demi` root, the plugins'
   groups and roots, and the groups left out for a package the startup catalog
-  does not serve; the plugins' profiles and context
+  does not serve; the plugins' context
   sources in registration order; each user's instances, with the `rpc`
   handlers that forward a command to its plugin; the port's operations over
   the user's plugin values, blobs, Host directory sets, Host file reads,
@@ -1053,10 +1056,11 @@ demi-backend (executable: configuration, composition)
   of the machine manager's death events, socket adoption and the page
   socket; conversations as the agent sees them: agent-tree hosting
   with the agent server's dependencies composed from the plugin host, the
-  product's instructions and the execution context source, the conversation
-  socket, history and fork,
-  summaries and titles, the providers a session resolves and its failure
-  facts; the conversations' idle watches, release and the daily retention
+  user's subagent profiles, the product's instructions and the execution
+  context source, the conversation socket, history and fork,
+  summaries and titles, the providers a session resolves, with a child's
+  model selection built from its profile and checked against the catalog,
+  and its failure facts; the conversations' idle watches, release and the daily retention
   pass; the pages' product state and synchronization channels; the Claude Code
   CLI's work on the user's Cloud; runner adoption and the runner link's
   policy; the network stream of a relayed expose connection, opened through

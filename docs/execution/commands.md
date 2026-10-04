@@ -233,7 +233,7 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 | `file create` | path | none | file content |
 | `file edit` | path | old, new, occurrence, context | unused |
 | `file patch` | none | none | unified diff |
-| `agent spawn` | none | profile, description, no-subagents, JSON output | task brief |
+| `agent spawn` | none | profile, description, JSON output | task brief |
 | `agent send`, `resume` | id | JSON output | message |
 | `agent abort`, `show` | id | JSON output | unused |
 | `agent list` | none | JSON output | unused |

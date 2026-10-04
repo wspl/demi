@@ -11,7 +11,7 @@ layout and interaction; these documents do not repeat it.
 - [Crates and packages](architecture/crates-and-packages.md): every Rust crate and TypeScript package, what it owns and must not do, both dependency graphs, module layout and boundary checks.
 - [Contracts](architecture/contracts.md): Rust types as the only contract definition, validation at entry, the generated TypeScript, the TypeScript boundary, and logic the web app and backend share.
 - [Concurrency](architecture/concurrency.md): the threads of each program, the user shard, locks, blocking work, cancellation and cleanup, and tests and time.
-- [Plugins](architecture/plugins.md): how a capability joins Demi: commands, context, profiles, Host directories, Host file reads and a page, the contract every plugin uses in process and over a wire, the plugin host, and the built-in plugins.
+- [Plugins](architecture/plugins.md): how a capability joins Demi: commands, context, Host directories, Host file reads and a page, the contract every plugin uses in process and over a wire, the plugin host, and the built-in plugins.
 - [Plugin pages](architecture/plugin-pages.md): the web app as a shell that plugins fill: the page object and its context, work panel kinds, intents, the data a page shows, the plugin kit, types, registration and versions.
 
 ## What can users do, and how does the web app talk to the backend?

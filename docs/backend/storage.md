@@ -31,7 +31,7 @@ conversation's host access; they are not conversation database content.
 
 | Store | Owns | Writer |
 |---|---|---|
-| `control.sqlite` | Accounts, auth sessions, preferences, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories | The control service, on its database thread |
+| `control.sqlite` | Accounts, auth sessions, preferences, subagent profiles, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, the records of commands' outputs | The shard of the user who owns the conversation |
 | User blob namespace | Uploaded bytes, transcript media, edit copies, commands' whole outputs and the files plugins keep, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
 
@@ -84,6 +84,12 @@ input, which the multi-worker control service also relies on
   context limit the user set on each model
   ([Context limit](../providers/models.md#context-limit)). A patch merges specified fields in one
   transaction so independent edits do not overwrite each other.
+- **Subagent profiles:** `subagent_profiles` stores each user's
+  [subagent profiles](../agent/subagents.md#profiles), one per row: id, user,
+  name, unique among the user's, description, the model settings as JSON or
+  null for the parent's, the replacing instructions or null for the
+  parent's, and whether its children may spawn. A patch merges the fields it
+  names in one transaction, and checks the name's uniqueness in the same one.
 - **Devices and workspaces:** `devices` stores ownership, kind, name and
   platform, the hash of the device's current token, and claim and last-seen
   times. The token hash is unique, so a runner's token finds its device
@@ -203,7 +209,7 @@ Host. The node lifecycle and its commits are defined in
 
 | Table | Meaning |
 |---|---|
-| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description and profile, whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision, and when the earliest wakeup the checkpoint state saves is due (`wakeup_at`, encoded as the index of conversations encodes it), which each save writes with the state, so the conversation's earliest wakeup is the least over its nodes; a root saved under a turn has none, since its wakeups wait for the user to resume it ([Yield wakeups](../agent/runtime.md#yield-wakeups)) |
+| `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile replaced ([Persistence](../agent/subagents.md#persistence)), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision, and when the earliest wakeup the checkpoint state saves is due (`wakeup_at`, encoded as the index of conversations encodes it), which each save writes with the state, so the conversation's earliest wakeup is the least over its nodes; a root saved under a turn has none, since its wakeups wait for the user to resume it ([Yield wakeups](../agent/runtime.md#yield-wakeups)) |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, shells, agents and conversation browser tabs. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index |
 | `blob_refs` | An index of the blobs the blocks reference, for the [retention pass](#retention): one row per reference, with the node, the block index, the reference's place in the block, the blob, what refers to it (a message's medium, a tool result's medium or an edit copy), and the block's time. The rows are derived from the blocks, never written on their own: one function derives a block's rows, and every path of the tree store that writes a block, a save, a history rewrite, an edit, a Fork's seed and a retirement, replaces that block's rows with it in the same transaction. It indexes what SQLite cannot index inside a block's JSON |
