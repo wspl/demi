@@ -55,9 +55,9 @@ function clone(m: SettingsModelDraft): SettingsModelDraft {
 const editable = computed(() => props.mode !== 'view')
 const title = computed(() =>
   props.mode === 'create'
-    ? 'New model'
+    ? 'New Model'
     : props.mode === 'edit'
-      ? 'Edit model'
+      ? 'Edit Model'
       : draft.value.name || draft.value.id,
 )
 
@@ -294,7 +294,7 @@ const canSave = computed(() => {
           :disabled="!canSave"
           :loading="pending"
           @click="emit('save', clone(draft))"
-          >{{ mode === 'create' ? 'Add model' : 'Save' }}</Button
+          >{{ mode === 'create' ? 'Add Model' : 'Save' }}</Button
         >
       </div>
     </div>

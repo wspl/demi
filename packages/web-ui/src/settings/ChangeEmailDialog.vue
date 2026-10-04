@@ -134,12 +134,12 @@ function resend() {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Change email"
+    label="Change Email"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 p-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Change email</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">Change Email</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           <template v-if="phase.kind === 'form'"
             >You sign in with the new address from now on.</template
@@ -214,7 +214,7 @@ function resend() {
               :disabled="phase.busy"
               @click="resend"
             >
-              Send it again
+              Send It Again
             </button>
           </template>
         </p>

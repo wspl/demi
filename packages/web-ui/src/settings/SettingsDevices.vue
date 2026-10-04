@@ -55,9 +55,9 @@ const { isOpen, phase, open, close, submit } = useDevicePairing(
       <template #header>
         <header class="flex items-center justify-between gap-3">
           <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">
-            Your devices
+            Your Devices
           </h3>
-          <Button size="sm" @click="open">Add device</Button>
+          <Button size="sm" @click="open">Add Device</Button>
         </header>
       </template>
       <AsyncRegion

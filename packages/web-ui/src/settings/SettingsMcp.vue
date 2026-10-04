@@ -61,7 +61,7 @@ function add(draft: SettingsMcpDraft) {
 
 <template>
   <SettingsPage
-    title="MCP servers"
+    title="MCP Servers"
     description="Tool servers the agent can call. Off keeps the config but hides the tools."
   >
     <SettingsGroup>
@@ -70,7 +70,7 @@ function add(draft: SettingsMcpDraft) {
           <div class="select-none">
             <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">Servers</h3>
           </div>
-          <Button size="sm" @click="addOpen = true">Add server</Button>
+          <Button size="sm" @click="addOpen = true">Add Server</Button>
         </header>
       </template>
       <SettingsRow
@@ -110,7 +110,7 @@ function add(draft: SettingsMcpDraft) {
           v-if="server.enabled && server.state === 'auth'"
           size="sm"
           @click="emit('signIn', server)"
-        >Sign in</Button>
+        >Sign In</Button>
         <Button
           v-else-if="server.enabled && (server.state === 'crashed' || restarting.has(server.id))"
           size="sm"

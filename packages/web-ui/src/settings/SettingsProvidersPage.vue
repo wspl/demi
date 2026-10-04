@@ -57,7 +57,7 @@ import {
 import { formatTokens } from '../ui/token-count'
 
 /**
- * Models & providers: a rail of providers beside the selected one. Every supported
+ * Models & Providers: a rail of providers beside the selected one. Every supported
  * subscription is always listed and manages its accounts; an API key is added from
  * the rail and edits its endpoint, key and model list on its page. Field edits land
  * on the entry itself; everything that needs the host is emitted.
@@ -224,9 +224,9 @@ watch(testingAccounts, (now, before) => {
     const model = provider.testedWith ? ` · ${provider.testedWith}` : ''
     // A test that failed left the provider's own words; one that passed left none.
     if (!provider.detail) {
-      showToast({ title: `${account.label} connected${model}`, tone: 'success' })
+      showToast({ title: `${account.label} Connected${model}`, tone: 'success' })
     } else {
-      showToast({ title: `${account.label} test failed${model}`, message: provider.detail, tone: 'danger' })
+      showToast({ title: `${account.label} Test Failed${model}`, message: provider.detail, tone: 'danger' })
     }
   }
 })
@@ -348,7 +348,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
 </script>
 
 <template>
-  <SettingsPage wide fill title="Models & providers">
+  <SettingsPage wide fill title="Models & Providers">
     <AsyncRegion
       :state="load"
       label="Loading providers…"
@@ -381,7 +381,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
           <div class="flex h-8 select-none items-center pl-1 pt-2">
             <span
               class="text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
-              >API keys</span
+              >API Keys</span
             >
             <Button size="xs" class="ml-auto" @click="addOpen = true"
               ><Plus :size="12" /> Add</Button
@@ -455,7 +455,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                         v-if="selected.kind === 'subscription'"
                         size="sm"
                         @click="emit('signIn', selected)"
-                        ><Plus :size="ICON_PX.in24" /> Add account</Button
+                        ><Plus :size="ICON_PX.in24" /> Add Account</Button
                       >
                       <Switch
                         :model-value="selected.enabled"
@@ -684,7 +684,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
             <!-- The CLI of a provider whose requests are a process: Demi installs the vendor's newest
                on the machines that run it, so this shows what is wanted and what each machine has,
                and only a failure asks for anything. -->
-            <SettingsGroup v-if="selected.cli" title="Command-line tool">
+            <SettingsGroup v-if="selected.cli" title="Command-Line Tool">
               <SettingsRow
                 label="Version"
                 description="Follows the newest version; updates install by themselves."
