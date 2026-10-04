@@ -26,6 +26,7 @@ func TestReleaseChecksEveryEntry(t *testing.T) {
 		{"invalid URL", "2.1.3", "not a url", 3, digest, false},
 		{"empty artifact", "2.1.3", "https://example.test/claude", 0, digest, false},
 		{"uppercase digest", "2.1.3", "https://example.test/claude", 3, strings.Repeat("A", 64), false},
+		{"short digest", "2.1.3", "https://example.test/claude", 3, "abc", false},
 		{"non HTTP URL", "2.1.3", "ftp://example.test/claude", 3, digest, true},
 		{"full size range", "2.1.3", "https://example.test/claude", ^uint64(0), digest, true},
 	} {
@@ -51,6 +52,10 @@ func TestReleaseChecksEveryEntry(t *testing.T) {
 		})
 	}
 	for _, input := range []string{
+		`"not a record"`,
+		`{`,
+		`{"version":"2.1.3","platforms":{"linux-x64":{"url":"https://example.test/claude","size":3,` +
+			`"sha256":"` + digest + `","extra":1}}}`,
 		`{"version":"2.1.3","platforms":{},"extra":1}`,
 		`{"version":"2.1.3"}`,
 		`{"version":"2.1.3","platforms":null}`,
@@ -71,6 +76,7 @@ func TestVersionDirectoryNames(t *testing.T) {
 	for _, invalid := range []string{
 		"1.0", "1.0.0-", "1.0.0+build", "v1.0.0", "1..0", "../1.0.0", "01.0.0",
 		"1", "1.0.0-01", "18446744073709551616.0.0", "1.18446744073709551616.0", "1.0.18446744073709551616",
+		"", "1.0.0.1", "1.0.x", "1.0.0/..", "1.0.0-a/b", " 1.0.0",
 	} {
 		if _, err := claudecodeop.DecodeVersion([]byte(fmt.Sprintf("%q", invalid))); err == nil {
 			t.Errorf("version %q was accepted", invalid)
