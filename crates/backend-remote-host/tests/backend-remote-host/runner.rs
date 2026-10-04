@@ -2052,20 +2052,25 @@ async fn a_network_stream_carries_a_device_socket_through_two_pipes() {
     assert_eq!(tap.pipe_done(input.id()).await, (true, None));
     assert_eq!(tap.pipe_done(output.id()).await, (true, None));
 
-    // A port nobody listens on refuses, with its code.
+    // A port nobody listens on refuses, with its code, and the runner
+    // reports both pipe ends it never used.
     let vacant = listener().await;
     let vacant_port = vacant.local_addr().unwrap().port();
     drop(vacant);
+    let unused_input = pipes.to_device(TEST_DEVICE);
+    let unused_output = pipes.from_device(TEST_DEVICE);
     let refused = host
         .open_net(
             "127.0.0.1",
             vacant_port,
-            pipes.to_device(TEST_DEVICE).wire_ref(),
-            pipes.from_device(TEST_DEVICE).wire_ref(),
+            unused_input.wire_ref(),
+            unused_output.wire_ref(),
         )
         .await
         .unwrap_err();
     assert_eq!(refused.code(), Some("refused"));
+    assert!(!tap.pipe_done(unused_input.id()).await.0);
+    assert!(!tap.pipe_done(unused_output.id()).await.0);
 
     // A peer that resets the connection while bytes flow fails the output
     // rather than ends it.

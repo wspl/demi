@@ -63,7 +63,12 @@ impl NetStreams {
             let socket = match connect(&host, port).await {
                 Ok(socket) => socket,
                 Err((code, message)) => {
-                    send_net_error(&reply, stream_id, code, message, &stream).await;
+                    // Nothing moves; both pipe ends are still reported, as
+                    // every end named to the runner is.
+                    send_net_error(&reply, stream_id, code, message.clone(), &stream).await;
+                    let unused = || io::Error::other(message.clone());
+                    report_pipe(&reply, input.id, Err(unused()), &reporting).await;
+                    report_pipe(&reply, output.id, Err(unused()), &reporting).await;
                     return;
                 }
             };
