@@ -250,9 +250,11 @@ Later the conversation turns to the login test and the title no longer says
 what it is about. The Rename button beside the title opens a menu of two ways
 to name the conversation: **Detect Title** asks the model for a new one, and
 **Rename** lets the user type it where the title stands, which a double-click
-on the title does too. While the model writes, the Rename button shows that it
-is busy; then the title changes, and Detect Title is unavailable until the
-user sends another message.
+on the title does too. Nothing shows that the model is writing: the Rename
+button stays as it is and its menu opens, Detect Title is unavailable while
+the request runs, and Rename works. When the model's title arrives, the title
+simply changes; a rename made meanwhile wins and stays. Afterwards Detect
+Title is unavailable until the user sends another message.
 
 Every title records its origin, one of `placeholder` ("New conversation",
 before any send), `message`, `generated`, and `user`. A generated title is
@@ -298,7 +300,7 @@ next message. This holds for the first request as for one the user asked for,
 so a first title that failed leaves it available, and a title the user typed
 themselves can still be replaced by asking. The conversation summary carries both facts:
 `titleCurrent`, and `titleGenerating` while a request is in flight, which
-shows the Rename button busy, for the first request too.
+disables Detect Title, for the first request too.
 
 `POST /api/conversations/:id/title` starts the request with the model
 settings the conversation's record holds and answers 202 at once; it answers

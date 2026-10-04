@@ -88,8 +88,8 @@ const hasProvider = computed(() =>
   ),
 )
 
-// The title button (`product.md` § Conversation titles): up while a message is
-// newer than the last generated title, spinning while the model writes one.
+// Detect Title (`product.md` § Conversation titles): offered while a message is
+// newer than the last generated title, disabled while the model writes one.
 const retitle = computed(() => {
   const current = conversation.value
   if (!current || current.archived) {

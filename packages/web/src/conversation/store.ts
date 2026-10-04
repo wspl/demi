@@ -267,7 +267,7 @@ export const useConversations = defineStore('conversations', () => {
         followRecordModel(current, record)
         // A summary read before the rename reached the backend must not show the old title again.
         current.title = pendingTitles.get(current.id) ?? current.title
-        // Nor may one read before the title request arrived stop its button spinning.
+        // Nor may one read before the title request arrived offer Detect Title again.
         current.titleGenerating ||= pendingRetitles.has(current.id)
         const cached = cache.get(current.id)
         if (!cached?.runtime?.connected) {
