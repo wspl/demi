@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Bot, SquareTerminal, X } from '@lucide/vue'
 import type { ConversationStatus } from './conversation-status'
+import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import ConversationStatusDot from './ConversationStatusDot.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -8,7 +9,10 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 /**
  * One tab of a `TabStrip`. Content-sized up to 160px; a faint line sits in the
  * gap after the tab and fades out while the tab or its neighbour is active or
- * hovered. The root stays a single element with no top-level comment: a
+ * hovered. The close control has a slot of its own at the tab's end, kept on
+ * every tab so a tab never changes width when the pointer reaches it: the title
+ * is cut short before the slot, never under the control. The control shows on
+ * the active tab and on the tab under the pointer. The root stays a single element with no top-level comment: a
  * fragment root would keep the strip's enter and leave transitions off it.
  */
 defineProps<{
@@ -31,7 +35,7 @@ const emit = defineEmits<{
   <span
     role="tab"
     :aria-selected="isActive"
-    class="group relative flex h-7 w-max max-w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
+    class="group relative flex h-(--tab-h) w-max [--tab-h:--spacing(7)] max-w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
     :class="isActive
       ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0'
       : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body'"
@@ -63,31 +67,20 @@ const emit = defineEmits<{
       </slot>
       <ConversationStatusDot v-if="status" :status="status" />
     </span>
-    <span class="min-w-0 flex-1 truncate whitespace-nowrap px-1.5">{{ title }}</span>
-    <span
-      class="pointer-events-none absolute inset-y-0 right-0 z-10 flex w-9 items-center justify-end overflow-hidden rounded-r-md pr-1.5 opacity-0 transition-opacity group-hover:opacity-100"
-    >
-      <span
-        class="absolute inset-y-0 left-0 w-4"
-        :class="
-          isActive
-            ? 'bg-linear-to-r from-transparent to-(--tab-active)'
-            : 'bg-linear-to-r from-transparent to-(--tab-row) group-hover:to-(--tab-hover)'
-        "
-      />
-      <span
-        class="absolute inset-y-0 right-0 w-6"
-        :class="isActive ? 'bg-(--tab-active)' : 'bg-(--tab-row) group-hover:bg-(--tab-hover)'"
-      />
-      <span
-        role="button"
+    <span class="min-w-0 flex-1 truncate whitespace-nowrap pl-1.5 pr-1">{{ title }}</span>
+    <!-- The close control's own slot: the title ends before it, and it sits as far from the
+         tab's right edge as centering puts it from the top and bottom. -->
+    <span class="flex shrink-0 items-center mr-[calc((var(--tab-h)_-_var(--spacing-hit-xs))/2)]">
+      <IconButton
+        :icon="X"
+        size="xs"
+        variant="ghost"
         aria-label="Close"
-        class="pointer-events-auto relative z-10 flex size-5 shrink-0 items-center justify-center rounded text-fg-faint transition-colors hover:bg-hover hover:text-fg-body"
+        class="transition-opacity"
+        :class="isActive ? '' : 'opacity-0 group-hover:opacity-100'"
         @pointerdown.stop
         @click.stop="emit('close')"
-      >
-        <X :size="ICON_PX.in20" />
-      </span>
+      />
     </span>
     </Tooltip>
   </span>

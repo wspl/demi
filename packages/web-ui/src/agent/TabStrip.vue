@@ -33,9 +33,8 @@ const FADE_PX = 24
  *
  * `surface` is what the row sits on. On the base surface the active tab is
  * raised to the surface color; on a raised surface it is pressed to the base
- * color. Hover uses the active color either way, so the close control's
- * masks stay opaque. The tabs and the edge fades take their colors from the
- * strip, so a host sets this once.
+ * color, and hover uses the active color either way. The tabs and the edge
+ * fades take their colors from the strip, so a host sets this once.
  */
 const props = withDefaults(defineProps<{ surface?: 'base' | 'raised' }>(), {
   surface: 'base',
