@@ -40,7 +40,7 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   mark: BrowserTabMark,
   content: BrowserTabContent,
   create: {
-    label: "New tab in the conversation's browser",
+    label: "New Tab in the Conversation's Browser",
     icon: GlobePlus,
     data: () => ({ url: NEW_TAB_URL }),
   },

@@ -16,7 +16,7 @@ impl FileBrowser {
     pub fn new() -> Self {
         let mut manifest = Manifest::new(
             PluginId::try_from("file-browser").expect("a valid plugin id"),
-            "File browser",
+            "File Browser",
             "File browser",
         );
         manifest.page = Some(Page::new("@demicodes/plugin-file-browser"));
