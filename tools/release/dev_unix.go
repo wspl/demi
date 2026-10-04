@@ -182,7 +182,7 @@ func (a *application) serveDevBackend(
 		return err
 	}
 	defer client.CloseIdleConnections()
-	if err := a.seedDevBackend(ctx, origin, root, echo, backend, client); err != nil {
+	if err := a.seedDevBackend(ctx, origin, root, echo, backend, client, o.Provider); err != nil {
 		return err
 	}
 	select {
@@ -201,6 +201,7 @@ func (a *application) seedDevBackend(
 	echo *echoServer,
 	backend *devProcess,
 	client *http.Client,
+	p *devProvider,
 ) error {
 	if err := answeringDev(ctx, client, origin, backend); err != nil {
 		return err
@@ -209,17 +210,29 @@ func (a *application) seedDevBackend(
 	if err != nil {
 		return err
 	}
+	var modelSummary string
+	if p != nil {
+		id, err := seedDevProvider(ctx, client, origin, *p)
+		if err != nil {
+			return err
+		}
+		modelSummary = fmt.Sprintf(
+			"  Model:   %s of the provider entry %s (Development, %s)\n",
+			p.Model, id, p.BaseURL,
+		)
+	}
 	if _, err := fmt.Fprintf(
 		a.Out,
 		"\nThe development backend serves at %s\n  Account: %s, password %s\n  "+
 			"Model:   echo of the provider entry %s, which answers \"Echo: <your "+
-			"message>\"\n  Data:    %s\nStart the page in another terminal:\n  "+
+			"message>\"\n%s  Data:    %s\nStart the page in another terminal:\n  "+
 			"DEMI_BACKEND_URL=%s DEMI_DEV_EMAIL=%s DEMI_DEV_PASSWORD=%s bun run "+
 			"web:dev\nCtrl-C stops the backend.\n",
 		origin,
 		devEmail,
 		devPassword,
 		provider,
+		modelSummary,
 		root,
 		origin,
 		devEmail,

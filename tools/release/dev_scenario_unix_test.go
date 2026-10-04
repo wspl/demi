@@ -102,13 +102,25 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 			},
 		}, nil
 	}}
+	// The development entry is only seeded: no turn uses it, so its endpoint
+	// is never called.
+	developmentURL, err := webapi.ParseEndpointURL("https://models.example.test/v1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	development := devProvider{
+		BaseURL:       developmentURL,
+		APIKey:        "sk-development",
+		Model:         "vendor/model-flash",
+		ContextWindow: 1000000,
+	}
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
 	done := make(chan struct{})
 	var devErr error
 	go func() {
 		defer close(done)
-		devErr = app.dev(ctx, devOptions{Port: uint(port)})
+		devErr = app.dev(ctx, devOptions{Port: uint(port), Provider: &development})
 	}()
 	defer func() {
 		cancel()
@@ -148,12 +160,35 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	developmentID := strings.Fields(value("  Model:   vendor/model-flash of the provider entry "))[0]
+	answer, err := b.Read(ctx, "/api/providers", &session)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entries, err := webapi.DecodeProviders(answer.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries.Providers) != 2 {
+		t.Fatalf("provider entries: %s", answer.Body)
+	}
+	seeded := entries.Providers[1]
+	wire := core.WireAPIChatCompletions
+	if string(seeded.ID) != developmentID || seeded.ProviderType != "openai" || seeded.Label != "Development" ||
+		seeded.WireAPI == nil || *seeded.WireAPI != wire || seeded.BaseURL == nil ||
+		*seeded.BaseURL != developmentURL || seeded.Models == nil || len(*seeded.Models) != 1 ||
+		(*seeded.Models)[0].ID != "vendor/model-flash" || (*seeded.Models)[0].ContextWindow != 1000000 {
+		t.Fatalf("development entry: %s", answer.Body)
+	}
+	if strings.Contains(printed, "sk-development") {
+		t.Fatal("the summary printed the development key")
+	}
 	id := webapi.ConversationID("b1a62b67-0182-4d89-8319-fd5be3a24894")
 	body, err := contract.EncodeJSON(webapi.CreateConversation{ID: id})
 	if err != nil {
 		t.Fatal(err)
 	}
-	answer, err := b.Post(ctx, "/api/conversations", &session, body)
+	answer, err = b.Post(ctx, "/api/conversations", &session, body)
 	if err != nil {
 		t.Fatal(err)
 	}

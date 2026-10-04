@@ -50,8 +50,9 @@ type imageOptions struct {
 	Packages              stringsFlag
 }
 type devOptions struct {
-	Port uint
-	Keep bool
+	Port     uint
+	Keep     bool
+	Provider *devProvider
 }
 type application struct {
 	Root     string
@@ -125,18 +126,31 @@ func (a *application) run(ctx context.Context, args []string) error {
 		}
 		return a.fork(ctx, *patch)
 	case "dev":
-		var o devOptions
-		f.UintVar(&o.Port, "port", 3271, "The port the backend listens on.")
-		f.BoolVar(&o.Keep, "keep", false, "Keep the data directory when the command ends.")
-		if err := f.Parse(args[1:]); err != nil {
-			return err
-		}
-		if o.Port > 65535 || f.NArg() != 0 {
-			return fmt.Errorf("invalid dev arguments")
-		}
-		return a.dev(ctx, o)
+		return a.runDev(ctx, args, f)
 	}
 	return fmt.Errorf("unknown command: %v", args)
+}
+
+// runDev reads the dev command's flags and its development provider, which
+// fails before anything is built.
+func (a *application) runDev(ctx context.Context, args []string, f *flag.FlagSet) error {
+	var o devOptions
+	f.UintVar(&o.Port, "port", 3271, "The port the backend listens on.")
+	f.BoolVar(&o.Keep, "keep", false, "Keep the data directory when the command ends.")
+	if err := f.Parse(args[1:]); err != nil {
+		return err
+	}
+	if o.Port > 65535 || f.NArg() != 0 {
+		return fmt.Errorf("invalid dev arguments")
+	}
+	provider, configured, err := readDevProvider(os.Getenv)
+	if err != nil {
+		return err
+	}
+	if configured {
+		o.Provider = &provider
+	}
+	return a.dev(ctx, o)
 }
 
 func (a *application) runNative(ctx context.Context, args []string, f *flag.FlagSet) error {

@@ -664,11 +664,32 @@ removes the data directory. A process that does not stop in time, 10 seconds
 for the backend and 5 for the manager, is killed. Only a kill of the command
 itself leaves the backend running.
 
+A real model can stand beside Echo, so that a turn calls tools on the Cloud.
+When the command's environment names all four of
+`DEMI_DEV_PROVIDER_BASE_URL`, `DEMI_DEV_PROVIDER_API_KEY`,
+`DEMI_DEV_PROVIDER_MODEL` and `DEMI_DEV_PROVIDER_CONTEXT_WINDOW`, it also seeds
+an `openai` entry labeled **Development** that speaks Chat Completions to that
+endpoint, with that one model and context window, and prints the entry beside
+Echo's. Naming only some of them stops the command before it builds anything,
+with the missing variable named. The key reaches the backend only through the
+web API, like Echo's. A developer keeps the four in the repository's ignored
+`.env` (`.env.example` lists them) and runs `bun run dev`, which loads `.env`
+and starts the command. For example, with Command Code's gateway:
+
+```sh
+DEMI_DEV_PROVIDER_BASE_URL=https://api.commandcode.ai/provider/v1
+DEMI_DEV_PROVIDER_API_KEY=<key>
+DEMI_DEV_PROVIDER_MODEL=deepseek/deepseek-v4.1-flash
+DEMI_DEV_PROVIDER_CONTEXT_WINDOW=1000000
+```
+
+A turn with that model is a real request and costs what the vendor charges;
+automated tests never use it.
+
 It does not cover what needs the real services: the Cloud isolates nothing
 and has no image, so a Cloud reset or a guest's network rules do not behave
-as on a real machine; a paired device of another target finds no program
-for it; and no model runs, so a turn never calls a tool. The steps above
-give the full development backend for those.
+as on a real machine, and a paired device of another target finds no program
+for it. The steps above give the full development backend for those.
 
 The command releases make the operations of `demi.file`, `demi.browser` and
 `demi.claude-code` available on the Cloud and on a paired device of this

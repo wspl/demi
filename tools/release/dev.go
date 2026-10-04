@@ -19,6 +19,7 @@ import (
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/contract"
+	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/webapi"
 )
 
@@ -121,6 +122,36 @@ func seedDev(ctx context.Context, client *http.Client, origin, echo string) (str
 		BaseURL:      &endpoint,
 		Models:       &models,
 	}
+	return seedDevEntry(ctx, client, origin, entry)
+}
+
+func seedDevProvider(ctx context.Context, client *http.Client, origin string, p devProvider) (string, error) {
+	wire := core.WireAPIChatCompletions
+	models := webapi.ConfiguredModels{
+		{
+			ID:              webapi.Trimmed(p.Model),
+			DisplayName:     webapi.Trimmed(p.Model),
+			ContextWindow:   p.ContextWindow,
+			ThinkingEfforts: []webapi.ThinkingEffort{},
+		},
+	}
+	return seedDevEntry(ctx, client, origin, &webapi.CreateProviderCustom{
+		ProviderType: "openai",
+		WireAPI:      &wire,
+		Label:        "Development",
+		APIKey:       p.APIKey,
+		BaseURL:      &p.BaseURL,
+		Models:       &models,
+	})
+}
+
+// seedDevEntry creates a development provider entry and reads its assigned ID.
+func seedDevEntry(
+	ctx context.Context,
+	client *http.Client,
+	origin string,
+	entry *webapi.CreateProviderCustom,
+) (string, error) {
 	data, err := postDev(ctx, client, origin+"/api/providers", entry)
 	if err != nil {
 		return "", err
