@@ -144,6 +144,17 @@ impl<H: HostResolver> Tree<H> {
         self.children.borrow().get(id).cloned()
     }
 
+    /// The agent `id` while it takes messages: the root, or a live child
+    /// that is not closing.
+    pub(crate) fn live_agent(&self, id: &NodeId) -> Option<Rc<Node<H>>> {
+        if id == self.root.id() {
+            return Some(self.root.clone());
+        }
+        self.child(id)
+            .filter(|child| !child.closing.get())
+            .map(|child| child.node.clone())
+    }
+
     fn is_live(&self, id: &NodeId) -> bool {
         self.children.borrow().contains_key(id)
     }
@@ -822,12 +833,12 @@ impl<H: HostResolver> Tree<H> {
         let message = AgentMessage {
             id: BlockId::try_from(self.ids.next_id())
                 .expect("an id source never gives an empty id"),
-            sender: Sender {
+            sender: Some(Sender {
                 id: caller.clone(),
                 number: sender.record().number,
                 description,
                 round: sender.record().round,
-            },
+            }),
             recipient_id: recipient_id.clone(),
             timestamp: self.clock.now(),
             content,
@@ -1107,12 +1118,12 @@ fn completion(record: &NodeRecord, close: &NodeClose) -> AgentMessage {
     };
     AgentMessage {
         id: round.block_id(),
-        sender: Sender {
+        sender: Some(Sender {
             id: record.id.clone(),
             number: record.number,
             description: record.description.clone(),
             round: record.round,
-        },
+        }),
         recipient_id: record
             .parent
             .clone()

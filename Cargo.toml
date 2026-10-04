@@ -23,6 +23,7 @@ members = [
   "crates/backend-user-shard",
   "crates/backend-database",
   "crates/backend-page-sync",
+  "crates/backend-permissions",
   "crates/command-package-browser-protocol",
   "crates/command-package-claude-code-protocol",
   "crates/plugin-interface",

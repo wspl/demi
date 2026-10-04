@@ -34,6 +34,8 @@ import { sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
 import type { HostInstall } from '../devices/installs'
+import PermissionCard from '../permissions/PermissionCard.vue'
+import type { PermissionDecision, PermissionRequestView } from '../permissions/types'
 
 const props = withDefaults(defineProps<{
   conversation: ChatSessionState
@@ -55,6 +57,10 @@ const props = withDefaults(defineProps<{
   files?: ConversationFiles
   /** What the conversation's Hosts install now (`native-runtime.md` § Installation progress). */
   installs?: readonly HostInstall[]
+  /** The conversation's undecided permission requests, oldest first, which the card above the composer shows. */
+  permissionRequests?: readonly PermissionRequestView[]
+  /** A decision on a permission request is on its way. */
+  decidingPermission?: boolean
 }>(), {
   // Vue reads an absent boolean prop as false, which would offer Open panel
   // where there is no panel; absent stays undefined.
@@ -76,6 +82,7 @@ const emit = defineEmits<{
   interruptPendingSteer: [id: string]
   'update:messageEdit': [state: MessageEditState | null]
   saveScroll: [id: string, state: PersistedScrollState | null]
+  decidePermission: [id: string, decision: PermissionDecision]
 }>()
 provideEditSelection(() => props.selectEdit)
 // A running call shows its command's output under it; once the call
@@ -311,6 +318,13 @@ watch(() => props.conversation.id, close)
             :show-scroll-to-bottom="!!list && !list.isAtBottom"
             @scroll-to-bottom="list?.scrollToBottom()"
           >
+            <template v-if="permissionRequests?.length" #above>
+              <PermissionCard
+                :requests="permissionRequests"
+                :deciding="decidingPermission"
+                @decide="(id, decision) => emit('decidePermission', id, decision)"
+              />
+            </template>
             <template #chips>
               <!-- The transcript says what happened; the one recovery control is here, over the input. -->
               <SessionDockChip v-if="recovery" @click="emit('retry')">

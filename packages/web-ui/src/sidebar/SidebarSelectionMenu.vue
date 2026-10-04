@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Archive, ArrowRight, Copy, FolderInput, Pin, PinOff, TextCursorInput } from '@lucide/vue'
+import { Archive, ArrowRight, Copy, FolderInput, Pin, PinOff, ShieldCheck, TextCursorInput } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import type { SidebarConversation, SidebarProject } from './types'
 
-/** One row gets open, rename and copy ID; any count gets pin, move and archive. Conversations are never deleted. */
+/** One row gets open, rename, copy ID and its permissions; any count gets pin, move and archive. Conversations are never deleted. */
 const props = defineProps<{
   targets: SidebarConversation[]
   projects: SidebarProject[]
@@ -16,6 +16,8 @@ const emit = defineEmits<{
   open: [id: string]
   rename: [id: string]
   copyId: [id: string]
+  /** Open the conversation's Permissions dialog. */
+  permissions: [id: string]
   pin: [ids: string[], pinned: boolean]
   moveTo: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
@@ -60,6 +62,11 @@ const many = computed(
         :icon="Copy"
         label="Copy Conversation ID"
         @select="emit('copyId', single.id)"
+      />
+      <MenuItem
+        :icon="ShieldCheck"
+        label="Permissions…"
+        @select="emit('permissions', single.id)"
       />
     </template>
     <MenuItem

@@ -33,6 +33,7 @@
   --color-on-danger-muted: var(--on-danger-muted);
   --color-on-success: var(--on-success);
   --color-on-warning: var(--on-warning);
+  --color-on-attention: var(--on-attention);
   --color-on-info: var(--on-info);
   --color-on-accent: var(--on-accent);
   --color-on-highlight: var(--on-highlight);
@@ -89,6 +90,8 @@
   --on-danger-muted: rgba(248, 113, 113, 0.6);
   --on-success: #34d399;
   --on-warning: #fbbf24;
+  /* A conversation that needs the user to decide: yellow, apart from the orange of a failed or stopped one. */
+  --on-attention: #fde047;
   /* News that is not an outcome: a fixed blue, so it never takes the accent's hue. */
   --on-info: #60a5fa;
   --on-accent: #60a5fa;
@@ -173,6 +176,7 @@
   --on-danger-muted: rgba(220, 38, 38, 0.6);
   --on-success: #16a34a;
   --on-warning: #d97706;
+  --on-attention: #ca8a04;
   --on-info: #2563eb;
   --on-accent: #2563eb;
   --on-highlight: #92400e;

@@ -48,14 +48,14 @@ demi skills add vercel-labs/agent-skills --skill web-design-guidelines
      | Your skills reach every conversation, and the skills that are |
      | on are installed on every Host your conversations use.        |
      |                                                               |
-     |                     [ Deny ]  [ Allow for this conversation ] |
+     |                     [ Deny ]  [ Allow for This Conversation ] |
      +---------------------------------------------------------------+
      +---------------------------------------------------------------+
      | Ask Demi...                                                   |
      +---------------------------------------------------------------+
    ```
 
-3. The user selects **Allow for this conversation**. The backend records the
+3. The user selects **Allow for This Conversation**. The backend records the
    grant, and the dot and the card leave every page. It then delivers a
    message to the agent that asked, the way a subagent's message reaches its
    parent: the root is idle, so the message wakes it with a new turn. The
@@ -174,16 +174,20 @@ entry as a subagent's message, so it follows the same delivery rules: it
 joins a running turn at its next continuation boundary, and otherwise wakes
 the agent with a continuation ([Delivery and
 scheduling](subagents.md#delivery-and-scheduling)). Its event is
-`permission`, its outcome `allowed` or `denied`, and its content one of:
+`permission`, with the outcome `allowed` or `denied` and the category's
+action, and its content one of:
 
 ```text
 The user allowed this conversation to <action>; the command `<command>` can now run.
 The user denied this conversation permission to <action>; the command `<command>` was not run.
 ```
 
-The rules of that entry hold without exception: an agent whose last turn the
-user stopped keeps the message without waking, and the user's next action
-reads it, as for a subagent's message.
+The rules of that entry hold with one exception: deciding is the user's own
+action, so a decision wakes the agent that asked while it is idle even when the
+user stopped its last turn, where a subagent's message would wait for the
+user's next action. The message has no agent sender: its envelope names the
+user as the sender and opens with a line that says it is the user's decision
+on a permission request, not agent-originated context.
 
 The message's id is `permission:<request id>`, so delivering it again
 changes nothing. A decision on a conversation whose tree is closed opens the
@@ -224,7 +228,7 @@ or a steer while it is there. The card shows:
 - the command line the agent ran, as a code line;
 - for a subagent's request, the subagent that ran it, by its description;
 - the category's description;
-- two buttons, **Deny** and **Allow for this conversation**.
+- two buttons, **Deny** and **Allow for This Conversation**.
 
 A decision another page made, on another tab or device, removes the card on
 every page. A decision that arrives after another page decided the request

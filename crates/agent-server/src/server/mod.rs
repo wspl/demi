@@ -19,7 +19,9 @@ use std::{
     time::Duration,
 };
 
-use demi_agent_session::{Continuation, ForkError, ModelSwitch, SessionConfig, fork_seed};
+use demi_agent_session::{
+    AgentMessageError, Continuation, ForkError, ModelSwitch, SessionConfig, fork_seed,
+};
 use demi_agent_store::{AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, StoreError};
 use demi_agent_tools::{
     ContextSource, HostResolver, ProfileModel, ShellEnvironmentFactory, SubagentSource, ToolsetSource,
@@ -29,7 +31,7 @@ use demi_agent_transcript::IdSource;
 
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::KeyedSerialGate;
-use demi_shared_types::{BlockId, Clock, ModelSelection, NodeId, SessionPhase};
+use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, SessionPhase};
 use futures_util::future::{LocalBoxFuture, join_all};
 use tokio_util::task::TaskTracker;
 
@@ -273,6 +275,46 @@ impl<H: HostResolver> AgentServer<H> {
         };
         if let Some(switch) = refused {
             switch.discard().await;
+        }
+    }
+
+    /// Admits a message from the user into the agent `asking` of the
+    /// conversation `root`'s open tree, or, when that agent is closed or
+    /// closing, into its nearest live ancestor, the root at last
+    /// (`permissions.md` § The decision's message). `message` builds the
+    /// message for the recipient it is given. Answers the recipient once its
+    /// session accepted the message durably; an error when no tree is open or
+    /// the recipient refused it.
+    pub async fn admit_from_user(
+        &self,
+        root: &NodeId,
+        asking: &NodeId,
+        message: impl Fn(&NodeId) -> AgentMessage,
+    ) -> Result<NodeId, String> {
+        let tree = self.tree(root).ok_or("the conversation's tree is not open")?;
+        let mut current = asking.clone();
+        loop {
+            if let Some(node) = tree.live_agent(&current) {
+                match node.session().accept_agent_message(message(&current)).await {
+                    Ok(()) => return Ok(current),
+                    // It closed meanwhile: its ancestor owns its work.
+                    Err(AgentMessageError::Closed) => {}
+                    Err(error) => return Err(error.to_string()),
+                }
+            }
+            if &current == root {
+                return Err("the conversation's root is closing".into());
+            }
+            let record = tree
+                .store()
+                .node(&current)
+                .await
+                .map_err(|error| error.to_string())?;
+            current = match record.and_then(|record| record.parent) {
+                Some(parent) => parent,
+                // A node the tree no longer knows: the root owns its work.
+                None => root.clone(),
+            };
         }
     }
 

@@ -267,7 +267,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
         }
         .block_id()
     );
-    assert_eq!(receipts[0].sender.description, "reader");
+    assert_eq!(receipts[0].sender.clone().unwrap().description, "reader");
     assert_eq!(
         receipts[0].event,
         AgentMessageEvent::Completion {
@@ -526,7 +526,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     client.next_until(is_idle).await;
     let senders: Vec<NodeId> = root_receipts(&fixture)
         .into_iter()
-        .map(|message| message.sender.id)
+        .map(|message| message.sender.clone().unwrap().id)
         .collect();
     assert_eq!(senders, [delta, beta]);
 }
@@ -764,7 +764,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
 
     let mut senders: Vec<String> = root_receipts(&fixture)
         .into_iter()
-        .map(|message| message.sender.id.to_string())
+        .map(|message| message.sender.clone().unwrap().id.to_string())
         .collect();
     senders.sort();
     assert_eq!(senders, ["closed", "lost", "quiet"]);
@@ -939,7 +939,7 @@ async fn a_child_whose_turn_fails_closes_as_an_error_and_a_silent_one_completes_
     );
     let outcomes: Vec<(NodeId, String, AgentMessageEvent)> = root_receipts(&fixture)
         .into_iter()
-        .map(|message| (message.sender.id, message.content, message.event))
+        .map(|message| (message.sender.clone().unwrap().id, message.content, message.event))
         .collect();
     assert_eq!(
         outcomes,
@@ -1029,7 +1029,7 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
         })
         .collect();
     assert_eq!(heard.len(), 1);
-    assert_eq!(heard[0].sender.id, grandchild);
+    assert_eq!(heard[0].sender.clone().unwrap().id, grandchild);
     let received: Vec<(AgentMessageEvent, String)> = root_receipts(&fixture)
         .into_iter()
         .map(|message| (message.event, message.content))
@@ -1223,7 +1223,7 @@ async fn a_reopened_tree_restores_a_childs_own_children_before_the_child_can_set
     );
     let senders: Vec<NodeId> = root_receipts(&fixture)
         .into_iter()
-        .map(|message| message.sender.id)
+        .map(|message| message.sender.clone().unwrap().id)
         .collect();
     assert_eq!(senders, [outer]);
     assert!(model.is_done());

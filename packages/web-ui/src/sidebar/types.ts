@@ -25,6 +25,8 @@ export interface SidebarConversation {
   pinned: boolean
   /** Finished while the user was elsewhere and not opened since. */
   unread: boolean
+  /** A permission request waits for the user's decision (`permissions.md` § What the user sees). */
+  needsYou?: boolean
 }
 
 /** The signed-in account the sidebar's foot shows. */

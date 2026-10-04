@@ -10,9 +10,8 @@ use std::collections::HashMap;
 use std::rc::{Rc, Weak};
 
 use demi_backend_remote_host::{CommandSelection, JobOrigin};
-use demi_host_interface::{CommandSet, RpcError, RpcInvocation, RpcPort};
+use demi_host_interface::CommandSet;
 use demi_web_api_protocol::ids::ConversationId;
-use futures_util::future::LocalBoxFuture;
 
 /// The registered nodes of one user's shard.
 #[derive(Default)]
@@ -109,17 +108,11 @@ impl CommandRouter {
         (registered.conversation == *conversation).then(|| registered.selection.clone())
     }
 
-    /// Runs the call `job` made, in its node's commands.
-    pub fn dispatch(
-        &self,
-        job: &JobOrigin,
-        invocation: RpcInvocation,
-        port: RpcPort,
-    ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
-        let node = self.node_of(job);
-        Box::pin(async move {
-            let node = node.map_err(RpcError::Failed)?;
-            node.commands.dispatch(invocation, port).await
-        })
+    /// The commands of the agent node that started `job`, in which its
+    /// calls run; the backend's dispatch checks a call's permission between
+    /// the command set's check and the handler (`permissions.md` § The
+    /// check).
+    pub fn commands_of(&self, job: &JobOrigin) -> Result<Rc<CommandSet>, String> {
+        Ok(self.node_of(job)?.commands.clone())
     }
 }

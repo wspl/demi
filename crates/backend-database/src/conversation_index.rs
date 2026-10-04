@@ -49,6 +49,8 @@ pub struct ConversationRecord {
     /// The revision of the conversation's work panel, 0 before its first
     /// change.
     pub panel_revision: u64,
+    /// How many of the conversation's permission requests are undecided.
+    pub permission_requests: u64,
 }
 
 /// A conversation whose tree saved a yield wakeup, with its owner and when
@@ -206,7 +208,8 @@ const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_r
      target_path, target_workspace_id, context_version, model, user_messages, titled_messages,
      created_at, updated_at,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
-     COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision";
+     COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision,
+     (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests";
 
 /// A target as its typed columns: the kind and what the kind names.
 pub struct TargetColumns {
@@ -408,10 +411,21 @@ impl ControlService {
                 return Ok(ChangeOutcome::Archived);
             }
             match &change {
-                RecordChange::Archived(archived) => transaction.execute(
-                    "UPDATE conversations SET archived = ?2 WHERE id = ?1",
-                    params![id.as_str(), archived],
-                )?,
+                RecordChange::Archived(archived) => {
+                    // An archive withdraws the permission requests, decided
+                    // ones whose message was not delivered among them, and
+                    // keeps the grants (`permissions.md` § Requests).
+                    if *archived {
+                        transaction.execute(
+                            "DELETE FROM permission_requests WHERE conversation_id = ?1",
+                            [id.as_str()],
+                        )?;
+                    }
+                    transaction.execute(
+                        "UPDATE conversations SET archived = ?2 WHERE id = ?1",
+                        params![id.as_str(), archived],
+                    )?
+                }
                 RecordChange::Title(title) => transaction.execute(
                     "UPDATE conversations SET title = ?2, title_origin = 'user' WHERE id = ?1 AND title <> ?2",
                     params![id.as_str(), title],
@@ -752,6 +766,11 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             "conversation_panels",
             "revision",
             u64::try_from(row.get::<_, i64>("panel_revision")?),
+        )?,
+        permission_requests: decode(
+            "permission_requests",
+            "id",
+            u64::try_from(row.get::<_, i64>("permission_requests")?),
         )?,
     })
 }

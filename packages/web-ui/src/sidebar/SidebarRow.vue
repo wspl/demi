@@ -40,13 +40,18 @@ const emit = defineEmits<{
   togglePin: []
 }>()
 
-// One quiet mark: a breathing dot while running, blue for a result waiting to be read, orange
-// when the conversation needs the user (it failed or was stopped). A settled row keeps a faint
-// ring in the dot's place, so the column under a project's icon is never empty.
+// One quiet mark: yellow while a permission request waits for the user, over every other mark and
+// whether the row is open or read; a breathing dot while running, blue for a result waiting to be
+// read, orange when the conversation failed or was stopped. A settled row keeps a faint ring in
+// the dot's place, so the column under a project's icon is never empty.
 const SETTLED_DOT = 'border border-fg-faint/60'
 
 const dotClass = computed(() => {
-  const { status, unread } = props.conversation
+  const { status, unread, needsYou } = props.conversation
+  if (needsYou) {
+    // The halo keeps it apart from the failed mark, whose amber is close to yellow in dark mode.
+    return 'bg-on-attention ring-2 ring-on-attention/35'
+  }
   if (status === 'active') {
     return 'sidebar-breath bg-fg'
   }
@@ -115,7 +120,12 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     @mouseleave="stopMarquee"
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
-      <span class="size-1.5 rounded-full" :class="dotClass" />
+      <span
+        class="size-1.5 rounded-full"
+        :class="dotClass"
+        :role="conversation.needsYou ? 'img' : undefined"
+        :aria-label="conversation.needsYou ? 'Needs your decision' : undefined"
+      />
     </span>
     <TitleInput
       v-if="renaming"

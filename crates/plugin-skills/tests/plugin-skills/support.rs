@@ -2,6 +2,10 @@
 
 use std::rc::Rc;
 
+use demi_command_declarations::Node;
+use demi_host_interface::RpcInvocation;
+use demi_host_interface::testing::{MemoryPort, test_command_context};
+use demi_plugin_interface::testing::command_line::{argv, parse, roots};
 use demi_plugin_interface::testing::{TestDemi, loopback};
 use demi_plugin_interface::{Plugin, PluginError, PluginFactory, PluginId, Reply, Request};
 use demi_plugin_skills::{Skills, SkillsState};
@@ -9,10 +13,12 @@ use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use serde_json::{Value, json};
 
-/// The plugin of `skills` behind the loopback, over `demi`.
+/// The plugin of `skills` behind the loopback, over `demi`, and the `demi`
+/// root a runner reads its command lines with.
 pub struct Plugged {
     pub plugin: Rc<dyn Plugin>,
     pub demi: Rc<TestDemi>,
+    pub root: Node,
 }
 
 impl Plugged {
@@ -22,7 +28,40 @@ impl Plugged {
         Self {
             plugin: loopback(skills.instance()),
             demi,
+            root: roots(skills.manifest()).remove(0),
         }
+    }
+
+    /// Runs `demi <line>` as the backend's dispatch hands it to the plugin
+    /// once the conversation has the grant: its exit status, stdout and
+    /// stderr.
+    pub async fn run(&self, line: &[&str]) -> (u8, String, String) {
+        let parsed = parse(&self.root, line, None).unwrap();
+        let memory = MemoryPort::new();
+        self.demi.rpc.replace(Some(memory.clone()));
+        let invocation = RpcInvocation {
+            // The plugin host hands the plugin its path from its own group.
+            path: parsed.path[1..].to_vec(),
+            argv: argv(line),
+            args: parsed.values,
+            json: parsed.json,
+            cwd: "/workspace".into(),
+            env: Default::default(),
+            context: test_command_context(),
+            caller: None,
+            stdin: false,
+            pipes: None,
+        };
+        let request = Request::Command {
+            user: user(),
+            invocation: Box::new(invocation),
+        };
+        let reply = self.plugin.call(request, self.demi.port()).await.unwrap();
+        let Reply::Exit { code } = reply else {
+            panic!("{reply:?}")
+        };
+        let text = |bytes: Vec<u8>| String::from_utf8(bytes).unwrap();
+        (code, text(memory.stdout()), text(memory.stderr()))
     }
 
     pub async fn call(&self, method: &str, params: Value) -> Result<Value, PluginError> {
