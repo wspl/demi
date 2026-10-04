@@ -1518,6 +1518,51 @@ async fn a_call_exits_after_its_standard_output_drained() {
     assert_eq!(call_outcome(&mut link).await, (String::new(), 3));
 }
 
+// A call refused before its handler runs, as the permission check refuses
+// one, fails at once: the process it was handed the stdout pipe for still
+// finds the pipe, ended, and reads the refusal on stderr.
+#[tokio::test(flavor = "local")]
+async fn a_call_that_fails_at_once_keeps_its_standard_output_until_drained() {
+    let mut commands = CommandSet::new();
+    let handler = TypedRpc::new(|_: Call<Map<String, Value>>, _: RpcPort| async move {
+        Err::<u8, _>(RpcError::Failed("refused".into()))
+    });
+    commands
+        .register(
+            GroupBuilder::new("probe", "Probes.")
+                .leaf(LeafBuilder::rpc("live", "Refuses.").bind(handler)),
+        )
+        .unwrap();
+    let device = TestDevice::new(CommandPolicy::new(commands));
+    let mut link = device.connect(None);
+    let job = device
+        .host("/work", Admission::Free)
+        .start_job(job_start("probe live"))
+        .await
+        .unwrap();
+    drain(&mut link).await;
+    let mut call = rpc_call(job.id(), "call");
+    if let Outbound::RpcCall { stdin, .. } = &mut call {
+        *stdin = false;
+    }
+    link.send(call).await;
+    let Inbound::RpcPipes { stdout, .. } = link.next().await else {
+        panic!("the call is handed its stdout pipe")
+    };
+    assert!(
+        drain(&mut link).await.is_empty(),
+        "the exit waits for the drain"
+    );
+    let mut sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
+    sink.source_arrived().await.unwrap();
+    let mut body = sink.into_stream();
+    assert!(futures_util::StreamExt::next(&mut body).await.is_none());
+    assert_eq!(
+        call_outcome(&mut link).await,
+        ("probe: refused\n".to_owned(), 1)
+    );
+}
+
 /// A policy that refuses every call.
 struct Refusing;
 
