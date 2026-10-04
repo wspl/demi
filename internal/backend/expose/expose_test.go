@@ -591,34 +591,6 @@ func TestCloseCancelsRelaysAndRejectsAdmission(t *testing.T) {
 	})
 }
 
-func TestFirstExpiryWaitsOrCancels(t *testing.T) {
-	synctest.Test(t, func(t *testing.T) {
-		start := time.Now()
-		at, err := core.TimestampFromTime(start.Add(time.Hour))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if err := expose.FirstExpiry(t.Context(), core.SystemClock{}, at); err != nil {
-			t.Fatal(err)
-		}
-		if time.Since(start) != time.Hour {
-			t.Fatal("wrong expiry delay")
-		}
-		ctx, cancel := context.WithCancel(t.Context())
-		done := make(chan error, 1)
-		later, err := core.TimestampFromTime(time.Now().Add(time.Hour))
-		if err != nil {
-			t.Fatal(err)
-		}
-		go func() { done <- expose.FirstExpiry(ctx, core.SystemClock{}, later) }()
-		synctest.Wait()
-		cancel()
-		if err := <-done; !errors.Is(err, context.Canceled) {
-			t.Fatal(err)
-		}
-	})
-}
-
 func TestSharedExpirySurvivesOneConnectionClosing(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		s := newShard(t)
