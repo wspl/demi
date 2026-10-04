@@ -34,7 +34,7 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
-use crate::access::{HostAccessError, Refusal};
+use crate::access::{ConversationHost, HostAccessError, Refusal};
 use crate::blobs::ConversationBlobs;
 use crate::{HostShard, conversation_of};
 
@@ -81,21 +81,35 @@ impl dyn HostShard + '_ {
                     "the conversation's Host changed; the command did not run",
                 ));
             }
-            self.install_directories(device, admitted).await?;
             // Dropped once the job ends, or when it is stopped.
-            let _ended = JobEnd {
-                shard: self,
-                conversation: id,
-            };
+            let _ended = self.begin_job(id, device, admitted).await?;
             job.await;
             Ok(())
         })
         .await?
     }
+
+    /// Readies `host`, admitted for a job of the conversation on `device`,
+    /// before the job starts: installs the user's Host directories there
+    /// (`plugins.md` § Host directories). The answer tells the shard that
+    /// the job ended when it drops, so the job holds it inside its
+    /// admission until it ended, however it ends.
+    pub(crate) async fn begin_job<'a>(
+        &'a self,
+        id: &'a ConversationId,
+        device: &DeviceId,
+        host: &ConversationHost,
+    ) -> Result<JobEnd<'a>, HostError> {
+        self.install_directories(device, host).await?;
+        Ok(JobEnd {
+            shard: self,
+            conversation: id,
+        })
+    }
 }
 
 /// Tells the shard that a job ended, however it ends.
-struct JobEnd<'a> {
+pub(crate) struct JobEnd<'a> {
     shard: &'a (dyn HostShard + 'a),
     conversation: &'a ConversationId,
 }

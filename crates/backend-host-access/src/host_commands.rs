@@ -6,7 +6,9 @@
 //! commands, and its standard input and output are the calling command's:
 //! the relayed pipes' far ends become the job's device, so the bytes flow
 //! between the two devices through the backend's pipes, never through a
-//! runner socket.
+//! runner socket. Like the agent's own jobs, its admission installs the
+//! user's Host directories there before it starts and tells the shard when
+//! it ended.
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -316,6 +318,11 @@ async fn run_on_host(
             if !host.host.online() {
                 return Err(format!("host {device} is offline"));
             }
+            // Dropped once the job ended, or when the call is stopped.
+            let _ended = shard
+                .begin_job(conversation, &target.device, host)
+                .await
+                .map_err(|error| error.message)?;
             let start = JobStart {
                 script,
                 cwd: target.path.clone(),
