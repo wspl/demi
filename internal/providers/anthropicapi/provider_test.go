@@ -107,30 +107,12 @@ func TestBuiltInDirectory(t *testing.T) {
 	v := providertest.StartVendor(t)
 	p := providerAt(t, v, "/v1", provider.VendorPolicy{})
 	providertest.AssertBuiltinCatalog(t.Context(), t, p, v)
-	list, err := p.ListModels(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	ids := []string{}
-	for _, m := range list.Models {
-		ids = append(ids, m.ID)
-		if *m.ContextWindow != 1000000 || !*m.SupportsTools || !*m.SupportsAttachments || *m.SupportsVideo ||
-			!*m.SupportsReasoning ||
-			*m.CanDisableThinking {
-			t.Fatalf("incorrect model: %+v", m)
-		}
-	}
-	if !reflect.DeepEqual(
-		[]string{"claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-sonnet-4-6", "claude-fable-5"},
-		ids,
-	) {
-		t.Fatal(ids)
-	}
 	if p.Quota() != nil || p.Accounts() != nil {
 		t.Fatal("API key has subscription state")
 	}
 	r := testRuntime(t, v, provider.VendorPolicy{})
 	for _, window := range []uint32{200000, 1000000} {
+		// The limits are the documented ones (docs/providers/models.md § Request limits).
 		limits := r.RequestLimits(core.Model{ContextWindow: window})
 		images := uint32(100)
 		if window > 200000 {
