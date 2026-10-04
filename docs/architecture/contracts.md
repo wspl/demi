@@ -284,6 +284,7 @@ by case:
 | Logic | Owner | How |
 |---|---|---|
 | The file-type table: which files the product previews, by extension, and which the page shows in place | `shared-types` | The page must choose a viewer before any byte arrives ([Choosing a view](../product/file-previews.md#choosing-a-view)), so the table and its lookups are emitted into `@demicodes/protocol`, and the backend serves files by the same definition |
+| The context limits a model's window offers, and whether a stored limit applies | `shared-types` | The model menu offers them and the usage indicator counts against the limit, while sessions compact at it ([Context limit](../providers/models.md#context-limit)), so the steps and their lookups are emitted into `@demicodes/protocol` |
 | Whether an upload is text, and its short opening snippet | Backend | The upload response carries the snippet the composer's tile shows |
 | The media type a model receives for an upload | Backend | The upload response carries the sniffed media type; the message editor uploads files the way the main composer does |
 | Whether a message can be edited | The data model | `User` is the only editable block type; hidden inputs are `Context`, `Wakeup` and `AgentMessage` blocks |

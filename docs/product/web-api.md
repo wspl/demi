@@ -487,7 +487,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -518,7 +518,15 @@ as `Intl.getCanonicalLocales` in the user's browser would write the tags.
 Commands receive it in their
 [command context](../execution/native-runtime.md#command-context), and the
 [conversation browser](../browser/browser.md#native-driver) starts with it.
-The backend reads, merges and writes in one transaction, preserving
+`contextLimits` holds the user's
+[context limits](../providers/models.md#context-limit), by provider entry id
+and then model id, each in tokens, such as
+`{ "<entry id>": { "claude-opus-4-8": 300000 } }`; a model it does not name
+uses its full window. A patch changes one model's limit with
+`contextLimit: { providerId, modelId, tokens }`: 500000, 300000 or 200000
+stores that limit, null removes it, and any other number is refused. The
+backend does not look the model up: a limit its window does not offer has no
+effect. The backend reads, merges and writes in one transaction, preserving
 concurrent changes to other fields. Preferences persist across restarts and are
 separate for every user in both instance modes. The web app reads and
 writes these overrides through its preference state adapter.
