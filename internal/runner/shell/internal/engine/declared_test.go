@@ -1,4 +1,4 @@
-package engine
+package engine_test
 
 import (
 	"context"
@@ -13,6 +13,7 @@ import (
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
 	"github.com/wspl/demi/internal/runner/process"
+	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 	"github.com/wspl/demi/internal/runnerwire"
 )
 
@@ -57,7 +58,7 @@ func TestADeclaredCommandReachesTheJobsHandler(t *testing.T) {
 	root := t.TempDir()
 	handler := &recordingHandler{}
 	contextID := "0123456789abcdef0123456789abcdef"
-	job, err := StartJob(
+	job, err := engine.StartJob(
 		t.Context(),
 		process.JobStart{
 			Script:   `/usr/bin/env; printf body | fixture --flag; echo " $?"`,
@@ -108,8 +109,8 @@ func TestDeclaredBrokenPipeExits141(t *testing.T) {
 	if err := reader.Close(); err != nil {
 		t.Fatal(err)
 	}
-	defer func() { _ = writer.Close() }() // Execute may close cancelled job streams.
-	result, output, diagnostic := shellFiles(t, root, `fixture; printf '%s' "$?" >&2`, func(o *Options) {
+	defer func() { _ = writer.Close() }() // engine.Execute may close cancelled job streams.
+	result, output, diagnostic := shellFiles(t, root, `fixture; printf '%s' "$?" >&2`, func(o *engine.Options) {
 		o.Stdout = writer
 		o.Commands = &process.JobCommands{
 			Context: "0123456789abcdef0123456789abcdef",
@@ -175,8 +176,7 @@ func (h *stoppedInputHandler) Invoke(
 	return commandwire.Completion{}, err
 }
 
-// One in-process shell and pipe; normally finishes in milliseconds. The outer
-// context is only a deadlock watchdog, including when run against the old code.
+// One in-process shell and pipe; normally finishes in milliseconds.
 func TestDeclaredInputCancellationPreservesShellInput(t *testing.T) {
 	for _, test := range []struct {
 		name   string
@@ -198,10 +198,10 @@ func TestDeclaredInputCancellationPreservesShellInput(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer func() { _ = reader.Close() }() // Execute may close canceled job streams.
+			defer func() { _ = reader.Close() }() // engine.Execute may close canceled job streams.
 			defer func() { _ = writer.Close() }()
 			handler := &stoppedInputHandler{waiting: make(chan struct{}, test.waits), waits: test.waits, writer: writer}
-			result, output, diagnostic := shellFiles(t, t.TempDir(), test.script, func(o *Options) {
+			result, output, diagnostic := shellFiles(t, t.TempDir(), test.script, func(o *engine.Options) {
 				o.Stdin = reader
 				o.Observe = handler
 				o.Commands = &process.JobCommands{

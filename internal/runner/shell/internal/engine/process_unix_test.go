@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package engine
+package engine_test
 
 import (
 	"fmt"

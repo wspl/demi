@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package engine
+package engine_test
 
 import (
 	"context"
@@ -10,14 +10,15 @@ import (
 	"os/exec"
 	"runtime"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdsdk/cmdsdktest"
+	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 	"golang.org/x/sys/unix"
 )
 
 // Descriptor exhaustion changes process-wide limits, so it runs in a child test
-// executable. Each case waits for an observed retry, normally below 100 ms.
+// executable. Each case waits for an observed retry; with the child's start the
+// test takes about one second under -race.
 func TestPipelineWaitsForDescriptors(t *testing.T) {
 	if os.Getenv("DEMI_SHELL_EXHAUSTION") != "1" {
 		executable, err := os.Executable()
@@ -63,12 +64,16 @@ func TestPipelineWaitsForDescriptors(t *testing.T) {
 			}
 			held = nil
 		}
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+		ctx, cancel := context.WithCancel(t.Context())
 		done := make(chan struct{})
 		var runErr error
 		baseline := cmdsdktest.Pauses()
 		go func() {
-			result, err := Execute(ctx, "true | true", Options{Cwd: root, Stdout: io.Discard, Stderr: io.Discard})
+			result, err := engine.Execute(
+				ctx,
+				"true | true",
+				engine.Options{Cwd: root, Stdout: io.Discard, Stderr: io.Discard},
+			)
 			if err == nil && result.Code != 0 {
 				err = errors.New("pipeline failed")
 			}
@@ -80,16 +85,14 @@ func TestPipelineWaitsForDescriptors(t *testing.T) {
 			release()
 			<-done
 		}()
+		// The retry pause offers only a counter, no event, so the test yields
+		// between reads of it.
 		for cmdsdktest.Pauses() == baseline {
 			select {
 			case <-done:
 				release()
 				cancel()
 				t.Fatalf("pipeline did not wait: %v", runErr)
-			case <-ctx.Done():
-				release()
-				cancel()
-				t.Fatal(ctx.Err())
 			default:
 				runtime.Gosched()
 			}
