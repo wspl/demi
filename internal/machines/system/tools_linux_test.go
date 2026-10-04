@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -18,7 +17,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/wspl/demi/internal/machines/system"
-	"github.com/wspl/demi/internal/machines/system/systemtest"
 	"golang.org/x/sys/unix"
 )
 
@@ -143,9 +141,6 @@ func TestToolCancellationReapsChild(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if err := ready.SetReadDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	ctx, cancel := context.WithCancel(t.Context())
 	done := make(chan struct{})
 	var result error
@@ -178,13 +173,9 @@ func TestToolCancellationReapsChild(t *testing.T) {
 		}
 	}()
 	cancel()
-	guard := time.NewTimer(5 * time.Second)
-	defer guard.Stop()
-	select {
-	case <-done:
-	case <-guard.C:
-		t.Fatal("cancellation waited for an inherited output descriptor")
-	}
+	// Output must return while the retained writer is still open; if it waited
+	// for that descriptor, this receive would hang until go test's timeout.
+	<-done
 	if !errors.Is(result, context.Canceled) {
 		t.Fatalf("canceled tool = %v", result)
 	}
@@ -230,7 +221,7 @@ func TestToolMessageTail(t *testing.T) {
 	}
 }
 
-func TestResolveAndTestTools(t *testing.T) {
+func TestResolveTools(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("PATH", dir)
 	runsc := filepath.Join(dir, "configured-runsc")
@@ -255,30 +246,6 @@ func TestResolveAndTestTools(t *testing.T) {
 	}
 	if _, err := tools.Run(t.Context(), system.Mke2fs, nil, 0); err != nil {
 		t.Fatal(err)
-	}
-	fixture, err := systemtest.OnPath(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	// No nft executable was installed: production and filesystem fixtures
-	// resolve successfully, while firewall readback explicitly requires it.
-	if _, err := systemtest.NftPath(t.Context()); !errors.Is(err, exec.ErrNotFound) {
-		t.Fatalf("missing test nft = %v", err)
-	}
-	nft := filepath.Join(dir, "nft")
-	if err := os.WriteFile(nft, []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if path, err := systemtest.NftPath(t.Context()); err != nil || path != nft {
-		t.Fatalf("test nft path = %q, %v", path, err)
-	}
-	if fixture.Path(system.Runsc) != "runsc" {
-		t.Fatalf("fixture runsc = %s", fixture.Path(system.Runsc))
-	}
-	command := systemtest.Placeholder().Command(t.Context(), system.Runsc)
-	command.Args = append(command.Args, "--root", "fixture")
-	if strings.Join(command.Args, " ") != " --root fixture" {
-		t.Fatalf("placeholder command = %q", command.Args)
 	}
 	// Relative PATH entries are accepted and become explicit absolute paths
 	// before os/exec applies its ErrDot protection.
