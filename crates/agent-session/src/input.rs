@@ -32,10 +32,8 @@ impl Input {
 /// Which inputs a boundary writes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Take {
+    /// The user's Stop and a failure write all of it.
     Everything,
-    /// The user's Stop writes the human steers and the fired wakeups; agent
-    /// messages wait for the user's next action.
-    AllButAgentMessages,
     /// A shutdown writes the human steers; the rest stays in the checkpoint.
     Steers,
 }
@@ -44,7 +42,6 @@ impl Take {
     fn takes(self, input: &Input) -> bool {
         match self {
             Self::Everything => true,
-            Self::AllButAgentMessages => !matches!(input, Input::Agent(_)),
             Self::Steers => matches!(input, Input::Steer(_)),
         }
     }

@@ -335,7 +335,6 @@ pub fn fork_seed(
             agent_inputs: Vec::new(),
             wakeups: Vec::new(),
             edits: Vec::new(),
-            held: false,
             ..state
         },
         transcript: prefix,

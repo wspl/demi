@@ -10,7 +10,7 @@ use demi_agent_store::{
     testing::{MemoryBlobs, png},
 };
 use demi_agent_transcript::{RequestView, estimate::block_tokens, testing::RESUME_TEXT};
-use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits};
+use demi_provider_common::{PromptCache, ProviderFailure, RequestLimits, testing::TokioClock};
 use demi_shared_types::{BlockId, ContextUsage, QueuedMessage, TokenUsage};
 
 use super::*;
@@ -530,12 +530,35 @@ async fn a_compact_stopped_after_a_finished_answer_leaves_no_stop_to_continue() 
     );
 }
 
-// One session, two scripted requests and a restore: a few milliseconds.
-#[tokio::test(flavor = "local")]
-async fn agent_messages_held_by_a_stopped_compact_still_wait_for_the_user_after_a_restart() {
-    let provider = ScriptedRuntime::new([answer("first"), Turn::pending()]);
+// One session, four scripted requests and a minute of paused time: a few
+// milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_compact_stopped_after_a_finished_turn_holds_neither_a_later_message_nor_a_due_wakeup() {
+    let provider = ScriptedRuntime::new([
+        yield_call(60_000),
+        Turn::pending(),
+        answer("read the news"),
+        answer("checked the build"),
+    ]);
     let store = MemoryTreeStore::new();
-    let session = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
+    let config = SessionConfig {
+        compaction: only_when_asked(),
+        ..SessionConfig::default()
+    };
+    let session = start_at(
+        &provider,
+        test_runtime(vec![yield_tool()]),
+        &store,
+        config,
+        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
+    )
+    .await;
+    session
+        .update_model(ModelSwitch {
+            model: Box::new(small_model()),
+            runtime: None,
+        })
+        .unwrap();
     session
         .send(long_message(), turn("t1"))
         .unwrap()
@@ -543,44 +566,31 @@ async fn agent_messages_held_by_a_stopped_compact_still_wait_for_the_user_after_
         .unwrap();
     let compacting = session.compact().unwrap();
     until(|| provider.requests().len() == 2).await;
-    // Saved as it arrives, before the stop holds it.
+    session.abort().await;
+    assert_eq!(compacting.await, Ok(ActionEnd::Aborted));
+    // The stop wrote nothing: no marker.
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "tool_call:completed", "response"]
+    );
+
+    // A message that comes after the stop wakes the session as usual.
     session
         .accept_agent_message(agent_message("news"))
         .await
         .unwrap();
-    session.abort().await;
-    assert_eq!(compacting.await, Ok(ActionEnd::Aborted));
-    session.dispose().await.unwrap();
-    drop(session);
-
-    let later = ScriptedRuntime::new([answer("caught up")]);
-    let copy = store.copy();
-    let (restored, continuation) = restore_configured(
-        copy.checkpoint(&root()).unwrap(),
-        &copy,
-        &later,
-        test_runtime(Vec::new()),
-        Arc::new(FixedClock(Timestamp::UNIX_EPOCH)),
-        SessionConfig {
-            compaction: only_when_asked(),
-            ..SessionConfig::default()
-        },
-    );
-    assert!(!continuation.interrupted);
-    // The node's policy wakes a root whose last turn was not interrupted.
-    restored.wake();
-    restored.settled().await;
-
-    // The stop was the user's: the message waits for the user's next action.
-    assert!(later.requests().is_empty());
-    restored
-        .send(text("what happened?"), turn("t2"))
-        .unwrap()
-        .await
-        .unwrap();
+    session.settled().await;
     assert_eq!(
-        kinds(&restored.transcript().blocks[3..]),
-        ["user", "agent_message", "text", "response"]
+        kinds(&session.transcript().blocks[3..]),
+        ["agent_message", "text", "response"]
+    );
+    // So does the wakeup the turn scheduled, once it is due.
+    tokio::time::sleep(Duration::from_secs(61)).await;
+    until(|| provider.requests().len() == 4).await;
+    session.settled().await;
+    assert_eq!(
+        kinds(&session.transcript().blocks[6..]),
+        ["wakeup", "text", "response"]
     );
 }
 

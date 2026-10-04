@@ -576,7 +576,6 @@ pub mod store_contract {
                 cwd: "/w".into(),
                 model: test_model(),
                 edits: Vec::new(),
-                held: false,
             },
             block_count: blocks.len(),
             changed_blocks: blocks.into_iter().enumerate().collect(),

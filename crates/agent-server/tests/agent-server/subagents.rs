@@ -647,7 +647,6 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             cwd: "/workspace".into(),
             model: test_model(),
             edits: Vec::new(),
-            held: false,
         },
         block_count: blocks.len(),
         changed_blocks: blocks.into_iter().enumerate().collect(),
@@ -1275,5 +1274,38 @@ async fn a_child_waiting_on_its_yield_stays_live_while_no_action_holds_the_tree(
     );
     assert!(tree.is_quiescent());
     assert!(tree.admission().try_reserve().is_some());
+    assert!(model.is_done());
+}
+
+// One tree, a root and a child with three scripted runs: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_stop_of_the_parent_leaves_its_child_running_and_the_childs_completion_wakes_it() {
+    let model = Model::default();
+    let gate = Gate::new();
+    model.root([Turn::pending(), said("read the result")]);
+    model.child("task alpha", [held_said(&gate, "alpha's result")]);
+    let fixture = fixture(&model, TestProduct::default());
+    let mut client = fixture.opened().await;
+    let child = spawn(&fixture, &root(), json!({ "prompt": "task alpha" })).await;
+    until(|| model.requests_of("task alpha").len() == 1).await;
+    client.send(send("m1", "anything else?")).await;
+    until(|| model.root_requests().len() == 1).await;
+
+    client.send(ClientFrame::Abort {}).await;
+    client
+        .next_until(|frame| matches!(frame, ServerFrame::AbortResult { .. }))
+        .await;
+
+    let tree = fixture.server.tree(&root()).unwrap();
+    let blocks = tree.root().session().transcript().blocks;
+    assert!(matches!(blocks.last(), Some(Block::Abort(_))), "{blocks:?}");
+    // The Stop was the root's own: the child runs on.
+    assert!(fixture.store.record(&child).unwrap().closed.is_none());
+    gate.open();
+    client.next_until(is_closed(&child)).await;
+    // Its completion wakes the stopped root as it would an idle one.
+    until(|| model.root_requests().len() == 2).await;
+    client.next_until(is_idle).await;
+    assert_eq!(root_receipts(&fixture).len(), 1);
     assert!(model.is_done());
 }

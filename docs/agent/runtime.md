@@ -182,28 +182,37 @@ The user's Stop sends `abort`. Each `abort` stops one thing, in this order:
 The `abort_result` frame says what was stopped and whether another `abort`
 would have stopped something more at the moment the stop was recorded.
 
-A stopped action records the stop itself. It writes the human steers still
-pending and the yield wakeups that fired, completes each running tool call as
-an error `Tool call aborted: <tool>`, and appends an `abort` block, the
-stopped marker. An action that has written nothing into the transcript, with
-the steers and wakeups its stop writes counted, appends no marker: it began
-no turn, so nothing is left to continue
+A stopped action records the stop itself. It writes all the input waiting
+for its next boundary: the human steers still pending, the agent messages and
+the yield wakeups that fired. It completes each running tool call as an error
+`Tool call aborted: <tool>`, and appends an `abort` block, the stopped
+marker. An action that has written nothing into the transcript, with the
+input its stop writes counted, appends no marker: it began no turn, so
+nothing is left to continue
 ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)). Only a
 send stopped while it still waits for the tree's admission
 ([Actions](#actions)) has not written its message; it leaves like a stopped
 queued message, and the page still holds it as an unconfirmed submission
 ([Persistence and adapters](../product/web-application.md#persistence-and-adapters)).
-Agent messages keep waiting, with or without a marker: the stop is the
-user's, and the user's next action reads them
-([Delivery and scheduling](subagents.md#delivery-and-scheduling)). Without a
-marker, nothing in the transcript says the user stopped, so the session
-holds them, together with its due yield wakeups, until that action; its
-checkpoint keeps the hold, so after a restart they still wait
-([Tree store](#tree-store)).
 If the action was saving a history rewrite, it records the stop after the
 rewrite is published, so a rewrite never loses a stop. `abort_result` is sent
 only once the record is in the transcript. A provider run that is cancelled
 ends without an event; the session, not the provider, records the stop.
+
+A Stop stops only what the node is doing at that moment, and holds nothing
+afterwards, whether or not it wrote a marker:
+
+- The node's subagents run on. Stopping them is a request of its own
+  ([Abort](subagents.md#abort)).
+- An agent message that arrives after the Stop wakes the node as it wakes an
+  idle one ([Delivery and scheduling](subagents.md#delivery-and-scheduling)).
+- A yield wakeup that comes due after the Stop fires
+  ([Yield wakeups](#yield-wakeups)). Only a Stop sent while nothing runs or
+  waits cancels one (item 3 above).
+
+For example, the user stops a turn while a subagent is still reading files.
+The turn ends with the stopped marker, the subagent finishes, and its
+completion opens a continuation of the root that reads it.
 
 ### Dispose and restore
 
@@ -232,10 +241,10 @@ marked executing completes as an error
 its outcome is unknown, and it never runs again
 ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
 The restored session is idle, with its saved wakeups armed
-([Yield wakeups](#yield-wakeups)). A session saved holding its waiting input
-([Stop](#stop)) holds it again, and a session restored from an interrupted
-turn holds its own the same way until the node's next action, so a later
-restart keeps that hold too. It hands back its queued messages and
+([Yield wakeups](#yield-wakeups)). A session restored from an interrupted
+turn holds its waiting input and due wakeups until the node's next action.
+Until then its transcript ends with the interruption record, so a later
+restart holds them again. It hands back its queued messages and
 whether a turn was interrupted; the node's lifecycle policy decides what
 happens next ([Persistence](subagents.md#persistence)). A root leaves its interrupted turn to
 its client, which the product offers as Resume
@@ -334,9 +343,9 @@ more, even when the model had finished or a tool had asked to end the turn.
 - An accepted steer is pending until the next continuation boundary, where it
   becomes a `steer` block with the steer's id.
 - Stopping an action writes its pending human steers before the stopped
-  marker. A failed action writes all pending input before it ends. A human
-  steer still pending when its action ends normally is discarded; agent
-  messages are kept for the next continuation.
+  marker ([Stop](#stop)). A failed action writes all pending input before it
+  ends. A human steer still pending when its action ends normally is
+  discarded; agent messages are kept for the next continuation.
 
 ### Pending steers
 
@@ -404,8 +413,9 @@ with `shell_status`.
   the queue or among the pending steers.
 - A wakeup belongs to its session, not to the turn that scheduled it: a turn
   the user started meanwhile receives it like its own.
-- When no action runs or waits, Stop cancels the oldest scheduled wakeup
-  ([Stop](#stop)).
+- When no action runs or waits, Stop cancels the oldest scheduled wakeup.
+  Any other Stop leaves the wakeups as they are, and one that comes due
+  afterwards fires ([Stop](#stop)).
 - A wakeup is saved in the checkpoint with its id, its duration and, once the
   action that scheduled it has ended, the wall-clock time it is due, so it
   survives dispose and a backend restart; a fired wakeup stays saved until
@@ -427,10 +437,10 @@ with `shell_status`.
   conversation in it that is not archived has its tree restored at that
   time, as an `open` restores it, and one whose wakeup's action had not
   ended at once, since the restore starts that wakeup's wait. A tree that
-  is live by then is left as it is. A root saved under a turn is left out of
-  the index: it restores interrupted and holds its wakeups until the user
-  resumes it, so restoring it with no page would fire nothing. So is a root
-  saved holding its input after a Stop ([Stop](#stop)). A child's
+  is live by then is left as it is. A root whose last turn was interrupted
+  is left out of the index, whether it was saved under that turn or has
+  saved the interruption record since: it holds its wakeups until the user
+  resumes it, so restoring it with no page would fire nothing. A child's
   wakeups count, since a restored child resumes its interrupted turn.
 - A scheduled wakeup is not conversation activity: it keeps no Cloud awake
   ([Activity](../execution/resource-lifecycle.md#activity)). A subagent with a
@@ -1638,7 +1648,7 @@ A node's checkpoint has two parts:
 | Part | Holds |
 | --- | --- |
 | Transcript rows | One row per block, by index |
-| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the accepted edit receipts; whether the session holds its waiting input for the user's next action ([Stop](#stop)) |
+| State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the accepted edit receipts |
 
 Human pending steers are not part of it. Creating,
 closing, reopening and deleting nodes, and delivering subagent completions, are
@@ -1663,8 +1673,8 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
   running is one the process died in; clients see the phase go idle only once
   that save has committed ([A turn](#a-turn)).
 - A save is due when the transcript, edit receipts, the queue,
-  the waiting agent messages, the model selection or the hold on waiting
-  input changed. The phase alone never makes a save due.
+  the waiting agent messages or the model selection changed. The phase alone
+  never makes a save due.
 - A scheduled save that fails is reported as an `error` frame, and its rows are
   saved with the next change. When the save at the end of an action fails, the
   action fails.

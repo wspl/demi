@@ -26,6 +26,7 @@ use demi_agent_store::{
     Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord, StoreError,
     media::BlobStore,
 };
+use demi_agent_transcript::is_interruption;
 use demi_backend_remote_host::decode_output;
 use demi_shared_types::{
     Block, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp,
@@ -460,11 +461,13 @@ fn write_checkpoint(
     // The old block count is the column's value before the update: rows
     // gone are a rewrite of the output.
     let wakeup = WakeupDue::earliest(&update.state).map(WakeupDue::column);
-    // A root saved under a turn restores interrupted, and a held one holds
-    // its wakeups: either waits for the user (`runtime.md` § Yield wakeups),
-    // and none of its wakeups fires by itself. A child resumes its
+    // A root whose last turn was interrupted holds its wakeups until the
+    // user resumes it (`runtime.md` § Yield wakeups), so none of them fires
+    // by itself: one saved under a turn restores interrupted, and one
+    // restored so has saved its interruption record. A child resumes its
     // interrupted turn on its own.
-    let held = update.state.phase != SessionPhase::Idle || update.state.held;
+    let interrupted = update.state.phase != SessionPhase::Idle
+        || ends_with_interruption(transaction, node, update)?;
     let changed = transaction.execute(
         "UPDATE nodes SET state = ?2, block_count = ?3,
            output_revision = output_revision + (CASE WHEN block_count > ?3 OR ?4 THEN 1 ELSE 0 END),
@@ -476,7 +479,7 @@ fn write_checkpoint(
             block_count,
             output,
             wakeup,
-            held
+            interrupted
         ],
     )?;
     if changed == 0 {
@@ -504,6 +507,35 @@ fn is_output(block: &Block) -> bool {
             | Block::AgentMessage(_)
             | Block::Resume(_)
     )
+}
+
+/// Whether the transcript `update` leaves `node` with, its block rows
+/// written, ends with the record of an interrupted turn.
+fn ends_with_interruption(
+    transaction: &Transaction<'_>,
+    node: &NodeId,
+    update: &CheckpointUpdate,
+) -> Result<bool, StorageError> {
+    let Some(last) = update.block_count.checked_sub(1) else {
+        return Ok(false);
+    };
+    if let Some((index, block)) = update.changed_blocks.last()
+        && *index == last
+    {
+        return Ok(is_interruption(block));
+    }
+    // A node that does not exist has no row: the update refuses it next.
+    let text: Option<String> = transaction
+        .query_row(
+            "SELECT block FROM blocks WHERE node_id = ?1 AND idx = ?2",
+            params![node.as_str(), count(last)],
+            |row| row.get(0),
+        )
+        .optional()?;
+    match text {
+        Some(text) => Ok(is_interruption(&json("blocks", "block", &text)?)),
+        None => Ok(false),
+    }
 }
 
 /// A node's checkpoint: its state row and every block row below its block
@@ -834,9 +866,9 @@ mod tests {
     use std::sync::Mutex;
 
     use demi_agent_store::testing::{store_contract, test_model, text};
-    use demi_agent_transcript::retire::Retirement;
+    use demi_agent_transcript::{INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, retire::Retirement};
     use demi_shared_types::{
-        B64Bytes, BlobRef, EditCopies, EditKind, EditSegment, EditedFile, MediaSource,
+        B64Bytes, BlobRef, EditCopies, EditKind, EditSegment, EditedFile, ErrorBlock, MediaSource,
         ResponseBlock, ShellId, ShellToolView, ShellViewStatus, TextBlock, TokenUsage,
         ToolCallBlock, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, ToolView, TurnId,
         UserBlock, UserContentBlock,
@@ -929,7 +961,6 @@ mod tests {
             cwd: "/w".into(),
             model: test_model(),
             edits: Vec::new(),
-            held: false,
         }
     }
 
@@ -1297,15 +1328,33 @@ mod tests {
             .unwrap();
         root.save(waiting(&[])).await.unwrap();
         tree.delete_node(&id("child")).await.unwrap();
-        // A root saved under a turn holds its wakeups until the user resumes
-        // it, and a held root until the user's next action; a child resumes
-        // on its own.
+        // A root whose last turn was interrupted holds its wakeups until the
+        // user resumes it: one saved under a turn, and one whose transcript
+        // ends with the interruption record, written by this save or an
+        // earlier one. A child resumes on its own.
         let mut running = waiting(&[Some(9_000)]);
         running.state.phase = SessionPhase::Running;
         root.save(running.clone()).await.unwrap();
-        let mut held = waiting(&[Some(9_000)]);
-        held.state.held = true;
-        root.save(held).await.unwrap();
+        let interruption = Block::Error(ErrorBlock {
+            id: "b2".try_into().unwrap(),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: test_model(),
+            message: INTERRUPTED_TURN_MESSAGE.into(),
+            code: Some(INTERRUPTED_CODE.into()),
+            diagnostics: None,
+            outside_turn: false,
+        });
+        let recorded = CheckpointUpdate {
+            changed_blocks: vec![(0, user("b1")), (1, interruption)],
+            block_count: 2,
+            ..waiting(&[Some(9_000)])
+        };
+        root.save(recorded).await.unwrap();
+        let unchanged = CheckpointUpdate {
+            block_count: 2,
+            ..waiting(&[Some(9_000)])
+        };
+        root.save(unchanged).await.unwrap();
         tree.create_node(record("child", Some("root"), 1), running)
             .await
             .unwrap();
@@ -1316,6 +1365,7 @@ mod tests {
                 at(9_000),
                 at(5_000),
                 at(5_000),
+                None,
                 None,
                 None,
                 None,

@@ -210,8 +210,9 @@ leave such a record, and a compaction leaves none:
 - **A Stop of an action that wrote nothing** records no `abort` block. For
   example, the user presses Compact after a finished answer and stops it
   while the summary is written: the transcript is as it was, and nothing is
-  left to continue. Input the stop itself writes counts: a pending steer is
-  written, and the `abort` block after it lets Continue answer it
+  left to continue. Input the stop itself writes counts: a pending steer or
+  agent message is written, and the `abort` block after it lets Continue
+  answer it. Nothing waits for the user afterwards
   ([Stop](runtime.md#stop)).
 - **A compaction** is not a turn's end. Its boundary and marker are kept
   history, but they say nothing about the turn before them. For example, a

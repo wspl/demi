@@ -50,6 +50,12 @@ pub const INTERRUPTED_TURN_MESSAGE: &str =
 /// The code of that record.
 pub const INTERRUPTED_CODE: &str = "interrupted";
 
+/// Whether `block` is the record that says why its turn is unfinished after
+/// a shutdown or crash.
+pub fn is_interruption(block: &Block) -> bool {
+    matches!(block, Block::Error(error) if error.code.as_deref() == Some(INTERRUPTED_CODE))
+}
+
 /// Where replay starts in `blocks` (`runtime.md` § Replay): at the last
 /// `compaction_boundary`, or at the first block when there is none.
 pub fn replay_start(blocks: &[Block]) -> usize {

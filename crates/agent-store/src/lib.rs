@@ -280,12 +280,6 @@ pub struct CheckpointState {
     /// The receipts of the accepted edits.
     #[garde(dive)]
     pub edits: Vec<EditReceipt>,
-    /// The waiting agent messages and due wakeups wait for the user's next
-    /// action: the user stopped an action that wrote nothing, or the session
-    /// restored from a turn the process died in (`runtime.md` § Stop). A
-    /// checkpoint saved under a turn holds them by its phase alone.
-    #[garde(skip)]
-    pub held: bool,
 }
 
 /// An agent message the session admitted and has not yet written into its
