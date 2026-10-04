@@ -304,14 +304,18 @@ async fn run(
     if let Some(cause) = entry.cause() {
         return Err(cause.text().into());
     }
-    let code = result.map_err(|error| error.to_string())?;
     port.finish_stdout();
-    // The calling process has read everything before the call exits.
-    tokio::select! {
+    // The calling process has read everything before the call exits, a
+    // failed call's output too: the process was handed the stdout pipe, and
+    // one that comes for it after the handler failed at once, as a call the
+    // permission check refuses does, finds it ended rather than gone.
+    let drained = tokio::select! {
         biased;
         () = entry.stopped.cancelled() => Err(entry.cause().map_or_else(String::new, |cause| cause.text().into())),
-        drained = stdout.done() => drained.map(|()| code).map_err(|failure| failure.to_string()),
-    }
+        drained = stdout.done() => drained.map_err(|failure| failure.to_string()),
+    };
+    let code = result.map_err(|error| error.to_string())?;
+    drained.map(|()| code)
 }
 
 /// The handler's port over the relay.
