@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { disabledTooltip } from '../ui/disabled'
 import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import type { SettingsRowStatus } from './types'
 import type { SentenceText } from '../ui/ui-text'
 
@@ -19,8 +20,10 @@ import type { SentenceText } from '../ui/ui-text'
  * without a hover wash. `muted` fades the label side only, so actions stay at
  * full strength. `disabled` mutes the row, blocks its click, and shows
  * `disabledReason` on hover. `statuses` are the row's state, each a label
- * right after the name, after the `tags`: the name truncates before them, so
- * they never cover the name or the line under it at any width.
+ * right after the name, after the `tags`. The name tells rows apart, so it
+ * keeps its width: where the tags do not fit beside it they move under it,
+ * and only a name wider than the whole line is cut, whole in its tooltip
+ * (the Writing page's rule for long text).
  */
 const props = defineProps<{
   label: SentenceText
@@ -73,11 +76,11 @@ const emit = defineEmits<{
         :class="faded ? 'opacity-60' : ''"
       >
         <div
-          class="flex min-w-0 flex-nowrap items-center gap-x-2 leading-5"
+          class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 leading-5"
           :class="inset ? 'text-[12px] text-fg-body' : 'text-chrome text-fg'"
         >
-          <span class="min-w-0 truncate">{{ label }}</span>
-          <div v-if="$slots.tags || statuses?.length" class="flex h-5 shrink-0 items-center gap-1">
+          <TruncatedText class="max-w-full shrink-0" :text="label" />
+          <div v-if="$slots.tags || statuses?.length" class="flex min-h-5 min-w-0 flex-wrap items-center gap-1">
             <slot name="tags" />
             <Tooltip
               v-for="status in statuses"

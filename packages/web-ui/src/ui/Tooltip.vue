@@ -47,6 +47,12 @@ const props = withDefaults(defineProps<{
   placement?: Placement
   offset?: number
   disabled?: boolean
+  /**
+   * Asked of the trigger each time the tip is about to show: false keeps it
+   * hidden this time. For a tip whose need is measured as the pointer
+   * arrives, such as text that may or may not be cut.
+   */
+  showIf?: (trigger: HTMLElement) => boolean
   openDelayMs?: number
   closeDelayMs?: number
   tag?: 'span' | 'div'
@@ -180,8 +186,16 @@ function clearTimers() {
   clearAskedTimer()
 }
 
-function openNow() {
+/** Whether the tip may show now: its standing conditions, then the trigger's answer. */
+function wanted(): boolean {
   if (!canShow.value)
+    return false
+  const trigger = triggerRef.value
+  return !props.showIf || (trigger != null && props.showIf(trigger))
+}
+
+function openNow() {
+  if (!wanted())
     return
   hiddenByScroll.value = false
   isOpen.value = true
@@ -194,7 +208,7 @@ function closeNow() {
 function scheduleOpen() {
   clearCloseTimer()
   clearOpenTimer()
-  if (!canShow.value)
+  if (!wanted())
     return
   hiddenByScroll.value = false
   if (props.openDelayMs <= 0) {

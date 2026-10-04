@@ -379,8 +379,9 @@ export function mockProviders(): MockProvider[] {
             { id: 'tokens', label: 'Tokens (short window)', used: 3, max: 100, resets: 'in 40 s' },
           ],
         },
-        // Long text everywhere: the name truncates before its tags, and the window names and
-        // reset times wrap inside the text column instead of running under the buttons.
+        // Long text everywhere: the tags move under the name, which is cut only where the line
+        // cannot hold it, and the window names and reset times wrap inside the text column
+        // instead of running under the buttons.
         {
           id: 'a4',
           label: 'release-automation@platform-infrastructure.example.com',

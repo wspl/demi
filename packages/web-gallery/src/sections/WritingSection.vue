@@ -1,6 +1,11 @@
 <script setup lang="ts">
+import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
+import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import ExternalLink from '@demicodes/web-ui/ui/ExternalLink.vue'
+import Tag from '@demicodes/web-ui/ui/Tag.vue'
+import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import GallerySection from '../components/GallerySection.vue'
+import GallerySpecimen from '../components/GallerySpecimen.vue'
 
 /**
  * The rule for UI text: macOS capitalization, as Apple's Human Interface
@@ -243,6 +248,64 @@ const wordRules = [
   },
 ]
 
+interface LongTextRule {
+  title: string
+  rule: string
+  right: readonly string[]
+  wrong: readonly string[]
+  /** The products that do it this way. */
+  source: string
+}
+
+/** What gives way when a line of text does not fit, and how the reader gets it back. */
+const longTextRules: readonly LongTextRule[] = [
+  {
+    title: 'The name gives way last',
+    rule: 'The text that tells items apart (an account’s email, a file’s name, a model’s or a conversation’s name) keeps its width. What sits beside it gives way first: tags, counts, sizes, times.',
+    right: ['zan@work.example  Pro  Limit reached'],
+    wrong: ['zan@wor…  Pro  Limit reached'],
+    source: 'GitHub issue list, Linear, macOS Finder list view',
+  },
+  {
+    title: 'Tags move under the name',
+    rule: 'Tags that do not fit beside the name start a line under it, in their order. They are state the reader needs (Active, Limit reached), so they neither squeeze the name nor go away. Only a name wider than the whole line is cut.',
+    right: ['zan@work.example ⏎ Pro  Limit reached'],
+    wrong: ['zan@wor…  Pro  Limit reached', 'zan@work.example  Pro  Li…'],
+    source: 'GitHub issue list: labels wrap under the title',
+  },
+  {
+    title: 'The ellipsis goes at the end',
+    rule: 'A name is read from its start, and its start is what the reader looks for, so the cut takes its end: one ellipsis character (…), never three periods. An email is cut the same way.',
+    right: ['release-automation@platfo…'],
+    wrong: ['release-…xample.com', 'release-automation@platfo...'],
+    source: 'Google account chooser, macOS Mail, GitHub, VS Code',
+  },
+  {
+    title: 'A path keeps its file',
+    rule: 'Nothing is cut in the middle. A file shows as its name, its folder in the tooltip; a path shown whole (the address bar) gives up its folders from the left and keeps the file’s name to the last. So the part a reader needs is never the part an end cut removes.',
+    right: ['FileBrowserAddressBar.vue, its tooltip packages/web-ui/src/files/FileBrowserAddressBar.vue'],
+    wrong: ['packages/web-ui/src/fi…'],
+    source: 'VS Code tabs and breadcrumbs, GitHub file tree, macOS path bar',
+  },
+  {
+    title: 'A cut text shows itself whole on hover',
+    rule: 'TruncatedText gives a cut line a tooltip with the whole text, and only while it is cut: text that fits has none. Not the title attribute, which comes late, ignores the theme and shows when nothing is cut. A control that gives up its label for an icon names itself in its tooltip instead. The sidebar is the one exception to the ellipsis: a cut conversation title fades at the edge and plays whole on hover.',
+    right: ['Tooltip: release-automation@platform-infrastructure.example.com'],
+    wrong: ['A cut name with no tooltip', 'A tooltip repeating a name that fits'],
+    source: 'macOS expansion tooltips, VS Code, Linear',
+  },
+  {
+    title: 'Sentences wrap',
+    rule: 'Only a one-line label in a row, a tab, a button or a pill is cut. A description, a message, an error or a usage line wraps and is read whole.',
+    right: ['100% · resets on Thursday, October ⏎ 9 at 2:00 PM'],
+    wrong: ['100% · resets on Thursday, Oct…'],
+    source: 'macOS System Settings',
+  },
+]
+
+/** One account at the widths a settings card takes, from a wide window down to a phone. */
+const accountWidths = [520, 320, 200] as const
+
 const sources: readonly Required<Source>[] = [
   { label: 'Human Interface Guidelines: Writing', href: `${HIG}/writing` },
   { label: 'Human Interface Guidelines: Menus', href: `${HIG}/menus` },
@@ -328,6 +391,53 @@ const sources: readonly Required<Source>[] = [
             <li v-for="item in group.items" :key="item">{{ item }}</li>
           </ul>
         </div>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Long Text"
+      note="When a line does not fit, which text gives way, where it is cut, and how the reader gets it back. A written convention, like the rest of this page: nothing checks it."
+    >
+      <div class="grid max-w-5xl gap-3 md:grid-cols-2">
+        <div v-for="item in longTextRules" :key="item.title" class="space-y-2 rounded-xl border border-line p-3">
+          <h3 class="text-[13px] font-medium text-fg-emphasis">{{ item.title }}</h3>
+          <p class="text-[12px] leading-5 text-fg-body">{{ item.rule }}</p>
+          <div class="flex flex-wrap gap-1 text-[12px] leading-4">
+            <span v-for="example in item.right" :key="example" class="rounded bg-overlay/6 px-1.5 py-0.5 text-fg-body">{{ example }}</span>
+            <span v-for="example in item.wrong" :key="example" class="rounded px-1.5 py-0.5 text-fg-muted line-through">{{ example }}</span>
+          </div>
+          <p class="text-[11px] leading-4 text-fg-subtle">{{ item.source }}</p>
+        </div>
+      </div>
+      <div class="mt-6 flex flex-wrap items-start gap-6">
+        <GallerySpecimen
+          v-for="width in accountWidths"
+          :key="width"
+          :variant="`settings card · ${width}px`"
+        >
+          <div :style="{ width: `${width}px` }">
+            <SettingsGroup>
+              <SettingsRow label="zan@work.example" compact>
+                <template #tags>
+                  <Tag>Pro</Tag>
+                  <Tag tone="danger">Limit reached</Tag>
+                </template>
+              </SettingsRow>
+              <SettingsRow label="release-automation@platform-infrastructure.example.com" compact>
+                <template #tags>
+                  <Tag>Max 20×</Tag>
+                  <Tag tone="accent">Active</Tag>
+                </template>
+              </SettingsRow>
+            </SettingsGroup>
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="TruncatedText · 180px">
+          <div class="w-[180px] space-y-1 text-chrome text-fg">
+            <TruncatedText text="zan@example.com" />
+            <TruncatedText text="release-automation@platform-infrastructure.example.com" />
+          </div>
+        </GallerySpecimen>
       </div>
     </GallerySection>
 
