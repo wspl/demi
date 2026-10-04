@@ -496,8 +496,10 @@ default as model settings, `{ providerId, modelId, thinkingEffort, serviceTierId
 ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
 Every explicit choice of a model, an effort or a tier saves it, in an unsent
 draft or in an existing conversation. A new conversation starts with it, and
-its first send writes it to the new conversation's record, each part the model
-no longer offers replaced by the model's default. From then on the
+its first send writes it to the new conversation's record, an effort the
+model no longer offers replaced by the model's first effort and a tier it no
+longer offers by the vendor's default. Its effort is null only for a model
+that lists no efforts. From then on the
 conversation has its own settings, which a later change of the preference does
 not touch. `locale` stores the time
 zone and languages the user's browser last reported, as
@@ -559,10 +561,9 @@ The entries of the product state carry the same `cliPackage`. `availability` is
 credential is missing or refused, `{ type: "unavailable", reason: "runtime",
 message }` with the runtime's message while the provider cannot run, and
 `{ type: "available" }` otherwise, unknown health included. Each model carries
-the `selection` the backend built from it, and `unnamedEffort`, the thinking
-effort a conversation's model settings hold on the model when a change names
-none: null for a model that can turn thinking off, whose default sends no
-thinking setting
+the `selection` the backend built from it. The first effort of a model's
+`supportedThinkingEfforts` is the one a conversation's model settings hold on
+the model when a change names none
 ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
 One provider's catalog failure does not remove the other providers or saved
 models. A static catalog, or one never fetched, reports the Unix epoch as
@@ -684,11 +685,14 @@ A conversation's model settings are one value, the model selection its record
 holds ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
 The conversation lists carry the settings as `model`,
 `{ providerId, modelId, thinkingEffort, serviceTierId }`, or null while the
-conversation has no model yet; the record also keeps the model's facts. Only a
+conversation has no model yet; `thinkingEffort` is null only for a model that
+lists no efforts. The record also keeps the model's facts. Only a
 patch changes the value, and each of its three fields changes one part:
 `model` switches to that model, with the effort and the tier the same patch
-names and the new model's defaults for a part it leaves out; `thinkingEffort`
-and `serviceTierId` set their part for the conversation's model. The backend
+names, and the new model's first effort and the vendor's default tier for a
+part it leaves out; `thinkingEffort`, an effort or `disabled` and never null,
+and `serviceTierId`, a tier or null for the vendor's default, set their part
+for the conversation's model. The backend
 applies one conversation's changes one at a time, in the order they arrive,
 each to the value the one before left:
 
