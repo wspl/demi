@@ -30,7 +30,7 @@ impl Browser {
     pub fn new() -> Self {
         let mut manifest = Manifest::new(
             PluginId::try_from("browser").expect("a valid plugin id"),
-            "Conversation Browser",
+            "Browser",
             "A browser on the conversation's host that the agent drives with `demi browser` and the user watches in the work panel.",
         );
         manifest.commands = commands().manifest_commands();

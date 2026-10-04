@@ -17,7 +17,7 @@ impl Changes {
         let mut manifest = Manifest::new(
             PluginId::try_from("changes").expect("a valid plugin id"),
             "Changes",
-            "Changes",
+            "Shows the uncommitted changes in the conversation's working directory, and what each of the agent's commands changed, as diffs in the work panel.",
         );
         manifest.page = Some(Page::new("@demicodes/plugin-changes"));
         Self { manifest }
