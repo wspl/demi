@@ -759,6 +759,10 @@ async fn far_jobs_released(device: &Paired) {
 
 // Several seconds: two real devices each install the builtin package, and `demi
 // host shell` runs jobs on both.
+//
+// Planted defect the image's step catches: a relayed job that names
+// `DEMI_JOB_OUTPUT`, so the far command's image becomes a medium of the far
+// job, which nothing attaches, and only its line reaches the caller.
 #[tokio::test]
 async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far_hosts_directory() {
     let vendor = MockVendor::start().await;
@@ -854,6 +858,25 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
         stranger.received[0].contains("exit=1"),
         "{}",
         stranger.received[0]
+    );
+
+    // A command of the far job returns its image where its stdout goes, the
+    // relayed pipe, which is no job's output: the image is no medium of
+    // either job, and the result attaches it as the calling job's stdout.
+    let png = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+    std::fs::write(a.join("shot.png"), &png).unwrap();
+    let read = format!("demi host shell --host alpha 'demi file read {a_path}/shot.png'");
+    let shown = work
+        .turn(vec![shell("t5", &read, 30_000), say("five")])
+        .await;
+    let result = &shown.received[0];
+    let size = png.len();
+    assert_eq!(
+        shown_output(result),
+        format!(
+            "<binary stdout: {size} bytes>\n[image]\nAttached stdout as image/png ({size} bytes).\n"
+        ),
+        "{result}"
     );
     backend.close().await;
 }

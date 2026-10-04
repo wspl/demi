@@ -4,9 +4,9 @@
 //! and nothing while a reference source cannot be read; a tool result's
 //! image goes after 30 days once no request can send it from a vendor's
 //! cache, never while a page has its conversation open and never a
-//! message's; a command's output is removed 30 days after the command ended;
-//! and an archive succeeds though its device goes away in the middle of the
-//! release. Times of a day and more pass on the test's clock; the objects are
+//! message's; a command's output is removed 30 days after the command ended,
+//! with its media; and an archive succeeds though its device goes away in
+//! the middle of the release. Times of a day and more pass on the test's clock; the objects are
 //! counted at the object store. The devices are real runners, and the model
 //! is an Anthropic endpoint the test scripts.
 
@@ -462,5 +462,53 @@ async fn a_commands_output_is_removed_30_days_after_it_ended() {
         "demi shell output: the output of {command} was removed on {day}, 30 days after the command ended"
     );
     assert!(gone.contains(&removed), "{gone}");
+    backend.close().await;
+}
+
+// About a second here: a real device installs the builtin package and runs
+// one shell command.
+//
+// Planted defects this catches: a stored output whose media's blobs nothing
+// references (the blob goes two days on, beside its row); a removal that
+// does not use the media's blobs (it goes in the same pass); and one that
+// leaves the media beside a removed output (the removal fails, and the blob
+// stays).
+#[tokio::test]
+async fn a_commands_media_are_removed_with_its_output_and_their_blobs_go_a_day_later() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_file_package();
+    harness.clock.follow_system();
+    let (backend, master) = harness.start_set_up().await;
+    let (mut socket, root, _device) = open_on_device(&harness, &backend, &master, &vendor).await;
+    // Wider than 2,000 px, so the transcript holds a fitted copy, and only
+    // the command's output holds the original.
+    let shot = demi_agent_store::testing::png(2400, 10, 1).into_bytes();
+    std::fs::write(format!("{root}/shot.png"), &shot).unwrap();
+    vendor.respond(shell("toolu_1", "demi file read shot.png", 60_000));
+    vendor.respond(say("Seen."));
+    socket.chat("m1", "Look").await;
+    let request = vendor.requests()[1].json().to_string();
+    assert!(
+        request.contains("fitted from image/png of 2400 × 10 px"),
+        "{request}"
+    );
+    let original = blob_path(&harness, &master, &shot);
+    assert!(original.exists(), "{}", original.display());
+
+    // Two days on, the output and its medium stand, past the collection's
+    // grace: the row keeps the blob.
+    harness.clock.advance(DAY * 2);
+    backend.run_retention(&master).await;
+    assert!(original.exists());
+
+    // Thirty-one days after the command ended, the pass removes the output
+    // with its media and uses their blobs, so a read just before still
+    // finds them; a day later, nothing does, and the blob goes.
+    harness.clock.advance(DAY * 29);
+    backend.run_retention(&master).await;
+    assert!(original.exists());
+    harness.clock.advance(DAY + SignedDuration::from_hours(1));
+    backend.run_retention(&master).await;
+    assert!(!original.exists());
     backend.close().await;
 }
