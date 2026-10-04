@@ -15,7 +15,10 @@ import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
+import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
+import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
+import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { reactive, ref } from 'vue'
@@ -123,6 +126,16 @@ const tallOptions = Array.from({ length: 24 }, (_, i): MenuChoice => ({
 }))
 const dialogOpen = ref(false)
 const inlineDialogOpen = ref(true)
+// Layers: a dialog, the model menu opened from it, and that menu's submenu, all pinned open.
+const layersDialogOpen = ref(true)
+const layersMenuOpen = ref(true)
+const layersSource = ref<'parent' | 'own'>('own')
+const layersSources = [
+  { value: 'parent', label: 'Parent’s' },
+  { value: 'own', label: 'Own' },
+] as const
+const layersModel = ref('opus')
+const layersReasoning = ref('low')
 const pinDangerToast = ref(true)
 const pinRejectedToast = ref(true)
 const pinNeutralToast = ref(true)
@@ -955,6 +968,78 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                     @click="inlineDialogOpen = false"
                   >Keep</Button>
                 </div>
+              </div>
+            </Dialog>
+          </GallerySpecimen>
+        </GalleryOverlayWell>
+        <GalleryOverlayWell size="tall">
+          <GallerySpecimen variant="layers · dialog, menu and submenu">
+            <Button
+              v-if="!layersDialogOpen"
+              size="md"
+              @click="layersDialogOpen = true"
+            >Open</Button>
+            <Dialog
+              :is-open="layersDialogOpen"
+              :overlay-store="appOverlayStore"
+              @close="layersDialogOpen = false"
+            >
+              <div class="p-4">
+                <SettingsGroup title="Edit Profile">
+                  <SettingsRow label="Model settings">
+                    <Segmented v-model="layersSource" size="sm" :options="layersSources" />
+                  </SettingsRow>
+                  <SettingsRow label="Model">
+                    <Dropdown
+                      v-model:open="layersMenuOpen"
+                      variant="default"
+                      :overlay-store="appOverlayStore"
+                    >
+                      <template #trigger>
+                        {{ itemLabel(layersModel, submenuModels) }} · {{ itemLabel(layersReasoning, effortItems) }}
+                      </template>
+                      <template #content="{ close }">
+                        <Menu iconless @click="close">
+                          <MenuItem
+                            submenu-open
+                            label="Reasoning"
+                            :value="itemLabel(layersReasoning, effortItems)"
+                          >
+                            <template #submenu>
+                              <Menu iconless>
+                                <MenuItem
+                                  v-for="item in effortItems"
+                                  :key="item.id"
+                                  :label="item.label"
+                                  choice
+                                  :is-selected="layersReasoning === item.id"
+                                  @select="layersReasoning = item.id"
+                                />
+                              </Menu>
+                            </template>
+                          </MenuItem>
+                          <MenuItem
+                            label="Model"
+                            :value="itemLabel(layersModel, submenuModels)"
+                          >
+                            <template #submenu>
+                              <Menu iconless>
+                                <MenuItem
+                                  v-for="item in submenuModels"
+                                  :key="item.id"
+                                  :label="item.label"
+                                  choice
+                                  :is-selected="layersModel === item.id"
+                                  @select="layersModel = item.id"
+                                />
+                              </Menu>
+                            </template>
+                          </MenuItem>
+                        </Menu>
+                      </template>
+                    </Dropdown>
+                  </SettingsRow>
+                </SettingsGroup>
               </div>
             </Dialog>
           </GallerySpecimen>
