@@ -92,10 +92,12 @@ one. Registration refuses an `rpc` leaf without a handler.
 
 An `rpc` leaf whose handler acts on Demi itself, beyond the conversation,
 names the [permission category](../agent/permissions.md#categories) it needs
-as `permission`, such as `skills.manage` for `demi skills add`. The handler
-asks for it at run time; the declaration lets the help say so, and lets the
-plugin host refuse a handler that asks for another. A `native` leaf names
-none, and the runner ignores the field.
+as `permission`, such as `skills.manage` for `demi skills add`, and one of its
+groups declares that category with its `action` and `description`. The
+declaration is all a command does about permissions: the backend's dispatch
+checks the conversation's grant before the handler runs
+([The check](../agent/permissions.md#the-check)). The runner ignores both
+fields.
 
 A group contains subcommands and does not execute a handler. A command name
 starts with an ASCII letter or digit and continues with letters, digits,
@@ -108,7 +110,9 @@ these declarations:
   input sources, duplicate positional fields, and a required positional after
   an optional one;
 - an option named `help` or `json`;
-- a `permission` on a `native` leaf;
+- a `permission` on a `native` leaf, a `permission` that names a category
+  none of the leaf's groups declares, and a category declared twice in the
+  command set;
 - a `stdinField` that is not a string, or a `restField` that is not an array of
   strings;
 - a field schema outside the [input subset](#the-input-subset).
@@ -218,8 +222,8 @@ follows. An empty command set renders no help.
 
 Help displays a complete usage template, value placeholders, required and
 optional arguments, enum choices, and repeatable options. A leaf with a
-`permission` adds one line: the first such command in a conversation may wait
-until the user allows or denies it. Stdin bodies appear
+`permission` adds one line: the command needs the user's permission in each
+conversation, and without it the command fails and the user is asked. Stdin bodies appear
 in their own section and in a quoted heredoc template. `--json` appears only
 on commands with a JSON output schema. Usage templates are generated from the
 declaration; declarations do not carry separate examples to keep in sync.
@@ -302,8 +306,10 @@ A command package never receives an unvalidated CLI request. An `rpc` leaf
 reaches the backend as an `rpc_call` that names only its job: the backend checks
 the call against its live record of that job
 ([Bind jobs to their caller](sessions-and-targets.md#bind-jobs-to-their-caller)),
-validates the arguments again, and dispatches the call in process to the
-invoking node's command set.
+validates the arguments again, checks the conversation's grant of the leaf's
+[permission category](../agent/permissions.md#the-check), if it names one, and
+dispatches the call in process to the invoking node's command set. A call
+without the grant ends with exit status 1 and reaches no handler.
 
 Native bindings pin an exact descriptor hash and operation. Missing operations,
 inconsistent hashes, and unknown packages prevent a usable manifest.
@@ -345,7 +351,6 @@ request and one reply:
 | Read stdin | The next chunk of a finite stdin, on demand. |
 | Read live stdin | The next interactive write to the job, until the job ends. |
 | Cancellation | Whether, and when, the call was cancelled. |
-| Wait for the user | Start or end a wait for the user's decision. While one lasts, the observation window of the command whose job made the call stops ([The wait](../agent/permissions.md#the-wait)). |
 
 A handler resolves what it acts on from the invocation's context: the
 `demi agent` handlers find their conversation's tree and node there, and
