@@ -24,6 +24,12 @@ pub trait SessionRuntime {
 
     fn system_prompt(&self) -> LocalBoxFuture<'_, String>;
 
+    /// The window the session's token thresholds use for `model`: the
+    /// model's context window, or the limit the user set on it
+    /// (`models.md` § Context limit). Asked at each check, so a changed limit
+    /// counts from the next one.
+    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32>;
+
     /// The text before the content of a user turn.
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>>;
 

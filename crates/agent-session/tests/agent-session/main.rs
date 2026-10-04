@@ -60,6 +60,9 @@ struct TestRuntime {
     execution: Option<&'static str>,
     /// The context each request's sources were shown, as `source: text`.
     seen: Rc<RefCell<Vec<Vec<String>>>>,
+    /// While set, the window the node answers for every model in place of
+    /// the model's own, as a user's context limit makes it.
+    window_in_use: Rc<Cell<Option<u32>>>,
 }
 
 impl SessionRuntime for TestRuntime {
@@ -75,6 +78,14 @@ impl SessionRuntime for TestRuntime {
 
     fn system_prompt(&self) -> LocalBoxFuture<'_, String> {
         Box::pin(async { "system prompt".to_owned() })
+    }
+
+    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
+        let window = self
+            .window_in_use
+            .get()
+            .unwrap_or(model.model.context_window);
+        Box::pin(async move { window })
     }
 
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {
@@ -279,6 +290,7 @@ fn test_runtime(tools: Vec<(String, Invoke)>) -> TestRuntime {
         hanging_preamble: Rc::default(),
         execution: None,
         seen: Rc::default(),
+        window_in_use: Rc::default(),
     }
 }
 

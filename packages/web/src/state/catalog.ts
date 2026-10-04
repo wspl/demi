@@ -5,7 +5,7 @@ import type {
   SettingsProviderModel,
   SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
-import type { AuthState, RuntimeState } from '@demicodes/protocol'
+import { appliedContextLimit, type AuthState, type RuntimeState } from '@demicodes/protocol'
 import type {
   CatalogModel,
   CatalogProvider,
@@ -43,12 +43,14 @@ export function wireApi(
   return wire === 'chat-completions' ? 'openai-chat' : 'openai-responses'
 }
 
-export function modelInfo(model: CatalogModel): ModelInfo {
+/** A catalog model as the composer takes it, with `limit`, the context limit the user stored on it. */
+export function modelInfo(model: CatalogModel, limit: number | null): ModelInfo {
   const metadata = model.selection.model
   return {
     id: model.id,
     name: model.displayName,
     contextWindow: model.contextWindow,
+    contextLimit: appliedContextLimit(model.contextWindow, limit),
     inputLimit: metadata.inputLimit,
     acceptedExtensions: metadata.acceptedExtensions,
     reasoning: model.supportedThinkingEfforts?.length

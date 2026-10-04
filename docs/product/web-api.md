@@ -487,7 +487,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,

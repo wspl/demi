@@ -41,8 +41,8 @@ const MAX_FIT_PASSES: usize = 8;
 /// When a session compacts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompactionConfig {
-    /// The share of a model's context window, and of each of its vendor's
-    /// request limits, in percent, at which the history is compacted; none
+    /// The share of the window in use for a model, and of each of its
+    /// vendor's request limits, in percent, at which the history is compacted; none
     /// never compacts, as a session copy does not.
     pub threshold_percent: Option<u8>,
 }
@@ -63,21 +63,21 @@ impl CompactionConfig {
         self.threshold_percent.is_some()
     }
 
-    /// The threshold of a model with `context_window`, rounded down; none
-    /// for a model that reports no window.
-    pub(crate) fn threshold(&self, context_window: u32) -> Option<u64> {
+    /// The threshold of a model whose window in use is `window`, rounded
+    /// down; none for a model that reports no window.
+    pub(crate) fn threshold(&self, window: u32) -> Option<u64> {
         let percent = self.threshold_percent?;
-        (context_window > 0).then(|| u64::from(context_window) * u64::from(percent) / 100)
+        (window > 0).then(|| u64::from(window) * u64::from(percent) / 100)
     }
 
-    /// Whether one request's usage reached the threshold of a model with
-    /// `context_window`.
-    pub(crate) fn reached(&self, context_window: u32, usage: &TokenUsage) -> bool {
+    /// Whether one request's usage reached the threshold of a model whose
+    /// window in use is `window`.
+    pub(crate) fn reached(&self, window: u32, usage: &TokenUsage) -> bool {
         let used = usage.input_tokens
             + usage.output_tokens
             + usage.cache_read_tokens
             + usage.cache_write_tokens;
-        self.threshold(context_window)
+        self.threshold(window)
             .is_some_and(|threshold| used >= threshold)
     }
 
@@ -96,12 +96,22 @@ impl CompactionConfig {
 }
 
 /// Whether the estimate of `request` is at or over the token threshold of
-/// its model.
-fn over_token_threshold(s: &SessionShared, request: &RequestView) -> bool {
+/// its model, whose window in use is `window`.
+fn over_token_threshold(s: &SessionShared, request: &RequestView, window: u32) -> bool {
     s.config
         .compaction
-        .threshold(request.model().context_window)
+        .threshold(window)
         .is_some_and(|threshold| context_tokens(request) >= threshold)
+}
+
+/// The window the token thresholds use for `model`, as the node answers it
+/// (`models.md` § Context limit).
+pub(super) async fn window_in_use(
+    s: &SessionShared,
+    model: &ModelSelection,
+    cancel: &TurnCancel,
+) -> Result<u32, TurnError> {
+    cancel.guard(s.runtime.context_window(model)).await
 }
 
 /// Whether the history is at or over a threshold of `model`, whose vendor
@@ -113,9 +123,10 @@ async fn over_a_threshold(
     limits: RequestLimits,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
+    let window = window_in_use(s, model, cancel).await?;
     let view = model_view(s, cancel).await?;
     let request = RequestView::new(&view, &model.model, limits);
-    if over_token_threshold(s, &request) {
+    if over_token_threshold(s, &request, window) {
         return Ok(true);
     }
     let system_prompt = cancel.guard(s.runtime.system_prompt()).await?;
@@ -142,8 +153,10 @@ pub(super) async fn compacting<T>(
 /// Before a turn: one pass when the history is over the current model's
 /// token threshold; a request's size is checked before each request.
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
+    let model = s.read(|core| core.model.clone());
+    let window = window_in_use(s, &model, cancel).await?;
     let view = model_view(s, cancel).await?;
-    let over = s.read(|core| over_token_threshold(s, &core.request_view(&view)));
+    let over = s.read(|core| over_token_threshold(s, &core.request_view(&view), window));
     if over {
         compacting(s, run_pass(s, cancel)).await?;
     }
@@ -395,6 +408,10 @@ impl SessionRuntime for CopyRuntime {
 
     fn system_prompt(&self) -> LocalBoxFuture<'_, String> {
         self.session.system_prompt()
+    }
+
+    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
+        self.session.context_window(model)
     }
 
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {
