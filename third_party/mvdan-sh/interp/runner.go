@@ -107,6 +107,9 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 				}
 			}
 
+			ownedPath := &procSubstPath{path: path}
+			ownedPath.remaining.Store(2) // receiving statement and substitution task
+			r.procSubstPaths = append(r.procSubstPaths, ownedPath)
 			r2 := r.subshell(true)
 			stdout := r.origStdout
 			// TODO: note that `man bash` mentions that `wait` only waits for the last
@@ -130,9 +133,10 @@ func (r *Runner) fillExpandConfig(ctx context.Context) {
 					*bg.exit = r2.exit
 					close(bg.done)
 				}()
-				// The FIFO path belongs to the task even when opening it fails.
+				// Cancellation can finish this task before the receiving command
+				// opens the FIFO. That statement retains its own path ownership.
 				defer func() {
-					if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+					if err := ownedPath.release(); err != nil {
 						r2.exit.fatal(err)
 					}
 				}()
@@ -363,6 +367,16 @@ func (r *Runner) stmt(ctx context.Context, st *syntax.Stmt) {
 }
 
 func (r *Runner) stmtSync(ctx context.Context, st *syntax.Stmt) {
+	oldPaths := r.procSubstPaths
+	r.procSubstPaths = nil
+	defer func() {
+		for _, path := range r.procSubstPaths {
+			if err := path.release(); err != nil {
+				r.exit.fatal(err)
+			}
+		}
+		r.procSubstPaths = oldPaths
+	}()
 	oldIn, oldOut, oldErr := r.stdin, r.stdout, r.stderr
 	oldFiles := r.extraFiles
 	if len(st.Redirs) > 0 {

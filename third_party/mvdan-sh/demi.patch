@@ -12,17 +12,20 @@
  
  	// execHandler is responsible for executing programs. It must not be nil.
  	execHandler ExecHandlerFunc
-@@ -152,6 +155,9 @@
+@@ -152,6 +155,12 @@
  	// subshells do not share nor inherit the background PIDs they can wait for.
  	bgProcs []bgProc
  
 +	// tasks links every subshell to its job, independently of shell-visible wait IDs.
 +	tasks *taskGroup
 +
++	// procSubstPaths belongs to the current statement, not nested statements.
++	procSubstPaths []*procSubstPath
++
  	opts runnerOpts
  
  	origDir    string
-@@ -173,6 +179,11 @@
+@@ -173,6 +182,11 @@
  	// It is consumed by the enclosing statement once it finishes.
  	keepRedirs bool
  
@@ -34,7 +37,7 @@
  	// Fake signal callbacks
  	callbackErr  string
  	callbackExit string
-@@ -250,6 +261,10 @@
+@@ -250,6 +264,10 @@
  }
  
  type bgProc struct {
@@ -45,7 +48,7 @@
  	// closed when the background process finishes,
  	// after which point the result fields below are set.
  	done chan struct{}
-@@ -271,6 +286,7 @@
+@@ -271,6 +289,7 @@
  func New(opts ...RunnerOption) (*Runner, error) {
  	r := &Runner{
  		usedNew:        true,
@@ -53,7 +56,7 @@
  		openHandler:    DefaultOpenHandler(),
  		readDirHandler: DefaultReadDirHandler2(),
  		statHandler:    DefaultStatHandler(),
-@@ -616,7 +632,7 @@
+@@ -616,7 +635,7 @@
  // context cannot stop a blocked standard input read.
  func StdIO(in io.Reader, out, err io.Writer) RunnerOption {
  	return func(r *Runner) error {
@@ -62,7 +65,7 @@
  		if _err != nil {
  			return _err
  		}
-@@ -880,7 +896,11 @@
+@@ -880,7 +899,11 @@
  	// reset the internal state
  	*r = Runner{
  		Env:            r.Env,
@@ -74,7 +77,7 @@
  		callHandler:    r.callHandler,
  		execHandler:    r.execHandler,
  		openHandler:    r.openHandler,
-@@ -1037,6 +1057,18 @@
+@@ -1037,6 +1060,18 @@
  	return nil
  }
  
@@ -93,7 +96,7 @@
  // Exited reports whether the last Run call should exit an entire shell. This
  // can be triggered by the "exit" built-in command, for example.
  //
-@@ -1071,8 +1103,12 @@
+@@ -1071,8 +1106,12 @@
  	// sensitive ones like [errgroup.Group], and to do deep copies of slices.
  	r2 := &Runner{
  		Dir:            r.Dir,
@@ -106,20 +109,21 @@
  		callHandler:    r.callHandler,
  		execHandler:    r.execHandler,
  		openHandler:    r.openHandler,
-@@ -1090,8 +1126,12 @@
+@@ -1089,9 +1128,13 @@
+ 		lastExit:       r.lastExit,
  
  		origStdout: r.origStdout, // used for process substitutions
- 	}
++	}
 +	if r.scopeState != nil {
 +		r2.scopeState = r.scopeState.Clone()
-+	}
+ 	}
  	r2.writeEnv = newOverlayEnviron(r.writeEnv, background)
  	// Funcs are copied, since they might be modified.
 +	r2.extraFiles = maps.Clone(r.extraFiles)
  	r2.Funcs = maps.Clone(r.Funcs)
  	r2.Vars = make(map[string]expand.Variable)
  	r2.alias = maps.Clone(r.alias)
-@@ -1101,3 +1141,29 @@
+@@ -1101,3 +1144,29 @@
  	r2.didReset = true
  	return r2
  }
@@ -510,7 +514,7 @@
  	}
 --- /dev/null
 +++ b/interp/demi_lifecycle_test.go
-@@ -0,0 +1,503 @@
+@@ -0,0 +1,569 @@
 +//go:build unix
 +
 +package interp_test
@@ -620,6 +624,72 @@
 +	case <-stopped:
 +	default:
 +		t.Fatal("job completed before its nested handler stopped")
++	}
++}
++
++// The receiving function waits for the substitution before opening its path.
++// Completion and cancellation are ordered with wait, without a timer.
++func TestProcessSubstitutionPathLivesUntilCommandReturns(t *testing.T) {
++	for _, scenario := range []struct {
++		name   string
++		source string
++	}{
++		{"completed reader", `consume() { rendezvous "$1"; wait; reopen "$1"; }; consume <(true)`},
++		{"completed writer", `consume() { rendezvous "$1"; wait; reopen "$1"; }; consume >(true)`},
++		{"cancelled reader", `consume() { terminate "$!"; wait; reopen "$1"; }; consume <(true)`},
++		{"cancelled writer", `consume() { terminate "$!"; wait; reopen "$1"; }; consume >(true)`},
++	} {
++		t.Run(scenario.name, func(t *testing.T) {
++			dir := t.TempDir()
++			var peer *os.File
++			var path string
++			t.Cleanup(func() {
++				if peer != nil {
++					peer.Close()
++				}
++			})
++			r, err := interp.New(
++				interp.Env(expand.ListEnviron("TMPDIR="+dir)),
++				interp.ExecHandlers(func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
++					return func(ctx context.Context, args []string) error {
++						switch args[0] {
++						case "terminate":
++							return interp.HandlerCtx(ctx).TerminateBackground(args[1], 143)
++						case "rendezvous":
++							path = args[1]
++							var err error
++							peer, err = os.OpenFile(path, os.O_RDWR, 0)
++							return err
++						case "reopen":
++							path = args[1]
++							file, err := os.OpenFile(args[1], os.O_RDWR, 0)
++							if err != nil {
++								return fmt.Errorf("receiving command lost its FIFO: %w", err)
++							}
++							return file.Close()
++						default:
++							return next(ctx, args)
++						}
++					}
++				}),
++			)
++			if err != nil {
++				t.Fatal(err)
++			}
++			ctx, cancel := context.WithCancel(t.Context())
++			defer func() {
++				cancel()
++				r.Wait()
++			}()
++			err = r.Run(ctx, script(t, scenario.source))
++			if err != nil {
++				t.Fatal(err)
++			}
++			r.Wait()
++			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
++				t.Fatalf("FIFO after command returned: got %v, want not exist", err)
++			}
++		})
 +	}
 +}
 +
@@ -1474,6 +1544,36 @@
 +func openFIFO(ctx context.Context, path string, flags int) (io.ReadWriteCloser, error) {
 +	return nil, fmt.Errorf("process substitution is unsupported on this platform")
 +}
+--- /dev/null
++++ b/interp/procsubst.go
+@@ -0,0 +1,27 @@
++// Copyright (c) 2026, the Demi contributors
++// See LICENSE for licensing information
++
++package interp
++
++import (
++	"os"
++	"sync/atomic"
++)
++
++// procSubstPath keeps a FIFO named until both its receiving statement and its
++// substitution task finish. Neither owner waits for the other during cleanup:
++// the receiving statement may itself run the wait builtin.
++type procSubstPath struct {
++	path      string
++	remaining atomic.Int32
++}
++
++func (p *procSubstPath) release() error {
++	if p.remaining.Add(-1) != 0 {
++		return nil
++	}
++	if err := os.Remove(p.path); err != nil && !os.IsNotExist(err) {
++		return err
++	}
++	return nil
++}
 --- a/interp/runner.go
 +++ b/interp/runner.go
 @@ -12,6 +12,7 @@
@@ -1492,7 +1592,14 @@
  			r2.exit.exiting = false // subshells don't exit the parent shell
  			r.lastExpandExit = r2.exit
  			if r2.exit.fatalExit {
-@@ -109,50 +111,60 @@
+@@ -105,54 +107,68 @@
+ 				}
+ 			}
+ 
++			ownedPath := &procSubstPath{path: path}
++			ownedPath.remaining.Store(2) // receiving statement and substitution task
++			r.procSubstPaths = append(r.procSubstPaths, ownedPath)
+ 			r2 := r.subshell(true)
  			stdout := r.origStdout
  			// TODO: note that `man bash` mentions that `wait` only waits for the last
  			// process substitution as long as it is $!; the logic here would mean we wait for all of them.
@@ -1518,9 +1625,10 @@
  					*bg.exit = r2.exit
  					close(bg.done)
  				}()
-+				// The FIFO path belongs to the task even when opening it fails.
++				// Cancellation can finish this task before the receiving command
++				// opens the FIFO. That statement retains its own path ownership.
 +				defer func() {
-+					if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
++					if err := ownedPath.release(); err != nil {
 +						r2.exit.fatal(err)
 +					}
 +				}()
@@ -1578,7 +1686,7 @@
  			return path, nil
  		},
  	}
-@@ -292,6 +304,9 @@
+@@ -292,6 +308,9 @@
  }
  
  func (r *Runner) stop(ctx context.Context) bool {
@@ -1588,7 +1696,7 @@
  	// Some traps trigger on exit, so we do want those to run.
  	if !r.handlingTrap && (r.exit.returning || r.exit.exiting) {
  		return true
-@@ -316,25 +331,43 @@
+@@ -316,25 +335,53 @@
  		st2 := *st
  		st2.Background = false
  		st2.Disown = false
@@ -1629,6 +1737,16 @@
  }
  
  func (r *Runner) stmtSync(ctx context.Context, st *syntax.Stmt) {
++	oldPaths := r.procSubstPaths
++	r.procSubstPaths = nil
++	defer func() {
++		for _, path := range r.procSubstPaths {
++			if err := path.release(); err != nil {
++				r.exit.fatal(err)
++			}
++		}
++		r.procSubstPaths = oldPaths
++	}()
  	oldIn, oldOut, oldErr := r.stdin, r.stdout, r.stderr
 +	oldFiles := r.extraFiles
 +	if len(st.Redirs) > 0 {
@@ -1637,7 +1755,7 @@
  	var closers []io.Closer
  	for _, rd := range st.Redirs {
  		cls, err := r.redir(ctx, rd)
-@@ -377,6 +410,7 @@
+@@ -377,6 +424,7 @@
  		r.keepRedirs = false
  	} else if len(st.Redirs) > 0 {
  		r.stdin, r.stdout, r.stderr = oldIn, oldOut, oldErr
@@ -1645,7 +1763,7 @@
  		for _, cls := range closers {
  			cls.Close()
  		}
-@@ -498,7 +532,7 @@
+@@ -498,7 +546,7 @@
  				r.stmt(ctx, cm.Y)
  			}
  		case syntax.Pipe, syntax.PipeAll:
@@ -1654,7 +1772,7 @@
  			if err != nil {
  				r.exit.fatal(err) // not being able to create a pipe is rare but critical
  				return
-@@ -515,6 +549,7 @@
+@@ -515,6 +563,7 @@
  			var wg sync.WaitGroup
  			wg.Go(func() {
  				r2.stmt(ctx, cm.X)
@@ -1662,7 +1780,7 @@
  				r2.exit.exiting = false // subshells don't exit the parent shell
  				pw.Close()
  			})
-@@ -522,6 +557,7 @@
+@@ -522,6 +571,7 @@
  			pr.Close()
  			wg.Wait()
  			r.stdin = oldIn
@@ -1670,7 +1788,7 @@
  			if r.opts[optPipeFail] && !r2.exit.ok() && r.exit.ok() {
  				r.exit = r2.exit
  			}
-@@ -945,8 +981,8 @@
+@@ -945,8 +995,8 @@
  	}
  }
  
@@ -1681,7 +1799,7 @@
  	if err != nil {
  		return nil, err
  	}
-@@ -955,10 +991,10 @@
+@@ -955,10 +1005,10 @@
  	// as pipe writes may block once the buffer gets full.
  	// We still construct and buffer the entire heredoc first,
  	// as doing it concurrently would lead to different semantics and be racy.
@@ -1694,7 +1812,7 @@
  	return pr, nil
  }
  
-@@ -1034,7 +1070,7 @@
+@@ -1034,7 +1084,7 @@
  func (r *Runner) redir(ctx context.Context, rd *syntax.Redirect) (io.Closer, error) {
  	// Note that Hdoc is nil for an empty here-document.
  	if rd.Op == syntax.Hdoc || rd.Op == syntax.DashHdoc {
@@ -1703,7 +1821,7 @@
  		if err != nil {
  			return nil, err
  		}
-@@ -1043,36 +1079,55 @@
+@@ -1043,36 +1093,55 @@
  	}
  
  	orig := &r.stdout
@@ -1765,7 +1883,7 @@
  		switch arg {
  		case "1":
  			*orig = r.stdout
-@@ -1081,18 +1136,48 @@
+@@ -1081,18 +1150,48 @@
  		case "-":
  			*orig = io.Discard // closing the output writer
  		default:
@@ -1818,7 +1936,7 @@
  		}
  		return nil, nil
  	default:
-@@ -1100,22 +1185,34 @@
+@@ -1100,22 +1199,34 @@
  	}
  	mode := os.O_RDONLY
  	switch rd.Op {
@@ -1856,7 +1974,7 @@
  	case syntax.RdrOut, syntax.AppOut:
  		*orig = f
  	case syntax.RdrAll, syntax.AppAll:
-@@ -1127,6 +1224,20 @@
+@@ -1127,6 +1238,20 @@
  	return f, nil
  }
  
@@ -1877,7 +1995,7 @@
  func (r *Runner) loopStmtsBroken(ctx context.Context, stmts []*syntax.Stmt) bool {
  	oldInLoop := r.inLoop
  	r.inLoop = true
-@@ -1180,7 +1291,7 @@
+@@ -1180,7 +1305,7 @@
  		r.exit.returning = false
  		return
  	}
@@ -1886,7 +2004,7 @@
  		r.exit = r.builtin(ctx, pos, name, args[1:])
  		return
  	}
-@@ -1202,7 +1313,9 @@
+@@ -1202,7 +1327,9 @@
  	dir, name := filepath.Split(path)
  	dir = strings.TrimSuffix(dir, "/")
  	if dir == r.tempDir && strings.HasPrefix(name, fifoNamePrefix) {
@@ -1897,7 +2015,7 @@
  	}
  
  	f, err := r.openHandler(r.handlerCtx(ctx, handlerKindOpen, todoPos), path, flags, mode)
-@@ -1234,3 +1347,10 @@
+@@ -1234,3 +1361,10 @@
  	path := absPath(r.Dir, name)
  	return r.accessHandler(r.handlerCtx(ctx, handlerKindAccess, todoPos), path, mode)
  }
