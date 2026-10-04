@@ -28,7 +28,7 @@ Contracts and crate boundaries
 | Commands | Native operations run beside their files; RPC invokes the correct node's backend handler and scoped storage | [Commands](../execution/commands.md) |
 | Plugins | Every agent capability beyond the runtime's tools and groups and `demi host` is a plugin; each plugin passes its tests through the JSON loopback transport; the agent runtime names no plugin | [Plugins](../architecture/plugins.md) |
 | Skills | Sources fetch and pin; a repository's own skills are found without waking a Host; the catalog of the skills that are available reaches every node as context; user skills' directories install on a Host before a job needs them | [Skills](../agent/skills.md#acceptance) |
-| Backend and storage | Scripted turns persist and recover; each user's work runs in that user's shard; metadata, journal, blobs, and command state respect ownership boundaries | [Backend](../backend/backend.md), [Storage](../backend/storage.md), [Concurrency](../architecture/concurrency.md) |
+| Backend and storage | Scripted turns persist and recover; each user's work runs in that user's shard; metadata, journal, and blobs respect ownership boundaries | [Backend](../backend/backend.md), [Storage](../backend/storage.md), [Concurrency](../architecture/concurrency.md) |
 | Providers | Configured entries, accounts, model catalogs, and reported usage work through scripted endpoints without credential disclosure | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
 | Devices and targets | Claim/reconnect/revoke and target exchange preserve attribution, context, and execution-tree admission | [Sessions and targets](../execution/sessions-and-targets.md) |
 | Resource lifecycle | One conversation idle rule stops idle Cloud machines and releases idle conversations on paired devices and running Clouds; no cleanup wake or orphan state | [Conversation idle and Host resource release](../execution/resource-lifecycle.md#acceptance) |
@@ -57,8 +57,8 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    group whose package the catalog does not serve, the runtime without a
    harness (the product's dependencies, context sources that name their
    source and see only their blocks since the last compaction, profiles as
-   data, no harness name in a checkpoint), and the commands of `plugin-todo`,
-   `plugin-file` and `plugin-browser`. `agent-coding-harness` is removed.
+   data, no harness name in a checkpoint), and the commands of `plugin-file`
+   and `plugin-browser`. `agent-coding-harness` is removed.
    Done.
 2. **The page-facing plugins.** `plugin-browser`'s `browser` user stream and
    its tab methods over package calls; and `plugin-expose` with `demi expose`, its numbers, the conversation hosts and

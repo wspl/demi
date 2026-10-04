@@ -73,25 +73,19 @@ The agent server coordinates admission with the node's children. Editing
 requires no active action, queued message, pending steer, pending agent
 message, scheduled wakeup, live child, child start or close in progress, or
 child completion awaiting delivery. Admission excludes competing actions and
-completion delivery while the edit is prepared and committed, and the node's
-command storage refuses storage messages during that window
-([Command state history](command-state-history.md#fork-and-editing)). The
+completion delivery while the edit is prepared and committed. The
 reservation ends when the edit is accepted or rejected: the replacement's turn
 may start and close children again.
 
 ### Commit and idempotency
 
 The conversation's store commits the rewritten transcript rows, the checkpoint
-state with the operation's receipt, and the restored command state in one
-transaction. Preparation and persistence failures preserve the accepted
+state with the operation's receipt in one transaction. Preparation and persistence failures preserve the accepted
 history. A successful commit accepts the replacement even if inference then
 fails. A disconnect does not cancel an accepted edit.
 
-The session restores command storage to the version recorded before the target
-`user` block, in the same commit as the rewritten transcript
-([Command state history](command-state-history.md)). Files, completed child
-records, and the external effects of tools that already ran stay outside this
-restore.
+Files, completed child records, and the external effects of tools that already
+ran stay as they are: the edit rewrites the transcript only.
 
 The `edit_result` of an accepted edit follows the rewrite's `replace` patch
 and comes before any frame of the replacement's turn. Both follow the commit:
@@ -239,7 +233,7 @@ inference items and on patch sequences.
 | An active action, queued message, pending steer, pending agent message, wakeup, live child, or undelivered completion | Editing is rejected without deleting, consuming, or silently cancelling that work. |
 | A send, a model or target change, a child resume, or a completion delivery races with the edit | Exactly one admissible ordering takes effect; the loser observes busy or conflict, or operates on the committed state. A model switch always waits and lands on the committed state ([Model switch](runtime.md#model-switch)). Nothing enters the preparation window. |
 | The target is a `steer`, `context`, `wakeup`, or `agent_message` block, or a block the model produced | The edit is rejected without mutation. |
-| Completed external effects | A file written in the removed suffix and an archived child record remain; command state returns to the version before the edited message; delivered child completions are not replayed because their blocks in the parent were removed. |
+| Completed external effects | A file written in the removed suffix and an archived child record remain; delivered child completions are not replayed because their blocks in the parent were removed. |
 
 ## Durability and failure boundaries
 

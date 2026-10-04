@@ -34,7 +34,6 @@ layout and interaction; these documents do not repeat it.
 - [Failures and recovery](agent/failures-and-recovery.md): the failure record and how it is read, retries, and resuming an interrupted turn.
 - [Message editing](agent/message-editing.md): editing and resending a message as one transaction.
 - [Conversation fork](agent/conversation-fork.md): forking a conversation from a block, with its seed, publication and subagents.
-- [Command state history](agent/command-state-history.md): versioned command storage, history boundaries and compare-and-set updates.
 - [Skills](agent/skills.md): the Agent Skills format, user skills from git sources, project skills from the repository, the catalog the model sees, and the settings section.
 
 ## Where does work execute, and how do commands run?

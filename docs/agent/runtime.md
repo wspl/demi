@@ -41,9 +41,8 @@ protocol, and the tree store contract. Related rules have their own homes:
   [Compaction](compaction.md).
 - Provider failures, retries and recovering an unfinished turn:
   [Failures and recovery](failures-and-recovery.md).
-- [Message editing](message-editing.md),
-  [Conversation Fork](conversation-fork.md) and
-  [Command state history](command-state-history.md).
+- [Message editing](message-editing.md) and
+  [Conversation Fork](conversation-fork.md).
 - The thread a session runs on: [the user's shard](../architecture/concurrency.md#the-user-shard).
 - The crates that implement it: [Crates](../architecture/crates-and-packages.md#crates).
 
@@ -194,8 +193,7 @@ A session is disposed when its tree closes: a `close` frame, the eviction of an
 idle detached tree ([Frame protocol](#frame-protocol)), or backend shutdown.
 Dispose does the following:
 
-1. Refuses new actions and invalidates the node's outstanding command-storage
-   handles.
+1. Refuses new actions.
 2. Stops the running action as a shutdown. The human steers still pending
    are written, running tool calls complete as
    `Tool call aborted: <tool>`, and an `error` block with the code
@@ -430,7 +428,7 @@ Everything else the agent does runs as commands in the shell
 ([Commands](../execution/commands.md)). The runtime grafts its own groups,
 `demi agent` ([Subagents](subagents.md)) and `demi shell`
 ([The whole output](#the-whole-output)), into each node's command set; the
-others, such as `demi file`, `demi todo`, `demi browser` and `demi host`, come
+others, such as `demi file`, `demi browser` and `demi host`, come
 from the command set the product supplies. A tool call whose name is not one of
 the five completes as an error `Tool not found: <name>`.
 
@@ -756,7 +754,6 @@ that replays it, and a short number is copied without a slip.
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
 | A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
 | An element reference | `e37` | Its tab | The conversation browser, as it observes the tab |
-| A todo | `T3` | The agent's todo list | The todo command |
 | An expose | `2` | The user | The backend, when the expose is added ([Commands](../execution/expose.md#commands)) |
 | A host | Its name, as `demi host list` shows it | The conversation's hosts | The user ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
 
@@ -805,7 +802,7 @@ Words used for session data:
 | `abort` | Stop | Nothing | Yes, until the turn is continued and `isResumed` is set |
 | `thinking` | The provider: reasoning text and its signature | The text; a signed block whole | Yes |
 | `redacted_thinking` | The provider: opaque reasoning data | The data, whole | No |
-| `text` | The provider: assistant text, marked `forkable` once complete ([Conversation Fork](conversation-fork.md)) | The text | Yes |
+| `text` | The provider: assistant text, marked `forkable` once complete ([Eligibility](conversation-fork.md#eligibility)) | The text | Yes |
 | `tool_call` | The provider's call, completed by the session with the result | The call and, once completed, its result | Yes |
 | `response` | The provider: the usage of one completed request | Nothing; its usage anchors the context estimate | No |
 | `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)) | Nothing | Yes |
@@ -1441,13 +1438,12 @@ puts the media that enter its transcript and reads back those its requests
 send ([Media](#media)): a put names bytes by their SHA-256, and a get answers
 a blob's bytes or that the namespace does not hold it.
 
-A node's checkpoint has three parts:
+A node's checkpoint has two parts:
 
 | Part | Holds |
 | --- | --- |
 | Transcript rows | One row per block, by index |
 | State row | The phase; the queued messages, each `{ id, content }`; the agent messages waiting for a boundary; the yield wakeups not yet in the transcript, each with its id, its duration and its due time once its action ended; the working directory; the model selection; the accepted edit receipts |
-| Command state | Its versions and boundary references ([Command state history](command-state-history.md)) |
 
 Human pending steers are not part of it. Creating,
 closing, reopening and deleting nodes, and delivering subagent completions, are
@@ -1456,19 +1452,14 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
 ### Saving
 
 - A save carries only what changed: the changed block rows in ascending index,
-  the block count (rows at or beyond it are deleted), the state row, and the
-  new command-state versions and boundaries. The store commits a save in one
-  transaction.
-- A session has one save in progress at a time. Saves, command-state commits,
-  the boundary captured when assistant text completes, history rewrites and
+  the block count (rows at or beyond it are deleted), and the state row. The
+  store commits a save in one transaction.
+- A session has one save in progress at a time. Saves, history rewrites and
   edit commits run in the order they were requested. A running turn never
   holds this order while it waits for a provider, a tool or a context source,
-  so a tool's command-storage write can commit meanwhile.
+  so the scheduled saves of its progress commit meanwhile.
 - A save that has started always finishes: Stop does not cancel it, and it
-  took effect exactly when the store reports success. Right before its
-  transaction, the store checks the save's guard: a command-storage write from
-  an invocation that a history rewrite or dispose has invalidated fails
-  instead of committing ([Command state history](command-state-history.md)).
+  took effect exactly when the store reports success.
 - A change schedules a save one second after the first unsaved change. These
   points save at once: before tools are dispatched, after a `context` block,
   when an action ends, when an agent message is admitted or written, on a
@@ -1476,15 +1467,15 @@ atomic commits of the same store ([Persistence](subagents.md#persistence)).
   action records the phase idle, so a checkpoint that says an action was
   running is one the process died in; clients see the phase go idle only once
   that save has committed ([A turn](#a-turn)).
-- A save is due when the transcript, command state, edit receipts, the queue,
+- A save is due when the transcript, edit receipts, the queue,
   the waiting agent messages or the model selection changed. The phase alone
   never makes a save due.
 - A scheduled save that fails is reported as an `error` frame, and its rows are
   saved with the next change. When the save at the end of an action fails, the
   action fails.
 - A history rewrite is saved before it is published: the store commits the
-  retained rows with the command state of the cut, then the session adopts them
-  and publishes one `replace` patch.
+  retained rows, then the session adopts them and publishes one `replace`
+  patch.
 - A save writes its rows as they are. Their media are references whose blobs
   were stored when the media entered, and a block or a queued message has no
   place for bytes ([Media](#media)), so a save stores no blob.

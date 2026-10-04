@@ -138,8 +138,8 @@ records its metadata so publication can recover after interruption. A source the
 answers 404 `conversation_not_found`; the destination UUID of another creation
 attempt, with another source or block, 409 `fork_conflict`; a UUID another
 conversation holds, 409 `id_unavailable`; and a block that is not a completed
-assistant text of the source's history, 400 `invalid_fork_target`. History
-boundary and command-state semantics belong to
+assistant text of the source's history, 400 `invalid_fork_target`. Which
+texts can end a Fork, and what the destination keeps, belong to
 [Conversation Fork](../agent/conversation-fork.md).
 
 ## Workspaces, devices, and attached hosts

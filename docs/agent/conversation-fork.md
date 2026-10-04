@@ -11,9 +11,7 @@ Fork behavior:
 - Its title is the source title followed by ` (Fork)`.
 - Source activity does not block Fork. A running source continues running.
 - A completed assistant text message is the branch point. Streaming text
-  becomes eligible after it finishes.
-- Command storage keeps a general-purpose version history, including todo
-  state, under the [command state history](command-state-history.md) contract.
+  becomes eligible after it finishes ([Eligibility](#eligibility)).
 - Fork keeps the subagent references and results already in the root
   transcript. The destination starts with no inherited subagents.
 
@@ -26,8 +24,6 @@ Creation defaults:
 - Inherit the source's model settings, the selection its record holds
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
   and its workspace or device selection.
-- Restore command state, including todos, at the selected message's boundary
-  according to [Command state history](command-state-history.md#fork-and-editing).
 - Keep the source's unsent composer draft in the source.
 - Leave the destination unpinned and unarchived, with a new creation time.
 - Each explicit Fork appends the suffix literally, including when the source
@@ -62,9 +58,8 @@ web app needs no new conversation-socket frame for this product action.
 
 The agent server has two Fork operations: prepare an owned seed from a source,
 and initialize a destination root from that seed. The seed is a root
-checkpoint: the retained transcript, the command state with the versions its
-boundaries reference, a model selection and the cwd. It
-holds no source runtime or persistence handle. The backend gives the seed the
+checkpoint: the retained transcript, a model selection and the cwd. It holds
+no source runtime or persistence handle. The backend gives the seed the
 model selection of the source's record, which the Fork operation records, so
 the destination's root and its record start with the same one.
 
@@ -86,9 +81,24 @@ does not silently substitute another message or repair an invalid prefix. The
 prefix ends at the selected text; response usage after it is excluded. Provider
 replay uses the retained user, assistant, and tool content normally.
 
-The command-state version is the one bound to the selected assistant message's
-completion, not the source's current version. The retained history carries the
-versions needed for a further Fork or an edit in the destination.
+### Eligibility
+
+The transcript alone decides which text can end a Fork. The session marks a
+`text` block `forkable` when its text is complete: when the provider's answer
+moves on to anything other than more of that text, such as thinking or a tool
+call, or when the response ends. Text that a failed request cut off stays
+unmarked, and so does text that follows a tool call still executing. The mark
+is part of the block, so it is saved and restored with it, and the web app
+offers the Fork action only on a marked block.
+
+A Fork's target must be a marked `text` block, and no tool call before it may
+still be executing. Otherwise the Fork is refused with
+`The Fork target must be a completed assistant message` or
+`The Fork boundary contains unfinished tool calls`, and nothing is created.
+
+For example, while the source streams `A2` in `U1 → A1 → U2 → A2`, `A2` is
+unmarked: a Fork on it is refused, and a Fork on `A1` succeeds. When the
+response ends, `A2` is marked and a Fork on it keeps all four blocks.
 
 The destination starts idle, with an empty queue and a new root identity. It
 has no inherited wakeup, pending steer, pending agent message, edit receipt,
@@ -159,20 +169,16 @@ respects the explicit path after a wakeup and a restart.
 
 Attached-host names and directories are copied as configuration; a device
 revoked before the destination is published is left out, as its revocation
-detached it from the source. Processes, shell handles, and jobs are not copied. The destination's first ordinary
-execution uses its own node identity and command storage on the shared
-filesystem.
-
-Versioned command storage is a prerequisite of this Fork design. Its snapshot,
-message-boundary, and atomic restore contracts are defined in
-[Command state history](command-state-history.md).
+detached it from the source. Processes, shell handles, and jobs are not copied.
+The destination's first ordinary execution uses its own node identity on the
+shared filesystem.
 
 ## Subagents
 
 The destination is a new root with its own empty set of children. The retained
 root transcript includes earlier subagent tool calls, IDs, and results exactly
-as recorded. Fork copies no child session records, child transcripts, child
-command state, running jobs, or pending completion deliveries.
+as recorded. Fork copies no child session records, child transcripts, running jobs,
+or pending completion deliveries.
 
 For example, the source starts child S, finishes assistant message A1, and then
 S continues working. Fork after A1 keeps the root's record of starting S. S
@@ -194,8 +200,7 @@ and ordinary child ownership define the behavior.
 Acceptance uses scripted providers and local fixtures, never a real model.
 
 - Exact retained history and model replay for an early, a middle, and the
-  latest text cutoff, with tool results, media, compaction, and command-state
-  versions.
+  latest text cutoff, with tool results, media, and compaction.
 - A Fork from a completed message while the source streams, runs tools, or
   receives a child completion: the source keeps running, and its later changes
   do not enter the Fork.

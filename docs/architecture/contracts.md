@@ -267,16 +267,14 @@ host of the Rust code. Two such protocols exist:
 
 The constraint that keeps this possible: everything a plugin, or an `rpc`
 handler, receives is expressible as messages. That covers its arguments,
-byte IO, working directory, environment, cancellation, command storage, its
-values and blobs, and the Host directories it keeps. The command system
+byte IO, working directory, environment, cancellation, its values and blobs, and the Host directories it keeps. The command system
 dispatches through `RpcHandler` with a serializable `RpcInvocation` and an
 `RpcPort` whose every operation is a message, and the plugin port extends the
 same rule to the plugin's other requests. A plugin never receives a live
-object, such as a Host handle or a callback into the backend. This is why
-command storage and a plugin's values change by versioned compare-and-set
-rather than by a callback inside a transaction
-([Command state history](../agent/command-state-history.md)), and why a
-plugin names the directories a Host must hold instead of writing to a Host.
+object, such as a Host handle or a callback into the backend. This is why a
+plugin's values change by versioned compare-and-set rather than by a callback
+inside a transaction, and why a plugin names the directories a Host must hold
+instead of writing to a Host.
 
 ## Logic the web app and backend share
 
