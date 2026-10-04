@@ -27,7 +27,7 @@ Its runner release must name the embedded runner executable, and each command
 package release must have its artifact for the image's target embedded under
 that artifact's content-addressed path. The SHA-256 of the exact manifest file
 bytes is `baseVersion`; one hash names one immutable build. The manifest's type
-is defined once, in the `machine-manager-protocol` crate: the packaging command
+is defined once, in `internal/machinewire`: the packaging command
 validates a manifest with it before publishing, and the manager validates a
 release with it before importing.
 
@@ -43,7 +43,7 @@ Build amd64 and arm64 separately. Native executable targets are
 [native cross tools](../delivery/builds-and-releases.md) on the developer's
 machine and package only the targets of the Hosts in use. Assemble the Linux
 filesystem on a Linux builder of the image's architecture. Do
-not confuse cross-compiling a Rust executable with validating the complete
+not confuse cross-compiling a Go executable with validating the complete
 image on another architecture.
 
 ## Build pipeline
@@ -90,7 +90,7 @@ second version list in documentation.
 
 Chrome comes from the `demi.browser` release the image embeds, which carries
 the archive pinned in the repository, and is unpacked by the same installer
-that runners use, in the `shared-artifacts` crate, so one implementation
+that runners use, in `internal/artifacts`, so one implementation
 verifies and unpacks it everywhere. uv is checked
 against a digest pinned in the repository: a digest fetched from the same
 release as uv would prove only that the download arrived intact, not that it is

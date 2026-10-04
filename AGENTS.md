@@ -224,7 +224,7 @@ When to panic].
 
 - One work package is one checkpoint, committed and pushed once. While writing, run only `cargo check` and the test that covers the code; run the work package's checks once at its end.
 - Build and test with one Cargo selection everywhere: `cargo check --workspace --all-targets --features demi-runner/test-fixtures` and `cargo test --workspace --features demi-runner/test-fixtures`, adding `--test <name>` for one target. Never `-p <crate>` for a test build: each selection keeps its own copy of the dependencies, and switching has cost 140 s a time.
-- Keep test binaries few: each crate has one (`crates-and-packages.md` § Module layout), such as `crates/runner/tests/runner/` and `crates/command-package-browser/tests/browser/`, and the crate boundary check enforces it; a test gets a binary of its own only when it changes or saturates process-wide state. Each binary costs a link and, when newly built, a first-launch check of about three seconds here. TypeScript tests never build a program: `bun run test` builds them and runs the suite in parallel; to run some tests, build first and set `DEMI_TEST_PROGRAMS=target/debug`.
+- Keep test binaries few: each crate has one (`packages.md` § Module layout), such as `crates/runner/tests/runner/` and `crates/command-package-browser/tests/browser/`, and the crate boundary check enforces it; a test gets a binary of its own only when it changes or saturates process-wide state. Each binary costs a link and, when newly built, a first-launch check of about three seconds here. TypeScript tests never build a program: `bun run test` builds them and runs the suite in parallel; to run some tests, build first and set `DEMI_TEST_PROGRAMS=target/debug`.
 - Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
 - zsh does not split an unquoted variable into words; pass argument lists as arrays, or run scripts with bash.
 
@@ -267,4 +267,4 @@ When to panic].
 
 # Project References
 
-- `docs/architecture/crates-and-packages.md` is the authoritative contract for crate and package responsibilities, dependencies, and module layout.
+- `docs/architecture/packages.md` is the authoritative contract for crate and package responsibilities, dependencies, and module layout.

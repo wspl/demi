@@ -19,8 +19,8 @@ disk generations of Cloud machines. The
 access and admission; [resource lifecycle](../execution/resource-lifecycle.md)
 owns the idle rule and its clock. [Cloud setup](setup.md) owns deployment
 configuration; [Cloud images](images.md) owns image production.
-[Crates and packages](../architecture/crates-and-packages.md) defines the
-manager's crates and their dependencies.
+[Packages](../architecture/packages.md) defines the
+manager's packages and their dependencies.
 
 ## Provisioning
 
@@ -78,7 +78,7 @@ It runs a program only where no library does the job:
 | Program | Why the manager runs it |
 | --- | --- |
 | `runsc` | The sandbox runtime; the manager drives the pinned distribution through its OCI commands. |
-| `mke2fs`, `e2fsck`, `resize2fs` | Create, check, and grow the ext4 images; no Rust library creates or repairs ext4 filesystems. `resize2fs` both grows a mounted filesystem and completes an interrupted growth offline. |
+| `mke2fs`, `e2fsck`, `resize2fs` | Create, check, and grow the ext4 images; no Go library creates or repairs ext4 filesystems. `resize2fs` both grows a mounted filesystem and completes an interrupted growth offline. |
 | `bsdtar` | Extract a base archive with numeric ownership, modes including setuid bits, ACLs, and extended attributes intact, refusing paths that leave the target directory. |
 
 Filesystem checks and resizes run without a deadline: a repair lasts as long as
@@ -101,8 +101,8 @@ manager -> backend   {"type":"death","deviceId":"<other device>"}
 Each request carries an id the client chooses, an operation, and its
 parameters. The reply names the request and carries a result or an error
 message. A `death` event goes to every connection when a device's sandbox exits
-without being asked to stop. The `machine-manager-protocol` crate defines every
-message, and both the manager and the backend link it.
+without being asked to stop. The `internal/machinewire` package defines every
+message, and both the manager and the backend import it.
 
 - A line holds one message of at most 1 MiB; the largest real message is a few
   kilobytes.
@@ -433,7 +433,7 @@ data, a checkpoint copies each image once, and a reset writes only its new
 system image. Hard links need the working and image directories on one
 filesystem, which startup checks. These durable writes go through the same
 atomic publication that release packaging uses
-([`shared-artifacts`](../architecture/crates-and-packages.md#shared-artifacts)).
+([`internal/artifacts`](../architecture/packages.md#internalartifacts)).
 
 | Failure boundary | Recovery |
 | --- | --- |

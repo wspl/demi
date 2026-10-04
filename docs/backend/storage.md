@@ -448,7 +448,7 @@ save, a history rewrite or an edit would write the original block back, and
 a changed block would change the history a page's editor is built on. The
 pass records the tree as live instead. When a tree is disposed, the shard
 retires its conversation at once, in the same steps, unless the shard is
-closing; the agent server tells it through `ServerDeps::status_changed`.
+closing; the agent server tells it through `server.Deps.StatusChanged`.
 There the gate is waited for rather than left to the next pass, since a
 `close` frame that disposes the tree holds a lease of it while it does; the
 wait ends without a retirement when the tree is live again or the shard
@@ -648,9 +648,9 @@ form that works as stored:
 
 A PHC string records the algorithm and its parameters beside the salt and the
 hash, for example `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, so a stored
-hash stays verifiable if the parameters change. New hashes use the argon2
-crate's default parameters, which are OWASP's minimum configuration for
-argon2id: 19 MiB of memory, two passes, one lane.
+hash stays verifiable if the parameters change. New hashes use OWASP's
+minimum configuration for argon2id: 19 MiB of memory, two passes, one lane
+(`golang.org/x/crypto/argon2`).
 [Authentication and ownership](backend.md#authentication-and-ownership)
 describes how hashing is scheduled and how a login for an unknown address is
 verified.

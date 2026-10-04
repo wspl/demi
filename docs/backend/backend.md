@@ -1,6 +1,6 @@
 # Backend architecture
 
-The backend is the product server, one Rust executable named `demi-backend`
+The backend is the product server, one Go executable named `demi-backend`
 ([Builds and releases](../delivery/builds-and-releases.md) lists its targets).
 It authenticates the web app's requests, hosts conversation agent trees,
 assembles providers and commands, and connects those sessions to devices
@@ -45,28 +45,28 @@ visitors of an expose hostname, whom the public relay serves; and anyone who
 downloads the runner installers. The backend itself calls the machine manager
 over the manager's Unix socket.
 
-| Module | Crate | Responsibility | Design contract |
+| Module | Package | Responsibility | Design contract |
 |---|---|---|---|
-| `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
-| `shard` | `backend-user-shard` | Each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
-| `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
-| `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system), [Web API](../product/web-api.md#user-preferences) |
-| `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Page synchronization](#page-synchronization) |
-| `conversation` | `backend-user-shard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the user's Cloud, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
-| `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` group | [Host operations](../execution/sessions-and-targets.md#host-operations) |
-| `plugins` | `backend-plugins`, `demi-backend` (`plugins`) | The plugin host: the registry and its checks, the command set, instructions, profiles and context sources the agent server is given, each user's instances, the port's operations, page state and page calls (`backend-plugins`); the built-in plugins, in their order of registration (the backend's `plugins`) | [Plugins](../architecture/plugins.md) |
-| `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
-| `lifecycle` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock, the conversation release, and the daily retention pass that retires expired tool media, removes expired command outputs and collects blobs (`backend-user-shard`) | [Conversation idle and Host resource release](../execution/resource-lifecycle.md), [Retention](storage.md#retention) |
-| `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
-| `expose` | `backend-expose` | Expose records and their lifetime, live relay connections | [Host expose](../execution/expose.md) |
-| `llm`, `vault`, `usage` | `backend-providers`, `backend` (`families`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (the backend's `families`) | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
-| `storage` | `backend-database`, `backend-blobs` | The control service, conversation databases and the tree store with its `blob_refs` index and its records of commands' outputs (`backend-database`); the object store with its record of blob uses (`backend-blobs`) | [Storage](storage.md) |
+| `edge` | `internal/backend/edge` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
+| `shard` | `internal/backend/usershard` | Each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
+| `config` | `internal/backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
+| `auth`, `settings` | `internal/backend/accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system), [Web API](../product/web-api.md#user-preferences) |
+| `sync` | `internal/backend/pagesync`, `internal/backend/usershard` | The registry that marks changes on each user's channels (`pagesync`); the pages' synchronization channels with the product state and the parts that changed (`usershard`) | [Page synchronization](#page-synchronization) |
+| `conversation` | `internal/backend/usershard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the user's Cloud, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
+| `host_access` | `internal/backend/hostaccess` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` group | [Host operations](../execution/sessions-and-targets.md#host-operations) |
+| `plugins` | `internal/backend/plugins`, `internal/backend` (`builtins.go`) | The plugin host: the registry and its checks, the command set, instructions, profiles and context sources the agent server is given, each user's instances, the port's operations, page state and page calls (`internal/backend/plugins`); the built-in plugins, in their order of registration (the backend's `plugins`) | [Plugins](../architecture/plugins.md) |
+| `runner` | `internal/backend/runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication and the development store | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
+| `lifecycle` | `internal/backend/idlewatch`, `internal/backend/usershard` | The idle watch (`idlewatch`); the conversation idle clock, the conversation release, and the daily retention pass that retires expired tool media, removes expired command outputs and collects blobs (`usershard`) | [Conversation idle and Host resource release](../execution/resource-lifecycle.md), [Retention](storage.md#retention) |
+| `managed` | `internal/backend/cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
+| `expose` | `internal/backend/expose` | Expose records and their lifetime, live relay connections | [Host expose](../execution/expose.md) |
+| `llm`, `vault`, `usage` | `internal/backend/providers`, `internal/backend` (`BuiltinFamilies`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (`BuiltinFamilies` in `internal/backend`) | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
+| `storage` | `internal/backend/database`, `internal/backend/blobs` | The control service, conversation databases and the tree store with its `blob_refs` index and its records of commands' outputs (`database`); the object store with its record of blob uses (`blobs`) | [Storage](storage.md) |
 
 These are modules of one backend executable, not independently deployed
-services; each lives in the crate the table names, so that a change to one
+services; each lives in the package the table names, so that a change to one
 recompiles only it and what builds on it.
-[Crates and packages](../architecture/crates-and-packages.md#backend-libraries)
-gives each crate's boundary and their layering.
+[Packages](../architecture/packages.md#backend-libraries)
+gives each package's boundary and their layering.
 
 ## Runtime model
 
@@ -276,7 +276,7 @@ route, and inference resolution uses the same scope.
 
 Ordinary product state uses REST with stable error codes and
 `{ code, message }` errors. Every request and response type, and every error
-code, is defined once in the contract crates and generated for the web app
+code, is defined once in the contract packages and generated for the web app
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript));
 [Web API](../product/web-api.md) lists the routes.
 
@@ -578,13 +578,12 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    the Cloud through a
    [Cloud image refresh](../delivery/builds-and-releases.md#cloud-image-refresh);
    a command program's change reaches it through the development store.
-4. Build the backend with the one Cargo selection and start it from the
-   repository root. The public URL must be the one the manager allows
+4. Build the backend and start it from the repository root. The public URL must be the one the manager allows
    (`DEMI_MANAGED_BACKEND_URL`): the Cloud's runner, the installers and the
    development store's downloads use it.
 
    ```sh
-   cargo build --workspace --all-targets --features demi-runner/test-fixtures
+   go build -o .cache/bin/demi-backend ./cmd/demi-backend
    DEMI_BACKEND_DATA=~/.demi/development \
    DEMI_INSTANCE_MODE=isolated \
    DEMI_BACKEND_PUBLIC_URL=http://<address the guest reaches>:3271 \
@@ -592,7 +591,7 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    DEMI_NATIVE_CONFIG=.cache/releases/native.json \
    DEMI_RUNNER_RELEASE_DIR=.cache/releases/runners \
    DEMI_EXPOSE_DOMAIN=expose.localhost \
-   target/debug/demi-backend
+   .cache/bin/demi-backend
    ```
 
 5. Run the web application

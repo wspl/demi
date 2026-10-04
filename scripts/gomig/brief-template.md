@@ -11,7 +11,7 @@ run delivers: the API checkpoint or the implementation checkpoint.>
 
 - The design: <docs/... sections>
 - The Rust source to port: <crates/...>, and its tests: <crates/.../tests>
-- The package contract: `docs/architecture/crates-and-packages.md` § <entry>
+- The package contract: `docs/architecture/packages.md` § <entry>
 
 ## Write boundary
 

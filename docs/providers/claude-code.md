@@ -107,7 +107,7 @@ was. It has two operations:
 | `claude-code.ensure` | A release record: `{ version, platforms }`, each platform's official `url`, byte `size` and `sha256` | `{ version, path }`: the executable's absolute path |
 | `claude-code.status` | — | `{ platform, installed }`: this machine's platform key and the versions it has, newest first, each with its path |
 
-The backend and the package decode these records with the same Rust types
+The backend and the package decode these records with the same Go types
 ([Contract packages](../architecture/contracts.md#contract-packages)). The backend
 reaches the operations through a
 [service stream](../execution/runner.md#service-streams), which carries no
@@ -194,9 +194,10 @@ have; the CLI reads and writes nothing there that a conversation owns.
 ### How a runtime gets its process
 
 A process provider cannot build its runtime from the provider alone: the
-process needs a machine, and only the backend chooses one. `Provider::runtime`
-of the Claude Code provider therefore refuses (`ProcessHostRequired`), and the
-runtime is built over a placement instead:
+process needs a machine, and only the backend chooses one. `Runtime`
+of the Claude Code provider therefore refuses (the provider "needs a Host that
+runs processes"), and the runtime is built over a placement instead
+(`ProcessRuntime`):
 
 ```text
 backend, on the user's shard                 provider-claude-code
@@ -211,7 +212,7 @@ backend, on the user's shard                 provider-claude-code
   --- shell's Process ---------------------------->  the run drives it
 ```
 
-`provider-claude-code` defines the placement contract: `start` starts a new CLI
+`internal/providers/claudecode` defines the placement contract: `start` starts a new CLI
 process on the machine the placement chooses and answers shell's `Process`. The
 provider builds the spawn request itself, from the executable's path and the
 run and configuration directories the placement names on that machine, so the
@@ -324,20 +325,20 @@ the CLI arrives on its standard output as a control request that wraps one MCP
 message; Demi's answer goes back on standard input as a control response that
 wraps the MCP reply.
 
-Demi's side of the channel is an MCP server built with rmcp, the official Rust
-MCP SDK, because the protocol's types, the `initialize` handshake and version
-negotiation are the library's job. The run drives it: the run passes each MCP
+Demi's side of the channel is a small MCP server in
+`internal/providers/claudecode` (`mcp.go`): it implements the protocol's
+types, the `initialize` handshake and version negotiation over the revisions it
+accepts. The run drives it: the run passes each MCP
 message it reads from the CLI to the server through an in-memory transport and
-writes the server's replies back to the CLI. The server uses rmcp's local mode,
-because its state lives on the user's shard, one thread. rmcp handles each
-request on its own task, so `ping` and `tools/list` are answered while a
-`tools/call` waits for its result.
+writes the server's replies back to the CLI. A `tools/call` is kept as a
+pending call rather than a blocked goroutine, so `ping` and `tools/list` are
+answered while it waits for its result.
 
 | MCP request | Demi's answer |
 |---|---|
 | `tools/list` | The current request's tools: name, description and input schema |
 | `tools/call` | The result of that tool call, once the agent has it ([Tool-call batches](#tool-call-batches)) |
-| The handshake, `ping`, anything else | rmcp's own answer; a method Demi does not serve is an error |
+| The handshake, `ping`, anything else | The protocol's own answer; a method Demi does not serve is an error (`-32601`) |
 
 A `tools/call` names the model's original tool-use ID in its `_meta` field, as
 `claudecode/toolUseId`, and Demi matches calls and results by that ID; a call

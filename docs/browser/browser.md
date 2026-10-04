@@ -7,15 +7,15 @@ its reason rather than omitted from the design. Platform delivery and
 acceptance are required before enabling a deployed release.
 
 This is the authoritative browser design. Command dispatch, Host admission,
-native service ownership, and crate boundaries belong to their own documents.
+native service ownership, and package boundaries belong to their own documents.
 Browser automation does not introduce another shell or agent loop, and it does
 not reach into the agent runtime: the browser is a [plugin](../architecture/plugins.md),
-`plugin-browser`, whose commands bind the `demi.browser` command package behind the
+`internal/plugins/browser`, whose commands bind the `demi.browser` command package behind the
 [conversation-scoped state port](../execution/native-runtime.md#conversation-scoped-state).
 It keeps its own state per conversation and ends it when the conversation is
 released, as [Conversation idle and Host resource release](../execution/resource-lifecycle.md)
 defines. Nothing in the agent, the backend, the runner, or their wire protocols
-holds browser logic: `plugin-browser`'s tab methods and its `browser` user
+holds browser logic: the browser plugin's tab methods and its `browser` user
 stream only name the browser's own operations.
 
 ## Reading map
@@ -290,7 +290,7 @@ ChromeDriver is not required.
 
 A browser release pins a complete version and a per-platform artifact record:
 platform, download location, byte size and SHA-256 established by the Demi release
-pipeline. `cargo xtask browser-release` resolves the official version and
+pipeline. `go run ./tools/release browser-release VERSION` resolves the official version and
 download metadata during release preparation
 ([Chrome for Testing](../delivery/builds-and-releases.md#chrome-for-testing));
 A Host installs the pinned artifact rather than resolving a moving channel
@@ -639,14 +639,14 @@ page-provided tool schemas/results at entry: each is decoded into its type and
 checked against its bounds there, and corrupt data is refused, never repaired
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 Browser arguments, results, error codes, limits and event payloads are defined
-once, as Rust types in the `command-package-browser-protocol` crate. The `demi browser` command
+once, as Go contract types in `internal/cmdpkg/browser/browserop`. The `demi browser` command
 declarations take their schemas from those types, and the native handlers
 decode their input into them and return them as results. The page uses the
 same definitions, as TypeScript generated from them, without depending on
-`plugin-browser`
+the browser plugin
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-[Crates and packages](../architecture/crates-and-packages.md) places these
-crates.
+[Packages](../architecture/packages.md) places these
+packages.
 
 Navigation accepts `http:`, `https:`, `file:`, and `about:blank`. File URLs refer
 to the selected Host. `javascript:`, browser settings, extension pages, personal
@@ -965,7 +965,7 @@ coordinates in a full-page screenshot are not current viewport coordinates.
 ### Catalog
 
 The `demi browser` catalog has these commands, grouped by family. Each is
-declared once, from its types in the `command-package-browser-protocol` crate, and its help
+declared once, from its types in `internal/cmdpkg/browser/browserop`, and its help
 shows only the declared arguments.
 
 | Family | Commands |
@@ -1727,7 +1727,7 @@ the same name. Page tool descriptions remain external data, not system instructi
 ### Structured result fields
 
 These are business result fields for `--json`. Their exact types are the
-result types in the `command-package-browser-protocol` crate. List results report truncation. Do not reuse a
+result types in `internal/cmdpkg/browser/browserop`. List results report truncation. Do not reuse a
 field with a different meaning or type. A `viewport` value carries `width`,
 `height`, `devicePixelRatio` and `mode`.
 
@@ -1952,36 +1952,35 @@ persistent JavaScript REPL; Bash already composes their operations.
 
 ### Implementation ownership
 
-[Crates and packages](../architecture/crates-and-packages.md) is authoritative;
+[Packages](../architecture/packages.md) is authoritative;
 for the browser:
 
-- `command-package-browser-protocol`: the browser's operation arguments, results, error codes,
+- `internal/cmdpkg/browser/browserop`: the browser's operation arguments, results, error codes,
   limits and event payloads, the live view messages and frame header, and the
   capture extension's messages; the web app receives the types it uses as
   generated TypeScript in `@demicodes/protocol`.
-- `plugin-browser`: the `demi browser` command declarations, built from those
+- `internal/plugins/browser`: the `demi browser` command declarations, built from those
   types, with help rendered from the declarations; the plugin host includes
   them when the command package catalog provides the browser's operations
   ([Commands](../architecture/plugins.md#commands)).
 - the backend: builds the command context of every job and sends the generic
   conversation release; no browser module, and no name of the browser.
-- `plugin-browser` also declares the `browser` user stream and the tab methods
+- `internal/plugins/browser` also declares the `browser` user stream and the tab methods
   of the [live view](live-view.md#the-tab-methods).
-- the runner's crates and `backend-remote-host`: the command context of every
+- the runner's packages (`internal/runner/...`) and `internal/backend/remotehost`: the command context of every
   invocation, service residency, the release forward, cancellation, and
   transport; no webpage algorithms.
-- `command-package-browser` and [`command-package-browser-chrome`](../architecture/crates-and-packages.md#command-package-browser-chrome):
-  per-conversation browsers and their owners (`command-package-browser`), the driver and
-  output rendering (`driver`), environments and tabs (`tabs`), page
-  observation, actions and assets (`page`), CDP handling and WebMCP (`cdp`)
-  and the live view (`live`), the modules of `command-package-browser-chrome`.
-- `shared-artifacts`: the verified download and installation of the pinned Chrome for
-  Testing release, used by `command-package-browser-chrome` and by Cloud
-  image packaging.
-- `command-protocol` and `command-sdk`: the generic invocation and
+- `internal/cmdpkg/browser` and its [`chrome` packages](../architecture/packages.md#internalcmdpkgbrowserchromecdp):
+  per-conversation browsers and their owners (`internal/cmdpkg/browser`), the
+  CDP connection, output rendering and WebMCP (`chrome/cdp`), environments,
+  tabs, launch and the capture extension (`chrome/tabs`), page observation,
+  actions and assets (`chrome/page`), and the live view (`chrome/live`).
+- `internal/artifacts`: the verified download and installation of the pinned Chrome for
+  Testing release, used by `chrome/tabs` and by Cloud image packaging.
+- `internal/commandwire` and `internal/cmdsdk`: the generic invocation and
   conversation protocol and its SDK, not page or cookie semantics.
 - `web-ui`: the [live view](live-view.md#responsibilities), with the
-  generic user stream in the runner, `backend-remote-host` and the backend.
+  generic user stream in the runner, `internal/backend/remotehost` and the backend.
 
 A library adopted for locating or acting must also cover the adjacent waiting,
 introspection, and error handling it provides. Reuse one observation/targeting

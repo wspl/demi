@@ -36,7 +36,7 @@ transcript nor the panel names the `file-browser` plugin.
 
 ## One declaration, in code
 
-A plugin is declared once, as data in code: its crate's manifest
+A plugin is declared once, as data in code: its Go package's manifest
 ([What a plugin contributes](plugins.md#what-a-plugin-contributes)), a plain
 value that names, among the rest, the plugin's page package and the schemas of
 its page's state, calls and streams. The page package declares its
@@ -44,11 +44,11 @@ contributions to the shell as a plain object, its `PluginPage`, and nothing
 about the plugin itself:
 
 ```text
-crate plugin-browser            manifest: id "browser", packages, commands,
+internal/plugins/browser        manifest: id "browser", packages, commands,
                                 streams with their messages, page package
                                 "@demicodes/plugin-browser", state schemas,
                                 methods
-        │ xtask contracts
+        │ bun run contracts (tools/contractgen)
         ▼
 @demicodes/plugin-browser       src/generated/: the plugin's id, the types of
                                 its state, calls and streams, their constants
@@ -60,12 +60,12 @@ src/index.ts                    export default definePage({ plugin, kinds, panel
 Everything else about a page is derived from the manifest: its plugin's id,
 which the page imports from its generated module rather than spelling it, its
 types, and its place in the [registry](#registration). A plugin that only
-shows a page, such as `changes`, still has a crate, whose manifest declares
+shows a page, such as `changes`, still has a Go package, whose manifest declares
 its identity and its page package and nothing else.
 
 The declaration is code, not a separate file such as a `plugin.json`, because
 a manifest refers to what only code holds: its schemas are derived from the
-Rust types the plugin uses, and a page's contributions are its Vue
+Go types the plugin uses, and a page's contributions are its Vue
 components. A file would restate both as text, and nothing would check that
 the text still matched them.
 
@@ -89,7 +89,7 @@ web (the product)                         web-gallery
 - **`plugin-sdk`** is the whole API a page may use. A page package imports
   `@demicodes/plugin-sdk`, `@demicodes/utils`, Vue, Zod and its own generated
   module, and nothing else of the workspace; the
-  [package boundary check](crates-and-packages.md#boundary-checks) enforces it.
+  [package boundary check](packages.md#boundary-checks) enforces it.
 - **A page package**, `@demicodes/plugin-<name>` in `packages/plugin-<name>`,
   holds the plugin's feature UI: its components, their state and their
   handlers.

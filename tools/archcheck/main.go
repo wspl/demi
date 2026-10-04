@@ -28,7 +28,7 @@ const contractRuntime = "internal/contract"
 type graph map[string]map[string]bool
 
 func main() {
-	document := flag.String("graph", "docs/architecture/crates-and-packages.md", "architecture document")
+	document := flag.String("graph", "docs/architecture/packages.md", "architecture document")
 	flag.Parse()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
@@ -245,7 +245,7 @@ func allowedImport(pkg, imported *packages.Package, name string, allowed map[str
 		return "", true
 	}
 	// A test may import the support package of its own package or of
-	// a listed dependency (crates-and-packages.md § Go packages).
+	// a listed dependency (packages.md § Go packages).
 	if owner, ok := supportOwner(target); ok && pkg.ForTest != "" && (owner == name || allowed[owner]) {
 		return "", true
 	}
@@ -255,7 +255,7 @@ func allowedImport(pkg, imported *packages.Package, name string, allowed map[str
 		return "", true
 	}
 	// Generated contract code imports its runtime from any package
-	// (crates-and-packages.md § Go packages).
+	// (packages.md § Go packages).
 	if target == contractRuntime {
 		return "", true
 	}

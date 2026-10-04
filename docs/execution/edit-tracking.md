@@ -192,13 +192,13 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 | Where | Responsibility |
 | --- | --- |
 | `third_party/mvdan-sh` | Route writable redirections in every in-process scope through the job's open handler, preserving it in nested interpreters and executable fallback. |
-| `crates/command-protocol` | Define the recording context, the journal and the test of whether bytes are text. |
-| `crates/command-sdk` | Implement the shared bounded recorder with OS locking. |
-| `crates/command-package-file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
-| `crates/runner-jobs`, `crates/runner-shell` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
-| `crates/runner-protocol`, `crates/host-interface`, `crates/backend-remote-host` | Carry the report through command completion. |
-| `crates/backend-user-shard` | Store the copies as blobs before tool completion; the blob route serves them. |
-| `crates/shared-types`, `crates/agent-tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
+| `internal/commandwire` | Define the recording context, the journal and the test of whether bytes are text. |
+| `internal/cmdsdk` | Implement the shared bounded recorder with OS locking. |
+| `internal/cmdpkg/file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
+| `internal/runner/jobs`, `internal/runner/shell` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
+| `internal/runnerwire`, `internal/host`, `internal/backend/remotehost` | Carry the report through command completion. |
+| `internal/backend/usershard` | Store the copies as blobs before tool completion; the blob route serves them. |
+| `internal/core`, `internal/agent/tools` | Define the shell tool view with its small file and segment list, and carry it in the transcript, exclusively for the user. |
 | `packages/web-ui` | Shared file selection, segment selection and diff behavior. |
 | `packages/web`, `packages/web-gallery` | Product data adapters and matching specimens. |
 

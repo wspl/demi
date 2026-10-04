@@ -3,7 +3,7 @@
 A provider connects Demi's agent to one inference service: the Anthropic API,
 an OpenAI-compatible API, Gemini, a Codex or Grok Build subscription, or Claude
 Code. The backend owns provider configuration, credentials, model discovery and
-inference admission. Each provider crate owns one vendor's protocol, its token
+inference admission. Each provider package owns one vendor's protocol, its token
 refresh and the reading of its responses. A conversation selects a provider
 entry and a model; it never holds a copy of the entry's credentials.
 
@@ -37,8 +37,8 @@ keep running on the conversation's own execution target
 
 Model catalogs and request parameters are defined in [Models](models.md); the
 usage ledger, the request rate limit and vendor quota in
-[Usage and quota](usage-and-quota.md). The crates and their public items are
-listed in [Crates and packages](../architecture/crates-and-packages.md#crates).
+[Usage and quota](usage-and-quota.md). The packages and their public items are
+listed in [Packages](../architecture/packages.md#go-package-boundaries).
 
 ## Families, vendors and endpoints
 
@@ -145,8 +145,8 @@ server-sent events at once, so that a network that blocks WebSockets does not
 cost every request a failed connect; the first request after them tries the
 WebSocket again, so a passing failure does not cost it for long. The WebSocket connect waits at most 10 seconds, and a
 server-sent events request waits at most 20 seconds for its response headers.
-The WebSocket client is tokio-tungstenite, because the handshake must carry
-Codex's own headers. Grok Build sends Chat Completions through the chat proxy
+The WebSocket client is coder/websocket, whose handshake carries Codex's own
+headers. Grok Build sends Chat Completions through the chat proxy
 that Grok's own CLI uses.
 
 ## Provider contract
@@ -522,7 +522,7 @@ for as long as that provider is its selection.
 ## Credential vault
 
 The backend's vault owns product scope, credential records, account operations
-and login lifetime. Provider crates own authentication protocols, token refresh
+and login lifetime. Provider packages own authentication protocols, token refresh
 and the shape of each family's secret document. The backend calls them, and it
 necessarily handles plaintext credentials in memory to make authenticated
 requests.
@@ -614,7 +614,7 @@ account fail with an authentication error.
 
 ### The credential pool contract
 
-A provider crate does not know where credentials live. It receives a
+A provider package does not know where credentials live. It receives a
 **credential pool** bound to one entry and reads and refreshes its account's
 secret document through it:
 
@@ -698,9 +698,10 @@ An account enters an entry in one of three ways:
 
 A device login works on a headless or remote backend, because the user
 completes it in their own browser on any device; Demi never starts a vendor
-CLI to log in. The flows are written by hand on shared OAuth pieces, not with
-the `oauth2` crate, which refuses the vendors' token responses: they omit
-`token_type` and state `expires_in` as a string.
+CLI to log in. The flows are written by hand on shared OAuth pieces
+(`internal/provider`), not with a general OAuth client library, because the
+vendors' token responses omit `token_type` and state `expires_in` as a string,
+which such libraries refuse.
 
 - **Codex** asks `https://auth.openai.com/api/accounts/deviceauth/usercode`
   for a user code (a 404 means device login is unavailable), polls

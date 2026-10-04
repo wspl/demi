@@ -122,7 +122,7 @@ backend's scenario suites in [Scenarios](scenarios.md).
 - Go tests live beside their package in `_test.go` files. Prefer the public
   boundary (`package name_test`) where it exposes the behavior. A behavior
   reachable only through private state may indicate separate responsibilities;
-  split only where the [package design](../architecture/crates-and-packages.md#module-layout)
+  split only where the [package design](../architecture/packages.md#module-layout)
   permits it, otherwise use a same-package test.
 - Go builds each package's test binary incrementally and caches successful
   results in package-list mode. There is no rule to combine unrelated tests

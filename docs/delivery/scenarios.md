@@ -1,7 +1,7 @@
 # Backend scenario acceptance
 
 Scenario tests verify complete backend paths with scripted providers and real
-native runners. They complement crate tests, which cover schemas, state
+native runners. They complement package tests, which cover schemas, state
 machines, primitive conformance, provider adapters, and command parsing. No
 test calls a real model: every suite scripts the model, so a run costs nothing
 and answers the same way every time. A check against a real vendor is done by
@@ -11,9 +11,9 @@ Three suites drive the whole backend:
 
 | Suite | Where it lives | How it reaches the backend | Model | Hosts |
 | --- | --- | --- | --- | --- |
-| Backend scenarios | Rust integration tests of the backend crate (`crates/backend/tests`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
+| Backend scenarios | Go tests of the backend package (`internal/backend`) | HTTP and the conversation WebSocket, with the agent protocol's typed frames | A scripted provider family | Real runner processes; a scripted machine manager for the Cloud |
 | Web app contract suite | Tests of `packages/web` | The web application's API client and `ConversationClient`, against the backend executable | A scripted Anthropic-compatible endpoint | A real runner; the backend scenarios' scripted machine manager, which no path asks for the Cloud |
-| Real-machine suites | Rust tests that run only when environment variables supply their resources; of them, the Cloud and Claude Code suites and part of the browser suite exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
+| Real-machine suites | Go tests built with the `acceptance` tag that run only when environment variables supply their resources; of them, the Cloud and Claude Code suites and part of the browser suite exist ([Real machine acceptance](#real-machine-acceptance)) | As the backend scenarios | Scripted | A real machine manager, gVisor sandbox, and shipped image; real Chrome; the real Claude Code CLI |
 
 ## System under test
 
@@ -21,7 +21,7 @@ Three suites drive the whole backend:
 Driver: HTTP with a session cookie; conversation WebSocket, typed agent frames
     -> backend in the test process: the edge and the user's shard
     -> the conversation's host access and remote shell environment
-    -> runner process with embedded brush
+    -> runner process with its shell interpreter
          +-- native command service beside the files
          +-- rpc relay to the invoking node's backend handler
 
@@ -40,9 +40,9 @@ backend's development store serves to the runners
 It pairs real runner processes and owns cleanup. The runners are the real
 runner executable, which the test starts from the target directory it runs from
 ([Validation](builds-and-releases.md#validation)). The fakes come from the
-test-support features of the crates that own what they fake
-([Crates and packages](../architecture/crates-and-packages.md)); the scripted
-machine manager is the backend's own test code, since the manager's crate runs
+test-support packages of the packages that own what they fake
+([Packages](../architecture/packages.md)); the scripted
+machine manager is the backend's own test code, since the manager's packages run
 only on Linux.
 
 The model is scripted in one of two ways: a scripted vendor (`MockVendor`, from
@@ -60,7 +60,7 @@ rebuild the live transcript from patches: the web app's patch applier is the
 only one, so the [web app contract suite](#web-app-contract-suite) compares
 live with cold.
 
-The scripted machine manager speaks `machine-manager-protocol` as the real one does:
+The scripted machine manager speaks the manager protocol (`internal/machinewire`) as the real one does:
 operations of one device run in arrival order, requests on a connection are
 answered as they finish, and a death reaches every connection. It starts the
 same runner as a local process with the boot record's backend URL and token,
@@ -96,8 +96,8 @@ Cloud holds its conversation's file gate while it looks (`file_gate` of the
 backend's `testing` feature): a lease of that gate is the conversation's work,
 so the Cloud idles only after the lease ends, and a lower bound on the stop
 counts from there. One that shows an operation a transition holds waits until
-the operation waits at that gate (`ActivityGate::waiting`, from `demi-shared-gates`'
-`testing` feature), and fails if the operation finishes first.
+the operation waits at that gate (`gatestest.Waiting`, the test bridge of
+`internal/gates`), and fails if the operation finishes first.
 
 ## Required scenario coverage
 
@@ -163,7 +163,7 @@ cold transcript.
 
 The world does not bound the `job_output` bytes a job sends. The runner's wire
 test pins them where the runner sends them, in the job table's tests of
-`runner-jobs`: the first 8 KiB of each stream, and
+`internal/runner/jobs`: the first 8 KiB of each stream, and
 beyond them, while the backend follows the job, at most 16 KiB of the newest
 bytes per stream and interval, otherwise the newest 8 KiB every 2 seconds,
 the last before `job_exit`
@@ -171,7 +171,7 @@ the last before `job_exit`
 
 The world does not record the runner's wire frames either. `job_exit` and
 `pipe_done` are pinned where the runner sends them, by the runner tests of
-`backend-remote-host` (`crates/backend-remote-host/tests/host_remote/runner.rs`), which read
+`internal/backend/remotehost` (`runner_test.go` and the other `runner_*_test.go` files), which read
 every frame their runner sends: each job's end there comes from its
 `job_exit`, and they check `pipe_done` for a job's pipes, whole and refused, a
 file read whose reader left, and service and network streams. A scenario sees
@@ -214,8 +214,8 @@ The backend reconciles with its machine manager when it starts, before it
 serves, and again when it closes
 ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
 The suite therefore starts the backend with the backend scenarios'
-[scripted machine manager](#system-under-test), run as the backend crate's
-example program `scripted_machines`, and stops the backend before the
+[scripted machine manager](#system-under-test), run as the backend test-support
+program `internal/backend/backendtest/testdata/scripted-machines`, and stops the backend before the
 manager. The program prints the manager's socket path as its first line,
 which the suite passes as `DEMI_MACHINE_MANAGER_SOCKET`, and serves until its
 standard input closes or it is terminated; the runners it started end with
@@ -241,8 +241,9 @@ input closes, serves both.
 | Drafts | A draft saved with a remote file reads back as saved; another page learns of each save from the conversation's `draftRevision` on its channel; a save on a revision the draft had moved past keeps the draft it overwrote as `replaced`, `restore` exchanges the two, and an action naming a replaced revision that is gone answers 409 `draft_changed` |
 | Page synchronization | Another page's channel brings a conversation the user creates to the front of its list, its status `running` while the turn runs, then `completed` and unread, and read once the user acknowledges the revision |
 
-The patch protocol has one more check. The Rust agent tests write patch
-sequences together with the snapshot each must produce, and the
+The patch protocol has one more check. The agent server's tests write patch
+sequences together with the snapshot each must produce
+(`internal/agent/server/testdata/transcript-patches.json`), and the
 `@demicodes/conversation-client` tests apply them with the web app's patch applier
 ([Frame protocol](../agent/runtime.md#frame-protocol)). With the reload check,
 this verifies the patches without a second applier.

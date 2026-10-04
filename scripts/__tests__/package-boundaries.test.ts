@@ -1,4 +1,4 @@
-// The TypeScript package boundary check (`crates-and-packages.md` § Boundary
+// The TypeScript package boundary check (`packages.md` § Boundary
 // checks): the npm workspace, its manifests and its production sources
 // against the document's TypeScript graph, which the check reads rather than
 // a copy of it.
@@ -44,7 +44,7 @@ function readJson<T>(path: string, schema: z.ZodType<T>): T {
 
 /** The `text` block under the document's TypeScript graph heading, as name -> dependencies. */
 function readGraph(): Map<string, string[]> {
-  const document = readFileSync(join(root, 'docs/architecture/crates-and-packages.md'), 'utf8')
+  const document = readFileSync(join(root, 'docs/architecture/packages.md'), 'utf8')
   const heading = document.indexOf('\n### TypeScript packages\n')
   const open = document.indexOf('```text\n', heading)
   const close = document.indexOf('\n```', open)

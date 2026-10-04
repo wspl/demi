@@ -84,7 +84,7 @@ Related contracts define the surrounding behavior:
 - [Command declarations](commands.md): CLI parsing and manifest semantics.
 - [Local forwarding](commands.md#external-command-clients): external clients and endpoint access.
 - [Runner jobs](runner.md#shell-jobs): the interpreter, profiles, and whole-job cleanup.
-- [Crates and packages](../architecture/crates-and-packages.md#module-layout): source module layout and ownership.
+- [Packages](../architecture/packages.md#module-layout): source module layout and ownership.
 
 ## Bind an exact package
 
@@ -127,7 +127,7 @@ carries; a published release carries all six of the
 | `id` | Stable namespaced identity, such as `demi.file`. |
 | `version` | Human-readable release version, immutable within its publisher. |
 | `protocolVersion` | Command-service wire major version. |
-| `operations` | Unique operation IDs supplied by the package, written from the package's Rust operation enum when the release is packaged. |
+| `operations` | Unique operation IDs supplied by the package, written from the operations the package's contract package declares when the release is packaged. |
 | `targets` | The target triples the release carries, each with executable SHA-256 and byte size. |
 | `resources` | What the program needs beside itself, by name, such as `chrome`: each with its `title` and, per target, the zip archive's SHA-256 and byte size and its `entry`. Absent when the package needs nothing. |
 
@@ -146,7 +146,7 @@ components. A resource may lack targets the release carries: Chrome for
 Testing has no Windows arm64 build, so on that target `demi-browser` fails
 each operation that needs Chrome with `Chrome for Testing 153.0.8010.36 is
 unavailable on aarch64-pc-windows-msvc`, and asks for nothing.
-Packaging writes the resources from the record the package's contract crate
+Packaging writes the resources from the record the package's contract package
 keeps, for `chrome` the pinned browser release
 ([Browser distribution](../browser/browser.md#browser-distribution)).
 
@@ -736,7 +736,7 @@ use, reached through the same port.
 Each user stream is declared by name with a native binding, beside the command
 tree and the way a command leaf binds an operation, by the
 [plugin](../architecture/plugins.md#calling-its-command-package) whose commands
-bind the package: `plugin-browser`'s `browser` stream binds `demi.browser`
+bind the package: the browser plugin's `browser` stream binds `demi.browser`
 operation `browser.live`. The declarations are fixed with the command tree for
 the backend's lifetime, and a page can open only a declared name.
 

@@ -12,7 +12,7 @@ Deliver complete paths through the system before broadening their deployment.
 Each stage below builds on the stages before it.
 
 ```text
-Contracts and crate boundaries
+Contracts and package boundaries
     -> native runner and command transport
     -> backend conversation, storage, and provider integration
     -> devices, target exchange, and user Cloud
@@ -22,8 +22,8 @@ Contracts and crate boundaries
 
 | Area | Completion condition | Contract |
 |---|---|---|
-| Contracts | Each wire and stored format has one Rust definition that both ends use; the web app's schemas are generated from those definitions; every boundary decodes and validates what it receives | [Contracts](../architecture/contracts.md) |
-| Crate and package boundaries | Product storage and execution policy stay outside the reusable agent, shell, and provider crates; the crate graph and the TypeScript package graph hold | [Crates and packages](../architecture/crates-and-packages.md) |
+| Contracts | Each wire and stored format has one Go definition that both ends use; the web app's schemas are generated from those definitions; every boundary decodes and validates what it receives | [Contracts](../architecture/contracts.md) |
+| Package boundaries | Product storage and execution policy stay outside the reusable agent, shell, and provider packages; the Go package graph and the TypeScript package graph hold | [Packages](../architecture/packages.md) |
 | Native execution | Validated wire contracts, shell/job conformance, cancellation, independent installations, and resident service lifecycle work on the offered platforms | [Native runtime](../execution/native-runtime.md), [Runner](../execution/runner.md) |
 | Commands | Native operations run beside their files; RPC invokes the correct node's backend handler and scoped storage | [Commands](../execution/commands.md) |
 | Plugins | Every agent capability beyond the runtime's tools and groups and `demi host` is a plugin; each plugin passes its tests through the JSON loopback transport; the agent runtime names no plugin | [Plugins](../architecture/plugins.md) |
@@ -45,23 +45,23 @@ Contracts and crate boundaries
 
 The plugin design ([Plugins](../architecture/plugins.md#built-in-plugins)) is
 delivered in this order, each a checkpoint of its own. The dependency graphs
-in [Crates and packages](../architecture/crates-and-packages.md#dependency-graphs),
+in [Packages](../architecture/packages.md#dependency-graphs),
 which the boundary checks hold the code to, list the edges the code has: each
-step adds the lines of the crates and packages it builds, such as
-`plugin-expose`, `plugin-skills` and the `@demicodes/plugin-*` packages, and
-removes the edges it retires, such as `web-api-protocol`'s and `backend-http`'s
-on the browser protocol and `backend-host-access`'s on `backend-expose`.
+step adds the lines of the packages it builds, such as
+`internal/plugins/expose`, `internal/plugins/skills` and the `@demicodes/plugin-*` packages, and
+removes the edges it retires, such as `internal/webapi`'s and `internal/backend/edge`'s
+on the browser protocol and `internal/backend/hostaccess`'s on `internal/backend/expose`.
 
-1. **The contract and the command plugins.** `plugin-interface` with its
-   loopback transport, `backend-plugins` with the rule that leaves out a
+1. **The contract and the command plugins.** `internal/plugin` with its
+   loopback transport, `internal/backend/plugins` with the rule that leaves out a
    group whose package the catalog does not serve, the runtime without a
    harness (the product's dependencies, context sources that name their
    source and see only their blocks since the last compaction, profiles as
-   data, no harness name in a checkpoint), and the commands of `plugin-todo`,
-   `plugin-file` and `plugin-browser`. `agent-coding-harness` is removed.
+   data, no harness name in a checkpoint), and the commands of `internal/plugins/todo`,
+   `internal/plugins/file` and `internal/plugins/browser`. The coding harness is removed.
    Done.
-2. **The page-facing plugins.** `plugin-browser`'s `browser` user stream and
-   its tab methods over package calls; and `plugin-expose` with `demi expose`, its numbers, the conversation hosts and
+2. **The page-facing plugins.** The browser plugin's `browser` user stream and
+   its tab methods over package calls; and `internal/plugins/expose` with `demi expose`, its numbers, the conversation hosts and
    exposes operations and a page state that follows the user's exposes. The
    plugin call routes replace the browser tab routes and `/api/exposes`, and
    `web` calls them, with the plugins' types generated into their page
@@ -74,7 +74,7 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    with its switches and the reload offer, in `web-ui`, `web` and
    `web-gallery`. Done.
 4. **Skills on the backend.** Plugins as context sources, asked only while
-   their user has them on; `plugin-skills` with its sources, its values and
+   their user has them on; `internal/plugins/skills` with its sources, its values and
    blobs, the Host directories with their installation before a job, the Host
    file reads that never wake a Host, project skills, the catalog, and the
    page call route with the `plugin` sync message. Done.
@@ -93,10 +93,10 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
 
 ## Evidence required at a checkpoint
 
-Every checkpoint passes the Rust checks and tests and, when TypeScript
+Every checkpoint passes the Go checks and tests and, when TypeScript
 changed, the frontend's typechecks and tests
 ([Validation](builds-and-releases.md#validation)).
-Use crate tests for schemas, state machines, parsers, and adapters. Use
+Use package tests for schemas, state machines, parsers, and adapters. Use
 [Scenarios](scenarios.md) for complete backend paths with scripted providers
 and real native runners, and its web app contract suite for what the web app
 relies on. Tests never call real models.

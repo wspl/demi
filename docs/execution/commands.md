@@ -19,19 +19,21 @@ the `demi agent` group in [Subagents](../agent/subagents.md), and the
 ## Declare a command
 
 For example, `demi file read notes.txt` reads a file on the execution target.
-Its arguments are one Rust type:
+Its arguments are one Go contract type:
 
-```rust
-#[derive(Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct FileRead {
-    /// File path to read
-    pub path: String,
+```go
+// `file.read`: writes the file's bytes to stdout.
+// +demi:root
+// +demi:schema
+type ReadArgs struct {
+	// File path to read
+	Path string `json:"path"`
 }
 ```
 
 The leaf declares its name, summary, input sources, and binding around the JSON
-Schema that schemars derives from this type. Because the schema is derived, the
+Schema that the contract generator derives from this type
+([Contracts](../architecture/contracts.md)). Because the schema is derived, the
 schema a runner enforces and the type a handler decodes are one definition. A
 declaration is data, and it serializes as the manifest node a runner receives;
 the manifest adds only the hash of the release descriptor each native binding
@@ -44,7 +46,8 @@ pins ([Dispatch](#dispatch-the-same-declaration-on-each-surface)):
   "kind": "native",
   "binding": { "package": "demi.file", "operation": "file.read" },
   "input": {
-    "title": "FileRead",
+    "title": "ReadArgs",
+    "description": "`file.read`: writes the file's bytes to stdout.",
     "type": "object",
     "properties": {
       "path": { "description": "File path to read", "type": "string" }
@@ -59,21 +62,22 @@ pins ([Dispatch](#dispatch-the-same-declaration-on-each-surface)):
 Placed under the `demi file` group, the leaf handles `demi file read notes.txt`.
 The dispatcher validates `{ "path": "notes.txt" }` against `input` before
 invoking `file.read`, and the native service decodes the same value into
-`FileRead`, together with the invocation's cwd and IO. The arguments and
-results of every `demi.file` operation are types of one contract crate,
-`command-package-file-protocol`, that the declarations and the native program both link, so a
+`ReadArgs`, together with the invocation's cwd and IO. The arguments and
+results of every `demi.file` operation are types of one contract package,
+`internal/cmdpkg/file/fileop`, that the declarations and the native program both import, so a
 declaration and its handler cannot describe different arguments
 ([Contract packages](../architecture/contracts.md#contract-packages)).
 
 An `rpc` leaf runs a handler in the backend instead.
 `demi todo add "Write tests"` declares its arguments the same way:
 
-```rust
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct AddArgs {
-    /// Todo text
-    text: String,
+```go
+// The input of `demi todo add`.
+// +demi:root
+// +demi:schema
+type AddArgs struct {
+	// Todo text
+	Text string `json:"text"`
 }
 ```
 
@@ -109,11 +113,12 @@ happens when the command set is built, before any call.
 ## Parse input and render help
 
 One implementation of everything this section describes, the command-tree
-library ([Crates](../architecture/crates-and-packages.md#crates)), serves both
+package `internal/declare`
+([Packages](../architecture/packages.md#go-package-boundaries)), serves both
 the runner and the backend. The runner parses argv and answers `--help` with it;
 the backend renders the model's command help and checks registrations with it.
-Both validate arguments with the `jsonschema` validator over the schema
-schemars derived, so a usage error reads the same wherever it is raised, and no
+Both validate arguments with the `santhosh-tekuri/jsonschema` validator over the
+derived schema, so a usage error reads the same wherever it is raised, and no
 second set of rules exists to drift from the declaration.
 
 Each input field has one source:
@@ -167,20 +172,20 @@ In the derived JSON Schema, the leaf's input is an object that allows no other
 properties, and a property uses only `type`, `enum`, `items`, `description`,
 `format` for numbers, `minLength`, `maxLength`, `pattern`, `minimum`,
 `maximum`, `exclusiveMinimum`, `exclusiveMaximum`, `minItems`, and `maxItems`.
-An optional field is an `Option` in the argument type: its schema leaves it out
+An optional field is a pointer with `omitempty` in the argument type: its schema leaves it out
 of `required` and never allows `null`. Registration rejects anything else and
 names the field: `default`, `null` in a type, `oneOf`, `anyOf` or `allOf`,
 `$ref`, nested objects, and arrays of arrays.
 
 The reason is that the argument type reaches the runner as the JSON Schema
-schemars derives from it, and the runner enforces exactly that schema: a rule
+the generator derives from it, and the runner enforces exactly that schema: a rule
 the schema cannot state is a rule the runner cannot check. Bounds survive the
 trip, so the runner enforces them as the backend does. A default does not:
 validation never fills in a missing value, so a field that needs a value when
 the caller omits one takes it in the handler. A transform, such as trimming or
 normalizing, has no schema form either and also belongs to the handler. `null`
 has no argv spelling, and nested objects and unions have no argv syntax the
-parser could fill. The argument type decodes with serde's derived rules only,
+parser could fill. The argument type decodes with its generated decoder only,
 so every value the schema accepts decodes; a handler that cannot decode an
 accepted value has a declaration bug, not a usage error.
 
@@ -274,7 +279,7 @@ one connection take turns. A failed send makes the selection
 uncertain; the next job sends its manifest again, even if it was selected before
 the failed send.
 
-The manifest's envelope belongs to the runner wire's contract crate and its
+The manifest's envelope belongs to the runner wire's contract package (`internal/runnerwire`) and its
 nodes are the declarations themselves, so the adapter that builds a manifest
 and the runner that checks it share one definition and one hash. Before
 installing a manifest, the runner verifies that every descriptor matches its
