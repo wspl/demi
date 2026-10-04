@@ -35,6 +35,7 @@ demi-backend-providers = { path = "../backend-providers" }
 demi-backend-runners = { path = "../backend-runners" }
 demi-backend-database = { path = "../backend-database" }
 demi-backend-page-sync = { path = "../backend-page-sync" }
+demi-backend-permissions = { path = "../backend-permissions" }
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-backend-plugins = { path = "../backend-plugins" }
 demi-plugin-interface = { path = "../plugin-interface" }

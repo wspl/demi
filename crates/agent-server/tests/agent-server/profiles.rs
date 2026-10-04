@@ -559,7 +559,7 @@ async fn a_restored_child_whose_entry_is_gone_closes_as_an_error_with_its_subtre
     assert_eq!(closed_phase(&fixture, &inner), Some(ClosePhase::Aborted));
     let receipts = root_receipts(&fixture);
     assert_eq!(receipts.len(), 1);
-    assert_eq!(receipts[0].sender.id, outer);
+    assert_eq!(receipts[0].sender.clone().unwrap().id, outer);
     assert_eq!(
         receipts[0].event,
         AgentMessageEvent::Completion {

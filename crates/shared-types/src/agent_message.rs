@@ -1,5 +1,7 @@
 //! Input one agent of a tree sends another (`subagents.md` § Message
-//! identity): an explicit message, or a child's completion receipt.
+//! identity): an explicit message, or a child's completion receipt; and the
+//! user's decision on a permission request, which reaches the agent that
+//! asked the same way (`permissions.md` § The decision's message).
 
 use std::{fmt, str::FromStr};
 
@@ -14,11 +16,15 @@ use crate::{BlockId, MAX_SAFE_INTEGER, NodeId, Timestamp, is_blank};
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AgentMessage {
     /// The id of the `agent_message` block the message becomes. A
-    /// completion's id is its [`CompletionId`].
+    /// completion's id is its [`CompletionId`]; a permission decision's is
+    /// `permission:<request id>`.
     #[garde(custom(names_completed_round(&self.sender, &self.event)))]
     pub id: BlockId,
-    #[garde(dive)]
-    pub sender: Sender,
+    /// The agent that sent it; none for the user, who sends only a
+    /// permission decision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(custom(sent_by_an_agent_unless_decided(&self.event)), dive)]
+    pub sender: Option<Sender>,
     #[garde(skip)]
     pub recipient_id: NodeId,
     /// When the message was sent; for a completion, when the child closed.
@@ -61,7 +67,27 @@ pub enum AgentMessageEvent {
         #[garde(skip)]
         outcome: CompletionOutcome,
     },
+    /// The user's decision on a permission request the recipient, or a
+    /// subagent of it that closed since, raised.
+    Permission {
+        #[garde(skip)]
+        outcome: PermissionOutcome,
+        /// The category's action, such as `manage skills`, which the
+        /// receipt row names.
+        #[garde(length(min = 1))]
+        action: String,
+    },
 }
+
+/// How the user decided a permission request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum PermissionOutcome {
+    Allowed,
+    Denied,
+}
+
+serde_plain::derive_display_from_serialize!(PermissionOutcome);
 
 /// How a child ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -127,13 +153,32 @@ impl FromStr for CompletionId {
     }
 }
 
+/// The user sends a permission decision, and an agent every other message.
+fn sent_by_an_agent_unless_decided(
+    event: &AgentMessageEvent,
+) -> impl FnOnce(&Option<Sender>, &()) -> garde::Result + '_ {
+    move |sender, _| {
+        let decided = matches!(event, AgentMessageEvent::Permission { .. });
+        match (sender, decided) {
+            (Some(_), true) => Err(garde::Error::new(
+                "a permission decision is the user's and names no agent sender",
+            )),
+            (None, false) => Err(garde::Error::new("an agent message names its sender")),
+            _ => Ok(()),
+        }
+    }
+}
+
 /// A completion's id names the round of its sender that it completes.
 fn names_completed_round<'a>(
-    sender: &'a Sender,
+    sender: &'a Option<Sender>,
     event: &'a AgentMessageEvent,
 ) -> impl FnOnce(&BlockId, &()) -> garde::Result + 'a {
     move |id, _| {
         let AgentMessageEvent::Completion { .. } = event else {
+            return Ok(());
+        };
+        let Some(sender) = sender else {
             return Ok(());
         };
         let expected = CompletionId {
@@ -149,14 +194,14 @@ fn names_completed_round<'a>(
     }
 }
 
-/// An explicit message has a body.
+/// An explicit message and a permission decision have a body.
 fn has_body_when_explicit(
     event: &AgentMessageEvent,
 ) -> impl FnOnce(&str, &()) -> garde::Result + '_ {
     move |content, _| {
-        let AgentMessageEvent::Message {} = event else {
+        if let AgentMessageEvent::Completion { .. } = event {
             return Ok(());
-        };
+        }
         if is_blank(content) {
             return Err(garde::Error::new(
                 "an explicit agent message must not be empty",

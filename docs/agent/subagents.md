@@ -188,11 +188,11 @@ sender by writing an identifier into the message body.
 | Field | Meaning |
 | --- | --- |
 | `id` | The stable message ID |
-| `sender` | The sender's node; its description (`root session` for the root); and its round, `1` for its first run and one more at each resume |
+| `sender` | The sender's node; its description (`root session` for the root); and its round, `1` for its first run and one more at each resume. Absent for the user's decision on a permission request, the one message the user sends |
 | `recipientId` | The recipient's node ID |
 | `timestamp` | When the message was sent; for a completion, when the child closed |
 | `content` | The body |
-| `event` | `message`, an explicit communication between live agents; `completion`, a supervisor receipt with the `outcome` `completed`, `failed`, or `aborted`; or `permission`, the user's decision on a [permission request](permissions.md#the-decisions-message), whose sender is the user and whose `outcome` is `allowed` or `denied` |
+| `event` | `message`, an explicit communication between live agents; `completion`, a supervisor receipt with the `outcome` `completed`, `failed`, or `aborted`; or `permission`, the user's decision on a [permission request](permissions.md#the-decisions-message), whose sender is the user, whose `outcome` is `allowed` or `denied`, and whose `action` is the category's, which the receipt row names |
 
 A completion carries the child's result for `completed`, and otherwise its
 failure text, which can be empty. Its ID is `subagent:<child id>:<round>`, so

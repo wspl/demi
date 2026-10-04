@@ -5,6 +5,7 @@
 //! the model as a context block. Nothing else in Demi knows skills.
 
 mod catalog;
+mod commands;
 mod fetch;
 mod origin;
 mod project;
@@ -21,14 +22,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use demi_plugin_interface::{
-    Manifest, Method, Page, Plugin, PluginError, PluginId, PluginPort, PortFailure, PortRefusal,
-    Reply, Request, Scope,
+    CommandPlugin, Manifest, Method, Page, Plugin, PluginError, PluginId, PluginPort, PortFailure,
+    PortRefusal, Reply, Request, Scope,
 };
 use demi_shared_types::{Clock, SystemClock, TurnId};
 use futures_util::future::{LocalBoxFuture, join_all};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value};
+use tokio::sync::watch;
 use tokio::task::AbortHandle;
 
 use crate::catalog::{Entry, NONE_AVAILABLE};
@@ -69,6 +71,7 @@ impl Skills {
             "Workflows the agent follows: skills from Git repositories you add, and those your repository carries.",
         );
         manifest.context = true;
+        manifest.commands = commands::commands().manifest_commands();
         manifest.page = Some(page());
         Self {
             manifest,
@@ -91,6 +94,7 @@ impl demi_plugin_interface::PluginFactory for Skills {
 
     fn instance(&self) -> Rc<dyn Plugin> {
         Rc::new(Instance(Rc::new(State {
+            commands: commands::commands(),
             plugin: self.manifest.id.clone(),
             resolve: self.resolve.clone(),
             clock: self.clock.clone(),
@@ -167,11 +171,13 @@ struct Instance(Rc<State>);
 
 /// What the instance keeps in memory, for its user only.
 struct State {
+    /// The `demi skills` group, which the instance answers.
+    commands: CommandPlugin,
     plugin: PluginId,
     resolve: Arc<Resolve>,
     clock: Arc<dyn Clock>,
-    /// The sources being fetched, by id.
-    fetching: RefCell<BTreeSet<String>>,
+    /// The sources being fetched, by id, each with its fetch's end.
+    fetching: RefCell<BTreeMap<String, FetchEnd>>,
     /// Each running fetch: its task and what stops its blocking part.
     fetches: RefCell<Vec<(AbortHandle, Arc<AtomicBool>)>>,
     /// What each source's default branch points to, by id.
@@ -187,6 +193,23 @@ struct ProjectSearch {
     turn: TurnId,
     skills: Vec<ProjectSkill>,
 }
+
+/// How a fetch of a source ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Fetched {
+    /// The source is pinned to the newest commit.
+    Pinned,
+    /// The fetch failed, as the source now records.
+    Failed(String),
+    /// The source was removed while it was fetched.
+    Removed,
+    /// The shutdown cut the fetch off, which recorded nothing.
+    Stopped,
+}
+
+/// A running fetch's end, which each command waiting for it reads: none
+/// until it ends, then how, or why its recording failed.
+type FetchEnd = watch::Receiver<Option<Result<Fetched, String>>>;
 
 /// The instance ends with its shard: every fetch stops and saves nothing.
 impl Drop for Instance {
@@ -228,19 +251,19 @@ impl Plugin for Instance {
                     Ok(Reply::Context { text })
                 }
                 Request::PageState { .. } => {
-                    let sources = sources::read(&port).await?;
+                    let state = self.0.state(&port).await?;
                     Ok(Reply::State {
-                        state: sources::state(
-                            &sources,
-                            &self.0.fetching.borrow(),
-                            &self.0.heads.borrow(),
-                        ),
+                        state: serde_json::to_value(state).expect("the state encodes as JSON"),
                     })
                 }
                 Request::PageCall { method, params, .. } => Ok(Reply::Result {
                     result: self.0.call(&method, params, port).await?,
                 }),
-                Request::Command { .. } => Err(PluginError::undeclared("command")),
+                Request::Command { invocation, .. } => {
+                    self.0.commands.check(&invocation)?;
+                    let code = commands::run(&self.0, *invocation, &port).await?;
+                    Ok(Reply::Exit { code })
+                }
                 Request::PanelTab { .. } => Err(PluginError::undeclared("panel kind")),
                 Request::Topic { .. } => Err(PluginError::undeclared("topic")),
             }
@@ -274,9 +297,7 @@ impl State {
             "update_source" => {
                 let SourceCall { source } = decode(params)?;
                 sources::read_one(&port, &source).await?;
-                if !self.fetching.borrow().contains(&source) {
-                    self.start_fetch(port, source);
-                }
+                self.start_fetch(port, source);
                 Ok(Value::Null)
             }
             "remove_source" => {
@@ -313,6 +334,17 @@ impl State {
             }
             method => Err(PluginError::failed(format!("no method \"{method}\""))),
         }
+    }
+
+    /// The page's state of the user's sources.
+    async fn state(&self, port: &PluginPort) -> Result<SkillsState, PluginError> {
+        let sources = sources::read(port).await?;
+        let fetching = self.fetching.borrow();
+        Ok(sources::state(
+            &sources,
+            |id| fetching.contains_key(id),
+            &self.heads.borrow(),
+        ))
     }
 
     /// Records the source `origin` names, with no commit and no skills, and
@@ -399,19 +431,25 @@ impl State {
         Ok(())
     }
 
-    /// Fetches source `id` after the call that asked for it; the call's
-    /// port answers for as long as the fetch runs. One fetch of a source
-    /// runs at a time.
-    fn start_fetch(self: &Rc<Self>, port: PluginPort, id: String) {
-        self.fetching.borrow_mut().insert(id.clone());
+    /// Fetches source `id` after the call that asked for it, unless a fetch
+    /// of it runs already; the call's port answers for as long as the fetch
+    /// runs. Answers the end of the fetch that runs.
+    fn start_fetch(self: &Rc<Self>, port: PluginPort, id: String) -> FetchEnd {
+        if let Some(running) = self.fetching.borrow().get(&id) {
+            return running.clone();
+        }
+        let (end, ended) = watch::channel(None);
+        self.fetching.borrow_mut().insert(id.clone(), ended.clone());
         let stop = Arc::new(AtomicBool::new(false));
         let state = self.clone();
         let fetch_stop = stop.clone();
         let task = tokio::task::spawn_local(async move {
-            if let Err(error) = state.fetch_source(&port, &id, fetch_stop).await {
+            let fetched = state.fetch_source(&port, &id, fetch_stop).await;
+            if let Err(error) = &fetched {
                 tracing::warn!(source = %id, %error, "a skill source's fetch was not recorded");
             }
             state.fetching.borrow_mut().remove(&id);
+            end.send_replace(Some(fetched.map_err(|error| error.to_string())));
             // A page that misses this change reads the state again when it
             // reconnects.
             if let Err(error) = port.changed(Scope::User).await {
@@ -421,6 +459,7 @@ impl State {
         let mut fetches = self.fetches.borrow_mut();
         fetches.retain(|(task, _)| !task.is_finished());
         fetches.push((task.abort_handle(), stop));
+        ended
     }
 
     async fn fetch_source(
@@ -428,7 +467,7 @@ impl State {
         port: &PluginPort,
         id: &str,
         stop: Arc<AtomicBool>,
-    ) -> Result<(), PluginError> {
+    ) -> Result<Fetched, PluginError> {
         port.changed(Scope::User).await?;
         let (source, _) = sources::read_one(port, id).await?;
         let origin = Origin::parse(&source.origin)
@@ -443,14 +482,13 @@ impl State {
                 let blobs = sources::put_files(port, &fetched).await?;
                 Ok((fetched, blobs))
             }
-            Err(FetchError::Stopped) => return Ok(()),
+            Err(FetchError::Stopped) => return Ok(Fetched::Stopped),
             Err(FetchError::Failed(message)) => Err(message),
         };
         loop {
             let all = sources::read(port).await?;
             let Some((source, revision)) = all.get(id) else {
-                // Removed while it was fetched.
-                return Ok(());
+                return Ok(Fetched::Removed);
             };
             let now = self.clock.now();
             let recorded = match &outcome {
@@ -478,11 +516,14 @@ impl State {
                 Err(failure) => return Err(failure.into()),
             }
         }
-        if outcome.is_ok() {
-            let all = sources::read(port).await?;
-            port.set_directories(sources::directories(&all)).await?;
+        match outcome {
+            Ok(_) => {
+                let all = sources::read(port).await?;
+                port.set_directories(sources::directories(&all)).await?;
+                Ok(Fetched::Pinned)
+            }
+            Err(message) => Ok(Fetched::Failed(message)),
         }
-        Ok(())
     }
 
     /// Checks, after the call that asked for it, the default branch of each
@@ -501,7 +542,7 @@ impl State {
                 let recent = heads.get(&id).is_some_and(|head| {
                     now.as_millisecond() - head.checked_at.as_millisecond() < interval
                 });
-                if source.commit.is_none() || fetching.contains(&id) || recent {
+                if source.commit.is_none() || fetching.contains_key(&id) || recent {
                     continue;
                 }
                 let origin = Origin::parse(&source.origin)

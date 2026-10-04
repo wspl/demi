@@ -24,6 +24,7 @@ mod install;
 mod listener;
 mod models;
 mod panel;
+mod permissions;
 mod plugins;
 mod provider_cli;
 mod providers;
@@ -277,6 +278,18 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(drafts::read).put(drafts::save),
         )
         .route("/conversations/{id}/draft/replaced", post(drafts::replaced))
+        .route(
+            "/conversations/{id}/permissions",
+            get(permissions::read),
+        )
+        .route(
+            "/conversations/{id}/permissions/requests/{request}",
+            post(permissions::decide),
+        )
+        .route(
+            "/conversations/{id}/permissions/grants/{category}",
+            delete(permissions::revoke),
+        )
         .route(
             "/conversations/{id}/plugins/{plugin}/calls/{method}",
             post(plugins::conversation_call),

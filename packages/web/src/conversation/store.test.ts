@@ -137,6 +137,8 @@ function record(id: string, title = id): ConversationSummary {
     panelRevision: 0,
     pluginRevisions: [],
     workingTreeRevision: 0,
+    permissionRequests: 0,
+    permissionsRevision: 0,
     cwd: `/home/demi/sessions/${id}`,
     target: { kind: 'cloud' },
     contextVersion: 0,

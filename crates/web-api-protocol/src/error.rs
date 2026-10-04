@@ -121,6 +121,10 @@ pub enum ErrorCode {
     ConversationNotFound,
     /// The conversation is archived: restore it first.
     ConversationArchived,
+    /// The conversation has no undecided permission request of that id:
+    /// another page decided it, an Allow of its category did, or a newer
+    /// request replaced it.
+    PermissionRequestNotFound,
     /// The work panel holds as many tabs, or as much of their data, as it
     /// can (`web-api.md` § Work panel state).
     PanelFull,

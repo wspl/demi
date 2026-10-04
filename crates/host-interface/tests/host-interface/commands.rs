@@ -315,3 +315,39 @@ async fn grafting_replaces_or_appends_and_filtering_drops_emptied_groups() {
     let nothing = set.filter(|_| false);
     assert_eq!(nothing.declarations().count(), 0);
 }
+
+#[test]
+fn a_permission_category_is_declared_once_in_the_set_and_its_leaves_check_answers_it() {
+    let skills = |root: &str| {
+        GroupBuilder::new(root, "Roots.").group(
+            GroupBuilder::new("skills", "Skills.")
+                .permission("skills.manage", "manage skills", "Add and remove sources.")
+                .leaf(
+                    LeafBuilder::rpc("add", "Add a note.")
+                        .input::<AddArgs>()
+                        .positionals(["text"])
+                        .permission("skills.manage")
+                        .bind(TypedRpc::new(add)),
+                ),
+        )
+    };
+    let mut set = CommandSet::new();
+    set.register(skills("demi")).unwrap();
+    let error = set.register(skills("other")).unwrap_err().to_string();
+    assert!(error.contains("declared twice"), "{error}");
+
+    let checked = set
+        .check(&invocation(&["demi", "skills", "add"], json!({"text": "a"})))
+        .unwrap();
+    assert_eq!(
+        checked.category.map(|category| category.id.as_str()),
+        Some("skills.manage")
+    );
+    let unchecked = notes();
+    let mut plain = CommandSet::new();
+    plain.register(unchecked).unwrap();
+    let checked = plain
+        .check(&invocation(&["demi", "note", "add"], json!({"text": "a"})))
+        .unwrap();
+    assert!(checked.category.is_none());
+}

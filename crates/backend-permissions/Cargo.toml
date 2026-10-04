@@ -1,0 +1,25 @@
+[package]
+name = "demi-backend-permissions"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# No tests of its own: the backend's permission scenarios cover the check,
+# the decisions and their messages at the boundaries the agent and the page
+# observe (`crates-and-packages.md` § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+demi-backend-database = { path = "../backend-database" }
+demi-backend-page-sync = { path = "../backend-page-sync" }
+demi-command-declarations = { path = "../command-declarations" }
+demi-host-interface = { path = "../host-interface" }
+demi-shared-types = { path = "../shared-types" }
+demi-web-api-protocol = { path = "../web-api-protocol" }
+futures-util.workspace = true
+shlex = "2"
+thiserror.workspace = true
+tracing.workspace = true

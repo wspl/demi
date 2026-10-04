@@ -147,6 +147,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'titleCurrent'
       | 'titleGenerating'
       | 'pluginsChanged'
+      | 'permissionRequests'
       | 'createdAt'
       | 'updatedAt'
     >,
@@ -167,6 +168,7 @@ export const useConversations = defineStore('conversations', () => {
       titleCurrent: record.titleCurrent,
       titleGenerating: record.titleGenerating,
       pluginsChanged: record.pluginsChanged,
+      needsYou: record.permissionRequests > 0,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     }
@@ -483,6 +485,8 @@ export const useConversations = defineStore('conversations', () => {
           panelRevision: 0,
           pluginRevisions: [],
           workingTreeRevision: 0,
+          permissionRequests: 0,
+          permissionsRevision: 0,
           status: 'idle',
           contextVersion: 0,
           revision: 0,
@@ -989,6 +993,8 @@ export const useConversations = defineStore('conversations', () => {
       panelRevision: 0,
       pluginRevisions: [],
       workingTreeRevision: 0,
+      permissionRequests: 0,
+      permissionsRevision: 0,
       createdAt: now,
       updatedAt: now,
       model: null,

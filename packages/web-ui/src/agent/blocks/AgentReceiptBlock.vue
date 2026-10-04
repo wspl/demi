@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Bot } from '@lucide/vue'
+import { Bot, ShieldCheck } from '@lucide/vue'
 import type { AgentMessage } from '@demicodes/protocol'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
@@ -9,10 +9,17 @@ import FunctionalBlock from './FunctionalBlock.vue'
 const props = defineProps<{ message: AgentMessage }>()
 const isOpen = defineModel<boolean>('open', { default: false })
 const label = computed(() => {
-  const sender = props.message.sender.description || props.message.sender.id
   const event = props.message.event
+  // The user's decision on a permission request, which reached the agent as this message.
+  if (event.type === 'permission') {
+    return event.outcome === 'allowed'
+      ? `You allowed this conversation to ${event.action}`
+      : `You denied this conversation permission to ${event.action}`
+  }
+  const sender = props.message.sender
+  const name = sender?.description || sender?.id
   // A finished child's outcome reads as its verb: completed, failed, aborted.
-  return `${sender} ${event.type === 'message' ? 'sent an update' : event.outcome}`
+  return `${name} ${event.type === 'message' ? 'sent an update' : event.outcome}`
 })
 </script>
 
@@ -20,7 +27,8 @@ const label = computed(() => {
   <div class="px-[var(--agent-pad-x,2rem)]">
     <FunctionalBlock v-model:open="isOpen" expandable>
       <template #icon>
-        <Bot :size="ICON_PX.in28" />
+        <ShieldCheck v-if="message.event.type === 'permission'" :size="ICON_PX.in28" />
+        <Bot v-else :size="ICON_PX.in28" />
       </template>
       <span class="min-w-0 truncate">{{ label }}</span>
       <template #body>

@@ -12,6 +12,9 @@ mod host;
 #[cfg(test)]
 mod host_tests;
 mod page_socket;
+mod permissions;
+
+pub use self::permissions::deliver_decisions;
 mod plugins;
 
 pub use self::plugins::ReloadRefusal;
@@ -116,6 +119,9 @@ pub struct Shard {
     plugin_installs: PluginInstalls,
     /// How many jobs of each conversation ended since the shard started.
     jobs_ended: RefCell<HashMap<ConversationId, u64>>,
+    /// How many times each conversation's permission requests or grants
+    /// changed since the shard started.
+    permission_revisions: demi_backend_permissions::Revisions,
 }
 
 impl Shard {
@@ -169,6 +175,7 @@ impl Shard {
             plugins,
             plugin_installs: PluginInstalls::default(),
             jobs_ended: RefCell::new(HashMap::new()),
+            permission_revisions: demi_backend_permissions::Revisions::default(),
         }
     }
 

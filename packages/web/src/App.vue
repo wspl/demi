@@ -14,12 +14,14 @@ import ImageViewer from '@demicodes/web-ui/files/ImageViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideImageViewer } from '@demicodes/web-ui/files/image-viewer'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
+import PermissionsDialog from '@demicodes/web-ui/permissions/PermissionsDialog.vue'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
 import WorkPane from './conversation/WorkPane.vue'
 import { useConversations } from './conversation/store'
 import { useWorkPanel } from './conversation/work'
+import { usePermissions } from './conversation/permissions'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
 import { claimDevice, useDeviceInstallation } from './devices/pairing'
@@ -43,6 +45,11 @@ watch(
 const imageViewer = provideImageViewer()
 const session = useSession()
 const conversations = useConversations()
+const permissions = usePermissions()
+/** The conversation whose Permissions dialog is open. */
+const permissionsOf = computed(() =>
+  conversations.items.find((item) => item.id === permissions.dialog) ?? null,
+)
 const resources = useResources()
 // The widths follow the dividers frame by frame; the preference takes them when a resize settles.
 const sidebarWidth = ref(resources.sidebarWidth)
@@ -192,6 +199,7 @@ useAppShortcuts(
         @pin="conversations.pin"
         @move-to-project="conversations.move"
         @archive="conversations.archive"
+        @permissions="permissions.openDialog"
         @open-settings="resources.openSettings"
         @sign-out="signOut"
       />
@@ -209,6 +217,17 @@ useAppShortcuts(
       <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
       <SettingsDialog @sign-out="signOut" />
       <TargetDialog />
+      <PermissionsDialog
+        :is-open="permissionsOf !== null"
+        :overlay-store="appOverlayStore"
+        :title="permissionsOf?.title ?? ''"
+        :grants="permissionsOf ? permissions.stateFor(permissionsOf.id).grants : []"
+        :load="permissionsOf ? permissions.stateFor(permissionsOf.id).load : 'ready'"
+        :revoking="permissionsOf ? permissions.stateFor(permissionsOf.id).revoking : []"
+        @close="permissions.closeDialog()"
+        @retry="permissionsOf && permissions.read(permissionsOf.id)"
+        @revoke="(category) => permissionsOf && permissions.revoke(permissionsOf.id, category)"
+      />
       <DevicePairingDialog
         v-if="installation"
         :is-open="pairing.isOpen.value"

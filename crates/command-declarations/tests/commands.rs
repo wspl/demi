@@ -445,3 +445,39 @@ fn declared_argument_types_generate_schemas_inside_the_subset() {
     assert_eq!(value["properties"]["mode"]["enum"], json!(["fast", "slow"]));
     input(value).unwrap();
 }
+
+#[test]
+fn a_leaf_names_a_permission_category_one_of_its_groups_declares_and_its_help_says_so() {
+    let manage = json!({"id": "skills.manage", "action": "manage skills",
+        "description": "Add and remove skill sources."});
+    let tree = |permissions: Value, leaf: Value| {
+        serde_json::from_value::<Node>(json!({"name": "demi", "summary": "Demi",
+            "subcommands": [{"name": "skills", "summary": "Skills",
+                "permissions": permissions, "subcommands": [leaf]}]}))
+        .unwrap()
+    };
+    let add = json!({"name": "add", "summary": "Add", "kind": "rpc",
+        "permission": "skills.manage"});
+    let declared = tree(json!([manage.clone()]), add.clone());
+    declared.validate().unwrap();
+    assert_eq!(declared.categories()[0].title(), "Manage skills");
+    let help = declared.help("demi");
+    assert!(
+        help.contains("    Permission: needs the user's permission (skills.manage) in each conversation; without it, the command fails at once and the user is asked."),
+        "{help}"
+    );
+
+    let refused = |tree: Node| tree.validate().unwrap_err().to_string();
+    let undeclared = refused(tree(json!([]), add.clone()));
+    assert!(undeclared.contains("none of its groups declares"), "{undeclared}");
+    let native = json!({"name": "read", "summary": "Read", "kind": "native",
+        "permission": "skills.manage",
+        "binding": {"package": "demi.file", "operation": "file.read", "descriptorHash": "a".repeat(64)}});
+    let on_native = refused(tree(json!([manage.clone()]), native));
+    assert!(on_native.contains("only an rpc command can"), "{on_native}");
+    let twice = refused(tree(json!([manage.clone(), manage.clone()]), add.clone()));
+    assert!(twice.contains("declared twice"), "{twice}");
+    let misnamed = json!({"id": "other.manage", "action": "manage", "description": "Manage."});
+    let foreign = refused(tree(json!([misnamed]), add));
+    assert!(foreign.contains("must be named skills.<name>"), "{foreign}");
+}

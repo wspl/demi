@@ -6,7 +6,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use demi_command_declarations::{
-    HELP_DEFAULTS, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
+    Category, HELP_DEFAULTS, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
 };
 
 use crate::{RpcError, RpcHandler, RpcInvocation, RpcPort, reserved::is_reserved};
@@ -43,6 +43,13 @@ impl Declared {
     }
 }
 
+/// An `rpc` call the command set accepts: the permission category its leaf
+/// needs, if any, and the handler that runs it.
+pub struct Checked<'a> {
+    pub category: Option<&'a Category>,
+    pub handler: &'a Rc<dyn RpcHandler>,
+}
+
 /// A declaration the command set refuses; the text names the command and,
 /// when a field is at fault, the field.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -64,7 +71,8 @@ impl CommandSet {
 
     /// Adds a root command. It is refused, and the set unchanged, when its
     /// name is reserved or taken, when the tree breaks a declaration rule or
-    /// the input subset, or when an `rpc` leaf has no handler.
+    /// the input subset, when an `rpc` leaf has no handler, or when it
+    /// declares a permission category another root declares.
     pub fn register(&mut self, root: impl Into<Declared>) -> Result<(), RegisterError> {
         let declared = root.into();
         let name = declared.tree.name().to_owned();
@@ -79,8 +87,35 @@ impl CommandSet {
             )));
         }
         check(&declared)?;
+        self.check_categories(&declared.tree, None)?;
         self.handlers.extend(declared.handlers);
         self.roots.push(declared.tree);
+        Ok(())
+    }
+
+    /// Refuses `tree` when it declares a permission category that a root
+    /// other than the one at `replacing` declares: an id is unique in the
+    /// command set.
+    fn check_categories(
+        &self,
+        tree: &Node<NativeOperation>,
+        replacing: Option<usize>,
+    ) -> Result<(), RegisterError> {
+        let others = self
+            .roots
+            .iter()
+            .enumerate()
+            .filter(|(index, _)| Some(*index) != replacing)
+            .flat_map(|(_, root)| root.categories());
+        for other in others {
+            if tree.categories().iter().any(|category| category.id == other.id) {
+                return Err(RegisterError(format!(
+                    "\"{}\": permission category {} is declared twice",
+                    tree.name(),
+                    other.id
+                )));
+            }
+        }
         Ok(())
     }
 
@@ -135,6 +170,7 @@ impl CommandSet {
             error: declared.error,
         };
         check(&grafted)?;
+        self.check_categories(&grafted.tree, Some(index))?;
         self.handlers.retain(|path, _| !in_root(path));
         self.handlers.extend(grafted.handlers);
         self.roots[index] = grafted.tree;
@@ -181,16 +217,18 @@ impl CommandSet {
 
     /// Runs the `rpc` leaf `invocation.path` names. The arguments arrived as
     /// JSON and are validated as they are: no text is converted, so `"7"`
-    /// for a number is a usage error.
+    /// for a number is a usage error. The leaf's permission is not checked
+    /// here: the backend's dispatch checks it between [`CommandSet::check`]
+    /// and the handler (`permissions.md` § The check).
     pub async fn dispatch(&self, invocation: RpcInvocation, port: RpcPort) -> Result<u8, RpcError> {
-        let handler = self.check(&invocation)?;
-        handler.call(invocation, port).await
+        let checked = self.check(&invocation)?;
+        checked.handler.call(invocation, port).await
     }
 
-    /// The handler of the `rpc` leaf `invocation.path` names, once the
+    /// The `rpc` leaf `invocation.path` names, with its handler, once the
     /// arguments are valid against its input, as [`CommandSet::dispatch`]
     /// checks them.
-    pub fn check(&self, invocation: &RpcInvocation) -> Result<&Rc<dyn RpcHandler>, RpcError> {
+    pub fn check(&self, invocation: &RpcInvocation) -> Result<Checked<'_>, RpcError> {
         let named = invocation.path.join(" ");
         let (leaf, handler) = self
             .leaf(&invocation.path)
@@ -198,7 +236,19 @@ impl CommandSet {
             .ok_or_else(|| RpcError::Usage(format!("\"{named}\" is not an rpc command")))?;
         leaf.check_arguments(&invocation.args)
             .map_err(|error| RpcError::Usage(error.to_string()))?;
-        Ok(handler)
+        let category = leaf.permission.as_deref().map(|id| {
+            self.category(id)
+                .expect("registration checked that a group declares the leaf's category")
+        });
+        Ok(Checked { category, handler })
+    }
+
+    /// The permission category `id` that a group of the set declares.
+    pub fn category(&self, id: &str) -> Option<&Category> {
+        self.roots
+            .iter()
+            .flat_map(Node::categories)
+            .find(|category| category.id == id)
     }
 
     fn leaf(&self, path: &[String]) -> Option<&Leaf<NativeOperation>> {
@@ -316,6 +366,7 @@ fn keep_leaves(
                 Node::Group(demi_command_declarations::Group {
                     name: group.name.clone(),
                     summary: group.summary.clone(),
+                    permissions: group.permissions.clone(),
                     subcommands,
                 })
             })

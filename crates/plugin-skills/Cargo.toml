@@ -16,6 +16,7 @@ bench = false
 testing = []
 
 [dependencies]
+demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
@@ -35,6 +36,8 @@ tracing.workspace = true
 [dev-dependencies]
 # The plugin runs through the JSON loopback over an in-memory Demi, and
 # fetches repositories the tests make.
+demi-command-declarations = { path = "../command-declarations" }
+demi-host-interface = { path = "../host-interface", features = ["testing"] }
 demi-plugin-interface = { path = "../plugin-interface", features = ["testing"] }
 demi-plugin-skills = { path = ".", features = ["testing"] }
 demi-web-api-protocol = { path = "../web-api-protocol" }

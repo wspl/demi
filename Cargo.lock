@@ -1697,6 +1697,7 @@ dependencies = [
  "demi-backend-expose",
  "demi-backend-host-access",
  "demi-backend-page-sync",
+ "demi-backend-permissions",
  "demi-backend-plugins",
  "demi-backend-providers",
  "demi-backend-remote-host",
@@ -1749,6 +1750,22 @@ dependencies = [
  "demi-backend-database",
  "demi-web-api-protocol",
  "tokio",
+]
+
+[[package]]
+name = "demi-backend-permissions"
+version = "0.1.3"
+dependencies = [
+ "demi-backend-database",
+ "demi-backend-page-sync",
+ "demi-command-declarations",
+ "demi-host-interface",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "shlex",
+ "thiserror",
+ "tracing",
 ]
 
 [[package]]
@@ -1901,6 +1918,7 @@ dependencies = [
  "demi-backend-host-access",
  "demi-backend-idle-watch",
  "demi-backend-page-sync",
+ "demi-backend-permissions",
  "demi-backend-plugins",
  "demi-backend-providers",
  "demi-backend-remote-host",
@@ -2292,6 +2310,8 @@ dependencies = [
 name = "demi-plugin-skills"
 version = "0.1.3"
 dependencies = [
+ "demi-command-declarations",
+ "demi-host-interface",
  "demi-plugin-interface",
  "demi-plugin-skills",
  "demi-shared-types",

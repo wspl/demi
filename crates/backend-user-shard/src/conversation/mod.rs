@@ -12,7 +12,7 @@ mod cloud_workspace;
 mod connection_test;
 mod failure_facts;
 mod fork;
-mod product;
+pub(crate) mod product;
 mod providers;
 pub mod settings;
 mod socket;
