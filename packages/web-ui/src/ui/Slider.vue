@@ -115,6 +115,7 @@ function onKeydown(event: KeyboardEvent) {
     :content="tooltipContent"
     :disabled="!tooltipContent"
     tag="span"
+    data-field
     class="inline-flex w-20"
     :open-delay-ms="80"
   >

@@ -121,6 +121,7 @@ defineExpose({
     :disabled="!tooltipContent"
     tag="div"
     v-bind="layoutAttrs"
+    data-field
     class="flex min-w-0"
     :class="[attrs['class'] ? '' : 'w-full', bare ? 'self-stretch' : '']"
     :open-delay-ms="80"
