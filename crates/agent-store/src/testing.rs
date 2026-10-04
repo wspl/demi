@@ -17,8 +17,8 @@ use demi_shared_types::{
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
-    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, CommandStateSnapshot,
-    CommitGuard, NodeClose, NodeRecord, SessionStore, StoreError, StoredOutput, media::BlobStore,
+    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, NodeClose, NodeRecord,
+    SessionStore, StoreError, StoredOutput, media::BlobStore,
 };
 
 /// A model selection of the provider `provider` with a 100,000-token window.
@@ -82,7 +82,6 @@ pub fn sent_text(text: &str) -> Vec<UserPart> {
 struct StoredNode {
     record: NodeRecord,
     state: CheckpointState,
-    command_state: CommandStateSnapshot,
     blocks: BTreeMap<usize, Block>,
     block_count: usize,
 }
@@ -95,6 +94,7 @@ struct Stored {
     sequences: BTreeMap<Sequence, u64>,
     failing_saves: usize,
     save_hold: Option<Rc<Hold>>,
+    number_hold: Option<Rc<Hold>>,
     /// The holds on reads of a node's children, by the node.
     children_holds: BTreeMap<NodeId, Rc<Hold>>,
     /// What the product's keeper stored of each ended command's output.
@@ -222,6 +222,14 @@ impl MemoryTreeStore {
         StoreGate(hold)
     }
 
+    /// Holds every number the store gives out from now on until the gate is
+    /// released.
+    pub fn hold_numbers(&self) -> StoreGate {
+        let hold = Rc::new(Hold::default());
+        self.stored.borrow_mut().number_hold = Some(hold.clone());
+        StoreGate(hold)
+    }
+
     /// Holds every read of `parent`'s children from now on until the gate
     /// is released.
     pub fn hold_children_of(&self, parent: &NodeId) -> StoreGate {
@@ -253,7 +261,6 @@ fn load(stored: &Stored, id: &NodeId) -> Result<Option<Checkpoint>, StoreError> 
     Ok(Some(Checkpoint {
         state: node.state.clone(),
         transcript,
-        command_state: node.command_state.clone(),
     }))
 }
 
@@ -266,20 +273,6 @@ fn apply_save(
 ) -> Result<(), StoreError> {
     let completions = update.carried_completions()?;
     let node = stored.nodes.get_mut(id).ok_or_else(|| missing(id))?;
-    if let Some(command_state) = &update.command_state {
-        for version in &command_state.versions {
-            let changed = node.command_state.versions.iter().any(|existing| {
-                existing.revision == version.revision && existing.values != version.values
-            });
-            if changed {
-                return Err(StoreError::Failed(format!(
-                    "command-state version {} is immutable",
-                    version.revision
-                )));
-            }
-        }
-        node.command_state = command_state.clone();
-    }
     for (index, block) in &update.changed_blocks {
         node.blocks.insert(*index, block.clone());
     }
@@ -306,17 +299,12 @@ struct MemorySessionStore {
 }
 
 impl SessionStore for MemorySessionStore {
-    fn save<'a>(
-        &'a self,
-        update: CheckpointUpdate,
-        guard: &'a CommitGuard,
-    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+    fn save(&self, update: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>> {
         Box::pin(async move {
             let hold = self.stored.borrow().save_hold.clone();
             if let Some(hold) = hold {
                 hold.pass().await;
             }
-            guard.check()?;
             let mut stored = self.stored.borrow_mut();
             if stored.failing_saves > 0 {
                 stored.failing_saves -= 1;
@@ -387,7 +375,6 @@ impl AgentTreeStore for MemoryTreeStore {
                 StoredNode {
                     record,
                     state: initial.state.clone(),
-                    command_state: CommandStateSnapshot::initial(),
                     blocks: BTreeMap::new(),
                     block_count: 0,
                 },
@@ -476,6 +463,10 @@ impl AgentTreeStore for MemoryTreeStore {
 
     fn next_number(&self, sequence: Sequence) -> LocalBoxFuture<'_, Result<u64, StoreError>> {
         Box::pin(async move {
+            let hold = self.stored.borrow().number_hold.clone();
+            if let Some(hold) = hold {
+                hold.pass().await;
+            }
             let mut stored = self.stored.borrow_mut();
             let next = stored.sequences.entry(sequence).or_insert(1);
             let number = *next;
@@ -551,8 +542,8 @@ pub mod store_contract {
 
     use super::{test_model, text};
     use crate::{
-        AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, CommandStateSnapshot,
-        NodeClose, NodeRecord, PendingAgentInput,
+        AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
+        PendingAgentInput,
     };
 
     fn id(value: &str) -> NodeId {
@@ -586,7 +577,6 @@ pub mod store_contract {
                 model: test_model(),
                 edits: Vec::new(),
             },
-            command_state: Some(CommandStateSnapshot::initial()),
             block_count: blocks.len(),
             changed_blocks: blocks.into_iter().enumerate().collect(),
         }
@@ -705,7 +695,7 @@ pub mod store_contract {
         });
         let child = store.session_store(&id("child"));
         child
-            .save(update(Vec::new(), vec![user]), &Default::default())
+            .save(update(Vec::new(), vec![user]))
             .await
             .expect("the save commits");
         let loaded = child
@@ -757,7 +747,7 @@ pub mod store_contract {
         );
         store
             .session_store(&id("root"))
-            .save(save, &Default::default())
+            .save(save)
             .await
             .expect("the save commits");
 
@@ -865,9 +855,7 @@ pub mod store_contract {
 
         let root = store.session_store(&id("root"));
         let old = update(Vec::new(), vec![receipt("child", 1)]);
-        root.save(old, &Default::default())
-            .await
-            .expect("the save commits");
+        root.save(old).await.expect("the save commits");
         store
             .mark_delivered(&id("child"), 1)
             .await
@@ -875,9 +863,7 @@ pub mod store_contract {
         assert!(!delivered(store, "child").await);
 
         let current = update(Vec::new(), vec![receipt("child", 1), receipt("child", 2)]);
-        root.save(current, &Default::default())
-            .await
-            .expect("the save commits");
+        root.save(current).await.expect("the save commits");
         assert!(delivered(store, "child").await);
     }
 
@@ -970,7 +956,7 @@ pub mod store_contract {
         });
         store
             .session_store(&id("root"))
-            .save(save, &Default::default())
+            .save(save)
             .await
             .expect("the save commits");
         assert!(delivered(store, "child").await);

@@ -730,7 +730,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     );
     // Without the command packages the backend's own groups are
     // offered, and none of the packages'.
-    assert!(system.contains("demi todo"), "{system}");
+    assert!(system.contains("demi expose"), "{system}");
     assert!(
         !system.contains("demi file") && !system.contains("demi browser"),
         "{system}"

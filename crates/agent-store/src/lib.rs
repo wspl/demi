@@ -8,13 +8,12 @@
 //! Creating, saving, closing, reopening and deleting a node are each one
 //! atomic commit, whatever the realization.
 //!
-//! Beside the contract: each node's command-state history, the media rules
-//! over the store's blob namespace (`media`), the fitting of an image as it
-//! enters a transcript (`images`) and what an upload becomes (`attachments`)
-//! (`crates-and-packages.md` § agent-store).
+//! Beside the contract: the media rules over the store's blob namespace
+//! (`media`), the fitting of an image as it enters a transcript (`images`)
+//! and what an upload becomes (`attachments`) (`crates-and-packages.md`
+//! § agent-store).
 
 pub mod attachments;
-mod command_state;
 pub mod images;
 pub mod media;
 #[cfg(feature = "testing")]
@@ -30,24 +29,13 @@ use demi_shared_types::{
 };
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
-use tokio_util::sync::CancellationToken;
-
-pub use command_state::{
-    BoundaryEdge, CommandStateError, CommandStateHistory, CommandStateSnapshot, CommandStorageKey,
-    CommandVersion, SessionBoundary,
-};
 
 /// One node's checkpoint: what its session saves and restores from, and the
 /// blob namespace its media live in.
 pub trait SessionStore {
-    /// Commits `update` in one transaction. Right before the transaction the
-    /// store checks `guard`; the update took effect exactly when this returns
-    /// `Ok`.
-    fn save<'a>(
-        &'a self,
-        update: CheckpointUpdate,
-        guard: &'a CommitGuard,
-    ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
+    /// Commits `update` in one transaction; the update took effect exactly
+    /// when this returns `Ok`.
+    fn save(&self, update: CheckpointUpdate) -> LocalBoxFuture<'_, Result<(), StoreError>>;
 
     /// The node's checkpoint, decoded and checked, its media by reference as
     /// saved; none when the node has none. Corrupt data stops the load.
@@ -150,38 +138,12 @@ pub enum StoredOutput {
 /// Why a store operation failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum StoreError {
-    /// The save serves an invocation that a history rewrite or dispose made
-    /// stale, so nothing was written.
-    #[error("the command storage handle is no longer current")]
-    Invalidated,
     /// What the store holds is not a valid record or checkpoint.
     #[error("the stored agent tree is corrupt: {0}")]
     Corrupt(String),
     /// The operation failed, such as a transaction the database refused.
     #[error("{0}")]
     Failed(String),
-}
-
-/// What a save's transaction checks right before it commits: that no
-/// invocation it serves has been made stale. An ordinary checkpoint save
-/// serves none.
-#[derive(Debug, Clone, Default)]
-pub struct CommitGuard {
-    lifetimes: Vec<CancellationToken>,
-}
-
-impl CommitGuard {
-    /// A guard over the lifetimes of the invocations a save serves.
-    pub fn new(lifetimes: Vec<CancellationToken>) -> Self {
-        Self { lifetimes }
-    }
-
-    pub fn check(&self) -> Result<(), StoreError> {
-        if self.lifetimes.iter().any(CancellationToken::is_cancelled) {
-            return Err(StoreError::Invalidated);
-        }
-        Ok(())
-    }
 }
 
 /// A node as the store holds it: identity and relationship, never runtime
@@ -288,7 +250,7 @@ impl ClosePhase {
 }
 
 /// The state row of a node's checkpoint: everything the session saves
-/// beside its transcript rows and command state.
+/// beside its transcript rows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CheckpointState {
@@ -368,16 +330,12 @@ pub struct EditReceipt {
 pub struct Checkpoint {
     pub state: CheckpointState,
     pub transcript: Vec<Block>,
-    pub command_state: CommandStateSnapshot,
 }
 
 /// One save: only what changed since the last one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CheckpointUpdate {
     pub state: CheckpointState,
-    /// The command state, when it changed; a new node's first checkpoint
-    /// carries the empty initial version.
-    pub command_state: Option<CommandStateSnapshot>,
     /// The changed block rows by index, ascending.
     pub changed_blocks: Vec<(usize, Block)>,
     /// How many blocks the transcript has: rows at or beyond it are deleted.

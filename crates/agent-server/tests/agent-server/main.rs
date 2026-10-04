@@ -4,7 +4,6 @@
 mod connections;
 mod editing;
 mod live;
-mod storage;
 mod subagents;
 mod support;
 mod title;

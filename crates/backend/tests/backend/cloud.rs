@@ -1061,14 +1061,14 @@ async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so
 // Several seconds: the Cloud boots before and after the backend's restart, and
 // installs the builtin package.
 #[tokio::test]
-async fn the_clouds_files_and_todos_and_the_usage_ledger_survive_a_backend_restart() {
+async fn the_clouds_files_and_the_usage_ledger_survive_a_backend_restart() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
     let (backend, master) = harness.start_set_up().await;
     let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
     create(&backend, &master, FIRST).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
-    let script = "demi file create notes.md <<'EOF'\nkeep me\nEOF\ndemi todo add \"still here\"";
+    let script = "demi file create notes.md <<'EOF'\nkeep me\nEOF";
     let stored = work
         .turn(vec![shell("t1", script, 20_000), say("stored")])
         .await;
@@ -1091,17 +1091,12 @@ async fn the_clouds_files_and_todos_and_the_usage_ledger_survive_a_backend_resta
     work.reconnect(&backend, &master, FIRST, &provider).await;
     let found = work
         .turn(vec![
-            shell("t2", "cat notes.md && demi todo list", 20_000),
+            shell("t2", "cat notes.md", 20_000),
             say("found"),
         ])
         .await;
     assert!(
         found.received[0].contains("keep me"),
-        "{}",
-        found.received[0]
-    );
-    assert!(
-        found.received[0].contains("still here"),
         "{}",
         found.received[0]
     );

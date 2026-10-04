@@ -46,12 +46,12 @@ async fn an_open_conversation_keeps_its_commands_until_a_reload_opens_it_with_th
     socket.open().await;
     vendor.respond(answer(&["one"], 1, 1));
     socket.chat("m1", "first").await;
-    assert!(system(&vendor, 0).contains("demi todo"));
+    assert!(system(&vendor, 0).contains("demi expose"));
 
     // Turned off: every page learns it, and the open conversation says a
     // reload would change it.
     assert_eq!(
-        switch(&backend, &master, "todo", false).await,
+        switch(&backend, &master, "expose", false).await,
         StatusCode::NO_CONTENT
     );
     // One batch: the conversation's summary goes before the plugin list.
@@ -67,13 +67,13 @@ async fn an_open_conversation_keeps_its_commands_until_a_reload_opens_it_with_th
     let Some(SyncEvent::Plugins { plugins }) = changes.last() else {
         unreachable!("the wait ends at the plugin list")
     };
-    let todo = plugins.iter().find(|plugin| plugin.id == "todo").unwrap();
-    assert!(!todo.enabled);
+    let expose = plugins.iter().find(|plugin| plugin.id == "expose").unwrap();
+    assert!(!expose.enabled);
 
     // Until the reload, the tree keeps the commands it opened with.
     vendor.respond(answer(&["two"], 1, 1));
     socket.chat("m2", "second").await;
-    assert!(system(&vendor, 1).contains("demi todo"));
+    assert!(system(&vendor, 1).contains("demi expose"));
 
     // A reload closes the tree, the socket opens it again, and it offers
     // the commands of the plugins on.
@@ -97,7 +97,7 @@ async fn an_open_conversation_keeps_its_commands_until_a_reload_opens_it_with_th
     vendor.respond(answer(&["three"], 1, 1));
     socket.chat("m3", "third").await;
     let reopened = system(&vendor, 2);
-    assert!(!reopened.contains("demi todo"), "{reopened}");
+    assert!(!reopened.contains("demi expose"), "{reopened}");
     assert!(reopened.contains("demi host"), "{reopened}");
 
     // A tree that works is not reloaded; the turn goes on.

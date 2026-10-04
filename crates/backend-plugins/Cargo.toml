@@ -41,7 +41,6 @@ demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }
 demi-plugin-file = { path = "../plugin-file" }
 demi-plugin-interface = { path = "../plugin-interface" }
-demi-plugin-todo = { path = "../plugin-todo" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-shared-types = { path = "../shared-types" }

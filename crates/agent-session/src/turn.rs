@@ -10,7 +10,7 @@
 
 use std::rc::Rc;
 
-use demi_agent_store::{BoundaryEdge, media};
+use demi_agent_store::media;
 use demi_agent_transcript::{
     estimate::{context_tokens, request_size},
     replay_start, resume_point, tool_input,
@@ -18,7 +18,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ResultPart,
 };
-use demi_shared_types::{Block, BlockId, ToolView, WakeupId};
+use demi_shared_types::{Block, ToolView, WakeupId};
 use futures_util::StreamExt;
 
 use super::{
@@ -199,7 +199,7 @@ async fn stream(
         let too_large = failure.code == Some(ErrorCode::ContextLengthExceeded);
         if too_large && unwindable && !refusal_compacted && s.config.compaction.automatic() {
             refusal_compacted = true;
-            restore_command_state(s, start).await?;
+            cut_history(s, start).await?;
             if compact_before_request(s, cancel, continues).await? {
                 continue;
             }
@@ -208,9 +208,8 @@ async fn stream(
             s.update(|core| core.record_failure(&failure));
             return Err(TurnError::Failed(Box::new((&failure).into())));
         }
-        // The attempt's leftovers go, and command state returns to where the
-        // attempt began.
-        restore_command_state(s, start).await?;
+        // The attempt's leftovers go.
+        cut_history(s, start).await?;
         let delay = policy.delay(attempt, failure.retry_after);
         s.emit(SessionEvent::RetryScheduled {
             attempt,
@@ -238,26 +237,11 @@ async fn compact_before_request(
     Ok(compacted)
 }
 
-/// Cuts the history to its first `cut` blocks, with the command state
-/// recorded after the last block kept, or the empty version when none is.
-pub(super) async fn restore_command_state(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
-    let (blocks, revision) = s.read(|core| {
-        let blocks = core.transcript.blocks()[..cut].to_vec();
-        let revision = match blocks.last() {
-            Some(last) => core
-                .commands
-                .boundary(last.id(), BoundaryEdge::AfterBlock)
-                .ok_or_else(|| missing_boundary(last.id())),
-            None => Ok(0),
-        };
-        (blocks, revision)
-    });
-    persist::commit_rewrite(s, blocks, revision?).await?;
+/// Cuts the history to its first `cut` blocks.
+pub(super) async fn cut_history(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
+    let blocks = s.read(|core| core.transcript.blocks()[..cut].to_vec());
+    persist::commit_rewrite(s, blocks).await?;
     Ok(())
-}
-
-fn missing_boundary(block: &BlockId) -> TurnError {
-    TurnError::refused(format!("No command-state boundary after block {block}"))
 }
 
 /// The next request: what the context sources tell the node first, saved at
@@ -331,7 +315,7 @@ async fn read(
                         ProviderEvent::TextDelta(_) | ProviderEvent::ThinkingSignature(_)
                     );
                 if completes_text {
-                    complete_text(s).await;
+                    complete_text(s);
                 }
                 if let ProviderEvent::Response(usage) = &event {
                     let window = s.read(|core| core.model.model.context_window);
@@ -343,17 +327,13 @@ async fn read(
         }
     }
     drop(events);
-    complete_text(s).await;
+    complete_text(s);
     Ok(Ok(recover))
 }
 
-/// Marks open answer text at the end complete, in the session's save order,
-/// so a command-state commit ordered before it is in its boundary.
-async fn complete_text(s: &SessionShared) {
-    if !s.read(|core| core.transcript.ends_with_open_text()) {
-        return;
-    }
-    let _turn = s.persist_gate.acquire().await;
+/// Marks open answer text at the end complete, so a Fork may end at it
+/// (`conversation-fork.md` § Eligibility).
+fn complete_text(s: &SessionShared) {
     s.update(|core| core.complete_tail_text());
 }
 
@@ -383,20 +363,14 @@ async fn run_tools(
         cancel.check()?;
         let before = s.read(|core| core.inputs.arrivals());
         let outcome = if tools.iter().any(|tool| tool.name == call.tool_name) {
-            let (model, request_limits, generation) = s.read(|core| {
-                (
-                    core.model.clone(),
-                    core.request_limits(),
-                    core.generation.number,
-                )
-            });
+            let (model, request_limits) =
+                s.read(|core| (core.model.clone(), core.request_limits()));
             let invocation = ToolInvocation {
                 tool_use_id: call.tool_use_id.clone(),
                 tool_name: call.tool_name.clone(),
                 input: tool_input(&call.input),
                 model,
                 request_limits,
-                generation,
                 cancel: cancel.child_token(),
             };
             match cancel.guard(s.runtime.invoke_tool(invocation)).await? {

@@ -27,12 +27,10 @@ garde.workspace = true
 # transcript): only the codecs of the types a model reads, and no threads.
 image = { version = "0.25", default-features = false, features = ["gif", "jpeg", "png", "webp"] }
 serde.workspace = true
-serde_json.workspace = true
-serde_json_canonicalizer = "0.3"
 sha2 = { version = "0.10", optional = true }
 thiserror.workspace = true
 tokio.workspace = true
-tokio-util.workspace = true
 
 [dev-dependencies]
 demi-agent-store = { path = ".", features = ["testing"] }
+serde_json.workspace = true

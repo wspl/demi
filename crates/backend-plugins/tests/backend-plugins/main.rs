@@ -1,6 +1,6 @@
 //! The plugin host's scenarios: the command set it composes from the `file`
-//! and `todo` plugins, in an agent server whose shells are real runner jobs
-//! and whose model is a script.
+//! plugin, in an agent server whose shells are real runner jobs and whose
+//! model is a script.
 //!
 //! A scenario that takes more than a second (`testing.md` § Cost) says above
 //! it which part of its contract takes the time. Measured alone on four

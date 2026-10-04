@@ -1,7 +1,8 @@
-//! Where a transcript is cut for a resume (`runtime.md` § Resume).
+//! Where a transcript is cut for a resume (`runtime.md` § Resume) and for a
+//! Fork (`conversation-fork.md` § Eligibility).
 
 use demi_agent_store::testing::test_model;
-use demi_agent_transcript::resume_point;
+use demi_agent_transcript::{CutError, resume_point, through_assistant};
 use demi_shared_types::{
     AbortBlock, Block, BlockId, ErrorBlock, ResponseBlock, TextBlock, ThinkingBlock, Timestamp,
     TokenUsage, ToolCallBlock, ToolCallStatus, TurnId, UserBlock,
@@ -29,6 +30,17 @@ fn text(value: &str) -> Block {
         model: test_model(),
         text: value.into(),
         forkable: false,
+    })
+}
+
+/// `text` once it is complete.
+fn completed(value: &str) -> Block {
+    let Block::Text(block) = text(value) else {
+        unreachable!("text makes a text block")
+    };
+    Block::Text(TextBlock {
+        forkable: true,
+        ..block
     })
 }
 
@@ -114,4 +126,32 @@ fn the_resume_point_drops_only_what_nobody_can_have_acted_on() {
         (4, true)
     );
     assert_eq!(point(&[]), (0, false));
+}
+
+#[test]
+fn a_fork_ends_only_at_completed_text_with_no_call_before_it_still_executing() {
+    let target = id("text");
+    let cut =
+        |blocks: &[Block], target: &BlockId| through_assistant(blocks, target).map(<[Block]>::len);
+    // Text still streaming is refused; once complete, it ends the Fork.
+    assert_eq!(
+        cut(&[user("u1"), text("answer")], &target),
+        Err(CutError::NotCompletedText)
+    );
+    assert_eq!(
+        cut(&[user("u1"), completed("answer"), response()], &target),
+        Ok(2)
+    );
+    // Only text ends a Fork.
+    assert_eq!(
+        cut(&[user("u1"), completed("answer")], &id("u1")),
+        Err(CutError::NotCompletedText)
+    );
+    // A call before it still executing refuses it; a completed one does not.
+    let after_call = |status| [user("u1"), tool_call(status), completed("answer")];
+    assert_eq!(
+        cut(&after_call(ToolCallStatus::Executing), &target),
+        Err(CutError::UnfinishedToolCalls)
+    );
+    assert_eq!(cut(&after_call(ToolCallStatus::Completed), &target), Ok(3));
 }
