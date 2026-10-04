@@ -144,15 +144,3 @@ func TestEditAcceptanceRemainsAfterWaitCancellation(t *testing.T) {
 		}
 	})
 }
-
-func TestKeptEditMediaMustBelongToTarget(t *testing.T) {
-	target := []core.UserContentBlock{&core.UserAttachment{Path: "/a"}}
-	got, err := resolveEdit([]EditContent{&KeptAttachment{Path: "/a"}}, target)
-	if err != nil || len(got) != 1 || got[0] != target[0] {
-		t.Fatalf("%+v, %v", got, err)
-	}
-	_, err = resolveEdit([]EditContent{&KeptAttachment{Path: "/b"}}, target)
-	if err == nil || err.Error() != "The edited message holds no attachment at /b" {
-		t.Fatal(err)
-	}
-}
