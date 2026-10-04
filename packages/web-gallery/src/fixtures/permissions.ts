@@ -1,8 +1,4 @@
-import type {
-  PermissionCategoryView,
-  PermissionGrantView,
-  PermissionRequestView,
-} from '@demicodes/web-ui/permissions/types'
+import type { PermissionCategoryView, PermissionRequestView } from '@demicodes/web-ui/permissions/types'
 
 /** Manage skills, as `plugin-skills` declares it. */
 export const manageSkills: PermissionCategoryView = {
@@ -50,13 +46,5 @@ export function queuedRequests(): PermissionRequestView[] {
       command: 'demi conversations show 12',
       subagent: { number: 3, description: 'History search' },
     },
-  ]
-}
-
-/** The grants of a conversation the user allowed to manage skills, and a category no longer declared. */
-export function demoGrants(): PermissionGrantView[] {
-  return [
-    { category: manageSkills, grantedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString() },
-    { category: retiredCategory, grantedAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString() },
   ]
 }

@@ -28,9 +28,3 @@ export async function decidePermission(
     ...jsonBody(body),
   })
 }
-
-export async function revokePermission(conversationId: string, category: string): Promise<void> {
-  await apiRequest(`${permissionsPath(conversationId)}/grants/${encodeURIComponent(category)}`, {
-    method: 'DELETE',
-  })
-}

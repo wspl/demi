@@ -155,7 +155,7 @@ input, which the multi-worker control service also relies on
   transaction; a new request is written with the removal of the request it
   replaces; a decided request is deleted once its message is in the agent's
   checkpoint, and the requests still decided at start are delivered then; an
-  archive deletes the conversation's requests, and a revocation one grant.
+  archive deletes the conversation's requests.
   The conversation index counts the undecided requests into each
   conversation's summary.
 - **Operations:** `conversation_fork_operations` reserves a destination ID and
