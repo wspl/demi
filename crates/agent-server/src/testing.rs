@@ -88,6 +88,12 @@ impl ProviderResolver for ScriptedProviders {
             Ok(runtimes())
         })
     }
+
+    /// The model's own window: no user limits it here.
+    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
+        let window = model.model.context_window;
+        Box::pin(async move { window })
+    }
 }
 
 /// Uploads a test gave the blocks they resolve to, with the bytes of their

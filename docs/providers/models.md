@@ -418,7 +418,8 @@ The limits a model offers depend on its window:
   by the entry's id and the model's id. It is not part of a conversation's
   model settings: it applies to every session of the user that infers with
   that model, subagents included, and a subagent profile that names the model
-  follows it. The Context row says so beside its options.
+  follows it. The Context row shows only its options, the full window and
+  the limits, and no text about this scope.
 - A stored limit applies only while the model's window offers it. When the
   catalog later reports a window that does not offer it, such as 400,000
   tokens, the model's full window is used and the menu shows it selected.

@@ -186,6 +186,12 @@ impl ProviderResolver for DeepSeek {
             .map_err(|error| ResolveError::Failed(error.to_string()));
         Box::pin(async move { runtime })
     }
+
+    /// The model's own window: the fixture has no user to limit it.
+    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
+        let window = model.model.context_window;
+        Box::pin(async move { window })
+    }
 }
 
 /// The fixture opened as a conversation, and what the harness asks it.

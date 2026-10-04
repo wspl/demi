@@ -103,6 +103,7 @@ import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import GalleryContextLimit from '../components/GalleryContextLimit.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTabStripDrive from '../components/GalleryTabStripDrive.vue'
@@ -325,6 +326,14 @@ function playStream(): void {
 
 function playTurn(kind: TurnFlowKind): void {
   turnFlow.play(kind)
+}
+
+/** 150K tokens: half of the 300K the Gemini specimen is limited to. */
+const limitedUsage = {
+  inputTokens: 150_000,
+  outputTokens: 0,
+  cacheReadTokens: 0,
+  cacheWriteTokens: 0,
 }
 
 const selectorSettings = ref<ModelSettings>({
@@ -923,7 +932,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="ModelSelector"
-        note="The model dropdown aligns to the trigger’s right edge, extending to the left. A new conversation inherits the saved model, reasoning and Fast Mode; the product adapter persists this preference to the backend."
+        note="The model dropdown aligns to the trigger’s right edge, extending to the left. A new conversation inherits the saved model, reasoning and Fast Mode; the product adapter persists this preference to the backend. A model over 500K offers a Context row: the limit is the user's for that model in every conversation, so the context specimens share one store, and the usage indicator counts against the limit."
       >
         <div class="specimen-stack">
           <GallerySpecimen variant="new conversation · saved choice">
@@ -955,6 +964,24 @@ onBeforeUnmount(() => {
               />
             </GallerySpecimen>
           </GalleryOverlayWell>
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="context · 200K model, no row">
+              <GalleryContextLimit provider-id="anthropic" model-id="claude-haiku" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="context · 800K model: full, 300K, 200K">
+              <GalleryContextLimit provider-id="openai" model-id="gpt-long" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell size="wide">
+            <GallerySpecimen variant="context · 1M model: full, 500K, 300K, 200K">
+              <GalleryContextLimit provider-id="anthropic" model-id="claude-opus" />
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GallerySpecimen variant="context · limited to 300K, with its usage">
+            <GalleryContextLimit provider-id="google" model-id="gemini-pro" :usage="limitedUsage" />
+          </GallerySpecimen>
         </div>
       </GallerySection>
 

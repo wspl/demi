@@ -58,6 +58,11 @@ pub trait ProviderResolver {
         root: &'a NodeId,
         model: &'a ModelSelection,
     ) -> LocalBoxFuture<'a, Result<Box<dyn ProviderRuntime>, ResolveError>>;
+
+    /// The window the token thresholds of a session that infers with
+    /// `model` use: the model's context window, or the limit the user set on
+    /// it (`models.md` § Context limit).
+    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32>;
 }
 
 /// Why no runtime could be built.

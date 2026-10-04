@@ -165,7 +165,9 @@ export const useResources = defineStore('resources', () => {
             (model) =>
               !local.value.hiddenModels[provider.providerId]?.includes(model.id),
           )
-          .map(modelInfo),
+          .map((model) =>
+            modelInfo(model, preferences.contextLimit(provider.providerId, model.id)),
+          ),
       ]),
     )
   }
