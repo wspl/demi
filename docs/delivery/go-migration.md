@@ -1,5 +1,12 @@
 # Migration to Go
 
+**Status: complete (2026-10-04).** Gate G4 passed on `gomig/main` at
+`f38fb7b3b`: no Rust remains, a release builds for all six targets, and the
+real-machine acceptance passed (Chrome on macOS, Claude Code, and the arm64
+Cloud suite, 6/6). The Linux x86_64 Cloud suite has not run here and is
+needed before a release. `gomig/main` is ready to merge. The rest of this
+document is the plan as it was carried out, kept as history.
+
 This document is the plan for replacing Demi's Rust programs with Go
 programs: who does the work, how the work is divided so that many agents
 can work at once without touching each other's files, in what order the
