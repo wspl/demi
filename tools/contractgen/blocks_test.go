@@ -12,7 +12,7 @@ import (
 	contracts "github.com/wspl/demi/tools/contractgen/testdata/blocks"
 )
 
-const fixtureDir = "../../crates/shared-types/tests/shared-types/fixtures/"
+const fixtureDir = "../../internal/core/testdata/"
 
 // This boundary corpus protects stored transcript compatibility; it has no IO
 // beyond local fixtures, no processes or timers, and a one-second test budget.

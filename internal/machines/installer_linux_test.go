@@ -28,7 +28,7 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 	if !ok {
 		t.Fatal("test source path unavailable")
 	}
-	script := filepath.Join(filepath.Dir(source), "../../crates/machine-manager/scripts/install-managed-hosts.sh")
+	script := filepath.Join(filepath.Dir(source), "../../scripts/machines/install-managed-hosts.sh")
 	directory := t.TempDir()
 	architecture, ok := machinewire.HostArchitecture()
 	if !ok {
