@@ -156,7 +156,8 @@ pub struct TranscriptSnapshot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ActionEnd {
     Completed,
-    /// It was stopped, and recorded the stop.
+    /// It was stopped; one that had written into the transcript recorded
+    /// the stop.
     Aborted,
     /// It left the queue without running: dequeued, cleared, stopped or
     /// turned into a steer.

@@ -5,7 +5,11 @@ import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import type { Block } from '@demicodes/protocol'
 import { generationErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
-import { failedCompactionTranscript } from '../fixtures/compaction'
+import {
+  compactedAfterFailedTurnTranscript,
+  failedCompactionTranscript,
+  stoppedCompactTranscript,
+} from '../fixtures/compaction'
 import { productWould } from '../product-would'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import GalleryComposer from './GalleryComposer.vue'
@@ -55,6 +59,11 @@ function state(
   })
 }
 
+/** The product would open a new conversation from the answer. */
+async function forkFromAnswer(): Promise<void> {
+  productWould('Fork the conversation from this answer')
+}
+
 const LOAD_ERROR = 'Could not load the transcript: HTTP 502 Bad Gateway'
 
 const cases: SessionCase[] = [
@@ -92,6 +101,18 @@ const cases: SessionCase[] = [
     variant: 'Compact failed · no turn ended',
     note: 'The user pressed Compact after a finished answer, and the summary request failed. The record stays, but no turn is left unfinished, so the dock offers nothing.',
     session: state('compaction-compact', { blocks: failedCompactionTranscript(true) }),
+    composer: 'default',
+  },
+  {
+    variant: 'Compacted after a failed turn · Resume stays',
+    note: 'The second message failed, then the user compacted. The divider is the last block, but a compaction ends no turn: the failed turn behind it still offers Resume, which reruns it after the summary.',
+    session: state('compaction-after-failure', { blocks: compactedAfterFailedTurnTranscript() }),
+    composer: 'default',
+  },
+  {
+    variant: 'Compact stopped · nothing to continue',
+    note: 'The user pressed Compact after a finished answer and stopped it while the summary was written. The stop wrote nothing, so no stop record is left and the dock offers no Continue.',
+    session: state('compaction-stopped', { blocks: stoppedCompactTranscript() }),
     composer: 'default',
   },
   {
@@ -142,7 +163,11 @@ const cases: SessionCase[] = [
               <ChatSession
                 :conversation="item.session"
                 has-provider
+                :fork="forkFromAnswer"
                 @retry="productWould('Resume the turn')"
+                @retry-load="productWould('Load the conversation again')"
+                @rename="item.session.title = $event"
+                @retitle="productWould('Detect a title for the conversation')"
                 @save-scroll="(_id, value) => (item.session.scroll = value)"
               >
                 <template #workspace

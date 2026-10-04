@@ -843,8 +843,8 @@ async fn stop_while_a_hook_hangs_records_the_stop_without_waiting_for_the_hook()
 
     assert_eq!(stopped.target, Some(AbortTarget::ActiveTurn));
     assert_eq!(running.await, Ok(ActionEnd::Aborted));
-    // The message never wrote its turn; the stop leaves its marker.
-    assert_eq!(kinds(&session.transcript().blocks), ["abort"]);
+    // The message never wrote its turn, so the stop has no turn to mark.
+    assert!(session.transcript().blocks.is_empty());
     assert!(provider.requests().is_empty());
 }
 

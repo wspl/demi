@@ -141,9 +141,11 @@ are kept. Other outcomes leave the history unchanged:
   [Retries](failures-and-recovery.md#retries), and leaves the `error` block
   any failed request leaves there. A failed `compact` action ended no turn,
   and its record says so, so the product offers no Resume for it
-  ([Retries](failures-and-recovery.md#retries)). The copy's
-  `retry_scheduled` events reach the client like the turn's own.
-- Stop stops the copy and then the action.
+  ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)). The
+  copy's `retry_scheduled` events reach the client like the turn's own.
+- Stop stops the copy and then the action. A stopped `compact` action wrote
+  nothing, so it leaves no `abort` block and nothing to continue
+  ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)).
 
 The copy is closed on every path.
 

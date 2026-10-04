@@ -117,6 +117,7 @@ A send, a continuation, a retry, a resume and an accepted edit each run a turn:
 ```text
 action starts
   prepare the input: a new block, or the rewound or unwound history
+  land a recorded model switch, compacting for the new model first
   compact first when the history is over the threshold
   |
   +-> write pending steers and agent messages into the transcript
@@ -181,8 +182,16 @@ would have stopped something more at the moment the stop was recorded.
 A stopped action records the stop itself. It writes the human steers still
 pending and the yield wakeups that fired, completes each running tool call as
 an error `Tool call aborted: <tool>`, and appends an `abort` block, the
-stopped marker. Agent messages keep waiting: the stop is the user's, and the
-user's next action reads them
+stopped marker. An action that has written nothing into the transcript, with
+the steers and wakeups its stop writes counted, appends no marker: it began
+no turn, so nothing is left to continue
+([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)). Only a
+send stopped while it still waits for the tree's admission
+([Actions](#actions)) has not written its message; it leaves like a stopped
+queued message, and the page still holds it as an unconfirmed submission
+([Persistence and adapters](../product/web-application.md#persistence-and-adapters)).
+Agent messages keep waiting, with or without a marker: the stop is the
+user's, and the user's next action reads them
 ([Delivery and scheduling](subagents.md#delivery-and-scheduling)).
 If the action was saving a history rewrite, it records the stop after the
 rewrite is published, so a rewrite never loses a stop. `abort_result` is sent
@@ -234,8 +243,12 @@ selection the conversation's record holds
 No client frame names a model.
 
 - A switch lands at the root's next provider request: at the start of the
-  next action, or inside a running turn at its next continuation boundary. A
-  request that is streaming finishes with the model it started with. A
+  next action, once the action has written its input, or inside a running
+  turn at its next continuation boundary. A send's `user` block and a
+  continuation's wakeup or agent messages are written first, so a switch
+  that fails to compact, or is stopped while it compacts, ends a turn that
+  holds the input ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)).
+  A request that is streaming finishes with the model it started with. A
   restored root keeps its checkpoint's model until its next action starts.
 - While an edit is being prepared, a switch waits, and lands once the edit is
   accepted or rejected. The replacement turn starts with the model it was
@@ -807,7 +820,7 @@ Words used for session data:
 | `text` | The provider: assistant text, marked `forkable` once complete ([Eligibility](conversation-fork.md#eligibility)) | The text | Yes |
 | `tool_call` | The provider's call, completed by the session with the result | The call and, once completed, its result | Yes |
 | `response` | The provider: the usage of one completed request | Nothing; its usage anchors the context estimate | No |
-| `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)); `outsideTurn` when the failure ended no turn ([Retries](failures-and-recovery.md#retries)) | Nothing | Yes |
+| `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)); `outsideTurn` when the failure ended no turn ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)) | Nothing | Yes |
 | `compaction_boundary` | Compaction: the summary, inserted where the kept history begins | A user message: "Previous conversation summary:" and the summary | Through its marker; at its own place only when an edit removed the marker |
 | `compaction_marker` | Compaction: the estimated size of what was summarized, appended at the end | Nothing | Yes, as the compaction's divider, with its boundary's summary size |
 
@@ -819,7 +832,9 @@ phase is `compacting`, the page shows the divider in progress at the end of
 the transcript, before pending steers and queued messages, which is where the
 marker will be appended; the finished divider then takes its place. A pass
 that fails ends with its `error` block at the same place
-([Retries](failures-and-recovery.md#retries)).
+([Retries](failures-and-recovery.md#retries)). A compaction is not the end of
+a turn: behind its divider, the turn before keeps its Resume or Continue
+([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)).
 
 A `user`, `context` or `wakeup` block with the placement `new_turn` opens an
 input turn: recovery treats it as the start of its turn

@@ -6,7 +6,8 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_agent_transcript::{resume_point, rewind};
+use demi_agent_transcript::{resume_point, rewind, unwind};
+use demi_shared_types::TurnId;
 use tokio::sync::Notify;
 
 use super::{
@@ -145,18 +146,20 @@ async fn execute(
     cancel: &TurnCancel,
 ) -> Result<(), TurnError> {
     match kind {
+        // The input is written before a recorded switch lands, so a switch
+        // that fails or is stopped ends a turn that holds it
+        // (`failures-and-recovery.md` § The unfinished turn).
         ActionKind::Send { content } => {
-            turn::apply_switch(s, cancel).await?;
             let preamble = cancel.guard(s.runtime.preamble()).await?;
             s.update(|core| {
                 let turn = core.turn();
                 core.push_user(turn, content.clone(), preamble);
             });
+            turn::apply_switch(s, cancel).await?;
             compaction::preflight(s, cancel).await?;
             turn::run(s, cancel).await
         }
         ActionKind::Continue => {
-            turn::apply_switch(s, cancel).await?;
             let Some(agent_message) = s.update(|core| core.open_continuation()) else {
                 // What woke it was taken by an earlier action.
                 return Ok(());
@@ -164,6 +167,7 @@ async fn execute(
             if agent_message {
                 persist::flush(s).await?;
             }
+            turn::apply_switch(s, cancel).await?;
             compaction::preflight(s, cancel).await?;
             turn::run(s, cancel).await
         }
@@ -194,8 +198,12 @@ async fn retry(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnErr
     let rewind = s
         .read(|core| rewind(core.transcript.blocks()))
         .ok_or_else(|| TurnError::refused("There is no input turn to retry"))?;
-    let turn = rewind.turn.clone();
     persist::commit_rewrite(s, rewind.retained).await?;
+    rerun(s, cancel, rewind.turn).await
+}
+
+/// Runs `turn` again from its input, which is the history's last turn.
+async fn rerun(s: &Rc<SessionShared>, cancel: &TurnCancel, turn: TurnId) -> Result<(), TurnError> {
     s.update(|core| core.take_over_turn(turn));
     cancel.check()?;
     turn::apply_switch(s, cancel).await?;
@@ -203,17 +211,19 @@ async fn retry(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnErr
     turn::run(s, cancel).await
 }
 
-/// Finishes an unfinished turn: unwinds it to its resume point, marks the
-/// stop it continues as resumed, appends a `resume` block and infers again.
-/// A turn that left nothing but leftovers runs again as a retry.
+/// Finishes an unfinished turn: unwinds it to its resume point, keeping the
+/// compactions after it, marks the stop it continues as resumed, appends a
+/// `resume` block and infers again. A turn that left nothing but leftovers
+/// runs again from its input, as a retry does.
 async fn resume(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let point = s.read(|core| resume_point(core.transcript.blocks()));
-    if point.full_rerun {
-        return retry(s, cancel).await;
-    }
     // The unwind comes before a pending switch lands: a switch that compacts
     // would move the cut.
-    turn::cut_history(s, point.cut).await?;
+    let kept = s.read(|core| unwind(core.transcript.blocks(), point.cut));
+    persist::commit_rewrite(s, kept).await?;
+    if let Some(turn) = point.rerun {
+        return rerun(s, cancel, turn).await;
+    }
     // A stop that came during the save is recorded after the published
     // rewrite, and no `resume` block without a turn is left.
     cancel.check()?;

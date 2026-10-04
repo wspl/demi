@@ -656,7 +656,11 @@ impl SessionCore {
     /// A stopped action records the stop: it writes the human steers still
     /// pending and, for the user's Stop, the wakeups that fired, then
     /// completes running calls as aborted and appends the stopped marker, or
-    /// the interruption record when the session is shutting down.
+    /// the interruption record when the session is shutting down. A Stop of
+    /// an action that wrote nothing, with what the stop wrote counted,
+    /// appends no marker: it began no turn, and the input still waiting
+    /// waits for the user's next action, as after a marker
+    /// (`failures-and-recovery.md` § The unfinished turn).
     pub(super) fn record_stop(&mut self, reason: CancelReason) {
         let take = match reason {
             CancelReason::Stop => Take::AllButAgentMessages,
@@ -665,7 +669,8 @@ impl SessionCore {
         self.write_inputs(take);
         self.abort_executing_calls();
         match reason {
-            CancelReason::Stop => self.transcript.push_abort(&self.model),
+            CancelReason::Stop if self.action_began() => self.transcript.push_abort(&self.model),
+            CancelReason::Stop => self.held = true,
             CancelReason::Shutdown => self.append_interruption(),
         }
         self.commit();

@@ -16,7 +16,7 @@ pub mod testing;
 
 pub use cut::{
     CompactionWindow, CutError, ResumePoint, Rewind, before_user, compaction_window,
-    last_assistant_text, resume_point, rewind, through_assistant,
+    last_assistant_text, resume_point, rewind, through_assistant, unwind,
 };
 pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
@@ -69,12 +69,7 @@ pub fn replay_start(blocks: &[Block]) -> usize {
 pub(crate) fn latest_answer(blocks: &[Block]) -> Option<usize> {
     let floor = blocks
         .iter()
-        .rposition(|block| {
-            matches!(
-                block,
-                Block::CompactionBoundary(_) | Block::CompactionMarker(_)
-            )
-        })
+        .rposition(is_compaction)
         .map_or(0, |compaction| compaction + 1);
     let response = floor
         + blocks[floor..]
@@ -84,6 +79,14 @@ pub(crate) fn latest_answer(blocks: &[Block]) -> Option<usize> {
         .iter()
         .rposition(|block| !is_answer(block));
     Some(before_answer.map_or(floor, |index| floor + index + 1))
+}
+
+/// Whether a block is a compaction's boundary or marker.
+pub(crate) fn is_compaction(block: &Block) -> bool {
+    matches!(
+        block,
+        Block::CompactionBoundary(_) | Block::CompactionMarker(_)
+    )
 }
 
 /// Whether a block is part of a model's answer.
