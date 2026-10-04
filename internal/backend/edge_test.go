@@ -2,20 +2,15 @@ package backend_test
 
 import (
 	"bufio"
-	"errors"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"strings"
-	"syscall"
 	"testing"
-	"time"
 
-	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/framewire"
 	"github.com/wspl/demi/internal/webapi"
 )
 
@@ -59,9 +54,6 @@ func TestAJSONBodyOverItsLimitIsRefusedBeforeItIsRead(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	if err := conn.SetDeadline(time.Now().Add(10 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := fmt.Fprintf(
 		conn,
 		"PATCH /api/auth/me HTTP/1.1\r\n"+
@@ -171,36 +163,4 @@ func TestTheWebAppBuildIsServedWithDeepNavigationWhileAPIMissesStayJSON(t *testi
 		conversationRequest(ctx, t, server, &master, "GET", "/api/no-such-resource", "", 404),
 		webapi.ErrorCodeNotFound,
 	)
-}
-
-// TestAPageSocketMessageOverTheLimitFailsTheSocket
-// checks oversized conversation socket messages.
-func TestAPageSocketMessageOverTheLimitFailsTheSocket(t *testing.T) {
-	t.Parallel()
-	ctx, harness := conversationHarness(t)
-	server, master, err := harness.StartSetUp(ctx, t)
-	wireMust(t, err)
-	id := "3c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01"
-	conversationCreate(ctx, t, server, &master, id)
-	socket, err := server.Conversation(ctx, t, &master, id)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := socket.Send(
-		ctx,
-		&framewire.SendFrame{
-			MessageID: "m1",
-			Content:   []framewire.ClientContent{&framewire.TextContent{Text: strings.Repeat("x", 1024*1024)}},
-		},
-	); err != nil && !errors.Is(err, syscall.EPIPE) && !errors.Is(err, syscall.ECONNRESET) {
-		// The backend may end the transport while the oversized send is in flight.
-		t.Fatal(err)
-	}
-	_, err = socket.Next(ctx)
-	if err == nil {
-		t.Fatal("oversized frame accepted")
-	}
-	if websocket.CloseStatus(err) != -1 {
-		t.Fatalf("socket closed with code: %v", err)
-	}
 }

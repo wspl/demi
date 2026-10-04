@@ -29,9 +29,8 @@ import (
 )
 
 const (
-	realFirst    = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01"
-	realSecond   = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02"
-	realPatience = 240 * time.Second
+	realFirst  = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a01"
+	realSecond = "8e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a02"
 )
 
 // These tests deliberately do not call Parallel: starting a backend reconciles
@@ -56,8 +55,7 @@ func realCloudStart(t *testing.T, brokenRunner bool) *realCloud {
 			t.Skip("the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)")
 		}
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 15*time.Minute)
-	t.Cleanup(cancel)
+	ctx := t.Context()
 	h, err := backendtest.NewHarness(ctx, t, os.Getenv("DEMI_TEST_MACHINES_SOCKET"))
 	wireMust(t, err)
 	address, err := url.Parse(os.Getenv("DEMI_TEST_CLOUD_URL"))
@@ -120,13 +118,11 @@ func (s *realCloud) device(ctx context.Context) string {
 	return string(status.Device.ID)
 }
 
-// until waits on the shared status-change observer, with a hang guard for each transition.
+// until waits on the shared status-change observer.
 func (s *realCloud) until(ctx context.Context, check func(webapi.CloudStatus) bool) webapi.CloudStatus {
 	s.t.Helper()
-	wait, cancel := context.WithTimeout(ctx, realPatience)
-	defer cancel()
 	observer := *s.hostScenario
-	observer.ctx = wait
+	observer.ctx = ctx
 	return observer.cloudUntil(check)
 }
 
@@ -138,11 +134,9 @@ func (s *realCloud) list(ctx context.Context, id string, status int) backendtest
 // realRun keeps the existing conversation driver's shell and vendor assertions.
 func realRun(ctx context.Context, w *cloudWork, id, script string, watch ...int) string {
 	w.s.t.Helper()
-	wait, cancel := context.WithTimeout(ctx, realPatience)
-	defer cancel()
 	owner := w.s
 	scenario := *owner
-	scenario.ctx = wait
+	scenario.ctx = ctx
 	w.s = &scenario
 	defer func() { w.s = owner }()
 	milliseconds := 240000
@@ -515,14 +509,11 @@ func (s *realCloud) openTab(ctx context.Context, pagePath, page string) {
 	answer, err := s.b.Post(ctx, panelPath+"/tabs", &s.user, params)
 	wireMust(s.t, err)
 	filesStatus(s.t, answer, 200)
-	wait, cancel := context.WithTimeout(ctx, realPatience)
-	defer cancel()
-
 	var browserTab string
 	for browserTab == "" {
 		panel := conversationDecode(
 			s.t,
-			conversationRequest(wait, s.t, s.b, &s.user, "GET", panelPath, "", 200),
+			conversationRequest(ctx, s.t, s.b, &s.user, "GET", panelPath, "", 200),
 			webapi.DecodeWorkPanel,
 		)
 		for _, tab := range panel.Tabs {
@@ -545,7 +536,7 @@ func (s *realCloud) openTab(ctx context.Context, pagePath, page string) {
 		}
 	}
 	for {
-		for _, tab := range s.tabs(wait, pagePath) {
+		for _, tab := range s.tabs(ctx, pagePath) {
 			if string(tab.ID) == browserTab && tab.Title == "cloud-suite page" {
 				return
 			}
@@ -649,10 +640,8 @@ func TestACheckpointWithChromeOpenSavesBothImagesWithWhatAMappingWroteAndKeepsEv
 	realContains(t, realRun(s.ctx, first, "end", "pkill -f mapper.py; echo ended"), "ended")
 	started = time.Now()
 	working.Release()
-	wait, cancel := context.WithTimeout(s.ctx, realPatience)
-	defer cancel()
-	for len(s.tabs(wait, pagePath)) != 0 {
-		wireMust(t, wait.Err())
+	for len(s.tabs(s.ctx, pagePath)) != 0 {
+		wireMust(t, s.ctx.Err())
 	}
 	realMeasured(t, "release of an idle conversation, window included", started)
 	realContains(t, realRun(s.ctx, second, "held", "echo held"), "held")

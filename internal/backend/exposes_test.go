@@ -818,7 +818,6 @@ func TestExposeWebSocketCarriesMessagesAndCloseCodesBothWays(t *testing.T) {
 }
 
 // filesExposeHead preserves header spelling and order, which net/http normalizes.
-// The connection's deadline is the owning scenario's context deadline.
 func filesExposeHead(ctx context.Context, read *bufio.Reader) (string, error) {
 	var head strings.Builder
 	for {
@@ -862,7 +861,6 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	wireMust(t, err)
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	wireMust(t, err)
-	deadline, _ := ctx.Deadline()
 	type observation struct {
 		head        string
 		body        []byte
@@ -900,9 +898,6 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 			mu.Unlock()
 			failure = func() error {
 				defer func() { _ = conn.Close() }() // The exchange checks I/O errors; cleanup may follow relay closure.
-				if err := conn.SetDeadline(deadline); err != nil {
-					return err
-				}
 				read := bufio.NewReader(conn)
 				head, err := filesExposeHead(ctx, read)
 				if err != nil {
@@ -1019,7 +1014,6 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 		conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", b.Address().String())
 		wireMust(t, err)
 		t.Cleanup(func() { _ = conn.Close() })
-		wireMust(t, conn.SetDeadline(deadline))
 		_, err = io.WriteString(conn, request)
 		wireMust(t, err)
 		read := bufio.NewReader(conn)
@@ -1080,7 +1074,6 @@ func TestExposeRelayPreservesRequestsAnswersAndStreaming(t *testing.T) {
 	conn, err := (&net.Dialer{}).DialContext(ctx, "tcp", b.Address().String())
 	wireMust(t, err)
 	t.Cleanup(func() { _ = conn.Close() })
-	wireMust(t, conn.SetDeadline(deadline))
 	_, err = io.WriteString(
 		conn,
 		"POST /upload HTTP/1.1\r\nHost: "+public.Host+"\r\n"+

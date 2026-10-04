@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/agent/session"
 	"github.com/wspl/demi/internal/agent/session/sessiontest"
@@ -219,8 +218,7 @@ func wirePool(ctx context.Context, t *testing.T, id, document string) *provider.
 // media, steering, agent messages, compaction and model switching.
 func wireConversation(t *testing.T, family wireFamily) []string {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second) // Hang guard, never a synchronization delay.
-	defer cancel()
+	ctx := t.Context()
 	vendor := providertest.StartVendor(t)
 	scripts := make([]codextest.Script, 8)
 	for i := range scripts {
@@ -471,7 +469,7 @@ func wireMust(t *testing.T, err error) {
 // TestProviderRequestsPreservePrefixesAcrossSummaryAndThinking
 // checks cached vendor prefixes across session changes.
 // Seven conversations hit local scripted vendors, cost no model usage and take
-// about one second together. The timeout guards hangs; all ordering uses events.
+// about one second together; all ordering uses events.
 func TestProviderRequestsPreservePrefixesAcrossSummaryAndThinking(t *testing.T) {
 	t.Parallel()
 	// The Codex pair stays ordered: WebSocket compares SSE's captured requests.

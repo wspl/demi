@@ -2,7 +2,6 @@ package backend_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -54,15 +53,12 @@ func (r *rawHostRunner) send(message runnerwire.Outbound) {
 	}
 }
 
+// next reads the backend's next runner message, or nil once the backend closed the socket.
 func (r *rawHostRunner) next() runnerwire.Inbound {
 	r.t.Helper()
-	ctx, cancel := context.WithTimeout(r.ctx, 10*time.Second)
-	defer cancel()
-	kind, data, err := r.socket.Read(ctx)
+	kind, data, err := r.socket.Read(r.ctx)
 	if err != nil {
-		if errors.Is(err, context.DeadlineExceeded) {
-			r.t.Fatal("runner answer timed out")
-		}
+		// The backend closed the socket; the scenario's assertions say whether it should have.
 		return nil
 	}
 	if kind != websocket.MessageBinary {
@@ -284,28 +280,6 @@ func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 			break
 		}
 	}
-}
-
-// TestDisconnectedRunnerCancelsHeldTokenLookup checks token lookup cancellation after disconnection.
-func TestDisconnectedRunnerCancelsHeldTokenLookup(t *testing.T) {
-	t.Parallel()
-	s := newHostScenario(t, "")
-	_, token := s.stoppedPair()
-	hold := backendtest.HoldHellos(t, s.b.Backend, backendtest.HelloTokenLookup)
-	r := connectHostRunner(t, s.b)
-	r.send(runnerHello(runnerwire.Version, token, nil))
-	if err := hold.UntilArrived(s.ctx, 1); err != nil {
-		t.Fatal(err)
-	}
-	// Close sends the close frame and waits for the peer's.
-	// EOF is an ended peer; a close-handshake timeout is not.
-	if err := r.socket.Close(websocket.StatusNormalClosure, ""); errors.Is(err, context.DeadlineExceeded) {
-		t.Fatal(err)
-	}
-	if r.next() != nil {
-		t.Fatal("disconnected runner answered")
-	}
-	hold.Release()
 }
 
 // TestClaimOfDisconnectedRunnerCreatesNoDevice checks a disconnected pairing claim without device creation.

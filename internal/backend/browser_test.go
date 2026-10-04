@@ -1,7 +1,6 @@
 package backend_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -212,8 +211,7 @@ func TestBrowserJobsAndTabMethodsRaiseSummaryRevisions(t *testing.T) {
 // its runner.
 func TestBrowserListingRunningCloudDoesNotKeepItAwake(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	h, manager, err := backendtest.HostsHarness(ctx, t)
 	wireMust(t, err)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-browser")

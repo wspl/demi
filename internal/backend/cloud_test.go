@@ -2,7 +2,6 @@ package backend_test
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -587,6 +586,9 @@ func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 	manager.SetScript(backendtest.MachineScript{SilentWake: true})
+	// The silent runner never connects, so only a shutdown that cancels the
+	// boot ends it before the test binary's deadline.
+	h.Config.Cloud.RunnerConnection = time.Hour
 	b, user, err := h.StartSetUp(t.Context(), t)
 	if err != nil {
 		t.Fatal(err)
@@ -610,9 +612,7 @@ func TestShutdownCancelsCloudBootAndSavesOnce(t *testing.T) {
 	if _, err := manager.Arrival(s.ctx, "wake:"+string(device)); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(s.ctx, 10*time.Second)
-	defer cancel()
-	if err := b.Close(ctx); err != nil {
+	if err := b.Close(s.ctx); err != nil {
 		t.Fatal(err)
 	}
 	if manager.Count("hibernate:"+string(device)) != 1 {
