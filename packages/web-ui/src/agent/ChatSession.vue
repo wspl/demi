@@ -46,9 +46,10 @@ const props = withDefaults(defineProps<{
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
   /**
-   * Detecting a title, from the Rename menu: `available` while a message is
-   * newer than the last generated title, `running` while the model writes
-   * one. Absent, the title is current and there is nothing to detect.
+   * Detect Title in the Rename menu: `available` while a message is newer
+   * than the last generated title, `running` while the model writes one, which
+   * disables it. Absent, the title is current and there is nothing to detect.
+   * The title shows no progress: when the model's title arrives, it changes.
    */
   retitle?: 'available' | 'running' | null
   /** Whether the app frame's work panel is open; absent when the host has none. */
@@ -109,7 +110,7 @@ const renaming = ref(false)
 
 /** A double-click on the title names it in place, as the menu's Rename does. */
 function beginRename(): void {
-  if (!props.conversation.archived && props.retitle !== 'running') {
+  if (!props.conversation.archived) {
     renaming.value = true
   }
 }
@@ -218,22 +219,20 @@ watch(() => props.conversation.id, close)
           >
             {{ conversation.title }}
           </h1>
-          <!-- Two ways to name the conversation behind one button; while the model
-               writes a title the button itself is busy, and its menu waits. -->
+          <!-- Two ways to name the conversation behind one button. -->
           <Dropdown
             :overlay-store="appOverlayStore"
             placement="bottom-start"
-            :disabled="conversation.archived || retitle === 'running'"
+            :disabled="conversation.archived"
           >
             <template #trigger="{ isOpen }">
-              <Tooltip :content="retitle === 'running' ? 'Detecting title…' : 'Rename'" class="shrink-0">
+              <Tooltip content="Rename" class="shrink-0">
                 <IconButton
                   :icon="TextCursorInput"
                   variant="ghost"
                   aria-label="Rename"
                   :pressed="isOpen"
                   :disabled="conversation.archived"
-                  :loading="retitle === 'running'"
                 />
               </Tooltip>
             </template>
@@ -243,7 +242,9 @@ watch(() => props.conversation.id, close)
                   :icon="Radar"
                   label="Detect Title"
                   :disabled="retitle !== 'available'"
-                  disabled-reason="No new message since the last detected title"
+                  :disabled-reason="retitle === 'running'
+                    ? 'A title is being detected'
+                    : 'No new message since the last detected title'"
                   @select="close(); emit('retitle')"
                 />
                 <MenuItem
