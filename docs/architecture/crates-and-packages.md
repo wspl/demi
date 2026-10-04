@@ -203,7 +203,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   (`Schema::check`); the command input subset (`check_input_subset`, which
   registration runs); argv parsing (`Node::select`, `Selected::parse`,
   `Parsed::validate`), which reads each field's schema to convert its tokens;
-  the argument check both ends run (`Leaf::check_arguments`); help rendering
+  the argument check both ends run (`Leaf::check_arguments`); a leaf's
+  [permission category](../agent/permissions.md#an-operation-that-needs-a-category)
+  and the help line it adds; help rendering
   (`Node::help`, `HELP_DEFAULTS`); and the settings every declaration's JSON
   Schema is generated with (`command_schema_settings`).
 - **Public boundary:** the items above. This crate is the single
@@ -525,8 +527,10 @@ Each crate implements the provider contract for one vendor family.
   implements it: the factory and instance traits (`PluginFactory`,
   `Plugin`); the manifest (`Manifest`): a plugin's id, its command groups and
   roots as declarations with their placement, whether it is a context
-  source, and its page state and page
-  methods with their schemas; the requests and replies; the port
+  source, its
+  [permission categories](../agent/permissions.md#categories), and its page
+  state and page methods with their schemas; the operation details a
+  permission request carries; the requests and replies; the port
   (`PluginPort`) with its messages and the transport they travel through
   (`PluginTransport`), whose command operations are the rpc port's; and the
   plugin's errors.
@@ -666,7 +670,9 @@ Each crate implements the provider contract for one vendor family.
   - `RemoteShellEnvironment`, the production `ShellEnvironment` over real
     runner jobs, and its factory: at a job's end it reads what the backend
     does not hold of the command's output and its edit copies, hands them to
-    the product's keeper, and releases the job's directory;
+    the product's keeper, and releases the job's directory; its observation
+    window stops while a call of the command's job waits for the user
+    ([The wait](../agent/permissions.md#the-wait));
   - a whole output as the runner wire's kept-output records, in which the
     backend stores it (`encode_output`, `decode_output`);
   - building manifests from a command set.
@@ -744,8 +750,8 @@ or on another plugin.
   limits, through `gix` on the blocking pool; the skills they hold; the values
   and blobs it keeps of them; the Host directories of the skills that are on;
   its context blocks with the catalog of the skills that are on; the project
-  skills it finds in a conversation's repository; and its page state and page
-  methods.
+  skills it finds in a conversation's repository; the `demi skills` group
+  with its category Manage skills; and its page state and page methods.
 - **Public boundary:** its factory, whose manifest names its page package,
   `@demicodes/plugin-skills`, which `xtask contracts` generates the page's
   types into.
@@ -1050,6 +1056,9 @@ demi-backend (executable: configuration, composition)
   handlers that forward a command to its plugin; the port's operations over
   the user's plugin values, blobs, Host directory sets, Host file reads,
   package calls, conversation hosts, exposes and page-state marks; the
+  [conversation permissions](../agent/permissions.md): the registered
+  categories, each conversation's requests and grants, the decisions and
+  revocations, and the calls that wait, with their bound; the
   plugins' user stream declarations; the marks of a plugin's page state when
   a product change it follows happens;
   and page state and page calls, with the validation of a call's parameters
@@ -1369,7 +1378,9 @@ under `packages/`.
   blocks) and Input surfaces and the assembled ChatSession page; the message
   editor and its draft and submission lifecycle (`agent/message-editor/`, the
   tiptap editor a user message is written and shown in); the user Markdown
-  dialect; sidebar layout and list interaction; workspace and remote-file
+  dialect; sidebar layout and list interaction; the
+  [permission](../agent/permissions.md#what-the-user-sees) card, the
+  needs-you mark and the Permissions dialog; workspace and remote-file
   selection; file previews and the file tree as primitives; the work panel
   frame; the settings surface as presentation over host-mapped models; the
   device pairing dialog over a host-provided claim adapter; the sign-in page;

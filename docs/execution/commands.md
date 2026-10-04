@@ -90,6 +90,13 @@ only the declarations: the manifest a runner receives and the help the model
 reads. Building a manifest therefore needs no handler, and a runner never holds
 one. Registration refuses an `rpc` leaf without a handler.
 
+An `rpc` leaf whose handler acts on Demi itself, beyond the conversation,
+names the [permission category](../agent/permissions.md#categories) it needs
+as `permission`, such as `skills.manage` for `demi skills add`. The handler
+asks for it at run time; the declaration lets the help say so, and lets the
+plugin host refuse a handler that asks for another. A `native` leaf names
+none, and the runner ignores the field.
+
 A group contains subcommands and does not execute a handler. A command name
 starts with an ASCII letter or digit and continues with letters, digits,
 underscores, and hyphens; roots and sibling names must be unique. Registration
@@ -101,6 +108,7 @@ these declarations:
   input sources, duplicate positional fields, and a required positional after
   an optional one;
 - an option named `help` or `json`;
+- a `permission` on a `native` leaf;
 - a `stdinField` that is not a string, or a `restField` that is not an array of
   strings;
 - a field schema outside the [input subset](#the-input-subset).
@@ -209,7 +217,9 @@ its stdout. Each root's help
 follows. An empty command set renders no help.
 
 Help displays a complete usage template, value placeholders, required and
-optional arguments, enum choices, and repeatable options. Stdin bodies appear
+optional arguments, enum choices, and repeatable options. A leaf with a
+`permission` adds one line: the first such command in a conversation may wait
+until the user allows or denies it. Stdin bodies appear
 in their own section and in a quoted heredoc template. `--json` appears only
 on commands with a JSON output schema. Usage templates are generated from the
 declaration; declarations do not carry separate examples to keep in sync.
@@ -239,6 +249,9 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 | `agent list`, `profiles` | none | JSON output | unused |
 | `host shell` | one quoted script | host | streamed to the remote program |
 | `host list`, `current` | none | none | unused |
+| `skills list` | none | JSON output | unused |
+| `skills add`, `enable`, `disable` | repository | skill, repeated | unused |
+| `skills update`, `remove` | repository | none | unused |
 
 `file edit` has two separate text operands; its old and new values are quoted
 option arguments. Use `file patch` for a multiline change supplied as one
@@ -332,6 +345,7 @@ request and one reply:
 | Read stdin | The next chunk of a finite stdin, on demand. |
 | Read live stdin | The next interactive write to the job, until the job ends. |
 | Cancellation | Whether, and when, the call was cancelled. |
+| Wait for the user | Start or end a wait for the user's decision. While one lasts, the observation window of the command whose job made the call stops ([The wait](../agent/permissions.md#the-wait)). |
 
 A handler resolves what it acts on from the invocation's context: the
 `demi agent` handlers find their conversation's tree and node there, and

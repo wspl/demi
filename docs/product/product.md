@@ -123,7 +123,12 @@ resources are released ([Retention](../backend/storage.md#retention)).
 The conversation interface exposes steering, queued messages, stop,
 [recovery of an unfinished turn](#recovering-an-unfinished-turn), manual
 compaction, model switching, message editing, Fork, and child/terminal
-inspection. [Message editing](../agent/message-editing.md) and
+inspection. When an agent asks to act on Demi itself, such as to manage the
+user's skills, the conversation shows the request as a card above its
+composer and a needs-you mark in the sidebar until the user allows or denies
+it for that conversation
+([Conversation permissions](../agent/permissions.md)).
+[Message editing](../agent/message-editing.md) and
 [Conversation Fork](../agent/conversation-fork.md) define their history
 boundaries. Interactive stdin is a `conversation-socket-protocol` capability; exposing a
 terminal input control remains separate from read-only job inspection.

@@ -31,7 +31,7 @@ conversation's host access; they are not conversation database content.
 
 | Store | Owns | Writer |
 |---|---|---|
-| `control.sqlite` | Accounts, auth sessions, preferences, subagent settings, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories | The control service, on its database thread |
+| `control.sqlite` | Accounts, auth sessions, preferences, subagent settings, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories, conversations' permission requests and grants | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, the records of commands' outputs | The shard of the user who owns the conversation |
 | User blob namespace | Uploaded bytes, transcript media, edit copies, commands' whole outputs and the files plugins keep, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
 
@@ -145,6 +145,18 @@ input, which the multi-worker control service also relies on
   stays when the draft is emptied, so a revision is never used twice, and it
   is deleted with its conversation; the conversation index reads the revision
   into each conversation's summary.
+  `permission_requests` stores each conversation's waiting
+  [permission requests](../agent/permissions.md#requests): id, conversation,
+  category, the operation's details as JSON, the agent that asked (its number
+  and description, or none for the root) and when it was raised.
+  `permission_grants` stores each grant: conversation, category and when it
+  was granted, one row per conversation and category. Allow writes the grant
+  and deletes the category's requests of the conversation in one transaction,
+  so a request and the grant that answers it never both exist; a new request
+  is written with the removal of the requests it replaces; Deny deletes
+  one request, a revocation one grant, and an archive the conversation's
+  requests. The conversation index counts the requests into each
+  conversation's summary.
 - **Operations:** `conversation_fork_operations` reserves a destination ID and
   records source boundary, owner, target, full model selection, title,
   creation time, and attached hosts. `managed_operations` records reset intent
