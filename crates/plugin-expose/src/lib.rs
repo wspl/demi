@@ -30,7 +30,7 @@ impl Expose {
         let mut manifest = Manifest::new(
             PluginId::try_from("expose").expect("a valid plugin id"),
             "Expose",
-            "Gives a service on one of your hosts a public URL for an hour, with `demi expose`.",
+            "Gives a service on one of your hosts a public URL for an hour, with demi expose.",
         );
         manifest.commands = commands::commands().manifest_commands();
         manifest.page = Some(page::page());
