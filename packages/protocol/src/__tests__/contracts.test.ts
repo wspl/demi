@@ -12,7 +12,7 @@ import {
 // The Go contract tests' fixtures and cases: the generated schemas must
 // accept and refuse what the Go decoders accept and refuse, except where
 // the web app's schema is tolerant or a rule is Go's alone (`contracts.md`
-// § The TypeScript boundary: strict and tolerant objects, rules only Go checks).
+// § Generated TypeScript: strict and tolerant objects, rules only Go checks).
 const repository = resolve(import.meta.dir, '../../../..')
 
 const jsonSchema = z.json()

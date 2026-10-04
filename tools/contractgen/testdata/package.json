@@ -9,8 +9,7 @@
     "typescript": "^6.0.3"
   },
   "scripts": {
-    "generate": "CGO_ENABLED=0 GOFLAGS=-mod=readonly GOEXPERIMENT=none go run .. -ts -ts-dir generated ./blocks ./features ./text ./tables ./unions",
-    "compare": "bun ../../../scripts/gomig/compare-ts.mjs --fixtures-only",
+    "generate": "CGO_ENABLED=0 GOEXPERIMENT=none go run .. -ts -ts-dir generated ./blocks ./features ./text ./tables ./unions",
     "typecheck": "tsc -p tsconfig.json"
   }
 }

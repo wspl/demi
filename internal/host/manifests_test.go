@@ -15,7 +15,7 @@ import (
 )
 
 // These golden declaration trees pin declaration-builder fidelity against actual plugin manifests.
-// They are extracted without changes from gomig-ref/plugin-manifests/manifests.json.
+// They are extracted without changes from the built-in plugins' captured manifests.
 func TestBuildersPreservePluginDeclarations(t *testing.T) {
 	paths, err := filepath.Glob("testdata/*.json")
 	if err != nil {
