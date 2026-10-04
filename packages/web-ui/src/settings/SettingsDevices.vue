@@ -84,7 +84,6 @@ const { isOpen, phase, open, close, submit } = useDevicePairing(
                 <Monitor :size="ICON_PX.in28" />
                 <CornerDot
                   :tone="device.online ? 'success' : 'muted'"
-                  ring="float"
                   :label="device.online ? 'Online' : 'Offline'"
                 />
               </span>

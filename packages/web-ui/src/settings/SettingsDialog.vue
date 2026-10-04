@@ -97,6 +97,7 @@ const initials = computed(() =>
     size="xl"
     label="Settings"
     :scroll-content="false"
+    close-over-content
     @close="emit('close')"
   >
     <!-- The query container must be an ancestor of what it sizes, so it wraps the row. -->

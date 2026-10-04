@@ -35,10 +35,10 @@ const emit = defineEmits<{
   <span
     role="tab"
     :aria-selected="isActive"
-    class="group relative flex h-(--tab-h) w-max [--tab-h:--spacing(7)] max-w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
+    class="group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:--spacing(7)] max-w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
     :class="isActive
-      ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0'
-      : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body'"
+      ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0 [--fill-color:var(--tab-active)]'
+      : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body hover:[--fill-color:var(--tab-hover)]'"
     @pointerdown="emit('pointerdown', $event)"
     @contextmenu.prevent="emit('contextmenu', $event)"
   >

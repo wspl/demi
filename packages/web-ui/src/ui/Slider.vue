@@ -137,7 +137,7 @@ function onKeydown(event: KeyboardEvent) {
         @keydown="onKeydown"
       >
         <span ref="trackRef" class="relative h-0.5 w-full">
-          <span class="absolute inset-0 rounded-full bg-overlay/10" />
+          <span class="absolute inset-0 rounded-full bg-track" />
           <span
             class="absolute inset-y-0 left-0 rounded-full"
             :style="{ width: `${progress * 100}%`, background: 'var(--accent-fill)' }"

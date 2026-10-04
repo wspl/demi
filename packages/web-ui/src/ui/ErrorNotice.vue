@@ -93,7 +93,7 @@ const rawOpen = ref(false)
     <!-- Two lines: the controls sit centred. Three (with facts): they hold the first line. -->
     <div
       v-if="copyText || action"
-      class="flex shrink-0 items-center gap-1"
+      class="on-fill flex shrink-0 items-center gap-1"
       :class="facts.length > 0 ? '-mt-0.5 self-start' : ''"
     >
       <Tooltip

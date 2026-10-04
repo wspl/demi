@@ -38,6 +38,11 @@ const props = defineProps<{
   label?: HeadlineText
   /** Every dialog closes from its top-right corner; a flow that must finish can hide it. */
   hideClose?: boolean
+  /**
+   * Content runs under the close control (a picture, a page that scrolls up to the
+   * panel's top edge): the control is raised on an opaque fill, so nothing shows through it.
+   */
+  closeOverContent?: boolean
   /** False when the slot owns a body scroller beneath a fixed header. */
   scrollContent?: boolean
   /** Stack on whatever dialog is open instead of replacing it, for a dialog mounted at the app root but opened from inside another. */
@@ -105,7 +110,7 @@ onKeyStroke('Escape', (event) => {
           <div v-if="!hideClose" class="dialog-close absolute right-3 top-3 z-10">
             <IconButton
               :icon="X"
-              variant="ghost"
+              :variant="closeOverContent ? 'solid' : 'ghost'"
               aria-label="Close"
               @click="emit('close')"
             />

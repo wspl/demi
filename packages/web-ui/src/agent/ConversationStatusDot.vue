@@ -20,5 +20,5 @@ const tone = computed<CornerDotTone | null>(() => {
 </script>
 
 <template>
-  <CornerDot :tone="tone" ring="base" :pulse="status === 'active'" />
+  <CornerDot :tone="tone" :pulse="status === 'active'" />
 </template>

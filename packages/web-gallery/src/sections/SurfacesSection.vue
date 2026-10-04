@@ -9,6 +9,21 @@ const swatches = [
   { name: 'float', bg: 'var(--surface-float)', fg: 'var(--fg)' },
 ]
 
+const fillSurfaces = [
+  { name: 'base', class: 'bg-surface-base' },
+  { name: 'surface', class: 'bg-surface' },
+  { name: 'editor', class: 'bg-surface-editor' },
+  { name: 'raised', class: 'bg-surface-raised' },
+  { name: 'float', class: 'bg-surface-float' },
+]
+
+const fills = [
+  { name: 'hover', class: 'bg-hover' },
+  { name: 'active', class: 'bg-active' },
+  { name: 'button', class: 'bg-btn' },
+  { name: 'accent', class: 'bg-tint-accent' },
+]
+
 const textSteps = [
   { name: 'emphasis', color: 'var(--fg-emphasis)' },
   { name: 'fg', color: 'var(--fg)' },
@@ -43,6 +58,28 @@ const lines = [
         >
           <span class="gallery-label">{{ item.name }}</span>
           <span class="text-[12px] break-all opacity-70">{{ item.bg }}</span>
+        </div>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Control Fills"
+      note="Control fills are opaque: each is the surface the control sits on mixed with the fill's tint, so nothing under a control shows through it, and a control on a selected row takes the row's fill as its surface. Translucency is for scrims, shadows and edges only."
+    >
+      <div class="grid gap-3 md:grid-cols-5">
+        <div
+          v-for="surface in fillSurfaces"
+          :key="surface.name"
+          :class="surface.class"
+          class="flex flex-col gap-1.5 rounded-xl border border-line p-3"
+        >
+          <span class="gallery-label pb-1">{{ surface.name }}</span>
+          <span
+            v-for="fill in fills"
+            :key="fill.name"
+            :class="fill.class"
+            class="flex h-7 items-center rounded-md px-2 text-chrome text-fg-body"
+          >{{ fill.name }}</span>
         </div>
       </div>
     </GallerySection>

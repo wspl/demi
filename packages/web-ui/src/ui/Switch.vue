@@ -62,7 +62,7 @@ function onKeydown(event: KeyboardEvent) {
       <span
         class="inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out"
         :class="[
-          modelValue ? 'switch-on' : 'bg-overlay/10',
+          modelValue ? 'switch-on' : 'bg-track',
           size === 'sm' ? 'h-4 w-7 p-0.5' : 'h-5 w-9 p-0.5',
         ]"
       >

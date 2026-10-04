@@ -266,7 +266,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
             <template #name><slot name="name" :row="row" /></template>
             <template #trailing><slot name="trailing" :row="row" /></template>
           </TreeRow>
-          <div v-if="dropPaths.has(row.path)" class="pointer-events-none absolute inset-0 bg-tint-accent/50" />
+          <div v-if="dropPaths.has(row.path)" class="pointer-events-none absolute inset-0 bg-drop-target" />
         </div>
       </div>
       <!-- Only scrolled rows need a fall-off below the stack that covers them. -->
@@ -297,12 +297,12 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
          under it runs on beneath the pinned copies. -->
     <div
       v-if="dropBox"
-      class="pointer-events-none absolute inset-x-1 rounded-md bg-tint-accent/50"
+      class="pointer-events-none absolute inset-x-1 rounded-md bg-drop-target"
       :style="{ top: `${dropBox.top}px`, height: `${dropBox.height}px` }"
     >
       <DropOutline radius="6px" />
     </div>
-    <div v-if="dropTarget?.kind === 'tree'" class="pointer-events-none absolute inset-1 z-[1] rounded-md bg-tint-accent/50">
+    <div v-if="dropTarget?.kind === 'tree'" class="pointer-events-none absolute inset-1 z-[1] rounded-md bg-drop-target">
       <DropOutline radius="6px" />
     </div>
   </ScrollArea>

@@ -35,6 +35,7 @@ watch(() => props.viewer.shown.value, (shown) => {
     size="full"
     :label="image?.name"
     :scroll-content="false"
+    close-over-content
     @close="viewer.close()"
   >
     <div v-if="image" class="flex h-full min-h-0 flex-col">

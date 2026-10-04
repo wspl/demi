@@ -256,7 +256,7 @@ defineExpose({
           role="option"
           aria-selected="true"
         >
-          <span class="flex min-w-0 items-center gap-2 px-1">
+          <span class="on-fill flex min-w-0 items-center gap-2 px-1">
             <IndeterminateSpinner v-if="createPending" :size="14" />
             <FileIcon v-else :name="newName" :is-directory="true" />
             <TextInput

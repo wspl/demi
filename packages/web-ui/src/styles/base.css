@@ -16,19 +16,11 @@
   --color-fg-subtle: var(--fg-subtle);
   --color-fg-faint: var(--fg-faint);
   --color-fg-ghost: var(--fg-ghost);
-  --color-hover: var(--hover);
-  --color-active: var(--active);
   --color-line: var(--line);
   --color-line-subtle: var(--line-subtle);
   --color-line-strong: var(--line-strong);
   --color-line-focus: var(--line-focus);
-  --color-tint-danger: var(--tint-danger);
-  --color-tint-danger-strong: var(--tint-danger-strong);
   --color-sunken: var(--sunken);
-  --color-tint-success: var(--tint-success);
-  --color-tint-warning: var(--tint-warning);
-  --color-tint-accent: var(--tint-accent);
-  --color-tint-highlight: var(--tint-highlight);
   --color-on-danger: var(--on-danger);
   --color-on-danger-muted: var(--on-danger-muted);
   --color-on-success: var(--on-success);
@@ -71,21 +63,21 @@
   --fg-subtle: #737373;
   --fg-faint: #525252;
   --fg-ghost: #404040;
-  --hover: rgba(255, 255, 255, 0.06);
-  --active: rgba(255, 255, 255, 0.10);
+  --hover-mix: rgb(255 255 255) 6%;
+  --active-mix: rgb(255 255 255) 10%;
   --line-subtle: rgba(255, 255, 255, 0.06);
   --line: rgba(255, 255, 255, 0.08);
   --line-strong: rgba(255, 255, 255, 0.10);
   --line-focus: rgba(255, 255, 255, 0.18);
   --line-overlay: #4a4a4a;
-  --tint-danger: rgba(239, 68, 68, 0.15);
-  --tint-danger-strong: rgba(239, 68, 68, 0.25);
+  --tint-danger-mix: rgb(239 68 68) 15%;
+  --tint-danger-strong-mix: rgb(239 68 68) 25%;
   /* A well set into whatever it sits on: darker than its surroundings in both schemes. */
   --sunken: rgba(0, 0, 0, 0.22);
-  --tint-success: rgba(16, 185, 129, 0.15);
-  --tint-warning: rgba(245, 158, 11, 0.15);
-  --tint-accent: rgba(59, 130, 246, 0.15);
-  --tint-highlight: rgba(234, 179, 8, 0.20);
+  --tint-success-mix: rgb(16 185 129) 15%;
+  --tint-warning-mix: rgb(245 158 11) 15%;
+  --tint-accent-mix: rgb(59 130 246) 15%;
+  --tint-highlight-mix: rgb(234 179 8) 20%;
   --on-danger: #f87171;
   --on-danger-muted: rgba(248, 113, 113, 0.6);
   --on-success: #34d399;
@@ -140,8 +132,8 @@
   --shadow-btn-hover:
     inset 0 0.5px 0 rgba(255, 255, 255, 0.22),
     0 0 0 0.5px rgba(255, 255, 255, 0.18);
-  --btn-bg: rgba(255, 255, 255, 0.06);
-  --btn-bg-hover: rgba(255, 255, 255, 0.10);
+  --btn-mix: rgb(255 255 255) 6%;
+  --btn-hover-mix: rgb(255 255 255) 10%;
 }
 
 [data-theme="light"] {
@@ -162,20 +154,20 @@
   --fg-subtle: #8b919c;
   --fg-faint: #b4b9c2;
   --fg-ghost: #dadde3;
-  --hover: rgba(0, 0, 0, 0.06);
-  --active: rgba(0, 0, 0, 0.10);
+  --hover-mix: rgb(0 0 0) 6%;
+  --active-mix: rgb(0 0 0) 10%;
   --line-subtle: rgba(0, 0, 0, 0.05);
   --line: rgba(0, 0, 0, 0.09);
   --line-strong: rgba(0, 0, 0, 0.13);
   --line-focus: rgba(0, 0, 0, 0.28);
   --line-overlay: rgba(0, 0, 0, 0.12);
-  --tint-danger: rgba(220, 38, 38, 0.08);
-  --tint-danger-strong: rgba(220, 38, 38, 0.12);
+  --tint-danger-mix: rgb(220 38 38) 8%;
+  --tint-danger-strong-mix: rgb(220 38 38) 12%;
   --sunken: rgba(0, 0, 0, 0.05);
-  --tint-success: rgba(22, 163, 74, 0.08);
-  --tint-warning: rgba(217, 119, 6, 0.08);
-  --tint-accent: rgba(37, 99, 235, 0.08);
-  --tint-highlight: rgba(202, 138, 4, 0.12);
+  --tint-success-mix: rgb(22 163 74) 8%;
+  --tint-warning-mix: rgb(217 119 6) 8%;
+  --tint-accent-mix: rgb(37 99 235) 8%;
+  --tint-highlight-mix: rgb(202 138 4) 12%;
   --on-danger: #dc2626;
   --on-danger-muted: rgba(220, 38, 38, 0.6);
   --on-success: #16a34a;
@@ -214,8 +206,8 @@
   --shadow-btn-hover:
     inset 0 0.5px 0 rgba(255, 255, 255, 1),
     0 0 0 0.5px rgba(0, 0, 0, 0.14);
-  --btn-bg: #ffffff;
-  --btn-bg-hover: #f7f8fa;
+  --btn-mix: #ffffff 100%;
+  --btn-hover-mix: #f7f8fa 100%;
 }
 
 html,
@@ -259,9 +251,120 @@ svg.lucide {
   background: repeating-conic-gradient(var(--line) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
 }
 
+/* Control fills. A control's fill is opaque: the surface it sits on mixed with the fill's
+   tint, so nothing under the control shows through it, and a hovered control on a selected
+   row is the row's fill one step on, never two translucent layers over each other.
+   --surface-current is the color a control sits on. The root and every surface (a surface
+   utility below, a floating layer, a primitive with a fill of its own such as a tab) set it,
+   and an element inherits it from the nearest one. A theme gives each fill as the color
+   and amount mixed into that surface (--hover-mix: white 6%), an opaque color at 100% where
+   the fill does not depend on the surface. A fill also names the color it paints,
+   --fill-color, as surfaces do: an element that sits on a filled row (the row's end controls,
+   a status dot's ring) takes it from there, the controls through an on-fill slot. Translucency
+   is for scrims, shadows and edges only. */
+:root {
+  --surface-current: var(--surface-base);
+  --fill-color: var(--surface-base);
+}
+
+.bg-surface-base {
+  --surface-current: var(--surface-base);
+  --fill-color: var(--surface-base);
+}
+
+.bg-surface {
+  --surface-current: var(--surface);
+  --fill-color: var(--surface);
+}
+
+.bg-surface-editor {
+  --surface-current: var(--surface-editor);
+  --fill-color: var(--surface-editor);
+}
+
+.bg-surface-raised {
+  --surface-current: var(--surface-raised);
+  --fill-color: var(--surface-raised);
+}
+
+.bg-surface-float {
+  --surface-current: var(--surface-float);
+  --fill-color: var(--surface-float);
+}
+
+.bg-surface-dialog {
+  --surface-current: var(--surface-dialog);
+  --fill-color: var(--surface-dialog);
+}
+
+/* The content of a filled element (a selected row, a capsule) sits on its fill. A
+   primitive puts the controls it lays on its fill in such a slot; the slot is a plain
+   wrapper, never a fill itself, since a fill reads the surface this sets. */
+@utility on-fill {
+  --surface-current: var(--fill-color);
+}
+
+@utility bg-hover {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--hover-mix));
+  background-color: var(--fill-color);
+}
+
+@utility bg-active {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--active-mix));
+  background-color: var(--fill-color);
+}
+
+@utility bg-btn {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--btn-mix));
+  background-color: var(--fill-color);
+}
+
+/* The track a switch or a slider runs in. */
+@utility bg-track {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--overlay) 10%);
+  background-color: var(--fill-color);
+}
+
+@utility bg-tint-accent {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--tint-accent-mix));
+  background-color: var(--fill-color);
+}
+
+@utility bg-tint-success {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--tint-success-mix));
+  background-color: var(--fill-color);
+}
+
+@utility bg-tint-warning {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--tint-warning-mix));
+  background-color: var(--fill-color);
+}
+
+@utility bg-tint-danger {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--tint-danger-mix));
+  background-color: var(--fill-color);
+}
+
+@utility bg-tint-danger-strong {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--tint-danger-strong-mix));
+  background-color: var(--fill-color);
+}
+
+@utility bg-tint-highlight {
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--tint-highlight-mix));
+  background-color: var(--fill-color);
+}
+
+/* Not a control fill: the accent wash over a drop target lies over the rows it marks,
+   so it stays translucent. */
+@utility bg-drop-target {
+  background-color: color-mix(in srgb, color-mix(in srgb, var(--tint-accent-mix), transparent) 50%, transparent);
+}
+
 .btn,
 .btn-solid {
-  background: var(--btn-bg);
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--btn-mix));
+  background-color: var(--fill-color);
   box-shadow: var(--shadow-btn);
 }
 
@@ -269,18 +372,18 @@ svg.lucide {
 .btn[data-pressed="true"],
 .btn-solid:hover,
 .btn-solid[data-pressed="true"] {
-  background: var(--btn-bg-hover);
+  --fill-color: color-mix(in srgb, var(--surface-current), var(--btn-hover-mix));
   box-shadow: var(--shadow-btn-hover);
 }
 
-/* Controls over scrolling content need an opaque surface in every theme. */
+/* A raised button over scrolling content, which reads as raised whatever runs under it. */
 .btn-solid {
-  background: var(--surface-raised);
+  --fill-color: var(--surface-raised);
 }
 
 .btn-solid:hover,
 .btn-solid[data-pressed="true"] {
-  background: var(--surface-float);
+  --fill-color: var(--surface-float);
 }
 
 .btn-primary {
@@ -305,11 +408,13 @@ svg.lucide {
    Composer stays on surface-raised; menus must not. */
 .overlay-shell,
 .overlay-panel {
-  background: color-mix(
+  --surface-current: color-mix(
     in oklab,
     var(--surface-float),
     white calc((var(--elevation, 1) - 1) * var(--elevation-step))
   );
+  --fill-color: var(--surface-current);
+  background: var(--surface-current);
   box-shadow: var(--shadow-overlay);
 }
 

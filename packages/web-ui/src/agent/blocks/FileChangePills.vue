@@ -97,14 +97,14 @@ watch([() => props.files, expanded], () => { void measure() })
       v-show="index < visibleCount"
       :key="file.path"
       ref="pillEls"
-      class="inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-[var(--btn-bg)] pl-1.5 pr-2 text-xs leading-4 text-fg-body shadow-[var(--shadow-btn)]"
+      class="inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full bg-btn pl-1.5 pr-2 text-xs leading-4 text-fg-body shadow-[var(--shadow-btn)]"
       :class="selectable ? 'btn' : ''"
       @click="selectable && emit('select', file.path)"
       :title="file.from ? `${file.from} → ${file.path}` : file.path"
     >
       <span class="relative inline-flex shrink-0">
         <FileIcon :name="baseName(file.path)" :is-directory="false" :size="14" />
-        <CornerDot v-if="file.kind === 'added'" tone="success" size="xs" ring="button" />
+        <CornerDot v-if="file.kind === 'added'" tone="success" size="xs" />
       </span>
       <!-- Name and counts use different fonts and sizes: align them on the baseline, not the box. -->
       <span class="inline-flex min-w-0 items-baseline gap-1.5">

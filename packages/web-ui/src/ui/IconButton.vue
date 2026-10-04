@@ -153,7 +153,6 @@ const glyphPx = computed(() => {
           v-if="indicator !== undefined"
           :tone="indicator"
           size="xs"
-          :ring="variant === 'ghost' ? 'surface' : 'button'"
           :label="indicatorLabel"
         />
       </span>
