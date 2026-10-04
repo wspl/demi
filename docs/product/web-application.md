@@ -353,6 +353,35 @@ session as any 401 does ([Authentication](#authentication)). Until the first
 snapshot the page shows its loading state; a first connection that fails shows
 the failure with a retry, which connects at once.
 
+### A page of another build
+
+A tab can outlive the build that served it. For example, a user leaves Demi
+open, and the instance restarts with a new release. The page's channel
+connects again and the new snapshot says that the backend now serves another
+build of the web app than the page runs. The page then shows a toast, "Demi
+Was Updated", whose Reload loads the page again, and which stays until the
+user reloads or closes it. The page goes on working meanwhile, as far as the
+tolerant contract lets it
+([Strict and tolerant objects](../architecture/contracts.md#generated-typescript)).
+
+- **Where the build comes from.** Each `vite build` of `web` names its build
+  with a new random id. The page carries the id, and the build writes it
+  beside `index.html` as `build.json`, `{ "build": "<id>" }`. A rebuild of the
+  same sources is another build: comparing ids needs no version scheme, and a
+  needless reload costs one click.
+- **Who compares.** The backend that serves a web app reads its `build.json`
+  as it starts, and refuses to start when it is missing or does not read
+  ([Serving the web app build](web-api.md#serving-the-web-app-build)). Each
+  snapshot carries it as `webBuild`. The page compares it with its own on
+  every snapshot, since the backend's build changes only when the backend
+  restarts, which every page sees as a new connection. It asks once while
+  the two differ; a later snapshot that agrees, or names no build, ends it.
+- **Development.** Vite's development server serves sources, which name no
+  build, and the development backend serves no web app, so its `webBuild` is
+  null and nothing is compared. A page and a backend of different revisions
+  there show their disagreement as any page shows a state or an answer it
+  cannot read ([Calls and states](../architecture/plugin-pages.md#calls-and-states)).
+
 ## Authentication
 
 The page holds one session state: checking, signed out, or signed in with an

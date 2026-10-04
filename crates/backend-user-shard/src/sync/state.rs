@@ -58,6 +58,7 @@ impl Shard {
             cloud,
             plugins,
             plugin_states,
+            web_build: services.web_build.clone(),
         })
     }
 

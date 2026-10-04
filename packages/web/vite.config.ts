@@ -1,10 +1,29 @@
+import { randomUUID } from 'node:crypto'
 import { resolve } from 'node:path'
-import { defineConfig } from 'vite'
+import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 
+/**
+ * Names each build of the web app (`web-application.md` § A page of
+ * another build): the page carries the id as `import.meta.env.DEMI_WEB_BUILD`,
+ * and `build.json` beside it tells the backend that serves it. Vite's
+ * development server serves sources, which name no build.
+ */
+function webBuild(): Plugin {
+  const build = randomUUID()
+  return {
+    name: 'demi-web-build',
+    apply: 'build',
+    config: () => ({ define: { 'import.meta.env.DEMI_WEB_BUILD': JSON.stringify(build) } }),
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'build.json', source: JSON.stringify({ build }) })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [vue(), tailwindcss()],
+  plugins: [vue(), tailwindcss(), webBuild()],
   // The repository's `.env` carries the local development account
   // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
   // during development only.

@@ -59,6 +59,7 @@ use tower::ServiceExt as _;
 use tower_http::trace::TraceLayer;
 
 use self::error::ApiError;
+pub use self::assets::{WebBuildError, web_build};
 pub use self::install::Site;
 use self::listener::{EdgeListener, Peer};
 use demi_backend_user_shard::services::Services;

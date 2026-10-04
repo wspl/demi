@@ -82,6 +82,8 @@ pub struct Services {
     pub cloud: CloudServices,
     /// Where runners, Cloud guests and expose visitors reach this backend.
     pub public_url: PublicUrl,
+    /// The build of the web app the backend serves, if it serves one.
+    pub web_build: Option<String>,
     /// When a conversation's Host resources are reclaimed.
     pub lifecycle: LifecycleTuning,
     /// The domain of expose hostnames; without it, exposes are unavailable.
@@ -123,6 +125,8 @@ pub struct ServiceKeys {
 /// providers.
 pub struct ServiceSettings {
     pub mode: InstanceMode,
+    /// The build of the web app the backend serves, if it serves one.
+    pub web_build: Option<String>,
     pub mail: Option<Arc<dyn AccountMail>>,
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
@@ -304,6 +308,7 @@ impl Services {
             plugins: Arc::new(plugins),
             cloud: settings.cloud,
             public_url: PublicUrl::default(),
+            web_build: settings.web_build,
             lifecycle: settings.lifecycle,
             expose_domain: settings.expose_domain,
             expose_tuning: settings.exposes,
@@ -357,6 +362,7 @@ impl Services {
             demi_backend_cloud::client::MachinesClient::new(data.join("machines.sock"));
         let settings = ServiceSettings {
             mode: InstanceMode::Shared,
+            web_build: None,
             mail: None,
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),
