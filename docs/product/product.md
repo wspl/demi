@@ -455,7 +455,10 @@ Revocation, disconnect, or file changes can affect that later read.
 ## Provider management
 
 Models & providers is available to users permitted to configure their provider
-scope. The model picker groups models by entry. Adding an entry has three paths:
+scope. The model picker groups models by entry. For a model whose window is
+over 500,000 tokens, the model menu also offers a Context row: a smaller
+window that every conversation of the user with that model then uses
+([Context limit](../providers/models.md#context-limit)). Adding an entry has three paths:
 
 | Path | User input and result |
 |---|---|
