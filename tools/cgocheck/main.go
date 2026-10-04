@@ -79,7 +79,6 @@ func checkProgram(ctx context.Context, dir, program, goos, goarch string) error 
 		"GOOS="+goos,
 		"GOARCH="+goarch,
 		"CGO_ENABLED=0",
-		"GOFLAGS=-mod=readonly",
 		"GOWORK=off",
 	)
 	var stderr bytes.Buffer

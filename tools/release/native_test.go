@@ -220,7 +220,7 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 		t.Skip("fidelity 9: missing-build message changes the build instruction and adds an OS error")
 		source := filepath.Join(a.Root, ".cache/native-target", commandwire.Targets[1], "release", "demi-file")
 		want := fmt.Sprintf(
-			"no build of demi-file for %s at %s: run cargo xtask native build first",
+			"no build of demi-file for %s at %s: run go run ./tools/release native build first",
 			commandwire.Targets[1],
 			source,
 		)

@@ -147,7 +147,6 @@ func checkTarget(ctx context.Context, dir string, rules graph, seen map[string]b
 			"GOOS="+goos,
 			"GOARCH="+goarch,
 			"CGO_ENABLED=0",
-			"GOFLAGS=-mod=readonly",
 			"GOWORK=off",
 		),
 		Mode: packages.NeedName | packages.NeedFiles | packages.NeedImports | packages.NeedDeps |

@@ -49,7 +49,7 @@ func TestArchitecture(t *testing.T) {
 			name:   "load failure",
 			file:   "internal/core/core.go",
 			source: "package core\nimport _ \"missing.test/package\"",
-			want:   "import lookup disabled by -mod=readonly",
+			want:   "missing.test/package",
 		},
 		{
 			name:   "platform test import",
@@ -209,7 +209,7 @@ func TestGraphRefusals(t *testing.T) {
 		})
 	}
 	t.Run("missing", func(t *testing.T) {
-		_, err := readGraph([]byte("### Rust crates\n```text\ncore -> none\n```"))
+		_, err := readGraph([]byte("### Other graph\n```text\ncore -> none\n```"))
 		if !errors.Is(err, errMissingGraph) {
 			t.Fatalf("got %v, want missing graph", err)
 		}

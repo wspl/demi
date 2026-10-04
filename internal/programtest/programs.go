@@ -90,7 +90,7 @@ func buildProgram(ctx context.Context, name, filename string) (string, string, e
 	path := filepath.Join(directory, filename)
 	command := exec.CommandContext(ctx, "go", "build", "-o", path, "./cmd/"+name)
 	command.Dir = root
-	command.Env = append(os.Environ(), "CGO_ENABLED=0", "GOFLAGS=-mod=readonly")
+	command.Env = append(os.Environ(), "CGO_ENABLED=0")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		return "", directory, fmt.Errorf("build %s: %w\n%s", name, err, output)

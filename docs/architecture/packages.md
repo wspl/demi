@@ -1975,7 +1975,6 @@ tools/contractgen/manifests -> internal/backend, internal/plugin, tools/contract
 tools/contractgen/pagemeta -> none
 tools/archcheck -> none
 tools/cgocheck -> none
-scripts/gomig/accept -> none
 internal/programtest -> none
 cmd/demi-backend -> internal/backend, internal/version
 cmd/demi-runner -> internal/runner, internal/version
