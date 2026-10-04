@@ -477,11 +477,10 @@ fn last_asked(scripts: &Scripts, keep: impl Fn(&str) -> bool) -> String {
     scripts.asked(keep).pop().expect("a request was made")
 }
 
-// Several seconds: the root's three shell jobs run on a real device.
 #[tokio::test]
 async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_catalog() {
     let scripts = Arc::new(Scripts::default());
-    let (_harness, backend, master, _paired, _root, provider) = tree(&scripts).await;
+    let (_harness, backend, master, _paired, root, provider) = tree(&scripts).await;
     let explore = json!({
         "name": "explore", "description": "Finds code; it changes nothing.",
         "model": { "providerId": provider, "modelId": "n", "thinkingEffort": "high", "serviceTierId": null },
@@ -494,7 +493,10 @@ async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_c
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    scripts.child(vec![say("found it")]);
+    // The child waits until the root's turn has ended: a completion that
+    // came while that turn still ran would join it at its next boundary,
+    // and no turn of its own would follow.
+    scripts.child(vec![shell("c1", WAIT), say("found it")]);
     scripts.root(
         FIRST,
         vec![
@@ -507,7 +509,8 @@ async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_c
         ],
     );
     socket.chat("m1", "Find the parser").await;
-    // The child's completion wakes the root, which answers it.
+    std::fs::write(format!("{root}/go"), "").unwrap();
+    // The child's completion wakes the idle root, which answers it.
     socket
         .until(|frame| {
             matches!(
