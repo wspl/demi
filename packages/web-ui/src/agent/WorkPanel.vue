@@ -10,6 +10,7 @@ import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import { appOverlayStore } from '../overlay/appOverlay'
+import type { TitleText } from '../ui/ui-text'
 import { tabsToClose, type TabCloseScope } from './tab-close'
 import { pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
 import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
@@ -72,6 +73,13 @@ function openMenu(event: MouseEvent, id: string): void {
   menuId.value = id
   menu.open(event)
 }
+
+/** The tab menu's commands that close several tabs at once. */
+const closeManyItems: readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText }[] = [
+  { scope: 'others', label: 'Close Others' },
+  { scope: 'right', label: 'Close to the Right' },
+  { scope: 'left', label: 'Close to the Left' },
+]
 
 function closeScope(scope: TabCloseScope): void {
   if (menuId.value) {
@@ -186,7 +194,7 @@ function closeScope(scope: TabCloseScope): void {
       <Menu>
         <MenuItem :icon="X" label="Close" @select="closeScope('self')" />
         <MenuItem
-          v-for="item in [{ scope: 'others', label: 'Close others' }, { scope: 'right', label: 'Close to the right' }, { scope: 'left', label: 'Close to the left' }] as const"
+          v-for="item in closeManyItems"
           :key="item.scope"
           :label="item.label"
           :disabled="!menuId || tabsToClose(panel.tabs, menuId, item.scope).length === 0"

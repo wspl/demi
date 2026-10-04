@@ -78,7 +78,7 @@ const rawOpen = ref(false)
             @click="rawOpen = !rawOpen"
           >
             <!-- The label, then its chevron, as the transcript's foldable rows read ("Thought briefly ›"). -->
-            Provider response
+            Provider Response
             <FoldChevron :open="rawOpen" :size="ICON_PX.in12" />
           </button>
           <!-- Mounted while closed so the height can animate both ways. -->

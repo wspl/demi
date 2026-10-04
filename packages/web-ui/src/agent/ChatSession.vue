@@ -234,7 +234,7 @@ watch(() => props.conversation.id, close)
               <Menu>
                 <MenuItem
                   :icon="Radar"
-                  label="Detect title"
+                  label="Detect Title"
                   :disabled="retitle !== 'available'"
                   disabled-reason="No new message since the last detected title"
                   @select="close(); emit('retitle')"

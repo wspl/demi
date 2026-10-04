@@ -84,7 +84,7 @@ const initials = computed(() =>
         <MenuDivider />
         <MenuItem
           :icon="LogOut"
-          label="Sign out"
+          label="Sign Out"
           @select="
             close();
             emit('signOut');

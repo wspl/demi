@@ -84,7 +84,7 @@ function isCurrent(entry: FileBrowserEntry): boolean {
     </div>
     <MenuItem
       v-else-if="failure"
-      :label="failure.kind === 'permission' ? 'No access' : 'Unavailable'"
+      :label="failure.kind === 'permission' ? 'No Access' : 'Unavailable'"
       :note="failure.message"
       disabled
     />

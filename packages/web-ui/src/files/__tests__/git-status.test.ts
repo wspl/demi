@@ -32,8 +32,8 @@ test('the working tree outranks the index, and a conflict everything', () => {
 
 test('each status wears VS Code\'s letter, words, color and strike', () => {
   expect(gitMark('??')).toEqual({ letter: 'U', text: 'Untracked', color: 'untracked', strike: false })
-  expect(gitMark('A ')).toEqual({ letter: 'A', text: 'Index Added', color: 'added', strike: false })
+  expect(gitMark('A ')).toEqual({ letter: 'A', text: 'Index added', color: 'added', strike: false })
   expect(gitMark(' D')).toEqual({ letter: 'D', text: 'Deleted', color: 'deleted', strike: true })
-  expect(gitMark('UD')).toEqual({ letter: '!', text: 'Conflict: Deleted By Them', color: 'conflicting', strike: true })
+  expect(gitMark('UD')).toEqual({ letter: '!', text: 'Conflict: deleted by them', color: 'conflicting', strike: true })
   expect(gitMark('T ')).toBeNull()
 })
