@@ -122,7 +122,8 @@ pub struct AccountInfo {
 }
 
 /// What a device login asks the user to do, reported once while the login
-/// waits (`providers.md` § Login and publication).
+/// waits (`providers.md` § Login and publication). When the login ends is
+/// the vault's, not the vendor's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginPending {
@@ -133,8 +134,4 @@ pub struct LoginPending {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub user_code: Option<String>,
-    /// When the code expires, when the vendor says.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<Timestamp>")]
-    pub expires_at: Option<Timestamp>,
 }

@@ -733,10 +733,23 @@ ChatGPT account ID; Grok Build by its issuer and user ID, else its email, else
 its OAuth client.
 
 A flow that loses the uniqueness check, fails or is cancelled has stored
-nothing, so there is nothing to clean up. A device login expires after ten
-minutes, whatever the vendor's code allows. Cancelling a login stops it at
-once, even while it waits between polls, and backend shutdown cancels and
-drains active flows. Logging into an
+nothing, so there is nothing to clean up.
+
+The vault alone owns a login's lifetime. A family's flow only runs the
+protocol: it ends when the user confirms or the vendor refuses, and stops at
+once when the vault drops it. A device login lasts ten minutes from the moment
+the vault starts it, whatever the vendor's code allows: at that moment the
+vault drops the flow and the login fails as expired. The `expiresAt` the user
+sees is that same moment, which the vault sets when the login starts, so the
+shown expiry is the real end. Demi does not read the vendor code's own
+lifetime. A code that expires sooner ends the login early only through the
+vendor's answer to the next poll: an RFC 8628 server such as Grok Build's
+answers `expired_token`, which the flow reports as a failure with that reason,
+like any refusal. A vendor that keeps answering "not yet" is ended at the
+vault's moment. Either way the login ends visibly; an early end only means the
+shown expiry was later than the real one.
+Cancelling a login stops it at once, even while it waits between polls, and
+backend shutdown cancels and drains active flows. Logging into an
 existing entry reserves the entry until the login completes or fails; another
 change to the entry meanwhile is refused as busy. A failed token import answers
 with a fixed message that never contains the supplied token.

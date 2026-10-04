@@ -1,10 +1,7 @@
 //! Codex's device login and the accounts it stores (`providers.md` § Login
 //! and publication).
 
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::sync::{Arc, Mutex};
 
 use demi_provider_codex::{CodexConfig, CodexProvider};
 use demi_provider_common::{
@@ -23,17 +20,11 @@ fn staged(vendor: &MockVendor, pool: &MemoryCredentialPool) -> CodexProvider {
     let mut config = CodexConfig::new(None);
     config.auth_url = vendor.url("").parse().unwrap();
     let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
-    // No idle-connection timer, so a paused clock only moves at the login's
-    // own waits.
-    let http = reqwest::Client::builder()
-        .pool_idle_timeout(None)
-        .build()
-        .unwrap();
     CodexProvider::new(
         config,
         Arc::new(pool.clone()),
         Arc::new(MemorySnapshots::new()),
-        http,
+        reqwest::Client::new(),
         clock,
     )
 }
@@ -81,10 +72,6 @@ async fn a_device_login_shows_its_code_once_polls_until_confirmed_and_stores_the
     assert_eq!(shown.len(), 1);
     assert_eq!(shown[0].verification_url, vendor.url("/codex/device"));
     assert_eq!(shown[0].user_code.as_deref(), Some("WXYZ-9876"));
-    assert_eq!(
-        shown[0].expires_at,
-        Some("2026-09-18T14:10:00.000Z".parse().unwrap())
-    );
 
     assert_eq!(account.label, "device@example.com");
     assert_eq!(
@@ -185,36 +172,6 @@ async fn a_device_code_without_a_user_code_or_an_unavailable_login_fails() {
         unavailable,
         LoginError::Unavailable("Device-code login is not enabled for this Codex account".into())
     );
-    assert!(pool.list().await.unwrap().is_empty());
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_login_the_user_never_confirms_ends_after_ten_minutes() {
-    let vendor = MockVendor::start().await;
-    vendor.respond(json_answer(
-        200,
-        json!({ "device_auth_id": "dev_auth_1", "user_code": "CODE-1", "interval": 60 }),
-    ));
-    for _ in 0..11 {
-        vendor.respond(json_answer(403, json!({})));
-    }
-    let pool = MemoryCredentialPool::new();
-    let provider = staged(&vendor, &pool);
-    let report = |_: LoginPending| {};
-    let started = tokio::time::Instant::now();
-    let failure = provider
-        .accounts()
-        .unwrap()
-        .login(&report)
-        .await
-        .unwrap_err();
-    assert_eq!(
-        failure,
-        LoginError::Failed("Device-code login timed out after 10 minutes".into())
-    );
-    assert_eq!(started.elapsed(), Duration::from_secs(600));
-    // A poll at once and one a minute until the deadline.
-    assert_eq!(vendor.requests().len(), 12);
     assert!(pool.list().await.unwrap().is_empty());
 }
 

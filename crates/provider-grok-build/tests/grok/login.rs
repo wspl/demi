@@ -103,10 +103,6 @@ async fn a_device_login_follows_the_grok_clis_contract_and_stores_the_user() {
         "https://auth.x.ai/activate?user_code=GROK-1234"
     );
     assert_eq!(shown[0].user_code.as_deref(), Some("GROK-1234"));
-    assert_eq!(
-        shown[0].expires_at,
-        Some("2026-09-18T14:10:00.000Z".parse().unwrap())
-    );
 
     // The proxy's details of the user win over the id token's.
     assert_eq!(account.label, "g@example.com");
@@ -220,44 +216,6 @@ async fn a_slow_down_waits_five_seconds_longer_before_each_later_poll() {
         (Duration::from_secs(16)..Duration::from_millis(16_100)).contains(&waited),
         "{waited:?}"
     );
-}
-
-#[tokio::test(start_paused = true)]
-async fn a_login_the_user_never_confirms_ends_after_ten_minutes_whatever_the_code_allows() {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(
-        DEVICE_CODE,
-        device_code(json!({ "interval": 60, "expires_in": 1800 })),
-    );
-    for _ in 0..9 {
-        vendor.respond_at(TOKEN, pending());
-    }
-    let pool = MemoryCredentialPool::new();
-    let provider = provider(&vendor, &pool, None);
-    let shown = Arc::new(Mutex::new(Vec::new()));
-    let report = {
-        let shown = shown.clone();
-        move |pending: LoginPending| shown.lock().unwrap().push(pending.expires_at)
-    };
-    let started = tokio::time::Instant::now();
-    let failure = provider
-        .accounts()
-        .unwrap()
-        .login(&report)
-        .await
-        .unwrap_err();
-    assert_eq!(
-        failure,
-        LoginError::Failed("Grok device login timed out before the user confirmed".into())
-    );
-    assert_eq!(started.elapsed(), Duration::from_secs(600));
-    assert_eq!(
-        *shown.lock().unwrap(),
-        [Some("2026-09-18T14:10:00.000Z".parse().unwrap())]
-    );
-    // A poll a minute from the start to the ninth, none at the deadline.
-    assert_eq!(vendor.requests().len(), 10);
-    assert!(pool.list().await.unwrap().is_empty());
 }
 
 #[tokio::test(start_paused = true)]

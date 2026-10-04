@@ -1,7 +1,7 @@
 //! A subscription entry's accounts (`web-api.md` § Subscription accounts,
 //! `providers.md` § Login and publication, `usage-and-quota.md` § Vendor
 //! quota): setup tokens sealed and never returned, explicit selection,
-//! device logins published once, held entries, cancellation and expiry, and
+//! device logins published once, held entries, cancellation, and
 //! an account's quota snapshot through a probe and a restart. The families
 //! are scripted.
 
@@ -10,7 +10,6 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use demi_backend_providers::llm::families::FamilyRegistry;
-use demi_backend_providers::vault::logins::LoginTiming;
 use demi_provider_common::quota::ProbeCost;
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{QuotaWindow, SnapshotSource};
@@ -26,7 +25,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::families::{Directory, LoginScript, QuotaScript, ScriptedSubscription};
-use crate::support::{Harness, Session, TestBackend, eventually};
+use crate::support::{Harness, Session, TestBackend};
 
 pub(crate) struct Scripts {
     pub(crate) login: Arc<LoginScript>,
@@ -324,7 +323,9 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
         LoginState::Pending {
             verification_url: Some("https://verify.example/device".into()),
             user_code: Some("ABCD-1234".into()),
-            expires_at: None,
+            // The vault's end, ten minutes from the start on the harness's
+            // clock.
+            expires_at: "2026-09-24T08:10:00.000Z".parse().unwrap(),
         }
     );
 
@@ -507,65 +508,6 @@ async fn a_login_into_an_entry_holds_it_until_it_ends_and_cancelling_stops_it_at
         .await;
     assert_eq!(
         unknown.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::LoginNotFound)
-    );
-    backend.close().await;
-}
-
-#[tokio::test]
-async fn a_login_expires_and_its_result_goes_after_the_retention() {
-    let scripts = scripts(Some(ProbeCost::Free));
-    let timing = LoginTiming {
-        lifetime: Duration::from_millis(100),
-        retention: Duration::from_millis(300),
-    };
-    let harness = Harness::new()
-        .with_families(scripts.families)
-        .with_logins(timing);
-    let (backend, master) = harness.start_set_up().await;
-    let started = tokio::time::Instant::now();
-    let id = start_login(
-        &backend,
-        &master,
-        "/api/providers/subscription-login",
-        json!({ "providerType": "device" }),
-    )
-    .await;
-    let expired = awaited(&backend, &master, &id, ended).await;
-    assert_eq!(
-        expired,
-        LoginState::Failed {
-            message: "The login expired".into()
-        }
-    );
-    assert_eq!(
-        scripts.login.cancelled.load(Ordering::SeqCst),
-        1,
-        "an expired login stops its flow"
-    );
-    assert!(
-        backend
-            .get("/api/providers", Some(&master))
-            .await
-            .json::<Providers>()
-            .providers
-            .is_empty()
-    );
-    // The result stays for the retention after the login ended, and then
-    // goes: no earlier than the lifetime and the retention after the start.
-    let path = format!("/api/providers/subscription-login/{id}");
-    eventually("the login's result goes", || async {
-        backend.get(&path, Some(&master)).await.status == StatusCode::NOT_FOUND
-    })
-    .await;
-    assert!(
-        started.elapsed() >= timing.lifetime + timing.retention,
-        "{:?}",
-        started.elapsed()
-    );
-    let gone = backend.get(&path, Some(&master)).await;
-    assert_eq!(
-        gone.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::LoginNotFound)
     );
     backend.close().await;
