@@ -79,7 +79,6 @@ async fn a_request_reads_the_instruction_at_the_lowest_effort_and_ignores_thinki
         },
         ThinkingCapability::Effort {
             efforts: vec!["high".into(), "minimal".into(), "medium".into()],
-            default_effort: Some("medium".into()),
             summaries: vec![ThinkingSummary::Auto],
             default_summary: None,
         },

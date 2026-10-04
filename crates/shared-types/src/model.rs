@@ -169,10 +169,6 @@ pub enum ThinkingCapability {
     Adaptive {
         #[garde(skip)]
         efforts: Vec<String>,
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<String>")]
-        #[garde(skip)]
-        default_effort: Option<String>,
     },
     Budget {
         #[serde(deserialize_with = "Option::deserialize")]
@@ -191,10 +187,6 @@ pub enum ThinkingCapability {
     Effort {
         #[garde(skip)]
         efforts: Vec<String>,
-        #[serde(deserialize_with = "Option::deserialize")]
-        #[schemars(with = "Nullable<String>")]
-        #[garde(skip)]
-        default_effort: Option<String>,
         #[garde(skip)]
         summaries: Vec<ThinkingSummary>,
         #[serde(deserialize_with = "Option::deserialize")]

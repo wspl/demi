@@ -110,8 +110,6 @@ struct CodexModel {
     input_modalities: Option<Vec<String>>,
     supported_reasoning_levels: Vec<ReasoningLevel>,
     #[serde(default)]
-    default_reasoning_level: Option<NonEmpty>,
-    #[serde(default)]
     service_tiers: Option<Vec<CodexTier>>,
     #[serde(default)]
     default_service_tier: Option<NonEmpty>,
@@ -169,7 +167,6 @@ impl CodexModel {
             accepted_extensions: None,
             supports_reasoning: Some(!efforts.is_empty()),
             supported_thinking_efforts: Some(efforts),
-            default_thinking_effort: self.default_reasoning_level.map(|level| level.0),
             // Leaving reasoning out gets Codex's default, not no reasoning.
             can_disable_thinking: Some(false),
             service_tiers: self

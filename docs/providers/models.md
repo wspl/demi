@@ -38,9 +38,8 @@ An entry's catalog comes from one source, chosen in this order:
    have one. It is user configuration: no fetched catalog changes it and a
    refresh never clears it; removing the list returns the entry to the next
    source ([Web API](../product/web-api.md#model-configuration-and-provider-inspection)).
-   A configured model states its facts directly. Its first thinking effort is
-   its default, its Fast tier, when it names one, is its only service tier,
-   and it is taken to call tools.
+   A configured model states its facts directly. Its Fast tier, when it names
+   one, is its only service tier, and it is taken to call tools.
 2. **Its vendor's model list in models.dev**, when the entry was added from the
    vendor list. [Providers](providers.md#vendors-from-modelsdev) defines which
    vendors the list offers.
@@ -59,7 +58,7 @@ does not state is null, which means unknown.
 | `contextWindow`, `outputLimit` | Token limits; a null `outputLimit` means no model-specific limit ([Output limit](#output-limit)) |
 | `supportsTools` | Whether the model can call tools |
 | `supportsAttachments`, `supportsVideo`, `acceptedExtensions` | Which files the model reads natively ([Accepted attachment types](#accepted-attachment-types)) |
-| `supportsReasoning`, `supportedThinkingEfforts`, `defaultThinkingEffort`, `canDisableThinking` | Which thinking settings the model offers ([Thinking and service tiers](#thinking-and-service-tiers)) |
+| `supportsReasoning`, `supportedThinkingEfforts`, `canDisableThinking` | Which thinking settings the model offers ([Thinking and service tiers](#thinking-and-service-tiers)) |
 | `serviceTiers`, `defaultServiceTierId` | The service tiers the model offers; a tier marked `fast` is Fast |
 | `cost` | Prices, as models.dev reports them |
 | `sourceFetchedAt`, `stale` | When the source was fetched, and whether this is a copy kept after a failed refresh |
@@ -99,7 +98,7 @@ entry's catalog is kept.
 |---|---|
 | `anthropic`, `openai`, `google` | A list built into the provider for its family. Reading it makes no request. |
 | `codex` | The account's model list on the ChatGPT backend ([The Codex catalog](#the-codex-catalog)). |
-| `grok-build` | `GET /v1/models` on the Grok Build service, with the account's session. The service answers a `data` envelope or a bare list. A model is named by its `id`, else its `model`; one that names neither is skipped. Its efforts are its `reasoning_efforts`, and its default effort is the one flagged `default`, else its `reasoning_effort`, else the first. Every model takes tools and images; its context window is unknown unless the service states one. A catalog that cannot be read is a failed refresh: the service is unreachable or refuses, the account has no session, the payload cannot be read, or it lists no model. |
+| `grok-build` | `GET /v1/models` on the Grok Build service, with the account's session. The service answers a `data` envelope or a bare list. A model is named by its `id`, else its `model`; one that names neither is skipped. Its efforts are its `reasoning_efforts`, in the service's order. Every model takes tools and images; its context window is unknown unless the service states one. A catalog that cannot be read is a failed refresh: the service is unreachable or refuses, the account has no session, the payload cannot be read, or it lists no model. |
 | `claude-code` | The `anthropic` vendor of the models.dev document: the models whose id starts with `claude-` and whose version is 4.6 or later. Opus models come first, then Sonnet, then Haiku, then others, newest version first within each family. An id whose version cannot be read is skipped with a warning. Thinking cannot be turned off, because the CLI's `--effort` option only levels it. |
 
 ### The Codex catalog
@@ -117,10 +116,10 @@ inference.
   picker; hidden internal models are never shown.
 - Model ids and reasoning levels come from the response, not from a list kept
   in Demi.
-- `default_reasoning_level`, every `supported_reasoning_levels` entry and
-  `default_service_tier` are kept. The default level becomes the model's
-  default thinking effort, and the web app's model selector offers the full
-  effort list; a conversation that names no effort takes the first
+- Every `supported_reasoning_levels` entry and `default_service_tier` are
+  kept. The web app's model selector offers the full effort list, and a
+  conversation that names no effort takes the first, not Codex's
+  `default_reasoning_level`
   ([A conversation's model settings](#a-conversations-model-settings)). An explicit effort, including `max` or
   `ultra` when advertised, reaches Codex's `reasoning.effort` unchanged.
 - There is no Off option: omitting reasoning gets Codex's default instead of
@@ -375,8 +374,8 @@ thinks, and bills for it, either way:
 | Off | `includeThoughts: false`, `thinkingBudget: 0` |
 | None | `includeThoughts: true` |
 
-A model's catalog says what the product can offer: the model's effort levels
-and its default, and whether thinking can be turned off. Codex and Claude Code
+A model's catalog says what the product can offer: the model's effort levels,
+and whether thinking can be turned off. Codex and Claude Code
 models cannot turn thinking off ([The Codex catalog](#the-codex-catalog),
 [Directories](#directories)).
 
