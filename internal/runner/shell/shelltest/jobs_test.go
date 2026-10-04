@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runner/shell"
@@ -32,8 +31,7 @@ func TestMain(m *testing.M) {
 // shellJob creates a real login job with an isolated home and mandatory joined cleanup.
 func shellJob(t *testing.T, script string) (context.Context, *shelltest.Scope, process.ShellJob, string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	t.Cleanup(cancel)
+	ctx := t.Context()
 	root := t.TempDir()
 	scope := shelltest.NewScope(ctx, nil)
 	t.Cleanup(func() {

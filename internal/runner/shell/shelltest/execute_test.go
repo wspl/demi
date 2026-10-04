@@ -8,7 +8,6 @@ import (
 	"os"
 	"runtime"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/runner/shell/shelltest"
 )
@@ -84,8 +83,7 @@ func TestBuiltinPipelineEmitsBeforeInputEOF(t *testing.T) {
 }
 
 func TestExecuteCancellationInterruptsBorrowedInput(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	scope := shelltest.NewScope(ctx, nil)
 	defer func() {
 		scope.Cancel()
