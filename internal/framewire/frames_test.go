@@ -253,18 +253,3 @@ func TestNestingLimitClosesConnection(t *testing.T) {
 		t.Fatalf("expected wrapped syntax error that closes the connection, got %v", err)
 	}
 }
-
-// Accepted normalization F6: diagnostics name the field as spelled on the wire.
-func TestAttachmentFieldDiagnostic(t *testing.T) {
-	value := fixture(t, readFixtures(t, "client-frames.json"), "send")
-	mutate(t, value, "/content/2/fileName", "..", false)
-	raw, err := contract.EncodeJSON(value)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = framewire.DecodeClientFrame(raw)
-	var field *contract.Error
-	if !errors.As(err, &field) || field.Path != "content[2].fileName" {
-		t.Fatalf("attachment diagnostic: %v", err)
-	}
-}

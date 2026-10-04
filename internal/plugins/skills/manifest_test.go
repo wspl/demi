@@ -1,14 +1,16 @@
-package skills
+package skills_test
 
 import (
 	"bytes"
 	"os"
 	"testing"
+
+	"github.com/wspl/demi/internal/plugins/skills"
 )
 
 // The host consumes these registration bytes; budget below one second.
 func TestManifestMatchesGolden(t *testing.T) {
-	factory, err := New()
+	factory, err := skills.New()
 	if err != nil {
 		t.Fatal(err)
 	}

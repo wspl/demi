@@ -1,4 +1,4 @@
-package process
+package process_test
 
 import (
 	"context"
@@ -7,12 +7,14 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/wspl/demi/internal/runner/process"
 )
 
 func TestPrivatePublicationAndPermissions(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state")
 	for _, data := range []string{"first", "replacement\n"} {
-		if err := WritePrivate(t.Context(), path, []byte(data)); err != nil {
+		if err := process.WritePrivate(t.Context(), path, []byte(data)); err != nil {
 			t.Fatal(err)
 		}
 		contents, err := os.ReadFile(path)
@@ -36,7 +38,7 @@ func TestPrivatePublicationAndPermissions(t *testing.T) {
 			}
 		}
 	}
-	if err := Chmod(t.Context(), path, 0o600); err != nil {
+	if err := process.Chmod(t.Context(), path, 0o640); err != nil {
 		t.Fatal(err)
 	}
 	if runtime.GOOS != "windows" {
@@ -44,13 +46,13 @@ func TestPrivatePublicationAndPermissions(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if info.Mode().Perm() != 0o600 {
+		if info.Mode().Perm() != 0o640 {
 			t.Fatalf("mode %o", info.Mode().Perm())
 		}
 	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := WritePrivate(ctx, path, []byte("cancelled")); !errors.Is(err, context.Canceled) {
+	if err := process.WritePrivate(ctx, path, []byte("cancelled")); !errors.Is(err, context.Canceled) {
 		t.Fatalf("cancelled publication: %v", err)
 	}
 	data, err := os.ReadFile(path)

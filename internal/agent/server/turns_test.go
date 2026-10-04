@@ -21,7 +21,6 @@ import (
 )
 
 func TestTurnPatchesRebuildTranscript(t *testing.T) {
-	t.Skip("fidelity 1: the transcript fixture's tool-input diagnostics differ from the generated decoder's")
 	synctest.Test(t, func(t *testing.T) {
 		script := providertest.NewScriptedRuntime(
 			t,

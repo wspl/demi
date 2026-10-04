@@ -12,12 +12,27 @@ func TestCommandInputValidation(t *testing.T) {
 	valid := `{"operation":"echo","invocationId":"i","context":{"conversation":"c-1",` +
 		`"caller":{"kind":"agent","number":18446744073709551615},"locale":{"timeZone":"UTC",` +
 		`"languages":["en"]}},"args":{},"cwd":"/tmp","env":{}}`
-	if _, err := commandwire.DecodeInvocation([]byte(valid)); err != nil {
-		t.Fatal(err)
+	agent := `"caller":{"kind":"agent","number":18446744073709551615}`
+	locale := `"locale":{"timeZone":"UTC","languages":["en"]}`
+	for _, caller := range []string{agent, `"caller":{"kind":"user"}`} {
+		if _, err := commandwire.DecodeInvocation([]byte(strings.Replace(valid, agent, caller, 1))); err != nil {
+			t.Fatalf("%s: %v", caller, err)
+		}
 	}
 	for _, tc := range []struct{ name, old, new string }{
+		{"missing context", `"context":{"conversation":"c-1",` + agent + `,` + locale + `},`, ``},
+		{"empty operation", `"operation":"echo"`, `"operation":""`},
+		{"empty invocation", `"invocationId":"i"`, `"invocationId":""`},
+		{"empty conversation", `"c-1"`, `""`},
 		{"unsafe conversation", `"c-1"`, `"../c"`},
+		{"negative agent", `18446744073709551615`, `-1`},
+		{"agent without number", agent, `"caller":{"kind":"agent"}`},
+		{"user with number", `"agent"`, `"user"`},
 		{"unknown caller", `"agent"`, `"robot"`},
+		{"missing locale", `,` + locale, ``},
+		{"empty time zone", `"UTC"`, `""`},
+		{"no language", `["en"]`, `[]`},
+		{"too many languages", `["en"]`, `[` + strings.TrimSuffix(strings.Repeat(`"en",`, 17), ",") + `]`},
 		{"empty language", `["en"]`, `[""]`},
 		{"long language", `["en"]`, `["` + strings.Repeat("a", 65) + `"]`},
 		{"arguments array", `"args":{}`, `"args":[]`},
@@ -29,7 +44,11 @@ func TestCommandInputValidation(t *testing.T) {
 		{"duplicate arguments", `"args":{}`, `"args":{"a":1,"a":2}`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if _, err := commandwire.DecodeInvocation([]byte(strings.Replace(valid, tc.old, tc.new, 1))); err == nil {
+			invalid := strings.Replace(valid, tc.old, tc.new, 1)
+			if invalid == valid {
+				t.Fatalf("mutation missed %s", tc.old)
+			}
+			if _, err := commandwire.DecodeInvocation([]byte(invalid)); err == nil {
 				t.Fatal("accepted malformed invocation")
 			}
 		})
@@ -85,6 +104,8 @@ func TestPackageValidation(t *testing.T) {
 		{"file:///tmp/a", false},
 		{"https://user:pass@example.com/a", false},
 		{"https://user@example.com", false},
+		{"ftp://192.168.5.2/native-artifacts/a", false},
+		{"native-artifacts/a", false},
 	} {
 		value := commandwire.ArtifactURL{URL: tc.url}
 		_, err := contract.EncodeJSON(&value)
@@ -156,5 +177,16 @@ func TestConversationAndEditContext(t *testing.T) {
 	context.Lock = context.Directory + "\x00"
 	if err := context.Validate(); err == nil {
 		t.Fatal("accepted NUL in lock")
+	}
+}
+
+func TestConversationStatusChecksConversationIdentity(t *testing.T) {
+	for _, s := range []string{`{"conversations":[]}`, `{"conversations":["conversation"]}`} {
+		if _, err := commandwire.DecodeConversationStatus([]byte(s)); err != nil {
+			t.Fatalf("%s: %v", s, err)
+		}
+	}
+	if _, err := commandwire.DecodeConversationStatus([]byte(`{"conversations":[""]}`)); err == nil {
+		t.Fatal("empty identity")
 	}
 }

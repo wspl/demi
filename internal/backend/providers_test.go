@@ -293,12 +293,12 @@ func TestADirectoryCatalogIsCachedRefreshedOnDemandAndKeptAfterAFailedRefresh(t 
 	expired := accountModels(ctx, t, server, &master, "")
 	conversationEqual(t, len(ids(expired)), 3)
 	conversationEqual(t, expired.Providers[0].Stale, true)
-	// Bound the refresh wait, not the setup and backend restart preceding it.
-	refreshCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
+	// The expired read started a background refresh; until it lands, each
+	// read answers the kept catalog as stale.
 	refreshed := expired
-	for len(ids(refreshed)) != 1 || ids(refreshed)[0] != "d" {
-		refreshed = accountModels(refreshCtx, t, server, &master, "")
+	for refreshed.Providers[0].Stale {
+		conversationEqual(t, ids(refreshed), []string{"a", "b", "c"})
+		refreshed = accountModels(ctx, t, server, &master, "")
 	}
 	conversationEqual(t, ids(refreshed), []string{"d"})
 	conversationEqual(t, refreshed.Providers[0].Stale, false)

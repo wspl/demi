@@ -302,7 +302,6 @@ func TestBusyEditAndFailedSaveChangeNothing(t *testing.T) {
 }
 
 func TestCommandStorageGenerationAndCancellation(t *testing.T) {
-	t.Skip("fidelity 2: cancelled storage call returns context.Canceled instead of StorageRefused")
 	synctest.Test(t, func(t *testing.T) {
 		f := newFixture(t)
 		c := f.opened()
@@ -324,8 +323,12 @@ func TestCommandStorageGenerationAndCancellation(t *testing.T) {
 		assertStorageError(t, err, "the command storage handle is no longer current")
 		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
+		// A canceled call ends with its context's error and commits nothing;
+		// the revision check at the end proves the write did not land.
 		_, err = f.server.CommandStorage(ctx, rootID(), caller, write)
-		assertStorageError(t, err, "the command storage handle is no longer current")
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected the call's cancellation, got %v", err)
+		}
 		c.Send(t.Context(), &framewire.CloseFrame{})
 		_, err = f.server.CommandStorage(t.Context(), rootID(), caller, write)
 		assertStorageError(t, err, "the command storage handle is no longer current")

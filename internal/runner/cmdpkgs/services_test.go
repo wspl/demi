@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
@@ -56,11 +55,7 @@ func registry(t *testing.T, root, image string) *cmdpkgs.ServiceRegistry {
 	t.Helper()
 	r, err := cmdpkgs.NewServiceRegistry(t.Context(), filepath.Join(root, "cache"), image, root, map[string]string{})
 	must(t, err)
-	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-		defer cancel()
-		must(t, r.Close(ctx))
-	})
+	t.Cleanup(func() { must(t, r.Close(context.Background())) })
 	return r
 }
 

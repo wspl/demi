@@ -1,9 +1,10 @@
-package providers
+package providers_test
 
 import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/wspl/demi/internal/backend/providers"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/webapi"
 )
@@ -19,7 +20,7 @@ func TestEveryRequestTakesConfiguredFactsAndKeepsUserChoices(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	entry := Entry{ID: "entry-1", Credential: &APIKeyConfig{Models: &models}}
+	entry := providers.Entry{ID: "entry-1", Credential: &providers.APIKeyConfig{Models: &models}}
 	output := uint32(100)
 	tier := "priority"
 	chosen := core.ModelSelection{
@@ -33,7 +34,7 @@ func TestEveryRequestTakesConfiguredFactsAndKeepsUserChoices(t *testing.T) {
 		Thinking:      &core.EffortConfig{Effort: "high"},
 		ServiceTierID: &tier,
 	}
-	applied, err := ConfiguredSelection(entry, chosen)
+	applied, err := providers.ConfiguredSelection(entry, chosen)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,21 +52,21 @@ func TestEveryRequestTakesConfiguredFactsAndKeepsUserChoices(t *testing.T) {
 	}
 	edited := uint32(8000)
 	models[0].OutputLimit = &edited
-	applied, err = ConfiguredSelection(entry, chosen)
+	applied, err = providers.ConfiguredSelection(entry, chosen)
 	if err != nil || *applied.Model.OutputLimit != 8000 {
 		t.Fatalf("edit: %v %v", applied, err)
 	}
 	other := chosen
 	other.Model.ID = "gpt-4"
-	if _, err := ConfiguredSelection(
+	if _, err := providers.ConfiguredSelection(
 		entry,
 		other,
 	); err == nil ||
 		err.Error() != "the model gpt-4 is not in the provider's configured list" {
 		t.Fatal(err)
 	}
-	entry.Credential = &APIKeyConfig{}
-	applied, err = ConfiguredSelection(entry, chosen)
+	entry.Credential = &providers.APIKeyConfig{}
+	applied, err = providers.ConfiguredSelection(entry, chosen)
 	if err != nil {
 		t.Fatal(err)
 	}

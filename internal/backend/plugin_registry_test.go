@@ -83,64 +83,21 @@ func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
 	wireMust(t, b.Close(ctx))
 }
 
-// TestPluginInvalidManifestStopsStartupAndNamesPlugin uses six invalid manifests to refuse assembled startup
-// before serving or starting a runner.
+// TestPluginInvalidManifestStopsStartupAndNamesPlugin checks that a manifest
+// the plugin registry refuses stops the backend before it serves, and that the
+// startup error carries the registry's diagnostic. The registry's refusals
+// themselves are a table in plugins.TestRegistryRefusesConflicts.
 func TestPluginInvalidManifestStopsStartupAndNamesPlugin(t *testing.T) {
 	t.Parallel()
-	profile := func(id, name string) *backendtest.CommandProbe {
-		p := registryProbe(id)
-		p.Declaration.Profiles = []core.Profile{{Name: name, Description: "A profile.", CanSpawnSubagents: true}}
-		return p
+	ctx, h := conversationHarness(t)
+	h.Config.Plugins = []plugin.Factory{registryProbe("todo"), registryProbe("todo")}
+	b, err := h.Start(ctx, t)
+	if err == nil {
+		wireMust(t, b.Close(ctx))
+		t.Fatal("invalid manifest started")
 	}
-	cases := []struct {
-		factories []plugin.Factory
-		prefix    string
-	}{
-		{
-			[]plugin.Factory{registryProbe("todo"), registryProbe("todo")},
-			`two plugins have the id "todo"`,
-		},
-		{
-			[]plugin.Factory{registryProbe("todo", backendtest.ProbeCommand("agent", plugin.PlacementDemi, nil))},
-			`plugin "todo" declares "demi agent", which is taken`,
-		},
-		{
-			[]plugin.Factory{
-				registryProbe("one", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)),
-				registryProbe("two", backendtest.ProbeCommand("notes", plugin.PlacementDemi, nil)),
-			},
-			`plugin "two" declares "demi notes", which is taken`,
-		},
-		{
-			[]plugin.Factory{
-				registryProbe("one", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil)),
-				registryProbe("two", backendtest.ProbeCommand("lint", plugin.PlacementRoot, nil)),
-			},
-			`plugin "two"'s commands are refused`,
-		},
-		{
-			[]plugin.Factory{profile("todo", "default")},
-			`plugin "todo" declares the profile "default", which is reserved for inheriting the parent`,
-		},
-		{
-			[]plugin.Factory{profile("one", "explorer"), profile("two", "explorer")},
-			`plugin "two" declares the profile "explorer", which another plugin declares`,
-		},
-	}
-	for _, scenario := range cases {
-		t.Run(scenario.prefix, func(t *testing.T) {
-			t.Parallel()
-			ctx, h := conversationHarness(t)
-			h.Config.Plugins = scenario.factories
-			b, err := h.Start(ctx, t)
-			if err == nil {
-				wireMust(t, b.Close(ctx))
-				t.Fatal("invalid manifest started")
-			}
-			if err == nil || !strings.Contains(err.Error(), "the plugins cannot start: "+scenario.prefix) {
-				t.Fatalf("startup: %v", err)
-			}
-		})
+	if !strings.Contains(err.Error(), `the plugins cannot start: two plugins have the id "todo"`) {
+		t.Fatalf("startup: %v", err)
 	}
 }
 

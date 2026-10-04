@@ -1,15 +1,16 @@
-package file
+package file_test
 
 import (
 	"testing"
 
 	"github.com/wspl/demi/internal/declare"
 	"github.com/wspl/demi/internal/plugin/plugintest"
+	"github.com/wspl/demi/internal/plugins/file"
 )
 
 // Parse the arguments a runner consumes, including stdin bodies; below one second.
 func TestNativeCommands(t *testing.T) {
-	f, err := New()
+	f, err := file.New()
 	if err != nil {
 		t.Fatal(err)
 	}

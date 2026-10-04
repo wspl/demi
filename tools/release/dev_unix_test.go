@@ -71,16 +71,11 @@ func TestDevProcessesStopAndAreReaped(t *testing.T) {
 				_ = output.Close()
 				<-readDone
 			}()
-			guard, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-			defer cancel()
-			select {
-			case ok := <-ready:
-				if !ok {
-					t.Fatal("child exited before readiness")
-				}
-			case <-guard.Done():
-				t.Fatal(guard.Err())
+			if !<-ready {
+				t.Fatal("child exited before readiness")
 			}
+			// The patience is dev's own stop window for this program: a child
+			// that outlives it is killed, and the test then fails.
 			terminate := mode == "backend"
 			patience := 10 * time.Second
 			if !terminate {
@@ -89,7 +84,7 @@ func TestDevProcessesStopAndAreReaped(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			if err := process.stop(guard, terminate, patience); err != nil {
+			if err := process.stop(t.Context(), terminate, patience); err != nil {
 				t.Fatal(err)
 			}
 			if process.err != nil {

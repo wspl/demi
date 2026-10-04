@@ -15,9 +15,6 @@ import (
 )
 
 func TestMain(m *testing.M) { goleak.VerifyTestMain(m) }
-func TestStoreContract(t *testing.T) {
-	StoreContract(t, func(_ *testing.T) store.Tree { return NewMemoryTreeStore() })
-}
 
 func TestGuardAndCancellationLeaveCheckpointsUnchanged(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {

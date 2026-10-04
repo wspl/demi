@@ -1,13 +1,15 @@
-package process
+package process_test
 
 import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/wspl/demi/internal/runner/process"
 )
 
 func TestLineSplitterChunks(t *testing.T) {
-	var splitter LineSplitter
+	var splitter process.LineSplitter
 	for _, tc := range []struct {
 		chunk string
 		want  []string
@@ -21,25 +23,25 @@ func TestLineSplitterChunks(t *testing.T) {
 	if got, ok := splitter.Finish(); !ok || got != "third" {
 		t.Fatalf("Finish = %q", got)
 	}
-	var long LineSplitter
+	var long process.LineSplitter
 	if got := long.Push(
-		[]byte(strings.Repeat("y", LineBytes+3)),
+		[]byte(strings.Repeat("y", process.LineBytes+3)),
 	); !reflect.DeepEqual(
 		got,
-		[]string{strings.Repeat("y", LineBytes)},
+		[]string{strings.Repeat("y", process.LineBytes)},
 	) {
 		t.Fatalf("long lines = %q", got)
 	}
 	if got, ok := long.Finish(); !ok || got != "yyy" {
 		t.Fatalf("tail = %q", got)
 	}
-	if got, ok := new(LineSplitter).Finish(); ok {
+	if got, ok := new(process.LineSplitter).Finish(); ok {
 		t.Fatalf("empty = %q", got)
 	}
 }
 
 func TestStreamTailsAndMalformedText(t *testing.T) {
-	tail := NewTail(5)
+	tail := process.NewTail(5)
 	tail.Push([]byte("first"))
 	tail.Push([]byte(" last"))
 	if got := tail.Text(); got != " last" {
@@ -56,13 +58,13 @@ func TestStreamTailsAndMalformedText(t *testing.T) {
 	}{
 		{[]byte{0xff, 0xff}, "��"}, {[]byte{0xe2, 0x82}, "�"}, {[]byte{0xe2, 0x28, 0xa1}, "�(�"},
 	} {
-		tail := NewTail(10)
+		tail := process.NewTail(10)
 		tail.Push(tc.data)
 		if got := tail.Text(); got != tc.want {
 			t.Fatalf("%x = %q, want %q", tc.data, got, tc.want)
 		}
 	}
-	zero := NewTail(0)
+	zero := process.NewTail(0)
 	zero.Push([]byte("discard"))
 	if len(zero.Bytes()) != 0 {
 		t.Fatal("zero-sized tail retained bytes")

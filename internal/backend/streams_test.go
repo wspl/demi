@@ -268,11 +268,8 @@ func TestDisablingPluginEndsStreamsAndRefusesNewOnes(t *testing.T) {
 // A native stream spans two 400-ms idle windows, observed by a page heartbeat.
 func TestOpenUserStreamKeepsCloudAwakeUntilClose(t *testing.T) {
 	t.Parallel()
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	t.Cleanup(cancel)
-	manager, err := backendtest.StartScriptedManager(ctx, t)
-	wireMust(t, err)
-	harness, err := backendtest.NewHarness(ctx, t, manager.Socket())
+	ctx := t.Context()
+	harness, manager, err := backendtest.HostsHarness(ctx, t)
 	wireMust(t, err)
 	built, err := backendtest.BuildPackage(ctx, t, "demi-native-fixture")
 	wireMust(t, err)

@@ -114,10 +114,10 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 			t,
 			onA,
 			"DEMI_CONVERSATION_ID=forged DEMI_AGENT_NODE_ID=forged PROBE=alpha demi where --label A",
-			10000,
+			untilExit,
 		)
 	})
-	calls.Go(func() { fromB = runnerExec(t, onB, "PROBE=beta demi where --label B", 10000) })
+	calls.Go(func() { fromB = runnerExec(t, onB, "PROBE=beta demi where --label B", untilExit) })
 	calls.Wait()
 	for _, item := range []struct {
 		status            host.CommandStatus
@@ -138,22 +138,22 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 		data[i] = byte(i % 256)
 	}
 	requirePipe(t, os.WriteFile(filepath.Join(a.Home(), "input"), data, 0o600))
-	echoed := runnerExec(t, onA, "cat input | demi echo > output", 10000)
+	echoed := runnerExec(t, onA, "cat input | demi echo > output", untilExit)
 	output, err := os.ReadFile(filepath.Join(a.Home(), "output"))
 	requirePipe(t, err)
 	if echoed.State.ExitCode != 0 || !bytes.Equal(output, data) {
 		t.Fatal("native binary echo changed")
 	}
-	result := runnerExec(t, onA, "demi result", 10000)
+	result := runnerExec(t, onA, "demi result", untilExit)
 	if result.State.ExitCode != 17 || result.Stdout.Delta != "command output" ||
 		result.Stderr.Delta != "command diagnostic" {
 		t.Fatal(result)
 	}
-	failed := runnerExec(t, onA, "RESULT=error demi result", 10000)
+	failed := runnerExec(t, onA, "RESULT=error demi result", untilExit)
 	if failed.State.ExitCode != 1 || !strings.Contains(failed.Stderr.Delta, "command failed") {
 		t.Fatal(failed)
 	}
-	numbered := runnerExec(t, onA, "demi number && demi number", 10000)
+	numbered := runnerExec(t, onA, "demi number && demi number", untilExit)
 	if numbered.State.ExitCode != 0 || numbered.Stdout.Delta != `{"first":1}{"first":2}` {
 		t.Fatal(numbered)
 	}
@@ -161,7 +161,7 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 		t,
 		onA,
 		`printf '%s\n%s\n' "$DEMI_RUNNER_ENDPOINT" "$DEMI_CONTEXT_ID" > context; echo ready; sleep 30`,
-		50,
+		glance,
 	)
 	awaitStdout(t, onA, pages, capture.CommandID, "ready")
 	captured, err := os.ReadFile(filepath.Join(a.Home(), "context"))
@@ -170,7 +170,7 @@ func TestRunnerNativeCommandUsesOwnJobContextAndRunner(t *testing.T) {
 	if !ok {
 		t.Fatal(string(captured))
 	}
-	other := runnerExec(t, onB, `printf '%s' "$DEMI_RUNNER_ENDPOINT"`, 10000).Stdout.Delta
+	other := runnerExec(t, onB, `printf '%s' "$DEMI_RUNNER_ENDPOINT"`, untilExit).Stdout.Delta
 	if endpoint == other {
 		t.Fatal("runners shared endpoint")
 	}
@@ -244,7 +244,7 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 	link, err := f.Link(t.Context())
 	requirePipe(t, err)
 	for _, leaf := range []string{"native", "rpc"} {
-		started := runnerExec(t, s, "attend "+leaf+"; sleep 30", 100)
+		started := runnerExec(t, s, "attend "+leaf+"; sleep 30", glance)
 		nextHint(t, tap, link, new(leaf+": do not poll"))
 		status, err := s.Status(started.CommandID)
 		requirePipe(t, err)
@@ -265,7 +265,7 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 			t.Fatal(status)
 		}
 	}
-	child := runnerExec(t, s, "exec 9<&0; sh -c 'echo $$ > child.pid; exec attend native' <&9 & wait; sleep 30", 100)
+	child := runnerExec(t, s, "exec 9<&0; sh -c 'echo $$ > child.pid; exec attend native' <&9 & wait; sleep 30", glance)
 	nextHint(t, tap, link, new("native: do not poll"))
 	pid, err := os.ReadFile(filepath.Join(f.Home(), "child.pid"))
 	requirePipe(t, err)
@@ -286,11 +286,11 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 	}
 	before := len(tap.seen)
 	for _, script := range []string{"attend native --help", "attend native --unknown", "attend"} {
-		if runnerExec(t, s, script, 10000).State.Phase == host.Running {
+		if runnerExec(t, s, script, untilExit).State.Phase == host.Running {
 			t.Fatal(script)
 		}
 	}
-	plain := runnerExec(t, s, "attend plain", 100)
+	plain := runnerExec(t, s, "attend plain", glance)
 	if plain.State.Hint != nil {
 		t.Fatal(plain)
 	}
@@ -319,7 +319,7 @@ func TestRunnerBusyNativeDoesNotBlockAbortAndSecondRunnerRefused(t *testing.T) {
 	f := runnerFixture(t, remotehosttest.FixtureOptions{})
 	native := nativeFixture(t)
 	s, _ := runnerShell(t, f, nil, selectNative(t, native, nativeCommands(t, native, "demi")))
-	spinning := runnerExec(t, s, "demi spin", 100)
+	spinning := runnerExec(t, s, "demi spin", glance)
 	if spinning.State.Phase != host.Running {
 		t.Fatal(spinning)
 	}
@@ -336,7 +336,7 @@ func TestRunnerBusyNativeDoesNotBlockAbortAndSecondRunnerRefused(t *testing.T) {
 	requirePipe(t, s.Abort(t.Context(), spinning.CommandID))
 	stopped, err := s.Status(spinning.CommandID)
 	requirePipe(t, err)
-	if stopped.State.Phase != host.Aborted || runnerExec(t, s, "demi --help", 10000).State.ExitCode != 0 {
+	if stopped.State.Phase != host.Aborted || runnerExec(t, s, "demi --help", untilExit).State.ExitCode != 0 {
 		t.Fatal(stopped)
 	}
 }
@@ -347,12 +347,12 @@ func TestRunnerRunningJobKeepsManifestWhileNextInstallsAnother(t *testing.T) {
 	old, p := runnerShell(t, f, nil, selectNative(t, native, nativeCommands(t, native, "demi")))
 	next, _ := runnerShell(t, f, nil, selectNative(t, native, nativeCommands(t, native, "replacement")))
 	// The old job blocks reading live stdin, so it still runs while the next job installs its manifest.
-	started := runnerExec(t, old, "echo ready; read proceed; PROBE=old demi where > result", 50)
+	started := runnerExec(t, old, "echo ready; read proceed; PROBE=old demi where > result", glance)
 	if started.State.Phase != host.Running {
 		t.Fatal(started)
 	}
 	awaitStdout(t, old, p, started.CommandID, "ready")
-	result := runnerExec(t, next, "PROBE=new replacement where", 10000)
+	result := runnerExec(t, next, "PROBE=new replacement where", untilExit)
 	report, err := fixture.DecodeWhereReport([]byte(result.Stdout.Delta))
 	requirePipe(t, err)
 	if report.Value == nil || *report.Value != "new" {

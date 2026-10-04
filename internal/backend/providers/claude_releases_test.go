@@ -1,4 +1,4 @@
-package providers
+package providers_test
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/wspl/demi/internal/backend/providers"
 	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeop"
 )
 
@@ -69,7 +70,7 @@ func TestNewestReleaseUsesPointerManifestAndCache(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	releases, err := NewClaudeReleases(base)
+	releases, err := providers.NewClaudeReleases(base)
 	if err != nil {
 		t.Fatal(err)
 	}

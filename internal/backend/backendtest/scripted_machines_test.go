@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/machinewire"
@@ -21,13 +20,11 @@ import (
 )
 
 // The program starts one real runner at a local WebSocket, then must join it on
-// EOF or cancellation. All synchronization is socket/pipe events; 20s guards hangs.
+// EOF or cancellation. All synchronization is socket/pipe events.
 func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 	for _, ending := range []string{"eof", "cancel"} {
 		t.Run(ending, func(t *testing.T) {
-			guard, stopGuard := context.WithTimeout(t.Context(), 20*time.Second)
-			defer stopGuard()
-			ctx, cancel := context.WithCancel(guard)
+			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			connected, disconnected := make(chan struct{}), make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -125,11 +122,7 @@ func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 			if code != 0 {
 				t.Fatalf("exit %d: %s", code, diagnostics.String())
 			}
-			select {
-			case <-disconnected:
-			case <-guard.Done():
-				t.Fatal(guard.Err())
-			}
+			<-disconnected
 			if _, err := os.Stat(filepath.Dir(path)); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("manager directory remains: %v", err)
 			}

@@ -11,6 +11,7 @@ import (
 	"github.com/wspl/demi/internal/cmdpkg/file/fileop"
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/contract"
 )
 
 func TestEditSelection(t *testing.T) {
@@ -199,6 +200,10 @@ func TestEditPreservesSymlinkAndPermissions(t *testing.T) {
 	cwd := t.TempDir()
 	target := filepath.Join(cwd, "target")
 	writeFixture(t, target, "before\n")
+	// A mode other than the 0600 a new temporary file gets shows that it is kept.
+	if err := os.Chmod(target, 0o640); err != nil {
+		t.Fatal(err)
+	}
 	link := filepath.Join(cwd, "link")
 	if err := os.Symlink(target, link); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
@@ -223,24 +228,19 @@ func TestEditPreservesSymlinkAndPermissions(t *testing.T) {
 	}
 }
 
+// contract.CheckUTF8's tests pin the diagnostics; this pins that patch refuses
+// a file that is not UTF-8 before it changes anything.
 func TestPatchRejectsNonTextBeforeMutation(t *testing.T) {
-	for _, test := range []struct{ data, message string }{
-		{"a\xff", "invalid utf-8 sequence of 1 bytes from index 1"},
-		{"\xe2\x82x", "invalid utf-8 sequence of 2 bytes from index 0"},
-		{"\xf0\x90\x80x", "invalid utf-8 sequence of 3 bytes from index 0"},
-		{"a\xe2\x82", "incomplete utf-8 byte sequence from index 1"},
-	} {
-		t.Run(test.message, func(t *testing.T) {
-			cwd := t.TempDir()
-			path := filepath.Join(cwd, "f")
-			writeFixture(t, path, test.data)
-			_, err := applyPatch(t.Context(), cwd, "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-x\n+y\n", nil)
-			if err == nil || err.Error() != test.message {
-				t.Fatalf("got %v, want %s", err, test.message)
-			}
-			if string(contents(t, path)) != test.data {
-				t.Fatal("invalid source changed")
-			}
-		})
+	cwd := t.TempDir()
+	path := filepath.Join(cwd, "f")
+	data := "a\xff"
+	writeFixture(t, path, data)
+	_, err := applyPatch(t.Context(), cwd, "--- a/f\n+++ b/f\n@@ -1 +1 @@\n-x\n+y\n", nil)
+	var invalid *contract.UTF8Error
+	if !errors.As(err, &invalid) {
+		t.Fatalf("got %v, want a UTF-8 error", err)
+	}
+	if string(contents(t, path)) != data {
+		t.Fatal("invalid source changed")
 	}
 }

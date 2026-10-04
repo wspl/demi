@@ -3,25 +3,19 @@
 package browser
 
 import (
-	"context"
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/commandwire"
 )
 
-// eventually observes renderer state until the fixture condition holds; it never sleeps.
+// eventually evaluates the condition in the page until it holds. Each attempt is a
+// real evaluation, so it never sleeps; go test -timeout guards against a hang.
 func (f *browserFixture) eventually(t *testing.T, tab browserop.TabID, expression string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
 	for {
-		if err := ctx.Err(); err != nil {
-			t.Fatalf("page never satisfied %s: %v", expression, err)
-		}
 		completion, stdout, _ := f.result(t, "eval", browserArgs(t, `{"tab":$0,"expression":$1}`, tab, expression))
 		if completion.ExitCode == 0 && string(observedField(t, stdout, "value")) == "true" {
 			return

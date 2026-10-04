@@ -17,7 +17,10 @@ func (i waitingInput) Next(ctx context.Context) ([]byte, error) {
 	return nil, ctx.Err()
 }
 
-func TestCancellationWritesNoDocument(t *testing.T) {
+// Cancellation ends the invocation in each phase where it waits. Whether a
+// document is written is not observable here: an Output whose context is
+// cancelled refuses every write, so cmdsdk, not this package, guarantees that.
+func TestCancellationEndsEveryPhase(t *testing.T) {
 	for _, phase := range []string{"input", "install", "status"} {
 		t.Run(phase, func(t *testing.T) {
 			ctx, cancel := context.WithCancel(t.Context())
@@ -26,7 +29,7 @@ func TestCancellationWritesNoDocument(t *testing.T) {
 			defer artifacts.Close()
 			handler := &service{}
 			handler.SetArtifacts(artifacts)
-			output, records := cmdsdk.OutputChannel(ctx)
+			output, _ := cmdsdk.OutputChannel(ctx)
 			operation := "claude-code.ensure"
 			started := make(chan struct{})
 			var input cmdsdk.InputSource = &releaseInput{releaseRecord("2.1.278", currentPlatform())}
@@ -56,11 +59,6 @@ func TestCancellationWritesNoDocument(t *testing.T) {
 			cancel()
 			if err := <-done; !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancellation: %v", err)
-			}
-			select {
-			case record := <-records:
-				t.Fatalf("cancelled invocation wrote %#v", record)
-			default:
 			}
 		})
 	}

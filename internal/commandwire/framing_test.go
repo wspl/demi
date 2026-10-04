@@ -90,17 +90,18 @@ func TestResponseFailures(t *testing.T) {
 			t.Fatalf("prefix %d: %v", end, err)
 		}
 	}
-	payload := []byte(`{"exitCode":256}`)
-	frame := make([]byte, 5+len(payload))
-	frame[0] = 3
-	binary.BigEndian.PutUint32(frame[1:], uint32(len(payload)))
-	copy(frame[5:], payload)
-	var d commandwire.RecordDecoder
-	if _, _, err := d.Decode(frame); err == nil {
-		t.Fatal("accepted invalid completion")
-	}
-	if err := d.Finish(); !errors.Is(err, commandwire.ErrIncomplete) {
-		t.Fatal("invalid completion ended stream")
+	for _, payload := range []string{`{"exitCode":-1}`, `{"exitCode":256}`, `{"exitCode":0,"error":null}`} {
+		frame := make([]byte, 5+len(payload))
+		frame[0] = 3
+		binary.BigEndian.PutUint32(frame[1:], uint32(len(payload)))
+		copy(frame[5:], payload)
+		var d commandwire.RecordDecoder
+		if _, _, err := d.Decode(frame); err == nil {
+			t.Fatalf("accepted invalid completion %s", payload)
+		}
+		if err := d.Finish(); !errors.Is(err, commandwire.ErrIncomplete) {
+			t.Fatalf("invalid completion %s ended stream", payload)
+		}
 	}
 }
 

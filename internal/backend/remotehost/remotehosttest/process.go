@@ -188,11 +188,20 @@ func (p *RunnerProcess) Output() string {
 	return p.output.String()
 }
 
-// PairingCode waits for the zero-based indexed pairing code.
+// PairingCode waits for the zero-based indexed pairing code. It fails once
+// the runner has exited without printing it.
 func (p *RunnerProcess) PairingCode(ctx context.Context, index int) (string, error) {
-	waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
+	// Nil when the runner is not running: the wait then ends only with ctx.
+	exited := p.done
 	for {
+		// Every line is captured before done closes, so a code missing after
+		// the exit was observed is never printed.
+		finished := false
+		select {
+		case <-exited:
+			finished = true
+		default:
+		}
 		p.mu.Lock()
 		if index >= 0 && index < len(p.codes) {
 			code := p.codes[index]
@@ -201,10 +210,14 @@ func (p *RunnerProcess) PairingCode(ctx context.Context, index int) (string, err
 		}
 		changed := p.changed
 		p.mu.Unlock()
+		if finished {
+			return "", fmt.Errorf("the runner exited without pairing code %d:\n%s", index, p.Output())
+		}
 		select {
 		case <-changed:
-		case <-waitCtx.Done():
-			return "", fmt.Errorf("the runner printed no pairing code %d:\n%s: %w", index, p.Output(), waitCtx.Err())
+		case <-exited:
+		case <-ctx.Done():
+			return "", fmt.Errorf("the runner printed no pairing code %d:\n%s: %w", index, p.Output(), ctx.Err())
 		}
 	}
 }

@@ -93,9 +93,9 @@ func successfulExit() process.Exit {
 func newTable(t *testing.T, capacity int, shell *playedShell) (*jobs.Table, <-chan []byte, *jobs.Directories, string) {
 	t.Helper()
 	root := t.TempDir()
-	directories := jobs.OpenDirectories(testContext(t), filepath.Join(root, "jobs"))
+	directories := jobs.OpenDirectories(t.Context(), filepath.Join(root, "jobs"))
 	output := make(chan []byte, capacity)
-	table := jobs.NewTable(testContext(t), jobs.Config{Output: output, Directories: directories, Shell: shell})
+	table := jobs.NewTable(t.Context(), jobs.Config{Output: output, Directories: directories, Shell: shell})
 	t.Cleanup(func() {
 		if err := table.Close(context.Background()); err != nil {
 			t.Error(err)
@@ -116,18 +116,11 @@ func startJob(t *testing.T, table *jobs.Table, root string) {
 
 func reply(t *testing.T, output <-chan []byte) runnerwire.Outbound {
 	t.Helper()
-	ctx := testContext(t)
-	select {
-	case frame := <-output:
-		message, err := runnerwire.DecodeOutbound(frame)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return message
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-		return nil
+	message, err := runnerwire.DecodeOutbound(<-output)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return message
 }
 
 func kept(t *testing.T, directories *jobs.Directories) []runnerwire.KeptRecord {
@@ -136,7 +129,7 @@ func kept(t *testing.T, directories *jobs.Directories) []runnerwire.KeptRecord {
 	if !ok {
 		t.Fatal("missing job output")
 	}
-	snapshot, err := reader.Snapshot(testContext(t))
+	snapshot, err := reader.Snapshot(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -238,13 +231,13 @@ func TestShellJobKeepsReadsAndSendsViews(t *testing.T) {
 		!bytes.Equal(streamBytes(records, runnerwire.Stderr), stderr) {
 		t.Fatal("kept output differs")
 	}
-	if err := table.Close(testContext(t)); err != nil {
+	if err := table.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if table.Len() != 0 {
 		t.Fatal("tasks remain after shutdown")
 	}
-	directories.Release(testContext(t), "job")
+	directories.Release(t.Context(), "job")
 	if _, ok := directories.Output("job"); ok {
 		t.Fatal("released job retained")
 	}
@@ -502,7 +495,7 @@ func TestShutdownWithBlockedOutputConsumer(t *testing.T) {
 	)
 	startJob(t, table, root)
 	reply(t, output)
-	if err := table.Close(testContext(t)); err != nil {
+	if err := table.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	if table.Len() != 0 {

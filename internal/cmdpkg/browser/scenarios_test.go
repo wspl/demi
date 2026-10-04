@@ -287,14 +287,8 @@ func (f *browserFixture) start(t *testing.T, name, args string) *waitingCommand 
 	}()
 	t.Cleanup(func() {
 		cancel()
-		timer := time.NewTimer(10 * time.Second)
-		defer timer.Stop()
-		select {
-		case result := <-job.done:
-			job.done <- result
-		case <-timer.C:
-			t.Error("browser command did not join after cancellation")
-		}
+		result := <-job.done
+		job.done <- result
 	})
 	return job
 }
@@ -309,8 +303,7 @@ func (w *waitingCommand) join(t *testing.T) commandAnswer {
 func (f *browserFixture) waitBusy(t *testing.T, id browserop.TabID) {
 	t.Helper()
 	tab := f.tab(t, id)
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
+	// The gate offers no admission event; each attempt is a real checkout.
 	for {
 		checkout := tab.Gate().TryCheckout()
 		if checkout == nil {
@@ -318,9 +311,6 @@ func (f *browserFixture) waitBusy(t *testing.T, id browserop.TabID) {
 		}
 		checkout.Release()
 		runtime.Gosched()
-		if err := ctx.Err(); err != nil {
-			t.Fatal(err)
-		} // Poll an observable gate condition, never sleep for wall time.
 		select {
 		case <-tab.Done():
 			t.Fatal("tab ended before command admission")

@@ -1,16 +1,18 @@
 //go:build darwin || linux
 
-package process
+package process_test
 
 import (
 	"os"
 	"testing"
 
+	"github.com/wspl/demi/internal/runner/process"
+
 	"golang.org/x/sys/unix"
 )
 
 func TestStandardDuplicatesAndLiveInput(t *testing.T) {
-	standard, err := StandardFile(t.Context(), 1)
+	standard, err := process.StandardFile(t.Context(), 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +33,7 @@ func TestStandardDuplicatesAndLiveInput(t *testing.T) {
 		_ = reader.Close()
 		_ = writer.Close()
 	}()
-	reference, err := LiveReference(reader)
+	reference, err := process.LiveReference(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,15 +43,15 @@ func TestStandardDuplicatesAndLiveInput(t *testing.T) {
 	}
 	cloned := os.NewFile(uintptr(duplicate), "live clone")
 	defer func() { _ = cloned.Close() }()
-	live, err := IsLive(cloned, map[string]string{LiveInputEnv: reference})
+	live, err := process.IsLive(cloned, map[string]string{process.LiveInputEnv: reference})
 	if err != nil || !live {
 		t.Fatalf("cloned live input: %t %v", live, err)
 	}
-	live, err = IsLive(os.Stdout, map[string]string{LiveInputEnv: reference})
+	live, err = process.IsLive(os.Stdout, map[string]string{process.LiveInputEnv: reference})
 	if err != nil || live {
 		t.Fatalf("unrelated input: %t %v", live, err)
 	}
-	live, err = IsLive(reader, nil)
+	live, err = process.IsLive(reader, nil)
 	if err != nil || live {
 		t.Fatalf("absent reference: %t %v", live, err)
 	}

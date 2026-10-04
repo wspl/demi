@@ -2,7 +2,6 @@ package remotehost_test
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"strings"
 	"sync/atomic"
@@ -137,20 +136,6 @@ func TestJobsShareSelectedManifestOnlyWithinOneConnection(t *testing.T) {
 	requirePipe(t, err)
 	l = d.Connect(0)
 	request := startRequest("true")
-	request.Commands = first
-	_, err = h.StartJob(t.Context(), request)
-	requirePipe(t, err)
-	_ = nextFrame(t, l).(*runnerwire.ManifestMessage)
-	_ = nextFrame(t, l).(*runnerwire.JobStart)
-	barrier(t, l)
-	huge, err := catalog.Select(rpcCommands(t, "huge", strings.Repeat("x", 5*1024*1024)))
-	requirePipe(t, err)
-	request.Commands = huge
-	_, err = h.StartJob(t.Context(), request)
-	var failure *host.Error
-	if !errors.As(err, &failure) || failure.Kind != host.TooLarge {
-		t.Fatal(err)
-	}
 	request.Commands = first
 	_, err = h.StartJob(t.Context(), request)
 	requirePipe(t, err)

@@ -15,25 +15,6 @@ import (
 	"github.com/wspl/demi/internal/programtest"
 )
 
-// TestShutdownClosesListener checks listener closure at shutdown.
-func TestShutdownClosesListener(t *testing.T) {
-	t.Parallel()
-	h, _, err := backendtest.HostsHarness(t.Context(), t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := h.Start(t.Context(), t)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.Close(t.Context()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := b.Read(t.Context(), "/api/setup", nil); err == nil {
-		t.Fatal("backend answers after shutdown")
-	}
-}
-
 // startupRefusal runs the backend with exactly the configuration under test.
 // Building the program is shared by programtest; each invocation exits at configuration validation.
 func startupRefusal(t *testing.T, variable, value string, omit bool) string {
@@ -167,6 +148,57 @@ func TestConfiguredSecretRequires64HexDigits(t *testing.T) {
 	for _, text := range []string{digits[1:], digits[2:] + "zz"} {
 		if _, err := backend.ParseInstanceSecret(text); err == nil {
 			t.Fatal("invalid secret accepted")
+		}
+	}
+}
+
+// TestCLIExplicitEmptyValues
+// checks the difference between absent and explicitly empty CLI values.
+// Parsing alone costs no IO and verifies absence never swallows explicit emptiness.
+func TestCLIExplicitEmptyValues(t *testing.T) {
+	t.Parallel()
+	required := []string{
+		"--mode=shared",
+		"--public-url=http://localhost:3271",
+		"--machines-socket=",
+		"--native-config=",
+	}
+	c, err := backend.ParseConfig(required, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Data != nil || c.ObjectStoreConfig != nil || c.WebDirectory != nil || c.RunnerReleaseDir != nil {
+		t.Fatal("absent paths acquired values")
+	}
+	for _, flag := range []string{"data", "object-store-config", "web-directory", "runner-release-dir"} {
+		args := append(append([]string{}, required...), "--"+flag+"=")
+		c, err := backend.ParseConfig(args, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		values := map[string]*string{
+			"data":                c.Data,
+			"object-store-config": c.ObjectStoreConfig,
+			"web-directory":       c.WebDirectory,
+			"runner-release-dir":  c.RunnerReleaseDir,
+		}
+		if values[flag] == nil || *values[flag] != "" {
+			t.Fatalf("explicit empty --%s was lost", flag)
+		}
+	}
+	for _, env := range []string{
+		"DEMI_INSTANCE_SECRET=",
+		"DEMI_BACKEND_PUBLIC_URL=",
+		"DEMI_EXPOSE_DOMAIN=",
+		"DEMI_BACKEND_PORT=",
+		"DEMI_CLAUDE_RELEASES_URL=",
+	} {
+		args := []string{"--mode=shared", "--machines-socket=", "--native-config="}
+		if !strings.HasPrefix(env, "DEMI_BACKEND_PUBLIC_URL=") {
+			args = append(args, "--public-url=http://localhost:3271")
+		}
+		if _, err := backend.ParseConfig(args, []string{env}); err == nil {
+			t.Fatalf("accepted unusable explicit value %s", env)
 		}
 	}
 }

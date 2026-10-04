@@ -1,10 +1,12 @@
-package engine
+package engine_test
 
 import (
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 )
 
 func TestWindowsDrivePathsWorkForCdRedirectionUtilitiesAndExecutables(t *testing.T) {
@@ -23,7 +25,7 @@ func TestWindowsDrivePathsWorkForCdRedirectionUtilitiesAndExecutables(t *testing
 		`printf discarded > /dev/null && printf discarded &> /dev/null && printf payload `+
 			`> "$DRIVE_ROOT/file" && cd "$DRIVE_ROOT/sub" && cat "$DRIVE_ROOT/file" && `+
 			`"$DRIVE_EXE" /c echo external`,
-		func(options *Options) {
+		func(options *engine.Options) {
 			options.Env["DRIVE_ROOT"] = drive(root)
 			options.Env["SystemRoot"] = os.Getenv("SystemRoot")
 			options.Env["DRIVE_EXE"] = drive(filepath.Join(os.Getenv("SystemRoot"), "System32", "cmd.exe"))

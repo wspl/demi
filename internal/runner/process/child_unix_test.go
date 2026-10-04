@@ -15,14 +15,13 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/runnerwire"
 	"golang.org/x/sys/unix"
 )
 
 // These scenarios use real OS processes, normally below one second each.
-// Deadlines only guard hangs; synchronization uses IO events and process exit.
+// Synchronization uses IO events and process exit; go test -timeout guards hangs.
 func childOptions(t *testing.T, command string, args ...string) SpawnOptions {
 	t.Helper()
 	return SpawnOptions{
@@ -34,16 +33,9 @@ func childOptions(t *testing.T, command string, args ...string) SpawnOptions {
 	}
 }
 
-func childContext(t *testing.T) context.Context {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	t.Cleanup(cancel)
-	return ctx
-}
-
 func spawnChild(t *testing.T, options SpawnOptions) *Child {
 	t.Helper()
-	child, err := Spawn(childContext(t), options)
+	child, err := Spawn(t.Context(), options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,22 +58,18 @@ func TestChildStreamsBinaryAndReaps(t *testing.T) {
 	child := spawnChild(t, childOptions(t, "/bin/cat"))
 	want := []byte{0, 255, 128, 10}
 	child.Input <- Input{Bytes: want}
-	select {
-	case chunk := <-child.Output:
-		if chunk.Stream != runnerwire.Stdout || !bytes.Equal(chunk.Bytes, want) {
-			t.Fatalf("chunk = %+v", chunk)
-		}
-	case <-child.command.ctx.Done():
-		t.Fatal("output did not arrive before input EOF")
+	// The output arrives before input EOF.
+	if chunk := <-child.Output; chunk.Stream != runnerwire.Stdout || !bytes.Equal(chunk.Bytes, want) {
+		t.Fatalf("chunk = %+v", chunk)
 	}
 	child.Input <- Input{}
 	for chunk := range child.Output {
 		t.Fatalf("unexpected output after EOF: %+v", chunk)
 	}
-	if err := unsuccessfulExit(child.Wait(childContext(t))); err != nil {
+	if err := unsuccessfulExit(child.Wait(t.Context())); err != nil {
 		t.Fatal(err)
 	}
-	if err := unsuccessfulExit(child.Wait(childContext(t))); err != nil {
+	if err := unsuccessfulExit(child.Wait(t.Context())); err != nil {
 		t.Fatal(err)
 	}
 	if err := unix.Kill(int(child.PID), 0); !errors.Is(err, unix.ESRCH) {
@@ -91,21 +79,15 @@ func TestChildStreamsBinaryAndReaps(t *testing.T) {
 
 func TestChildCancellationInterruptsBackpressure(t *testing.T) {
 	child := spawnChild(t, childOptions(t, "/usr/bin/yes"))
-	select {
-	case <-child.Output:
-	case <-child.command.ctx.Done():
-		t.Fatal("no output")
-	}
+	<-child.Output
 	// Observe the bounded output queue actually fill, rather than sleeping and
-	// assuming that the writer reached backpressure.
+	// assuming that the writer reached backpressure. The queue offers no event
+	// for being full, so the loop yields between checks of its length.
 	for len(child.Output) != cap(child.Output) {
-		if err := child.command.ctx.Err(); err != nil {
-			t.Fatal(err)
-		}
 		runtime.Gosched()
 	}
 	child.Cancel()
-	exit, err := child.Wait(childContext(t))
+	exit, err := child.Wait(t.Context())
 	if exit.Signal == nil || *exit.Signal != "SIGKILL" || err != nil {
 		t.Fatalf("exit = %+v", exit)
 	}
@@ -116,27 +98,19 @@ func TestChildCancellationInterruptsBackpressure(t *testing.T) {
 
 func TestChildCancellationKillsDescendants(t *testing.T) {
 	child := spawnChild(t, childOptions(t, "/bin/sh", "-c", "sleep 30 & printf '%s\\n' $!; wait"))
-	var output OutputChunk
-	select {
-	case output = <-child.Output:
-	case <-child.command.ctx.Done():
-		t.Fatal("no descendant PID")
-	}
+	output := <-child.Output
 	pid, err := strconv.Atoi(strings.TrimSpace(string(output.Bytes)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	child.Cancel()
-	_, _ = child.Wait(childContext(t))
-	ctx := childContext(t)
-	// A reparented zombie can remain until init reaps it. Poll only the observed
-	// process state, with a hang deadline, never a fixed settling interval.
+	_, _ = child.Wait(t.Context())
+	// A reparented zombie can remain until init reaps it, and nothing reports
+	// that reaping to this process. Poll only the observed process state, never
+	// a fixed settling interval.
 	for {
 		if err := unix.Kill(pid, 0); errors.Is(err, unix.ESRCH) {
 			break
-		}
-		if err := ctx.Err(); err != nil {
-			t.Fatalf("descendant %d remains: %v", pid, err)
 		}
 		runtime.Gosched()
 	}
@@ -164,7 +138,7 @@ func TestSpawnFailureClassification(t *testing.T) {
 			if tc.cwd != "" {
 				options.Cwd = tc.cwd
 			}
-			_, err := Spawn(childContext(t), options)
+			_, err := Spawn(t.Context(), options)
 			var failure *SpawnFailure
 			if !errors.As(err, &failure) || failure.Kind != tc.kind {
 				t.Fatalf("failure = %v", err)
@@ -210,14 +184,14 @@ func TestBootstrapAttributesAndIdentity(t *testing.T) {
 			Limits: []ResourceLimit{{Resource: unix.RLIMIT_NOFILE, Soft: 128, Hard: limits.Max}},
 		},
 	)
-	if err := wrapped.Start(childContext(t)); err != nil {
+	if err := wrapped.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
 		_ = wrapped.Kill()
 		_, _ = wrapped.Wait(context.Background())
 	})
-	if err := unsuccessfulExit(wrapped.Wait(childContext(t))); err != nil {
+	if err := unsuccessfulExit(wrapped.Wait(t.Context())); err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(output.String()), "\n")
@@ -263,7 +237,7 @@ func TestBootstrapStartFailures(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			command := Wrap(exec.Command(tc.path), true, tc.attrs)
-			err := command.Start(childContext(t))
+			err := command.Start(t.Context())
 			if !errors.Is(err, tc.want) {
 				t.Fatalf("start error %v, want %v", err, tc.want)
 			}
@@ -277,7 +251,7 @@ func TestGroupLeaderExitClosesDescendantOutput(t *testing.T) {
 	for part := range child.Output {
 		data = append(data, part.Bytes...)
 	}
-	if err := unsuccessfulExit(child.Wait(childContext(t))); err != nil {
+	if err := unsuccessfulExit(child.Wait(t.Context())); err != nil {
 		t.Fatal(err)
 	}
 	if string(data) != "done" {
@@ -292,7 +266,7 @@ func TestCommandWaitCancellationInterruptsIO(t *testing.T) {
 	cmd := exec.Command("/bin/cat")
 	cmd.Stdin = input
 	command := Wrap(cmd, true, ChildAttributes{})
-	if err := command.Start(childContext(t)); err != nil {
+	if err := command.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithCancel(t.Context())
@@ -308,10 +282,10 @@ func TestCommandOutputFailureKillsChild(t *testing.T) {
 	sentinel := fmt.Errorf("output failed")
 	cmd.Stdout = failingOutput{err: sentinel}
 	command := Wrap(cmd, true, ChildAttributes{})
-	if err := command.Start(childContext(t)); err != nil {
+	if err := command.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	exit, err := command.Wait(childContext(t))
+	exit, err := command.Wait(t.Context())
 	if err == nil || !strings.Contains(err.Error(), sentinel.Error()) {
 		t.Fatalf("exit %+v", exit)
 	}
@@ -336,7 +310,7 @@ func TestSpawnUsesJobPATHAndEnvironment(t *testing.T) {
 	for part := range child.Output {
 		output = append(output, part.Bytes...)
 	}
-	if err := unsuccessfulExit(child.Wait(childContext(t))); err != nil {
+	if err := unsuccessfulExit(child.Wait(t.Context())); err != nil {
 		t.Fatal(err)
 	}
 	if string(output) != "job environment" {
@@ -388,15 +362,10 @@ func TestBootstrapCancellationAfterExecAcknowledgement(t *testing.T) {
 		_ = writer.Close()
 		<-joined
 	}()
-	deadline, stop := context.WithTimeout(t.Context(), time.Second)
-	defer stop()
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("cancelled start: %v", err)
-		}
-	case <-deadline.Done():
-		t.Fatal("cancelled bootstrap waited for the running program")
+	// cat runs until the deferred close of its input, so a start that waited
+	// for the running program would block here until go test -timeout.
+	if err := <-done; !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled start: %v", err)
 	}
 }
 
@@ -406,10 +375,10 @@ func TestCommandCombinedOutputKeepsWriteOrder(t *testing.T) {
 	cmd.Stdout = &output
 	cmd.Stderr = &output
 	command := Wrap(cmd, true, ChildAttributes{})
-	if err := command.Start(childContext(t)); err != nil {
+	if err := command.Start(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if err := unsuccessfulExit(command.Wait(childContext(t))); err != nil {
+	if err := unsuccessfulExit(command.Wait(t.Context())); err != nil {
 		t.Fatal(err)
 	}
 	if output.String() != "firstsecondthird" {

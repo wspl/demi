@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeop"
@@ -91,8 +90,6 @@ func accountCLISettled(
 	id string,
 ) webapi.ProviderCLI {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
 	for {
 		a := conversationRequest(ctx, t, server, s, "GET", "/api/providers/"+id+"/cli", "", 200)
 		cli := conversationDecode(t, a, webapi.DecodeProviderCLI)

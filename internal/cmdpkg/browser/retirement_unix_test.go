@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package browser
+package browser_test
 
 import (
 	"bufio"

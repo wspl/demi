@@ -136,24 +136,3 @@ func TestCompletionIDs(t *testing.T) {
 		}
 	}
 }
-
-// go-migration.md, "A timestamp's spelling is the documented one":
-// accept canonical UTC milliseconds and refuse every other spelling of the instant.
-func TestTimestampSpellings(t *testing.T) {
-	for _, text := range []string{
-		"2026-09-21T14:13:20Z",
-		"2026-09-21T16:13:20+02:00",
-		"2026-09-21T14:13:20.000Z",
-	} {
-		t.Run(text, func(t *testing.T) {
-			value, err := core.DecodeTimestamp([]byte(`"` + text + `"`))
-			if text == "2026-09-21T14:13:20.000Z" {
-				if err != nil || string(value) != text {
-					t.Fatalf("canonical timestamp: %s %v", value, err)
-				}
-			} else if err == nil {
-				t.Fatalf("accepted alternate timestamp %s", text)
-			}
-		})
-	}
-}

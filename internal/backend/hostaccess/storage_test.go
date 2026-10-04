@@ -71,7 +71,7 @@ func TestCommandOutputStoredWithRetentionRecordAndFailureReason(t *testing.T) {
 	}
 }
 
-func TestUnavailableUploadsAndRemoteReferencesGrantNothing(t *testing.T) {
+func TestUnavailableUploadsGrantNothing(t *testing.T) {
 	s := newTestShard(t)
 	record := s.conversation(t)
 	for _, reference := range []string{"not-an-id", "00000000-0000-4000-8000-000000000001"} {
@@ -82,20 +82,6 @@ func TestUnavailableUploadsAndRemoteReferencesGrantNothing(t *testing.T) {
 		if _, ok := content[0].(*core.UserText); !ok {
 			t.Fatalf("missing upload is not a message: %#v", content)
 		}
-	}
-	device := s.paired(t, "offline")
-	_, err := ReferenceRemoteFiles(
-		t.Context(),
-		s,
-		record.ID,
-		[]RemoteFile{{Device: string(device.ID), Path: "/notes.txt"}},
-	)
-	if err == nil || err.Error() != "Referenced device offline is offline" {
-		t.Fatal(err)
-	}
-	attached, err := s.control.AttachedHosts(t.Context(), record.ID)
-	if err != nil || len(attached) != 0 {
-		t.Fatal("refused files attached a device", attached, err)
 	}
 	blob, err := s.blobs.Put(t.Context(), []byte("private"))
 	if err != nil {

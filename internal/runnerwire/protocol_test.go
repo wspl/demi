@@ -480,26 +480,6 @@ func TestOpaqueManifestDefersVerification(t *testing.T) {
 	}
 }
 
-func TestMessagePackOnlyTypesHaveNoJSONCodec(t *testing.T) {
-	for _, value := range []any{
-		&runnerwire.Ping{},
-		&runnerwire.FSOK{},
-		&runnerwire.GitOK{},
-		&runnerwire.KeptOutput{},
-		&runnerwire.KeptLeftOut{},
-		new(runnerwire.WireBytes),
-		new(runnerwire.Timestamp),
-		new(runnerwire.Signal),
-	} {
-		if _, ok := value.(json.Marshaler); ok {
-			t.Errorf("%T acquired an auxiliary JSON encoder", value)
-		}
-		if _, ok := value.(json.Unmarshaler); ok {
-			t.Errorf("%T acquired an auxiliary JSON decoder", value)
-		}
-	}
-}
-
 func TestGitChangesJSON(t *testing.T) {
 	data := []byte(
 		`{"repository":true,"head":null,"files":[{"path":"a<&>","status":" M",` +

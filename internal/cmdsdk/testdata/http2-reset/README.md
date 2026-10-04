@@ -48,5 +48,5 @@ reproduction and the SDK cancellation suite. There is no demonstrated safe
 SDK-only workaround that preserves prompt cancellation and the required window.
 
 No toolchain files were changed, and no upstream issue was submitted. The SDK
-burst test remains enabled and unchanged apart from removing its original skip;
-a passing run does not resolve this scheduling-dependent defect.
+burst test stays skipped, naming this reproduction, until the transport is
+fixed; a passing run would not resolve this scheduling-dependent defect.

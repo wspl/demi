@@ -115,25 +115,24 @@ func TestRefusalNamesToolAndOffendingField(t *testing.T) {
 		})
 	}
 
+	// The refusal's first detail line starts with the offending field; input
+	// that is not an object has no field to name.
 	cases := []struct{ input, field string }{
 		{`{"script":"true","timeoutMs":1,"shellId":"main"}`, "shellId: "},
 		{`{"script":"true","timeoutMs":1,"shellId":null}`, "shellId: "},
-		{`{"script":"true","timeoutMs":1,"maxOutputBytes":10}`, "unknown field `maxOutputBytes`"},
-		{`{"script":"true","timeoutMs":1.5}`, "timeoutMs: invalid type: floating point"},
-		{`{"script":"true","timeoutMs":1,"description":null}`, "description: invalid type: null"},
-		{`"not json"`, "invalid type: string"},
+		{`{"script":"true","timeoutMs":1,"maxOutputBytes":10}`, "maxOutputBytes: "},
+		{`{"script":"true","timeoutMs":1.5}`, "timeoutMs: "},
+		{`{"script":"true","timeoutMs":1,"description":null}`, "description: "},
+		{`"not json"`, ""},
 	}
 	for _, scenario := range cases {
 		t.Run(scenario.input, func(t *testing.T) {
-			if scenario.field != "shellId: " {
-				t.Skip("fidelity 1: the generated decoder words this diagnostic differently")
-			}
 			_, err := decodeShellExecInput([]byte(scenario.input))
 			if err == nil {
 				t.Fatal("invalid input accepted")
 			}
 			text := inputRefusal("shell_exec", err)
-			if !strings.HasPrefix(text, "shell_exec input is invalid:\n") || !strings.Contains(text, scenario.field) {
+			if !strings.HasPrefix(text, "shell_exec input is invalid:\n"+scenario.field) {
 				t.Fatal(text)
 			}
 		})

@@ -1,4 +1,4 @@
-// Package schemas mirrors real command contracts for JSON Schema parity tests.
+// Package schemas declares command-like contracts for the generator's JSON Schema tests.
 package schemas
 
 import "encoding/json"

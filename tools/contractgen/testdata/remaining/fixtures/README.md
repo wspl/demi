@@ -1,1 +1,0 @@
-Copied byte for byte from `crates/runner-protocol/tests/fixtures`. These 25 frames cover every fixture using opaque JSON, epoch timestamps, or flattened operation results. The fixture declarations isolate generator features; unrelated command context and package contracts are opaque JSON here, not production runner declarations.

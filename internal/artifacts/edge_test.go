@@ -14,7 +14,6 @@ import (
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/artifacts/artifactstest"
@@ -24,8 +23,7 @@ import (
 // A real second process is needed to prove OS lock ownership.
 func TestInstallLockAcrossProcesses(t *testing.T) {
 	if path := os.Getenv("DEMI_ARTIFACT_LOCK_CHILD"); path != "" {
-		ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-		defer cancel()
+		ctx := t.Context()
 		done := make(chan error, 1)
 		before := artifactstest.LockWaits()
 		go func() {
@@ -56,9 +54,7 @@ func TestInstallLockAcrossProcesses(t *testing.T) {
 	defer func() { must(t, held.Close()) }()
 	executable, err := os.Executable()
 	must(t, err)
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	command := exec.CommandContext(ctx, executable, "-test.run=^TestInstallLockAcrossProcesses$")
+	command := exec.CommandContext(t.Context(), executable, "-test.run=^TestInstallLockAcrossProcesses$")
 	command.Env = append(os.Environ(), "DEMI_ARTIFACT_LOCK_CHILD="+path)
 	var stderr bytes.Buffer
 	command.Stderr = &stderr
@@ -78,7 +74,9 @@ func TestInstallLockAcrossProcesses(t *testing.T) {
 		t.Fatalf("unexpected child output: %s", line)
 	}
 	must(t, held.Close())
-	// EOF is the child's completion event; the context bounds a broken lock.
+	// EOF is the child's completion event. A broken lock hangs both
+	// processes until go test -timeout ends the parent, whose exit releases
+	// the lock and lets the child finish.
 	_, err = io.Copy(io.Discard, output)
 	must(t, err)
 }

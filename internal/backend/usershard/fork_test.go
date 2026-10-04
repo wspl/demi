@@ -1,4 +1,4 @@
-package usershard
+package usershard_test
 
 import (
 	"context"
@@ -11,6 +11,7 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/database/databasetest"
+	"github.com/wspl/demi/internal/backend/usershard"
 	"github.com/wspl/demi/internal/core"
 	"github.com/wspl/demi/internal/runnerwire"
 	"github.com/wspl/demi/internal/webapi"
@@ -97,7 +98,7 @@ func TestStartupPublishesCommittedForkAndKeepsUncommittedHidden(t *testing.T) {
 		t.Fatal(err)
 	}
 	for range 2 {
-		if err := RecoverForks(ctx, control, stores); err != nil {
+		if err := usershard.RecoverForks(ctx, control, stores); err != nil {
 			t.Fatal(err)
 		}
 	}

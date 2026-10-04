@@ -13,7 +13,6 @@ import (
 	"reflect"
 	"testing"
 	"testing/synctest"
-	"time"
 
 	"github.com/wspl/demi/internal/machines/network"
 	"github.com/wspl/demi/internal/machines/storage"
@@ -385,9 +384,6 @@ func TestManagerUnitReplyIsNull(t *testing.T) {
 	}
 	// The test reads every reply it needs before the deferred close.
 	defer func() { _ = conn.Close() }()
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := conn.Write([]byte(`{"id":"7","op":"hibernate","params":{"deviceId":"dev-1"}}` + "\n")); err != nil {
 		t.Fatal(err)
 	}

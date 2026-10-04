@@ -1795,10 +1795,8 @@ func TestDeepSeekToolContinuationReplaysReasoning(t *testing.T) {
 
 // TestStalledPageDoesNotHoldShutdown checks that a stalled page cannot block shutdown.
 // An 8-MiB transcript fills a deliberately stalled TCP receiver; shutdown must
-// cancel the blocked write. Under -race this scenario costs about 22 seconds, mostly
-// preparing and transferring the reply. Separate 20-second hang guards cover
-// the reset header and shutdown, not preparation; the package deadline still
-// bounds it.
+// cancel the blocked write, or Close never returns. Under -race this scenario
+// costs about 22 seconds, mostly preparing and transferring the reply.
 func TestStalledPageDoesNotHoldShutdown(t *testing.T) {
 	t.Parallel()
 	started := time.Now()
@@ -1816,17 +1814,13 @@ func TestStalledPageDoesNotHoldShutdown(t *testing.T) {
 	wireMust(t, err)
 	t.Logf("reply prepared in %s", time.Since(started))
 	resetStarted := time.Now()
-	resetCtx, cancelReset := context.WithTimeout(ctx, 20*time.Second)
-	defer cancelReset()
-	stalled, err := backend.StallConversationReset(resetCtx, t, &session, conversationFirst)
+	stalled, err := backend.StallConversationReset(ctx, t, &session, conversationFirst)
 	wireMust(t, err)
 	if stalled.ResetBytes <= 8<<20 {
 		t.Fatalf("reset too small: %d", stalled.ResetBytes)
 	}
 	t.Logf("reset header received in %s", time.Since(resetStarted))
 	closeStarted := time.Now()
-	closeCtx, cancelClose := context.WithTimeout(ctx, 20*time.Second)
-	defer cancelClose()
-	wireMust(t, backend.Close(closeCtx))
+	wireMust(t, backend.Close(ctx))
 	t.Logf("shutdown completed in %s", time.Since(closeStarted))
 }

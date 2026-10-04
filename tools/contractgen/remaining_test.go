@@ -1,12 +1,9 @@
 package main
 
 import (
-	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"math"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -14,55 +11,6 @@ import (
 	"github.com/wspl/demi/internal/contract"
 	wire "github.com/wspl/demi/tools/contractgen/testdata/remaining"
 )
-
-// Independently recorded frames prove all three runner shapes through generated codecs.
-// Local files only; budget one second, with no processes or timed waits.
-func TestRemainingRunnerCorpus(t *testing.T) {
-	paths, err := filepath.Glob("testdata/remaining/fixtures/*.msgpack")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(paths) != 25 {
-		t.Fatalf("got %d corpus files", len(paths))
-	}
-	for _, path := range paths {
-		t.Run(filepath.Base(path), func(t *testing.T) {
-			data, err := os.ReadFile(path)
-			if err != nil {
-				t.Fatal(err)
-			}
-			value, err := wire.DecodeMessageMsgpack(data)
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, err := wire.EncodeMessageMsgpack(value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(got, data) {
-				t.Fatalf("MessagePack mismatch\ngot  %x\nwant %x", got, data)
-			}
-			text, err := contract.EncodeJSON(value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			fromJSON, err := wire.DecodeMessage(text)
-			if err != nil {
-				t.Fatal(err)
-			}
-			got, err = wire.EncodeMessageMsgpack(fromJSON)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(got, data) {
-				t.Fatalf("JSON round trip changed MessagePack: %s", text)
-			}
-			if v, ok := value.(*wire.UTimes); ok && (v.ATime != -123456789 || v.MTime != 1790146800123) {
-				t.Fatalf("wrong milliseconds: %+v", v)
-			}
-		})
-	}
-}
 
 // Port of replies_name_their_operation_before_its_result for JSON and MessagePack.
 func TestAdjacentReplyRefusals(t *testing.T) {

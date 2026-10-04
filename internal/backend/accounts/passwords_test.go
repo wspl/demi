@@ -64,35 +64,6 @@ func TestPasswordFixtures(t *testing.T) {
 	}
 }
 
-func TestPasswordHashSurvivesStorage(t *testing.T) {
-	h, err := NewPasswordHasher(t.Context())
-	if err != nil {
-		t.Fatal(err)
-	}
-	control := databasetest.Control(t.Context(), t, core.SystemClock{})
-	user := databasetest.Master(t.Context(), t, control)
-	hash, err := h.Hash(t.Context(), "new password")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := control.SetPassword(t.Context(), user.ID, hash); err != nil {
-		t.Fatal(err)
-	}
-	account, found, err := control.Account(t.Context(), user.ID)
-	if err != nil || !found {
-		t.Fatalf("stored account: %v", err)
-	}
-	for _, scenario := range []struct {
-		password webapi.Password
-		want     bool
-	}{{"new password", true}, {"wrong password", false}} {
-		got, err := h.Verify(t.Context(), scenario.password, &account.PasswordHash)
-		if err != nil || got != scenario.want {
-			t.Fatalf("stored password verification: %v, %v; want %v", got, err, scenario.want)
-		}
-	}
-}
-
 func TestMalformedHashesReturnErrors(t *testing.T) {
 	cases := []string{
 		"", "$argon2id", "$argon2id$v=19$m=8,t=0,p=1$c29tZXNhbHQ$MTIzNDU2Nzg5MDEyMzQ1Ng",

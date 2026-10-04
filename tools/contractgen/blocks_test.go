@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -13,99 +12,6 @@ import (
 )
 
 const fixtureDir = "../../internal/core/testdata/"
-
-// This boundary corpus protects stored transcript compatibility; it has no IO
-// beyond local fixtures, no processes or timers, and a one-second test budget.
-func TestBlockCorpus(t *testing.T) {
-	data, err := os.ReadFile(fixtureDir + "blocks.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var fixtures []json.RawMessage
-	if err := json.Unmarshal(data, &fixtures); err != nil {
-		t.Fatal(err)
-	}
-	byteEqual := 0
-	for _, fixture := range fixtures {
-		var holder contracts.BlockJSON
-		err := json.Unmarshal(fixture, &holder)
-		block := holder.Value
-		if err != nil {
-			t.Fatalf("decode %s: %v", fixture, err)
-		}
-		if err := contracts.ValidateBlock(block); err != nil {
-			t.Fatal(err)
-		}
-		encoded, err := json.Marshal(holder)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if bytes.Equal(encoded, fixture) {
-			byteEqual++
-		}
-		var left, right any
-		if err := json.Unmarshal(fixture, &left); err != nil {
-			t.Fatal(err)
-		}
-		if err := json.Unmarshal(encoded, &right); err != nil {
-			t.Fatal(err)
-		}
-		if !reflect.DeepEqual(left, right) {
-			t.Fatalf("roundtrip mismatch\n%s\n%s", fixture, encoded)
-		}
-
-	}
-	table, err := os.ReadFile(fixtureDir + "blocks-mutations.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var cases struct {
-		Refused []struct {
-			Why           string         `json:"why"`
-			Fixture       string         `json:"fixture"`
-			Remove        []string       `json:"remove"`
-			Set           map[string]any `json:"set"`
-			WebAppRefuses bool           `json:"webAppRefuses"`
-		} `json:"refused"`
-	}
-	if err := json.Unmarshal(table, &cases); err != nil {
-		t.Fatal(err)
-	}
-	for _, tc := range cases.Refused {
-		t.Run(tc.Why, func(t *testing.T) {
-			value := fixtureByID(t, fixtures, tc.Fixture)
-			for _, pointer := range tc.Remove {
-				mutate(t, value, pointer, nil, true)
-			}
-			for pointer, replacement := range tc.Set {
-				mutate(t, value, pointer, replacement, false)
-			}
-			encoded, err := json.Marshal(value)
-			if err != nil {
-				t.Fatal(err)
-			}
-			_, err = contracts.DecodeBlock(encoded)
-			if err == nil {
-				t.Fatalf("accepted: %s", encoded)
-			}
-			if tc.Why == "an attachment without a name" {
-				for _, part := range []string{"content", "[6]", "name"} {
-					if !strings.Contains(err.Error(), part) {
-						t.Fatalf("missing path %s: %v", part, err)
-					}
-				}
-				t.Logf("nested error: %v", err)
-			}
-		})
-	}
-	t.Logf(
-		"blocks=%d semantic_equal=%d raw_byte_equal=%d refused=%d",
-		len(fixtures),
-		len(fixtures),
-		byteEqual,
-		len(cases.Refused),
-	)
-}
 
 // fixtureByID returns the fixture block with this id, which a refusal case mutates.
 func fixtureByID(t *testing.T, fixtures []json.RawMessage, id string) map[string]any {
@@ -164,6 +70,9 @@ func mutate(t *testing.T, root map[string]any, pointer string, value any, remove
 	}
 }
 
+// The generated transcript decoder's edge cases, on blocks of the stored
+// corpus that internal/core tests against the real types. In-memory fixture
+// reads only; budget one second.
 func TestBoundaryEdges(t *testing.T) {
 	raw, err := os.ReadFile(fixtureDir + "blocks.json")
 	if err != nil {
@@ -221,6 +130,22 @@ func TestBoundaryEdges(t *testing.T) {
 
 			}
 		})
+	}
+	// A refusal inside a nested value names the path to the refused field.
+	attachment := fixtureByID(t, fixtures, "u1")
+	mutate(t, attachment, "/content/6/name", "", false)
+	data, err := json.Marshal(attachment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = contracts.DecodeBlock(data)
+	if err == nil {
+		t.Fatal("accepted an attachment without a name")
+	}
+	for _, part := range []string{"content", "[6]", "name"} {
+		if !strings.Contains(err.Error(), part) {
+			t.Fatalf("refusal %q does not name %s", err, part)
+		}
 	}
 	for _, data := range []string{`{"type":"resume","type":"resume"}`, `{"type":"text","text":"\ud800"}`} {
 		if _, err := contracts.DecodeBlock([]byte(data)); err == nil {

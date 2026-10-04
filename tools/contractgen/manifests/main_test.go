@@ -3,10 +3,11 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"os"
+	"slices"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/wspl/demi/internal/backend"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/tools/contractgen/pagemeta"
 )
@@ -16,17 +17,18 @@ type factory struct{ manifest plugin.Manifest }
 func (f factory) Manifest() plugin.Manifest { return f.manifest }
 func (factory) Instance() plugin.Plugin     { return nil }
 
-// Cost: the checked-in browser manifest, no backend or processes.
+// Cost: the built-in browser plugin's declarations in memory, no backend or processes.
 // Observe the command's JSON interface, including registration order and every use.
 func TestPrintedPageManifests(t *testing.T) {
-	data, err := os.ReadFile("../testdata/pluginbrowser/manifest.json")
+	builtins, err := backend.BuiltinPlugins()
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := plugin.DecodeManifest(data)
-	if err != nil {
-		t.Fatal(err)
+	index := slices.IndexFunc(builtins, func(f plugin.Factory) bool { return f.Manifest().ID == "browser" })
+	if index < 0 {
+		t.Fatal("no built-in browser plugin")
 	}
+	manifest := builtins[index].Manifest()
 	manifest.Page.User = manifest.Page.Conversation
 	manifest.Streams[0].Constants = append(manifest.Streams[0].Constants, plugin.Constant{
 		Name: "OPAQUE", Description: "An ordered JSON value.",

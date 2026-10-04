@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
@@ -82,6 +83,14 @@ func runnerShell(
 	})
 	return shell, pages
 }
+
+// Observation windows for runnerExec. Exec returns as soon as the command
+// settles, so untilExit, the longest window, only waits for the command's end;
+// glance returns at once for a command the test then follows by its own events.
+const (
+	untilExit = uint64(host.MaxObservation / time.Millisecond)
+	glance    = 1
+)
 
 // runnerExec observes for the requested window; the test owns the command lifetime.
 func runnerExec(t *testing.T, s *remotehost.ShellEnvironment, script string, millis uint64) host.CommandStatus {
@@ -288,7 +297,7 @@ func TestRunnerJobStreamsAndDeviceEnvironment(t *testing.T) {
 		remotehosttest.FixtureOptions{Env: map[string]string{"DEVICE_FACT": "from the device", "SHARED": "device"}},
 	)
 	s, _ := runnerShell(t, f, nil, nil)
-	result := runnerExec(t, s, "echo hello; echo oops >&2; exit 4", 10000)
+	result := runnerExec(t, s, "echo hello; echo oops >&2; exit 4", untilExit)
 	if result.State.Phase != host.Exited || result.State.ExitCode != 4 || result.Stdout.Delta != "hello\n" ||
 		result.Stderr.Delta != "oops\n" {
 		t.Fatal(result)
@@ -318,7 +327,7 @@ func TestRunnerJobStreamsAndDeviceEnvironment(t *testing.T) {
 		s,
 		`echo "$DEVICE_FACT|$SHARED|${DEMI_SESSION_ID:-none}|${DEMI_SHELL_ID:-none}|`+
 			`${DEMI_CONVERSATION_ID:-none}|${DEMI_AGENT_NODE_ID:-none}"; echo "$PATH"`,
-		10000,
+		untilExit,
 	)
 	facts, path, _ := strings.Cut(result.Stdout.Delta, "\n")
 	if facts != "from the device|device|none|none|none|none" ||
@@ -326,7 +335,7 @@ func TestRunnerJobStreamsAndDeviceEnvironment(t *testing.T) {
 		t.Fatal(result.Stdout)
 	}
 	overriding, _ := runnerShell(t, f, map[string]string{"SHARED": "backend"}, nil)
-	if runnerExec(t, overriding, `echo "$SHARED"`, 10000).Stdout.Delta != "backend\n" {
+	if runnerExec(t, overriding, `echo "$SHARED"`, untilExit).Stdout.Delta != "backend\n" {
 		t.Fatal("shell environment did not override device")
 	}
 }
@@ -370,13 +379,13 @@ func TestRunnerShellCarriesOnlyWorkingDirectory(t *testing.T) {
 			0,
 		},
 	} {
-		result := runnerExec(t, s, scenario.script, 10000)
+		result := runnerExec(t, s, scenario.script, untilExit)
 		if result.State.Phase != host.Exited || result.State.ExitCode != scenario.code ||
 			result.Stdout.Delta != scenario.output {
 			t.Fatal(scenario.script, result)
 		}
 	}
-	window, _ := host.NewObservationWindow(10000)
+	window, _ := host.NewObservationWindow(untilExit)
 	ephemeral, err := s.Exec(
 		t.Context(),
 		host.ExecRequest{
@@ -388,7 +397,7 @@ func TestRunnerShellCarriesOnlyWorkingDirectory(t *testing.T) {
 		},
 	)
 	requirePipe(t, err)
-	if ephemeral.Stdout.Delta != f.Home()+"/sub\n" || runnerExec(t, s, "pwd", 10000).Stdout.Delta != f.Home()+"\n" {
+	if ephemeral.Stdout.Delta != f.Home()+"/sub\n" || runnerExec(t, s, "pwd", untilExit).Stdout.Delta != f.Home()+"\n" {
 		t.Fatal("ephemeral shell changed default cwd")
 	}
 }
@@ -396,7 +405,7 @@ func TestRunnerShellCarriesOnlyWorkingDirectory(t *testing.T) {
 func TestRunnerJobOutlivesWindowTakesInputAndAborts(t *testing.T) {
 	f := runnerFixture(t, remotehosttest.FixtureOptions{})
 	s, p := runnerShell(t, f, nil, nil)
-	running := runnerExec(t, s, "echo ready; head -n1; sleep 30", 200)
+	running := runnerExec(t, s, "echo ready; head -n1; sleep 30", glance)
 	if running.State.Phase != host.Running {
 		t.Fatal(running)
 	}
@@ -439,7 +448,7 @@ func TestRunnerWholeOutputBeyondViewsAndJobCleanup(t *testing.T) {
 	for i := range 10000 {
 		fmt.Fprintf(&printed, "%09d\n", i)
 	}
-	result := runnerExec(t, s, "seq -f '%09g' 0 9999; echo done >&2", 10000)
+	result := runnerExec(t, s, "seq -f '%09g' 0 9999; echo done >&2", untilExit)
 	if result.State.Phase != host.Exited || result.State.ExitCode != 0 || result.Whole == nil ||
 		result.Stdout.Bytes != 100000 ||
 		string(wholeStream(*result.Whole.Output, core.StreamKindStdout)) != printed.String() ||
@@ -454,7 +463,7 @@ func TestRunnerWholeOutputBeyondViewsAndJobCleanup(t *testing.T) {
 	if len(directories) != 0 {
 		t.Fatal(directories)
 	}
-	running := runnerExec(t, s, "seq -f '%09g' 0 9999; echo output-ready >&2; sleep 30", 200)
+	running := runnerExec(t, s, "seq -f '%09g' 0 9999; echo output-ready >&2; sleep 30", glance)
 	for {
 		status, err := s.Status(running.CommandID)
 		requirePipe(t, err)
@@ -474,7 +483,7 @@ func TestRunnerWholeOutputBeyondViewsAndJobCleanup(t *testing.T) {
 func TestRunnerLostConnectionEndsJobAndReconnects(t *testing.T) {
 	f := runnerFixture(t, remotehosttest.FixtureOptions{})
 	s, p := runnerShell(t, f, nil, nil)
-	running := runnerExec(t, s, `sh -c 'echo $$ > sleeper.pid; echo ready; exec sleep 30'`, 200)
+	running := runnerExec(t, s, `sh -c 'echo $$ > sleeper.pid; echo ready; exec sleep 30'`, glance)
 	for {
 		status, err := s.Status(running.CommandID)
 		requirePipe(t, err)
@@ -496,7 +505,7 @@ func TestRunnerLostConnectionEndsJobAndReconnects(t *testing.T) {
 	_, err = f.Link(t.Context())
 	requirePipe(t, err)
 	// Reconnection completes the runner's old-link cleanup before it accepts this job.
-	result := runnerExec(t, s, "kill -0 "+strings.TrimSpace(string(pid))+" 2>/dev/null && exit 1; exit 0", 10000)
+	result := runnerExec(t, s, "kill -0 "+strings.TrimSpace(string(pid))+" 2>/dev/null && exit 1; exit 0", untilExit)
 	if result.State.Phase != host.Exited || result.State.ExitCode != 0 {
 		t.Fatal("process outlived its connection", result)
 	}

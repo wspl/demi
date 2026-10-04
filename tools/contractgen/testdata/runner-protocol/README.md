@@ -1,6 +1,7 @@
 # Runner protocol fixtures
 
-These 25 message fixtures and one kept-stream fixture are byte-identical
-copies of the files read by the generator tests from
-`crates/runner-protocol/tests/fixtures/`. They preserve the recorded wire bytes
-and the tests’ fixture selection when the reference sources are removed.
+`kept/output.msgpack` is a byte-identical copy of the kept-stream record
+corpus in `internal/runnerwire/testdata/kept/`. `TestKeptTuple` decodes it
+through the tuple codecs that the generator emits for the `kept` fixture
+package and checks the same bytes come back. The message corpus itself is
+tested once, against the real runner protocol, in `internal/runnerwire`.

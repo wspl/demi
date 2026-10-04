@@ -39,7 +39,8 @@ func TestChromeLiveAcceptance(t *testing.T) {
 	if executable == "" {
 		t.Skip("set DEMI_TEST_CHROME to the pinned Chrome for Testing executable")
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
+	// cancel ends Serve before the deferred join below.
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	keys := make(chan string, 4)
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -166,7 +167,6 @@ func TestChromeLiveAcceptance(t *testing.T) {
 					}
 					send(&browserop.LiveViewerMessageAck{Generation: header.Generation, Sequence: header.Sequence})
 					video = true
-					break
 				}
 				if video {
 					break

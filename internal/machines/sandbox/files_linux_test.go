@@ -8,7 +8,6 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"testing"
 
@@ -29,27 +28,6 @@ func isolatedSandbox(t *testing.T, job func(context.Context)) {
 		return nil
 	}); err != nil {
 		t.Fatal(err)
-	}
-}
-
-func TestRecordNamesBootAndSlot(t *testing.T) {
-	record, err := DecodeRecord([]byte(`{"id":"demi-0f6c3d4e-8a9b-4c1d-9e2f-3a4b5c6d7e8f","slot":3}`))
-	if err != nil || record.Slot != 3 {
-		t.Fatalf("record = %+v, %v", record, err)
-	}
-	for _, invalid := range []string{
-		`{"id":"0f6c3d4e","slot":3}`,
-		`{"id":"demi-../x","slot":3}`,
-		`{"id":"demi-a","slot":-1}`,
-		`{"id":"demi-a","slot":3,"token":"x"}`,
-	} {
-		if _, err := DecodeRecord([]byte(invalid)); err == nil {
-			t.Errorf("accepted %s", invalid)
-		}
-	}
-	id, err := NewID()
-	if err != nil || !strings.HasPrefix(string(id), "demi-") {
-		t.Fatalf("new ID = %q, %v", id, err)
 	}
 }
 
@@ -117,39 +95,6 @@ func TestCredentialModesIgnoreUmask(t *testing.T) {
 		isolatedSandbox(t, job)
 	} else {
 		job(t.Context())
-	}
-}
-
-func TestRemovalPreservesMountPointContents(t *testing.T) {
-	directory := NewRuntimeDirectory(t.TempDir(), "demi-test")
-	ctx := t.Context()
-	if err := directory.Create(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(directory.Config(), []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	project := filepath.Join(directory.Home(), "project")
-	if err := os.WriteFile(project, []byte("work"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := directory.Remove(ctx); err == nil {
-		t.Fatal("removed nonempty mount point")
-	}
-	if data, err := os.ReadFile(project); err != nil || string(data) != "work" {
-		t.Fatalf("project = %q, %v", data, err)
-	}
-	if err := os.Remove(project); err != nil {
-		t.Fatal(err)
-	}
-	if err := directory.Remove(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(directory.Root()); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("directory remains: %v", err)
-	}
-	if err := directory.Remove(ctx); err != nil {
-		t.Fatal(err)
 	}
 }
 

@@ -14,7 +14,6 @@ import (
 	"slices"
 	"syscall"
 	"testing"
-	"time"
 )
 
 // TestDetachedHelperFixture is a child-process fixture, not a timed wait: its
@@ -67,9 +66,7 @@ func TestRetirementIncludesMarkedHelpersInAnotherSessionOnly(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		if err := owner.retire(ctx); err != nil {
+		if err := owner.retire(context.Background()); err != nil {
 			t.Error(err)
 		}
 	})
@@ -116,20 +113,14 @@ func TestRetirementIncludesMarkedHelpersInAnotherSessionOnly(t *testing.T) {
 	if err := leader.Process.Kill(); err != nil {
 		t.Fatal(err)
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-	defer cancel()
-	if err := owner.retire(ctx); err != nil {
+	if err := owner.retire(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case err := <-helperDone:
-		helperDone <- err // Cleanup owns the final join on every path.
-		var exit *exec.ExitError
-		if !errors.As(err, &exit) || !exit.Sys().(syscall.WaitStatus).Signaled() {
-			t.Fatalf("helper not killed: %v", err)
-		}
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
+	err = <-helperDone
+	helperDone <- err // Cleanup owns the final join on every path.
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || !exit.Sys().(syscall.WaitStatus).Signaled() {
+		t.Fatalf("helper not killed: %v", err)
 	}
 	select {
 	case err := <-unrelatedDone:

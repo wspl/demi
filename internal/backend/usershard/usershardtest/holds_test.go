@@ -1,4 +1,4 @@
-package usershardtest
+package usershardtest_test
 
 import (
 	"context"
@@ -7,6 +7,8 @@ import (
 	"testing/synctest"
 
 	"go.uber.org/goleak"
+
+	"github.com/wspl/demi/internal/backend/usershard/usershardtest"
 )
 
 func TestMain(m *testing.M) {
@@ -16,7 +18,7 @@ func TestMain(m *testing.M) {
 // Channel-only fixture checks; synctest proves the held pass cannot complete.
 func TestHoldCountsCancelledArrivalsAndReleasesWaiters(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		var holds StepHolds[string]
+		var holds usershardtest.StepHolds[string]
 		held := holds.Hold(t, "commit")
 		ctx, cancel := context.WithCancel(t.Context())
 		first := make(chan error, 1)

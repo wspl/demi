@@ -11,7 +11,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdpkg/browser/browserop"
 	"github.com/wspl/demi/internal/cmdsdk"
@@ -80,8 +79,6 @@ func (v *browserView) send(t *testing.T, message browserop.LiveViewerMessage) {
 
 func (v *browserView) next(t *testing.T) viewFrame {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(v.ctx, 30*time.Second)
-	defer cancel()
 	for {
 		if len(v.pending) >= 4 {
 			n := int(binary.BigEndian.Uint32(v.pending))
@@ -119,20 +116,15 @@ func (v *browserView) next(t *testing.T) viewFrame {
 				t.Fatalf("live output %T", record)
 			}
 			v.pending = append(v.pending, stdout...)
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
+		case <-v.ctx.Done():
+			t.Fatal(v.ctx.Err())
 		}
 	}
 }
 
 func (v *browserView) until(t *testing.T, kind string, match func(json.RawMessage) bool) json.RawMessage {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(v.ctx, 30*time.Second)
-	defer cancel()
 	for {
-		if err := ctx.Err(); err != nil {
-			t.Fatalf("live never sent %s: %v", kind, err)
-		}
 		frame := v.next(t)
 		if frame.control != nil && string(observedField(t, frame.control, "type")) == `"`+kind+`"` &&
 			(match == nil || match(frame.control)) {
@@ -181,12 +173,7 @@ func (v *browserView) watch(t *testing.T, tab browserop.TabID) {
 // picture observes the first frame for the current stream, following replacement streams.
 func (v *browserView) picture(t *testing.T, generation uint32) viewFrame {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(v.ctx, 30*time.Second)
-	defer cancel()
 	for {
-		if err := ctx.Err(); err != nil {
-			t.Fatalf("no picture for generation %d: %v", generation, err)
-		}
 		frame := v.next(t)
 		if frame.control != nil && string(observedField(t, frame.control, "type")) == `"stream"` {
 			next, err := contract.Decode[uint32](observedField(t, frame.control, "generation"))
@@ -238,8 +225,6 @@ func (v *browserView) key(t *testing.T, tab browserop.TabID, key, code string, k
 func (v *browserView) close(t *testing.T) {
 	t.Helper()
 	v.closeInput.Do(func() { close(v.input.data) })
-	ctx, cancel := context.WithTimeout(v.ctx, 10*time.Second)
-	defer cancel()
 	for {
 		select {
 		case result := <-v.done:
@@ -249,8 +234,8 @@ func (v *browserView) close(t *testing.T) {
 			}
 			return
 		case <-v.records:
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
+		case <-v.ctx.Done():
+			t.Fatal(v.ctx.Err())
 		}
 	}
 }
@@ -446,16 +431,9 @@ func TestModesFollowViewerAndAgent(t *testing.T) {
 		func(raw json.RawMessage) bool { return string(observedField(t, raw, "width")) == "780" },
 	)
 	expectValue(t, observedField(t, stream, "height"), 1688)
-	headers, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	servedMobile := false
-	for !servedMobile {
-		select {
-		case header := <-f.headers:
-			servedMobile = strings.Contains(header.Get("User-Agent"), "Android")
-		case <-headers.Done():
-			t.Fatal("page was not served to a phone")
-		}
+	for servedMobile := false; !servedMobile; {
+		header := <-f.headers
+		servedMobile = strings.Contains(header.Get("User-Agent"), "Android")
 	}
 	f.eventually(t, tab, `document.readyState==='complete'&&navigator.userAgent.includes('Android')`)
 	expectValue(
@@ -673,13 +651,10 @@ func TestUsersRequestsAnswerWithoutWaitingForPage(t *testing.T) {
 	}
 	tab := blank.Tab
 	expectValue(t, mustBrowserValue(t, blank), json.RawMessage(browserArgs(t, `{"tab":$0,"url":"about:blank"}`, tab)))
-	started := time.Now()
+	// /stall never answers, so an open that waited for its page could only fail.
 	loading, err := browserop.DecodeOpenResult(f.user(t, "open", browserArgs(t, `{"url":$0}`, f.url+"/stall")))
 	if err != nil {
 		t.Fatal(err)
-	}
-	if time.Since(started) >= 10*time.Second {
-		t.Fatal("open waited for its page")
 	}
 	expectValue(
 		t,
@@ -744,15 +719,11 @@ func TestUsersRequestsAnswerWithoutWaitingForPage(t *testing.T) {
 		json.RawMessage(browserArgs(t, `{"tab":$0,"url":$1}`, tab, base+"?second")),
 	)
 	f.eventually(t, tab, `performance.timeOrigin>`+string(origin)+`&&document.readyState==='complete'`)
-	started = time.Now()
 	expectValue(
 		t,
 		f.user(t, "goto", browserArgs(t, `{"tab":$0,"url":$1}`, tab, f.url+"/stall")),
 		json.RawMessage(browserArgs(t, `{"tab":$0,"url":$1}`, tab, f.url+"/stall")),
 	)
-	if time.Since(started) >= 10*time.Second {
-		t.Fatal("goto waited for its page")
-	}
 	t.Run("missing tab", func(t *testing.T) {
 		request := invocation("close", `{"tab":"t999"}`, "acceptance")
 		request.Request.Context.Caller = &commandwire.UserCaller{}

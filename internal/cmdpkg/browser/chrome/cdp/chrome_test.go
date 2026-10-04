@@ -4,7 +4,6 @@ package cdp_test
 
 import (
 	"bufio"
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -34,8 +33,7 @@ func TestChromeAcceptance(t *testing.T) {
 	if executable == "" {
 		t.Skip("set DEMI_TEST_CHROME to the pinned Chrome for Testing executable")
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 90*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	command := exec.Command(
 		executable,
 		"--headless=new",
@@ -82,11 +80,7 @@ func TestChromeAcceptance(t *testing.T) {
 		// Kill the entire test-owned process group, including any renderer still
 		// exiting after Browser.close; Wait reaps the parent and joins the pipe reader.
 		_ = syscall.Kill(-command.Process.Pid, syscall.SIGKILL)
-		select {
-		case <-finished:
-		case <-time.After(5 * time.Second):
-			t.Error("Chrome did not terminate")
-		}
+		<-finished
 	})
 	var url string
 	select {
@@ -94,18 +88,14 @@ func TestChromeAcceptance(t *testing.T) {
 	case err := <-finished:
 		finished <- err
 		t.Fatalf("Chrome exited before CDP: %v", err)
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
 	}
 	connection, err := cdp.Dial(ctx, url)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		cleanup, stop := context.WithTimeout(context.Background(), cdp.ControlTimeout)
-		defer stop()
-		_ = browser.Close().Do(protocol.WithExecutor(cleanup, connection))
-		if err := connection.Close(cleanup); err != nil {
+		_ = browser.Close().Do(protocol.WithExecutor(ctx, connection))
+		if err := connection.Close(ctx); err != nil {
 			t.Error(err)
 		}
 	}()
@@ -212,9 +202,7 @@ func TestChromeAcceptance(t *testing.T) {
 	}
 	debug := cdp.StartDebug(ctx, url, id)
 	defer func() {
-		cleanup, stop := context.WithTimeout(context.Background(), cdp.ControlTimeout)
-		defer stop()
-		if err := debug.Close(cleanup); err != nil {
+		if err := debug.Close(ctx); err != nil {
 			t.Error(err)
 		}
 	}()

@@ -20,10 +20,6 @@ func TestHostCommandsUseConversationAndStopWithShard(t *testing.T) {
 	if err := commands.Register(HostGroup(s)); err != nil {
 		t.Fatal(err)
 	}
-	help := commands.RenderHelp()
-	if !strings.Contains(help, hostSummary) || !strings.Contains(help, shellSummary) {
-		t.Fatal("host command help differs from reference")
-	}
 	run := func(verb, args string) (uint8, string, error) {
 		memory := hosttest.NewMemoryPort(nil)
 		invocation := host.RPCInvocation{

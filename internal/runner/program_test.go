@@ -12,7 +12,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/commandwire"
@@ -33,7 +32,7 @@ func TestMain(m *testing.M) {
 }
 
 // runnerFixture drives a built runner through the same socket a backend uses.
-// Every scenario owns its processes and local ports; the deadline only guards hangs.
+// Every scenario owns its processes and local ports; go test -timeout guards hangs.
 type runnerFixture struct {
 	t                         *testing.T
 	ctx                       context.Context
@@ -69,7 +68,7 @@ func (b *runnerDiagnostics) text() string {
 
 func newRunner(t *testing.T, env map[string]string, path string) *runnerFixture {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
+	ctx, cancel := context.WithCancel(t.Context())
 	f := &runnerFixture{
 		t:         t,
 		ctx:       ctx,

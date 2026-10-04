@@ -134,19 +134,3 @@ type Optional struct {
 	*Dialog
 	After string `json:"after"`
 }
-
-// A failed operation, or a failed item of a batch such as a page of
-// `content.fetch`.
-//
-// +demi:root
-// +demi:schema
-type BrowserFailure struct {
-	Code    BrowserErrorCode `json:"code"`
-	Message string           `json:"message"`
-	Details *ErrorDetails    `json:"details,omitempty"`
-}
-
-// Why an operation failed. Each cause keeps its own code.
-//
-// +demi:enum invalid_input tab_not_found tab_busy stale_ref stale_cursor stale_inventory stale_tools target_not_found ambiguous_target not_actionable timeout dialog_blocked dialog_not_found invalid_dialog_action history_boundary navigation_failed protected_value side_effect_rejected unsupported_result unsupported_capability cdp_method_denied output_exists io_error result_too_large partial_failure driver_error browser_unavailable browser_lost cancelled outcome_unknown
-type BrowserErrorCode string

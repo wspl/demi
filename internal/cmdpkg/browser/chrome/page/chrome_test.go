@@ -4,7 +4,6 @@ package page_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"image/png"
 	"net/http"
@@ -34,8 +33,7 @@ func TestChromePage(t *testing.T) {
 	if executable == "" {
 		t.Skip("set DEMI_TEST_CHROME to the pinned Chrome for Testing executable")
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/download" {
 			w.Header().Set("Content-Disposition", `attachment; filename="fixture.txt"`)
@@ -51,7 +49,9 @@ func TestChromePage(t *testing.T) {
 <label><input id="confirm" type="checkbox">Confirm</label>
 <select id="options"><option value="a">Alpha</option><option value="b">Beta</option></select>
 <input id="file" type="file"><button id="submit" ` +
-			`onclick="document.querySelector('#status').textContent=document.querySelector('#email').value+' '+document.querySelector('#date').value+' '+document.querySelector('#confirm').checked">Submit</button>
+			`onclick="document.querySelector('#status').textContent=` +
+			`document.querySelector('#email').value+' '+document.querySelector('#date').value+' '+` +
+			`document.querySelector('#confirm').checked">Submit</button>
 <p id="status">Ready</p><a id="download" href="/download">Download</a>
 <svg width="20" height="20"><rect width="20" height="20" fill="red"/></svg>
 </body></html>`))
@@ -220,8 +220,7 @@ func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
 	if executable == "" {
 		t.Skip("DEMI_TEST_CHROME supplies real Chrome")
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/drop" {
 			connection, _, err := http.NewResponseController(w).Hijack()
@@ -250,7 +249,8 @@ func TestChromeRendererUploadsAssetsConsoleAndFailedNavigation(t *testing.T) {
 				`<!doctype html><input id="files" type="file" multiple hidden><button id="choose" ` +
 					`onclick="document.querySelector('#files').click()">Choose</button><button id="disabled" ` +
 					`disabled>Disabled</button><iframe ` +
-					`id="child"></iframe><script>document.querySelector('iframe').src=location.href.replace('127.0.0.1','localhost')+'child';</script>`,
+					`id="child"></iframe><script>document.querySelector('iframe').src=` +
+					`location.href.replace('127.0.0.1','localhost')+'child';</script>`,
 			),
 		)
 	}))

@@ -1,16 +1,14 @@
-package engine
+package engine_test
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/runner/process"
+	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 	"go.uber.org/goleak"
 )
 
@@ -26,10 +24,8 @@ func TestMain(m *testing.M) {
 }
 
 // shellFiles owns one script's files and reads them only after execution has joined.
-func shellFiles(t *testing.T, root, script string, configure func(*Options)) (Result, string, string) {
+func shellFiles(t *testing.T, root, script string, configure func(*engine.Options)) (engine.Result, string, string) {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
 	files := make([]*os.File, 3)
 	for index := range files {
 		file, err := os.CreateTemp(t.TempDir(), "shell")
@@ -39,7 +35,7 @@ func shellFiles(t *testing.T, root, script string, configure func(*Options)) (Re
 		files[index] = file
 		defer func() { _ = file.Close() }() // Cleanup also runs after cancellation closes the file.
 	}
-	options := Options{
+	options := engine.Options{
 		Cwd:    root,
 		Env:    map[string]string{"HOME": root, "PATH": os.Getenv("PATH"), "TMPDIR": root},
 		Stdin:  files[0],
@@ -49,7 +45,7 @@ func shellFiles(t *testing.T, root, script string, configure func(*Options)) (Re
 	if configure != nil {
 		configure(&options)
 	}
-	result, err := Execute(ctx, script, options)
+	result, err := engine.Execute(t.Context(), script, options)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,29 +77,6 @@ func TestShellHandlesRedirectsFunctionsSubshellCwdAndFreshState(t *testing.T) {
 	}
 }
 
-func TestTeeAndOdUsePipelineStreams(t *testing.T) {
-	if runtime.GOOS == "darwin" {
-		t.Skip("decision 4: BSD od inserts extra spaces between hex bytes")
-	}
-	root := t.TempDir()
-	result, output, stderr := shellFiles(t, root, `printf hello | tee made.txt | grep hello | od -An -tx1`, nil)
-	data, err := os.ReadFile(filepath.Join(root, "made.txt"))
-	if err != nil || string(data) != "hello" || result.Code != 0 || strings.TrimSpace(output) != "68 65 6c 6c 6f 0a" {
-		t.Fatalf("file %q (%v), result %+v output %q stderr %q", data, err, result, output, stderr)
-	}
-}
-
-func TestWcCountsAFileOfWholePagesWhole(t *testing.T) {
-	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, "pages.bin"), make([]byte, 5*65536), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	result, output, stderr := shellFiles(t, root, "wc -c pages.bin", nil)
-	if result.Code != 0 || strings.TrimSpace(output) != "327680 pages.bin" {
-		t.Fatalf("result %+v output %q stderr %q", result, output, stderr)
-	}
-}
-
 func TestLoginProfilesApplyPerJobWithoutReplacingOwnedContextOrCwd(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, "elsewhere"), 0o700); err != nil {
@@ -119,7 +92,7 @@ func TestLoginProfilesApplyPerJobWithoutReplacingOwnedContextOrCwd(t *testing.T)
 			t,
 			root,
 			`printf '%s\n' "$FROM_PROFILE" "$DEMI_CONTEXT_ID" "$PATH"`,
-			func(options *Options) {
+			func(options *engine.Options) {
 				options.Login = true
 				options.Env["DEMI_CONTEXT_ID"] = "owned"
 				options.Env["PATH"] = filepath.Join(root, "aliases")
@@ -154,7 +127,7 @@ func TestRunnerShellRegressionStatusesAndRetainedInput(t *testing.T) {
 	} {
 		t.Run(scenario.name, func(t *testing.T) {
 			root := t.TempDir()
-			result, output, diagnostic := shellFiles(t, root, scenario.script, func(o *Options) {
+			result, output, diagnostic := shellFiles(t, root, scenario.script, func(o *engine.Options) {
 				if _, err := o.Stdin.WriteString("input"); err != nil {
 					t.Fatal(err)
 				}

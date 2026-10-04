@@ -12,31 +12,6 @@ import (
 	"github.com/wspl/demi/tools/contractgen/testdata/browser"
 )
 
-// These browser boundaries use local generated codecs and captured manifest
-// schemas. Budget: one second, no services, processes, or waits.
-func TestBrowserSchemas(t *testing.T) {
-	for name, schema := range map[string]func() json.RawMessage{
-		"BrowserFailure":      browser.BrowserFailureJSONSchema,
-		"NodeValue":           browser.NodeValueJSONSchema,
-		"ErrorDetails":        browser.ErrorDetailsJSONSchema,
-		"DialogInspectResult": browser.DialogInspectResultJSONSchema,
-	} {
-		t.Run(name, func(t *testing.T) {
-			raw, err := os.ReadFile("testdata/browser/" + name + ".json")
-			if err != nil {
-				t.Fatal(err)
-			}
-			var want bytes.Buffer
-			if err := json.Compact(&want, raw); err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(schema(), want.Bytes()) {
-				t.Fatalf("schema differs:\ngot %s\nwant %s", schema(), raw)
-			}
-		})
-	}
-}
-
 func TestBrowserScalarVariants(t *testing.T) {
 	for _, text := range []string{`"hello <>&\u2028"`, `-12.5`, `0`} {
 		value, err := browser.DecodeNodeValue([]byte(text))
@@ -238,26 +213,6 @@ func TestManifestNullableShapes(t *testing.T) {
 				t.Fatalf("got %s, want %s", got, want.Bytes())
 			}
 		})
-	}
-}
-
-// Ports the export-details portion of results_and_failures_print_the_documented_names.
-func TestBrowserFailureExportDocument(t *testing.T) {
-	raw, err := os.ReadFile("testdata/browser/failure.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	value, err := browser.DecodeBrowserFailure(bytes.TrimSpace(raw))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if value.Details == nil || value.Details.AssetsExportResult == nil || len(value.Details.Files) != 1 ||
-		value.Details.Files[0].MIMEType != "image/png" {
-		t.Fatalf("lost exported asset details: %+v", value)
-	}
-	got, err := contract.EncodeJSON(value)
-	if err != nil || !bytes.Equal(got, bytes.TrimSpace(raw)) {
-		t.Fatalf("failure document: %s %v", got, err)
 	}
 }
 

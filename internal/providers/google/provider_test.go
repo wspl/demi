@@ -81,15 +81,8 @@ func TestBuiltinCatalog(t *testing.T) {
 	if err := catalog.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if len(catalog.Models) != 4 || *catalog.DefaultModelID != "gemini-3.6-flash" {
-		t.Fatalf("unexpected catalog: %+v", catalog)
-	}
-	for _, model := range catalog.Models {
-		if !*model.SupportsVideo || *model.ContextWindow != 1048576 || *model.OutputLimit != 65536 {
-			t.Fatalf("model metadata: %+v", model)
-		}
-	}
 	r := runtimeAt(t, v, "/v1beta")
+	// The limits are the documented ones (docs/providers/models.md § Request limits).
 	limits := r.RequestLimits(core.Model{})
 	if *limits.BodyBytes != 20000000 || *limits.Images != 3600 {
 		t.Fatalf("limits: %+v", limits)

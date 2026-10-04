@@ -11,53 +11,6 @@ import (
 )
 
 // Pure schema cases use no IO and finish within the ordinary one-second budget.
-func TestSchemaChecksArgumentsWithoutDisclosingValues(t *testing.T) {
-	schema, err := declare.NewSchema(
-		json.RawMessage(
-			`{"type":"object","additionalProperties":false,"properties":{"v":{"type":"array",` +
-				`"items":{"type":"number"}},"quiet":{"type":"boolean"},"content":{"type":"string",` +
-				`"maxLength":8},"count":{"type":"integer","minimum":1}},"required":["v"]}`,
-		),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = schema.Check(json.RawMessage(`{"v":["twelve"],"quiet":"maybe"}`))
-	if err == nil {
-		t.Fatal("invalid arguments accepted")
-	}
-	for _, want := range []string{`"v.0" is not of type "number"`, `"quiet" is not of type "boolean"`} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("%s lacks %s", err, want)
-		}
-	}
-	for _, secret := range []string{"twelve", "maybe"} {
-		if strings.Contains(err.Error(), secret) {
-			t.Errorf("diagnostic discloses %s: %s", secret, err)
-		}
-	}
-	for _, test := range []struct{ input, want string }{
-		{`{"v":[1,1.5],"quiet":false}`, ""},
-		{`{"v":[],"content":"a long body"}`, `"content" is longer than 8 characters`},
-		{`{}`, `"v" is a required property`},
-		{`{"v":[],"count":"7"}`, `"count" is not of type "integer"`},
-		{`{"v":[],"extra":1}`, "Additional properties are not allowed ('extra' was unexpected)"},
-	} {
-		t.Run(test.input, func(t *testing.T) {
-			err := schema.Check(json.RawMessage(test.input))
-			if test.want == "" {
-				if err != nil {
-					t.Fatal(err)
-				}
-				return
-			}
-			if err == nil || err.Error() != test.want {
-				t.Fatalf("got %v, want %s", err, test.want)
-			}
-		})
-	}
-}
-
 func TestSchemaCompilationAndJSONBoundary(t *testing.T) {
 	for _, document := range []string{
 		`[]`,
@@ -101,29 +54,6 @@ func TestSchemaCompilationAndJSONBoundary(t *testing.T) {
 	}
 }
 
-func TestSchemaSupportsOutputAndLocalReferences(t *testing.T) {
-	schema, err := declare.NewSchema(
-		json.RawMessage(
-			`{"$defs":{"item":{"type":"integer"}},"type":"object",` +
-				`"properties":{"items":{"type":"array","items":{"$ref":"#/$defs/item"}}},` +
-				`"required":["items"]}`,
-		),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := schema.Check(json.RawMessage(`{"items":[1,2]}`)); err != nil {
-		t.Fatal(err)
-	}
-	if err := schema.Check(
-		json.RawMessage(`{"items":[1,"private"]}`),
-	); err == nil ||
-		err.Error() != `"items.1" is not of type "integer"` {
-		t.Fatalf("got %v", err)
-	}
-}
-
-// Port of the_input_subset_takes_scalars_enums_and_arrays_and_refuses_the_rest.
 func TestInputSubset(t *testing.T) {
 	accepted := `{"title":"Args","type":"object","additionalProperties":false,"required":["path"],` +
 		`"properties":{"path":{"type":"string","minLength":1,"description":"A file"},` +

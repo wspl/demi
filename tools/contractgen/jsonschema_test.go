@@ -12,7 +12,6 @@ import (
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"github.com/wspl/demi/tools/contractgen/testdata/schemas"
-	"github.com/wspl/demi/tools/contractgen/testdata/todo"
 )
 
 // Each scenario compiles a draft 2020-12 schema and checks the same inputs at
@@ -280,8 +279,8 @@ func TestCommandSchemas(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// Real command schemas are compared directly with the captured
-			// manifest in TestManifestSchemas; these are generator-only shapes.
+			// The plugins' manifest goldens pin the schemas of real commands;
+			// these files pin shapes that only the generator's fixtures have.
 			if slices.Contains(
 				[]string{
 					"ExampleArgs",
@@ -347,140 +346,6 @@ func decodeSchemaValue[T any](decode func([]byte) (T, error)) func([]byte) error
 	return func(data []byte) error {
 		_, err := decode(data)
 		return err
-	}
-}
-
-// TestManifestSchemas pins product annotations as well as validation. It
-// compares compact JSON bytes, retaining every keyword and property position.
-// Local fixture processing costs less than one second and uses no network.
-func TestManifestSchemas(t *testing.T) {
-	generated := map[string]func() json.RawMessage{
-		"AddArgs":            todo.AddArgsJSONSchema,
-		"UpdateArgs":         todo.UpdateArgsJSONSchema,
-		"DoneArgs":           todo.DoneArgsJSONSchema,
-		"TodoList":           todo.TodoListJSONSchema,
-		"OneTodo":            todo.OneTodoJSONSchema,
-		"ReadArgs":           schemas.ReadArgsJSONSchema,
-		"CreateArgs":         schemas.CreateArgsJSONSchema,
-		"EditArgs":           schemas.EditArgsJSONSchema,
-		"PatchArgs":          schemas.PatchArgsJSONSchema,
-		"OpenInput":          schemas.OpenInputJSONSchema,
-		"OpenResult":         schemas.OpenResultJSONSchema,
-		"GotoInput":          schemas.GotoInputJSONSchema,
-		"BackInput":          schemas.BackInputJSONSchema,
-		"ForwardInput":       schemas.ForwardInputJSONSchema,
-		"ReloadInput":        schemas.ReloadInputJSONSchema,
-		"NavigationResult":   schemas.NavigationResultJSONSchema,
-		"CloseInput":         schemas.CloseInputJSONSchema,
-		"CloseResult":        schemas.CloseResultJSONSchema,
-		"ViewportSetInput":   schemas.ViewportSetInputJSONSchema,
-		"ViewportResetInput": schemas.ViewportResetInputJSONSchema,
-		"ViewportResult":     schemas.ViewportResultJSONSchema,
-		"CdpDetachInput":     schemas.CdpDetachInputJSONSchema,
-		"CdpDetachResult":    schemas.CdpDetachResultJSONSchema,
-		"WebmcpCallInput":    schemas.WebmcpCallInputJSONSchema,
-		"WebmcpCallResult":   schemas.WebmcpCallResultJSONSchema,
-		"ExposeAnswer":       schemas.ExposeAnswerJSONSchema,
-		"ExposeLines":        schemas.ExposeLinesJSONSchema,
-	}
-	raw, err := os.ReadFile("testdata/schemas/manifests.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var manifests []struct {
-		ID       string `json:"id"`
-		Commands []struct {
-			Tree json.RawMessage `json:"tree"`
-		} `json:"commands"`
-	}
-	if err := json.Unmarshal(raw, &manifests); err != nil {
-		t.Fatal(err)
-	}
-	counts := map[string]int{}
-	var visit func(string, json.RawMessage)
-	visit = func(plugin string, raw json.RawMessage) {
-		var node struct {
-			Name        string            `json:"name"`
-			Subcommands []json.RawMessage `json:"subcommands"`
-			Input       json.RawMessage   `json:"input"`
-			Output      struct {
-				JSON json.RawMessage `json:"json"`
-			} `json:"output"`
-		}
-		if err := json.Unmarshal(raw, &node); err != nil {
-			t.Fatal(err)
-		}
-		for _, child := range node.Subcommands {
-			visit(plugin, child)
-		}
-		if len(node.Subcommands) > 0 {
-			return
-		}
-		var input struct {
-			Title string `json:"title"`
-		}
-		if len(node.Input) > 0 {
-			if err := json.Unmarshal(node.Input, &input); err != nil {
-				t.Fatal(err)
-			}
-		}
-		if plugin == "browser" && generated[input.Title] == nil {
-			return
-		}
-		if plugin != "browser" && plugin != "file" && plugin != "expose" && plugin != "todo" {
-			return
-		}
-		if plugin == "expose" && len(node.Output.JSON) == 0 {
-			return
-		}
-		counts[plugin]++
-		for _, side := range []struct {
-			name  string
-			value json.RawMessage
-		}{{"input", node.Input}, {"output", node.Output.JSON}} {
-			if len(side.value) == 0 || plugin == "expose" && side.name == "input" {
-				continue
-			}
-			var header struct {
-				Title string `json:"title"`
-			}
-			if err := json.Unmarshal(side.value, &header); err != nil {
-				t.Fatal(err)
-			}
-			emit := generated[header.Title]
-			if emit == nil {
-				t.Fatalf("missing Go schema for %s/%s", plugin, header.Title)
-			}
-			t.Run(plugin+"/"+node.Name+"/"+side.name, func(t *testing.T) {
-				actual := emit()
-				if plugin == "browser" && side.name == "input" {
-					deadline := "30000"
-					if header.Title == "OpenInput" {
-						deadline = "300000"
-					}
-					actual = bytes.ReplaceAll(
-						actual,
-						[]byte(`"Whole operation deadline in milliseconds"`),
-						[]byte(`"Whole operation deadline in milliseconds; default `+deadline+`, maximum 300000."`),
-					)
-				}
-				var expected bytes.Buffer
-				if err := json.Compact(&expected, side.value); err != nil {
-					t.Fatal(err)
-				}
-				if !bytes.Equal(actual, expected.Bytes()) {
-					t.Fatalf("manifest schema differs:\ngot:  %s\nwant: %s", actual, expected.Bytes())
-				}
-			})
-		}
-	}
-	for _, plugin := range manifests {
-		for _, command := range plugin.Commands {
-			visit(plugin.ID, command.Tree)
-		}
-	}
-	if counts["todo"] != 4 || counts["file"] != 4 || counts["browser"] != 10 || counts["expose"] != 3 {
-		t.Fatalf("leaf coverage changed: %v", counts)
 	}
 }
 

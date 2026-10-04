@@ -1,4 +1,4 @@
-package engine
+package engine_test
 
 import (
 	"os"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
+	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 )
 
 // editRecorder gives one shell job a journal while jobs share the same edit lock.
@@ -51,7 +52,7 @@ func TestRedirectionsDescriptorsAndUtilitiesRecordActualContents(t *testing.T) {
 			`sed -i 's/one/first/' file; printf 'same\nsame\n' | uniq - unique; `+
 			`printf temporary > temporary; rm temporary; cp file copy; mv copy moved; `+
 			`touch touched; mktemp >/dev/null`,
-		func(o *Options) {
+		func(o *engine.Options) {
 			o.Edits = recorder
 			o.Env["TMPDIR"] = root
 		},
@@ -103,7 +104,7 @@ func TestRedirectedExternalOutputIsForwardedThroughTheRecorder(t *testing.T) {
 		`/bin/sh -c 'printf child; printf error >&2' > out 2> err; cat out > observed; `+
 			`/bin/sh -c 'printf first; printf second >&2; printf third' > combined 2>&1; `+
 			`/bin/sh -c 'printf numbered >&3' 3> numbered`,
-		func(o *Options) { o.Edits = recorder },
+		func(o *engine.Options) { o.Edits = recorder },
 	)
 	if result.Code != 0 {
 		t.Fatalf("exit %d: %s", result.Code, stderr)
@@ -145,7 +146,7 @@ func TestAnotherJobCannotChangeAnAlreadyCapturedAfterSide(t *testing.T) {
 		recorder *cmdsdk.Recorder
 		script   string
 	}{{a, "echo A > file"}, {b, "echo B > file"}, {a, "echo C > file"}} {
-		result, _, stderr := shellFiles(t, root, step.script, func(o *Options) { o.Edits = step.recorder })
+		result, _, stderr := shellFiles(t, root, step.script, func(o *engine.Options) { o.Edits = step.recorder })
 		if result.Code != 0 {
 			t.Fatalf("exit %d: %s", result.Code, stderr)
 		}

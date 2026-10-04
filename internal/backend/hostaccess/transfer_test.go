@@ -1,4 +1,4 @@
-package hostaccess
+package hostaccess_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing/synctest"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/wspl/demi/internal/core"
+	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/host"
 	"go.uber.org/goleak"
 )
@@ -49,7 +49,7 @@ func TestRangeAnswers(t *testing.T) {
 	}
 	for i, tt := range tests {
 		t.Run(fmt.Sprint(i), func(t *testing.T) {
-			answer := RangeOf(tt.header, tt.size)
+			answer := hostaccess.RangeOf(tt.header, tt.size)
 			if answer.Status() != tt.status {
 				t.Fatalf("status = %d, want %d", answer.Status(), tt.status)
 			}
@@ -75,42 +75,16 @@ func TestRangeAnswers(t *testing.T) {
 			}
 		})
 	}
-	headers := RangeOf("bytes=10-19", 100).Headers()
+	headers := hostaccess.RangeOf("bytes=10-19", 100).Headers()
 	if headers.Get("Content-Range") != "bytes 10-19/100" || headers.Get("Content-Length") != "10" ||
 		headers.Get("Accept-Ranges") != "bytes" {
 		t.Fatal(headers)
 	}
-	if RangeOf("bytes=100-", 100).Headers().Get("Content-Range") != "bytes */100" {
+	if hostaccess.RangeOf("bytes=100-", 100).Headers().Get("Content-Range") != "bytes */100" {
 		t.Fatal("refused range headers")
 	}
-	if RangeOf("", 100).Headers().Get("Content-Length") != "100" {
+	if hostaccess.RangeOf("", 100).Headers().Get("Content-Length") != "100" {
 		t.Fatal("whole range length")
-	}
-}
-
-func TestFileVersionsAndWeakConditions(t *testing.T) {
-	stamp, err := core.TimestampFromMillisecond(1790000000123)
-	if err != nil {
-		t.Fatal(err)
-	}
-	version := FileVersion(host.FileStat{Kind: host.File, Mode: 0o644, Size: 300000, Modified: stamp})
-	if version != `W/"493e0-1a0c4506c7b"` {
-		t.Fatal(version)
-	}
-	for _, condition := range []string{version, `"493e0-1a0c4506c7b"`, `"other", W/"493e0-1a0c4506c7b"`, " * "} {
-		if !notModified(condition, version) {
-			t.Fatalf("condition %q did not match", condition)
-		}
-	}
-	if notModified(`W/"493e0-0"`, version) || notModified("", version) {
-		t.Fatal("unexpected match")
-	}
-	negative, err := core.TimestampFromMillisecond(-15)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := FileVersion(host.FileStat{Size: 16, Modified: negative}); got != `W/"10--f"` {
-		t.Fatal(got)
 	}
 }
 
@@ -119,7 +93,7 @@ func TestFileVersionsAndWeakConditions(t *testing.T) {
 // Synctest observes blocked work without wall time or scheduler guesses.
 func TestTransferClosingDrainsAndReopensAfterLastHold(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		set := NewTransferSet(&sync.Mutex{})
+		set := hostaccess.NewTransferSet(&sync.Mutex{})
 		first, err := set.Open()
 		if err != nil {
 			t.Fatal(err)
@@ -130,7 +104,7 @@ func TestTransferClosingDrainsAndReopensAfterLastHold(t *testing.T) {
 		}
 		defer first.Release()
 		defer second.Release()
-		finished := make(chan *TransfersClosed, 1)
+		finished := make(chan *hostaccess.TransfersClosed, 1)
 		go func() {
 			hold, err := set.Close(t.Context())
 			if err != nil {

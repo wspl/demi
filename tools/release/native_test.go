@@ -213,21 +213,16 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 	output := filepath.Join(a.Root, "file")
 	args := []string{"native", "package", "--package", "demi-file", "--output", output}
 	missingBuild := a.run(t.Context(), args)
-	if missingBuild == nil {
-		t.Fatal("incomplete release accepted")
+	// The message names the first missing build and how to make it.
+	source := filepath.Join(a.Root, ".cache/native-target", commandwire.Targets[1], "release", "demi-file")
+	want := fmt.Sprintf(
+		"no build of demi-file for %s at %s: run go run ./tools/release native build first: ",
+		commandwire.Targets[1],
+		source,
+	)
+	if !errors.Is(missingBuild, os.ErrNotExist) || !strings.HasPrefix(missingBuild.Error(), want) {
+		t.Fatalf("missing build: %v, want %q and the file's error", missingBuild, want)
 	}
-	t.Run("missing build message", func(t *testing.T) {
-		t.Skip("fidelity 9: missing-build message changes the build instruction and adds an OS error")
-		source := filepath.Join(a.Root, ".cache/native-target", commandwire.Targets[1], "release", "demi-file")
-		want := fmt.Sprintf(
-			"no build of demi-file for %s at %s: run go run ./tools/release native build first",
-			commandwire.Targets[1],
-			source,
-		)
-		if missingBuild.Error() != want {
-			t.Fatalf("missing build: %v, want %q", missingBuild, want)
-		}
-	})
 	if _, err := os.Stat(output); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("published incomplete release")
 	}

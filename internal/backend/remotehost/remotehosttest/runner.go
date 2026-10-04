@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/gates"
@@ -81,12 +80,29 @@ func StartRunnerFixture(ctx context.Context, t testing.TB, options FixtureOption
 		return nil, err
 	}
 	f.process = process
-	onlineCtx, stop := context.WithTimeout(ctx, 15*time.Second)
-	defer stop()
-	if _, err := f.Link(onlineCtx); err != nil {
+	if err := f.online(ctx); err != nil {
 		return nil, fmt.Errorf("the runner did not come online:\n%s: %w", f.Log(), err)
 	}
 	return f, nil
+}
+
+// online waits until the runner connects, failing as soon as it exits instead.
+func (f *RunnerFixture) online(ctx context.Context) error {
+	waiting, stop := context.WithCancel(ctx)
+	defer stop()
+	exited := make(chan error, 1)
+	go func() {
+		err := f.process.Exited(waiting)
+		stop()
+		exited <- err
+	}()
+	_, err := f.Link(waiting)
+	stop()
+	exit := <-exited
+	if err != nil && ctx.Err() == nil && !errors.Is(exit, context.Canceled) {
+		return fmt.Errorf("the runner exited before it connected (wait: %v): %w", exit, err)
+	}
+	return err
 }
 
 // Home returns the runner's private home path.

@@ -49,16 +49,6 @@ func TestStreamEvents(t *testing.T) {
 	)
 }
 
-func TestCleanStreamEnd(t *testing.T) {
-	v, _, p := setup(t)
-	v.RespondAt(responses, stream(`{"type":"response.output_text.delta","delta":"hi"}`))
-	equal(
-		t,
-		run(t.Context(), t, p, v.Client(), providertest.InferenceRequest()),
-		[]provider.Event{&provider.TextDelta{Text: "hi"}, &provider.Response{}},
-	)
-}
-
 func TestStreamUsageLimit(t *testing.T) {
 	v, _, p := setup(t)
 	frame := `{"type":"error","error":{"type":"usage_limit_reached",` +

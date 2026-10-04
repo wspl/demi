@@ -49,13 +49,13 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 			t.Error(err)
 		}
 	})
-	fixture := jobstest.NewDispatch(testContext(t), t, t.TempDir(), value, pipes)
+	fixture := jobstest.NewDispatch(t.Context(), t, t.TempDir(), value, pipes)
 	command := commandwire.Context{
 		Conversation: "conversation",
 		Caller:       &commandwire.AgentCaller{Number: 1},
 		Locale:       commandwire.CommandLocale{TimeZone: "UTC", Languages: []commandwire.LanguageTag{"en-US"}},
 	}
-	execution, registration, err := fixture.Context(testContext(t), "job", command)
+	execution, registration, err := fixture.Context(t.Context(), "job", command)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,25 +80,18 @@ func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...str
 
 func dispatchMessage(t *testing.T, fixture *jobstest.Dispatch) runnerwire.Outbound {
 	t.Helper()
-	ctx := testContext(t)
-	select {
-	case frame := <-fixture.Outgoing:
-		message, err := runnerwire.DecodeOutbound(frame)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return message
-	case <-ctx.Done():
-		t.Fatal(ctx.Err())
-		return nil
+	message, err := runnerwire.DecodeOutbound(<-fixture.Outgoing)
+	if err != nil {
+		t.Fatal(err)
 	}
+	return message
 }
 
 func TestHelpNeverReadsStdinOrCallsBackend(t *testing.T) {
 	fixture, execution, _ := dispatchFixture(t)
 	stdout := &outputBuffer{}
 	result, err := process.Forward(
-		testContext(t),
+		t.Context(),
 		fixture.Server.Endpoint(),
 		dispatchRequest(t, execution, "--help"),
 		process.Stdio{Stdin: neverRead{t: t}, Stdout: stdout, Stderr: &outputBuffer{}},
@@ -119,7 +112,7 @@ func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
 	done := make(chan error, 1)
 	go func() {
 		result, err := process.Forward(
-			testContext(t),
+			t.Context(),
 			fixture.Server.Endpoint(),
 			request,
 			process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}},
@@ -137,7 +130,7 @@ func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
 	if !ok || string(call.Args) != `{"body":""}` {
 		t.Fatalf("callback %+v", call)
 	}
-	if err := fixture.Deliver(testContext(t), &runnerwire.RPCExit{CallID: call.CallID, ExitCode: 7}); err != nil {
+	if err := fixture.Deliver(t.Context(), &runnerwire.RPCExit{CallID: call.CallID, ExitCode: 7}); err != nil {
 		t.Fatal(err)
 	}
 	if err := <-done; err != nil {
@@ -147,11 +140,11 @@ func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
 	if !ok || clearHint.Hint != nil || clearHint.InvocationID != hint.InvocationID {
 		t.Fatal("hint not cleared")
 	}
-	if err := registration.Close(testContext(t)); err != nil {
+	if err := registration.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
 	result, err := process.Forward(
-		testContext(t),
+		t.Context(),
 		fixture.Server.Endpoint(),
 		request,
 		process.Stdio{Stdin: neverRead{t: t}, Stdout: &outputBuffer{}, Stderr: &outputBuffer{}},
@@ -168,7 +161,7 @@ func TestCallbackExitClearsHintAndRevokedContextCannotDispatch(t *testing.T) {
 
 func TestCancellationCancelsCallbackAndClearsHint(t *testing.T) {
 	fixture, execution, _ := dispatchFixture(t)
-	ctx, cancel := context.WithCancel(testContext(t))
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	request := dispatchRequest(t, execution)
 	done := make(chan error, 1)
@@ -202,7 +195,7 @@ func TestCancellationCancelsCallbackAndClearsHint(t *testing.T) {
 func TestBackendCommandsAreNeverTurnedAway(t *testing.T) {
 	// Exercises 200 concurrent local clients; no real backend or model is involved.
 	fixture, execution, _ := dispatchFixture(t)
-	ctx, cancel := context.WithCancel(testContext(t))
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	request := dispatchRequest(t, execution)
 	const clients = 200
@@ -252,8 +245,6 @@ func TestBackendCommandsAreNeverTurnedAway(t *testing.T) {
 		<-drained
 		t.Fatalf("call refused while backend held it: %v", err)
 	case <-reached:
-	case <-ctx.Done():
-		t.Error("calls did not reach backend")
 	}
 	cancel()
 	workers.Wait()
@@ -276,7 +267,7 @@ func TestFiniteStdinReportsUTF8Detail(t *testing.T) {
 	request.Args = args
 	stderr := &outputBuffer{}
 	result, err := process.Forward(
-		testContext(t),
+		t.Context(),
 		fixture.Server.Endpoint(),
 		request,
 		process.Stdio{Stdin: io.NopCloser(strings.NewReader("ok\xff")), Stdout: &outputBuffer{}, Stderr: stderr},

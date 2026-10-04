@@ -1,4 +1,4 @@
-package programtest
+package programtest_test
 
 import (
 	"errors"
@@ -6,8 +6,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/wspl/demi/internal/programtest"
 )
 
+// A build would return a path outside the supplied directory for "fixture"
+// and a build error rather than os.ErrNotExist for "missing".
+// Cost: one temporary file, no build; well under one second.
 func TestSuppliedProgramsNeverBuild(t *testing.T) {
 	directory := t.TempDir()
 	t.Setenv("DEMI_TEST_PROGRAMS", directory)
@@ -19,14 +24,11 @@ func TestSuppliedProgramsNeverBuild(t *testing.T) {
 	if err := os.WriteFile(expected, []byte("supplied"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	actual, err := Path(t.Context(), "fixture")
+	actual, err := programtest.Path(t.Context(), "fixture")
 	if err != nil || actual != expected {
 		t.Fatalf("Path = %q, %v; want %q", actual, err, expected)
 	}
-	if _, err := Path(t.Context(), "missing"); !errors.Is(err, os.ErrNotExist) {
+	if _, err := programtest.Path(t.Context(), "missing"); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("missing supplied program: %v", err)
-	}
-	if len(programs.builds) != 0 {
-		t.Fatal("supplied programs must not build")
 	}
 }

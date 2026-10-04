@@ -152,7 +152,7 @@ func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 		PasswordHash: account.PasswordHash,
 		CodeHash:     code,
 	}
-	expires, err := c.IssueEmailChallenge(ctx, issue, policy)
+	_, err = c.IssueEmailChallenge(ctx, issue, policy)
 	require(t, err)
 	_, err = c.IssueEmailChallenge(ctx, issue, policy)
 	if !errors.Is(err, ErrCoolingDown) {
@@ -177,7 +177,39 @@ func TestEmailChallengeCooldownAttemptsAndConsumption(t *testing.T) {
 	if !errors.Is(err, ErrInvalidCode) {
 		t.Fatalf("reused code: %v", err)
 	}
+	// After the cooldown a new challenge can be issued; wrong codes use up its
+	// attempts, and then even the right code is refused.
+	clock.at, err = later(clock.at, policy.Cooldown)
+	require(t, err)
+	exhausted := issue
+	exhausted.ID = "exhausted"
+	exhausted.CodeHash = HashCode([]byte("key"), exhausted.ID, "123456")
+	_, err = c.IssueEmailChallenge(ctx, exhausted, policy)
+	require(t, err)
+	for range policy.Attempts {
+		wrong := HashCode([]byte("key"), exhausted.ID, "wrong")
+		_, err = c.ConfirmEmailChallenge(ctx, owner.ID, exhausted.ID, wrong, policy.Attempts)
+		if !errors.Is(err, ErrInvalidCode) {
+			t.Fatalf("wrong code: %v", err)
+		}
+	}
+	_, err = c.ConfirmEmailChallenge(ctx, owner.ID, exhausted.ID, exhausted.CodeHash, policy.Attempts)
+	if !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("right code after the last attempt: %v", err)
+	}
+	// A challenge whose lifetime has passed refuses the right code.
+	clock.at, err = later(clock.at, policy.Cooldown)
+	require(t, err)
+	expired := issue
+	expired.ID = "expired"
+	expired.CodeHash = HashCode([]byte("key"), expired.ID, "123456")
+	expires, err := c.IssueEmailChallenge(ctx, expired, policy)
+	require(t, err)
 	clock.at = expires
+	_, err = c.ConfirmEmailChallenge(ctx, owner.ID, expired.ID, expired.CodeHash, policy.Attempts)
+	if !errors.Is(err, ErrInvalidCode) {
+		t.Fatalf("expired challenge: %v", err)
+	}
 }
 
 func TestPasswordHashPHCSyntax(t *testing.T) {

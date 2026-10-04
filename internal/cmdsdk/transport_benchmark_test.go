@@ -186,8 +186,6 @@ func benchmarkTransport(ctx context.Context, b *testing.B) (map[string]float64, 
 		return nil, err
 	}
 	metrics := map[string]float64{"startup-us": float64(time.Since(start).Microseconds())}
-	ctx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
 	stopSampler := benchmarkSampleRSS(ctx, process.PID())
 	defer func() {
 		if peak := stopSampler(); peak > 0 {

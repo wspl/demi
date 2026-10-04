@@ -18,7 +18,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/commandwire"
@@ -46,10 +45,9 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
-		defer cancel()
+		// The child's -test.timeout guards it against a hang.
 		command := exec.CommandContext(
-			ctx,
+			t.Context(),
 			"/bin/sh",
 			"-c",
 			`ulimit -Sn 1024 && exec "$1" -test.run='^TestRunningOutOfOpenFilesWaitsInsteadOfFailing$' `+
@@ -63,7 +61,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		}
 		return
 	}
-	ctx, cancel := context.WithTimeout(t.Context(), 45*time.Second)
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	started, raised, err := process.RaiseOpenFileLimit()
 	if err != nil || started != 1024 || raised <= started {

@@ -7,7 +7,6 @@ import (
 	"runtime"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/commandwire"
@@ -34,10 +33,10 @@ func (r *startingResolver) Resolve(ctx context.Context, _ commandwire.PackageArt
 }
 
 // This test reads the registry admission count to wait for the second caller's
-// lease instead of sleeping. IO and assertions use the public API.
+// lease: the registry offers no event for an admission, so the test yields
+// between reads. IO and assertions use the public API.
 func TestCallerGivingUpLeavesSharedStartToOthers(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	path, err := programtest.Path(ctx, "demi-native-fixture")
 	if err != nil {
 		t.Fatal(err)
@@ -94,9 +93,6 @@ func TestCallerGivingUpLeavesSharedStartToOthers(t *testing.T) {
 		registry.mu.Unlock()
 		if admitted {
 			break
-		}
-		if err := ctx.Err(); err != nil {
-			t.Fatal(err)
 		}
 		runtime.Gosched()
 	}

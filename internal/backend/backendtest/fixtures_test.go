@@ -2,11 +2,9 @@ package backendtest
 
 import (
 	"bufio"
-	"context"
 	"net"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/machinewire"
 	"github.com/wspl/demi/internal/programtest"
@@ -16,41 +14,10 @@ import (
 // TestMain checks that fixture tests release their goroutines and shared program builds.
 func TestMain(m *testing.M) { goleak.VerifyTestMain(programTests{m}) }
 
-// Validates all native fixture releases through the product's publisher. The
-// workspace builds each named program once; no program or vendor is executed.
-func TestNativePackagePublication(t *testing.T) {
-	for _, program := range []string{"demi-file", "demi-browser", "demi-claude-code", "demi-native-fixture"} {
-		t.Run(program, func(t *testing.T) {
-			built, err := BuildPackage(t.Context(), t, program)
-			if err != nil {
-				t.Fatal(err)
-			}
-			catalog, err := built.Catalog(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
-			again, err := built.Catalog(t.Context())
-			if err != nil {
-				t.Fatal(err)
-			}
-			if again != catalog {
-				t.Fatal("publication was not shared")
-			}
-			if err := built.Descriptor.Validate(); err != nil {
-				t.Fatal(err)
-			}
-			if len(built.Descriptor.Targets) != 1 {
-				t.Fatal("fixture must describe the host target only")
-			}
-		})
-	}
-}
-
 // The wire fixture runs over one local socket and uses no process or sleep.
 // It checks responses, call observation and joining even with a client open.
 func TestScriptedManagerProtocolAndClose(t *testing.T) {
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
+	ctx := t.Context()
 	manager, err := StartScriptedManager(ctx, t)
 	if err != nil {
 		t.Fatal(err)

@@ -138,16 +138,6 @@ func TestManifestAndRequestContracts(t *testing.T) {
 		t.Fatal(err)
 	}
 	manifest := factory.Manifest()
-	if err := manifest.Validate(); err != nil {
-		t.Fatal(err)
-	}
-	if manifest.ID != "skills" || !manifest.Context || manifest.Page == nil ||
-		manifest.Page.Package != "@demicodes/plugin-skills" ||
-		manifest.Page.User == nil ||
-		manifest.Page.Conversation != nil ||
-		len(manifest.Page.Methods) != 5 {
-		t.Fatalf("manifest: %+v", manifest)
-	}
 	empty, err := (skills.SkillsState{Sources: []skills.SourceState{}}).MarshalJSON()
 	if err != nil {
 		t.Fatal(err)

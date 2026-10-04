@@ -1,4 +1,4 @@
-package claudecode
+package claudecode_test
 
 import (
 	"context"
@@ -94,7 +94,11 @@ func TestNewProcessCLIContract(t *testing.T) {
 
 func TestNoStartWithoutTokenOrPlacement(t *testing.T) {
 	p, pool := testProvider(t, "http://127.0.0.1:9/catalog", "http://127.0.0.1:9/usage")
-	if err := pool.Remove(t.Context(), *p.config.Account); err != nil {
+	account, _, err := pool.Active(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.Remove(t.Context(), account); err != nil {
 		t.Fatal(err)
 	}
 	placement := &scriptedPlacement{t: t}

@@ -20,7 +20,7 @@ func TestLaunchLimits(t *testing.T) {
 			t.Fatal(err)
 		}
 		cmd := exec.CommandContext(
-			childContext(t),
+			t.Context(),
 			"/bin/sh",
 			"-c",
 			`ulimit -Sn 256 && exec "$1" -test.run='^TestLaunchLimits$' -test.count=1`,
@@ -66,10 +66,10 @@ func TestLaunchLimits(t *testing.T) {
 			cmd := exec.Command("/bin/sh", "-c", "ulimit -Sn")
 			cmd.Stdout = &output
 			wrapped := Wrap(cmd, true, tc.attributes)
-			if err := wrapped.Start(childContext(t)); err != nil {
+			if err := wrapped.Start(t.Context()); err != nil {
 				t.Fatal(err)
 			}
-			if err := unsuccessfulExit(wrapped.Wait(childContext(t))); err != nil {
+			if err := unsuccessfulExit(wrapped.Wait(t.Context())); err != nil {
 				t.Fatal(err)
 			}
 			if output.String() != tc.want {

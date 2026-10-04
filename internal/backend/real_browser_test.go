@@ -13,7 +13,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/artifacts"
@@ -68,9 +67,7 @@ func (v *realView) next(
 				}
 			}
 		}
-		readCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
-		kind, data, err := v.socket.Read(readCtx)
-		cancel()
+		kind, data, err := v.socket.Read(ctx)
 		wireMust(t, err)
 		if kind == websocket.MessageBinary {
 			v.pending = append(v.pending, data...)
@@ -89,8 +86,7 @@ func TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease(t *te
 	}
 	const id = "7b6a5c4d-8f3a-4c1e-9d2b-7a1c2e3f4a01"
 	const greeting = "Hello from the fixture page"
-	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Minute)
-	defer cancel()
+	ctx := t.Context()
 	page := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		// A browser that went away needs no answer.
