@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use super::edits::EditContext;
+use super::media::StdoutTarget;
 
 /// The most language tags a [`CommandLocale`] carries.
 pub const COMMAND_LOCALE_LANGUAGES: usize = 16;
@@ -103,6 +104,16 @@ pub struct Invocation {
     )]
     #[garde(skip)]
     pub json: Option<bool>,
+    /// Where the calling process's stdout goes, for an invocation a job's
+    /// command makes; none for a user stream or a package call, which
+    /// cannot return media (`commands.md` § Return media).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(skip)]
+    pub stdout: Option<StdoutTarget>,
 }
 
 /// Raw CLI metadata from the local command client (`commands.md` § External

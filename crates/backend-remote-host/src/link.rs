@@ -26,7 +26,7 @@ use demi_runner_protocol::wire::{
     self, ArtifactOwner, FsResult, GitResult, Inbound, Install, LogLine, Outbound, VolumeName,
 };
 use demi_shared_gates::{GateLease, SerialGate};
-use demi_shared_types::StreamKind;
+use demi_shared_types::{BlobRef, StreamKind};
 use futures_util::{Sink, SinkExt, Stream, StreamExt, future::LocalBoxFuture};
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
@@ -67,6 +67,11 @@ pub trait LinkPolicy {
         invocation: RpcInvocation,
         port: RpcPort,
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>>;
+
+    /// The bytes of the blob `blob` of the user's namespace, which a
+    /// handler returns as a medium (`commands.md` § Return media); none when
+    /// the namespace does not hold it.
+    fn read_blob(&self, blob: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>>;
 
     /// A managed guest asks for a larger volume.
     fn grow_volume(
@@ -207,6 +212,7 @@ pub(crate) enum Expected {
     Net,
     Service,
     JobRead,
+    JobMediaRead,
 }
 
 pub(crate) enum Answer {
@@ -368,8 +374,21 @@ impl JobEnd {
     }
 }
 
+/// A medium a job's command returned to the job, as the runner announced it
+/// once it kept it (`runner.md` § Pipes and output).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JobMedium {
+    pub number: u32,
+    pub media_type: String,
+    pub size: u64,
+    /// The SHA-256 of its bytes, which names its blob.
+    pub sha256: BlobRef,
+}
+
 pub(crate) struct JobEntry {
     pub(crate) shared: Rc<Shared<JobEnd, JobOutput>>,
+    /// The media the runner announced, in order; they outlive the entry.
+    pub(crate) media: Rc<RefCell<Vec<JobMedium>>>,
     pub(crate) origin: Rc<JobOrigin>,
     pub(crate) commands: Option<CommandSelection>,
     /// Cancelled when the job ends: its artifact resolutions stop.
@@ -634,6 +653,30 @@ impl Link {
                 None => self.answer(&id, Expected::JobRead, Answer::Done),
                 Some(error) => self.refuse(&id, HostError::failed(None, error)),
             },
+            Outbound::JobMediaRead { id, error } => match error {
+                None => self.answer(&id, Expected::JobMediaRead, Answer::Done),
+                Some(error) => self.refuse(&id, HostError::failed(None, error)),
+            },
+            Outbound::JobMedium {
+                job_id,
+                number,
+                media_type,
+                size,
+                sha256,
+            } => {
+                let Ok(sha256) = BlobRef::try_from(sha256) else {
+                    self.disconnect("a job medium's digest is no SHA-256");
+                    return;
+                };
+                if let Some(job) = self.0.state.borrow().jobs.get(&job_id) {
+                    job.media.borrow_mut().push(JobMedium {
+                        number,
+                        media_type,
+                        size,
+                        sha256,
+                    });
+                }
+            }
             Outbound::SyncDone { id, error } => match error {
                 None => self.answer(&id, Expected::Sync, Answer::Done),
                 Some(error) => self.refuse(&id, HostError::failed(None, error)),

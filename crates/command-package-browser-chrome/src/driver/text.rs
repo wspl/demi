@@ -420,11 +420,24 @@ fn read(result: &ReadResult) -> String {
 
 fn screenshot(result: &ScreenshotResult) -> String {
     format!(
-        "Screenshot saved: {}\nImage: {} × {} px, one pixel per CSS pixel\nViewport: {}\n",
+        "Screenshot saved: {}\n{}",
         plain(&result.path),
-        result.width,
-        result.height,
-        viewport(&result.viewport)
+        image(result.width, result.height, &result.viewport)
+    )
+}
+
+/// The text of a screenshot of `tab` returned as a medium (`browser.md`
+/// § Images and large outputs): what it captured, as a saved screenshot's
+/// text says it; the medium's line follows it.
+pub fn captured(tab: &str, width: u32, height: u32, shown: &BrowserViewport) -> String {
+    format!("Screenshot of {}\n{}", plain(tab), image(width, height, shown))
+}
+
+/// A screenshot's image and the viewport it shows.
+fn image(width: u32, height: u32, shown: &BrowserViewport) -> String {
+    format!(
+        "Image: {width} × {height} px, one pixel per CSS pixel\nViewport: {}\n",
+        viewport(shown)
     )
 }
 

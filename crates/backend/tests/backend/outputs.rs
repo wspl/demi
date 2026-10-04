@@ -155,3 +155,67 @@ async fn a_long_outputs_result_names_what_it_leaves_out_and_demi_shell_output_pr
     );
     backend.close().await;
 }
+
+// Several seconds: a real device installs the builtin package, and two turns
+// run a shell job each.
+//
+// Planted defects this catches: a stored output whose row does not name its
+// media (`--medium` finds none); a runner that opens a call's stdout before
+// it reads the medium the handler returned first, which waits for it (the
+// second turn hangs); and a file read that writes an image's bytes as its
+// output.
+#[tokio::test]
+async fn a_returned_medium_is_attached_stored_and_returned_again_by_demi_shell_output() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_file_package();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (_device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+    let png = demi_agent_store::testing::png(4, 3, 1).into_bytes();
+    std::fs::write(format!("{root}/shot.png"), &png).unwrap();
+    let line = format!("[medium 1: image/png, {} bytes]", png.len());
+
+    // Read to the job's output, the image is attached after the output; into
+    // a file, it is copied.
+    let read = work
+        .turn(vec![
+            shell("t1", "demi file read shot.png; demi file read shot.png > copy.png", 30_000),
+            say("read"),
+        ])
+        .await;
+    let result = &read.received[0];
+    let text = attached_one(result);
+    assert_eq!(shown_output(text), format!("{line}\n"), "{result}");
+    assert_eq!(std::fs::read(format!("{root}/copy.png")).unwrap(), png);
+    let command = field(result, "commandId").to_owned();
+
+    // The ended command's medium, stored with its output: into a file as
+    // its bytes, to the job's output as a medium attached again.
+    let script = format!(
+        "demi shell output {command} --medium 1 > again.png; demi shell output {command} --medium 1; demi shell output {command} --medium 2"
+    );
+    let again = work
+        .turn(vec![shell("t2", &script, 30_000), say("again")])
+        .await;
+    let result = &again.received[0];
+    assert_eq!(
+        shown_output(attached_one(result)),
+        format!(
+            "{line}\ndemi shell output: command {command} has no medium 2: it returned 1\n"
+        ),
+        "{result}"
+    );
+    assert_eq!(std::fs::read(format!("{root}/again.png")).unwrap(), png);
+    backend.close().await;
+}
+
+/// The text of a result that attaches one image after it.
+fn attached_one(result: &str) -> &str {
+    let text = result
+        .strip_suffix("\n[image]")
+        .unwrap_or_else(|| panic!("an image after the output: {result}"));
+    assert!(!text.contains("[image]"), "one image: {result}");
+    text
+}

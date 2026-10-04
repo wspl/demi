@@ -66,7 +66,16 @@ impl JobShell for ShellRuntime {
         Box::pin(async move {
             let mut scope = scope::Scope::new(job.cancellation, job.commands);
             scope.edits = job.edits;
-            let job = job::Job::start(job.script, job.cwd, job.env, job.live, scope, self).await?;
+            let job = job::Job::start(
+                job.script,
+                job.cwd,
+                job.env,
+                job.live,
+                job.output,
+                scope,
+                self,
+            )
+            .await?;
             Ok(Box::new(job) as Box<dyn ShellJob>)
         })
     }
