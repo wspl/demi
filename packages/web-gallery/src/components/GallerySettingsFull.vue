@@ -17,12 +17,10 @@ import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
-import SettingsMcp from '@demicodes/web-ui/settings/SettingsMcp.vue'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import { PageScope, settingsPage } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
-import type { SettingsMcpDraft } from '@demicodes/web-ui/settings/types'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import type { SettingsState } from '../fixtures/settings'
@@ -222,28 +220,6 @@ onBeforeUnmount(() => {
   }
 })
 
-function addServer(draft: SettingsMcpDraft) {
-  s.value.servers.push(
-    {
-      id: `server-${Date.now()}`,
-      ...draft,
-      state: 'connected',
-      enabled: true,
-      tools: []
-    }
-  )
-}
-
-function restartServer(server: SettingsState['servers'][number]) {
-  server.state = 'connected'
-  server.detail = undefined
-}
-
-function signInServer(server: SettingsState['servers'][number]) {
-  server.state = 'connected'
-  server.detail = undefined
-}
-
 function restoreArchived(id: string) {
   s.value.archived = s.value.archived.filter((entry) => entry.id !== id)
 }
@@ -350,15 +326,6 @@ function resetShortcuts() {
   />
 
   <GallerySubagents v-else-if="tab === 'subagents'" :state="s.subagents" />
-
-  <SettingsMcp
-    v-else-if="tab === 'mcp'"
-    :servers="s.servers"
-    :overlay-store="appOverlayStore"
-    @add="addServer"
-    @sign-in="signInServer"
-    @restart="restartServer"
-  />
 
   <PageScope
     v-else-if="pluginPage?.settings"

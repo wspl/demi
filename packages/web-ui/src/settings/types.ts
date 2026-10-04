@@ -198,28 +198,6 @@ export interface SettingsProviderEntry {
   logo: string | null
 }
 
-export type SettingsMcpTransport = 'stdio' | 'http'
-export type SettingsMcpState = 'connected' | 'auth' | 'crashed' | 'disabled'
-
-/** A tool server as the settings page lists it. Tools are names only; there is no per-tool switch. */
-export interface SettingsMcpServer {
-  id: string
-  name: string
-  transport: SettingsMcpTransport
-  target: string
-  state: SettingsMcpState
-  enabled: boolean
-  /** Why it is not connected, shown on the status. */
-  detail?: string
-  tools: string[]
-}
-
-export interface SettingsMcpDraft {
-  transport: SettingsMcpTransport
-  name: string
-  target: string
-}
-
 export const THINKING_EFFORTS = [
   'minimal',
   'low',
