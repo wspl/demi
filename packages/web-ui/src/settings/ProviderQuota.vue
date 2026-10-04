@@ -20,18 +20,31 @@ watch(computed(() => visible.value && props.autoRefresh), (shown) => {
 </script>
 
 <template>
-  <div ref="region" class="mt-1">
+  <div ref="region" class="@container mt-1">
     <!-- Empty snapshots still have a visible region, so the first display can fetch them. -->
     <span v-if="!windows.length">Usage not available yet</span>
+    <!-- From 20rem each window is one line: name, meter, usage, the names and usages
+         aligned in columns. Narrower (a row beside its buttons, a phone) each window puts its
+         name and usage over a full-width meter, the usage under the name when both do not
+         fit. Text wraps rather than overflows, so it never runs under the row's buttons. -->
     <div
       v-else
-      class="grid max-w-96 grid-cols-[auto_minmax(4rem,1fr)_auto] items-center gap-x-2 gap-y-1 whitespace-nowrap text-[11px] tabular-nums"
+      class="grid gap-y-1.5 text-[11px] tabular-nums @xs:max-w-96 @xs:grid-cols-[auto_minmax(4rem,1fr)_auto] @xs:items-center @xs:gap-x-2 @xs:gap-y-1"
     >
-      <template v-for="window in windows" :key="window.id">
-        <span>{{ window.label }}</span>
-        <Meter :value="window.used" :max="window.max" :label="window.label" />
-        <span>{{ window.used }}%<template v-if="window.resets"> · resets {{ window.resets }}</template></span>
-      </template>
+      <div
+        v-for="window in windows"
+        :key="window.id"
+        class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 @xs:contents"
+      >
+        <span class="wrap-anywhere">{{ window.label }}</span>
+        <Meter
+          class="order-last mt-0.5 @xs:order-none @xs:mt-0"
+          :value="window.used"
+          :max="window.max"
+          :label="window.label"
+        />
+        <span class="ml-auto wrap-anywhere @xs:ml-0">{{ window.used }}%<template v-if="window.resets"> · resets {{ window.resets }}</template></span>
+      </div>
     </div>
   </div>
 </template>
