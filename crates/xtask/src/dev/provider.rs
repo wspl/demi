@@ -1,4 +1,4 @@
-//! The real model `xtask dev` can seed beside Echo (`backend.md` §
+//! The real model `xtask dev` can seed (`backend.md` §
 //! One-command development backend), from the `DEMI_DEV_PROVIDER_*`
 //! variables: all four name one model of an OpenAI-compatible Chat
 //! Completions endpoint, or none is set, and an optional fifth lists the
