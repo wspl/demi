@@ -16,8 +16,8 @@ async fn the_catalog_reads_the_proxys_models_each_time_from_an_envelope_or_a_bar
     let envelope = json!({ "object": "list", "data": [
         {
             "id": "frontier", "name": "Frontier", "description": "frontier", "context_window": 500_000,
-            "supports_reasoning_effort": true, "reasoning_effort": "medium",
-            "reasoning_efforts": [{ "id": "high", "value": "high", "default": true }, { "id": "medium", "default": false }, { "value": "low" }],
+            "supports_reasoning_effort": true,
+            "reasoning_efforts": [{ "id": "high", "value": "high" }, { "id": "medium" }, { "value": "low" }],
         },
         { "model": "fast", "context_window": 200_000 },
         { "name": "no id" },
@@ -47,13 +47,7 @@ async fn the_catalog_reads_the_proxys_models_each_time_from_an_envelope_or_a_bar
         frontier.supported_thinking_efforts.as_deref(),
         Some(&["high", "medium", "low"].map(String::from)[..])
     );
-    assert_eq!(
-        (
-            frontier.default_thinking_effort.as_deref(),
-            frontier.supports_reasoning
-        ),
-        (Some("high"), Some(true))
-    );
+    assert_eq!(frontier.supports_reasoning, Some(true));
     let fast = &list.models[1];
     assert_eq!(
         (

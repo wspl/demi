@@ -295,7 +295,6 @@ async function saveModel(
     mock.models.push({
       ...draft,
       tools: true,
-      defaultEffort: draft.efforts[0] ?? null,
       enabled: true,
     })
   }

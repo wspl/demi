@@ -42,7 +42,7 @@ function stubCatalog() {
     models: [{
       id: 'stub', displayName: 'Stub', description: null, contextWindow: 1000, outputLimit: null,
       supportsTools: null, supportsAttachments: true, supportsVideo: null, acceptedExtensions: null,
-      supportsReasoning: null, supportedThinkingEfforts: [], defaultThinkingEffort: null,
+      supportsReasoning: null, supportedThinkingEfforts: [],
       canDisableThinking: null, serviceTiers: [], defaultServiceTierId: null, cost: null,
       selection: model,
     }],
