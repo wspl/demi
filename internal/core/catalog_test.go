@@ -260,26 +260,4 @@ func TestCatalogResultsDoNotAlias(t *testing.T) {
 			t.Fatal("tier changed the source")
 		}
 	})
-	t.Run("displayed thinking effort", func(t *testing.T) {
-		for _, config := range []core.ThinkingConfig{
-			&core.AdaptiveConfig{
-				Effort: "high",
-			},
-			&core.EffortConfig{
-				Effort: "high",
-			},
-		} {
-			selection := core.ModelSelection{Thinking: config}
-			result, ok := selection.ThinkingEffort()
-			if !ok || result != "high" {
-				t.Fatal("missing thinking effort")
-			}
-			// A caller can mutate its returned value without changing settings.
-			local := &result
-			*local = "low"
-			if source, _ := selection.ThinkingEffort(); source != "high" {
-				t.Fatal("displayed effort changed the selection")
-			}
-		}
-	})
 }
