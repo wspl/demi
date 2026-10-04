@@ -203,6 +203,19 @@ fn a_manifest_that_breaks_a_rule_stops_the_start_and_names_the_plugin() {
             ],
             "plugin \"two\"'s commands are refused",
         ),
+        // The `demi` root is the plugin host's: a plugin's root of that name
+        // is refused on its own, and blamed before a later group of `demi`.
+        (
+            vec![Probe::new("jira").rpc(Placement::Root, "demi").boxed()],
+            "plugin \"jira\" declares \"demi\", which is taken",
+        ),
+        (
+            vec![
+                Probe::new("jira").rpc(Placement::Root, "demi").boxed(),
+                Probe::new("notes").rpc(Placement::Demi, "notes").boxed(),
+            ],
+            "plugin \"jira\" declares \"demi\", which is taken",
+        ),
         (
             vec![Probe::new("todo").profile("default").boxed()],
             "plugin \"todo\" declares the profile \"default\", which is reserved for inheriting the parent",
