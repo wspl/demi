@@ -1,10 +1,15 @@
 import { showToast } from './toast'
-import type { HeadlineText } from '../ui/ui-text'
+import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
 export interface ReportErrorOptions {
   userVisible?: boolean
   expected?: boolean
   detail?: string
+  /**
+   * What the toast says in place of the error's own message, when that
+   * message is technical: the error's message then reaches only the console.
+   */
+  message?: SentenceText
 }
 
 export function reportError(
@@ -17,5 +22,5 @@ export function reportError(
     console.error(`[demi] ${title}: ${message}`, options.detail ?? '')
   if (!options.userVisible)
     return
-  showToast({ title, message, tone: 'danger' })
+  showToast({ title, message: options.message ?? message, tone: 'danger' })
 }

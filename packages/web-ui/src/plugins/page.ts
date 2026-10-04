@@ -393,12 +393,17 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       state<T>(schema: z.ZodType<T>) {
         const state = readState(() => host.userState(page.plugin), schema)
         // The user state has no place of its own on a page, so the page
-        // says once, in a toast, that it stopped reading it.
+        // says once, in a toast, that it stopped reading it. What did not
+        // read is for a developer, in the console.
         watch(
           () => state.refusal.value !== null,
           (refused) => {
             if (refused) {
-              errors.report(`Could not read the state of the ${page.plugin} plugin.`, state.refusal.value)
+              reportError('Could Not Read the Plugin’s Data', state.refusal.value, {
+                userVisible: true,
+                message: 'Reloading the page may help.',
+                detail: `the user state of the ${page.plugin} plugin`,
+              })
             }
           },
           { immediate: true, flush: 'sync' },

@@ -13,8 +13,9 @@ import { SKILLS_CALLS_OPEN, skillsCalls } from '../fixtures/settings'
  * second `review` is refused, which a toast says, and the switch shows the
  * state again. "Backend of an Earlier Build" makes the plugin send its
  * state without `updateAvailable`, as a backend from before that field
- * would: a toast says the page cannot read it, and the page keeps the last
- * state it read while every control still acts on the plugin.
+ * would: a toast says plainly that the page cannot read it, the console
+ * names the missing field, and the page keeps the last state it read while
+ * every control still acts on the plugin.
  */
 const state = reactive(skillsCalls())
 const plugin = skillsPlugin(state)

@@ -250,7 +250,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Skills · Calls and Unreadable States"
-        note="A control waits for its call's answer, success or failure, and then shows the plugin's state again. Turning on web-kit's review is refused, since review-kit's review is on: a toast says why and the switch stays off. Backend of an Earlier Build sends the plugin's state without updateAvailable, as a backend from before that field would: a toast says once that the page cannot read it, the page keeps the last state it read, and every control still waits only for its own answer."
+        note="A control waits for its call's answer, success or failure, and then shows the plugin's state again. Turning on web-kit's review is refused, since review-kit's review is on: a toast says why and the switch stays off. Backend of an Earlier Build sends the plugin's state without updateAvailable, as a backend from before that field would: a toast says once, in plain words, that the page cannot read the plugin's data, the browser console names the missing field, the page keeps the last state it read, and every control still waits only for its own answer."
       >
         <GallerySpecimen variant="Wide" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
