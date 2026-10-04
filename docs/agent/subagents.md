@@ -34,8 +34,8 @@ tree is fan-out (the live-children limit in [Runtime](#runtime)) and the real
 turns each spawn costs. A spawner can still forbid one specific child from
 delegating further, by spawning it with a [profile](#profiles) that forbids
 spawning. That is an explicit per-child restriction, never derived from depth:
-the child loses `spawn`, `abort`, and `resume`, and keeps `send`, `list`, and
-`show`.
+the child loses `spawn`, `abort`, and `resume`, and keeps `send`, `list`,
+`show`, and `profiles`.
 
 ## Topology and the agent directory
 
@@ -82,6 +82,7 @@ demi agent resume <id> < message.txt
 demi agent send <id|parent> < message.txt
 demi agent show <id>
 demi agent list
+demi agent profiles
 ```
 
 `demi agent spawn` reads a task brief from stdin, creates a persisted child, and
@@ -109,11 +110,13 @@ parent's checkpoint before it replaces the archived round.
 Prompts and `send` and `resume` messages are read only from stdin: a quoted
 heredoc, a pipe, or input redirection. They have no positional or option form.
 An empty message fails. `--profile` names one of the user's
-[profiles](#profiles). There is no `--model` option: the model and the
-provider runtime come from the profile or the parent.
+[profiles](#profiles), which `demi agent profiles` lists. There is no
+`--model` option: the model and the provider runtime come from the profile or
+the parent.
 
-With `--json`, `abort`, `send`, `show`, and `list` return `{ id, aborted }`,
-`{ id, accepted }`, `{ agent }`, and `{ tree }`.
+With `--json`, `abort`, `send`, `show`, `list`, and `profiles` return
+`{ id, aborted }`, `{ id, accepted }`, `{ agent }`, `{ tree }`, and
+`{ profiles }`.
 
 ### Command help
 
@@ -138,10 +141,12 @@ into this argument:
 > should return.
 
 `--description` is a short UI title that tells concurrent children apart. The
-`--profile` help names each profile the node's tree took, in name order, with
-its description, and says that omitting the option inherits the parent's
-model, prompt, Host and commands; when the tree took no profile, it says that
-none is configured ([Profiles](#profiles)).
+`--profile` help names no profile: it says that the option takes the name of
+one of the user's profiles, that `demi agent profiles` lists them with when to
+use each, and that omitting the option inherits the parent's model, prompt,
+Host and commands. The help is part of the system prompt, which is rendered
+once, so it holds nothing that changes when the user edits profiles
+([What the model sees](#what-the-model-sees)).
 
 ## Communication
 
@@ -445,8 +450,8 @@ prompt, on the conversation's Host with the root's commands, and its
 | Field | Meaning |
 | --- | --- |
 | Name | The `--profile` value: 1 to 40 lowercase letters, digits and hyphens, starting with a letter, unique among the user's profiles. `default` is reserved for the inherit profile below, and no profile can take it. |
-| Description | When the agent should use the profile: one line of 1 to 500 characters, which the `--profile` help shows the model ([Command help](#command-help)). |
-| Model | Inherit, the parent's model selection; or model settings of the user's own: a provider entry of the user's scope, one model of its catalog, a thinking effort and a service tier, with the meanings of a conversation's ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)). The entry may be the parent's or any other. |
+| Description | When the agent should use the profile: one line of 1 to 500 characters, which `demi agent profiles` shows the model ([What the model sees](#what-the-model-sees)). |
+| Model | Inherit, the parent's model selection; or model settings of the user's own: a provider entry of the user's scope, one model of its catalog, an effort the model lists or thinking off, and a service tier, with the meanings of a conversation's ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)). The effort is always explicit: a profile saved without one takes the first effort the model lists. The entry may be the parent's or any other. |
 | System prompt | Inherit, the parent's instructions; or replace, text of 1 to 65,536 characters that takes the place of the instructions in the child's system prompt ([Sessions and turns](runtime.md#sessions-and-turns)). The runtime's rules for its tools, the command help and the subagent preamble are still supplied. |
 | Spawning | Whether children of this profile may spawn children of their own. |
 
@@ -464,42 +469,51 @@ declares a profile, and with no profile configured, every child inherits.
 Omitting `--profile` always selects the unnamed inherit profile: the parent's
 prompt and preamble, model, Host, and commands, which are its profile's when the
 parent was started with one; its children may spawn. It exists whether or not
-the user has profiles, and it cannot be configured or replaced. A given
-`--profile` must match a profile the tree took; an unknown name fails and
-lists the available ones. Profiles apply to a session's own children; a
-subagent spawning grandchildren resolves names against the same list.
+the user has profiles, and it cannot be configured or replaced. Profiles apply
+to a session's own children; a subagent spawning grandchildren resolves names
+against the same list.
 
-**When a change takes effect.** A tree takes the user's profiles when it
-opens, at the moment it takes its commands, and keeps them until it closes
-([A user's plugins](../architecture/plugins.md#a-users-plugins)). The
-`--profile` help is part of the system prompt, which is rendered once, so a
-change in the middle of a conversation would make spawn do something other
-than what the model was told. A profile that the user creates, changes or
-deletes therefore reaches a conversation when its tree next opens: a new
-conversation, a tree restored after it was disposed, or a reload. While a
-conversation's tree is open with profiles that differ from the user's
-current ones, its summary says so and the page offers the reload
-([Reload](../architecture/plugins.md#a-users-plugins)). A child already
-spawned keeps what it was spawned with, across restore and resume
-([Persistence](#persistence)).
+**Each spawn reads the current profiles.** A spawn resolves `--profile`
+against the user's profiles as they are at that moment, not as they were
+when the tree opened. So a profile that the user creates, changes or deletes
+in settings applies to the next spawn of every conversation, an open one
+included, with no reload. A child already spawned keeps what it was spawned
+with, across restore and resume ([Persistence](#persistence)).
+
+An unknown name fails, creates no child, and answers the names the user has
+now, so a model that guessed or remembered an old name learns the current
+ones from the failure:
+
+```text
+unknown profile "explorer"; the user's profiles are explore, reviewer. Run `demi agent profiles` for when to use each, or omit --profile to inherit the parent.
+```
+
+With no profile, the answer says that the user has none and that omitting
+`--profile` inherits the parent.
 
 **A profile whose model is gone.** At spawn, the backend builds the child's
 model selection from the profile's model settings and the entry's current
 catalog, as it builds a conversation's on a model switch
 ([Request parameters](../providers/models.md#request-parameters)). A provider
-entry that is gone or no longer in the user's scope, a model its catalog no
-longer lists, or an effort or a tier the model no longer offers fails the
-spawn before any child is created, with a message that names the profile and
-what is missing, for example:
+entry that is gone or no longer in the user's scope, or a model its catalog
+no longer lists, fails the spawn before any child is created, with a message
+that names the profile and what is missing, for example:
 
 ```text
 profile "explore" cannot run: model "claude-haiku-4-5" is not in the catalog of provider "Work Anthropic"; choose another model for the profile in settings
 ```
 
-Nothing falls back to the parent's model. The settings page shows such a
-profile as needing a model; it reads that from the catalog the page already
+Nothing falls back to the parent's model. An effort or a service tier that
+the model no longer offers does not fail the spawn, since the model itself
+can still run: the effort becomes the first effort the model lists, the rule
+every model settings value follows, and the tier becomes the vendor's default
+tier. The profile keeps its saved value until the user changes it.
+
+The settings page shows a profile whose entry or model is gone as needing a
+model, and one whose effort or tier is no longer offered with that part
+marked as no longer offered. It reads both from the catalog the page already
 holds for the model menu
-([In the web app](../providers/models.md#in-the-web-app)), so the mark is
+([In the web app](../providers/models.md#in-the-web-app)), so the marks are
 derived on the page and never stored.
 
 **Spawn restriction.** A profile that forbids spawning removes `spawn`,
@@ -511,6 +525,29 @@ the child across restore and resume.
 **Provider runtime.** The node assembly supplies every node's provider
 runtime, made for the child's model selection
 ([Runtime](#runtime)); the running command cannot pick a provider.
+
+### What the model sees
+
+The model reads the profiles when it runs `demi agent profiles`, which the
+agent server answers at call time from the user's current profiles: each
+profile's name and description, in name order, or a line saying that the
+user has none and that children inherit. `--json` returns
+`{ profiles: [{ name, description }] }`. It shows neither the model nor the
+prompt of a profile; the description says what the user wants the model to
+know. Like `list` and `show`, it is a read that every node's group has,
+spawn-restricted or not.
+
+```text
+$ demi agent profiles
+explore   Use for finding code, call sites and documentation; it reports and changes nothing.
+reviewer  Use to review a finished change before reporting it.
+```
+
+The list is not in the system prompt or in a context block: the prompt is
+rendered once and could not follow an edit, and a block would put every
+edit into every conversation's transcript whether or not it spawns. A user
+who names a profile in a message, such as "ask explore to find the call
+sites", gives the model the name directly.
 
 ## Child identity
 
@@ -907,9 +944,10 @@ The tree and its commands:
    replays the live tree.
 7. An inherited prompt and a replaced prompt reach the child as
    [Child context](#child-context) describes; an unknown profile is refused
-   with the available names; a profile whose provider entry, model, effort or
-   tier is gone fails the spawn with the profile's name and what is missing,
-   and creates no child.
+   with the user's current names; a profile whose provider entry or model is
+   gone fails the spawn with the profile's name and what is missing, and
+   creates no child; one whose effort or tier is no longer offered spawns
+   with the model's first listed effort or the vendor's default tier.
 8. A profile's spawn restriction removes `spawn`, `abort`, and `resume`,
    keeps communication and reads, and survives archive, reopen, and resume;
    the inherit profile's children may spawn.
@@ -926,8 +964,9 @@ The tree and its commands:
     child whose entry is gone closes as `error`, and its parent receives the
     failed completion.
 15. A profile changed or deleted after a spawn changes nothing in that child
-    across restore and resume. A tree spawns with the profiles it opened with
-    until it is reloaded, and with the user's current ones afterwards.
+    across restore and resume. A profile created, changed or deleted while a
+    tree is open applies to that tree's next spawn, and `demi agent profiles`
+    answers the new list at once.
 
 Persistence:
 
@@ -950,8 +989,9 @@ Product:
 1. The product and the gallery show collapsed and expanded updates, completed,
    failed, and aborted receipts, long content, equal descriptions with distinct
    sender IDs, and reconnect.
-2. With no profile configured, children inherit, and the model sees the
-   spawn prompt field's help and a `--profile` help that names no profile.
+2. With no profile configured, children inherit, the model sees the spawn
+   prompt field's help, and `demi agent profiles` says that the user has none.
 3. The settings page creates, edits and deletes profiles, refuses a reserved
-   or taken name, and shows a profile whose model is gone as needing a model;
-   the product and the gallery show the same section.
+   or taken name, shows a profile whose model is gone as needing a model and
+   an effort or tier that is no longer offered as such; the product and the
+   gallery show the same section.
