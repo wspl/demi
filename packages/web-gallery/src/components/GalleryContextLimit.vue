@@ -62,7 +62,7 @@ function change(next: ModelSettingsChange): void {
     />
     <ContextUsageIndicator
       :usage="usage"
-      @compact="productWould('Compact the conversation')"
+      @compact="productWould('Compact the Conversation')"
     />
   </div>
   <ModelMenu

@@ -5,6 +5,7 @@ import {
   type FileBrowserFailure,
   type FileBrowserSource,
 } from '@demicodes/web-ui/files/types'
+import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
@@ -16,9 +17,9 @@ import GallerySpecimen from './GallerySpecimen.vue'
  */
 const failures: {
   kind: FileBrowserFailure['kind']
-  label: string
+  label: SentenceText
   home: string
-  message: string
+  message: SentenceText
 }[] = [
   {
     kind: 'offline',
@@ -79,7 +80,7 @@ const readOnlySource: FileBrowserSource = {
 <template>
   <div class="space-y-8">
     <GallerySection
-      title="Directory read failures · region"
+      title="Directory Read Failures · Region"
       note="The list is replaced by a pane with an icon per kind, the sentence for that kind and the source's own message under it."
     >
       <GallerySpecimen
@@ -94,7 +95,7 @@ const readOnlySource: FileBrowserSource = {
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
-      title="Folder creation failure · the form's own line"
+      title="Folder Creation Failure · the Form's Own Line"
       note="Choose New folder and confirm a name. The source always rejects it, so the list stays and the line takes the status bar."
     >
       <div class="flex h-[22rem] flex-col overflow-hidden rounded-xl border border-line">

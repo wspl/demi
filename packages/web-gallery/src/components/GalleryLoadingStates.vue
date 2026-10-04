@@ -4,7 +4,7 @@ import { Save, Trash2 } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
-import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
@@ -12,11 +12,13 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { provider, mockVendors } from '../fixtures/settings'
 import GallerySpecimen from './GallerySpecimen.vue'
 
-const state = ref<'loading' | 'ready' | 'failed'>('loading')
+type LoadState = 'loading' | 'ready' | 'failed'
+
+const state = ref<LoadState>('loading')
 const saving = ref(true)
-const options = [
-  { value: 'loading', label: 'First load' },
-  { value: 'ready', label: 'Cached content' },
+const options: readonly SegmentedOption<LoadState>[] = [
+  { value: 'loading', label: 'First Load' },
+  { value: 'ready', label: 'Cached Content' },
   { value: 'failed', label: 'Failed' },
 ]
 const providers = [
@@ -36,19 +38,19 @@ const selected = ref<string | null>('loading-provider')
 <template>
   <div class="mt-8 flex flex-col gap-5" data-loading-specimens>
     <h3 class="text-[15px] font-medium text-fg-emphasis">
-      Loading and submitted operations
+      Loading and Submitted Operations
     </h3>
     <div class="flex flex-wrap items-center gap-3">
       <Segmented v-model="state" :options="options" />
       <Button @click="saving = !saving">{{
-        saving ? 'Finish operation' : 'Start operation'
+        saving ? 'Finish Operation' : 'Start Operation'
       }}</Button>
     </div>
     <div class="flex flex-wrap gap-5">
       <GallerySpecimen variant="Stable button widths · disabled while saving">
         <div class="flex items-center gap-2" data-loading-buttons>
           <Button :loading="saving" @click="saving = true"
-            ><Save :size="14" /> Save changes</Button
+            ><Save :size="14" /> Save Changes</Button
           >
           <Button variant="primary" :loading="saving" @click="saving = true"
             >Create Project</Button

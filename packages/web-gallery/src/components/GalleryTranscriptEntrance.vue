@@ -26,8 +26,8 @@ function append(): void {
 
 <template>
   <div class="flex gap-2 pb-3">
-    <Button size="sm" @click="restore">Restore history</Button>
-    <Button size="sm" @click="append">Append live block</Button>
+    <Button size="sm" @click="restore">Restore History</Button>
+    <Button size="sm" @click="append">Append Live Block</Button>
   </div>
   <div class="gallery-frame h-[16rem] bg-surface">
     <AgentMessageList

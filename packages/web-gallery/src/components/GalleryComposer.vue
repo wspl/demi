@@ -120,7 +120,7 @@ function compact() {
     props.onCompact()
     return
   }
-  productWould('Compact the conversation')
+  productWould('Compact the Conversation')
 }
 const composer = ref<InstanceType<typeof SessionComposer>>()
 const uploads = new AttachmentUploadQueue()

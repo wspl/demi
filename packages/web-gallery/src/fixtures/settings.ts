@@ -2,7 +2,9 @@ import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ExposeMenuEntry } from '@demicodes/plugin-expose/types'
 import type {
+  SettingsArchivedConversation,
   SettingsDevice,
+  SettingsKeyBinding,
   SettingsMcpServer,
   SettingsPlugin,
   SettingsProviderEntry,
@@ -703,9 +705,9 @@ export function createSettingsState() {
     selectedProviderId: null as string | null,
     providerDetailOpen: false,
     plugins: [
-      { id: 'file', name: 'File', description: 'Reads and edits files on a Host.', enabled: true },
-      { id: 'browser', name: 'Browser', description: 'A browser on a Host the agent and you can drive.', enabled: true },
-      { id: 'expose', name: 'Expose', description: 'Shares a port on a Host at a public address.', enabled: false },
+      { id: 'file', name: 'File Commands', description: 'Reads and edits files on a host.', enabled: true },
+      { id: 'browser', name: 'Conversation Browser', description: 'A browser on a host the agent and you can drive.', enabled: true },
+      { id: 'expose', name: 'Host Expose', description: 'Shares a port on a host at a public address.', enabled: false },
       { id: 'skills', name: 'Skills', description: 'Workflows the agent follows, from git repositories and your repository.', enabled: true },
     ] as SettingsPlugin[],
     servers: [
@@ -830,7 +832,7 @@ export function createSettingsState() {
         title: 'Sidebar scroll performance',
         detail: 'Archived Jul 3'
       },
-    ],
+    ] satisfies SettingsArchivedConversation[],
     devices: galleryDevices(),
     keys: [
       { id: 'new', action: 'New conversation', keys: '⌘⇧O' },
@@ -840,7 +842,7 @@ export function createSettingsState() {
       { id: 'search', action: 'Search conversations', keys: '⌘K' },
       { id: 'focus', action: 'Focus composer', keys: '⌘J' },
       { id: 'settings', action: 'Open settings', keys: '⌘,' },
-    ],
+    ] satisfies SettingsKeyBinding[],
     data: {
       retention: 'Forever',
       shareLinks: false,
