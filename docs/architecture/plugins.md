@@ -5,7 +5,7 @@ shell, text the model reads, files every Host of its user's conversations
 holds, reads of a conversation's files on a running Host, calls and streams
 of its own command package, and a part of the web app with the calls behind
 it. Every capability that is not the agent runtime itself or the product's
-core is a plugin: the todo list (`plugin-todo`), the file commands
+core is a plugin: the file commands
 (`plugin-file`), the conversation browser with its live view
 (`plugin-browser`), [Host expose](../execution/expose.md) (`plugin-expose`),
 [skills](../agent/skills.md) (`plugin-skills`), and the work panel's Change
@@ -100,7 +100,6 @@ The plugin host composes the command set every node starts from:
 ```text
 demi                     the plugin host's root
   file                   plugin-file (native: demi.file)
-  todo                   plugin-todo (rpc)
   browser                plugin-browser (native: demi.browser)
   expose                 plugin-expose (rpc)
   host                   the product's group (backend-host-access)
@@ -382,7 +381,7 @@ conversation's operations need a request about a conversation: a `command`, a
 
 | Service | Operations | Requests | Meaning |
 | --- | --- | --- | --- |
-| Command | Stdout, stderr, stdin, live stdin, command storage | `command` | The rpc port of the call: its IO and the invoking node's [command storage](../agent/command-state-history.md) |
+| Command | Stdout, stderr, stdin, live stdin | `command` | The rpc port of the call: its IO |
 | Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
 | | Blobs: put, get | Every request | Bytes in the user's blob namespace, by SHA-256 |
 | Hosts | Set directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
@@ -401,8 +400,8 @@ for one plugin among the others.
 
 Values and directories name the blobs they use, which keeps the blobs from
 [collection](../backend/storage.md#collecting-blobs) for as long as they are
-named. A value changes by versioned compare-and-set, as command storage does:
-a write names the revision it read and fails when another write came first.
+named. A value changes by versioned compare-and-set: a write names the
+revision it read and fails when another write came first.
 
 A plugin never receives a live object: no Host handle, no callback into the
 backend, no reference to a session or a shard. What it needs from Demi is a
@@ -467,7 +466,7 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
 - **Registration.** The backend's composition root registers the plugins
   linked into it, as it registers the provider families: these are the
   plugins the backend offers, and a user turns each on or off ([A user's
-  plugins](#a-users-plugins)). Each plugin has a unique id (`file`, `todo`,
+  plugins](#a-users-plugins)). Each plugin has a unique id (`file`,
   `browser`, `skills`), which names its values, its part of the product state,
   its directories on a Host and its page route; `execution` is the product's
   context source and is taken. Its manifest also carries a name and a
@@ -566,7 +565,6 @@ not use.
 | Id | Crate | Contributes | Page package | Design |
 | --- | --- | --- | --- | --- |
 | `file` | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
-| `todo` | `plugin-todo` | The `demi todo` group, its `rpc` handlers over the node's command storage | None | [Command state history](../agent/command-state-history.md) |
 | `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
 | `expose` | `plugin-expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
 | `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; user state and five methods | `@demicodes/plugin-skills`: a settings section | [Skills](../agent/skills.md) |

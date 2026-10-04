@@ -169,8 +169,8 @@ The instruction is the only text that exists for compaction:
 
 The instruction asks the model not to call tools. A model that calls one
 anyway gets the ordinary tool loop: the call runs as the session's own tool
-would, so a command it starts on a Host is real, while the transcript and
-command state it changes are the copy's and never reach the session.
+would, so a command it starts on a Host is real, while the transcript it
+changes is the copy's and never reaches the session.
 
 ## Token estimates
 
@@ -299,14 +299,13 @@ its only use.
 | Model selection, working directory, retry policy | The session's |
 | System prompt, tools, thinking | The session's |
 | Provider runtime | A fresh runtime from the same provider: the same configuration and credentials, none of the session's execution state, such as a retained CLI process or a pending tool call ([Providers](../providers/providers.md)) |
-| Command state | A copy of the versions the window refers to, with the session's current version |
 | Compaction | Never; the copy does not compact itself |
 | Store | None; nothing of the copy is saved, and a medium its tool returns is named by its SHA-256 and held, never stored |
 | Admission | None of its own; it runs inside the session's action |
 
 Closing the copy closes its provider runtime and never touches the session's.
 The copy runs inside the session's action, and nothing it does changes the
-session's transcript or command state.
+session's transcript.
 
 A session copy is neither a subagent nor a Fork. A subagent starts with an
 empty transcript and lives in the session tree ([Subagents](subagents.md)). A
@@ -326,7 +325,7 @@ a real model.
 | Screenshots accumulate toward an image limit that the scripted provider sets, within a turn and before a switch to a vendor that takes fewer | The request that would reach 80% of the limit compacts first, a switch with the model before it; no request reaches the limit. The runtimes' own limits are constants ([Request limits](../providers/models.md#request-limits)), which no test restates |
 | A request refused as too large (HTTP 413, or too many images) | One pass, then the request is sent again; a second refusal fails the turn |
 | The latest answer's reasoning is kept past a summary | The Anthropic provider leaves it out of every later request; the other providers replay it |
-| The model calls a tool during a summary | The copy runs it through the ordinary tool loop; the session's transcript and command state do not change |
+| The model calls a tool during a summary | The copy runs it through the ordinary tool loop; the session's transcript does not change |
 | Stop during a summary | No boundary; the copy is closed; the action ends as stopped |
 | A summary request exceeds the context | The pass retries with half the window and inserts one boundary |
 | A summary request exceeds the context with one block left, after a previous boundary or without one | The action fails with `context_length_exceeded`; the transcript is unchanged |

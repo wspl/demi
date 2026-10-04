@@ -484,7 +484,7 @@ Each crate implements the provider contract for one vendor family.
   - the command system: `CommandSet`, which pairs declarations with their
     bindings and is what manifests and help read; the declaration builders; the
     rpc handler interface (`RpcHandler`, `RpcInvocation`, `RpcPort`,
-    `PortTransport`, `StorageOp`); the reserved command names;
+    `PortTransport`); the reserved command names;
   - the shell-environment contract behind the `shell_*` tools:
     `ShellEnvironment`, `ExecRequest`, `CommandStatus` and `CommandRecord`,
     which keeps the model's place in each command's output apart from the
@@ -535,8 +535,6 @@ Each crate implements the provider contract for one vendor family.
     commands' outputs for `demi shell output` and gives out the numbers of the
     conversation's sequences that the model sees
     ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees));
-  - each node's command state history (`CommandStateHistory`,
-    [Command state history](../agent/command-state-history.md));
   - the media rules (`media`): a medium stored once when it enters a
     transcript, the bytes a session holds for its requests and the model's
     view of them, over the `BlobStore` its tree store gives it, and the blobs
@@ -583,9 +581,8 @@ Each crate implements the provider contract for one vendor family.
   `ToolFailure`), which it defines and the tools implement.
 - **Public boundary:** the handle, its construction and restoration
   (`SessionDeps`, `SessionInit`), its events, status and errors, the editing
-  types (`EditSubmission`, `EditCheck` and their outcomes), the command
-  storage a job's calls reach (`AgentSession::storage`, answering the shell's
-  storage port messages), and the tool-call contract;
+  types (`EditSubmission`, `EditCheck` and their outcomes), and the tool-call
+  contract;
   `agent_session::testing` supplies the compaction request's instruction
   (`COMPACTION_SUMMARY_INSTRUCTION`). Behavior:
   [Agent runtime](../agent/runtime.md).
@@ -618,9 +615,6 @@ Each crate implements the provider contract for one vendor family.
   - `Connection`, the frame handling of one conversation socket: the backend
     hands it each decoded client frame, and its bounded outbox (`FrameRx`)
     carries every server frame back;
-  - each node's command storage as a job's rpc calls reach it
-    (`AgentServer::command_storage`), at the history generation the job
-    started in ([Mutation API and concurrency](../agent/command-state-history.md#mutation-api-and-concurrency));
   - the `demi agent` and `demi shell` command groups;
   - where a session's provider runtimes come from (`ProviderResolver`), the
     notice to the product that a live tree started or stopped working or was
@@ -684,15 +678,6 @@ Each crate implements the provider contract for one vendor family.
 Each plugin is a library the backend links ([Plugins](plugins.md)). It
 depends on `plugin-interface` and on contract crates, never on a backend crate
 or on another plugin.
-
-#### `plugin-todo`
-
-- **Owns:** the `demi todo` group (`list`, `add`, `update`, `done`), its `rpc`
-  handlers and the validation of the todo list it keeps in the invoking node's
-  command storage under `todos.json`
-  ([Command state history](../agent/command-state-history.md)).
-- **Public boundary:** its factory.
-- **Must not:** keep state outside command storage.
 
 #### `plugin-file`
 
@@ -1519,7 +1504,6 @@ agent-session -> conversation-socket-protocol, agent-store, agent-transcript, co
 agent-tools -> conversation-socket-protocol, agent-session, agent-store, agent-transcript, shared-types, provider-common, host-interface
 agent-server -> conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, shared-types, shared-gates, provider-common, host-interface
 plugin-interface -> command-declarations, shared-types, host-interface, web-api-protocol
-plugin-todo -> plugin-interface, host-interface
 plugin-file -> plugin-interface, command-declarations, command-package-file-protocol, host-interface
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
 plugin-expose -> plugin-interface, host-interface, shared-types, web-api-protocol
@@ -1546,7 +1530,7 @@ backend-plugins -> plugin-interface, command-declarations, shared-types, host-in
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-todo, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
