@@ -391,10 +391,53 @@ again, which the user's choice allows
 the output limit or the service tier as part of the cached prefix, so a change
 of either keeps the cache.
 
-### Context window
+### Context limit
 
-The selected model's context window sets the conversation's automatic
-compaction threshold ([Compaction](../agent/compaction.md#compaction)).
+The window Demi uses for a model is the model's context window, unless the
+user limited it. For example, Claude Opus on a user's Claude Code entry has a
+window of 1,000,000 tokens. The user sets its Context to 300K in the model
+menu of one conversation. From then on every conversation of that user that
+infers with Claude Opus on that entry compacts at 240,000 tokens instead of
+800,000, and its usage indicator counts against 300K. A conversation that
+switches to GPT-5.5 uses GPT-5.5's own setting, and another user of the same
+shared instance still has 1M.
+
+The limits a model offers depend on its window:
+
+| Model's context window | The menu's Context row offers |
+|---|---|
+| At most 500,000 tokens, or unknown | No row: the model's window is used |
+| Over 500,000 and under 1,000,000 | The full window, 300K and 200K |
+| 1,000,000 or more | The full window, 500K, 300K and 200K |
+
+- The full window is the default, and it is the absence of a limit: a model
+  the user never limited has no stored limit, and choosing the full window
+  removes the stored one. The menu names the full window by its size, such
+  as "1M", never "Default".
+- A limit belongs to the user and to one model of one provider entry, named
+  by the entry's id and the model's id. It is not part of a conversation's
+  model settings: it applies to every session of the user that infers with
+  that model, subagents included, and a subagent profile that names the model
+  follows it. The Context row says so beside its options.
+- A stored limit applies only while the model's window offers it. When the
+  catalog later reports a window that does not offer it, such as 400,000
+  tokens, the model's full window is used and the menu shows it selected.
+- The limit replaces the model's window wherever Demi uses the window for
+  itself: every compaction threshold computed from the window
+  ([When compaction runs](../agent/compaction.md#when-compaction-runs)), and
+  the usage indicator's percentage and total. It changes nothing a vendor
+  receives or enforces: the [request limits](#request-limits) still follow
+  the model's own window, and so does the check that a reported usage can
+  belong to one request ([Context estimate](../agent/compaction.md#context-estimate)).
+- A session reads the user's limit each time it checks the token threshold:
+  before a turn, after each response and before a model switch. A change
+  reaches running conversations from their next check, and starts no
+  compaction by itself.
+
+The user's limits are a [user preference](../product/web-api.md#user-preferences),
+which every page of the user receives. The Models & providers settings do not
+show them: the model menu is the one place to see and change a model's
+limit.
 
 ### Request limits
 
@@ -406,7 +449,7 @@ a model, and compaction keeps every request under them
 
 | Family | Body, as sent | Images per request |
 |---|---|---|
-| `anthropic`, `claude-code` | 32 MB | 100 for a model whose context window is at most 200,000 tokens, 600 otherwise |
+| `anthropic`, `claude-code` | 32 MB | 100 for a model whose own context window is at most 200,000 tokens, 600 otherwise |
 | `openai`, `codex` | 512 MB | 1,500 |
 | `google` | 20 MB, since media travel inline | 3,600 |
 | `grok-build` | Not documented | Not documented |

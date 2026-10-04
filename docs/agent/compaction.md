@@ -36,8 +36,11 @@ is in [Prompt cache](../providers/providers.md#prompt-cache).
 
 ### When compaction runs
 
-The token threshold is 80% of the model's context window, rounded down; a
-model that reports no context window has none. The size thresholds are 80% of
+The token threshold is 80% of the window Demi uses for the model, rounded
+down: its context window, or the limit the user set on it
+([Context limit](../providers/models.md#context-limit)). A model that reports
+no context window has none. For example, a model with a window of 1,000,000
+tokens compacts at 800,000, and at 240,000 once its user limited it to 300K. The size thresholds are 80% of
 each of the model's request limits
 ([Request limits](../providers/models.md#request-limits)), and a request
 reaches one when its size or its number of images
@@ -244,7 +247,9 @@ provider reported:
 3. An anchor larger than the context window of the model being checked is
    ignored. One request's usage cannot exceed the window, so such a value is a
    provider reporting something else, such as a turn's cumulative total, and
-   would distort the estimate.
+   would distort the estimate. This is the model's own window, not a limit
+   the user set: the vendor does not know the limit, so a request can be
+   larger.
 4. With an anchor, the estimate is the anchor plus the estimates of the blocks
    after its `response` block.
 5. Without one, the estimate is the sum of the estimates of the blocks from
@@ -333,6 +338,7 @@ a real model.
 | An empty summary, or a failed summary request | No boundary or marker |
 | A turn keeps hitting the threshold | The turn continues after at most three compactions; no pass summarizes only a previous summary |
 | A switch to a smaller window | Compaction runs first, with the previous model; a switch to a larger window compacts nothing |
+| The user limited the model's window | The history compacts at 80% of the limit; the same user's other conversations of that model do too, and conversations of another model keep their own threshold |
 | Estimates | `你好` estimates as 2 tokens; an emoji is never cut in half by the replay bound, and the truncation count is in scalar values |
 | A medium a request carries as text: its model does not read it, or it is over half the body limit | The estimate for that model weighs the text, not the medium |
 | Signed thinking of 20,000 characters | It is replayed whole |
