@@ -673,8 +673,8 @@ endpoint, with that one model and context window, and prints the entry beside
 Echo's. Naming only some of them stops the command before it builds anything,
 with the missing variable named. The key reaches the backend only through the
 web API, like Echo's. A developer keeps the four in the repository's ignored
-`.env` (`.env.example` lists them) and runs `bun run dev`, which loads `.env`
-and starts the command. For example, with Command Code's gateway:
+`.env` (`.env.example` lists them) and runs `bun run dev`, which starts the
+command with the variables of `.env` (`scripts/dev.ts`). For example, with Command Code's gateway:
 
 ```sh
 DEMI_DEV_PROVIDER_BASE_URL=https://api.commandcode.ai/provider/v1
