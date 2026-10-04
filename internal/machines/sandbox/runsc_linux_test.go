@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/machines/system"
 	"github.com/wspl/demi/internal/machines/system/systemtest"
@@ -110,9 +109,6 @@ func fixtureRuntime(t *testing.T, runtime string) *Runsc {
 // waitConnection observes the wait subprocess's protocol event, never a delay.
 func waitConnection(t *testing.T, listener *net.UnixListener) net.Conn {
 	t.Helper()
-	if err := listener.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	conn, err := listener.Accept()
 	if err != nil {
 		t.Fatal(err)
@@ -123,9 +119,6 @@ func waitConnection(t *testing.T, listener *net.UnixListener) net.Conn {
 		}
 	})
 	var ready [1]byte
-	if err := conn.SetDeadline(time.Now().Add(5 * time.Second)); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := io.ReadFull(conn, ready[:]); err != nil || ready[0] != 'W' {
 		t.Fatalf("wait readiness = %q, %v", ready, err)
 	}

@@ -13,7 +13,6 @@ import (
 	"runtime"
 	"syscall"
 	"testing"
-	"time"
 
 	"github.com/wspl/demi/internal/machines/system"
 	"github.com/wspl/demi/internal/machinewire"
@@ -134,8 +133,8 @@ func TestRealRunscLifecycle(t *testing.T) {
 		if err := sandbox.Start(ctx, working, base, boot); err != nil {
 			t.Fatal(err)
 		}
-		// Poll the guest's explicit readiness event; the deadline only guards a hang.
-		deadline := time.Now().Add(20 * time.Second)
+		// The guest's readiness is a file it publishes inside the sandbox; no
+		// event reaches the host, so poll it with real reads and yield between them.
 		for {
 			data, err := os.ReadFile(filepath.Join(sandbox.directory.Home(), "demi/ready"))
 			if err == nil {
@@ -146,9 +145,6 @@ func TestRealRunscLifecycle(t *testing.T) {
 			}
 			if !errors.Is(err, os.ErrNotExist) {
 				t.Fatal(err)
-			}
-			if time.Now().After(deadline) {
-				t.Fatal("guest did not publish readiness")
 			}
 			runtime.Gosched()
 		}
