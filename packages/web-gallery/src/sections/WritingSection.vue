@@ -99,6 +99,14 @@ const rules: readonly ElementRule[] = [
     source: { label: `${SYSTEM_SETTINGS}: Input Sources, Function Keys` },
   },
   {
+    kind: 'Feature name',
+    where: 'A plugin’s name, in settings and on its tabs, and the Rust manifest that declares it',
+    style: 'title',
+    right: ['File Browser', 'Host Expose', 'Conversation Browser'],
+    wrong: ['File browser'],
+    source: { label: 'Apple Style Guide: feature names, such as Check In and Stage Manager', href: STYLE_GUIDE_CAPITALIZATION },
+  },
+  {
     kind: 'Column heading',
     where: 'A table’s th, a list’s column names',
     style: 'title',
@@ -132,11 +140,19 @@ const rules: readonly ElementRule[] = [
   },
   {
     kind: 'Settings row label',
-    where: 'SettingsRow label',
+    where: 'SettingsRow label, without a colon',
     style: 'sentence',
     right: ['Pairing code', 'Your Cloud environment', 'Key repeat rate'],
-    wrong: ['Pairing Code'],
+    wrong: ['Pairing Code', 'Pairing code:'],
     source: { label: `${SYSTEM_SETTINGS}: Sidebar icon size, Key repeat rate` },
+  },
+  {
+    kind: 'Lead-in a control completes',
+    where: 'A group or row title its switches or menu finish, listed in SENTENCE_LEAD_INS',
+    style: 'sentence',
+    right: ['Notify me when', 'Click in the scroll bar to'],
+    wrong: ['Notify Me When'],
+    source: { label: `${SYSTEM_SETTINGS}: Click in the scroll bar to` },
   },
   {
     kind: 'Switch, checkbox or choice',
@@ -148,7 +164,7 @@ const rules: readonly ElementRule[] = [
   },
   {
     kind: 'Field label',
-    where: 'A form’s label element',
+    where: 'A form’s label element, without a colon',
     style: 'sentence',
     right: ['Project name', 'Full name'],
     wrong: ['Project Name'],
@@ -166,8 +182,8 @@ const rules: readonly ElementRule[] = [
     kind: 'Tooltip',
     where: 'Tooltip content, disabledReason, a title attribute',
     style: 'sentence',
-    right: ['Open in a browser tab', 'Add a DNS server address'],
-    wrong: ['Open in a Browser Tab'],
+    right: ['Open in a browser tab', 'Add a DNS server address', 'Index modified'],
+    wrong: ['Open in a Browser Tab', 'Index Modified'],
     source: { label: 'HIG: Offering help', href: `${HIG}/offering-help` },
   },
   {

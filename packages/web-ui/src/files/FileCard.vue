@@ -7,6 +7,7 @@ import FileIcon from './FileIcon.vue'
 import { downloadUrl } from './download'
 import { entryKind, formatBytes, formatModified } from './format'
 import type { FileDescription } from './types'
+import type { SentenceText } from '../ui/ui-text'
 
 /**
  * A file the view does not show: its kind, size and modification time, why
@@ -15,7 +16,7 @@ import type { FileDescription } from './types'
 const props = defineProps<{
   name: string
   description: FileDescription | null
-  note?: string | null
+  note?: SentenceText | null
   /** The file as an attachment; absent when it cannot be downloaded. */
   download?: string | null
 }>()

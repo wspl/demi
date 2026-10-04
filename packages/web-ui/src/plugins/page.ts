@@ -22,7 +22,7 @@ import type { SettingsNavGroup, SettingsNavItem } from '../settings/types'
 import type { SidebarEntry } from '../sidebar/types'
 import type { IntentName, IntentPayloads, IntentRequest } from './intents'
 import type { OpenUserStream } from './streams'
-import type { HeadlineText, TitleText } from '../ui/ui-text'
+import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
 
 /**
  * A plugin's page (`plugin-pages.md`): the object it declares with
@@ -37,7 +37,7 @@ export class PluginCallError extends Error {
   constructor(
     /** The plugin's snake_case reason, or the host's code when the plugin did not answer. */
     readonly reason: string,
-    message: string,
+    message: SentenceText,
   ) {
     super(message)
   }

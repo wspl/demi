@@ -1,3 +1,5 @@
+import type { TitleText } from '../ui/ui-text'
+
 /** The selected product appearance; gallery presets consume the same axes. */
 export const productAppearance = {
   tone: 'ink',
@@ -10,7 +12,7 @@ export const productAppearance = {
 export type ProductTone = 'ink' | 'warm'
 export const PRODUCT_TONES: readonly {
   id: ProductTone;
-  label: string
+  label: TitleText
 }[] = [
   { id: 'ink', label: 'Ink' },
   { id: 'warm', label: 'Warm' },

@@ -35,6 +35,7 @@ test('title style names each word to change, and the marks a title does not end 
   expect(words('Open...', 'title')).toEqual(['... → …'])
   expect(words('Save.', 'title')).toEqual(['. → '])
   expect(words('Switch to claude-sonnet', 'title')).toEqual([])
+  expect(words('Notify me when', 'title')).toEqual([])
 })
 
 test('a headline is a title as a fragment and a sentence as a sentence', () => {
@@ -48,6 +49,7 @@ test('sentence style capitalizes each sentence’s first word and names, and acc
   expect(words('Show scroll bars', 'sentence')).toEqual([])
   expect(words('Show Scroll Bars', 'sentence')).toEqual(['Scroll → scroll', 'Bars → bars'])
   expect(words('show scroll bars', 'sentence')).toEqual(['show → Show'])
+  expect(words('Pairing code:', 'sentence')).toEqual([': → '])
   expect(words('Sign in to Claude Code. Then pick a model.', 'sentence')).toEqual([])
   expect(words('Turn off Reduce Transparency?', 'sentence', ['Reduce Transparency'])).toEqual([])
   expect(words('Press Escape to close it, or Shift-click the M mark.', 'sentence')).toEqual([])

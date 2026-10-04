@@ -1,3 +1,4 @@
+import type { SentenceText } from '../ui/ui-text'
 
 /** Sidebar conversation list, or a session that is not reconnecting. */
 export type ListLoad = 'ready' | 'loading' | 'failed'
@@ -38,7 +39,7 @@ export function sessionPaneStatus(
 
 /** A session-level failure told at the tail of the transcript. */
 export interface SessionFailureNotice {
-  label: string
+  label: SentenceText
   /** Retry reopens the session; a refused request has nothing to reopen. */
   retry: boolean
 }
@@ -84,7 +85,7 @@ export function conversationPageKind(
 }
 
 export function sessionStatusCopy(kind: SessionStatusKind): {
-  label: string
+  label: SentenceText
   action?: 'retry' | 'create'
 } {
   if (kind === 'loading') {

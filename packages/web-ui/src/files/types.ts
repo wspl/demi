@@ -7,7 +7,7 @@
  * convention translates at its boundary.
  */
 import type { Component } from 'vue'
-import type { SentenceText } from '../ui/ui-text'
+import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /** One row of a directory listing. Size and time are shown when the source knows them. */
 export interface FileBrowserEntry {
@@ -33,7 +33,7 @@ export interface FileBrowserFailure {
 export class FileBrowserError extends Error {
   readonly kind: FileBrowserFailure['kind']
 
-  constructor(kind: FileBrowserFailure['kind'], message?: string) {
+  constructor(kind: FileBrowserFailure['kind'], message?: SentenceText) {
     super(message ?? kind)
     this.name = 'FileBrowserError'
     this.kind = kind
@@ -113,7 +113,7 @@ export interface FileBrowserPlace {
 
 /** Sidebar shortcuts under a caption, the way Windows groups Quick access and This PC. */
 export interface FileBrowserPlaceGroup {
-  label?: string
+  label?: TitleText
   places: FileBrowserPlace[]
 }
 

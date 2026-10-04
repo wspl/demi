@@ -12,6 +12,7 @@ import {
   themeModeSchema,
   type ThemeMode,
 } from '@demicodes/web-ui/theme/appTheme'
+import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
 const paradigmIdSchema = z.enum([
   'demi',
@@ -38,7 +39,7 @@ export const ACCENTS = PRODUCT_ACCENTS
 export interface Paradigm {
   id: ParadigmId
   name: string
-  summary: string
+  summary: SentenceText
   tone: ToneId
   density: DensityId
   radius: RadiusId

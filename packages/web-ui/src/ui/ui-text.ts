@@ -176,6 +176,14 @@ export const CODE_WORDS: readonly string[] = [
   'claude-sonnet',
 ]
 
+/**
+ * Titles that are lead-ins a control completes, as System Settings' "Click
+ * in the scroll bar to": sentence style wherever they stand.
+ */
+export const SENTENCE_LEAD_INS: readonly string[] = [
+  'Notify me when',
+]
+
 /** The stand-in for an expression inside a template string or a template's text. */
 export const PLACEHOLDER = '{}'
 
@@ -210,17 +218,14 @@ export function styleProblems(text: string, style: TextStyle, references: Iterab
   const problems: StyleProblem[] = []
   if (text.includes('...'))
     problems.push({ word: '...', want: '…' })
-  const titled = style === 'title' || (style === 'headline' && !endsAsSentence(text))
+  const titled = (style === 'title' && !SENTENCE_LEAD_INS.includes(text)) || (style === 'headline' && !endsAsSentence(text))
   // A title's own words are what it is checked for, so only a sentence takes references.
   const names = [...PROPER_NAMES, ...KEY_NAMES, ...CODE_WORDS]
   const tokens = tokenize(text, titled ? names : [...names, ...references])
-  if (!titled) {
-    problems.push(...sentenceProblems(tokens, style !== 'placeholder'))
-    return problems
-  }
-  problems.push(...titleProblems(tokens))
-  const ending = text.trim().match(/[.:]$/)?.[0]
-  if (style === 'title' && ending && !text.trim().endsWith('...'))
+  problems.push(...(titled ? titleProblems(tokens) : sentenceProblems(tokens, style !== 'placeholder')))
+  // No label ends with a colon; a title has no ending punctuation at all.
+  const ending = text.trim().match(style === 'title' ? /[.:]$/ : /:$/)?.[0]
+  if (ending && !text.trim().endsWith('...'))
     problems.push({ word: ending, want: '' })
   return problems
 }

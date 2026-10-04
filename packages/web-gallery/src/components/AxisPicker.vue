@@ -1,6 +1,8 @@
 <script setup lang="ts" generic="T extends string">
+import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
+
 defineProps<{
-  label: string
+  label: TitleText
   values: readonly T[]
   modelValue?: T
   names?: Partial<Record<T, string>>

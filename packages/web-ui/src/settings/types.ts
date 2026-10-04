@@ -53,8 +53,9 @@ export interface SettingsDevice {
 /** A plugin as the Plugins page lists it. */
 export interface SettingsPlugin {
   id: string
-  name: string
-  description: string
+  /** A feature's name, so title style: File Browser. */
+  name: TitleText
+  description: SentenceText
   enabled: boolean
 }
 
@@ -122,7 +123,7 @@ export interface SettingsProviderModel extends SettingsModelDraft {
 
 export interface SettingsQuotaWindow {
   id: string
-  label: string
+  label: SentenceText
   used: number
   max: number
   resets: string | null
@@ -272,7 +273,7 @@ export type ProviderLoginPhase =
       command: string
       /** Where to get the CLI when it is missing. */
       install: {
-        label: string
+        label: TitleText
         url: string
       }
       /** What a token starts with, so a paste can be checked before it is sent. */
@@ -287,7 +288,7 @@ export type ProviderLoginPhase =
     }
   | {
       kind: 'failed'
-      message: string
+      message: SentenceText
     }
 
 export type SettingsProviderOperation =
