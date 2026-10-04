@@ -287,10 +287,6 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             post(permissions::decide),
         )
         .route(
-            "/conversations/{id}/permissions/grants/{category}",
-            delete(permissions::revoke),
-        )
-        .route(
             "/conversations/{id}/plugins/{plugin}/calls/{method}",
             post(plugins::conversation_call),
         )

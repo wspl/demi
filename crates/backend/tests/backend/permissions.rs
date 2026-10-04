@@ -3,12 +3,11 @@
 //! once and raises a request the pages list; the user's Allow grants the
 //! category for the whole tree and tells the agent that asked, waking it,
 //! even after the user stopped its turn; a Deny tells it and remembers
-//! nothing; a newer command replaces an undecided request; a revocation
-//! makes the next command ask again; an archive withdraws the requests and
-//! keeps the grants; a Fork copies none; and a decision a restart cut off
-//! reaches the agent at the next start. The model is the scripted family of
-//! the subagent scenarios; the device is a real runner. No test calls a real
-//! model.
+//! nothing; a newer command replaces an undecided request; an archive
+//! withdraws the requests and keeps the grants; a Fork copies none; and a
+//! decision a restart cut off reaches the agent at the next start. The model
+//! is the scripted family of the subagent scenarios; the device is a real
+//! runner. No test calls a real model.
 
 use std::sync::Arc;
 
@@ -130,11 +129,17 @@ fn last_asked(scripts: &Scripts, id: &str) -> String {
         .expect("the root was asked")
 }
 
-fn granted(read: &ConversationPermissions) -> Vec<&str> {
-    read.grants
-        .iter()
-        .map(|grant| grant.category.id.as_str())
-        .collect()
+/// The categories the conversation `id` was granted, as storage holds them:
+/// no page lists them.
+fn granted(harness: &Harness, id: &str) -> Vec<String> {
+    harness
+        .control_database()
+        .prepare("SELECT category FROM permission_grants WHERE conversation_id = ?1 ORDER BY category")
+        .unwrap()
+        .query_map([id], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
 }
 
 // Several seconds: a real device runs the shell jobs of five turns, two of
@@ -172,7 +177,7 @@ async fn a_command_without_the_grant_asks_and_the_users_allow_grants_the_categor
     assert_eq!(request.agent, None);
     assert_eq!(request.category.id, "skills.manage");
     assert_eq!(request.category.action.as_deref(), Some("manage skills"));
-    assert!(asked.grants.is_empty());
+    assert!(granted(&harness, FIRST).is_empty());
     assert_eq!(summary(&backend, &master, FIRST).await.permission_requests, 1);
 
     // Allow: the idle root starts a turn whose input is the allowed message,
@@ -198,7 +203,7 @@ async fn a_command_without_the_grant_asks_and_the_users_allow_grants_the_categor
     assert_eq!(sources(&harness), 1);
     let read = permissions(&backend, &master, FIRST).await;
     assert!(read.requests.is_empty(), "{read:?}");
-    assert_eq!(granted(&read), ["skills.manage"]);
+    assert_eq!(granted(&harness, FIRST), ["skills.manage"]);
     assert_eq!(summary(&backend, &master, FIRST).await.permission_requests, 0);
 
     // The grant is the conversation's alone: another conversation on the
@@ -227,17 +232,16 @@ async fn a_command_without_the_grant_asks_and_the_users_allow_grants_the_categor
     assert!(last_asked(&scripts, SECOND).contains(REFUSED));
     let other = permissions(&backend, &master, SECOND).await;
     assert_eq!(other.requests.len(), 1, "{other:?}");
-    assert!(other.grants.is_empty());
+    assert!(granted(&harness, SECOND).is_empty());
     backend.close().await;
 }
 
-// Several seconds: a real device runs the shell jobs of seven turns.
+// Several seconds: a real device runs the shell jobs of four turns.
 #[tokio::test]
-async fn a_newer_command_replaces_the_request_a_deny_remembers_nothing_and_a_revocation_asks_again() {
+async fn a_newer_command_replaces_the_request_and_a_deny_remembers_nothing() {
     let scripts = Arc::new(Scripts::default());
-    // The harness holds the backend's data, which dropping it removes.
     let World {
-        harness: _harness,
+        harness,
         backend,
         master,
         mut socket,
@@ -276,7 +280,8 @@ async fn a_newer_command_replaces_the_request_a_deny_remembers_nothing_and_a_rev
         "{told}"
     );
     let read = permissions(&backend, &master, FIRST).await;
-    assert!(read.requests.is_empty() && read.grants.is_empty(), "{read:?}");
+    assert!(read.requests.is_empty(), "{read:?}");
+    assert!(granted(&harness, FIRST).is_empty());
     // A request decided once is decided: a second page's answer is 404.
     let again = decide(&backend, &master, FIRST, &newer, "allow").await;
     assert_eq!(again.status, StatusCode::NOT_FOUND);
@@ -285,40 +290,15 @@ async fn a_newer_command_replaces_the_request_a_deny_remembers_nothing_and_a_rev
         ErrorCode::PermissionRequestNotFound
     );
 
-    // The next attempt asks again; this time the user allows it.
+    // The next attempt asks again.
     scripts.root(
         FIRST,
         vec![shell("t3", "demi skills add acme/tools"), say("asked")],
     );
     socket.chat("m2", "Try again").await;
     assert!(last_asked(&scripts, FIRST).contains(REFUSED));
-    let request = the_request(&backend, &master, FIRST).await;
-    scripts.root(FIRST, vec![say("thanks")]);
-    let allowed = decide(&backend, &master, FIRST, &request, "allow").await;
-    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
-    socket.until_idle().await;
-    assert_eq!(
-        granted(&permissions(&backend, &master, FIRST).await),
-        ["skills.manage"]
-    );
-
-    // Revoked: the next command of the category asks again.
-    let revoked = backend
-        .delete(
-            &format!("/api/conversations/{FIRST}/permissions/grants/skills.manage"),
-            &master,
-        )
-        .await;
-    assert_eq!(revoked.status, StatusCode::NO_CONTENT);
-    scripts.root(
-        FIRST,
-        vec![shell("t4", "demi skills add acme/tools"), say("asked")],
-    );
-    socket.chat("m3", "Once more").await;
-    assert!(last_asked(&scripts, FIRST).contains(REFUSED));
     let read = permissions(&backend, &master, FIRST).await;
     assert_eq!(read.requests.len(), 1, "{read:?}");
-    assert!(read.grants.is_empty());
     backend.close().await;
 }
 
@@ -467,9 +447,8 @@ async fn an_allow_wakes_an_agent_whose_turn_the_user_stopped() {
 #[tokio::test]
 async fn an_archive_withdraws_the_requests_and_keeps_the_grants_and_a_fork_has_neither() {
     let scripts = Arc::new(Scripts::default());
-    // The harness holds the backend's data, which dropping it removes.
     let World {
-        harness: _harness,
+        harness,
         backend,
         master,
         mut socket,
@@ -534,10 +513,7 @@ async fn an_archive_withdraws_the_requests_and_keeps_the_grants_and_a_fork_has_n
     socket.until_idle().await;
     archive(true).await;
     archive(false).await;
-    assert_eq!(
-        granted(&permissions(&backend, &master, FIRST).await),
-        ["skills.manage"]
-    );
+    assert_eq!(granted(&harness, FIRST), ["skills.manage"]);
 
     // A Fork is a new conversation: no grant, no request.
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -564,7 +540,8 @@ async fn an_archive_withdraws_the_requests_and_keeps_the_grants_and_a_fork_has_n
         String::from_utf8_lossy(&forked.body)
     );
     let fork = permissions(&backend, &master, SECOND).await;
-    assert!(fork.requests.is_empty() && fork.grants.is_empty(), "{fork:?}");
+    assert!(fork.requests.is_empty(), "{fork:?}");
+    assert!(granted(&harness, SECOND).is_empty());
     backend.close().await;
 }
 

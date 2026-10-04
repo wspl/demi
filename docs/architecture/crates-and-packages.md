@@ -1077,12 +1077,12 @@ demi-backend (executable: configuration, composition)
   category and the conversation's grants; the requests a refused call raises,
   with their replacement, queue and withdrawal at archive; the decisions, the
   grants they record, their messages to the asking agent and the delivery of
-  the decided requests left at start; and revocation; and `PermissionShard`,
+  the decided requests left at start; and `PermissionShard`,
   what it needs of its user's shard: the control service, the user's change
   marks, the categories of the user's command set, and the admission of a
   decision's message into the conversation's tree, opening it when it is
   closed.
-- **Public boundary:** the check, the decision and revocation operations, the
+- **Public boundary:** the check, the decision operation, the
   reads the routes and the summaries make, all on `dyn PermissionShard`.
 - **Must not:** see `Shard`, know a plugin, reach a Host or an agent's
   session, or run a handler: it decides whether a call is dispatched, and
@@ -1400,7 +1400,7 @@ under `packages/`.
   tiptap editor a user message is written and shown in); the user Markdown
   dialect; sidebar layout and list interaction; the
   [permission](../agent/permissions.md#what-the-user-sees) card, the
-  needs-you mark, the decision's receipt row and the Permissions dialog;
+  needs-you mark and the decision's receipt row;
   workspace and remote-file
   selection; file previews and the file tree as primitives; the work panel
   frame; the settings surface as presentation over host-mapped models; the

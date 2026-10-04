@@ -132,8 +132,8 @@ pub struct ConversationSummary {
     /// § Conversation permissions).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permission_requests: u64,
-    /// Rises with each change of the conversation's permission requests or
-    /// grants since the backend started: a page reads them only when this is
+    /// Rises with each change of the conversation's permission requests
+    /// since the backend started: a page reads them only when this is
     /// higher than the revision it holds.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permissions_revision: u64,
