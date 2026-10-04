@@ -86,6 +86,17 @@ A plugin declares only what it uses: `plugin-file` declares its package and
 its commands and nothing else, `plugin-skills` declares no command, and
 `plugin-changes` declares only its identity and its page.
 
+**Name and description.** Settings show a plugin by its name and its
+description, so both speak to the user. A plugin with a feature the user sees
+is named after that feature as the user sees it, short, in title style: the
+work panel's File view comes from File Browser, the conversation header's
+exposes from Expose. A plugin that only gives the agent a `demi <group>`
+command group and shows nothing is named Demi *Group* Commands, such as Demi
+File Commands. The description is one full sentence, in sentence style, that
+says what the plugin does for the user and names its command when it has one,
+such as "Gives a service on one of your hosts a public URL for an hour, with
+`demi expose`." The gallery's Writing page has the capitalization rules.
+
 ### Commands
 
 A plugin's commands follow the [command contract](../execution/commands.md):
@@ -547,14 +558,14 @@ These are the plugins the composition root registers, in this order. Each
 row's contributions are all that plugin declares; what is not listed it does
 not use.
 
-| Id | Crate | Contributes | Page package | Design |
-| --- | --- | --- | --- | --- |
-| `file` | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
-| `browser` | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
-| `expose` | `plugin-expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
-| `skills` | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
-| `changes` | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
-| `file-browser` | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
+| Id | Name | Crate | Contributes | Page package | Design |
+| --- | --- | --- | --- | --- | --- |
+| `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
+| `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
+| `expose` | Expose | `plugin-expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
+| `skills` | Skills | `plugin-skills` | A context source; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
+| `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
+| `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 
 Besides the plugins, the components that carry them are:
 

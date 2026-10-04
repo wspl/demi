@@ -92,7 +92,7 @@ const rules: readonly ElementRule[] = [
     kind: 'Feature name',
     where: 'A plugin’s name, in settings and on its tabs, and the Rust manifest that declares it',
     style: 'title',
-    right: ['File Browser', 'Host Expose', 'Conversation Browser'],
+    right: ['File Browser', 'Expose', 'Demi File Commands'],
     wrong: ['File browser'],
     source: { label: 'Apple Style Guide: feature names, such as Check In and Stage Manager', href: STYLE_GUIDE_CAPITALIZATION },
   },

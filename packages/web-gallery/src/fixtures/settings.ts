@@ -706,10 +706,27 @@ export function createSettingsState() {
     selectedProviderId: null as string | null,
     providerDetailOpen: false,
     plugins: [
-      { id: 'file', name: 'File Commands', description: 'Reads and edits files on a host.', enabled: true },
-      { id: 'browser', name: 'Conversation Browser', description: 'A browser on a host the agent and you can drive.', enabled: true },
-      { id: 'expose', name: 'Host Expose', description: 'Shares a port on a host at a public address.', enabled: false },
-      { id: 'skills', name: 'Skills', description: 'Workflows the agent follows, from git repositories and your repository.', enabled: true },
+      { id: 'file', name: 'Demi File Commands', description: 'Reads, writes, edits and searches the conversation’s files with `demi file`.', enabled: true },
+      {
+        id: 'browser',
+        name: 'Browser',
+        description: 'A browser on the conversation’s host that the agent drives with `demi browser` and the user watches in the work panel.',
+        enabled: true,
+      },
+      { id: 'expose', name: 'Expose', description: 'Gives a service on one of your hosts a public URL for an hour, with `demi expose`.', enabled: false },
+      {
+        id: 'skills',
+        name: 'Skills',
+        description: 'Workflows the agent follows: skills from Git repositories you add, and those your repository carries.',
+        enabled: true,
+      },
+      {
+        id: 'changes',
+        name: 'Changes',
+        description: 'Shows the uncommitted changes in the conversation’s working directory, and what each of the agent’s commands changed, as diffs in the work panel.',
+        enabled: true,
+      },
+      { id: 'file-browser', name: 'File Browser', description: 'Opens the conversation’s files in the work panel to read them, with a tree of the working directory.', enabled: true },
     ] as SettingsPlugin[],
     subagents: createSubagentState(),
     servers: [
