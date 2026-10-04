@@ -104,7 +104,6 @@ fn model(accepted: Option<&[FileExtension]>) -> Model {
         id: "m".into(),
         name: "M".into(),
         context_window: 1,
-        input_limit: None,
         output_limit: None,
         thinking: Vec::new(),
         accepted_extensions: accepted.map(<[FileExtension]>::to_vec),

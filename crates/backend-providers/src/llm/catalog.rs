@@ -255,7 +255,6 @@ mod tests {
                 id: "gpt-5.5".into(),
                 name: "stale".into(),
                 context_window: 1000,
-                input_limit: None,
                 output_limit: Some(100),
                 thinking: Vec::new(),
                 accepted_extensions: Some(Vec::new()),

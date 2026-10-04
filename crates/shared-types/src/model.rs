@@ -81,10 +81,6 @@ pub struct Model {
     /// Tokens; zero when the catalog does not know it.
     #[garde(skip)]
     pub context_window: u32,
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<u32>")]
-    #[garde(skip)]
-    pub input_limit: Option<u32>,
     /// The most tokens one request may generate: a positive whole number, or
     /// null when no model-specific limit is known.
     #[serde(deserialize_with = "Option::deserialize")]

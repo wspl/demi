@@ -79,7 +79,6 @@ const model: ModelSelection = {
     name: 'Test Model',
     contextWindow: 1000,
     outputLimit: null,
-    inputLimit: null,
     thinking: [],
     acceptedExtensions: [],
   },
