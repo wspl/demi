@@ -128,6 +128,8 @@
     0 0 0 0.5px var(--line-overlay),
     rgba(0, 0, 0, 0.2) 0 2px 4px -1px,
     rgba(0, 0, 0, 0.25) 0 8px 16px -6px;
+  /* The part of a floating layer's edge drawn above its content (floating layers, below). */
+  --shadow-overlay-ring: none;
   --shadow-window:
     0 0 0 1px var(--line-overlay),
     0 10px 28px rgba(0, 0, 0, 0.32);
@@ -292,10 +294,14 @@ svg.lucide {
    surface's own count, 1 over the page, set by useLayerElevation
    (overlay/layerElevation.ts). A dialog counts as a layer, so a menu opened in it steps
    above the dialog's float cards, but keeps its surface-dialog fill: its scrim already
-   sets it apart from whatever is beneath, a dialog included. An edge is at most a subtle
-   hairline (light in dark mode, dark in light mode) and a soft drop that falls away
-   below, never a dark band around the surface (--shadow-overlay; --shadow-2xl for
-   dialogs).
+   sets it apart from whatever is beneath, a dialog included.
+   A layer's edge: in dark mode a 1px light ring at 12% inside the surface, which reads the
+   same over the page, a dialog or a menu because it sits on the layer's own fill; in light
+   mode a 0.5px dark hairline outside it; in both a soft drop that falls away below; never
+   a dark band around the surface. The inner ring (--shadow-overlay-ring) is drawn by
+   ::after above the content, so a rail, a card or a row scrolled under the edge cannot
+   cover it; the hairline and the drop are the box shadow (--shadow-overlay; --shadow-2xl
+   for dialogs, which carry overlay-dialog).
    Composer stays on surface-raised; menus must not. */
 .overlay-shell,
 .overlay-panel {
@@ -305,6 +311,37 @@ svg.lucide {
     white calc((var(--elevation, 1) - 1) * var(--elevation-step))
   );
   box-shadow: var(--shadow-overlay);
+}
+
+/* The ring is the top of the layer's own stacking context, so it sits over anything the
+   content stacks and nothing outside the layer. The layer must not scroll itself, or the
+   ring would scroll away: a scroller inside it carries the overflow. Position is a
+   component-layer default, so a utility or a floating position set inline still places
+   the layer. */
+@layer components {
+  .overlay-shell,
+  .overlay-panel,
+  .overlay-dialog {
+    position: relative;
+  }
+}
+
+.overlay-shell,
+.overlay-panel,
+.overlay-dialog {
+  isolation: isolate;
+}
+
+.overlay-shell::after,
+.overlay-panel::after,
+.overlay-dialog::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2147483647;
+  border-radius: inherit;
+  box-shadow: var(--shadow-overlay-ring);
+  pointer-events: none;
 }
 
 /* Large float on a page surface. One overlay line, modest drop.
