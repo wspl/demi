@@ -38,7 +38,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Users | `GET/POST /users`, `PATCH /users/:id`; role hierarchy restricts administration |
 | Page synchronization | `WS /sync` sends the product state, then each part of it that changes ([Page synchronization](#page-synchronization)) |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
-| Subagent profiles | `POST /profiles`, `PATCH /profiles/:id`, `DELETE /profiles/:id`; the list is part of the product state ([Subagent profiles](#subagent-profiles)) |
+| Subagents | `PUT /subagents { enabled }`; `POST /subagents/profiles`, `PATCH /subagents/profiles/:id`, `DELETE /subagents/profiles/:id`; the switch and the profiles are part of the product state ([Subagents](#subagents)) |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
@@ -532,11 +532,15 @@ concurrent changes to other fields. Preferences persist across restarts and are
 separate for every user in both instance modes. The web app reads and
 writes these overrides through its preference state adapter.
 
-## Subagent profiles
+## Subagents
 
-The caller's [subagent profiles](../agent/subagents.md#profiles) are part of
-the product state, as `profiles`, in name order. Each is
-`{ id, name, description, model, instructions, canSpawn }`:
+The caller's subagent settings, which the settings page's Subagent section
+shows, are part of the product state, as `subagents`:
+`{ enabled, profiles }`. `enabled` is the
+[Subagent switch](../agent/subagents.md#profiles), true for a user who never
+turned it off. `profiles` holds the caller's
+[subagent profiles](../agent/subagents.md#profiles), in name order, each
+`{ id, name, description, model, instructions, canSpawn, enabled }`:
 
 | Field | Value |
 |---|---|
@@ -545,14 +549,19 @@ the product state, as `profiles`, in name order. Each is
 | `model` | null for the parent's model, or model settings `{ providerId, modelId, thinkingEffort, serviceTierId }`, as a conversation's ([Sidebar mutations and read state](#sidebar-mutations-and-read-state)); `thinkingEffort` is always an effort the model lists or `disabled`, never null |
 | `instructions` | null for the parent's instructions, or the text that replaces them |
 | `canSpawn` | Whether the profile's children may spawn children of their own |
+| `enabled` | Whether agents may use the profile |
 
-`POST /api/profiles` takes `{ name, description, model, instructions,
-canSpawn }` and answers 201 with `{ profile }`. `PATCH /api/profiles/:id`
-takes any subset of those fields and answers `{ profile }`; `model` and
-`instructions` are whole values, and null returns either to the parent's.
-`DELETE /api/profiles/:id` answers 204. An id that names none of the caller's
-profiles answers 404 `profile_not_found`. The backend checks a body before it
-writes:
+`PUT /api/subagents { enabled }` turns subagents on or off for the caller
+and answers 204.
+
+`POST /api/subagents/profiles` takes `{ name, description, model,
+instructions, canSpawn }`, creates the profile enabled, and answers 201 with
+`{ profile }`. `PATCH /api/subagents/profiles/:id` takes any subset of those
+fields and `enabled`, and answers `{ profile }`; `model` and `instructions`
+are whole values, and null returns either to the parent's.
+`DELETE /api/subagents/profiles/:id` answers 204. An id that names none of
+the caller's profiles answers 404 `profile_not_found`. The backend checks a
+body before it writes:
 
 - A name that breaks the [name rule](../agent/subagents.md#profiles),
   `default` included, a description that is blank, longer than 500
@@ -565,13 +574,15 @@ writes:
   `setting_unavailable` for an effort or a tier the model does not offer. A
   body whose model names no effort gets the first effort the model lists
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+  Turning a profile on or off checks nothing else, so an unavailable profile
+  can be disabled and enabled as it is.
 
-Each change reaches every page of the user as the `profiles` message of the
-[synchronization channel](#page-synchronization), and the next spawn of
-every conversation, an open one included
-([Profiles](../agent/subagents.md#profiles)). A profile is the user's in both
-instance modes; on a shared instance its model names one of the master's
-entries, as every model a user picks does.
+Each change, to the switch or to a profile, reaches every page of the user as
+the `subagents` message of the [synchronization channel](#page-synchronization),
+and the next spawn of every conversation, an open one included
+([Profiles](../agent/subagents.md#profiles)). The settings are the user's in
+both instance modes; on a shared instance a profile's model names one of the
+master's entries, as every model a user picks does.
 
 ## Model configuration and provider inspection
 
@@ -910,7 +921,7 @@ later one is the current value of one part of it that changed:
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off |
-| `profiles` | `profiles`, the user's [subagent profiles](#subagent-profiles) in name order | A profile is created, changed or deleted |
+| `subagents` | `subagents`, the user's [Subagent switch and profiles](#subagents) | The switch is turned on or off; a profile is created, changed, enabled, disabled or deleted |
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
@@ -924,8 +935,8 @@ phase, done, total }`, where `name` and `version` are the artifact's, such as
 and `done` and `total` count bytes
 ([Installation progress](../execution/native-runtime.md#installation-progress))),
 the summaries of the active and then the
-archived conversations, the Cloud's state, `profiles`, the user's
-[subagent profiles](#subagent-profiles), `plugins`, the plugin list, and
+archived conversations, the Cloud's state, `subagents`, the user's
+[Subagent switch and profiles](#subagents), `plugins`, the plugin list, and
 `pluginStates`, the user state of each plugin the user has on that declares
 one, by plugin id, `publicUrl`,
 the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), and `webBuild`, the

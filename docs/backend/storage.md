@@ -31,7 +31,7 @@ conversation's host access; they are not conversation database content.
 
 | Store | Owns | Writer |
 |---|---|---|
-| `control.sqlite` | Accounts, auth sessions, preferences, subagent profiles, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories | The control service, on its database thread |
+| `control.sqlite` | Accounts, auth sessions, preferences, subagent settings, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, the records of commands' outputs | The shard of the user who owns the conversation |
 | User blob namespace | Uploaded bytes, transcript media, edit copies, commands' whole outputs and the files plugins keep, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
 
@@ -84,12 +84,16 @@ input, which the multi-worker control service also relies on
   context limit the user set on each model
   ([Context limit](../providers/models.md#context-limit)). A patch merges specified fields in one
   transaction so independent edits do not overwrite each other.
-- **Subagent profiles:** `subagent_profiles` stores each user's
+- **Subagents:** `user_subagents` stores the
+  [Subagent switch](../agent/subagents.md#profiles) of each user who turned
+  it off or on again: user and whether subagents are on. A user with no row
+  has them on. `subagent_profiles` stores each user's
   [subagent profiles](../agent/subagents.md#profiles), one per row: id, user,
   name, unique among the user's, description, the model settings as JSON or
   null for the parent's, the replacing instructions or null for the
-  parent's, and whether its children may spawn. A patch merges the fields it
-  names in one transaction, and checks the name's uniqueness in the same one.
+  parent's, whether its children may spawn, and whether it is enabled, which
+  a new row is. A patch merges the fields it names in one transaction, and
+  checks the name's uniqueness in the same one.
 - **Devices and workspaces:** `devices` stores ownership, kind, name and
   platform, the hash of the device's current token, and claim and last-seen
   times. The token hash is unique, so a runner's token finds its device

@@ -911,12 +911,12 @@ demi-backend (executable: configuration, composition)
 #### `backend-accounts`
 
 - **Owns:** accounts, password hashing, web sessions, login lockout and
-  email-change delivery, and each user's preferences and subagent profile
-  records with their name and text rules
+  email-change delivery, and each user's preferences and subagent settings,
+  the Subagent switch and the profile records with their name and text rules
   ([Authentication and ownership](../backend/backend.md#authentication-and-ownership),
   [User preferences](../product/web-api.md#user-preferences),
-  [Subagent profiles](../product/web-api.md#subagent-profiles)).
-- **Public boundary:** the account, session, preference and profile services. The key
+  [Subagents](../product/web-api.md#subagents)).
+- **Public boundary:** the account, session, preference and subagent settings services. The key
   that email codes are derived from is given to it; it does not derive keys.
 - **Must not:** know conversations, devices or providers.
 
@@ -1056,7 +1056,7 @@ demi-backend (executable: configuration, composition)
   of the machine manager's death events, socket adoption and the page
   socket; conversations as the agent sees them: agent-tree hosting
   with the agent server's dependencies composed from the plugin host, the
-  user's subagent profiles, the product's instructions and the execution
+  user's subagent settings, the product's instructions and the execution
   context source, the conversation socket, history and fork,
   summaries and titles, the providers a session resolves, with a child's
   model selection built from its profile and checked against the catalog,
