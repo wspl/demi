@@ -1,4 +1,4 @@
-package edge
+package edge_test
 
 import (
 	"context"
@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/wspl/demi/internal/backend/edge"
+
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/backend/usershard"
 )
@@ -17,8 +19,8 @@ import (
 // Real HTTP connections, no sleeps or external services. Two requests per case
 // protect the client's reuse decision; expected cost is under one second.
 func TestRefusedBodyAnnouncesWhetherConnectionCanBeReused(t *testing.T) {
-	state := AppState{Services: &usershard.Services{PublicURL: &runners.PublicURL{}}, Site: &Site{}}
-	e, err := Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), state, "")
+	state := edge.AppState{Services: &usershard.Services{PublicURL: &runners.PublicURL{}}, Site: &edge.Site{}}
+	e, err := edge.Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), state, "")
 	if err != nil {
 		t.Fatal(err)
 	}

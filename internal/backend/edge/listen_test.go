@@ -1,4 +1,4 @@
-package edge
+package edge_test
 
 import (
 	"context"
@@ -6,6 +6,8 @@ import (
 	"net/netip"
 	"path/filepath"
 	"testing"
+
+	"github.com/wspl/demi/internal/backend/edge"
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/runners"
@@ -22,14 +24,17 @@ func TestUnspecifiedIPv4ListensOnIPv4Only(t *testing.T) {
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
 	defer func() { _ = control.Close(context.Background()) }()
-	state := AppState{Services: &usershard.Services{Control: control, PublicURL: &runners.PublicURL{}}, Site: &Site{}}
-	edge, err := Start(t.Context(), netip.MustParseAddrPort("0.0.0.0:0"), state, "")
+	state := edge.AppState{
+		Services: &usershard.Services{Control: control, PublicURL: &runners.PublicURL{}},
+		Site:     &edge.Site{},
+	}
+	e, err := edge.Start(t.Context(), netip.MustParseAddrPort("0.0.0.0:0"), state, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = edge.Close(context.Background()) }()
-	port := edge.LocalAddr().Port()
+	defer func() { _ = e.Close(context.Background()) }()
+	port := e.LocalAddr().Port()
 	dialer := net.Dialer{}
 	ipv4, err := dialer.DialContext(
 		t.Context(),

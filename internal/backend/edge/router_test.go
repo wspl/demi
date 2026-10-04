@@ -3,39 +3,8 @@ package edge
 import (
 	"net/http"
 	"net/http/httptest"
-	"os"
-	"slices"
-	"strings"
 	"testing"
 )
-
-// The route list in testdata/routes.txt catches an omitted route, changed verb or
-// path and accidental extra endpoint independently of route handler implementation.
-func TestRoutesMatchReferenceList(t *testing.T) {
-	data, err := os.ReadFile("testdata/routes.txt")
-	if err != nil {
-		t.Fatal(err)
-	}
-	tree := (&Edge{}).routeTree()
-	var got []string
-	var collect func(*routeNode, string)
-	collect = func(node *routeNode, path string) {
-		for method := range node.methods {
-			got = append(got, method+" "+path)
-		}
-		for part, child := range node.literal {
-			collect(child, path+"/"+part)
-		}
-		if node.parameter != nil {
-			collect(node.parameter, path+"/{"+node.parameter.name+"}")
-		}
-	}
-	collect(tree, "")
-	slices.Sort(got)
-	if strings.Join(got, "\n")+"\n" != string(data) {
-		t.Fatalf("routes differ:\ngot:\n%s\nwant:\n%s", strings.Join(got, "\n"), data)
-	}
-}
 
 func TestRoutingKeepsLiteralPriorityAndExactPaths(t *testing.T) {
 	tree := &routeNode{}

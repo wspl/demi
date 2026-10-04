@@ -1,10 +1,12 @@
-package edge
+package edge_test
 
 import (
 	"context"
 	"errors"
 	"net/netip"
 	"testing"
+
+	"github.com/wspl/demi/internal/backend/edge"
 
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/database"
@@ -213,10 +215,10 @@ func pairedRunner(t *testing.T, services *usershard.Services) (database.DeviceRe
 
 func dialRunner(t *testing.T, services *usershard.Services, shards *usershard.Shards) *websocket.Conn {
 	t.Helper()
-	e, err := Start(
+	e, err := edge.Start(
 		t.Context(),
 		netip.MustParseAddrPort("127.0.0.1:0"),
-		AppState{Services: services, Shards: shards, Site: &Site{}},
+		edge.AppState{Services: services, Shards: shards, Site: &edge.Site{}},
 		"",
 	)
 	if err != nil {

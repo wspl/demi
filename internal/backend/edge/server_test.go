@@ -1,4 +1,4 @@
-package edge
+package edge_test
 
 import (
 	"bufio"
@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/wspl/demi/internal/backend/edge"
 
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/expose"
@@ -29,17 +31,20 @@ func TestRequestAfterShutdownAnswersBackendClosing(t *testing.T) {
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
 	defer func() { _ = control.Close(context.Background()) }()
-	state := AppState{Services: &usershard.Services{Control: control, PublicURL: &runners.PublicURL{}}, Site: &Site{}}
-	edge, err := Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), state, "")
+	state := edge.AppState{
+		Services: &usershard.Services{Control: control, PublicURL: &runners.PublicURL{}},
+		Site:     &edge.Site{},
+	}
+	e, err := edge.Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), state, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	// The operation reports IO failures; cleanup has no further recipient.
-	defer func() { _ = edge.Close(context.Background()) }()
+	defer func() { _ = e.Close(context.Background()) }()
 	transport := &http.Transport{MaxConnsPerHost: 1}
 	defer transport.CloseIdleConnections()
 	client := &http.Client{Transport: transport}
-	endpoint := "http://" + edge.LocalAddr().String() + "/api/setup"
+	endpoint := "http://" + e.LocalAddr().String() + "/api/setup"
 	answer, err := client.Get(endpoint)
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +57,7 @@ func TestRequestAfterShutdownAnswersBackendClosing(t *testing.T) {
 	if answer.StatusCode != 200 || string(body) != "{\"needed\":true}" {
 		t.Fatal(answer.StatusCode, string(body))
 	}
-	edge.StopAccepting()
+	e.StopAccepting()
 	answer, err = client.Get(endpoint)
 	if err != nil {
 		t.Fatal(err)
@@ -66,30 +71,30 @@ func TestRequestAfterShutdownAnswersBackendClosing(t *testing.T) {
 	if err != nil || answer.StatusCode != 503 || failure.Code != webapi.ErrorCodeBackendClosing {
 		t.Fatal(answer.StatusCode, string(body), err)
 	}
-	if conn, err := net.Dial("tcp", edge.LocalAddr().String()); err == nil {
+	if conn, err := net.Dial("tcp", e.LocalAddr().String()); err == nil {
 		_ = conn.Close()
 		t.Fatal("listener still accepts")
 	}
 }
 
 func TestRunnerProtocolRefusalUsesUpgradedListener(t *testing.T) {
-	state := AppState{
+	state := edge.AppState{
 		Services: &usershard.Services{
 			PublicURL: &runners.PublicURL{},
 			Runners:   usershard.RunnerTuning{HelloDeadline: time.Minute},
 		},
-		Site: &Site{},
+		Site: &edge.Site{},
 	}
-	edge, err := Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), state, "")
+	e, err := edge.Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), state, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := edge.Close(context.Background()); err != nil {
+		if err := e.Close(context.Background()); err != nil {
 			t.Error(err)
 		}
 	}()
-	socket, _, err := websocket.Dial(t.Context(), "ws://"+edge.LocalAddr().String()+"/api/runner", nil)
+	socket, _, err := websocket.Dial(t.Context(), "ws://"+e.LocalAddr().String()+"/api/runner", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -135,20 +140,20 @@ func TestExposeHostnameIsSelectedBeforeHTTPHeaderParsing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state := AppState{
+	state := edge.AppState{
 		Services: &usershard.Services{PublicURL: &runners.PublicURL{}, ExposeDomain: &domain},
-		Site:     &Site{},
+		Site:     &edge.Site{},
 	}
-	edge, err := Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), state, "")
+	e, err := edge.Start(t.Context(), netip.MustParseAddrPort("127.0.0.1:0"), state, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		if err := edge.Close(context.Background()); err != nil {
+		if err := e.Close(context.Background()); err != nil {
 			t.Error(err)
 		}
 	}()
-	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", edge.LocalAddr().String())
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", e.LocalAddr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
