@@ -29,7 +29,6 @@ pub fn model_of(provider: &str, model: &str) -> ModelSelection {
             id: model.to_owned(),
             name: model.to_owned(),
             context_window: 100_000,
-            input_limit: None,
             output_limit: None,
             thinking: Vec::new(),
             accepted_extensions: Some(Vec::new()),

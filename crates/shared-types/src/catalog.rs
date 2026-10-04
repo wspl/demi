@@ -128,7 +128,6 @@ impl ProviderModel {
                 id: self.id.clone(),
                 name: self.display_name.clone(),
                 context_window: self.context_window.unwrap_or(0),
-                input_limit: None,
                 output_limit: self.output_limit,
                 thinking: self.thinking_capabilities(),
                 accepted_extensions: self.accepted_file_extensions(),

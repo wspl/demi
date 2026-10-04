@@ -27,7 +27,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -63,7 +62,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -94,7 +92,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -125,7 +122,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -166,7 +162,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -197,7 +192,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -232,7 +226,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -267,7 +260,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -307,7 +299,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -337,7 +328,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -368,7 +358,6 @@
                   "id": "test-model",
                   "name": "test-model",
                   "contextWindow": 100000,
-                  "inputLimit": null,
                   "outputLimit": null,
                   "thinking": [],
                   "acceptedExtensions": []
@@ -400,7 +389,6 @@
             "id": "test-model",
             "name": "test-model",
             "contextWindow": 100000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -426,7 +414,6 @@
             "id": "test-model",
             "name": "test-model",
             "contextWindow": 100000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -447,7 +434,6 @@
             "id": "test-model",
             "name": "test-model",
             "contextWindow": 100000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -468,7 +454,6 @@
             "id": "test-model",
             "name": "test-model",
             "contextWindow": 100000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -498,7 +483,6 @@
             "id": "test-model",
             "name": "test-model",
             "contextWindow": 100000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -523,7 +507,6 @@
             "id": "test-model",
             "name": "test-model",
             "contextWindow": 100000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []
@@ -544,7 +527,6 @@
             "id": "test-model",
             "name": "test-model",
             "contextWindow": 100000,
-            "inputLimit": null,
             "outputLimit": null,
             "thinking": [],
             "acceptedExtensions": []

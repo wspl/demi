@@ -48,7 +48,6 @@ fn a_catalog_model_becomes_a_selection_with_its_facts_and_the_choices_made() {
                 id: "m-1".into(),
                 name: "Model One".into(),
                 context_window: 200_000,
-                input_limit: None,
                 output_limit: Some(8_000),
                 thinking: Vec::new(),
                 accepted_extensions: Some(ATTACHMENT_FILE_EXTENSIONS.to_vec()),
