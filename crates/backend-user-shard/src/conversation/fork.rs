@@ -272,7 +272,6 @@ mod tests {
             cwd: "/work".into(),
             model: test_model(),
             edits: Vec::new(),
-            held: false,
         };
         let initial = CheckpointUpdate {
             state,

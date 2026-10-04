@@ -243,7 +243,7 @@ message queue or in the list of pending steers the page shows.
 | Compacting | Kept outside the compacted prefix and consumed before inference resumes after compaction. |
 | Finalizing | Kept; pending input is checked again before the session commits idle or the child closes. |
 | Naturally idle | The available batch is consumed by one internal continuation, without a human user bubble. |
-| Stopped by the user | Kept without automatically resuming the stopped work; the user's next action can consume it. |
+| Stopped by the user | Written into the stopped turn before its marker when it was waiting at the Stop; one admitted after the Stop is delivered as to a naturally idle recipient ([Stop](runtime.md#stop)). |
 | Archived | Explicit sends are refused; a completion receipt stays durable at its owning supervisor until it can be delivered. |
 
 Messages do not cancel an executing tool or restart the current turn. A
@@ -732,8 +732,8 @@ The root's interrupted turn is its client's to resume: the root records the
 interruption, and the web app offers Resume
 ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
 The root's queued messages run, and its pending agent input and due wakeups
-wake it only when its last turn was not interrupted and its checkpoint does
-not hold them after a Stop ([Stop](runtime.md#stop)).
+wake it only when its last turn was not interrupted
+([Dispose and restore](runtime.md#dispose-and-restore)).
 
 **Archive.** A closed child is archived: its rows stay, marked with the closed
 phase. `demi agent list` shows archived children, and restore skips them.
@@ -964,7 +964,8 @@ Agent messages:
 2. Several messages admitted before one boundary enter through one
    continuation, in order, with distinct IDs and no repeated acknowledgements.
 3. Idle delivery wakes the recipient once; a race between finalization and
-   admission loses no message; a late receipt does not undo a user's stop.
+   admission loses no message; a receipt that arrives after the user's Stop
+   wakes the recipient.
 4. Tool execution continues uninterrupted, and compaction preserves pending
    agent messages without exposing human pending-steer controls.
 5. A restart after the child closes, after the parent admits the receipt, or

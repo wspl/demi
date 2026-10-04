@@ -538,6 +538,9 @@ impl AgentSession {
             );
         }
         let interrupted = state.phase != SessionPhase::Idle;
+        // A root restored once from its interrupted turn saved its
+        // interruption record, which keeps the hold across a later restore.
+        let held = interrupted || transcript.ends_with_interruption();
         let mut wakeups = Wakeups::restored(state.wakeups);
         // A wakeup whose action the process died in starts its wait now.
         wakeups.arm(deps.clock.now());
@@ -551,7 +554,7 @@ impl AgentSession {
             inputs: InputQueue::restored(state.agent_inputs),
             wakeups,
             edits: state.edits,
-            held: interrupted || state.held,
+            held,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
         };
