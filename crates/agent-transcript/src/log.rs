@@ -15,7 +15,7 @@ use demi_shared_types::{
 use serde_json::Value;
 
 use super::{
-    INTERRUPTED_CODE, PatchBatch,
+    PatchBatch, is_interruption,
     journal::{DirtyRows, Journal},
 };
 use crate::IdSource;
@@ -291,10 +291,7 @@ impl TranscriptLog {
 
     /// Whether the last block already says why its turn is unfinished.
     pub fn ends_with_interruption(&self) -> bool {
-        matches!(
-            self.blocks.last(),
-            Some(Block::Error(error)) if error.code.as_deref() == Some(INTERRUPTED_CODE)
-        )
+        self.blocks.last().is_some_and(is_interruption)
     }
 
     /// Opens a reasoning block with `text`, as a provider's thinking start

@@ -73,10 +73,10 @@ pub(crate) struct SessionCore {
     /// ends.
     pub(super) editing: Option<EditInFlight>,
     pub(super) activity: Activity,
-    /// Waiting input and due wakeups wait for the user's next action: the
-    /// user stopped an action that wrote nothing, or the session is a
-    /// restored root whose turn the process died in, and the node has not
-    /// acted since. The checkpoint keeps it.
+    /// Waiting input and due wakeups open no continuation until the node's
+    /// next action: the session is a restored root whose last turn was
+    /// interrupted, or a closing child. A restore reads it from the
+    /// checkpoint again, so it is not saved.
     pub(super) held: bool,
     /// Dispose started: every admission is refused.
     pub(super) disposing: bool,
@@ -474,10 +474,7 @@ impl SessionCore {
             }
         };
         let cancel = TurnCancel::new();
-        if self.held {
-            self.held = false;
-            self.mark_state_changed();
-        }
+        self.held = false;
         let unwritten_media = match &kind {
             ActionKind::Send { content } => media::content_references(content).cloned().collect(),
             _ => Vec::new(),
@@ -499,23 +496,15 @@ impl SessionCore {
     }
 
     /// Whether waiting input would open a continuation of its own: a fired
-    /// wakeup, or agent messages unless the user stopped the last turn. A
-    /// held session waits for the user.
+    /// wakeup or agent messages, unless the session is held.
     fn wants_continuation(&self) -> bool {
-        if self.held {
-            return false;
-        }
-        let stopped = matches!(self.transcript.blocks().last(), Some(Block::Abort(_)));
-        self.inputs.has_fired_wakeup() || (self.inputs.has_agent_input() && !stopped)
+        !self.held && (self.inputs.has_fired_wakeup() || self.inputs.has_agent_input())
     }
 
-    /// Keeps waiting input and due wakeups for the user's next action; the
-    /// checkpoint keeps the hold.
+    /// Keeps waiting input and due wakeups from opening a continuation until
+    /// the node's next action.
     pub(super) fn hold(&mut self) {
-        if !self.held {
-            self.held = true;
-            self.mark_state_changed();
-        }
+        self.held = true;
     }
 
     /// Opens a continuation when waiting input wants one and nothing runs or
@@ -666,24 +655,24 @@ impl SessionCore {
         !self.disposing && (running || !self.pending.is_empty() || !self.wakeups.is_empty())
     }
 
-    /// A stopped action records the stop: it writes the human steers still
-    /// pending and, for the user's Stop, the wakeups that fired, then
-    /// completes running calls as aborted and appends the stopped marker, or
-    /// the interruption record when the session is shutting down. A Stop of
-    /// an action that wrote nothing, with what the stop wrote counted,
-    /// appends no marker: it began no turn, and the input still waiting
-    /// waits for the user's next action, as after a marker
-    /// (`failures-and-recovery.md` § The unfinished turn).
+    /// A stopped action records the stop: for the user's Stop, it writes
+    /// all the input waiting for its next boundary, and for a shutdown the
+    /// human steers alone; then it completes running calls as aborted and
+    /// appends the stopped marker, or the interruption record when the
+    /// session is shutting down. A Stop of an action that wrote nothing,
+    /// with what the stop wrote counted, appends no marker: it began no turn
+    /// (`failures-and-recovery.md` § The unfinished turn). The Stop holds
+    /// nothing afterwards (`runtime.md` § Stop).
     pub(super) fn record_stop(&mut self, reason: CancelReason) {
         let take = match reason {
-            CancelReason::Stop => Take::AllButAgentMessages,
+            CancelReason::Stop => Take::Everything,
             CancelReason::Shutdown => Take::Steers,
         };
         self.write_inputs(take);
         self.abort_executing_calls();
         match reason {
             CancelReason::Stop if self.action_began() => self.transcript.push_abort(&self.model),
-            CancelReason::Stop => self.hold(),
+            CancelReason::Stop => {}
             CancelReason::Shutdown => self.append_interruption(),
         }
         self.commit();
@@ -1390,7 +1379,6 @@ impl SessionCore {
             cwd: self.cwd.clone(),
             model: self.model.clone(),
             edits: self.edits.clone(),
-            held: self.held,
         }
     }
 
