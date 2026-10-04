@@ -22,18 +22,17 @@ html[data-theme="dark"][data-shadow="hairline"] {
   --th-shadow-sm: 0 0 0 0.5px rgba(255, 255, 255, 0.08);
   --th-shadow-md: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 0.5px 1px 1px rgba(0, 0, 0, 0.3);
   --th-shadow-lg: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 1px 2px rgba(0, 0, 0, 0.28);
-  /* A floating layer's edge: a light hairline on a dark one, so it parts from a fill
-     close to its own, then a drop deep enough to read over another layer. */
+  /* A floating layer's edge: only a light hairline, then a drop pulled in by a negative
+     spread so it falls below the surface and never rings it in black. The lighter fill
+     by elevation, not the edge, parts a layer from the one under it. */
   --th-shadow-2xl:
-    0 0 0 0.5px rgba(255, 255, 255, 0.14),
-    0 0 0 1.5px rgba(0, 0, 0, 0.5),
-    0 16px 48px rgba(0, 0, 0, 0.5);
+    0 0 0 0.5px rgba(255, 255, 255, 0.12),
+    0 24px 48px -12px rgba(0, 0, 0, 0.5);
   --shadow-float: 0 0 0 0.5px rgba(255, 255, 255, 0.1), 0 8px 20px rgba(0, 0, 0, 0.18);
   --shadow-overlay:
-    0 0 0 0.5px rgba(255, 255, 255, 0.16),
-    0 0 0 1.5px rgba(0, 0, 0, 0.5),
-    0 2px 6px rgba(0, 0, 0, 0.3),
-    0 10px 28px rgba(0, 0, 0, 0.4);
+    0 0 0 0.5px rgba(255, 255, 255, 0.12),
+    0 4px 12px -2px rgba(0, 0, 0, 0.24),
+    0 12px 32px -6px rgba(0, 0, 0, 0.36);
   --shadow-btn: 0 0 0 0.5px rgba(255, 255, 255, 0.12);
   --shadow-btn-hover: 0 0 0 0.5px rgba(255, 255, 255, 0.18);
 }
@@ -42,13 +41,14 @@ html[data-theme="light"][data-shadow="hairline"] {
   --th-shadow-sm: 0 0 0 0.5px rgba(0, 0, 0, 0.08);
   --th-shadow-md: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 0.5px 1px rgba(0, 0, 0, 0.04);
   --th-shadow-lg: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 2px 8px rgba(0, 0, 0, 0.04);
-  /* Light layers share one white fill, so the hairline and the drop part them. */
-  --th-shadow-2xl: 0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 16px 40px rgba(0, 0, 0, 0.12);
+  /* Light layers share one white fill, so a faint dark hairline and a drop that falls
+     below the surface part them. */
+  --th-shadow-2xl: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 24px 48px -12px rgba(0, 0, 0, 0.16);
   --shadow-float: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 16px rgba(0, 0, 0, 0.04);
   --shadow-overlay:
-    0 0 0 0.5px rgba(0, 0, 0, 0.14),
-    0 2px 6px rgba(0, 0, 0, 0.06),
-    0 10px 28px rgba(0, 0, 0, 0.12);
+    0 0 0 0.5px rgba(0, 0, 0, 0.1),
+    0 4px 12px -2px rgba(0, 0, 0, 0.08),
+    0 12px 32px -6px rgba(0, 0, 0, 0.12);
   --shadow-btn: 0 0 0 0.5px rgba(0, 0, 0, 0.12);
   --shadow-btn-hover: 0 0 0 0.5px rgba(0, 0, 0, 0.18);
 }

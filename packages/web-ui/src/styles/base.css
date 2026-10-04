@@ -291,8 +291,10 @@ svg.lucide {
    surface's own count, 1 over the page, set by useLayerElevation
    (overlay/layerElevation.ts). A dialog counts as a layer, so a menu opened in it steps
    above the dialog's float cards, but keeps its surface-dialog fill: its scrim already
-   sets it apart from whatever is beneath, a dialog included. An edge is a light hairline
-   over a dark one, then a drop (--shadow-overlay; --shadow-2xl for dialogs).
+   sets it apart from whatever is beneath, a dialog included. An edge is at most a subtle
+   hairline (light in dark mode, dark in light mode) and a soft drop that falls away
+   below, never a dark band around the surface (--shadow-overlay; --shadow-2xl for
+   dialogs).
    Composer stays on surface-raised; menus must not. */
 .overlay-shell,
 .overlay-panel {
