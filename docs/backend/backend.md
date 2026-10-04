@@ -522,7 +522,7 @@ flags.
 | `DEMI_OBJECT_STORE_CONFIG` | Puts the object store in an S3 bucket. Optional: the data directory holds it otherwise. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_EXPOSE_DOMAIN` | The domain of expose hostnames. Optional: without it, exposes are unavailable. | [Host expose](../execution/expose.md#deployment) |
-| `DEMI_WEB_DIRECTORY` | A built web app directory to serve beside the API. Optional. | [Web API](../product/web-api.md#serving-the-web-app-build) |
+| `DEMI_WEB_DIRECTORY` | A built web app directory to serve beside the API, with the `build.json` its build writes. Optional. | [Web API](../product/web-api.md#serving-the-web-app-build) |
 | `DEMI_RUNNER_RELEASE_DIR` | The runner releases the installer routes serve. Optional: without it, those routes answer 503. | [Builds and releases](../delivery/builds-and-releases.md) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
 | `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |

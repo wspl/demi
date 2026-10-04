@@ -16,7 +16,7 @@ use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
 use demi_backend_database::StorageError;
-use demi_backend_http::{AppState, Edge, Site};
+use demi_backend_http::{AppState, Edge, Site, WebBuildError, web_build};
 use demi_backend_user_shard::conversation::{rearm_wakeups, recover_forks};
 use demi_backend_user_shard::lifecycle::retention;
 use demi_backend_user_shard::services::{
@@ -68,6 +68,8 @@ pub enum StartError {
     /// not be finished.
     #[error("the Clouds cannot be recovered: {0}")]
     Cloud(String),
+    #[error(transparent)]
+    WebBuild(#[from] WebBuildError),
 }
 
 /// A shutdown step that failed; the steps after it ran all the same.
@@ -160,8 +162,14 @@ impl Backend {
             vault: secret.vault_key(),
             email_codes: secret.email_code_key(),
         };
+        let web_build = config
+            .web_directory
+            .as_deref()
+            .map(web_build)
+            .transpose()?;
         let settings = ServiceSettings {
             mode: config.mode,
+            web_build,
             mail: config.account_mail,
             runners: config.runners,
             conversations: config.conversations,

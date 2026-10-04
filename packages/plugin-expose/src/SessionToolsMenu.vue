@@ -25,7 +25,7 @@ const props = defineProps<{
   /** Soonest expiry first, as the snapshot orders them. */
   exposes: ExposeMenuEntry[]
   /** Expose ids with a renew or remove request in flight. */
-  pendingIds?: string[]
+  pendingIds?: readonly string[]
 }>()
 const emit = defineEmits<{
   /** The host opens the URL; the product uses a work panel `page` tab. */

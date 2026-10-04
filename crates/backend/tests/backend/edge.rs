@@ -141,6 +141,7 @@ async fn the_web_app_build_is_served_with_deep_navigation_while_api_misses_stay_
     let harness = Harness::new().with_web(&[
         ("index.html", "<html>fixture page</html>"),
         ("main.js", "export const fixture = true"),
+        ("build.json", r#"{ "build": "b7f3" }"#),
     ]);
     let (backend, master) = harness.start_set_up().await;
     let page = |path: &'static str| backend.send(Method::GET, path, None, None);
@@ -186,6 +187,10 @@ async fn the_web_app_build_is_served_with_deep_navigation_while_api_misses_stay_
         api_miss.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::NotFound)
     );
+    // Every page learns which build the backend serves, so a page of
+    // another build can tell it is out of date.
+    let state = backend.sync(&master).await.snapshot().await;
+    assert_eq!(state.web_build.as_deref(), Some("b7f3"));
     backend.close().await;
 }
 
