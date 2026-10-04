@@ -491,29 +491,30 @@ unknown profile "explorer"; the user's profiles are explore, reviewer. Run `demi
 With no profile, the answer says that the user has none and that omitting
 `--profile` inherits the parent.
 
-**A profile whose model is gone.** At spawn, the backend builds the child's
-model selection from the profile's model settings and the entry's current
-catalog, as it builds a conversation's on a model switch
-([Request parameters](../providers/models.md#request-parameters)). A provider
-entry that is gone or no longer in the user's scope, or a model its catalog
-no longer lists, fails the spawn before any child is created, with a message
-that names the profile and what is missing, for example:
+**An unavailable profile.** At spawn, the backend builds the child's model
+selection from the profile's model settings and the entry's current catalog,
+as it builds a conversation's on a model switch
+([Request parameters](../providers/models.md#request-parameters)). A profile
+is unavailable while any part of its model settings is missing: its provider
+entry is gone or no longer in the user's scope, its catalog no longer lists
+the model, or the model no longer offers the profile's effort or service
+tier. Spawning with an unavailable profile fails before any child is
+created, with a message that names the profile and what is missing, for
+example:
 
 ```text
-profile "explore" cannot run: model "claude-haiku-4-5" is not in the catalog of provider "Work Anthropic"; choose another model for the profile in settings
+profile "explore" is unavailable: model "claude-haiku-4-5" no longer offers the effort "minimal"; choose another effort for the profile in settings
 ```
 
-Nothing falls back to the parent's model. An effort or a service tier that
-the model no longer offers does not fail the spawn, since the model itself
-can still run: the effort becomes the first effort the model lists, the rule
-every model settings value follows, and the tier becomes the vendor's default
-tier. The profile keeps its saved value until the user changes it.
+Nothing falls back: not to the parent's model, and not to another effort or
+tier of the profile's model. The profile stays unavailable until the user
+changes it in settings. `demi agent profiles` lists an unavailable profile
+with what is missing, so the model can tell the user instead of trying it.
 
-The settings page shows a profile whose entry or model is gone as needing a
-model, and one whose effort or tier is no longer offered with that part
-marked as no longer offered. It reads both from the catalog the page already
-holds for the model menu
-([In the web app](../providers/models.md#in-the-web-app)), so the marks are
+The settings page shows an unavailable profile as unavailable, with the part
+that is missing, until the user fixes it. It reads that from the catalog the
+page already holds for the model menu
+([In the web app](../providers/models.md#in-the-web-app)), so the mark is
 derived on the page and never stored.
 
 **Spawn restriction.** A profile that forbids spawning removes `spawn`,
@@ -530,9 +531,11 @@ runtime, made for the child's model selection
 
 The model reads the profiles when it runs `demi agent profiles`, which the
 agent server answers at call time from the user's current profiles: each
-profile's name and description, in name order, or a line saying that the
-user has none and that children inherit. `--json` returns
-`{ profiles: [{ name, description }] }`. It shows neither the model nor the
+profile's name and description, in name order, with what is missing for an
+unavailable one, or a line saying that the user has none and that children
+inherit. `--json` returns
+`{ profiles: [{ name, description, unavailable }] }`, where `unavailable` is
+null or the message a spawn would fail with. It shows neither the model nor the
 prompt of a profile; the description says what the user wants the model to
 know. Like `list` and `show`, it is a read that every node's group has,
 spawn-restricted or not.
@@ -945,9 +948,9 @@ The tree and its commands:
 7. An inherited prompt and a replaced prompt reach the child as
    [Child context](#child-context) describes; an unknown profile is refused
    with the user's current names; a profile whose provider entry or model is
-   gone fails the spawn with the profile's name and what is missing, and
-   creates no child; one whose effort or tier is no longer offered spawns
-   with the model's first listed effort or the vendor's default tier.
+   gone, or whose effort or tier the model no longer offers, fails the spawn
+   with the profile's name and what is missing, creates no child, and is
+   listed by `demi agent profiles` as unavailable.
 8. A profile's spawn restriction removes `spawn`, `abort`, and `resume`,
    keeps communication and reads, and survives archive, reopen, and resume;
    the inherit profile's children may spawn.
@@ -992,6 +995,6 @@ Product:
 2. With no profile configured, children inherit, the model sees the spawn
    prompt field's help, and `demi agent profiles` says that the user has none.
 3. The settings page creates, edits and deletes profiles, refuses a reserved
-   or taken name, shows a profile whose model is gone as needing a model and
-   an effort or tier that is no longer offered as such; the product and the
-   gallery show the same section.
+   or taken name, and shows a profile whose entry, model, effort or tier is
+   gone as unavailable with the missing part; the product and the gallery
+   show the same section.
