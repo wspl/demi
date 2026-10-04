@@ -4,10 +4,10 @@ The web app is a shell, and plugins fill it. The shell holds what every
 conversation needs: the application frame, the sidebar, the transcript and the
 composer, the settings dialog with its core sections, and the frame of the
 work panel. Every other surface is a plugin's **page**: the conversation
-browser's tabs, the expose menu, the Skills settings, the Change view and the
-File view. A page is written only against the **plugin SDK**,
-`@demicodes/plugin-sdk`, so the shell knows no plugin and a plugin knows no
-part of the shell beyond the SDK.
+browser's tabs, the expose menu, the Skills settings and their sidebar entry,
+the Change view and the File view. A page is written only against the
+**plugin SDK**, `@demicodes/plugin-sdk`, so the shell knows no plugin and a
+plugin knows no part of the shell beyond the SDK.
 
 This document owns the page side of a plugin: how a page is declared, what it
 can fill, what the shell gives it, how its data reaches it, and how it is
@@ -107,6 +107,7 @@ what it contributes:
 | --- | --- | --- |
 | `plugin` | Its plugin's id, imported from the generated module | — |
 | `settings` | A section of the settings dialog: its entry in a group of the rail, and its page | `skills` |
+| `settings.sidebar` | An entry in the sidebar's top group that opens the settings dialog on the section | `skills` |
 | `headerTool` | A component the conversation header shows; it shows nothing while it has nothing to show | `expose` |
 | `kinds` | The [kinds](#work-panel-kinds) of tab it shows in the work panel | `browser`, `page`, `change`, `file` |
 | `panel` | What runs for a conversation while its panel is open with the plugin on, such as binding the tabs the agent opened ([Panel sessions](#panel-sessions)) | `browser` |
@@ -116,6 +117,15 @@ declares what it fills, not what it does at a given moment. A field fills its
 slot only while the user has the plugin on, in the order the backend registers
 its plugins. These are the slots there are; a slot joins the SDK when a
 feature needs it, not before.
+
+A sidebar entry is a way into a settings section, not a surface of its own,
+so a page declares it on its section, as `sidebar: true`, and the entry shows
+the section's icon and label. A page without a section has no entry, and the
+sidebar and the rail never name one section two ways. The top group shows the
+shell's New, then the entries in registration order, then the shell's
+Archived; clicking an entry opens the settings dialog on its section, as
+Archived opens its own. For example, with `skills` on the group reads New,
+Skills, Archived, and with it off, New, Archived.
 
 A slot's component receives as props only what that slot is about: a header
 tool its `conversation`; a kind's content its `conversation`, its page's

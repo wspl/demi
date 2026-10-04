@@ -11,7 +11,7 @@ import {
   Sparkles
 } from '@lucide/vue'
 import { IN_DEVELOPMENT } from '../ui/disabled'
-import type { SettingsNavGroup, SettingsTab } from './types'
+import type { SettingsNavGroup } from './types'
 
 const deferred = { disabled: true, disabledReason: IN_DEVELOPMENT } as const
 
@@ -134,14 +134,3 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
     ],
   },
 ]
-
-/** Whether a rail section can be opened. Deferred pages stay listed and disabled. */
-export function isSettingsSectionEnabled(
-  id: SettingsTab,
-  sections: SettingsNavGroup[] = SETTINGS_SECTIONS
-): boolean {
-  return sections.flatMap((group) => group.items).some(
-    (item) => item.id === id && !item.disabled
-  )
-}
-
