@@ -17,7 +17,7 @@ import (
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
@@ -33,7 +33,7 @@ func (a *application) dev(ctx context.Context, o devOptions) (err error) {
 	if err := os.MkdirAll(programs, 0o755); err != nil {
 		return err
 	}
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		return err
 	}

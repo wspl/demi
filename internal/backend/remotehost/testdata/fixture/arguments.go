@@ -1,7 +1,7 @@
 // Package fixture declares the native and callback test boundaries.
 package fixture
 
-import "github.com/wspl/demi/internal/commandproto"
+import "github.com/wspl/demi/internal/cmdproto"
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 //go:generate go run github.com/wspl/demi/tools/contractgen -ts -ts-dir zod .
@@ -51,9 +51,9 @@ type WhereArgs struct {
 // +demi:root
 type WhereReport struct {
 	// +demi:nullable
-	Label   *string              `json:"label"`
-	Context commandproto.Context `json:"context"`
-	CWD     string               `json:"cwd"`
+	Label   *string          `json:"label"`
+	Context cmdproto.Context `json:"context"`
+	CWD     string           `json:"cwd"`
 	// +demi:nullable
 	Value *string `json:"value"`
 }

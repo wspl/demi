@@ -19,11 +19,11 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/programtest"
-	"github.com/wspl/demi/internal/runner/commandpackages"
-	"github.com/wspl/demi/internal/runner/commandpackages/commandpackagestest"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
+	"github.com/wspl/demi/internal/runner/cmdpkgs/cmdpkgstest"
 	"github.com/wspl/demi/internal/runner/host"
 	"github.com/wspl/demi/internal/runner/jobs/jobstest"
 	"github.com/wspl/demi/internal/runner/process"
@@ -361,7 +361,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		return nil
 	})
 
-	registry, err := commandpackages.NewServiceRegistry(
+	registry, err := cmdpkgs.NewServiceRegistry(
 		ctx,
 		filepath.Join(root, "cache"),
 		"",
@@ -381,23 +381,23 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}
-	descriptor := commandproto.PackageDescriptor{
+	descriptor := cmdproto.PackageDescriptor{
 		ID:              "fixture",
 		Version:         "1.0.0",
 		ProtocolVersion: 1,
-		Operations:      (&commandpackagestest.Fixture{}).Operations(),
-		Targets: map[string]commandproto.PackageArtifact{
+		Operations:      (&cmdpkgstest.Fixture{}).Operations(),
+		Targets: map[string]cmdproto.PackageArtifact{
 			string(target): {SHA256: fmt.Sprintf("%x", sha256.Sum256(bytes)), Size: uint64(len(bytes))},
 		},
-		Resources: map[string]commandproto.PackageResource{},
+		Resources: map[string]cmdproto.PackageResource{},
 	}
 	exhaustDescriptors(ctx, t, "native service start", func() error {
 		resident, err := registry.
-			Acquire(ctx, descriptor, localFixtureArtifact(native), commandpackagestest.NoNumbers{})
+			Acquire(ctx, descriptor, localFixtureArtifact(native), cmdpkgstest.NoNumbers{})
 		if err != nil {
 			return err
 		}
@@ -464,7 +464,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 		completion, err := process.Forward(
 			ctx,
 			dispatch.Server.Endpoint(),
-			commandproto.LocalInvocation{
+			cmdproto.LocalInvocation{
 				Operation:    process.Raw,
 				InvocationID: "local",
 				Args:         args,
@@ -585,7 +585,7 @@ func TestRunningOutOfOpenFilesWaitsInsteadOfFailing(t *testing.T) {
 			cancelled.Cancel()
 			<-joined
 		}()
-		before := commandsdk.DescriptorPauses()
+		before := cmdsdk.DescriptorPauses()
 		cancelled.Input() <- process.Input{Bytes: []byte("go\n")}
 		waitDescriptorPause(ctx, t, before, joined)
 		cancelled.Cancel()
@@ -621,7 +621,7 @@ func releaseDescriptors(held []int) {
 
 func waitDescriptorPause(ctx context.Context, t *testing.T, before uint64, done <-chan error) {
 	t.Helper()
-	for commandsdk.DescriptorPauses() == before {
+	for cmdsdk.DescriptorPauses() == before {
 		select {
 		case err := <-done:
 			t.Fatalf("operation ended instead of waiting for a descriptor: %v", err)
@@ -637,7 +637,7 @@ func exhaustDescriptors(ctx context.Context, t *testing.T, name string, operatio
 	t.Helper()
 	t.Log(name)
 	held := fillDescriptors(t)
-	before := commandsdk.DescriptorPauses()
+	before := cmdsdk.DescriptorPauses()
 	done := make(chan error, 1)
 	go func() {
 		defer close(done)
@@ -714,9 +714,9 @@ type localFixtureArtifact string
 
 func (p localFixtureArtifact) Resolve(
 	context.Context,
-	commandproto.PackageArtifact,
-) (commandpackages.ArtifactSource, error) {
-	return commandpackages.ArtifactSource{Path: string(p)}, nil
+	cmdproto.PackageArtifact,
+) (cmdpkgs.ArtifactSource, error) {
+	return cmdpkgs.ArtifactSource{Path: string(p)}, nil
 }
 
 type discardCommandOutput struct{}

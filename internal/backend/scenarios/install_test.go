@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/programtest"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -28,7 +28,7 @@ func publishHostRelease(t *testing.T, directory, program, name string) string {
 		t.Fatal(err)
 	}
 	release := fmt.Sprintf("%x", sha256.Sum256([]byte(name)))
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,9 +39,9 @@ func publishHostRelease(t *testing.T, directory, program, name string) string {
 	if err := os.Symlink(program, executable); err != nil {
 		t.Fatal(err)
 	}
-	targets := make(map[string]commandproto.PackageArtifact)
-	for _, target := range commandproto.Targets {
-		targets[target] = commandproto.PackageArtifact{
+	targets := make(map[string]cmdproto.PackageArtifact)
+	for _, target := range cmdproto.Targets {
+		targets[target] = cmdproto.PackageArtifact{
 			SHA256: fmt.Sprintf("%x", sha256.Sum256(data)),
 			Size:   uint64(len(data)),
 		}
@@ -50,7 +50,7 @@ func publishHostRelease(t *testing.T, directory, program, name string) string {
 		runnerproto.Release{
 			Release:         release,
 			Wire:            runnerproto.Version,
-			CommandProtocol: commandproto.Version,
+			CommandProtocol: cmdproto.Version,
 			Targets:         targets,
 		},
 	)
@@ -86,7 +86,7 @@ func TestInstallerWithoutReleasesAndArtifactAllowlist(t *testing.T) {
 	if script.Status != 503 || string(script.Body) != "Runner releases are not configured on this backend.\n" {
 		t.Fatalf("installer: %d %s", script.Status, script.Body)
 	}
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -305,7 +305,7 @@ func TestInstallerSeparatesBackendsReusesReleaseAndUpgradesOwnRunner(t *testing.
 	if output, stderr, err := installs.install(a, "", ""); err != nil {
 		t.Fatalf("upgrade: %v: %s\n%s", err, output, stderr)
 	}
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}

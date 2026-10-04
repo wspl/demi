@@ -3,8 +3,8 @@ package jobs
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -13,13 +13,13 @@ type jobArtifacts struct{ contexts *Contexts }
 
 func (r *jobArtifacts) Resolve(
 	ctx context.Context,
-	artifact commandproto.PackageArtifact,
-) (commandpackages.ArtifactSource, error) {
+	artifact cmdproto.PackageArtifact,
+) (cmdpkgs.ArtifactSource, error) {
 	for {
 		execution, ok := r.contexts.Carrying(artifact.SHA256)
 		if !ok {
-			return commandpackages.ArtifactSource{}, &commandpackages.RuntimeError{
-				Kind:   commandpackages.LocationFailure,
+			return cmdpkgs.ArtifactSource{}, &cmdpkgs.RuntimeError{
+				Kind:   cmdpkgs.LocationFailure,
 				Detail: "no live job authorizes this artifact",
 			}
 		}
@@ -41,15 +41,15 @@ func (r *jobArtifacts) Resolve(
 		cancel()
 		<-done
 		if ctx.Err() != nil {
-			return commandpackages.ArtifactSource{}, ctx.Err()
+			return cmdpkgs.ArtifactSource{}, ctx.Err()
 		}
 		if execution.lifetime.Err() != nil {
 			continue
 		}
 		if err != nil {
-			return commandpackages.ArtifactSource{}, err
+			return cmdpkgs.ArtifactSource{}, err
 		}
-		return commandpackages.SourceFromLocation(location)
+		return cmdpkgs.SourceFromLocation(location)
 	}
 }
 
@@ -61,11 +61,11 @@ type streamArtifacts struct {
 
 func (r *streamArtifacts) Resolve(
 	ctx context.Context,
-	artifact commandproto.PackageArtifact,
-) (commandpackages.ArtifactSource, error) {
+	artifact cmdproto.PackageArtifact,
+) (cmdpkgs.ArtifactSource, error) {
 	location, err := r.connection.Locate(ctx, &runnerproto.StreamArtifactOwner{StreamID: r.stream}, artifact.SHA256)
 	if err != nil {
-		return commandpackages.ArtifactSource{}, err
+		return cmdpkgs.ArtifactSource{}, err
 	}
-	return commandpackages.SourceFromLocation(location)
+	return cmdpkgs.SourceFromLocation(location)
 }

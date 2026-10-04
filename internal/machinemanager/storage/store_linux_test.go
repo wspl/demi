@@ -11,15 +11,15 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/machinemanager/storage"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // generationState supplies a small valid paired generation for publication tests.
-func generationState(t *testing.T, name string) machinemanagerproto.MachineImageState {
+func generationState(t *testing.T, name string) machineproto.MachineImageState {
 	t.Helper()
-	id, err := machinemanagerproto.ParseGenerationID(name)
+	id, err := machineproto.ParseGenerationID(name)
 	requireStorage(t, err)
-	return machinemanagerproto.MachineImageState{
+	return machineproto.MachineImageState{
 		Generation:  id,
 		BaseVersion: "base",
 		SystemBytes: 1024,
@@ -67,7 +67,7 @@ func TestPublicationKeepsCommittedPairAndTwoGenerations(t *testing.T) {
 		t.Fatal(got)
 	}
 	committed := store.Images("device", "first")
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		data, err := os.ReadFile(committed.ForVolume(volume))
 		requireStorage(t, err)
 		if string(data) != string(volume) {
@@ -101,7 +101,7 @@ func TestPublicationLinksSources(t *testing.T) {
 	requireStorage(t, os.WriteFile(sources.Home, []byte("home"), 0o600))
 	requireStorage(t, store.Publish(ctx, "device", generationState(t, "first"), sources))
 	committed := store.Images("device", "first")
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		source, err := os.Stat(sources.ForVolume(volume))
 		requireStorage(t, err)
 		image, err := os.Stat(committed.ForVolume(volume))

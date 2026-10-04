@@ -27,7 +27,7 @@ Its runner release must name the embedded runner executable, and each command
 package release must have its artifact for the image's target embedded under
 that artifact's content-addressed path. The SHA-256 of the exact manifest file
 bytes is `baseVersion`; one hash names one immutable build. The manifest's type
-is defined once, in `internal/machinemanagerproto`: the packaging command
+is defined once, in `internal/machineproto`: the packaging command
 validates a manifest with it before publishing, and the manager validates a
 release with it before importing.
 

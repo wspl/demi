@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/go-cmp/cmp"
 	"github.com/wspl/demi/internal/backend/providerhost"
-	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeproto"
 )
 
 func TestNewestReleaseUsesPointerManifestAndCache(t *testing.T) {

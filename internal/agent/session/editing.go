@@ -3,7 +3,7 @@ package session
 import (
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/transcript"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/types"
 )
@@ -70,7 +70,7 @@ type acceptance struct{ result *editResult }
 // EditDigest returns the SHA-256 of the request's RFC 8785 canonical JSON,
 // before its uploads are resolved. Invalid constructed requests return an error.
 func EditDigest(request conversationproto.EditRequest) (string, error) {
-	return commandproto.CanonicalDigest(request)
+	return cmdproto.CanonicalDigest(request)
 }
 
 // ForkSeed prepares an idle root checkpoint through completed text target,

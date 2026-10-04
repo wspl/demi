@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/backend/pluginhost"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/plugin"
@@ -71,10 +71,10 @@ func TestUserChoicesCommandsAndInstances(t *testing.T) {
 		"host",
 		"Product.",
 		host.Leaf(
-			commanddecl.Leaf[commanddecl.NativeOperation]{
+			cmddecl.Leaf[cmddecl.NativeOperation]{
 				Name:    "list",
 				Summary: "List.",
-				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+				Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 			},
 			host.RPCHandlerFunc(
 				func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
@@ -89,7 +89,7 @@ func TestUserChoicesCommandsAndInstances(t *testing.T) {
 	}
 	var roots []string
 	for _, root := range set.Commands.Declarations() {
-		roots = append(roots, commanddecl.Name(root))
+		roots = append(roots, cmddecl.Name(root))
 	}
 	if !reflect.DeepEqual(roots, []string{"demi", "lint"}) {
 		t.Fatal(roots)
@@ -218,7 +218,7 @@ func TestPageContextTopicsAndStreamLifecycle(t *testing.T) {
 	m.Streams = []plugin.Stream{
 		{
 			Name:      "live",
-			Operation: commanddecl.NativeOperation{Package: "page", Operation: "live"},
+			Operation: cmddecl.NativeOperation{Package: "page", Operation: "live"},
 			Sends:     m.Page.User.Schema,
 			Receives:  m.Page.User.Schema,
 		},
@@ -526,7 +526,7 @@ func TestCommandErrorsPreserveClassificationAndCause(t *testing.T) {
 
 func TestPageParametersMustBeAnObjectAndContextReplyMustMatch(t *testing.T) {
 	m := manifest(t, "schema")
-	schema, err := commanddecl.NewSchema([]byte(`{}`))
+	schema, err := cmddecl.NewSchema([]byte(`{}`))
 	if err != nil {
 		t.Fatal(err)
 	}

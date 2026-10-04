@@ -5,20 +5,20 @@ import (
 	"encoding/json"
 	"sync"
 
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Service records calls and delegates their replies to a test script.
 // Script must be safe for simultaneous calls and must join any work it starts.
 type Service struct {
 	// Script supplies the test reply after a call is recorded.
-	Script func(context.Context, machinemanagerproto.Call) (json.RawMessage, error)
+	Script func(context.Context, machineproto.Call) (json.RawMessage, error)
 	mu     sync.Mutex
-	calls  []machinemanagerproto.Call
+	calls  []machineproto.Call
 }
 
 // Handle records the call before invoking Script; a nil Script returns null.
-func (s *Service) Handle(ctx context.Context, call machinemanagerproto.Call) (json.RawMessage, error) {
+func (s *Service) Handle(ctx context.Context, call machineproto.Call) (json.RawMessage, error) {
 	s.mu.Lock()
 	s.calls = append(s.calls, call)
 	s.mu.Unlock()
@@ -29,8 +29,8 @@ func (s *Service) Handle(ctx context.Context, call machinemanagerproto.Call) (js
 }
 
 // Calls returns a snapshot of the calls received.
-func (s *Service) Calls() []machinemanagerproto.Call {
+func (s *Service) Calls() []machineproto.Call {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]machinemanagerproto.Call(nil), s.calls...)
+	return append([]machineproto.Call(nil), s.calls...)
 }

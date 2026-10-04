@@ -8,7 +8,7 @@ import (
 	"testing/synctest"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -281,12 +281,12 @@ func TestConnectedStreamRetainsActivityWithoutFilesAndEnds(t *testing.T) {
 
 func testServiceBinding() ServiceBinding {
 	return ServiceBinding{
-		Package: commandproto.PackageDescriptor{
+		Package: cmdproto.PackageDescriptor{
 			ID:              "test.service",
 			Version:         "1",
 			ProtocolVersion: 1,
 			Operations:      []string{"view"},
-			Targets:         map[string]commandproto.PackageArtifact{},
+			Targets:         map[string]cmdproto.PackageArtifact{},
 		},
 		Operation: "view",
 	}

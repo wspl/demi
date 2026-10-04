@@ -19,8 +19,8 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/types"
@@ -84,7 +84,7 @@ func TestDevSeededAccountEchoAndShutdown(t *testing.T) {
 			t.Error(err)
 		}
 	})
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}

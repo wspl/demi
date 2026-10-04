@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wspl/demi/internal/commandpackage/file"
+	"github.com/wspl/demi/internal/cmdpkg/file"
 )
 
 func main() {

@@ -7,7 +7,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/idlewatch"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -97,7 +97,7 @@ func maintenanceRound(ctx context.Context, s Shard, m *machine) {
 		_, err := Call(
 			context.WithoutCancel(ctx),
 			s.CloudServices().Machines,
-			machinemanagerproto.CheckpointParams{DeviceID: string(m.device.ID)},
+			machineproto.CheckpointParams{DeviceID: string(m.device.ID)},
 		)
 		if err != nil {
 			slog.Warn("the Cloud's checkpoint failed", "device", m.device.ID, "error", err)

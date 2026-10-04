@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -54,11 +54,11 @@ func TestManifestVerification(t *testing.T) {
 
 // declarations unpins the fixture through declare's typed trees rather than
 // declaring another copy of a manifest node's wire shape.
-func declarations(t *testing.T, manifest runnerproto.Manifest) []commanddecl.Node[commanddecl.NativeOperation] {
+func declarations(t *testing.T, manifest runnerproto.Manifest) []cmddecl.Node[cmddecl.NativeOperation] {
 	t.Helper()
-	var roots []commanddecl.Node[commanddecl.NativeOperation]
+	var roots []cmddecl.Node[cmddecl.NativeOperation]
 	for _, root := range manifest.Roots {
-		node, err := commanddecl.DecodeManifestNode(root.Tree)
+		node, err := cmddecl.DecodeManifestNode(root.Tree)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,20 +67,20 @@ func declarations(t *testing.T, manifest runnerproto.Manifest) []commanddecl.Nod
 	return roots
 }
 
-func unpin(node commanddecl.Node[commanddecl.Binding]) commanddecl.Node[commanddecl.NativeOperation] {
+func unpin(node cmddecl.Node[cmddecl.Binding]) cmddecl.Node[cmddecl.NativeOperation] {
 	switch node := node.(type) {
-	case *commanddecl.Group[commanddecl.Binding]:
-		children := make([]commanddecl.Node[commanddecl.NativeOperation], 0, len(node.Subcommands))
+	case *cmddecl.Group[cmddecl.Binding]:
+		children := make([]cmddecl.Node[cmddecl.NativeOperation], 0, len(node.Subcommands))
 		for _, child := range node.Subcommands {
 			children = append(children, unpin(child))
 		}
-		return &commanddecl.Group[commanddecl.NativeOperation]{
+		return &cmddecl.Group[cmddecl.NativeOperation]{
 			Name:        node.Name,
 			Summary:     node.Summary,
 			Subcommands: children,
 		}
-	case *commanddecl.Leaf[commanddecl.Binding]:
-		leaf := &commanddecl.Leaf[commanddecl.NativeOperation]{
+	case *cmddecl.Leaf[cmddecl.Binding]:
+		leaf := &cmddecl.Leaf[cmddecl.NativeOperation]{
 			Name:          node.Name,
 			Summary:       node.Summary,
 			SuccessOutput: node.SuccessOutput,
@@ -93,11 +93,11 @@ func unpin(node commanddecl.Node[commanddecl.Binding]) commanddecl.Node[commandd
 			Output:        node.Output,
 		}
 		if binding, native := node.Binding(); native {
-			leaf.Kind = &commanddecl.Native[commanddecl.NativeOperation]{
-				Binding: commanddecl.NativeOperation{Package: binding.Package, Operation: binding.Operation},
+			leaf.Kind = &cmddecl.Native[cmddecl.NativeOperation]{
+				Binding: cmddecl.NativeOperation{Package: binding.Package, Operation: binding.Operation},
 			}
 		} else {
-			leaf.Kind = &commanddecl.RPC[commanddecl.NativeOperation]{}
+			leaf.Kind = &cmddecl.RPC[cmddecl.NativeOperation]{}
 		}
 		return leaf
 	}
@@ -110,7 +110,7 @@ func TestManifestBuild(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	packages := make([]commandproto.PackageDescriptor, 0, len(recorded.Packages))
+	packages := make([]cmdproto.PackageDescriptor, 0, len(recorded.Packages))
 	for _, descriptor := range recorded.Packages {
 		packages = append(packages, descriptor)
 	}
@@ -137,21 +137,21 @@ func TestManifestBuild(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatal("built manifest differs from fixture")
 	}
-	native := func(pkg, op string) commanddecl.Node[commanddecl.NativeOperation] {
-		return &commanddecl.Leaf[commanddecl.NativeOperation]{
+	native := func(pkg, op string) cmddecl.Node[cmddecl.NativeOperation] {
+		return &cmddecl.Leaf[cmddecl.NativeOperation]{
 			Name:    "native",
 			Summary: "Native",
-			Kind: &commanddecl.Native[commanddecl.NativeOperation]{
-				Binding: commanddecl.NativeOperation{Package: pkg, Operation: op},
+			Kind: &cmddecl.Native[cmddecl.NativeOperation]{
+				Binding: cmddecl.NativeOperation{Package: pkg, Operation: op},
 			},
 		}
 	}
-	rpc := &commanddecl.Leaf[commanddecl.NativeOperation]{
+	rpc := &cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:    "rpc",
 		Summary: "Rpc",
-		Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}
-	contradictory, err := commanddecl.DecodeDeclaration(
+	contradictory, err := cmddecl.DecodeDeclaration(
 		[]byte(
 			`{"name":"note","summary":"Note","kind":"rpc","input":{"type":"object",` +
 				`"properties":{"text":{"type":"string"}}},"positionals":["text"],"stdinField":"text"}`,
@@ -162,13 +162,13 @@ func TestManifestBuild(t *testing.T) {
 	}
 	for _, tc := range []struct {
 		name     string
-		roots    []commanddecl.Node[commanddecl.NativeOperation]
-		packages []commandproto.PackageDescriptor
+		roots    []cmddecl.Node[cmddecl.NativeOperation]
+		packages []cmdproto.PackageDescriptor
 		reason   string
 	}{
 		{
 			"missing package",
-			[]commanddecl.Node[commanddecl.NativeOperation]{
+			[]cmddecl.Node[cmddecl.NativeOperation]{
 				native("demicodes.other", "file.read"),
 			},
 			packages,
@@ -176,22 +176,22 @@ func TestManifestBuild(t *testing.T) {
 		},
 		{
 			"missing operation",
-			[]commanddecl.Node[commanddecl.NativeOperation]{
+			[]cmddecl.Node[cmddecl.NativeOperation]{
 				native("demicodes.fixture", "file.gone"),
 			},
 			packages,
 			"no operation",
 		},
-		{"duplicate root", []commanddecl.Node[commanddecl.NativeOperation]{rpc, rpc}, nil, "duplicate root"},
+		{"duplicate root", []cmddecl.Node[cmddecl.NativeOperation]{rpc, rpc}, nil, "duplicate root"},
 		{
 			"duplicate package",
 			nil,
-			append(append([]commandproto.PackageDescriptor{}, packages...), packages...),
+			append(append([]cmdproto.PackageDescriptor{}, packages...), packages...),
 			"duplicate command package",
 		},
 		{
 			"contradictory input",
-			[]commanddecl.Node[commanddecl.NativeOperation]{
+			[]cmddecl.Node[cmddecl.NativeOperation]{
 				contradictory,
 			},
 			nil,
@@ -208,12 +208,12 @@ func TestManifestBuild(t *testing.T) {
 	first := "working"
 	second := "still working"
 	rpc.RunningHint = &first
-	a, err := runnerproto.BuildManifest([]commanddecl.Node[commanddecl.NativeOperation]{rpc}, packages)
+	a, err := runnerproto.BuildManifest([]cmddecl.Node[cmddecl.NativeOperation]{rpc}, packages)
 	if err != nil {
 		t.Fatal(err)
 	}
 	rpc.RunningHint = &second
-	b, err := runnerproto.BuildManifest([]commanddecl.Node[commanddecl.NativeOperation]{rpc}, packages)
+	b, err := runnerproto.BuildManifest([]cmddecl.Node[cmddecl.NativeOperation]{rpc}, packages)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +221,7 @@ func TestManifestBuild(t *testing.T) {
 		t.Fatal("hash excludes running hint")
 	}
 	packages[0].Version = "next"
-	c, err := runnerproto.BuildManifest([]commanddecl.Node[commanddecl.NativeOperation]{rpc}, packages)
+	c, err := runnerproto.BuildManifest([]cmddecl.Node[cmddecl.NativeOperation]{rpc}, packages)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -239,11 +239,11 @@ func TestManifestBindingAndRootRefusals(t *testing.T) {
 	for _, field := range []string{"package", "operation", "descriptorHash"} {
 		t.Run(field, func(t *testing.T) {
 			root := original.Roots["fixture"]
-			tree, err := commanddecl.DecodeManifestNode(root.Tree)
+			tree, err := cmddecl.DecodeManifestNode(root.Tree)
 			if err != nil {
 				t.Fatal(err)
 			}
-			binding := &tree.Leaves()[0].Kind.(*commanddecl.Native[commanddecl.Binding]).Binding
+			binding := &tree.Leaves()[0].Kind.(*cmddecl.Native[cmddecl.Binding]).Binding
 			switch field {
 			case "package":
 				binding.Package = "demicodes.other"
@@ -258,7 +258,7 @@ func TestManifestBindingAndRootRefusals(t *testing.T) {
 			}
 			changed := original
 			changed.Roots = map[string]runnerproto.Root{"fixture": {Tree: raw}}
-			changed.Hash, err = commandproto.CanonicalDigest(
+			changed.Hash, err = cmdproto.CanonicalDigest(
 				map[string]any{"roots": changed.Roots, "packages": changed.Packages},
 			)
 			if err != nil {

@@ -3,24 +3,24 @@ package remotehost
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // ArtifactResolver locates a package executable while the requesting work lives.
 type ArtifactResolver interface {
-	Resolve(context.Context, commandproto.PackageArtifact, string) (commandproto.ArtifactLocation, error)
+	Resolve(context.Context, cmdproto.PackageArtifact, string) (cmdproto.ArtifactLocation, error)
 }
 
 // CommandCatalog binds commands to package descriptors and executable locations.
 type CommandCatalog struct {
-	packages []commandproto.PackageDescriptor
+	packages []cmdproto.PackageDescriptor
 	resolver ArtifactResolver
 }
 
 // NewCommandCatalog validates descriptors and requires unique package IDs.
-func NewCommandCatalog(packages []commandproto.PackageDescriptor, resolver ArtifactResolver) (*CommandCatalog, error) {
+func NewCommandCatalog(packages []cmdproto.PackageDescriptor, resolver ArtifactResolver) (*CommandCatalog, error) {
 	manifest, err := runnerproto.BuildManifest(nil, packages)
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func NewCommandCatalog(packages []commandproto.PackageDescriptor, resolver Artif
 	if err != nil {
 		return nil, err
 	}
-	descriptors := make([]commandproto.PackageDescriptor, 0, len(owned.Packages))
+	descriptors := make([]cmdproto.PackageDescriptor, 0, len(owned.Packages))
 	for _, descriptor := range owned.Packages {
 		descriptors = append(descriptors, descriptor)
 	}

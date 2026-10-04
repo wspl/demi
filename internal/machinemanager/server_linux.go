@@ -15,12 +15,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Service runs one call and returns the JSON value carried in its ok reply.
 type Service interface {
-	Handle(context.Context, machinemanagerproto.Call) (json.RawMessage, error)
+	Handle(context.Context, machineproto.Call) (json.RawMessage, error)
 }
 
 // Socket owns a bound Unix socket. Serve consumes it.
@@ -73,7 +73,7 @@ type connection struct {
 
 // Serve accepts requests until ctx is canceled, then closes and joins connections.
 // The caller closes manager admission before joining the returned requests.
-func Serve(ctx context.Context, socket *Socket, service Service, deaths <-chan machinemanagerproto.DeviceID) *InFlight {
+func Serve(ctx context.Context, socket *Socket, service Service, deaths <-chan machineproto.DeviceID) *InFlight {
 	flight := &InFlight{}
 	var mu sync.Mutex
 	clients := map[*connection]struct{}{}
@@ -153,24 +153,24 @@ func (c *connection) run(ctx context.Context, service Service, flight *InFlight)
 		}
 	})
 	reader := bufio.NewScanner(c.socket)
-	reader.Buffer(make([]byte, 4096), machinemanagerproto.MaxLineBytes+2)
+	reader.Buffer(make([]byte, 4096), machineproto.MaxLineBytes+2)
 	for reader.Scan() {
 		line := reader.Bytes()
 		if len(line) == 0 {
 			continue
 		}
-		request, err := machinemanagerproto.DecodeRequest(line)
+		request, err := machineproto.DecodeRequest(line)
 		if err != nil {
 			break
 		}
 		flight.requests.Go(func() {
 			result, err := service.Handle(context.WithoutCancel(ctx), request.Call)
-			var response machinemanagerproto.MachineResponse = &machinemanagerproto.OK{ID: request.ID, Result: result}
+			var response machineproto.MachineResponse = &machineproto.OK{ID: request.ID, Result: result}
 			if err != nil {
 				slog.Warn("machines: " + request.Call.Name() + " failed: " + ErrorChain(err))
-				response = &machinemanagerproto.ErrorResponse{ID: request.ID, Message: err.Error()}
+				response = &machineproto.ErrorResponse{ID: request.ID, Message: err.Error()}
 			}
-			line, err := machinemanagerproto.EncodeLine(response)
+			line, err := machineproto.EncodeLine(response)
 			if err != nil {
 				slog.Error(err.Error())
 				return
@@ -186,7 +186,7 @@ func (c *connection) run(ctx context.Context, service Service, flight *InFlight)
 func broadcastDeaths(
 	ctx context.Context,
 	done <-chan struct{},
-	deaths <-chan machinemanagerproto.DeviceID,
+	deaths <-chan machineproto.DeviceID,
 	mu *sync.Mutex,
 	clients map[*connection]struct{},
 	flight *InFlight,
@@ -201,7 +201,7 @@ func broadcastDeaths(
 			if !ok {
 				return
 			}
-			line, err := machinemanagerproto.EncodeLine(&machinemanagerproto.Death{DeviceID: string(device)})
+			line, err := machineproto.EncodeLine(&machineproto.Death{DeviceID: string(device)})
 			if err != nil {
 				slog.Error(err.Error())
 				continue

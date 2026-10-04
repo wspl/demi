@@ -1,7 +1,7 @@
 package todo
 
 import (
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
 )
@@ -17,51 +17,51 @@ func New() (*Factory, error) {
 		return nil, err
 	}
 	children = append(children, list)
-	changedOutput, err := commanddecl.NewSchema(OneTodoJSONSchema())
+	changedOutput, err := cmddecl.NewSchema(OneTodoJSONSchema())
 	if err != nil {
 		return nil, err
 	}
-	addInput, err := commanddecl.NewSchema(AddArgsJSONSchema())
+	addInput, err := cmddecl.NewSchema(AddArgsJSONSchema())
 	if err != nil {
 		return nil, err
 	}
-	children = append(children, host.Leaf(commanddecl.Leaf[commanddecl.NativeOperation]{
+	children = append(children, host.Leaf(cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:          "add",
 		Summary:       "Add a new todo.",
 		SuccessOutput: new("writes the created todo as raw text, or JSON matching { todo } when --json is passed"),
 		FailureOutput: new("writes validation or storage errors to stderr and exits non-zero"),
 		Input:         addInput,
 		Positionals:   &[]string{"text"},
-		Output:        &commanddecl.LeafOutput{JSON: changedOutput},
-		Kind:          &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Output:        &cmddecl.LeafOutput{JSON: changedOutput},
+		Kind:          &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}, host.TypedRPC(DecodeAddArgs, add)))
-	updateInput, err := commanddecl.NewSchema(UpdateArgsJSONSchema())
+	updateInput, err := cmddecl.NewSchema(UpdateArgsJSONSchema())
 	if err != nil {
 		return nil, err
 	}
-	children = append(children, host.Leaf(commanddecl.Leaf[commanddecl.NativeOperation]{
+	children = append(children, host.Leaf(cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:          "update",
 		Summary:       "Update todo text or status.",
 		SuccessOutput: new("writes the updated todo as raw text, or JSON matching { todo } when --json is passed"),
 		FailureOutput: new("writes \"Todo not found\" or validation/storage errors to stderr and exits non-zero"),
 		Input:         updateInput,
 		Positionals:   &[]string{"id"},
-		Output:        &commanddecl.LeafOutput{JSON: changedOutput},
-		Kind:          &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Output:        &cmddecl.LeafOutput{JSON: changedOutput},
+		Kind:          &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}, host.TypedRPC(DecodeUpdateArgs, update)))
-	doneInput, err := commanddecl.NewSchema(DoneArgsJSONSchema())
+	doneInput, err := cmddecl.NewSchema(DoneArgsJSONSchema())
 	if err != nil {
 		return nil, err
 	}
-	children = append(children, host.Leaf(commanddecl.Leaf[commanddecl.NativeOperation]{
+	children = append(children, host.Leaf(cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:          "done",
 		Summary:       "Mark a todo as done.",
 		SuccessOutput: new("writes the completed todo as raw text, or JSON matching { todo } when --json is passed"),
 		FailureOutput: new("writes \"Todo not found\" or validation/storage errors to stderr and exits non-zero"),
 		Input:         doneInput,
 		Positionals:   &[]string{"id"},
-		Output:        &commanddecl.LeafOutput{JSON: changedOutput},
-		Kind:          &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Output:        &cmddecl.LeafOutput{JSON: changedOutput},
+		Kind:          &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}, host.TypedRPC(DecodeDoneArgs, done)))
 	commands, err := plugin.NewCommandPlugin(
 		plugin.PlacementDemi,
@@ -89,18 +89,18 @@ func (f *Factory) Instance() plugin.Plugin {
 }
 
 func listCommand() (host.Declared, error) {
-	listOutput, err := commanddecl.NewSchema(ListJSONSchema())
+	listOutput, err := cmddecl.NewSchema(ListJSONSchema())
 	if err != nil {
 		return host.Declared{}, err
 	}
-	return host.Leaf(commanddecl.Leaf[commanddecl.NativeOperation]{
+	return host.Leaf(cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:    "list",
 		Summary: "List todos for the current agent session.",
 		SuccessOutput: new(
 			"writes the session todo list as raw text, or JSON matching { todos } when --json is passed",
 		),
 		FailureOutput: new("writes storage or validation errors to stderr and exits non-zero"),
-		Output:        &commanddecl.LeafOutput{JSON: listOutput},
-		Kind:          &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Output:        &cmddecl.LeafOutput{JSON: listOutput},
+		Kind:          &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}, host.RPCHandlerFunc(list)), nil
 }

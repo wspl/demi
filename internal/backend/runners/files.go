@@ -5,7 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -27,10 +27,10 @@ func (r TextRefusal) Error() string {
 
 // TextOf interprets bytes as UTF-8 without NUL bytes, within the edit snapshot limit.
 func TextOf(bytes []byte) (string, error) {
-	if len(bytes) > commandproto.EditFileBytes {
+	if len(bytes) > cmdproto.EditFileBytes {
 		return "", ErrTextTooLarge
 	}
-	if !commandproto.IsText(bytes) {
+	if !cmdproto.IsText(bytes) {
 		return "", ErrTextNotText
 	}
 	return string(bytes), nil
@@ -43,7 +43,7 @@ func ReadTextFile(ctx context.Context, fs host.FS, path string) (string, error) 
 	if err != nil {
 		return "", err
 	}
-	if stat.Size > commandproto.EditFileBytes {
+	if stat.Size > cmdproto.EditFileBytes {
 		return "", ErrTextTooLarge
 	}
 	bytes, err := fs.ReadFile(ctx, path)

@@ -10,7 +10,7 @@ import (
 	"strconv"
 	"sync/atomic"
 
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -26,7 +26,7 @@ type Client struct {
 	dial func(context.Context, string, string) (net.Conn, error)
 }
 type clientCommand struct {
-	call       machinemanagerproto.Call
+	call       machineproto.Call
 	disconnect bool
 	final      bool
 	answer     chan clientAnswer
@@ -65,7 +65,7 @@ func NewClient(ctx context.Context, socket string) (*Client, <-chan webapiproto.
 
 // Call runs params and decodes the reply through its operation contract.
 // Cancellation ends the wait, never the manager's operation or a retry of it.
-func Call[T any](ctx context.Context, client *Client, params machinemanagerproto.Operation[T]) (T, error) {
+func Call[T any](ctx context.Context, client *Client, params machineproto.Operation[T]) (T, error) {
 	var zero T
 	call := params.Call()
 	answer, err := client.command(ctx, clientCommand{call: call})
@@ -82,7 +82,7 @@ func Call[T any](ctx context.Context, client *Client, params machinemanagerproto
 // Disconnect reconciles a live connection, then disconnects even on failure.
 // Nothing connects solely to disconnect; subsequent calls can reconnect.
 func (c *Client) Disconnect(ctx context.Context) error {
-	_, err := c.command(ctx, clientCommand{call: &machinemanagerproto.Reconcile{}, disconnect: true})
+	_, err := c.command(ctx, clientCommand{call: &machineproto.Reconcile{}, disconnect: true})
 	return err
 }
 
@@ -91,7 +91,7 @@ func (c *Client) Disconnect(ctx context.Context) error {
 func (c *Client) Close(ctx context.Context) error {
 	var err error
 	if c.closing.CompareAndSwap(false, true) {
-		_, err = c.command(ctx, clientCommand{call: &machinemanagerproto.Reconcile{}, disconnect: true, final: true})
+		_, err = c.command(ctx, clientCommand{call: &machineproto.Reconcile{}, disconnect: true, final: true})
 		c.cancel()
 	}
 	select {
@@ -208,10 +208,10 @@ func readManager(ctx context.Context, conn net.Conn) *managerConnection {
 			}
 		}()
 		scanner := bufio.NewScanner(conn)
-		scanner.Buffer(make([]byte, 4096), machinemanagerproto.MaxLineBytes+2)
+		scanner.Buffer(make([]byte, 4096), machineproto.MaxLineBytes+2)
 		for scanner.Scan() {
 			data := append([]byte(nil), scanner.Bytes()...)
-			if len(data) > machinemanagerproto.MaxLineBytes {
+			if len(data) > machineproto.MaxLineBytes {
 				break
 			}
 			select {
@@ -278,7 +278,7 @@ func (c *Client) sendCommand(
 	}
 	id := strconv.FormatUint(*next, 10)
 	*next++
-	line, err := machinemanagerproto.EncodeLine(machinemanagerproto.MachineRequest{ID: id, Call: command.call})
+	line, err := machineproto.EncodeLine(machineproto.MachineRequest{ID: id, Call: command.call})
 	if err != nil {
 		command.answer <- clientAnswer{err: err}
 		return false
@@ -325,7 +325,7 @@ func receiveManagerLine(
 	delete(pending, id)
 	if p.disconnect {
 		if answer.err == nil {
-			_, answer.err = machinemanagerproto.ReconcileParams{}.DecodeOutput(answer.data)
+			_, answer.err = machineproto.ReconcileParams{}.DecodeOutput(answer.data)
 			if answer.err != nil {
 				answer.err = fmt.Errorf(
 					"the machine manager answered %s with an unexpected result: %w",
@@ -346,7 +346,7 @@ func managerAnswer(
 	data []byte,
 	deaths chan<- webapiproto.DeviceID,
 ) (string, clientAnswer, bool, bool) {
-	response, err := machinemanagerproto.DecodeResponse(data)
+	response, err := machineproto.DecodeResponse(data)
 	if err != nil {
 		slog.Warn("an unreadable line from the machine manager was dropped", "error", err)
 		return "", clientAnswer{}, false, false
@@ -354,7 +354,7 @@ func managerAnswer(
 	var id string
 	var answer clientAnswer
 	switch response := response.(type) {
-	case *machinemanagerproto.Death:
+	case *machineproto.Death:
 		device, err := webapiproto.ParseDeviceID(response.DeviceID)
 		if err != nil {
 			slog.Warn("the machine manager reported an invalid device death", "error", err)
@@ -366,10 +366,10 @@ func managerAnswer(
 			return "", clientAnswer{}, false, true
 		}
 		return "", clientAnswer{}, false, false
-	case *machinemanagerproto.OK:
+	case *machineproto.OK:
 		id = response.ID
 		answer.data = response.Result
-	case *machinemanagerproto.ErrorResponse:
+	case *machineproto.ErrorResponse:
 		id = response.ID
 		answer.err = errors.New(response.Message)
 	}

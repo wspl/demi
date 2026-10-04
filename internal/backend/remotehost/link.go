@@ -10,7 +10,7 @@ import (
 	"time"
 	"weak"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -35,7 +35,7 @@ type LinkPolicy interface {
 	// GrowVolume handles a managed guest's request for a larger volume.
 	GrowVolume(context.Context, runnerproto.VolumeName, uint64) error
 	// ReserveNumbers reserves count numbers of the conversation's sequence.
-	ReserveNumbers(context.Context, string, commandproto.ServiceSequence, uint32) (uint64, error)
+	ReserveNumbers(context.Context, string, cmdproto.ServiceSequence, uint32) (uint64, error)
 }
 
 // JobOrigin records whose a job is when it starts.
@@ -43,7 +43,7 @@ type JobOrigin struct {
 	// Host identifies the admitted Host.
 	Host host.Key
 	// Context identifies the conversation and command locale.
-	Context commandproto.Context
+	Context cmdproto.Context
 	// Caller identifies the node that owns command callbacks.
 	Caller *host.JobCaller
 }

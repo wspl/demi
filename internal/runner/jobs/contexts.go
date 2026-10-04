@@ -16,8 +16,8 @@ import (
 	"sync/atomic"
 	"syscall"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -31,11 +31,11 @@ type ExecutionContext struct {
 	// JobID identifies the job that owns this authority.
 	JobID string
 	// Command is what the backend told the job's declared commands.
-	Command commandproto.Context
+	Command cmdproto.Context
 	// Manifest contains the job declarations and package catalog.
 	Manifest *runnerproto.Manifest
 	// Edits is where the job records the files its commands change.
-	Edits commandproto.EditContext
+	Edits cmdproto.EditContext
 	// Connection carries callbacks and artifact locations for this job.
 	Connection *Connection
 	lifetime   context.Context
@@ -50,9 +50,9 @@ type ExecutionContext struct {
 func NewExecutionContext(
 	ctx context.Context,
 	jobID string,
-	command commandproto.Context,
+	command cmdproto.Context,
 	manifest *runnerproto.Manifest,
-	edits commandproto.EditContext,
+	edits cmdproto.EditContext,
 	connection *Connection,
 	paths ContextPaths,
 ) (*ExecutionContext, error) {
@@ -131,7 +131,7 @@ func (e *ExecutionContext) Environment(endpoint, home string, path *string) (map
 
 // Carries reports whether this context's manifest carries digest for this Host.
 func (e *ExecutionContext) Carries(digest string) bool {
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		return false
 	}
@@ -220,7 +220,7 @@ func (c *Contexts) Carrying(digest string) (*ExecutionContext, bool) {
 type ContextTable struct {
 	contexts *Contexts
 	entries  contextIndex
-	leases   map[string][]*commandpackages.ServiceLease
+	leases   map[string][]*cmdpkgs.ServiceLease
 }
 
 // NewContextTable clears and publishes registrations through contexts.
@@ -228,7 +228,7 @@ func NewContextTable(contexts *Contexts) *ContextTable {
 	t := &ContextTable{
 		contexts: contexts,
 		entries:  make(contextIndex),
-		leases:   make(map[string][]*commandpackages.ServiceLease),
+		leases:   make(map[string][]*cmdpkgs.ServiceLease),
 	}
 	t.publish()
 	return t
@@ -236,7 +236,7 @@ func NewContextTable(contexts *Contexts) *ContextTable {
 
 // Insert makes execution live; a job has at most one context. Success transfers
 // leases to the table; on error the caller remains responsible for releasing them.
-func (t *ContextTable) Insert(execution *ExecutionContext, leases []*commandpackages.ServiceLease) error {
+func (t *ContextTable) Insert(execution *ExecutionContext, leases []*cmdpkgs.ServiceLease) error {
 	for _, existing := range t.entries {
 		if existing.JobID == execution.JobID {
 			return errors.New("duplicate live execution owner")
@@ -345,7 +345,7 @@ type Installed struct {
 	// Manifest contains the installed declarations and package catalog.
 	Manifest *runnerproto.Manifest
 	// Leases holds the services acquired for the installation.
-	Leases []*commandpackages.ServiceLease
+	Leases []*cmdpkgs.ServiceLease
 }
 
 // Install decodes, checks and keeps the manifest, refusing reserved root commands.
@@ -354,7 +354,7 @@ func Install(
 	ctx context.Context,
 	value json.RawMessage,
 	paths ContextPaths,
-	services *commandpackages.ServiceRegistry,
+	services *cmdpkgs.ServiceRegistry,
 	reserved map[string]struct{},
 ) (*Installed, error) {
 	manifest, err := runnerproto.DecodeManifest(value)
@@ -400,10 +400,10 @@ func Install(
 func Leases(
 	ctx context.Context,
 	manifest *runnerproto.Manifest,
-	services *commandpackages.ServiceRegistry,
-) ([]*commandpackages.ServiceLease, error) {
-	var leases []*commandpackages.ServiceLease
-	target, err := commandproto.HostTarget()
+	services *cmdpkgs.ServiceRegistry,
+) ([]*cmdpkgs.ServiceLease, error) {
+	var leases []*cmdpkgs.ServiceLease
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		return nil, err
 	}

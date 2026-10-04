@@ -5,7 +5,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	commandproto "github.com/wspl/demi/internal/commandproto"
+	cmdproto "github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 )
 
@@ -82,8 +82,8 @@ func (v *executableRelease) UnmarshalJSON(data []byte) error {
 			return contract.At("targets", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) (map[string]commandproto.PackageArtifact, error) {
-				return contract.Record(b, contract.Decode[commandproto.PackageArtifact], false)
+			value, err := func(b []byte) (map[string]cmdproto.PackageArtifact, error) {
+				return contract.Record(b, contract.Decode[cmdproto.PackageArtifact], false)
 			}(raw)
 			if err != nil {
 				return contract.At("targets", err)

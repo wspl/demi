@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/runner/process"
 )
 
@@ -83,16 +83,16 @@ func processEnvironment() map[string]string {
 	return values
 }
 
-func aliasInvocation(args []byte, env map[string]string) (commandproto.LocalInvocation, error) {
+func aliasInvocation(args []byte, env map[string]string) (cmdproto.LocalInvocation, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return commandproto.LocalInvocation{}, err
+		return cmdproto.LocalInvocation{}, err
 	}
 	id, err := uuid.NewRandom()
 	if err != nil {
-		return commandproto.LocalInvocation{}, err
+		return cmdproto.LocalInvocation{}, err
 	}
-	return commandproto.LocalInvocation{
+	return cmdproto.LocalInvocation{
 		Operation:    process.Raw,
 		InvocationID: strings.ReplaceAll(id.String(), "-", ""),
 		Args:         args,

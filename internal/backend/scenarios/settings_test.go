@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -158,5 +158,5 @@ func TestReportedLocaleValidatedAndCanonicalized(t *testing.T) {
 	)
 	p := conversationDecode(t, a, webapiproto.DecodeUserPreferences)
 	conversationEqual(t, p.Preferences.Locale.TimeZone, "Asia/Shanghai")
-	conversationEqual(t, p.Preferences.Locale.Languages, []commandproto.LanguageTag{"zh-CN", "en", "he"})
+	conversationEqual(t, p.Preferences.Locale.Languages, []cmdproto.LanguageTag{"zh-CN", "en", "he"})
 }

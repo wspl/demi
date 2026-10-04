@@ -22,20 +22,20 @@ import (
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/backend/blobs"
 	"github.com/wspl/demi/internal/backend/blobs/blobstest"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"gocloud.dev/blob"
 )
 
 // nativeFixture writes test-only executables and their generated descriptor.
-func nativeFixture(t *testing.T, targets []string) (NativeRelease, commandproto.PackageDescriptor) {
+func nativeFixture(t *testing.T, targets []string) (NativeRelease, cmdproto.PackageDescriptor) {
 	t.Helper()
 	directory := t.TempDir()
-	descriptor := commandproto.PackageDescriptor{
+	descriptor := cmdproto.PackageDescriptor{
 		ID:              "example.commands",
 		Version:         "1.0.0+build",
 		ProtocolVersion: 1,
 		Operations:      []string{"fixture"},
-		Targets:         make(map[string]commandproto.PackageArtifact),
+		Targets:         make(map[string]cmdproto.PackageArtifact),
 	}
 	for _, target := range targets {
 		data := []byte("test-only artifact " + target)
@@ -49,7 +49,7 @@ func nativeFixture(t *testing.T, targets []string) (NativeRelease, commandproto.
 		if err := os.WriteFile(filepath.Join(directory, target, "commands"+suffix), data, 0o600); err != nil {
 			t.Fatal(err)
 		}
-		descriptor.Targets[target] = commandproto.PackageArtifact{
+		descriptor.Targets[target] = cmdproto.PackageArtifact{
 			SHA256: fmt.Sprintf("%x", sha256.Sum256(data)),
 			Size:   uint64(len(data)),
 		}
@@ -59,7 +59,7 @@ func nativeFixture(t *testing.T, targets []string) (NativeRelease, commandproto.
 }
 
 // writeDescriptor publishes the fixture's one authoritative package contract.
-func writeDescriptor(t *testing.T, directory string, descriptor commandproto.PackageDescriptor) {
+func writeDescriptor(t *testing.T, directory string, descriptor cmdproto.PackageDescriptor) {
 	t.Helper()
 	data, err := descriptor.MarshalJSON()
 	if err != nil {
@@ -96,7 +96,7 @@ func publicationBucket(t *testing.T) (*blobstest.FakeS3, *blob.Bucket) {
 
 func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	fake, bucket := publicationBucket(t)
-	release, descriptor := nativeFixture(t, commandproto.Targets)
+	release, descriptor := nativeFixture(t, cmdproto.Targets)
 	catalog, err := publish(t.Context(), []NativeRelease{release}, "native", bucket)
 	if err != nil {
 		t.Fatal(err)
@@ -117,13 +117,13 @@ func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	if !strings.HasPrefix(written[6], "native/descriptors/") || written[7] != claim {
 		t.Fatalf("publication order: %v", written)
 	}
-	artifact := descriptor.Targets[commandproto.Targets[0]]
+	artifact := descriptor.Targets[cmdproto.Targets[0]]
 	key := "native/blobs/" + artifact.SHA256
 	encoded, ok := fake.Object(key)
 	if !ok {
 		t.Fatal("missing executable")
 	}
-	plain, err := os.ReadFile(filepath.Join(release.Directory, commandproto.Targets[0], "commands"))
+	plain, err := os.ReadFile(filepath.Join(release.Directory, cmdproto.Targets[0], "commands"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 	if !ok {
 		t.Fatal("version mapping vanished")
 	}
-	kept, err := commandproto.DecodePackageDescriptor(original)
+	kept, err := cmdproto.DecodePackageDescriptor(original)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,8 +172,8 @@ func TestPublicationOrderAndImmutableVersion(t *testing.T) {
 
 func TestInvalidReleasePublishesNothing(t *testing.T) {
 	fake, bucket := publicationBucket(t)
-	release, descriptor := nativeFixture(t, commandproto.Targets)
-	path := filepath.Join(release.Directory, commandproto.Targets[5], "commands.exe")
+	release, descriptor := nativeFixture(t, cmdproto.Targets)
+	path := filepath.Join(release.Directory, cmdproto.Targets[5], "commands.exe")
 	original, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -194,14 +194,14 @@ func TestInvalidReleasePublishesNothing(t *testing.T) {
 	if len(fake.Written()) != 0 {
 		t.Fatal("partially verified release was uploaded")
 	}
-	partial, _ := nativeFixture(t, commandproto.Targets[:2])
+	partial, _ := nativeFixture(t, cmdproto.Targets[:2])
 	if _, err := publish(
 		t.Context(),
 		[]NativeRelease{partial},
 		"native",
 		bucket,
 	); err == nil ||
-		!strings.Contains(err.Error(), "it lacks a target: "+commandproto.Targets[2]) {
+		!strings.Contains(err.Error(), "it lacks a target: "+cmdproto.Targets[2]) {
 		t.Fatalf("partial published: %v", err)
 	}
 	if len(fake.Written()) != 0 {
@@ -210,7 +210,7 @@ func TestInvalidReleasePublishesNothing(t *testing.T) {
 	if err := os.WriteFile(path, original, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	key := "native/blobs/" + descriptor.Targets[commandproto.Targets[5]].SHA256
+	key := "native/blobs/" + descriptor.Targets[cmdproto.Targets[5]].SHA256
 	if err := bucket.WriteAll(t.Context(), key, []byte("other bytes"), nil); err != nil {
 		t.Fatal(err)
 	}
@@ -241,15 +241,15 @@ func TestPublishedDownloadLocation(t *testing.T) {
 				t.Error(err)
 			}
 		}()
-		artifact := commandproto.PackageArtifact{SHA256: strings.Repeat("0", 64), Size: 10}
+		artifact := cmdproto.PackageArtifact{SHA256: strings.Repeat("0", 64), Size: 10}
 		signed := &SignedArtifacts{signer: bucket, prefix: "native", published: map[string]uint64{artifact.SHA256: 10}}
 
 		asked := time.Now()
-		location, err := signed.Resolve(t.Context(), artifact, commandproto.Targets[0])
+		location, err := signed.Resolve(t.Context(), artifact, cmdproto.Targets[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		download, ok := location.(*commandproto.ArtifactURL)
+		download, ok := location.(*cmdproto.ArtifactURL)
 		if !ok {
 			t.Fatalf("location %T", location)
 		}
@@ -329,14 +329,14 @@ func TestNativeConfiguration(t *testing.T) {
 }
 
 func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
-	release, descriptor := nativeFixture(t, commandproto.Targets[:1])
+	release, descriptor := nativeFixture(t, cmdproto.Targets[:1])
 	resource := []byte("resource archive bytes")
 	digest := fmt.Sprintf("%x", sha256.Sum256(resource))
-	descriptor.Resources = map[string]commandproto.PackageResource{
+	descriptor.Resources = map[string]cmdproto.PackageResource{
 		"bundle": {
 			Title: "Bundle",
-			Targets: map[string]commandproto.ResourceArtifact{
-				commandproto.Targets[0]: {SHA256: digest, Size: uint64(len(resource)), Entry: "file"},
+			Targets: map[string]cmdproto.ResourceArtifact{
+				cmdproto.Targets[0]: {SHA256: digest, Size: uint64(len(resource)), Entry: "file"},
 			},
 		},
 	}
@@ -399,18 +399,18 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	resolver := catalog.Resolver(&address)
 	client := artifacts.NewClientAllowingHTTP()
 	defer client.Close()
-	for _, artifact := range []commandproto.PackageArtifact{
-		descriptor.Targets[commandproto.Targets[0]],
+	for _, artifact := range []cmdproto.PackageArtifact{
+		descriptor.Targets[cmdproto.Targets[0]],
 		{
 			SHA256: digest,
 			Size:   uint64(len(resource)),
 		},
 	} {
-		location, err := resolver.Resolve(t.Context(), artifact, commandproto.Targets[0])
+		location, err := resolver.Resolve(t.Context(), artifact, cmdproto.Targets[0])
 		if err != nil {
 			t.Fatal(err)
 		}
-		download, ok := location.(*commandproto.ArtifactURL)
+		download, ok := location.(*cmdproto.ArtifactURL)
 		if !ok {
 			t.Fatalf("location %T", location)
 		}
@@ -432,8 +432,8 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	fresh := NewLocalArtifacts(
 		[]ArtifactFile{
 			{
-				Path:     filepath.Join(release.Directory, commandproto.Targets[0], "commands"),
-				Artifact: descriptor.Targets[commandproto.Targets[0]],
+				Path:     filepath.Join(release.Directory, cmdproto.Targets[0], "commands"),
+				Artifact: descriptor.Targets[cmdproto.Targets[0]],
 			},
 		},
 		nil,
@@ -443,7 +443,7 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 		workers.Go(func() {
 			if _, _, err := fresh.Artifact(
 				t.Context(),
-				descriptor.Targets[commandproto.Targets[0]].SHA256,
+				descriptor.Targets[cmdproto.Targets[0]].SHA256,
 			); err != nil {
 				t.Error(err)
 			}
@@ -455,7 +455,7 @@ func TestLocalPublicationDownloadsExecutablesAndResources(t *testing.T) {
 	}
 	owned, _ := catalog.Package(descriptor.ID)
 	owned.Operations[0] = "mutated"
-	delete(owned.Targets, commandproto.Targets[0])
+	delete(owned.Targets, cmdproto.Targets[0])
 	current, _ := catalog.Package(descriptor.ID)
 	if !catalog.Serves(descriptor.ID, []string{"fixture"}) || len(current.Targets) != 1 {
 		t.Fatal("caller mutated catalog")

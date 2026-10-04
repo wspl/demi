@@ -1,7 +1,7 @@
 package webapiproto
 
 import (
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 )
 
 // The most characters (Unicode scalar values) a shortcut's key sequence
@@ -110,7 +110,7 @@ type Preferences struct {
 	// The time zone and languages the user's browser last reported, which
 	// commands receive in their command context: a zone the backend knows,
 	// in its IANA spelling, and each language once as its canonical tag.
-	Locale *commandproto.CommandLocale `json:"locale,omitempty"`
+	Locale *cmdproto.CommandLocale `json:"locale,omitempty"`
 }
 
 // `PATCH /settings/preferences`: the overrides to change; everything absent
@@ -122,7 +122,7 @@ type PreferencesPatch struct {
 	LastModel  *ModelSettings  `json:"lastModel,omitempty"`
 	// A time zone the backend does not know or a malformed language tag is
 	// refused.
-	Locale *commandproto.CommandLocale `json:"locale,omitempty"`
+	Locale *cmdproto.CommandLocale `json:"locale,omitempty"`
 }
 
 // `{ preferences }`: the answer of `GET` and `PATCH /settings/preferences`.

@@ -5,7 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -235,7 +235,7 @@ ORDER BY c.id`,
 func operationRow(r *storedRow) ManagedOperation {
 	o := ManagedOperation{
 		ID:          checked(r, "operation_id", webapiproto.ParseOperationID),
-		BaseVersion: checked(r, "base_version", machinemanagerproto.ParseBaseVersion),
+		BaseVersion: checked(r, "base_version", machineproto.ParseBaseVersion),
 		Phase:       webapiproto.ResetPhase(r.text("phase")),
 		Error:       r.optionalText("error"),
 	}

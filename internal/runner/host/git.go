@@ -11,7 +11,7 @@ import (
 
 	"github.com/go-git/go-git/v5/plumbing/object"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 
 	"github.com/wspl/demi/internal/runnerproto"
@@ -69,7 +69,7 @@ func (s *Service) GitShow(ctx context.Context, request runnerproto.GitShow) erro
 	var data []byte
 	failure := admit(ctx, s.gitRequests)
 	if failure == nil {
-		data, failure = commandsdk.Retry(
+		data, failure = cmdsdk.Retry(
 			ctx,
 			func() ([]byte, error) {
 				return s.showBlob(ctx, request.Root, request.Path)

@@ -7,7 +7,7 @@ import (
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/artifacts/artifactstest"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 	"github.com/wspl/demi/internal/contract"
 )
 

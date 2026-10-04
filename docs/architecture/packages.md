@@ -25,7 +25,7 @@ group; everything else the agent can do is a plugin's.
 
 A capability that keeps state on the Host is, in addition, a command package
 behind the runner's narrow port, and that port is all the runner and the
-backend know about it. The runner and `internal/commandsdk` supply mechanism: the
+backend know about it. The runner and `internal/cmdsdk` supply mechanism: the
 trusted conversation and caller identity on every invocation, and the generic
 conversation release with its status query ([Conversation-scoped
 state](../execution/native-runtime.md#conversation-scoped-state)). The backend
@@ -34,8 +34,8 @@ resource release](../execution/resource-lifecycle.md)). Each tool owns its own
 state and cleanup.
 
 For example, the conversation browser keeps its tabs between shell jobs. Its
-operations are types in `internal/commandpackage/browser/browserproto`, the `demi.browser`
-package (`internal/commandpackage/browser` with the Chrome subpackages) implements
+operations are types in `internal/cmdpkg/browser/browserproto`, the `demi.browser`
+package (`internal/cmdpkg/browser` with the Chrome subpackages) implements
 them, and `internal/plugin/browser` declares them as `demi browser` commands.
 The tabs are keyed by the conversation the runner names on every invocation,
 and they end when the runner forwards the generic conversation release. No
@@ -91,7 +91,7 @@ Paths are relative to its root.
 Plugins are backend-linked libraries. They use the plugin contract and contract
 packages, never a backend implementation or another plugin.
 
-The conversation browser (`internal/commandpackage/browser`) and the machine manager
+The conversation browser (`internal/cmdpkg/browser`) and the machine manager
 (`internal/machinemanager`) each span a package and its subpackages. Each subpackage
 entry gives its part one owner, and the external libraries they use, such as
 cdproto for the browser and netlink and nftables for the manager's network,
@@ -180,7 +180,7 @@ encoders, decoders and validation. They perform no IO and own no workers.
 - **Must not:** hold session logic or a transport, or carry file bytes inside a
   frame.
 
-#### `internal/commandproto`
+#### `internal/cmdproto`
 
 - **Owns:** the wire between an execution host and a command program:
   - invocation metadata (`Invocation`, `LocalInvocation`), the command context
@@ -197,11 +197,11 @@ encoders, decoders and validation. They perform no IO and own no workers.
     one test of whether bytes are text (`IsText`), which edit tracking and line
     counts read at both ends.
 - **Public boundary:** the types and functions above; test support is in
-  `internal/commandproto/commandprototest`.
+  `internal/cmdproto/cmdprototest`.
 - **Must not:** speak the wire: the client, the server and the recorder are
-  `internal/commandsdk`'s.
+  `internal/cmdsdk`'s.
 
-#### `internal/commanddecl`
+#### `internal/cmddecl`
 
 - **Owns:** command declarations, which are also the manifest's nodes (`Node`,
   `Group`, `Leaf`, `LeafKind` with its `RPC` and `Native` bindings: a
@@ -249,14 +249,14 @@ encoders, decoders and validation. They perform no IO and own no workers.
   `NumbersReserve` the one generic request for a conversation's numbers; the
   wire carries no conversation browser policy.
 - **Public boundary:** the items above. The runner and the backend link it; the
-  machine manager uses `ManagedBoot`, and `internal/machinemanagerproto`'s image
+  machine manager uses `ManagedBoot`, and `internal/machineproto`'s image
   manifest check and `tools/release`'s image build use `ArtifactsPath`.
   Behavior: [Runner](../execution/runner.md).
 - **Must not:** contain network IO, a Host implementation, a shell environment,
   the job table, credentials, claim policy, the device registry or conversation
   state.
 
-#### `internal/machinemanagerproto`
+#### `internal/machineproto`
 
 - **Owns:** the machine-manager socket: requests (`MachineRequest`,
   `MachineCall` with one parameter type per operation), responses
@@ -266,7 +266,7 @@ encoders, decoders and validation. They perform no IO and own no workers.
   `RuntimeState`, `Volume`) and the names of stored images (`DeviceID`,
   `GenerationID`, `BaseVersion`: one path component each); and the Cloud image
   manifest (`CloudImageManifest`), which embeds `internal/runnerproto`'s runner
-  release and `internal/commandproto`'s package descriptors.
+  release and `internal/cmdproto`'s package descriptors.
 - **Public boundary:** the items above. The backend's machine-manager client
   and the manager link it; `tools/release` writes the image manifest with it.
   Behavior: [Managed Cloud hosts](../cloud/managed-hosts.md).
@@ -280,7 +280,7 @@ encoders, decoders and validation. They perform no IO and own no workers.
   `ErrorCode`, the one list of every error code the web app can see; and the
   identifier and text types those bodies use. It reuses the runner's
   working-tree change types (`GitChanges`) and platform (`RunnerPlatform`, a
-  device's platform) and `internal/commandproto`'s command locale
+  device's platform) and `internal/cmdproto`'s command locale
   (`CommandLocale`, which the web app reports as a preference) instead of
   declaring them again. A Host log line is its own type: the runner wire
   carries its time as integer milliseconds, and the web app receives it as an
@@ -289,7 +289,7 @@ encoders, decoders and validation. They perform no IO and own no workers.
   `web`. Behavior: [Web API](../product/web-api.md).
 - **Must not:** hold route handling or domain logic.
 
-#### `internal/commandpackage/file/fileproto`
+#### `internal/cmdpkg/file/fileproto`
 
 - **Owns:** the `demi.file` package's id (`Package`, which its release
   descriptor names) and operations (`Operation`): the arguments and results of
@@ -299,7 +299,7 @@ encoders, decoders and validation. They perform no IO and own no workers.
   Behavior: [Commands](../execution/commands.md).
 - **Must not:** implement operations or perform IO.
 
-#### `internal/commandpackage/browser/browserproto`
+#### `internal/cmdpkg/browser/browserproto`
 
 - **Owns:** the `demi.browser` package's id (`Package`) and operations
   (`Operation`): the arguments and results of `browser.*`, browser targets,
@@ -316,7 +316,7 @@ encoders, decoders and validation. They perform no IO and own no workers.
 - **Must not:** implement operations, transport, components, Host access,
   process management or conversation persistence.
 
-#### `internal/commandpackage/claudecode/claudecodeproto`
+#### `internal/cmdpkg/claudecode/claudecodeproto`
 
 - **Owns:** the `demi.claude-code` package's operations, `claude-code.ensure`
   and `claude-code.status`: their arguments and results, the release record and
@@ -326,9 +326,9 @@ encoders, decoders and validation. They perform no IO and own no workers.
   Code](../providers/claude-code.md).
 - **Must not:** hold install logic.
 
-#### `internal/commandsdk`
+#### `internal/cmdsdk`
 
-- **Owns:** the SDK that speaks the command wire of `internal/commandproto`:
+- **Owns:** the SDK that speaks the command wire of `internal/cmdproto`:
   - the HTTP/2 client and server, the one invocation exchange (`Exchange`),
     bounded invocation IO and handler cancellation, and the handler's
     conversation numbers (`Numbers`);
@@ -342,15 +342,15 @@ encoders, decoders and validation. They perform no IO and own no workers.
     a line it has.
 - **Public boundary:** the client, the service entry point, the handler and IO
   interfaces, the launch argument, the artifacts source, and the edit recorder;
-  test support is in `internal/commandsdk/commandsdktest`. The runner and every command
+  test support is in `internal/cmdsdk/cmdsdktest`. The runner and every command
   program use this one SDK; a command program depends on it and on
-  `internal/commandproto` without depending on the runner or on Demi's command
+  `internal/cmdproto` without depending on the runner or on Demi's command
   implementations.
 - **Must not:** implement commands, download artifacts, start command
   processes, hold credentials, or change the process-wide working directory or
   environment for an invocation.
 
-#### `internal/commandpackage/file`
+#### `internal/cmdpkg/file`
 
 - **Owns:** the independently released `demi.file` resident program: file read,
   create, edit and patch, with the file mutations serialized by one gate and
@@ -363,7 +363,7 @@ encoders, decoders and validation. They perform no IO and own no workers.
   store conversations or be linked into the runner. The runner shell invokes
   system utilities.
 
-#### `internal/commandpackage/browser`
+#### `internal/cmdpkg/browser`
 
 - **Owns:** the independently released `demi.browser` resident program: the
   conversations' browsers, one owner per conversation, each with the live view
@@ -380,7 +380,7 @@ encoders, decoders and validation. They perform no IO and own no workers.
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner.
 
-#### `internal/commandpackage/browser/chrome/cdp`
+#### `internal/cmdpkg/browser/chrome/cdp`
 
 There is no separate driver package. Low-level driver operations live here,
 launch and environment ownership in `tabs`, and page actions and viewer
@@ -400,7 +400,7 @@ no dependency cycle.
 - **Must not:** own tab state, conversations or viewers. Debugging connections
   belong to the calling agent and are released when their tab ends.
 
-#### `internal/commandpackage/browser/chrome/tabs`
+#### `internal/cmdpkg/browser/chrome/tabs`
 
 - **Owns:** the Chrome executable installed as the `chrome` resource, launch
   with the capture extension and capture channel, its extension connection,
@@ -414,7 +414,7 @@ no dependency cycle.
 - **Must not:** act on page content except to navigate, or know the live view
   or conversation ownership. Features above it act on its tab data.
 
-#### `internal/commandpackage/browser/chrome/page`
+#### `internal/cmdpkg/browser/chrome/page`
 
 - **Owns:** element location and state, evaluation, observation, queries and
   probes, content and screenshots, keyboard, pointer, selection and select
@@ -425,17 +425,17 @@ no dependency cycle.
 - **Must not:** own tab state or a CDP session; tabs and the executor supply
   them.
 
-#### `internal/commandpackage/browser/chrome/live`
+#### `internal/cmdpkg/browser/chrome/live`
 
 - **Owns:** the [live view](../browser/live-view.md): capture pipeline, frame
   rate and pacing, user-stream viewers, each watched tab's page observer and
   relay of user input to the tab.
 - **Public boundary:** the hub started with an environment and the viewer's
-  browser interface, implemented by `internal/commandpackage/browser`.
+  browser interface, implemented by `internal/cmdpkg/browser`.
 - **Must not:** know how conversations are owned or released. The browser
   program starts one hub for each browser it owns.
 
-#### `internal/commandpackage/claudecode`
+#### `internal/cmdpkg/claudecode`
 
 - **Owns:** the independently released `demi.claude-code` package, which
   installs and verifies Demi's copy of the Claude Code CLI on the machine that
@@ -468,7 +468,7 @@ no dependency cycle.
   cache and into the Cloud image. Every download-and-verify path and every
   atomic publication of a file, durable or not, goes through it: the runner's
   artifact cache, the Claude Code installer, the machine manager's image store,
-  the edit recorder's snapshots and journal in `internal/commandsdk`, and
+  the edit recorder's snapshots and journal in `internal/cmdsdk`, and
   `tools/release` release packaging.
 - **Public boundary:** the functions and types above. Test support is in
   `internal/artifacts/artifactstest`.
@@ -542,7 +542,7 @@ no dependency cycle.
 #### `internal/plugin/browser`
 
 - **Owns:** the `demi browser` group, declared from
-  `internal/commandpackage/browser/browserproto` types, every leaf bound to a
+  `internal/cmdpkg/browser/browserproto` types, every leaf bound to a
   `demi.browser` operation ([Command
   contract](../browser/browser.md#command-contract)); the `browser` user
   stream, bound to `browser.live`, with its messages and frame constants; and
@@ -577,7 +577,7 @@ no dependency cycle.
 
 #### `internal/plugin/file`
 
-- **Owns:** the `demi file` group, declared from `internal/commandpackage/file/fileproto`
+- **Owns:** the `demi file` group, declared from `internal/cmdpkg/file/fileproto`
   types, every leaf bound to a `demi.file` operation.
 - **Public boundary:** its factory.
 - **Must not:** implement a file operation; `demi-file` does.
@@ -855,7 +855,7 @@ no dependency cycle.
   own; its local endpoint answers the management requests (`status`, `drain`)
   beside the dispatcher's commands. It keeps a service resident while it holds
   conversation state and forwards the conversation release, through
-  `internal/runner/commandpackages`.
+  `internal/runner/cmdpkgs`.
 - **Public boundary:** the program entry point wired by `cmd/demi-runner`.
   Acceptance tests drive the built program as a backend does; resource-limit
   tests run in isolated subprocesses. Behavior:
@@ -882,7 +882,7 @@ no dependency cycle.
   shell contract (`JobShell`, `ShellJob`): how the runner starts a job's
   script, feeds its input, signals, cancels and awaits it, without knowing
   which shell runs it. A job's declared commands come with it as their root
-  names, its execution context's id and the `internal/commandsdk` `Handler` each
+  names, its execution context's id and the `internal/cmdsdk` `Handler` each
   invocation goes to (`JobCommands`).
 - **Public boundary:** the items above.
 - **Must not:** know the backend connection, jobs, commands, services or the
@@ -896,7 +896,7 @@ no dependency cycle.
   change watch (go-git objects, index and transport, a parallel walk over a
   watched baseline, fsnotify on Linux and Windows, and purego FSEvents on
   macOS), network streams, and the volumes a Host reports. It resolves a
-  request's paths and waits out a lack of open files with `internal/commandsdk`, as
+  request's paths and waits out a lack of open files with `internal/cmdsdk`, as
   every native program does, and writes a file's contents through
   `internal/artifacts`'s staged publication.
 - **Public boundary:** one function per operation over its wire request, and
@@ -909,13 +909,13 @@ no dependency cycle.
 - **Owns:** shell jobs and the commands they run: the job table, each job's
   execution context with its command context, its directory and kept output,
   the edit report at its end, and the command dispatcher (it parses argv with
-  `internal/commanddecl`, holds a `--json` command's output until it is checked
+  `internal/cmddecl`, holds a `--json` command's output until it is checked
   against the leaf's output schema, routes native invocations to their services
   and rpc calls to the backend) with local command forwarding.
 - **Conversation scope:** keeps each job's command context and writes it into
   every native invocation; it implements no conversation browser operation.
 - **Public boundary:** the job table, the dispatcher, which implements the
-  `commandsdk.Handler` the shell calls, and the connection handle it sends rpc
+  `cmdsdk.Handler` the shell calls, and the connection handle it sends rpc
   calls and reports through (`ConnectionHandle`), whose requests the
   composition's connection owner serves and whose answers it routes (`Relay`).
 - **Must not:** know the shell that runs a job's script, beyond the job shell
@@ -936,7 +936,7 @@ no dependency cycle.
   `shelltest` import, so the test support runs the real implementation.
 - **Must not:** know jobs, their execution contexts, services or the
   connection: a declared command reaches the dispatcher only through the
-  `commandsdk.Handler` the job gives it.
+  `cmdsdk.Handler` the job gives it.
 - **Deferred utility behavior:** edit tracking of writes by `sed -i`, `tee` and
   `sort -o`; paired Macs' BSD utilities; Windows without Unix utilities; the
   Cloud image's GNU utilities, grep, ripgrep and jq; and the model's shell,
@@ -944,7 +944,7 @@ no dependency cycle.
   3 and 4](../delivery/go-migration.md#owner-decisions). Redirections remain
   tracked by the interpreter's open handler.
 
-#### `internal/runner/commandpackages`
+#### `internal/runner/cmdpkgs`
 
 - **Owns:** the artifact cache with its lines, the preinstalled artifacts of a
   Cloud image, the installs in progress, and the resident service registry:
@@ -955,7 +955,7 @@ no dependency cycle.
   command execution](../execution/native-runtime.md)).
 - **Public boundary:** the registry and its handles (`ServiceHandle`), the
   cache, the installs a connection reports (`InstallsReceiver`), and
-  `NumberSource`. Test support is in `internal/runner/commandpackages/commandpackagestest`.
+  `NumberSource`. Test support is in `internal/runner/cmdpkgs/cmdpkgstest`.
 - **Must not:** implement a command, parse argv or know the connection.
 
 #### `internal/machinemanager`
@@ -966,7 +966,7 @@ no dependency cycle.
   setup](../cloud/setup.md) and [Mac
   development](../guides/mac-development.md), not a second lifecycle.
 - **Public boundary:** configuration and manager entry point wired by
-  `cmd/demi-machine-manager`, using `machinemanagerproto` requests and responses.
+  `cmd/demi-machine-manager`, using `machineproto` requests and responses.
 - **Must not:** listen on TCP; know users, conversations or the control
   database; link the backend; execute image content on the host; offer
   alternative runtime modes. Workload credentials use `runnerproto.ManagedBoot`.
@@ -1388,21 +1388,21 @@ no dependency cycle.
 
 - **Owns:** `main.go` wiring for `demi-file`.
 - **Public boundary:** the executable, assembled through
-  `internal/commandpackage/file`.
+  `internal/cmdpkg/file`.
 - **Must not:** contain business logic or be imported by another package.
 
 #### `cmd/demi-browser`
 
 - **Owns:** `main.go` wiring for `demi-browser`.
 - **Public boundary:** the executable, assembled through
-  `internal/commandpackage/browser`.
+  `internal/cmdpkg/browser`.
 - **Must not:** contain business logic or be imported by another package.
 
 #### `cmd/demi-claude-code`
 
 - **Owns:** `main.go` wiring for `demi-claude-code`.
 - **Public boundary:** the executable, assembled through
-  `internal/commandpackage/claudecode`.
+  `internal/cmdpkg/claudecode`.
 - **Must not:** contain business logic or be imported by another package.
 
 #### `cmd/demi-machine-manager`
@@ -1415,7 +1415,7 @@ no dependency cycle.
 
 - **Owns:** `main.go` wiring for `demi-native-fixture`.
 - **Public boundary:** the test executable, whose handlers come from
-  `internal/runner/commandpackages/commandpackagestest` and whose service uses `internal/commandsdk`.
+  `internal/runner/cmdpkgs/cmdpkgstest` and whose service uses `internal/cmdsdk`.
 - **Must not:** contain business logic or be imported by another package.
 
 #### `internal/programtest`
@@ -1428,7 +1428,7 @@ no dependency cycle.
 - **Must not:** be imported by production code, or rebuild a program that
   `DEMI_TEST_PROGRAMS` supplies.
 
-#### `internal/commandproto/commandprototest`
+#### `internal/cmdproto/cmdprototest`
 
 - **Owns:** the operations of the runner's native fixture service
   (`FixtureOperations`), which the tests at both ends of the wire use.
@@ -1437,7 +1437,7 @@ no dependency cycle.
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
 
-#### `internal/commandsdk/commandsdktest`
+#### `internal/cmdsdk/cmdsdktest`
 
 - **Owns:** a service process driven with a client
   (`ServiceProcess`), gives a handler numbers from counters that start at 1
@@ -1450,9 +1450,9 @@ no dependency cycle.
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
 
-#### `internal/commandpackage/claudecode/claudecodetest`
+#### `internal/cmdpkg/claudecode/claudecodetest`
 
-- **Owns:** the test-support package of `internal/commandpackage/claudecode`; it
+- **Owns:** the test-support package of `internal/cmdpkg/claudecode`; it
   supplies no exported fixtures yet.
 - **Public boundary:** no exports until the package has shared test fixtures.
 - **Must not:** implement product behavior or import a consumer of its owner.
@@ -1582,11 +1582,11 @@ no dependency cycle.
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
 
-#### `internal/runner/commandpackages/commandpackagestest`
+#### `internal/runner/cmdpkgs/cmdpkgstest`
 
 - **Owns:** the service handlers of `demi-native-fixture`, installed and
   started by runner and backend tests, and a number source that refuses
-  (`NoNumbers`). The fixture command wires these handlers with `commandsdk`.
+  (`NoNumbers`). The fixture command wires these handlers with `cmdsdk`.
 - **Public boundary:** these fixtures for black-box tests of the owner and its
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
@@ -1696,20 +1696,20 @@ no dependency cycle.
   consumers. Every worker and resource has test cleanup.
 - **Must not:** implement product behavior or import a consumer of its owner.
 
-#### `internal/commandpackage/browser/chrome/cdp/cdptest`
+#### `internal/cmdpkg/browser/chrome/cdp/cdptest`
 
 - **Owns:** evaluation in targets no command addresses.
 - **Public boundary:** Chrome fixtures for browser acceptance tests.
 - **Must not:** own conversation state or implement another browser driver.
 
-#### `internal/commandpackage/browser/chrome/tabs/tabstest`
+#### `internal/cmdpkg/browser/chrome/tabs/tabstest`
 
 - **Owns:** the capture extension ID, tab numbers without a numbers source and
   Chrome's own view of its targets.
 - **Public boundary:** Chrome fixtures for browser acceptance tests.
 - **Must not:** own conversation state or implement another browser driver.
 
-#### `internal/commandpackage/browser/chrome/page/pagetest`
+#### `internal/cmdpkg/browser/chrome/page/pagetest`
 
 - **Owns:** page interaction by CSS selector.
 - **Public boundary:** Chrome fixtures for browser acceptance tests.
@@ -1922,35 +1922,35 @@ listed test support.
 internal/types -> internal/contract
 internal/contract -> none
 internal/conversationproto -> internal/types, internal/contract
-internal/commandproto -> internal/contract
-internal/commanddecl -> internal/contract
-internal/runnerproto -> internal/commandproto, internal/commanddecl, internal/types, internal/contract
-internal/machinemanagerproto -> internal/commandproto, internal/runnerproto, internal/contract
-internal/webapiproto -> internal/conversationproto, internal/commandproto, internal/types, internal/runnerproto, internal/contract
-internal/commandpackage/file/fileproto -> internal/types, internal/contract
-internal/commandpackage/browser/browserproto -> internal/types, internal/contract
-internal/commandpackage/claudecode/claudecodeproto -> internal/contract
-internal/commandsdk -> internal/artifacts, internal/commandproto
-internal/commandpackage/file -> internal/artifacts, internal/commandproto, internal/commandsdk, internal/types, internal/commandpackage/file/fileproto, internal/gates, internal/contract
-internal/commandpackage/browser -> internal/commandpackage/browser/chrome/cdp, internal/commandpackage/browser/chrome/tabs, internal/commandpackage/browser/chrome/page, internal/commandpackage/browser/chrome/live, internal/commandpackage/browser/browserproto, internal/commandproto, internal/commandsdk
-internal/commandpackage/browser/chrome/cdp -> internal/commandpackage/browser/browserproto, internal/commandproto, internal/commandsdk, internal/artifacts, internal/types, internal/contract
-internal/commandpackage/browser/chrome/tabs -> internal/commandpackage/browser/browserproto, internal/commandproto, internal/commandsdk, internal/artifacts, internal/types, internal/commandpackage/browser/chrome/cdp, internal/contract
-internal/commandpackage/browser/chrome/page -> internal/commandpackage/browser/browserproto, internal/commandproto, internal/commandsdk, internal/artifacts, internal/types, internal/commandpackage/browser/chrome/cdp, internal/commandpackage/browser/chrome/tabs, internal/contract
-internal/commandpackage/browser/chrome/live -> internal/commandpackage/browser/browserproto, internal/commandproto, internal/commandsdk, internal/artifacts, internal/types, internal/commandpackage/browser/chrome/cdp, internal/commandpackage/browser/chrome/tabs, internal/commandpackage/browser/chrome/page, internal/contract
-internal/commandpackage/claudecode -> internal/commandpackage/claudecode/claudecodeproto, internal/commandproto, internal/commandsdk
+internal/cmdproto -> internal/contract
+internal/cmddecl -> internal/contract
+internal/runnerproto -> internal/cmdproto, internal/cmddecl, internal/types, internal/contract
+internal/machineproto -> internal/cmdproto, internal/runnerproto, internal/contract
+internal/webapiproto -> internal/conversationproto, internal/cmdproto, internal/types, internal/runnerproto, internal/contract
+internal/cmdpkg/file/fileproto -> internal/types, internal/contract
+internal/cmdpkg/browser/browserproto -> internal/types, internal/contract
+internal/cmdpkg/claudecode/claudecodeproto -> internal/contract
+internal/cmdsdk -> internal/artifacts, internal/cmdproto
+internal/cmdpkg/file -> internal/artifacts, internal/cmdproto, internal/cmdsdk, internal/types, internal/cmdpkg/file/fileproto, internal/gates, internal/contract
+internal/cmdpkg/browser -> internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/chrome/page, internal/cmdpkg/browser/chrome/live, internal/cmdpkg/browser/browserproto, internal/cmdproto, internal/cmdsdk
+internal/cmdpkg/browser/chrome/cdp -> internal/cmdpkg/browser/browserproto, internal/cmdproto, internal/cmdsdk, internal/artifacts, internal/types, internal/contract
+internal/cmdpkg/browser/chrome/tabs -> internal/cmdpkg/browser/browserproto, internal/cmdproto, internal/cmdsdk, internal/artifacts, internal/types, internal/cmdpkg/browser/chrome/cdp, internal/contract
+internal/cmdpkg/browser/chrome/page -> internal/cmdpkg/browser/browserproto, internal/cmdproto, internal/cmdsdk, internal/artifacts, internal/types, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/contract
+internal/cmdpkg/browser/chrome/live -> internal/cmdpkg/browser/browserproto, internal/cmdproto, internal/cmdsdk, internal/artifacts, internal/types, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/chrome/page, internal/contract
+internal/cmdpkg/claudecode -> internal/cmdpkg/claudecode/claudecodeproto, internal/cmdproto, internal/cmdsdk
 internal/gates -> none
 internal/artifacts -> internal/contract
 internal/cli -> none
 internal/version -> none
-internal/host -> internal/commandproto, internal/commanddecl, internal/types, internal/contract
-internal/plugin -> internal/commanddecl, internal/types, internal/host, internal/webapiproto, internal/contract
-internal/plugin/browser -> internal/plugin, internal/commanddecl, internal/commandpackage/browser/browserproto, internal/host, internal/webapiproto, internal/contract
-internal/plugin/changes -> internal/plugin, internal/commanddecl, internal/contract
-internal/plugin/expose -> internal/plugin, internal/host, internal/types, internal/webapiproto, internal/commanddecl, internal/contract
-internal/plugin/file -> internal/plugin, internal/commanddecl, internal/commandpackage/file/fileproto, internal/host, internal/contract
-internal/plugin/filebrowser -> internal/plugin, internal/commanddecl, internal/contract
-internal/plugin/skills -> internal/plugin, internal/types, internal/commanddecl, internal/contract
-internal/plugin/todo -> internal/plugin, internal/host, internal/commanddecl, internal/contract
+internal/host -> internal/cmdproto, internal/cmddecl, internal/types, internal/contract
+internal/plugin -> internal/cmddecl, internal/types, internal/host, internal/webapiproto, internal/contract
+internal/plugin/browser -> internal/plugin, internal/cmddecl, internal/cmdpkg/browser/browserproto, internal/host, internal/webapiproto, internal/contract
+internal/plugin/changes -> internal/plugin, internal/cmddecl, internal/contract
+internal/plugin/expose -> internal/plugin, internal/host, internal/types, internal/webapiproto, internal/cmddecl, internal/contract
+internal/plugin/file -> internal/plugin, internal/cmddecl, internal/cmdpkg/file/fileproto, internal/host, internal/contract
+internal/plugin/filebrowser -> internal/plugin, internal/cmddecl, internal/contract
+internal/plugin/skills -> internal/plugin, internal/types, internal/cmddecl, internal/contract
+internal/plugin/todo -> internal/plugin, internal/host, internal/cmddecl, internal/contract
 internal/provider -> internal/types, internal/gates, internal/contract
 internal/provider/anthropicapi -> internal/types, internal/provider, internal/contract
 internal/provider/openaiapi -> internal/types, internal/provider, internal/contract
@@ -1960,38 +1960,38 @@ internal/provider/grokbuild -> internal/types, internal/provider, internal/contr
 internal/provider/claudecode -> internal/types, internal/provider, internal/host, internal/contract, internal/version
 internal/agent/store -> internal/conversationproto, internal/types, internal/provider, internal/host, internal/contract
 internal/agent/transcript -> internal/conversationproto, internal/agent/store, internal/types, internal/provider
-internal/agent/session -> internal/conversationproto, internal/agent/store, internal/agent/transcript, internal/commandproto, internal/types, internal/gates, internal/provider, internal/host, internal/contract
+internal/agent/session -> internal/conversationproto, internal/agent/store, internal/agent/transcript, internal/cmdproto, internal/types, internal/gates, internal/provider, internal/host, internal/contract
 internal/agent/tools -> internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/types, internal/provider, internal/host, internal/contract
-internal/agent/server -> internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/types, internal/gates, internal/provider, internal/host, internal/commanddecl
-internal/runner -> internal/commandproto, internal/commandsdk, internal/runner/host, internal/runner/jobs, internal/runner/process, internal/runnerproto, internal/runner/commandpackages, internal/runner/shell
-internal/runner/process -> internal/artifacts, internal/commandproto, internal/commandsdk, internal/runnerproto, internal/contract
-internal/runner/host -> internal/artifacts, internal/commandsdk, internal/runner/process, internal/runnerproto
-internal/runner/jobs -> internal/commandproto, internal/commandsdk, internal/commanddecl, internal/runner/process, internal/runnerproto, internal/runner/commandpackages, internal/contract
-internal/runner/shell -> internal/commandproto, internal/commandsdk, internal/runner/process, internal/runnerproto, internal/runner/shell/internal/engine
-internal/runner/shell/internal/engine -> internal/commandproto, internal/commandsdk, internal/runner/process, internal/runnerproto
-internal/runner/commandpackages -> internal/artifacts, internal/commandproto, internal/commandsdk, internal/runner/process, internal/runnerproto, internal/contract
-internal/machinemanager -> internal/artifacts, internal/cli, internal/machinemanagerproto, internal/runnerproto, internal/machinemanager/sandbox, internal/machinemanager/storage, internal/machinemanager/network, internal/machinemanager/system, internal/version
-internal/machinemanager/sandbox -> internal/artifacts, internal/cli, internal/machinemanagerproto, internal/runnerproto, internal/machinemanager/system, internal/contract
-internal/machinemanager/storage -> internal/artifacts, internal/cli, internal/machinemanagerproto, internal/runnerproto, internal/machinemanager/system, internal/contract
-internal/machinemanager/network -> internal/artifacts, internal/cli, internal/machinemanagerproto, internal/runnerproto, internal/machinemanager/system
+internal/agent/server -> internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/types, internal/gates, internal/provider, internal/host, internal/cmddecl
+internal/runner -> internal/cmdproto, internal/cmdsdk, internal/runner/host, internal/runner/jobs, internal/runner/process, internal/runnerproto, internal/runner/cmdpkgs, internal/runner/shell
+internal/runner/process -> internal/artifacts, internal/cmdproto, internal/cmdsdk, internal/runnerproto, internal/contract
+internal/runner/host -> internal/artifacts, internal/cmdsdk, internal/runner/process, internal/runnerproto
+internal/runner/jobs -> internal/cmdproto, internal/cmdsdk, internal/cmddecl, internal/runner/process, internal/runnerproto, internal/runner/cmdpkgs, internal/contract
+internal/runner/shell -> internal/cmdproto, internal/cmdsdk, internal/runner/process, internal/runnerproto, internal/runner/shell/internal/engine
+internal/runner/shell/internal/engine -> internal/cmdproto, internal/cmdsdk, internal/runner/process, internal/runnerproto
+internal/runner/cmdpkgs -> internal/artifacts, internal/cmdproto, internal/cmdsdk, internal/runner/process, internal/runnerproto, internal/contract
+internal/machinemanager -> internal/artifacts, internal/cli, internal/machineproto, internal/runnerproto, internal/machinemanager/sandbox, internal/machinemanager/storage, internal/machinemanager/network, internal/machinemanager/system, internal/version
+internal/machinemanager/sandbox -> internal/artifacts, internal/cli, internal/machineproto, internal/runnerproto, internal/machinemanager/system, internal/contract
+internal/machinemanager/storage -> internal/artifacts, internal/cli, internal/machineproto, internal/runnerproto, internal/machinemanager/system, internal/contract
+internal/machinemanager/network -> internal/artifacts, internal/cli, internal/machineproto, internal/runnerproto, internal/machinemanager/system
 internal/machinemanager/system -> internal/artifacts, internal/cli, internal/contract
 internal/backend -> internal/artifacts, internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/expose, internal/backend/httpserver, internal/backend/providerhost, internal/backend/runners, internal/backend/usershard, internal/cli, internal/plugin, internal/plugin/browser, internal/plugin/changes, internal/plugin/expose, internal/plugin/file, internal/plugin/filebrowser, internal/plugin/skills, internal/plugin/todo, internal/provider, internal/provider/anthropicapi, internal/provider/claudecode, internal/provider/codex, internal/provider/google, internal/provider/grokbuild, internal/provider/openaiapi, internal/types, internal/webapiproto
-internal/backend/scenarios -> internal/agent/session, internal/agent/session/sessiontest, internal/agent/store, internal/agent/store/storetest, internal/agent/tools/toolstest, internal/agent/transcript/transcripttest, internal/artifacts, internal/artifacts/artifactstest, internal/backend, internal/backend/backendtest, internal/backend/blobs/blobstest, internal/backend/database, internal/backend/expose, internal/backend/providerhost, internal/backend/remotehost/remotehosttest, internal/backend/runners, internal/commanddecl, internal/commandpackage/browser/browserproto, internal/commandpackage/claudecode/claudecodeproto, internal/commandproto, internal/contract, internal/conversationproto, internal/gates, internal/host, internal/host/hosttest, internal/plugin, internal/plugin/browser, internal/plugin/expose, internal/plugin/skills, internal/plugin/skills/skillstest, internal/programtest, internal/provider, internal/provider/anthropicapi, internal/provider/codex, internal/provider/codex/codextest, internal/provider/google, internal/provider/grokbuild, internal/provider/openaiapi, internal/provider/providertest, internal/runner/commandpackages, internal/runnerproto, internal/types, internal/webapiproto
-internal/backend/accounts -> internal/backend/database, internal/commandproto, internal/types, internal/webapiproto
+internal/backend/scenarios -> internal/agent/session, internal/agent/session/sessiontest, internal/agent/store, internal/agent/store/storetest, internal/agent/tools/toolstest, internal/agent/transcript/transcripttest, internal/artifacts, internal/artifacts/artifactstest, internal/backend, internal/backend/backendtest, internal/backend/blobs/blobstest, internal/backend/database, internal/backend/expose, internal/backend/providerhost, internal/backend/remotehost/remotehosttest, internal/backend/runners, internal/cmddecl, internal/cmdpkg/browser/browserproto, internal/cmdpkg/claudecode/claudecodeproto, internal/cmdproto, internal/contract, internal/conversationproto, internal/gates, internal/host, internal/host/hosttest, internal/plugin, internal/plugin/browser, internal/plugin/expose, internal/plugin/skills, internal/plugin/skills/skillstest, internal/programtest, internal/provider, internal/provider/anthropicapi, internal/provider/codex, internal/provider/codex/codextest, internal/provider/google, internal/provider/grokbuild, internal/provider/openaiapi, internal/provider/providertest, internal/runner/cmdpkgs, internal/runnerproto, internal/types, internal/webapiproto
+internal/backend/accounts -> internal/backend/database, internal/cmdproto, internal/types, internal/webapiproto
 internal/backend/blobs -> internal/agent/store, internal/types, internal/webapiproto, internal/contract
-internal/backend/cloud -> internal/backend/idlewatch, internal/backend/providerhost, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/gates, internal/backend/remotehost, internal/machinemanagerproto, internal/runnerproto, internal/host, internal/webapiproto
-internal/backend/database -> internal/agent/store, internal/agent/transcript, internal/types, internal/gates, internal/backend/remotehost, internal/machinemanagerproto, internal/runnerproto, internal/host, internal/webapiproto, internal/plugin
+internal/backend/cloud -> internal/backend/idlewatch, internal/backend/providerhost, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/gates, internal/backend/remotehost, internal/machineproto, internal/runnerproto, internal/host, internal/webapiproto
+internal/backend/database -> internal/agent/store, internal/agent/transcript, internal/types, internal/gates, internal/backend/remotehost, internal/machineproto, internal/runnerproto, internal/host, internal/webapiproto, internal/plugin
 internal/backend/expose -> internal/backend/database, internal/types, internal/webapiproto
-internal/backend/hostaccess -> internal/agent/store, internal/agent/tools, internal/backend/cloud, internal/backend/blobs, internal/backend/runners, internal/backend/database, internal/commandproto, internal/commanddecl, internal/types, internal/gates, internal/backend/remotehost, internal/runnerproto, internal/host, internal/webapiproto, internal/plugin
-internal/backend/httpserver -> internal/conversationproto, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providerhost, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/commandproto, internal/types, internal/backend/remotehost, internal/provider, internal/runnerproto, internal/host, internal/webapiproto, internal/backend/pluginhost, internal/plugin
+internal/backend/hostaccess -> internal/agent/store, internal/agent/tools, internal/backend/cloud, internal/backend/blobs, internal/backend/runners, internal/backend/database, internal/cmdproto, internal/cmddecl, internal/types, internal/gates, internal/backend/remotehost, internal/runnerproto, internal/host, internal/webapiproto, internal/plugin
+internal/backend/httpserver -> internal/conversationproto, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providerhost, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/cmdproto, internal/types, internal/backend/remotehost, internal/provider, internal/runnerproto, internal/host, internal/webapiproto, internal/backend/pluginhost, internal/plugin
 internal/backend/idlewatch -> internal/gates
 internal/backend/pagesync -> internal/backend/database, internal/webapiproto
-internal/backend/pluginhost -> internal/plugin, internal/commanddecl, internal/types, internal/host, internal/backend/database, internal/backend/pagesync, internal/webapiproto
-internal/backend/providerhost -> internal/backend/database, internal/backend/pagesync, internal/commandpackage/claudecode/claudecodeproto, internal/types, internal/provider, internal/provider/anthropicapi, internal/provider/claudecode, internal/provider/openaiapi, internal/webapiproto, internal/gates
-internal/backend/remotehost -> internal/commandproto, internal/commanddecl, internal/types, internal/gates, internal/runnerproto, internal/host
-internal/backend/runners -> internal/artifacts, internal/backend/blobs, internal/backend/database, internal/backend/pagesync, internal/commandproto, internal/gates, internal/backend/remotehost, internal/runnerproto, internal/host, internal/webapiproto
-internal/backend/usershard -> internal/agent/server, internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/idlewatch, internal/backend/blobs, internal/backend/pluginhost, internal/backend/providerhost, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/commandpackage/claudecode/claudecodeproto, internal/commandproto, internal/commanddecl, internal/types, internal/gates, internal/plugin, internal/backend/remotehost, internal/machinemanagerproto, internal/provider, internal/provider/claudecode, internal/runnerproto, internal/host, internal/webapiproto
-tools/release -> internal/conversationproto, internal/artifacts, internal/commandpackage/browser/browserproto, internal/commandpackage/claudecode/claudecodeproto, internal/commandproto, internal/types, internal/commandpackage/file/fileproto, internal/machinemanagerproto, internal/runnerproto, internal/webapiproto, internal/backend, internal/plugin, internal/version, internal/backend/runners
+internal/backend/pluginhost -> internal/plugin, internal/cmddecl, internal/types, internal/host, internal/backend/database, internal/backend/pagesync, internal/webapiproto
+internal/backend/providerhost -> internal/backend/database, internal/backend/pagesync, internal/cmdpkg/claudecode/claudecodeproto, internal/types, internal/provider, internal/provider/anthropicapi, internal/provider/claudecode, internal/provider/openaiapi, internal/webapiproto, internal/gates
+internal/backend/remotehost -> internal/cmdproto, internal/cmddecl, internal/types, internal/gates, internal/runnerproto, internal/host
+internal/backend/runners -> internal/artifacts, internal/backend/blobs, internal/backend/database, internal/backend/pagesync, internal/cmdproto, internal/gates, internal/backend/remotehost, internal/runnerproto, internal/host, internal/webapiproto
+internal/backend/usershard -> internal/agent/server, internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/idlewatch, internal/backend/blobs, internal/backend/pluginhost, internal/backend/providerhost, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/cmdpkg/claudecode/claudecodeproto, internal/cmdproto, internal/cmddecl, internal/types, internal/gates, internal/plugin, internal/backend/remotehost, internal/machineproto, internal/provider, internal/provider/claudecode, internal/runnerproto, internal/host, internal/webapiproto
+tools/release -> internal/conversationproto, internal/artifacts, internal/cmdpkg/browser/browserproto, internal/cmdpkg/claudecode/claudecodeproto, internal/cmdproto, internal/types, internal/cmdpkg/file/fileproto, internal/machineproto, internal/runnerproto, internal/webapiproto, internal/backend, internal/plugin, internal/version, internal/backend/runners
 tools/contractgen -> internal/contract, tools/contractgen/pagemeta
 tools/compactionfixture -> internal/agent/server, internal/agent/store, internal/agent/store/storetest, internal/agent/tools, internal/agent/tools/toolstest, internal/agent/transcript, internal/contract, internal/types, internal/conversationproto, internal/host, internal/provider, internal/provider/openaiapi
 tools/contractgen/manifests -> internal/backend, internal/plugin, tools/contractgen/pagemeta
@@ -2002,42 +2002,42 @@ tools/bodycheck -> none
 internal/programtest -> none
 cmd/demi-backend -> internal/backend, internal/version
 cmd/demi-runner -> internal/runner, internal/version
-cmd/demi-file -> internal/commandpackage/file
-cmd/demi-browser -> internal/commandpackage/browser
-cmd/demi-claude-code -> internal/commandpackage/claudecode
+cmd/demi-file -> internal/cmdpkg/file
+cmd/demi-browser -> internal/cmdpkg/browser
+cmd/demi-claude-code -> internal/cmdpkg/claudecode
 cmd/demi-machine-manager -> internal/machinemanager
-cmd/demi-native-fixture -> internal/commandsdk, internal/commandproto/commandprototest, internal/runner/commandpackages/commandpackagestest
-internal/commandproto/commandprototest -> internal/commandproto, internal/contract
-internal/commandsdk/commandsdktest -> internal/commandsdk, internal/artifacts, internal/commandproto, internal/commandproto/commandprototest
-internal/commandpackage/claudecode/claudecodetest -> internal/commandpackage/claudecode, internal/commandpackage/claudecode/claudecodeproto, internal/commandproto, internal/commandsdk
+cmd/demi-native-fixture -> internal/cmdsdk, internal/cmdproto/cmdprototest, internal/runner/cmdpkgs/cmdpkgstest
+internal/cmdproto/cmdprototest -> internal/cmdproto, internal/contract
+internal/cmdsdk/cmdsdktest -> internal/cmdsdk, internal/artifacts, internal/cmdproto, internal/cmdproto/cmdprototest
+internal/cmdpkg/claudecode/claudecodetest -> internal/cmdpkg/claudecode, internal/cmdpkg/claudecode/claudecodeproto, internal/cmdproto, internal/cmdsdk
 internal/gates/gatestest -> internal/gates
 internal/artifacts/artifactstest -> internal/artifacts
-internal/host/hosttest -> internal/host, internal/commandproto, internal/commanddecl, internal/types, internal/contract
-internal/plugin/plugintest -> internal/plugin, internal/commanddecl, internal/types, internal/host, internal/webapiproto
+internal/host/hosttest -> internal/host, internal/cmdproto, internal/cmddecl, internal/types, internal/contract
+internal/plugin/plugintest -> internal/plugin, internal/cmddecl, internal/types, internal/host, internal/webapiproto
 internal/plugin/skills/skillstest -> internal/plugin/skills, internal/plugin, internal/types
 internal/provider/providertest -> internal/provider, internal/types, internal/gates, internal/contract
 internal/provider/codex/codextest -> internal/provider/codex, internal/types, internal/provider
 internal/agent/store/storetest -> internal/agent/store, internal/conversationproto, internal/types, internal/provider, internal/host
 internal/agent/transcript/transcripttest -> internal/agent/transcript, internal/conversationproto, internal/agent/store, internal/types, internal/provider, internal/agent/store/storetest
-internal/agent/session/sessiontest -> internal/agent/session, internal/conversationproto, internal/agent/store, internal/agent/transcript, internal/commandproto, internal/types, internal/gates, internal/provider, internal/host, internal/agent/transcript/transcripttest, internal/provider/providertest
+internal/agent/session/sessiontest -> internal/agent/session, internal/conversationproto, internal/agent/store, internal/agent/transcript, internal/cmdproto, internal/types, internal/gates, internal/provider, internal/host, internal/agent/transcript/transcripttest, internal/provider/providertest
 internal/agent/tools/toolstest -> internal/agent/tools, internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/transcript, internal/types, internal/provider, internal/host, internal/agent/session/sessiontest
 internal/agent/server/servertest -> internal/agent/server, internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/types, internal/gates, internal/provider, internal/host, internal/agent/tools/toolstest, internal/gates/gatestest, internal/provider/providertest, internal/agent/store/storetest
-internal/runner/jobs/jobstest -> internal/runner/jobs, internal/commandproto, internal/commandsdk, internal/commanddecl, internal/runner/process, internal/runnerproto, internal/runner/commandpackages
-internal/runner/shell/shelltest -> internal/runner/shell, internal/commandproto, internal/commandsdk, internal/runner/process, internal/runnerproto, internal/runner/shell/internal/engine
-internal/runner/commandpackages/commandpackagestest -> internal/runner/commandpackages, internal/artifacts, internal/commandproto, internal/commandsdk, internal/runner/process, internal/runnerproto, internal/commandproto/commandprototest, internal/contract
+internal/runner/jobs/jobstest -> internal/runner/jobs, internal/cmdproto, internal/cmdsdk, internal/cmddecl, internal/runner/process, internal/runnerproto, internal/runner/cmdpkgs
+internal/runner/shell/shelltest -> internal/runner/shell, internal/cmdproto, internal/cmdsdk, internal/runner/process, internal/runnerproto, internal/runner/shell/internal/engine
+internal/runner/cmdpkgs/cmdpkgstest -> internal/runner/cmdpkgs, internal/artifacts, internal/cmdproto, internal/cmdsdk, internal/runner/process, internal/runnerproto, internal/cmdproto/cmdprototest, internal/contract
 internal/machinemanager/system/systemtest -> internal/machinemanager/system
-internal/machinemanager/storage/storagetest -> internal/machinemanager/storage, internal/machinemanagerproto, internal/runnerproto, internal/contract
-internal/machinemanager/machinemanagertest -> internal/machinemanager, internal/artifacts, internal/cli, internal/machinemanagerproto, internal/runnerproto, internal/machinemanager/sandbox, internal/machinemanager/storage, internal/machinemanager/network, internal/machinemanager/system, internal/machinemanager/storage/storagetest
-internal/backend/backendtest -> internal/backend, internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/httpserver, internal/backend/providerhost, internal/backend/runners, internal/backend/usershard, internal/commanddecl, internal/commandpackage/browser/browserproto, internal/plugin/browser, internal/plugin/changes, internal/plugin/file, internal/plugin/filebrowser, internal/plugin, internal/plugin/todo, internal/provider/anthropicapi, internal/provider/claudecode, internal/provider/codex, internal/provider, internal/provider/google, internal/provider/grokbuild, internal/provider/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/types, internal/webapiproto, internal/plugin/expose, internal/plugin/skills, internal/backend/httpserver/httpservertest, internal/backend/blobs/blobstest, internal/backend/usershard/usershardtest, internal/backend/database/databasetest, internal/gates/gatestest, internal/backend/remotehost/remotehosttest, internal/programtest, internal/commandproto, internal/runnerproto, internal/machinemanagerproto, internal/host, internal/commandpackage/file/fileproto, internal/commandpackage/claudecode/claudecodeproto, internal/provider/providertest, internal/conversationproto, internal/machinemanager/sandbox
+internal/machinemanager/storage/storagetest -> internal/machinemanager/storage, internal/machineproto, internal/runnerproto, internal/contract
+internal/machinemanager/machinemanagertest -> internal/machinemanager, internal/artifacts, internal/cli, internal/machineproto, internal/runnerproto, internal/machinemanager/sandbox, internal/machinemanager/storage, internal/machinemanager/network, internal/machinemanager/system, internal/machinemanager/storage/storagetest
+internal/backend/backendtest -> internal/backend, internal/backend/accounts, internal/backend/blobs, internal/backend/cloud, internal/backend/database, internal/backend/expose, internal/backend/hostaccess, internal/backend/httpserver, internal/backend/providerhost, internal/backend/runners, internal/backend/usershard, internal/cmddecl, internal/cmdpkg/browser/browserproto, internal/plugin/browser, internal/plugin/changes, internal/plugin/file, internal/plugin/filebrowser, internal/plugin, internal/plugin/todo, internal/provider/anthropicapi, internal/provider/claudecode, internal/provider/codex, internal/provider, internal/provider/google, internal/provider/grokbuild, internal/provider/openaiapi, internal/artifacts, internal/cli, internal/gates, internal/types, internal/webapiproto, internal/plugin/expose, internal/plugin/skills, internal/backend/httpserver/httpservertest, internal/backend/blobs/blobstest, internal/backend/usershard/usershardtest, internal/backend/database/databasetest, internal/gates/gatestest, internal/backend/remotehost/remotehosttest, internal/programtest, internal/cmdproto, internal/runnerproto, internal/machineproto, internal/host, internal/cmdpkg/file/fileproto, internal/cmdpkg/claudecode/claudecodeproto, internal/provider/providertest, internal/conversationproto, internal/machinemanager/sandbox
 internal/backend/blobs/blobstest -> internal/backend/blobs, internal/agent/store, internal/types, internal/webapiproto
-internal/backend/database/databasetest -> internal/backend/database, internal/agent/store, internal/agent/transcript, internal/types, internal/gates, internal/backend/remotehost, internal/machinemanagerproto, internal/runnerproto, internal/host, internal/webapiproto, internal/plugin
-internal/backend/httpserver/httpservertest -> internal/backend/httpserver, internal/conversationproto, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providerhost, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/commandproto, internal/types, internal/backend/remotehost, internal/provider, internal/runnerproto, internal/host, internal/webapiproto, internal/backend/pluginhost, internal/plugin, internal/backend/usershard/usershardtest
-internal/backend/remotehost/remotehosttest -> internal/backend/remotehost, internal/commandproto, internal/commanddecl, internal/types, internal/gates, internal/runnerproto, internal/host, internal/commandproto/commandprototest, internal/host/hosttest, internal/programtest
-internal/backend/runners/runnerstest -> internal/backend/runners, internal/artifacts, internal/backend/blobs, internal/backend/database, internal/backend/pagesync, internal/commandproto, internal/gates, internal/backend/remotehost, internal/runnerproto, internal/host, internal/webapiproto
-internal/backend/usershard/usershardtest -> internal/backend/usershard, internal/agent/server, internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/idlewatch, internal/backend/blobs, internal/backend/pluginhost, internal/backend/providerhost, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/commandpackage/claudecode/claudecodeproto, internal/commandproto, internal/commanddecl, internal/types, internal/gates, internal/plugin, internal/backend/remotehost, internal/machinemanagerproto, internal/provider, internal/provider/claudecode, internal/runnerproto, internal/host, internal/webapiproto
-internal/commandpackage/browser/chrome/cdp/cdptest -> internal/commandpackage/browser/chrome/cdp, internal/commandpackage/browser/browserproto, internal/commandproto, internal/commandsdk, internal/artifacts, internal/types
-internal/commandpackage/browser/chrome/tabs/tabstest -> internal/commandpackage/browser/chrome/tabs, internal/commandpackage/browser/browserproto, internal/commandproto, internal/commandsdk, internal/artifacts, internal/types, internal/commandpackage/browser/chrome/cdp
-internal/commandpackage/browser/chrome/page/pagetest -> internal/commandpackage/browser/chrome/page, internal/commandpackage/browser/browserproto, internal/commandproto, internal/commandsdk, internal/artifacts, internal/types, internal/commandpackage/browser/chrome/cdp, internal/commandpackage/browser/chrome/tabs
+internal/backend/database/databasetest -> internal/backend/database, internal/agent/store, internal/agent/transcript, internal/types, internal/gates, internal/backend/remotehost, internal/machineproto, internal/runnerproto, internal/host, internal/webapiproto, internal/plugin
+internal/backend/httpserver/httpservertest -> internal/backend/httpserver, internal/conversationproto, internal/agent/store, internal/artifacts, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/blobs, internal/backend/providerhost, internal/backend/runners, internal/backend/usershard, internal/backend/database, internal/backend/pagesync, internal/cmdproto, internal/types, internal/backend/remotehost, internal/provider, internal/runnerproto, internal/host, internal/webapiproto, internal/backend/pluginhost, internal/plugin, internal/backend/usershard/usershardtest
+internal/backend/remotehost/remotehosttest -> internal/backend/remotehost, internal/cmdproto, internal/cmddecl, internal/types, internal/gates, internal/runnerproto, internal/host, internal/cmdproto/cmdprototest, internal/host/hosttest, internal/programtest
+internal/backend/runners/runnerstest -> internal/backend/runners, internal/artifacts, internal/backend/blobs, internal/backend/database, internal/backend/pagesync, internal/cmdproto, internal/gates, internal/backend/remotehost, internal/runnerproto, internal/host, internal/webapiproto
+internal/backend/usershard/usershardtest -> internal/backend/usershard, internal/agent/server, internal/conversationproto, internal/agent/session, internal/agent/store, internal/agent/tools, internal/agent/transcript, internal/backend/accounts, internal/backend/cloud, internal/backend/expose, internal/backend/hostaccess, internal/backend/idlewatch, internal/backend/blobs, internal/backend/pluginhost, internal/backend/providerhost, internal/backend/runners, internal/backend/database, internal/backend/pagesync, internal/cmdpkg/claudecode/claudecodeproto, internal/cmdproto, internal/cmddecl, internal/types, internal/gates, internal/plugin, internal/backend/remotehost, internal/machineproto, internal/provider, internal/provider/claudecode, internal/runnerproto, internal/host, internal/webapiproto
+internal/cmdpkg/browser/chrome/cdp/cdptest -> internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/browserproto, internal/cmdproto, internal/cmdsdk, internal/artifacts, internal/types
+internal/cmdpkg/browser/chrome/tabs/tabstest -> internal/cmdpkg/browser/chrome/tabs, internal/cmdpkg/browser/browserproto, internal/cmdproto, internal/cmdsdk, internal/artifacts, internal/types, internal/cmdpkg/browser/chrome/cdp
+internal/cmdpkg/browser/chrome/page/pagetest -> internal/cmdpkg/browser/chrome/page, internal/cmdpkg/browser/browserproto, internal/cmdproto, internal/cmdsdk, internal/artifacts, internal/types, internal/cmdpkg/browser/chrome/cdp, internal/cmdpkg/browser/chrome/tabs
 ```
 
 ### TypeScript packages
@@ -2078,17 +2078,21 @@ web-gallery -> plugin-browser, plugin-changes, plugin-expose, plugin-file-browse
   | `internal/provider/` | The model providers the backend links: the contract in `provider`, one vendor each below it | |
   | `internal/runner/` | The runner on each Host | `demi-runner` |
   | `internal/machinemanager/` | The machine manager on a Cloud host | `demi-machine-manager` |
-  | `internal/command*` | The command wire between a runner and a command package | |
-  | `internal/commandpackage/<name>/` | One command package, released as `demi.<name>` and started by a runner | `demi-<name>` |
+  | `internal/cmd*` | The command wire between a runner and a command package | |
+  | `internal/cmdpkg/<name>/` | One command package, released as `demi.<name>` and started by a runner | `demi-<name>` |
   | `internal/host` | The Host, the execution target, as the agent and the backend see it | |
   | `internal/plugin/` | The [plugins](plugins.md): the contract in `plugin`, one plugin each below it | |
   | `internal/` (no owner) | Several components use it: `types`, `gates`, `artifacts`, `cli`, `contract`, `version` | |
 
-  A package's name is the last element of its path. A name suffix has one
+  A package's name is the last element of its path. A word in a name is
+  shortened only as Go code commonly shortens it (`cmd`, `pkg`, `decl`, `sdk`,
+  `proto`); a word whose short form reads as something else stays whole, as
+  `conversation` does, since `conv` reads as conversion (`strconv`). A name
+  suffix has one
   meaning: `proto` holds the types of one wire and no IO
-  (`conversationproto`, `webapiproto`, `runnerproto`, `commandproto`,
-  `machinemanagerproto`, and each command package's `<name>proto`), `sdk`
-  implements one end of a wire (`commandsdk`), and a parent package with
+  (`conversationproto`, `webapiproto`, `runnerproto`, `cmdproto`,
+  `machineproto`, and each command package's `<name>proto`), `sdk`
+  implements one end of a wire (`cmdsdk`), and a parent package with
   implementations below it holds only their contract (`provider`, `plugin`,
   `host`). Words whose meaning outside the repository differs stay out of
   names, such as `service`, `extension`, `edge` and `core`; `plugin` names

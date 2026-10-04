@@ -7,7 +7,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -25,7 +25,7 @@ func TestHostCommandsUseConversationAndStopWithShard(t *testing.T) {
 		invocation := host.RPCInvocation{
 			Path:    []string{"host", verb},
 			Args:    []byte(args),
-			Context: commandproto.Context{Conversation: string(record.ID)},
+			Context: cmdproto.Context{Conversation: string(record.ID)},
 		}
 		code, err := commands.Dispatch(t.Context(), invocation, host.NewRPCPort(memory))
 		return code, string(memory.Stdout()), err
@@ -75,7 +75,7 @@ func TestConnectedCrossHostCommandInstallsAndCarriesExitAndDirectory(t *testing.
 		s.control,
 		s.owner,
 		record.ID,
-		&commandproto.AgentCaller{Number: 1},
+		&cmdproto.AgentCaller{Number: 1},
 	)
 	if err != nil {
 		t.Fatal(err)

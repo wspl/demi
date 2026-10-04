@@ -9,7 +9,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -41,7 +41,7 @@ func StartJob(ctx context.Context, start process.JobStart, observe Observer) (pr
 		}
 	}()
 	for range 3 {
-		pair, err := commandsdk.Retry(ctx, func() ([2]*os.File, error) {
+		pair, err := cmdsdk.Retry(ctx, func() ([2]*os.File, error) {
 			r, w, err := os.Pipe()
 			return [2]*os.File{r, w}, err
 		})

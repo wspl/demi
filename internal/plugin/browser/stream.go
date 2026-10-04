@@ -1,8 +1,8 @@
 package browser
 
 import (
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/plugin"
 )
@@ -12,11 +12,11 @@ const Stream = "browser"
 
 // LiveStream declares the live view from the protocol owner's message schemas.
 func LiveStream() (plugin.Stream, error) {
-	receives, err := commanddecl.NewSchema(browserproto.LiveModuleMessagePluginJSONSchema())
+	receives, err := cmddecl.NewSchema(browserproto.LiveModuleMessagePluginJSONSchema())
 	if err != nil {
 		return plugin.Stream{}, err
 	}
-	sends, err := commanddecl.NewSchema(browserproto.LiveViewerMessagePluginJSONSchema())
+	sends, err := cmddecl.NewSchema(browserproto.LiveViewerMessagePluginJSONSchema())
 	if err != nil {
 		return plugin.Stream{}, err
 	}

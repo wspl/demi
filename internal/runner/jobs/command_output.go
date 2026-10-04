@@ -5,15 +5,15 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/contract"
 )
 
 // commandOutput withholds a JSON command's stdout until its successful validation.
 type commandOutput struct {
-	output *commandsdk.Output
-	schema *commanddecl.Schema
+	output *cmdsdk.Output
+	schema *cmddecl.Schema
 	bytes  []byte
 }
 

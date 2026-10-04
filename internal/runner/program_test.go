@@ -14,7 +14,7 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/programtest"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -218,11 +218,11 @@ func (f *runnerFixture) frame() runnerproto.Outbound {
 	return message
 }
 
-func runnerCommandContext() commandproto.Context {
-	return commandproto.Context{
+func runnerCommandContext() cmdproto.Context {
+	return cmdproto.Context{
 		Conversation: "conversation",
-		Caller:       &commandproto.AgentCaller{Number: 1},
-		Locale:       commandproto.CommandLocale{TimeZone: "UTC", Languages: []commandproto.LanguageTag{"en-US"}},
+		Caller:       &cmdproto.AgentCaller{Number: 1},
+		Locale:       cmdproto.CommandLocale{TimeZone: "UTC", Languages: []cmdproto.LanguageTag{"en-US"}},
 	}
 }
 

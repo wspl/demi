@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -92,7 +92,7 @@ func (t *Table) executionContext(
 	ctx context.Context,
 	job string,
 	declared DeclaredCommands,
-	edits commandproto.EditContext,
+	edits cmdproto.EditContext,
 	env map[string]string,
 ) (*ExecutionContext, *process.JobCommands, error) {
 	commands := t.config.Commands
@@ -216,11 +216,11 @@ func (t *Table) runShell(spec TaskSpec, entry *taskEntry, command *ShellCommand)
 	spec.Env["TMPDIR"] = directory.Scratch
 	spec.Env["TEMP"] = directory.Scratch
 	spec.Env["DEMI_JOB_ID"] = spec.ID
-	edits := commandproto.EditContext{
+	edits := cmdproto.EditContext{
 		Directory: filepath.Join(directory.Path, "changes"),
 		Lock:      filepath.Join(t.config.Directories.Root(), "edits.lock"),
 	}
-	recorder, err := commandsdk.NewRecorder(ctx, edits)
+	recorder, err := cmdsdk.NewRecorder(ctx, edits)
 	if err != nil {
 		slog.Warn("edit recording failed", "error", err)
 		recorder = nil
@@ -274,7 +274,7 @@ func (t *Table) executeTask(
 	entry *taskEntry,
 	child taskExecution,
 	directory *Directory,
-	recorder *commandsdk.Recorder,
+	recorder *cmdsdk.Recorder,
 	stdin, stdout *runnerproto.PipeRef,
 ) (frame []byte, err error) {
 	ctx := entry.lifetime
@@ -359,7 +359,7 @@ func (t *Table) pipeOutput(
 ) {
 	defer pipes.Done()
 	source := &chunkSource{chunks: uploads}
-	body := newInvocationBody(ctx, commandsdk.NewInput(source))
+	body := newInvocationBody(ctx, cmdsdk.NewInput(source))
 	result := t.config.Pipes.Put(ctx, stdout.URL, body)
 	close(uploadDone)
 	if err := process.ReportPipe(
@@ -473,7 +473,7 @@ type taskExitOptions struct {
 	cwd         *string
 	failure     error
 	directory   *Directory
-	recorder    *commandsdk.Recorder
+	recorder    *cmdsdk.Recorder
 	out, stderr *outputView
 }
 

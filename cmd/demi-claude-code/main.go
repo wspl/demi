@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wspl/demi/internal/commandpackage/claudecode"
+	"github.com/wspl/demi/internal/cmdpkg/claudecode"
 )
 
 func main() {

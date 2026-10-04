@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -28,7 +28,7 @@ func Status(ctx context.Context, shard Shard) (webapiproto.CloudStatus, error) {
 	image, err := Call(
 		ctx,
 		shard.CloudServices().Machines,
-		machinemanagerproto.ImageStateParams{DeviceID: string(device.ID)},
+		machineproto.ImageStateParams{DeviceID: string(device.ID)},
 	)
 	if err != nil {
 		slog.Warn("the Cloud's disks could not be read", "device", device.ID, "error", err)

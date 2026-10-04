@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/pluginhost"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/types"
 )
@@ -44,7 +44,7 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 			a.Streams = []plugin.Stream{
 				{
 					Name:      "live",
-					Operation: commanddecl.NativeOperation{Package: "missing", Operation: "live"},
+					Operation: cmddecl.NativeOperation{Package: "missing", Operation: "live"},
 					Sends:     a.Page.User.Schema,
 					Receives:  a.Page.User.Schema,
 				},
@@ -94,7 +94,7 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 			b.Commands = []plugin.Commands{command("bad name", plugin.PlacementDemi, nil)}
 		}, `'s commands are refused: `},
 		{"conflict hidden by missing catalog", func(a, b *plugin.Manifest) {
-			operation := commanddecl.NativeOperation{Package: "missing", Operation: "run"}
+			operation := cmddecl.NativeOperation{Package: "missing", Operation: "run"}
 			a.Commands = []plugin.Commands{command("notes", plugin.PlacementDemi, &operation)}
 			b.Commands = a.Commands
 		}, `" declares "demi`},
@@ -118,7 +118,7 @@ func TestRegistryRefusesConflicts(t *testing.T) {
 			scenario.change(&a, &b)
 			_, err := pluginhost.NewRegistry(
 				[]plugin.Factory{&fakeFactory{manifest: a}, &fakeFactory{manifest: b}},
-				func(commanddecl.NativeOperation) bool {
+				func(cmddecl.NativeOperation) bool {
 					return false
 				},
 			)
@@ -152,8 +152,8 @@ func TestRegistryCatalogAndOrder(t *testing.T) {
 	t.Cleanup(func() {
 		slog.SetDefault(previous)
 	})
-	served := commanddecl.NativeOperation{Package: "available", Operation: "run"}
-	missing := commanddecl.NativeOperation{Package: "available", Operation: "missing"}
+	served := cmddecl.NativeOperation{Package: "available", Operation: "run"}
+	missing := cmddecl.NativeOperation{Package: "available", Operation: "missing"}
 	a, b := manifest(t, "z-first"), manifest(t, "a-second")
 	a.Profiles = []types.Profile{
 		{
@@ -163,12 +163,12 @@ func TestRegistryCatalogAndOrder(t *testing.T) {
 	}
 	b.Profiles = []types.Profile{{Name: "a-profile"}}
 	mixed := command("mixed", plugin.PlacementDemi, &served)
-	mixed.Tree.Node.(*commanddecl.Group[commanddecl.NativeOperation]).Subcommands = append(
-		mixed.Tree.Node.(*commanddecl.Group[commanddecl.NativeOperation]).Subcommands,
-		&commanddecl.Leaf[commanddecl.NativeOperation]{
+	mixed.Tree.Node.(*cmddecl.Group[cmddecl.NativeOperation]).Subcommands = append(
+		mixed.Tree.Node.(*cmddecl.Group[cmddecl.NativeOperation]).Subcommands,
+		&cmddecl.Leaf[cmddecl.NativeOperation]{
 			Name:    "missing",
 			Summary: "Missing.",
-			Kind:    &commanddecl.Native[commanddecl.NativeOperation]{Binding: missing},
+			Kind:    &cmddecl.Native[cmddecl.NativeOperation]{Binding: missing},
 		},
 	)
 	a.Commands = []plugin.Commands{mixed, command("kept", plugin.PlacementDemi, &served)}
@@ -186,14 +186,14 @@ func TestRegistryCatalogAndOrder(t *testing.T) {
 			Receives:  a.Page.User.Schema,
 		},
 	}
-	a.Page.User.Operations = []commanddecl.NativeOperation{missing}
-	a.Page.Conversation.Operations = []commanddecl.NativeOperation{served}
-	a.Page.Methods[0].Operations = []commanddecl.NativeOperation{missing}
-	b.Page.Conversation.Operations = []commanddecl.NativeOperation{missing}
-	a.Page.Methods[1].Operations = []commanddecl.NativeOperation{{Package: "method-only", Operation: "run"}}
+	a.Page.User.Operations = []cmddecl.NativeOperation{missing}
+	a.Page.Conversation.Operations = []cmddecl.NativeOperation{served}
+	a.Page.Methods[0].Operations = []cmddecl.NativeOperation{missing}
+	b.Page.Conversation.Operations = []cmddecl.NativeOperation{missing}
+	a.Page.Methods[1].Operations = []cmddecl.NativeOperation{{Package: "method-only", Operation: "run"}}
 	r, err := pluginhost.NewRegistry(
 		[]plugin.Factory{&fakeFactory{manifest: a}, &fakeFactory{manifest: b}},
-		func(operation commanddecl.NativeOperation) bool {
+		func(operation cmddecl.NativeOperation) bool {
 			return operation.Operation != "missing"
 		},
 	)

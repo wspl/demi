@@ -7,7 +7,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -48,11 +48,11 @@ func (b *Browser) Manifest() plugin.Manifest {
 	page.Told = slices.Clone(page.Told)
 	state := *page.Conversation
 	state.Topics = append([]plugin.Topic{}, state.Topics...)
-	state.Operations = append([]commanddecl.NativeOperation{}, state.Operations...)
+	state.Operations = append([]cmddecl.NativeOperation{}, state.Operations...)
 	page.Conversation = &state
 	page.Methods = append([]plugin.Method{}, page.Methods...)
 	for i := range page.Methods {
-		page.Methods[i].Operations = append([]commanddecl.NativeOperation{}, page.Methods[i].Operations...)
+		page.Methods[i].Operations = append([]cmddecl.NativeOperation{}, page.Methods[i].Operations...)
 	}
 	return plugin.Manifest{
 		ID:   "browser",
@@ -129,7 +129,7 @@ func (i *instance) Call(ctx context.Context, request plugin.Request, port plugin
 }
 
 func page() (plugin.Page, error) {
-	tabs, err := commanddecl.NewSchema(BrowserTabsPluginJSONSchema())
+	tabs, err := cmddecl.NewSchema(BrowserTabsPluginJSONSchema())
 	if err != nil {
 		return plugin.Page{}, err
 	}
@@ -140,7 +140,7 @@ func page() (plugin.Page, error) {
 		Conversation: &plugin.State{
 			Schema:     plugin.Schema{Schema: tabs},
 			Topics:     []plugin.Topic{plugin.TopicJobs},
-			Operations: []commanddecl.NativeOperation{operation("tabs")},
+			Operations: []cmddecl.NativeOperation{operation("tabs")},
 		},
 	}
 	nullResult := json.RawMessage(`{"title":"null","type":"null"}`)
@@ -154,11 +154,11 @@ func page() (plugin.Page, error) {
 		{"navigate", NavigateTabPluginJSONSchema(), nullResult, []string{"goto"}},
 		{"history", TabHistoryPluginJSONSchema(), nullResult, []string{"back", "forward", "reload"}},
 	} {
-		params, err := commanddecl.NewSchema(spec.params)
+		params, err := cmddecl.NewSchema(spec.params)
 		if err != nil {
 			return plugin.Page{}, err
 		}
-		result, err := commanddecl.NewSchema(spec.result)
+		result, err := cmddecl.NewSchema(spec.result)
 		if err != nil {
 			return plugin.Page{}, err
 		}

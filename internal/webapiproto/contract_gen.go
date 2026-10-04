@@ -5,7 +5,7 @@ package webapiproto
 import (
 	"encoding/json"
 	"fmt"
-	commandproto "github.com/wspl/demi/internal/commandproto"
+	cmdproto "github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	conversationproto "github.com/wspl/demi/internal/conversationproto"
 	runnerproto "github.com/wspl/demi/internal/runnerproto"
@@ -10392,8 +10392,8 @@ func (v *Preferences) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["locale"]
 		if ok {
-			value, err := func(b []byte) (*commandproto.CommandLocale, error) {
-				return contract.Pointer(b, contract.Decode[commandproto.CommandLocale])
+			value, err := func(b []byte) (*cmdproto.CommandLocale, error) {
+				return contract.Pointer(b, contract.Decode[cmdproto.CommandLocale])
 			}(raw)
 			if err != nil {
 				return contract.At("locale", err)
@@ -10498,8 +10498,8 @@ func (v *PreferencesPatch) UnmarshalJSON(data []byte) error {
 	{
 		raw, ok := obj["locale"]
 		if ok {
-			value, err := func(b []byte) (*commandproto.CommandLocale, error) {
-				return contract.Pointer(b, contract.Decode[commandproto.CommandLocale])
+			value, err := func(b []byte) (*cmdproto.CommandLocale, error) {
+				return contract.Pointer(b, contract.Decode[cmdproto.CommandLocale])
 			}(raw)
 			if err != nil {
 				return contract.At("locale", err)

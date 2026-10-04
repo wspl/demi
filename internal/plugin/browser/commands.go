@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
 )
@@ -79,11 +79,11 @@ func commands() (*plugin.CommandPlugin, error) {
 
 func commandLeaf(spec command) (host.Declared, error) {
 	name := spec.input.OperationName()
-	input, err := commanddecl.NewSchema(spec.schema)
+	input, err := cmddecl.NewSchema(spec.schema)
 	if err != nil {
 		return host.Declared{}, fmt.Errorf("browser %s input: %w", name, err)
 	}
-	output, err := commanddecl.NewSchema(spec.result)
+	output, err := cmddecl.NewSchema(spec.result)
 	if err != nil {
 		return host.Declared{}, fmt.Errorf("browser %s result: %w", name, err)
 	}
@@ -93,15 +93,15 @@ func commandLeaf(spec command) (host.Declared, error) {
 	}
 	parts := strings.Split(name, ".")
 	positions := positionals(name)
-	leaf := commanddecl.Leaf[commanddecl.NativeOperation]{
+	leaf := cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:          parts[len(parts)-1],
 		Summary:       spec.summary,
 		Input:         input,
-		Output:        &commanddecl.LeafOutput{JSON: output},
+		Output:        &cmddecl.LeafOutput{JSON: output},
 		Positionals:   &positions,
 		SuccessOutput: new(text),
 		FailureOutput: new(failure),
-		Kind:          &commanddecl.Native[commanddecl.NativeOperation]{Binding: operation(name)},
+		Kind:          &cmddecl.Native[cmddecl.NativeOperation]{Binding: operation(name)},
 	}
 	switch name {
 	case "eval":
@@ -137,8 +137,8 @@ func positionals(name string) []string {
 	}
 }
 
-func operation(name string) commanddecl.NativeOperation {
-	return commanddecl.NativeOperation{Package: browserproto.Package, Operation: browserproto.Prefix + name}
+func operation(name string) cmddecl.NativeOperation {
+	return cmddecl.NativeOperation{Package: browserproto.Package, Operation: browserproto.Prefix + name}
 }
 
 func navigationCommands() []command {

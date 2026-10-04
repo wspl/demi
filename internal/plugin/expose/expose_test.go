@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/plugin"
@@ -24,7 +24,7 @@ func TestMain(m *testing.M) {
 type testWorld struct {
 	*plugintest.TestDemi
 	plugin plugin.Plugin
-	root   commanddecl.Node[commanddecl.Binding]
+	root   cmddecl.Node[cmddecl.Binding]
 }
 
 func world(t *testing.T) *testWorld {

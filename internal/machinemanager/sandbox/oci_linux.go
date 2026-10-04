@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // BootRecord is where the runner reads its boot record inside the sandbox.
@@ -90,9 +90,9 @@ func bootProcess() ociProcess {
 		User: ociUser{UID: system.UserID, GID: system.UserID, Umask: 0o022},
 		Cwd:  "/home/demi",
 		Args: []string{
-			machinemanagerproto.InitPath,
+			machineproto.InitPath,
 			"--",
-			machinemanagerproto.RunnerPath,
+			machineproto.RunnerPath,
 			"run",
 			"--managed-boot",
 			BootRecord,

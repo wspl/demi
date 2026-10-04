@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/coder/websocket"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -82,11 +82,11 @@ func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			line, err := machinemanagerproto.EncodeLine(
-				machinemanagerproto.MachineRequest{
+			line, err := machineproto.EncodeLine(
+				machineproto.MachineRequest{
 					ID: "wake",
-					Call: &machinemanagerproto.Wake{
-						Params: machinemanagerproto.WakeParams{
+					Call: &machineproto.Wake{
+						Params: machineproto.WakeParams{
 							DeviceID: "device",
 							Boot:     runnerproto.ManagedBoot{BackendURL: backend, DeviceToken: token},
 						},
@@ -103,11 +103,11 @@ func TestScriptedMachinesEndsWithInputOrCancellation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			decoded, err := machinemanagerproto.DecodeResponse(response)
+			decoded, err := machineproto.DecodeResponse(response)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if _, ok := decoded.(*machinemanagerproto.OK); !ok {
+			if _, ok := decoded.(*machineproto.OK); !ok {
 				t.Fatalf("wake: %v", decoded)
 			}
 			select {

@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -122,13 +122,13 @@ func (s *ShardShellEnvironments) Create(
 	private := remotehost.NewHost(target.Key(), target.DefaultCWD(), func() remotehost.DeviceLink {
 		return remotehost.DeviceLink{Link: s.shard.Devices().Link(device)}
 	}, bridge.admit)
-	source := func(ctx context.Context) (commandproto.Context, error) {
+	source := func(ctx context.Context) (cmdproto.Context, error) {
 		return runners.CommandContext(
 			ctx,
 			s.shard.Control(),
 			s.shard.User(),
 			id,
-			&commandproto.AgentCaller{Number: scope.Agent},
+			&cmdproto.AgentCaller{Number: scope.Agent},
 		)
 	}
 	options := remotehost.NewEnvironmentOptions(private, source, scope.Feed, scope.Numbers)

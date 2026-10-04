@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/types"
 )
@@ -168,13 +168,13 @@ func (n *CountingNumbers) Next(_ context.Context, sequence types.Sequence) (uint
 }
 
 // CommandContext is the test context, with locale different from the backend default.
-func CommandContext() commandproto.Context {
-	return commandproto.Context{
+func CommandContext() cmdproto.Context {
+	return cmdproto.Context{
 		Conversation: "test-conversation",
-		Caller:       &commandproto.AgentCaller{Number: 1},
-		Locale: commandproto.CommandLocale{
+		Caller:       &cmdproto.AgentCaller{Number: 1},
+		Locale: cmdproto.CommandLocale{
 			TimeZone:  "Asia/Shanghai",
-			Languages: []commandproto.LanguageTag{"zh-CN", "en"},
+			Languages: []cmdproto.LanguageTag{"zh-CN", "en"},
 		},
 	}
 }

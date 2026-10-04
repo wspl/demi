@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 	"github.com/wspl/demi/internal/contract"
 )
 
@@ -46,7 +46,7 @@ func (a *application) browser(ctx context.Context, version string) error {
 	if err != nil {
 		return err
 	}
-	destination := filepath.Join(a.Root, "internal/commandpackage/browser/browserproto/chrome.json")
+	destination := filepath.Join(a.Root, "internal/cmdpkg/browser/browserproto/chrome.json")
 	if err := artifacts.PublishBytes(
 		ctx,
 		destination,

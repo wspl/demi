@@ -15,7 +15,7 @@ import (
 	"testing/synctest"
 	"time"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -252,7 +252,7 @@ func TestPipeRetriesOnlyUnreadUploads(t *testing.T) {
 			client.transport.DialContext = func(ctx context.Context, network, address string) (net.Conn, error) {
 				calls++
 				if !consumed && calls == 1 {
-					return nil, commandsdk.Exhaustion()
+					return nil, cmdsdk.Exhaustion()
 				}
 				return dial(ctx, network, address)
 			}
@@ -276,7 +276,7 @@ func TestPipeRetriesOnlyUnreadUploads(t *testing.T) {
 type failedUpload struct{}
 
 func (failedUpload) Read([]byte) (int, error) {
-	return 0, commandsdk.Exhaustion()
+	return 0, cmdsdk.Exhaustion()
 }
 
 func TestPipeEarlyRefusalInterruptsUpload(t *testing.T) {

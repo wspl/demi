@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/machinemanager/storage"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Cost: two sparse ext4 images, checks and one resize, normally <1 s.
@@ -65,7 +65,7 @@ func TestWorkingSaveRetainsFailureAndPublishesRecoveredPair(t *testing.T) {
 		*committed.ResetID != reset {
 		t.Fatalf("saved state: %+v", committed)
 	}
-	if _, err := machinemanagerproto.ParseGenerationID(string(committed.Generation)); err != nil {
+	if _, err := machineproto.ParseGenerationID(string(committed.Generation)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(pair.Directory()); !errors.Is(err, os.ErrNotExist) {

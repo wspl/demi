@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -51,7 +51,7 @@ func TestInstallersNameReleaseAndBackend(t *testing.T) {
 	}
 	release := runnerproto.Release{
 		Release: strings.Repeat("a", 64),
-		Targets: map[string]commandproto.PackageArtifact{
+		Targets: map[string]cmdproto.PackageArtifact{
 			"aarch64-apple-darwin":   {SHA256: strings.Repeat("b", 64), Size: 42},
 			"x86_64-pc-windows-msvc": {SHA256: strings.Repeat("c", 64), Size: 43},
 		},

@@ -7,7 +7,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/wspl/demi/internal/backend/accounts"
 	"github.com/wspl/demi/internal/backend/database/databasetest"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -61,9 +61,9 @@ func TestPreferencePatchCanonicalizesBeforeStorage(t *testing.T) {
 	if diff := cmp.Diff(saved, read); diff != "" {
 		t.Fatal(diff)
 	}
-	want := commandproto.CommandLocale{
+	want := cmdproto.CommandLocale{
 		TimeZone:  "Asia/Shanghai",
-		Languages: []commandproto.LanguageTag{"zh-CN", "en", "he"},
+		Languages: []cmdproto.LanguageTag{"zh-CN", "en", "he"},
 	}
 	if diff := cmp.Diff(&want, read.Locale); diff != "" {
 		t.Fatal(diff)
@@ -81,12 +81,12 @@ func TestPreferencePatchCanonicalizesBeforeStorage(t *testing.T) {
 func TestInvalidLocaleDoesNotReachStorage(t *testing.T) {
 	cases := []struct {
 		zone string
-		tags []commandproto.LanguageTag
+		tags []cmdproto.LanguageTag
 	}{
-		{"unknown", []commandproto.LanguageTag{"en"}},
-		{"Asia/Kolkata", []commandproto.LanguageTag{"en"}},
-		{"UTC", []commandproto.LanguageTag{"en--US"}},
-		{"UTC", make([]commandproto.LanguageTag, 17)},
+		{"unknown", []cmdproto.LanguageTag{"en"}},
+		{"Asia/Kolkata", []cmdproto.LanguageTag{"en"}},
+		{"UTC", []cmdproto.LanguageTag{"en--US"}},
+		{"UTC", make([]cmdproto.LanguageTag, 17)},
 	}
 	for _, scenario := range cases {
 		store := &preferenceStore{}
@@ -96,7 +96,7 @@ func TestInvalidLocaleDoesNotReachStorage(t *testing.T) {
 			t.Context(),
 			"caller",
 			webapiproto.PreferencesPatch{
-				Locale: &commandproto.CommandLocale{TimeZone: scenario.zone, Languages: scenario.tags},
+				Locale: &cmdproto.CommandLocale{TimeZone: scenario.zone, Languages: scenario.tags},
 			},
 		)
 		if err == nil || store.patch != nil {
@@ -105,7 +105,7 @@ func TestInvalidLocaleDoesNotReachStorage(t *testing.T) {
 	}
 	_, err := accounts.Check(
 		webapiproto.PreferencesPatch{
-			Locale: &commandproto.CommandLocale{TimeZone: "wrong", Languages: []commandproto.LanguageTag{"en"}},
+			Locale: &cmdproto.CommandLocale{TimeZone: "wrong", Languages: []cmdproto.LanguageTag{"en"}},
 		},
 	)
 	if err == nil || err.Error() != "locale.timeZone: \"wrong\" is not a time zone the backend knows" {

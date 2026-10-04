@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/types"
@@ -23,7 +23,7 @@ type registered struct {
 
 // NewRegistry checks factories in order. Contributions bound to operations that
 // serves refuses are left out and logged; an invalid manifest refuses startup.
-func NewRegistry(factories []plugin.Factory, serves func(commanddecl.NativeOperation) bool) (*Registry, error) {
+func NewRegistry(factories []plugin.Factory, serves func(cmddecl.NativeOperation) bool) (*Registry, error) {
 	r := &Registry{}
 	ids := map[string]bool{}
 	profiles := map[string]bool{}
@@ -127,10 +127,10 @@ func (r *Registry) lookup(id string) (int, *registered) {
 func served(
 	factory plugin.Factory,
 	manifest plugin.Manifest,
-	serves func(commanddecl.NativeOperation) bool,
+	serves func(cmddecl.NativeOperation) bool,
 ) registered {
 	packages := map[string]bool{}
-	keep := func(what, name string, operations []commanddecl.NativeOperation) bool {
+	keep := func(what, name string, operations []cmddecl.NativeOperation) bool {
 		for _, operation := range operations {
 			if !serves(operation) {
 				slog.Info(
@@ -151,10 +151,10 @@ func served(
 		return true
 	}
 	manifest.Commands = slices.DeleteFunc(manifest.Commands, func(c plugin.Commands) bool {
-		return !keep("command", commanddecl.Name(c.Tree.Node), nativeOperations(c.Tree.Node))
+		return !keep("command", cmddecl.Name(c.Tree.Node), nativeOperations(c.Tree.Node))
 	})
 	manifest.Streams = slices.DeleteFunc(manifest.Streams, func(s plugin.Stream) bool {
-		return !keep("user stream", s.Name, []commanddecl.NativeOperation{s.Operation})
+		return !keep("user stream", s.Name, []cmddecl.NativeOperation{s.Operation})
 	})
 	if page := manifest.Page; page != nil {
 		if page.User != nil && !keep("page state", "user", page.User.Operations) {
@@ -179,16 +179,16 @@ func served(
 }
 
 // nativeOperations collects the package operations of one plugin command tree.
-func nativeOperations(tree commanddecl.Node[commanddecl.NativeOperation]) []commanddecl.NativeOperation {
-	var operations []commanddecl.NativeOperation
+func nativeOperations(tree cmddecl.Node[cmddecl.NativeOperation]) []cmddecl.NativeOperation {
+	var operations []cmddecl.NativeOperation
 	switch n := tree.(type) {
-	case *commanddecl.Leaf[commanddecl.NativeOperation]:
+	case *cmddecl.Leaf[cmddecl.NativeOperation]:
 		switch kind := n.Kind.(type) {
-		case *commanddecl.Native[commanddecl.NativeOperation]:
+		case *cmddecl.Native[cmddecl.NativeOperation]:
 			operations = append(operations, kind.Binding)
-		case *commanddecl.RPC[commanddecl.NativeOperation]:
+		case *cmddecl.RPC[cmddecl.NativeOperation]:
 		}
-	case *commanddecl.Group[commanddecl.NativeOperation]:
+	case *cmddecl.Group[cmddecl.NativeOperation]:
 		for _, child := range n.Subcommands {
 			operations = append(operations, nativeOperations(child)...)
 		}
@@ -211,7 +211,7 @@ func (r *Registry) compose(user *User, product []host.Declared, enabled []bool) 
 			continue
 		}
 		for _, c := range p.manifest.Commands {
-			name := commanddecl.Name(c.Tree.Node)
+			name := cmddecl.Name(c.Tree.Node)
 			strip := 0
 			if c.Placement == plugin.PlacementDemi {
 				if names[name] {

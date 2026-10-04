@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -62,7 +62,7 @@ func CreateKeptOutput(ctx context.Context, directory string) (*KeptOutput, error
 		return nil, err
 	}
 	path := filepath.Join(directory, "head")
-	file, err := commandsdk.Retry(ctx, func() (*os.File, error) {
+	file, err := cmdsdk.Retry(ctx, func() (*os.File, error) {
 		return os.Create(path)
 	})
 	if err != nil {

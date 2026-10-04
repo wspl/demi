@@ -13,10 +13,10 @@ import (
 	"strings"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
-	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
-	"github.com/wspl/demi/internal/commandpackage/file/fileproto"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/cmdpkg/file/fileproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/version"
@@ -66,8 +66,8 @@ func selectTargets(programs, named []string) ([]string, error) {
 		}
 	}
 	for _, t := range named {
-		if !slices.Contains(commandproto.Targets, t) {
-			return nil, fmt.Errorf("the targets are %s", strings.Join(commandproto.Targets, ", "))
+		if !slices.Contains(cmdproto.Targets, t) {
+			return nil, fmt.Errorf("the targets are %s", strings.Join(cmdproto.Targets, ", "))
 		}
 		for _, p := range programs {
 			if !supported(p, t) {
@@ -76,7 +76,7 @@ func selectTargets(programs, named []string) ([]string, error) {
 		}
 	}
 	var result []string
-	for _, t := range commandproto.Targets {
+	for _, t := range cmdproto.Targets {
 		if len(named) > 0 && !slices.Contains(named, t) {
 			continue
 		}
@@ -165,16 +165,16 @@ func (a *application) build(ctx context.Context, o buildOptions) error {
 // workspace version it carries, and each target's file.
 // +demi:root
 type executableRelease struct {
-	Executable string                                  `json:"executable"`
-	Version    string                                  `json:"version"`
-	Targets    map[string]commandproto.PackageArtifact `json:"targets"`
+	Executable string                              `json:"executable"`
+	Version    string                              `json:"version"`
+	Targets    map[string]cmdproto.PackageArtifact `json:"targets"`
 }
 
 // runnerContents is the runner identity's canonical preimage, without the identity.
 type runnerContents struct {
-	Wire            uint32                                  `json:"wire"`
-	CommandProtocol uint64                                  `json:"commandProtocol"`
-	Targets         map[string]commandproto.PackageArtifact `json:"targets"`
+	Wire            uint32                              `json:"wire"`
+	CommandProtocol uint64                              `json:"commandProtocol"`
+	Targets         map[string]cmdproto.PackageArtifact `json:"targets"`
 }
 
 // record writes the release file format with contract.EncodeJSON, keeping its escaping.
@@ -294,10 +294,10 @@ func (a *application) publishNative(
 func (a *application) browserResources(
 	ctx context.Context,
 	release browserproto.BrowserRelease,
-	selected map[string]commandproto.PackageArtifact,
+	selected map[string]cmdproto.PackageArtifact,
 	cache string,
-) (map[string]commandproto.PackageResource, []artifacts.ReleaseFile, error) {
-	targets := make(map[string]commandproto.ResourceArtifact)
+) (map[string]cmdproto.PackageResource, []artifacts.ReleaseFile, error) {
+	targets := make(map[string]cmdproto.ResourceArtifact)
 	var files []artifacts.ReleaseFile
 	client := artifacts.NewClient()
 	defer client.Close()
@@ -320,7 +320,7 @@ func (a *application) browserResources(
 		} else if err != nil {
 			return nil, nil, err
 		}
-		targets[p.Target] = commandproto.ResourceArtifact{SHA256: p.SHA256, Size: p.Size, Entry: p.Executable}
+		targets[p.Target] = cmdproto.ResourceArtifact{SHA256: p.SHA256, Size: p.Size, Entry: p.Executable}
 		files = append(
 			files,
 			artifacts.ReleaseFile{Source: source, Path: filepath.Join("resources", p.SHA256), Digest: digest},
@@ -329,7 +329,7 @@ func (a *application) browserResources(
 	if len(targets) == 0 {
 		return nil, files, nil
 	}
-	return map[string]commandproto.PackageResource{
+	return map[string]cmdproto.PackageResource{
 		browserproto.Resource: {Title: release.Title(), Targets: targets},
 	}, files, nil
 }
@@ -357,10 +357,10 @@ func nativeReleaseFiles(
 	ctx context.Context,
 	o packageOptions,
 	sources map[string]string,
-) (map[string]commandproto.PackageArtifact, []artifacts.ReleaseFile, error) {
-	targets := make(map[string]commandproto.PackageArtifact)
+) (map[string]cmdproto.PackageArtifact, []artifacts.ReleaseFile, error) {
+	targets := make(map[string]cmdproto.PackageArtifact)
 	var files []artifacts.ReleaseFile
-	for _, target := range commandproto.Targets {
+	for _, target := range cmdproto.Targets {
 		source, ok := sources[target]
 		if !ok {
 			continue
@@ -378,7 +378,7 @@ func nativeReleaseFiles(
 		if err != nil {
 			return nil, nil, fmt.Errorf("%s: %w", source, err)
 		}
-		targets[target] = commandproto.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}
+		targets[target] = cmdproto.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}
 		files = append(
 			files,
 			artifacts.ReleaseFile{
@@ -398,7 +398,7 @@ func (a *application) commandRelease(
 	o packageOptions,
 	output string,
 	chrome browserproto.BrowserRelease,
-	targets map[string]commandproto.PackageArtifact,
+	targets map[string]cmdproto.PackageArtifact,
 	files []artifacts.ReleaseFile,
 ) (any, string, string, []artifacts.ReleaseFile, error) {
 	var value any
@@ -407,10 +407,10 @@ func (a *application) commandRelease(
 	if id == "" {
 		return nil, "", "", nil, fmt.Errorf("%s is not a command program", o.Package)
 	}
-	descriptor := commandproto.PackageDescriptor{
+	descriptor := cmdproto.PackageDescriptor{
 		ID:              id,
 		Version:         version.Release,
-		ProtocolVersion: commandproto.Version,
+		ProtocolVersion: cmdproto.Version,
 		Operations:      operations,
 		Targets:         targets,
 	}
@@ -439,11 +439,11 @@ func (a *application) commandRelease(
 	return value, name, message, files, nil
 }
 
-func runnerReleaseRecord(output string, targets map[string]commandproto.PackageArtifact) (any, string, string, error) {
+func runnerReleaseRecord(output string, targets map[string]cmdproto.PackageArtifact) (any, string, string, error) {
 	var value any
 	var directory, message string
-	contents := runnerContents{runnerproto.Version, commandproto.Version, targets}
-	hash, err := commandproto.CanonicalDigest(contents)
+	contents := runnerContents{runnerproto.Version, cmdproto.Version, targets}
+	hash, err := cmdproto.CanonicalDigest(contents)
 	if err != nil {
 		return nil, "", "", err
 	}

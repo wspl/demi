@@ -8,34 +8,34 @@ import (
 	"errors"
 	"sync"
 
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Manager owns admission and one worker per device. Close drains and joins them.
 type Manager struct {
 	core       *Core
-	base       machinemanagerproto.BaseVersion
+	base       machineproto.BaseVersion
 	admission  Admission
 	mu         sync.Mutex
-	devices    map[machinemanagerproto.DeviceID]*deviceWorker
+	devices    map[machineproto.DeviceID]*deviceWorker
 	workers    sync.WaitGroup
-	deaths     chan<- machinemanagerproto.DeviceID
+	deaths     chan<- machineproto.DeviceID
 	stopping   chan struct{}
 	stopDeaths sync.Once
 }
 
 // NewManager starts with no device workers; workers are created on first use.
-func NewManager(core *Core, base machinemanagerproto.BaseVersion, deaths chan<- machinemanagerproto.DeviceID) *Manager {
+func NewManager(core *Core, base machineproto.BaseVersion, deaths chan<- machineproto.DeviceID) *Manager {
 	return &Manager{
 		core:     core,
 		base:     base,
-		devices:  make(map[machinemanagerproto.DeviceID]*deviceWorker),
+		devices:  make(map[machineproto.DeviceID]*deviceWorker),
 		deaths:   deaths,
 		stopping: make(chan struct{}),
 	}
 }
 
-func (m *Manager) worker(id machinemanagerproto.DeviceID) *deviceWorker {
+func (m *Manager) worker(id machineproto.DeviceID) *deviceWorker {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if w := m.devices[id]; w != nil {
@@ -100,7 +100,7 @@ func (m *Manager) drain(ctx context.Context) error {
 	var jobs sync.WaitGroup
 	for i, w := range workers {
 		jobs.Go(func() {
-			_, results[i] = w.call(ctx, &machinemanagerproto.Hibernate{})
+			_, results[i] = w.call(ctx, &machineproto.Hibernate{})
 		})
 	}
 	jobs.Wait()
@@ -111,15 +111,15 @@ func (m *Manager) drain(ctx context.Context) error {
 }
 
 // Handle runs a decoded machine request. Once admitted, its work completes despite cancellation.
-func (m *Manager) Handle(ctx context.Context, call machinemanagerproto.Call) (json.RawMessage, error) {
+func (m *Manager) Handle(ctx context.Context, call machineproto.Call) (json.RawMessage, error) {
 	var id string
 	switch op := call.(type) {
-	case *machinemanagerproto.Reconcile:
+	case *machineproto.Reconcile:
 		return json.RawMessage("null"), m.Reconcile(ctx)
-	case *machinemanagerproto.CurrentBaseVersion:
+	case *machineproto.CurrentBaseVersion:
 		return m.base.MarshalJSON()
-	case *machinemanagerproto.ImageState:
-		device, err := machinemanagerproto.ParseDeviceID(op.Params.DeviceID)
+	case *machineproto.ImageState:
+		device, err := machineproto.ParseDeviceID(op.Params.DeviceID)
 		if err != nil {
 			return nil, err
 		}
@@ -131,23 +131,23 @@ func (m *Manager) Handle(ctx context.Context, call machinemanagerproto.Call) (js
 			return json.RawMessage("null"), nil
 		}
 		return state.MarshalJSON()
-	case *machinemanagerproto.RuntimeStateCall:
+	case *machineproto.RuntimeStateCall:
 		id = op.Params.DeviceID
-	case *machinemanagerproto.Wake:
+	case *machineproto.Wake:
 		id = op.Params.DeviceID
-	case *machinemanagerproto.Hibernate:
+	case *machineproto.Hibernate:
 		id = op.Params.DeviceID
-	case *machinemanagerproto.Checkpoint:
+	case *machineproto.Checkpoint:
 		id = op.Params.DeviceID
-	case *machinemanagerproto.GrowVolume:
+	case *machineproto.GrowVolume:
 		id = op.Params.DeviceID
-	case *machinemanagerproto.Reset:
+	case *machineproto.Reset:
 		id = op.Params.DeviceID
-		if _, err := machinemanagerproto.ParseBaseVersion(op.Params.BaseVersion); err != nil {
+		if _, err := machineproto.ParseBaseVersion(op.Params.BaseVersion); err != nil {
 			return nil, err
 		}
 	}
-	device, err := machinemanagerproto.ParseDeviceID(id)
+	device, err := machineproto.ParseDeviceID(id)
 	if err != nil {
 		return nil, err
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
@@ -186,7 +186,7 @@ func (p Port) Changed(ctx context.Context, scope Scope) error {
 // PackageCall performs the package_call port operation.
 func (p Port) PackageCall(
 	ctx context.Context,
-	operation commanddecl.NativeOperation,
+	operation cmddecl.NativeOperation,
 	args json.RawMessage,
 	kind CallKind,
 ) (json.RawMessage, error) {

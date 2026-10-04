@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -38,9 +38,9 @@ func GrowVolume(
 	_, err = Call(
 		ctx,
 		shard.CloudServices().Machines,
-		machinemanagerproto.GrowVolumeParams{
+		machineproto.GrowVolumeParams{
 			DeviceID: string(device),
-			Volume:   machinemanagerproto.Volume(volume),
+			Volume:   machineproto.Volume(volume),
 			Bytes:    bytes,
 		},
 	)

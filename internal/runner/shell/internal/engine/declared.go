@@ -10,8 +10,8 @@ import (
 	"syscall"
 
 	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"mvdan.cc/sh/v3/interp"
 )
@@ -50,9 +50,9 @@ func (e *execution) declared(ctx context.Context, args []string) error {
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	output, records := commandsdk.OutputChannel(ctx)
+	output, records := cmdsdk.OutputChannel(ctx)
 	done := make(chan invocationResult, 1)
-	go invokeDeclared(ctx, commands, handler, commandproto.LocalInvocation{
+	go invokeDeclared(ctx, commands, handler, cmdproto.LocalInvocation{
 		Operation: process.Raw, InvocationID: hex.EncodeToString(id[:]),
 		Args: encoded, Cwd: handler.Dir, Env: env,
 	}, output, done)
@@ -122,7 +122,7 @@ func (i *invocationInput) Next(ctx context.Context) ([]byte, error) {
 }
 
 type invocationResult struct {
-	completion commandproto.Completion
+	completion cmdproto.Completion
 	err        error
 }
 
@@ -131,8 +131,8 @@ func invokeDeclared(
 	ctx context.Context,
 	commands *process.JobCommands,
 	handler interp.HandlerContext,
-	request commandproto.LocalInvocation,
-	output *commandsdk.Output,
+	request cmdproto.LocalInvocation,
+	output *cmdsdk.Output,
 	done chan<- invocationResult,
 ) {
 	finished := invocationResult{}
@@ -144,9 +144,9 @@ func invokeDeclared(
 	}()
 	completion, err := commands.Handler.Invoke(
 		ctx,
-		commandsdk.InvocationContext[commandproto.LocalInvocation]{
+		cmdsdk.InvocationContext[cmdproto.LocalInvocation]{
 			Request: request,
-			Input: commandsdk.NewInput(
+			Input: cmdsdk.NewInput(
 				&invocationInput{reader: handler.Stdin, state: handler.Scope().(*interpreterScope)},
 			),
 			Output: output,
@@ -155,17 +155,17 @@ func invokeDeclared(
 	finished = invocationResult{completion, err}
 }
 
-func writeDeclaredRecord(handler interp.HandlerContext, record commandproto.Record) error {
+func writeDeclaredRecord(handler interp.HandlerContext, record cmdproto.Record) error {
 	var writer io.Writer
 	var bytes []byte
 	switch record := record.(type) {
-	case commandproto.Stdout:
+	case cmdproto.Stdout:
 		writer = handler.Stdout
 		bytes = record
-	case commandproto.Stderr:
+	case cmdproto.Stderr:
 		writer = handler.Stderr
 		bytes = record
-	case commandproto.Completed, commandproto.InputPull:
+	case cmdproto.Completed, cmdproto.InputPull:
 		return errors.New("unexpected local output record")
 	}
 	_, err := writer.Write(bytes)
@@ -178,7 +178,7 @@ func writeDeclaredRecord(handler interp.HandlerContext, record commandproto.Reco
 // finishDeclared drains buffered records before exposing the handler completion.
 func finishDeclared(
 	handler interp.HandlerContext,
-	records <-chan commandproto.Record,
+	records <-chan cmdproto.Record,
 	finished invocationResult,
 ) error {
 	for {

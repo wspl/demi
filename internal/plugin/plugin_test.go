@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/types"
@@ -26,10 +26,10 @@ func TestCommandPlacement(t *testing.T) {
 		"file",
 		"Files",
 		host.Leaf(
-			commanddecl.Leaf[commanddecl.NativeOperation]{
+			cmddecl.Leaf[cmddecl.NativeOperation]{
 				Name:    "list",
 				Summary: "List",
-				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+				Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 			},
 			handler,
 		),
@@ -50,7 +50,7 @@ func TestCommandPlacement(t *testing.T) {
 		t.Fatalf("reply %v, path %v", reply, inv.Path)
 	}
 	commands := p.ManifestCommands()
-	if len(commands) != 1 || commanddecl.Name(commands[0].Tree.Node) != "file" ||
+	if len(commands) != 1 || cmddecl.Name(commands[0].Tree.Node) != "file" ||
 		commands[0].Placement != plugin.PlacementDemi {
 		t.Fatalf("commands = %#v", commands)
 	}

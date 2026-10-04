@@ -14,13 +14,13 @@ import (
 	"github.com/wspl/demi/internal/machinemanager/sandbox"
 	"github.com/wspl/demi/internal/machinemanager/storage"
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
 type deviceRequest struct {
 	ctx       context.Context
-	operation machinemanagerproto.Call
+	operation machineproto.Call
 	reply     chan deviceReply
 }
 type deviceReply struct {
@@ -33,7 +33,7 @@ type bootExit struct {
 }
 type deviceWorker struct {
 	manager    *Manager
-	id         machinemanagerproto.DeviceID
+	id         machineproto.DeviceID
 	working    workingImages
 	runtime    *sandbox.Sandbox
 	queue      chan deviceRequest
@@ -42,7 +42,7 @@ type deviceWorker struct {
 	waitDone   chan struct{}
 }
 
-func newDeviceWorker(m *Manager, id machinemanagerproto.DeviceID) *deviceWorker {
+func newDeviceWorker(m *Manager, id machineproto.DeviceID) *deviceWorker {
 	return &deviceWorker{
 		manager: m,
 		id:      id,
@@ -51,7 +51,7 @@ func newDeviceWorker(m *Manager, id machinemanagerproto.DeviceID) *deviceWorker 
 	}
 }
 
-func (w *deviceWorker) call(ctx context.Context, operation machinemanagerproto.Call) (json.RawMessage, error) {
+func (w *deviceWorker) call(ctx context.Context, operation machineproto.Call) (json.RawMessage, error) {
 	request := deviceRequest{ctx: ctx, operation: operation, reply: make(chan deviceReply, 1)}
 	w.queue <- request
 	answer := <-request.reply
@@ -124,29 +124,29 @@ func (w *deviceWorker) reportDeath(_ context.Context) {
 	}
 }
 
-func (w *deviceWorker) operate(ctx context.Context, operation machinemanagerproto.Call) (json.RawMessage, error) {
+func (w *deviceWorker) operate(ctx context.Context, operation machineproto.Call) (json.RawMessage, error) {
 	var err error
 	switch call := operation.(type) {
-	case *machinemanagerproto.RuntimeStateCall:
-		state := machinemanagerproto.RuntimeStateStopped
+	case *machineproto.RuntimeStateCall:
+		state := machineproto.RuntimeStateStopped
 		if w.runtime != nil {
-			state = machinemanagerproto.RuntimeStateRunning
+			state = machineproto.RuntimeStateRunning
 		}
 		return state.MarshalJSON()
-	case *machinemanagerproto.Wake:
+	case *machineproto.Wake:
 		err = w.wake(ctx, call.Params.Boot)
-	case *machinemanagerproto.Hibernate:
+	case *machineproto.Hibernate:
 		err = w.stop(ctx)
 		if err == nil {
 			err = w.save(ctx)
 		}
-	case *machinemanagerproto.Checkpoint:
+	case *machineproto.Checkpoint:
 		err = w.checkpoint(ctx)
-	case *machinemanagerproto.GrowVolume:
+	case *machineproto.GrowVolume:
 		err = w.grow(ctx, call.Params.Volume, call.Params.Bytes)
-	case *machinemanagerproto.Reset:
-		err = w.reset(ctx, call.Params.OperationID, machinemanagerproto.BaseVersion(call.Params.BaseVersion))
-	case *machinemanagerproto.Reconcile, *machinemanagerproto.CurrentBaseVersion, *machinemanagerproto.ImageState:
+	case *machineproto.Reset:
+		err = w.reset(ctx, call.Params.OperationID, machineproto.BaseVersion(call.Params.BaseVersion))
+	case *machineproto.Reconcile, *machineproto.CurrentBaseVersion, *machineproto.ImageState:
 		err = errors.New("the device's worker stopped")
 	}
 	return json.RawMessage("null"), err
@@ -250,12 +250,12 @@ func (w *deviceWorker) wake(ctx context.Context, boot runnerproto.ManagedBoot) e
 
 func (w *deviceWorker) stageWorking(
 	ctx context.Context,
-	state machinemanagerproto.MachineImageState,
+	state machineproto.MachineImageState,
 	stage string,
 ) error {
 	source := w.manager.core.Store.Images(w.id, state.Generation)
 	copies := storage.ImagesInDirectory(stage)
-	for _, v := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, v := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		if err := storage.CloneSparse(ctx, source.ForVolume(v), copies.ForVolume(v)); err != nil {
 			return err
 		}
@@ -277,40 +277,40 @@ func (w *deviceWorker) stageWorking(
 
 func (w *deviceWorker) initialize(
 	ctx context.Context,
-	base machinemanagerproto.BaseVersion,
-) (machinemanagerproto.MachineImageState, error) {
+	base machineproto.BaseVersion,
+) (machineproto.MachineImageState, error) {
 	stage, remove, err := w.stage(ctx, "initial")
 	if err != nil {
-		return machinemanagerproto.MachineImageState{}, err
+		return machineproto.MachineImageState{}, err
 	}
 	defer remove()
 	core := w.manager.core
 	root := filepath.Join(stage, "mkhome")
 	if err = os.Mkdir(root, 0o755); err != nil {
-		return machinemanagerproto.MachineImageState{}, err
+		return machineproto.MachineImageState{}, err
 	}
 	if err = os.Chmod(root, 0o755); err != nil {
-		return machinemanagerproto.MachineImageState{}, err
+		return machineproto.MachineImageState{}, err
 	}
 	if err = storage.CopySkeleton(
 		ctx,
 		filepath.Join(core.Store.Bases(), string(base), "rootfs/etc/skel"),
 		filepath.Join(root, "demi"),
 	); err != nil {
-		return machinemanagerproto.MachineImageState{}, err
+		return machineproto.MachineImageState{}, err
 	}
 	images := storage.ImagesInDirectory(stage)
 	if err = storage.MakeHome(ctx, core.Tools, root, images.Home, core.Config.HomeBytes()); err != nil {
-		return machinemanagerproto.MachineImageState{}, err
+		return machineproto.MachineImageState{}, err
 	}
 	if err = storage.MakeSystem(ctx, core.Tools, images.System, core.Config.SystemBytes()); err != nil {
-		return machinemanagerproto.MachineImageState{}, err
+		return machineproto.MachineImageState{}, err
 	}
 	generation, err := storage.NewGeneration()
 	if err != nil {
-		return machinemanagerproto.MachineImageState{}, err
+		return machineproto.MachineImageState{}, err
 	}
-	state := machinemanagerproto.MachineImageState{
+	state := machineproto.MachineImageState{
 		Generation:  generation,
 		BaseVersion: base,
 		SystemBytes: core.Config.SystemBytes(),
@@ -318,11 +318,11 @@ func (w *deviceWorker) initialize(
 	}
 	for _, path := range []string{images.System, images.Home} {
 		if err = storage.Sync(ctx, path); err != nil {
-			return machinemanagerproto.MachineImageState{}, err
+			return machineproto.MachineImageState{}, err
 		}
 	}
 	if err = core.Store.Publish(ctx, w.id, state, images); err != nil {
-		return machinemanagerproto.MachineImageState{}, err
+		return machineproto.MachineImageState{}, err
 	}
 	return state, nil
 }
@@ -375,7 +375,7 @@ func (w *deviceWorker) checkpoint(ctx context.Context) error {
 	return w.manager.core.Store.Publish(ctx, w.id, state, copies.ImagePair)
 }
 
-func (w *deviceWorker) grow(ctx context.Context, volume machinemanagerproto.Volume, bytes uint64) error {
+func (w *deviceWorker) grow(ctx context.Context, volume machineproto.Volume, bytes uint64) error {
 	if w.runtime == nil {
 		//nolint:staticcheck // User-visible text, kept byte for byte.
 		return errors.New("Cloud is not running")
@@ -389,7 +389,7 @@ func (w *deviceWorker) grow(ctx context.Context, volume machinemanagerproto.Volu
 		return errors.New("Cloud working manifest is missing")
 	}
 	current := state.HomeBytes
-	if volume == machinemanagerproto.VolumeSystem {
+	if volume == machineproto.VolumeSystem {
 		current = state.SystemBytes
 	}
 	if bytes <= current {
@@ -399,7 +399,7 @@ func (w *deviceWorker) grow(ctx context.Context, volume machinemanagerproto.Volu
 	if err != nil {
 		return err
 	}
-	if volume == machinemanagerproto.VolumeSystem {
+	if volume == machineproto.VolumeSystem {
 		state.SystemBytes = capacity
 	} else {
 		state.HomeBytes = capacity
@@ -407,7 +407,7 @@ func (w *deviceWorker) grow(ctx context.Context, volume machinemanagerproto.Volu
 	return w.working.WriteManifest(ctx, state)
 }
 
-func (w *deviceWorker) reset(ctx context.Context, operation string, base machinemanagerproto.BaseVersion) error {
+func (w *deviceWorker) reset(ctx context.Context, operation string, base machineproto.BaseVersion) error {
 	core := w.manager.core
 	if _, err := os.Stat(filepath.Join(core.Store.Bases(), string(base), "manifest.json")); err != nil {
 		if errors.Is(err, os.ErrNotExist) {

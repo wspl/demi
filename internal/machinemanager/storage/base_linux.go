@@ -19,7 +19,7 @@ import (
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"golang.org/x/sys/unix"
 )
 
@@ -30,7 +30,7 @@ func ImportBase(
 	ctx context.Context,
 	tools *system.Tools,
 	image, bases string,
-) (machinemanagerproto.BaseVersion, error) {
+) (machineproto.BaseVersion, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
 	}
@@ -38,11 +38,11 @@ func ImportBase(
 	if err != nil {
 		return "", err
 	}
-	version, err := machinemanagerproto.ParseBaseVersion(fmt.Sprintf("%x", sha256.Sum256(data)))
+	version, err := machineproto.ParseBaseVersion(fmt.Sprintf("%x", sha256.Sum256(data)))
 	if err != nil {
 		return "", err
 	}
-	manifest, err := machinemanagerproto.DecodeCloudImageManifest(data)
+	manifest, err := machineproto.DecodeCloudImageManifest(data)
 	if err != nil {
 		return "", err
 	}
@@ -133,7 +133,7 @@ func publishBase(
 	ctx context.Context,
 	stage, target string,
 	data []byte,
-	manifest machinemanagerproto.CloudImageManifest,
+	manifest machineproto.CloudImageManifest,
 ) error {
 	root, err := os.Open(filepath.Join(stage, "rootfs"))
 	if err != nil {
@@ -222,7 +222,7 @@ func importBaseArchive(
 	tools *system.Tools,
 	image, stage, target string,
 	data []byte,
-	manifest machinemanagerproto.CloudImageManifest,
+	manifest machineproto.CloudImageManifest,
 ) error {
 	if err := os.MkdirAll(filepath.Join(stage, "rootfs"), 0o777); err != nil {
 		return err
@@ -255,12 +255,12 @@ func importBaseArchive(
 	return nil
 }
 
-func checkBaseManifest(manifest machinemanagerproto.CloudImageManifest) error {
-	architecture, supported := machinemanagerproto.HostArchitecture()
+func checkBaseManifest(manifest machineproto.CloudImageManifest) error {
+	architecture, supported := machineproto.HostArchitecture()
 	if !supported || architecture != manifest.Architecture {
 		return ErrArchitecture
 	}
-	for _, required := range []string{machinemanagerproto.RunnerPath, machinemanagerproto.InitPath} {
+	for _, required := range []string{machineproto.RunnerPath, machineproto.InitPath} {
 		if _, ok := manifest.Executables[required]; !ok {
 			//nolint:staticcheck // User-visible text, kept byte for byte.
 			return fmt.Errorf("Cloud image manifest lacks %s", required)

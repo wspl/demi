@@ -6,7 +6,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/pagesync"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
@@ -26,7 +26,7 @@ type Shard interface {
 	PackageCall(
 		ctx context.Context,
 		conversation webapiproto.ConversationID,
-		operation commanddecl.NativeOperation,
+		operation cmddecl.NativeOperation,
 		args json.RawMessage,
 		kind plugin.CallKind,
 	) (json.RawMessage, error)

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/plugin/plugintest"
 	"github.com/wspl/demi/internal/types"
@@ -208,7 +208,7 @@ func TestUntilAndPackageCalls(t *testing.T) {
 		d := plugintest.New()
 		d.PackageCalls = func(
 			_ context.Context,
-			_ commanddecl.NativeOperation,
+			_ cmddecl.NativeOperation,
 			_ json.RawMessage,
 			_ plugin.CallKind,
 		) (json.RawMessage, error) {
@@ -231,7 +231,7 @@ func TestUntilAndPackageCalls(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := d.Port().
-			PackageCall(ctx, commanddecl.NativeOperation{
+			PackageCall(ctx, cmddecl.NativeOperation{
 				Package:   "test",
 				Operation: "read",
 			}, json.RawMessage(`{}`), plugin.CallKindLooks); err != nil {

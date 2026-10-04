@@ -16,7 +16,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/webapiproto"
@@ -201,7 +201,7 @@ func TestConcurrentHellosBindOnceAndRepeatedHelloIsIgnored(t *testing.T) {
 	}
 	bound.send(hello)
 	bound.send(&runnerproto.Pong{Jobs: 0})
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestRunnerReservesOnlyReachableConversationNumbers(t *testing.T) {
 			&runnerproto.NumbersReserve{
 				ID:             id,
 				ConversationID: scenario.conversation,
-				Sequence:       commandproto.TabSequence,
+				Sequence:       cmdproto.TabSequence,
 				Count:          scenario.count,
 			},
 		)

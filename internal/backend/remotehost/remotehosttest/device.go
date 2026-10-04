@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -91,7 +91,7 @@ func (p *CommandPolicy) GrowVolume(_ context.Context, _ runnerproto.VolumeName, 
 func (p *CommandPolicy) ReserveNumbers(
 	_ context.Context,
 	conversation string,
-	sequence commandproto.ServiceSequence,
+	sequence cmdproto.ServiceSequence,
 	count uint32,
 ) (uint64, error) {
 	p.mu.Lock()
@@ -289,7 +289,7 @@ var _ remotehost.LinkPolicy = (*CommandPolicy)(nil)
 
 type sequenceKey struct {
 	conversation string
-	sequence     commandproto.ServiceSequence
+	sequence     cmdproto.ServiceSequence
 }
 
 // testFrames carries one direction of an in-process runner connection.

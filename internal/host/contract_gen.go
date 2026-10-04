@@ -5,7 +5,7 @@ package host
 import (
 	"encoding/json"
 	"fmt"
-	commandproto "github.com/wspl/demi/internal/commandproto"
+	cmdproto "github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	types "github.com/wspl/demi/internal/types"
 )
@@ -842,7 +842,7 @@ func (v *RPCInvocation) UnmarshalJSON(data []byte) error {
 			return contract.At("context", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[commandproto.Context](raw)
+			value, err := contract.Decode[cmdproto.Context](raw)
 			if err != nil {
 				return contract.At("context", err)
 			}

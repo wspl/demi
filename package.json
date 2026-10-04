@@ -25,7 +25,7 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "CGO_ENABLED=0 go build -o .cache/test-programs/ ./cmd/demi-backend ./cmd/demi-runner ./cmd/demi-file ./cmd/demi-browser ./cmd/demi-claude-code ./internal/backend/backendtest/testdata/scripted-machines && bun run contracts && DEMI_TEST_PROGRAMS=.cache/test-programs bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-changes/src ./packages/plugin-expose/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./scripts/__tests__ ./internal/commandpackage/browser/chrome/tabs/extension",
+    "test": "CGO_ENABLED=0 go build -o .cache/test-programs/ ./cmd/demi-backend ./cmd/demi-runner ./cmd/demi-file ./cmd/demi-browser ./cmd/demi-claude-code ./internal/backend/backendtest/testdata/scripted-machines && bun run contracts && DEMI_TEST_PROGRAMS=.cache/test-programs bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-changes/src ./packages/plugin-expose/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./scripts/__tests__ ./internal/cmdpkg/browser/chrome/tabs/extension",
     "web:gallery": "bun run contracts && bun --filter @demicodes/web-gallery dev",
     "dev": "bun scripts/dev.ts",
     "web:dev": "bun run contracts && bun scripts/web-dev.ts",

@@ -7,8 +7,8 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/webapiproto"
@@ -16,26 +16,26 @@ import (
 
 // ServiceBinding is the native operation a user stream or one-shot call runs.
 type ServiceBinding struct {
-	Package   commandproto.PackageDescriptor
+	Package   cmdproto.PackageDescriptor
 	Operation string
 }
 
 // UserStreams is the immutable set of published streams pages may open by name.
 type UserStreams struct {
-	bindings map[string]commanddecl.NativeOperation
+	bindings map[string]cmddecl.NativeOperation
 	native   *runners.NativeCatalog
 }
 
 // StreamDeclaration binds one page stream name to a declared native operation.
 type StreamDeclaration struct {
 	Name      string
-	Operation commanddecl.NativeOperation
+	Operation cmddecl.NativeOperation
 }
 
 // NewUserStreams binds declarations served by native; unsupported bindings
 // declare nothing. Declaration order determines duplicate-name replacement.
 func NewUserStreams(declared []StreamDeclaration, native *runners.NativeCatalog) *UserStreams {
-	streams := &UserStreams{bindings: make(map[string]commanddecl.NativeOperation), native: native}
+	streams := &UserStreams{bindings: make(map[string]cmddecl.NativeOperation), native: native}
 	for _, item := range declared {
 		if native.Serves(item.Operation.Package, []string{item.Operation.Operation}) {
 			streams.bindings[item.Name] = item.Operation
@@ -256,7 +256,7 @@ func serviceRequest(
 	binding ServiceBinding,
 	args json.RawMessage,
 ) (remotehost.ServiceRequest, error) {
-	commandContext, err := runners.CommandContext(ctx, shard.Control(), shard.User(), id, &commandproto.UserCaller{})
+	commandContext, err := runners.CommandContext(ctx, shard.Control(), shard.User(), id, &cmdproto.UserCaller{})
 	if err != nil {
 		return remotehost.ServiceRequest{}, &Error{Kind: AccessStorage, Cause: err}
 	}

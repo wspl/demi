@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 
 	"github.com/wspl/demi/internal/runnerproto"
@@ -66,7 +66,7 @@ func (s *Service) Readdir(ctx context.Context, request runnerproto.FSReaddir) er
 		if err != nil {
 			return nil, err
 		}
-		entries, err := commandsdk.Retry(ctx, func() ([]os.DirEntry, error) {
+		entries, err := cmdsdk.Retry(ctx, func() ([]os.DirEntry, error) {
 			return os.ReadDir(path)
 		})
 		if err != nil {

@@ -3,7 +3,7 @@ package runnerproto
 import (
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 )
 
 // A message from the backend to the runner.
@@ -100,13 +100,13 @@ type SpawnKill struct {
 type JobStart struct {
 	JobID string `json:"jobId"`
 	// +demi:pattern ^[0-9a-f]{64}$
-	ManifestHash *string              `json:"manifestHash,omitempty"`
-	Context      commandproto.Context `json:"context"`
-	Script       string               `json:"script"`
-	CWD          string               `json:"cwd"`
-	Env          map[string]string    `json:"env"`
-	Stdin        *PipeRef             `json:"stdin,omitempty"`
-	Stdout       *PipeRef             `json:"stdout,omitempty"`
+	ManifestHash *string           `json:"manifestHash,omitempty"`
+	Context      cmdproto.Context  `json:"context"`
+	Script       string            `json:"script"`
+	CWD          string            `json:"cwd"`
+	Env          map[string]string `json:"env"`
+	Stdin        *PipeRef          `json:"stdin,omitempty"`
+	Stdout       *PipeRef          `json:"stdout,omitempty"`
 }
 
 // +demi:variant Inbound job_stdin
@@ -196,9 +196,9 @@ type NetOpen struct {
 // +demi:check validateServiceOpen
 // +demi:variant Inbound service_open
 type ServiceOpen struct {
-	StreamID string                         `json:"streamId"`
-	Context  commandproto.Context           `json:"context"`
-	Package  commandproto.PackageDescriptor `json:"package"`
+	StreamID string                     `json:"streamId"`
+	Context  cmdproto.Context           `json:"context"`
+	Package  cmdproto.PackageDescriptor `json:"package"`
 	// +demi:length chars min=1
 	Operation string           `json:"operation"`
 	Args      *json.RawMessage `json:"args,omitempty"`
@@ -230,9 +230,9 @@ type ManifestMessage struct {
 
 // +demi:variant Inbound artifact_location
 type ArtifactLocation struct {
-	ID       string                         `json:"id"`
-	Location *commandproto.ArtifactLocation `json:"location,omitempty"`
-	Error    *string                        `json:"error,omitempty"`
+	ID       string                     `json:"id"`
+	Location *cmdproto.ArtifactLocation `json:"location,omitempty"`
+	Error    *string                    `json:"error,omitempty"`
 }
 
 // The numbers a `numbers_reserve` asked for: the first of them, or why
@@ -413,8 +413,8 @@ type ConversationReleased struct {
 type NumbersReserve struct {
 	ID string `json:"id"`
 	// +demi:pattern ^[A-Za-z0-9_-]{1,64}$
-	ConversationID string                       `json:"conversationId"`
-	Sequence       commandproto.ServiceSequence `json:"sequence"`
+	ConversationID string                   `json:"conversationId"`
+	Sequence       cmdproto.ServiceSequence `json:"sequence"`
 	// +demi:range min=1 max=16
 	Count uint32 `json:"count"`
 }
@@ -865,12 +865,12 @@ type OutputLengths struct {
 // +demi:check validateJobFileChange
 type JobFileChange struct {
 	// +demi:length chars min=1
-	Path string                `json:"path"`
-	Kind commandproto.EditKind `json:"kind"`
+	Path string            `json:"path"`
+	Kind cmdproto.EditKind `json:"kind"`
 	// +demi:length max=1000
-	Edits   []commandproto.EditCopies `json:"edits"`
-	Added   uint64                    `json:"added"`
-	Removed uint64                    `json:"removed"`
+	Edits   []cmdproto.EditCopies `json:"edits"`
+	Added   uint64                `json:"added"`
+	Removed uint64                `json:"removed"`
 }
 
 // One line of the Host's log: when it was written, which source wrote it,

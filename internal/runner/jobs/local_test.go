@@ -11,8 +11,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/process"
 )
@@ -21,8 +21,8 @@ import (
 type localCommands struct {
 	invoke func(
 		context.Context,
-		commandsdk.InvocationContext[commandproto.LocalInvocation],
-	) (commandproto.Completion, error)
+		cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+	) (cmdproto.Completion, error)
 }
 
 func (localCommands) Operations() []string {
@@ -31,8 +31,8 @@ func (localCommands) Operations() []string {
 
 func (h localCommands) Invoke(
 	ctx context.Context,
-	inv commandsdk.InvocationContext[commandproto.LocalInvocation],
-) (commandproto.Completion, error) {
+	inv cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+) (cmdproto.Completion, error) {
 	return h.invoke(ctx, inv)
 }
 
@@ -53,8 +53,8 @@ func (neverRead) Close() error {
 	return nil
 }
 
-func localRequest() commandproto.LocalInvocation {
-	return commandproto.LocalInvocation{
+func localRequest() cmdproto.LocalInvocation {
+	return cmdproto.LocalInvocation{
 		Operation:    "fixture",
 		InvocationID: "test",
 		Args:         json.RawMessage(`{}`),
@@ -83,9 +83,9 @@ func TestCommandWithoutStdinNeverPollsSource(t *testing.T) {
 		localCommands{
 			invoke: func(
 				ctx context.Context,
-				inv commandsdk.InvocationContext[commandproto.LocalInvocation],
-			) (commandproto.Completion, error) {
-				return commandproto.Completion{}, inv.Output.Stdout(ctx, []byte("done\x00\xff"))
+				inv cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+			) (cmdproto.Completion, error) {
+				return cmdproto.Completion{}, inv.Output.Stdout(ctx, []byte("done\x00\xff"))
 			},
 		},
 	)
@@ -108,8 +108,8 @@ func TestPendingTerminalInputAllowsOutputAndCompletion(t *testing.T) {
 		localCommands{
 			invoke: func(
 				ctx context.Context,
-				inv commandsdk.InvocationContext[commandproto.LocalInvocation],
-			) (commandproto.Completion, error) {
+				inv cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+			) (cmdproto.Completion, error) {
 				inputCtx, cancel := context.WithCancel(ctx)
 				done := make(chan struct{})
 				go func() {
@@ -122,10 +122,10 @@ func TestPendingTerminalInputAllowsOutputAndCompletion(t *testing.T) {
 				}()
 				select {
 				case <-ctx.Done():
-					return commandproto.Completion{}, ctx.Err()
+					return cmdproto.Completion{}, ctx.Err()
 				case <-requested:
 				}
-				return commandproto.Completion{}, inv.Output.Stdout(ctx, []byte("done\x00\xff"))
+				return cmdproto.Completion{}, inv.Output.Stdout(ctx, []byte("done\x00\xff"))
 			},
 		},
 	)
@@ -166,11 +166,11 @@ func TestCancellationInterruptsBlockedOutput(t *testing.T) {
 		localCommands{
 			invoke: func(
 				ctx context.Context,
-				inv commandsdk.InvocationContext[commandproto.LocalInvocation],
-			) (commandproto.Completion, error) {
+				inv cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+			) (cmdproto.Completion, error) {
 				for {
 					if err := inv.Output.Stdout(ctx, make([]byte, 65536)); err != nil {
-						return commandproto.Completion{}, err
+						return cmdproto.Completion{}, err
 					}
 				}
 			},
@@ -210,26 +210,26 @@ func TestPrivateEndpointStreamsBinaryInputAndJoinsCancellation(t *testing.T) {
 		localCommands{
 			invoke: func(
 				ctx context.Context,
-				inv commandsdk.InvocationContext[commandproto.LocalInvocation],
-			) (commandproto.Completion, error) {
+				inv cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+			) (cmdproto.Completion, error) {
 				if inv.Request.InvocationID == "wait" {
 					if err := inv.Output.Stdout(ctx, []byte("ready")); err != nil {
-						return commandproto.Completion{}, err
+						return cmdproto.Completion{}, err
 					}
 					<-ctx.Done()
 					close(cancelled)
-					return commandproto.Completion{}, ctx.Err()
+					return cmdproto.Completion{}, ctx.Err()
 				}
 				for {
 					bytes, err := inv.Input.Next(ctx)
 					if errors.Is(err, io.EOF) {
-						return commandproto.Completion{}, nil
+						return cmdproto.Completion{}, nil
 					}
 					if err != nil {
-						return commandproto.Completion{}, err
+						return cmdproto.Completion{}, err
 					}
 					if err = inv.Output.Stdout(ctx, bytes); err != nil {
-						return commandproto.Completion{}, err
+						return cmdproto.Completion{}, err
 					}
 				}
 			},
@@ -246,7 +246,7 @@ func TestPrivateEndpointStreamsBinaryInputAndJoinsCancellation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := commandsdk.Connect(ctx, conn)
+	client, err := cmdsdk.Connect(ctx, conn)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -260,25 +260,25 @@ func TestPrivateEndpointStreamsBinaryInputAndJoinsCancellation(t *testing.T) {
 	}
 	defer input.Cancel()
 	record, err := output.Next(ctx)
-	if _, ok := record.(commandproto.InputPull); err != nil || !ok {
+	if _, ok := record.(cmdproto.InputPull); err != nil || !ok {
 		t.Fatalf("demand: %T %v", record, err)
 	}
 	if err = input.Write(ctx, []byte("raw\x00\xff")); err != nil {
 		t.Fatal(err)
 	}
 	record, err = output.Next(ctx)
-	if out, ok := record.(commandproto.Stdout); err != nil || !ok || !bytes.Equal(out, []byte("raw\x00\xff")) {
+	if out, ok := record.(cmdproto.Stdout); err != nil || !ok || !bytes.Equal(out, []byte("raw\x00\xff")) {
 		t.Fatalf("binary output: %v %v", record, err)
 	}
 	record, err = output.Next(ctx)
-	if _, ok := record.(commandproto.InputPull); err != nil || !ok {
+	if _, ok := record.(cmdproto.InputPull); err != nil || !ok {
 		t.Fatalf("EOF demand: %T %v", record, err)
 	}
 	if err = input.End(); err != nil {
 		t.Fatal(err)
 	}
 	record, err = output.Next(ctx)
-	if _, ok := record.(commandproto.Completed); err != nil || !ok {
+	if _, ok := record.(cmdproto.Completed); err != nil || !ok {
 		t.Fatalf("completion: %T %v", record, err)
 	}
 	if _, err = output.Next(ctx); !errors.Is(err, io.EOF) {
@@ -292,7 +292,7 @@ func TestPrivateEndpointStreamsBinaryInputAndJoinsCancellation(t *testing.T) {
 	}
 	defer input.Cancel()
 	record, err = output.Next(ctx)
-	if bytes, ok := record.(commandproto.Stdout); err != nil || !ok || string(bytes) != "ready" {
+	if bytes, ok := record.(cmdproto.Stdout); err != nil || !ok || string(bytes) != "ready" {
 		t.Fatalf("ready: %v %v", record, err)
 	}
 	if err = server.Close(ctx); err != nil {

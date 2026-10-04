@@ -13,11 +13,11 @@ import (
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
-	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
-	"github.com/wspl/demi/internal/commandpackage/file/fileproto"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/cmdpkg/file/fileproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/programtest"
@@ -28,7 +28,7 @@ import (
 // Share this fixture across harnesses that use the same development release.
 type Built struct {
 	// Descriptor describes the built native package and its target artifacts.
-	Descriptor commandproto.PackageDescriptor
+	Descriptor cmdproto.PackageDescriptor
 	// Program is the path to the built native executable.
 	Program   string
 	directory string
@@ -164,7 +164,7 @@ func (h *Harness) UseNativeFixture(ctx context.Context, built *Built) error {
 	if err := h.UsePackage(ctx, built); err != nil {
 		return err
 	}
-	schema, err := commanddecl.NewSchema([]byte(`{}`))
+	schema, err := cmddecl.NewSchema([]byte(`{}`))
 	if err != nil {
 		return err
 	}
@@ -174,7 +174,7 @@ func (h *Harness) UseNativeFixture(ctx context.Context, built *Built) error {
 			streams,
 			plugin.Stream{
 				Name:      name,
-				Operation: commanddecl.NativeOperation{Package: built.Descriptor.ID, Operation: name},
+				Operation: cmddecl.NativeOperation{Package: built.Descriptor.ID, Operation: name},
 				Receives:  plugin.Schema{Schema: schema},
 				Sends:     plugin.Schema{Schema: schema},
 			},

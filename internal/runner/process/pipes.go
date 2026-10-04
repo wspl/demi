@@ -14,7 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -93,7 +93,7 @@ func NewPipeClientWithConnectTimeout(
 // Open reads an origin-relative pipe route. The caller closes the body; its
 // context remains active for the body's entire lifetime.
 func (c *PipeClient) Open(ctx context.Context, path string) (io.ReadCloser, error) {
-	response, err := commandsdk.Retry(ctx, func() (*http.Response, error) {
+	response, err := cmdsdk.Retry(ctx, func() (*http.Response, error) {
 		request, err := c.request(ctx, http.MethodGet, path, nil)
 		if err != nil {
 			return nil, err
@@ -124,7 +124,7 @@ func (c *PipeClient) Put(ctx context.Context, path string, body io.ReadCloser) (
 	defer upload.close()
 	stopped := interruptCommandIO(ctx, upload)
 	defer stopped()
-	var backoff commandsdk.Backoff
+	var backoff cmdsdk.Backoff
 	for {
 		attempt := &pipeAttempt{upload: upload, closed: make(chan struct{})}
 		request, err := c.request(ctx, http.MethodPut, path, attempt)
@@ -139,7 +139,7 @@ func (c *PipeClient) Put(ctx context.Context, path string, body io.ReadCloser) (
 		// before retrying or returning to the caller.
 		<-attempt.closed
 		if err != nil {
-			if !upload.read.Load() && commandsdk.Exhausted(err) {
+			if !upload.read.Load() && cmdsdk.Exhausted(err) {
 				if err := backoff.Wait(ctx); err != nil {
 					return err
 				}

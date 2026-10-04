@@ -3,7 +3,7 @@ package file_test
 import (
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin/file"
 	"github.com/wspl/demi/internal/plugin/plugintest"
 )
@@ -49,7 +49,7 @@ func TestNativeCommands(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		native, ok := selected.Node.(*commanddecl.Leaf[commanddecl.Binding]).Kind.(*commanddecl.Native[commanddecl.Binding])
+		native, ok := selected.Node.(*cmddecl.Leaf[cmddecl.Binding]).Kind.(*cmddecl.Native[cmddecl.Binding])
 		if !ok || native.Binding.Package != "demi.file" || native.Binding.Operation != tc.operation {
 			t.Fatalf("wrong native binding: %+v", native)
 		}

@@ -7,11 +7,11 @@ import (
 	"io"
 	"strings"
 
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/contract"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runner/process"
 )
 
@@ -22,7 +22,7 @@ type Dispatcher struct {
 	// Contexts resolves live execution authority.
 	Contexts *Contexts
 	// Services acquires native command services.
-	Services *commandpackages.ServiceRegistry
+	Services *cmdpkgs.ServiceRegistry
 	// Pipes transfers callback input and output.
 	Pipes *process.PipeClient
 }
@@ -36,50 +36,50 @@ func (d *Dispatcher) Operations() []string {
 // native work to a service or an RPC call to the backend. Cancellation joins IO.
 func (d *Dispatcher) Invoke(
 	ctx context.Context,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
-) (commandproto.Completion, error) {
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+) (cmdproto.Completion, error) {
 	completion, err := d.invoke(ctx, invocation)
 	return Reported(ctx, completion, err, invocation.Output)
 }
 
-var _ commandsdk.Handler[commandproto.LocalInvocation] = (*Dispatcher)(nil)
+var _ cmdsdk.Handler[cmdproto.LocalInvocation] = (*Dispatcher)(nil)
 
 // Reported presents a local invocation's end: failures other than cancellation
 // are written to stderr and become exit 1. The registration's management handler
 // uses the same reporting as declared commands.
 func Reported(
 	ctx context.Context,
-	completion commandproto.Completion,
+	completion cmdproto.Completion,
 	err error,
-	output *commandsdk.Output,
-) (commandproto.Completion, error) {
+	output *cmdsdk.Output,
+) (cmdproto.Completion, error) {
 	if err == nil {
 		return completion, nil
 	}
 	if errors.Is(err, context.Canceled) {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	if writeErr := output.Stderr(ctx, []byte(fmt.Sprintf("demi-runner: %v\n", err))); writeErr != nil {
-		return commandproto.Completion{}, writeErr
+		return cmdproto.Completion{}, writeErr
 	}
-	return commandproto.Completion{ExitCode: 1}, nil
+	return cmdproto.Completion{ExitCode: 1}, nil
 }
 
 // invoke validates one local invocation before selecting its declared destination.
 func (d *Dispatcher) invoke(
 	ctx context.Context,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
-) (commandproto.Completion, error) {
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+) (cmdproto.Completion, error) {
 	if invocation.Request.Operation != process.Raw {
-		return commandproto.Completion{}, fmt.Errorf("unknown operation: %s", invocation.Request.Operation)
+		return cmdproto.Completion{}, fmt.Errorf("unknown operation: %s", invocation.Request.Operation)
 	}
 	raw, err := process.DecodeRawCommand(invocation.Request.Args)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	execution, err := d.Contexts.Lookup(raw.Context)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -97,55 +97,55 @@ func (d *Dispatcher) invoke(
 		<-watched
 	}()
 	if execution.lifetime.Err() != nil {
-		return commandproto.Completion{}, context.Canceled
+		return cmdproto.Completion{}, context.Canceled
 	}
 	return d.declaredCommand(ctx, invocation, execution, raw)
 }
 
 func (d *Dispatcher) declaredCommand(
 	ctx context.Context,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
 	execution *ExecutionContext,
 	raw process.RawCommand,
-) (commandproto.Completion, error) {
+) (cmdproto.Completion, error) {
 	root, ok := execution.Manifest.Roots[raw.Root]
 	if !ok {
-		return commandproto.Completion{}, fmt.Errorf("%s: not a root command of this manifest", raw.Root)
+		return cmdproto.Completion{}, fmt.Errorf("%s: not a root command of this manifest", raw.Root)
 	}
-	tree, err := commanddecl.DecodeManifestNode(root.Tree)
+	tree, err := cmddecl.DecodeManifestNode(root.Tree)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	selected, err := tree.Select(raw.Argv)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	parsed, err := selected.Parse(raw.Argv)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	if parsed.Help {
-		return commandproto.Completion{}, invocation.Output.Stdout(
+		return cmdproto.Completion{}, invocation.Output.Stdout(
 			ctx,
 			[]byte(selected.Node.Help(strings.Join(selected.Path, " "))+"\n"),
 		)
 	}
-	leaf, ok := selected.Node.(*commanddecl.Leaf[commanddecl.Binding])
+	leaf, ok := selected.Node.(*cmddecl.Leaf[cmddecl.Binding])
 	if !ok {
-		return commandproto.Completion{}, errors.New("missing command leaf")
+		return cmdproto.Completion{}, errors.New("missing command leaf")
 	}
 	body, err := commandBody(ctx, invocation.Input, raw.Live, leaf.StdinField != nil)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	parsed, err = parsed.Validate(leaf, body)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	return d.invokeDeclared(ctx, invocation, execution, raw, parsed, leaf)
 }
 
-func commandBody(ctx context.Context, input *commandsdk.Input, live, hasBody bool) (*string, error) {
+func commandBody(ctx context.Context, input *cmdsdk.Input, live, hasBody bool) (*string, error) {
 	if !hasBody {
 		return nil, nil
 	}
@@ -166,10 +166,10 @@ func commandBody(ctx context.Context, input *commandsdk.Input, live, hasBody boo
 
 func (d *Dispatcher) nativeCommand(
 	ctx context.Context,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
 	execution *ExecutionContext,
-	binding commanddecl.Binding,
-	parsed *commanddecl.Parsed,
+	binding cmddecl.Binding,
+	parsed *cmddecl.Parsed,
 	output *commandOutput,
 ) (uint8, error) {
 	descriptor, ok := execution.Manifest.Packages[binding.DescriptorHash]
@@ -187,7 +187,7 @@ func (d *Dispatcher) nativeCommand(
 	if err != nil {
 		return 0, err
 	}
-	request := commandproto.Invocation{
+	request := cmdproto.Invocation{
 		Operation:    binding.Operation,
 		InvocationID: invocation.Request.InvocationID,
 		Context:      execution.Command,
@@ -204,9 +204,9 @@ func (d *Dispatcher) nativeCommand(
 		}
 		return 0, resident.Failure(ctx, err)
 	}
-	completion, err := (commandsdk.Exchange{Input: input, Output: response}).Run(ctx, invocation.Input, output)
+	completion, err := (cmdsdk.Exchange{Input: input, Output: response}).Run(ctx, invocation.Input, output)
 	if err != nil {
-		var exchange *commandsdk.ExchangeError
+		var exchange *cmdsdk.ExchangeError
 		if errors.As(err, &exchange) && exchange.Side == "service" && !errors.Is(err, context.Canceled) {
 			err = resident.Failure(ctx, err)
 		}
@@ -220,7 +220,7 @@ func (d *Dispatcher) nativeCommand(
 	return completion.ExitCode, nil
 }
 
-func readCommandBody(ctx context.Context, input *commandsdk.Input) ([]byte, error) {
+func readCommandBody(ctx context.Context, input *cmdsdk.Input) ([]byte, error) {
 	bytes := []byte{}
 	for {
 		chunk, err := input.Next(ctx)
@@ -240,12 +240,12 @@ func readCommandBody(ctx context.Context, input *commandsdk.Input) ([]byte, erro
 
 func (d *Dispatcher) invokeDeclared(
 	ctx context.Context,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
 	execution *ExecutionContext,
 	raw process.RawCommand,
-	parsed *commanddecl.Parsed,
-	leaf *commanddecl.Leaf[commanddecl.Binding],
-) (commandproto.Completion, error) {
+	parsed *cmddecl.Parsed,
+	leaf *cmddecl.Leaf[cmddecl.Binding],
+) (cmdproto.Completion, error) {
 	var err error
 	output := &commandOutput{output: invocation.Output}
 	if parsed.JSON {
@@ -253,14 +253,14 @@ func (d *Dispatcher) invokeDeclared(
 	}
 	clearHint, err := runningHint(ctx, execution.Connection, execution.JobID, leaf.RunningHint)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	defer clearHint()
 	var code uint8
 	if binding, native := leaf.Binding(); native {
 		code, err = d.nativeCommand(ctx, invocation, execution, binding, parsed, output)
 		if err != nil {
-			return commandproto.Completion{}, err
+			return cmdproto.Completion{}, err
 		}
 	} else {
 		code, err = invokeRPC(
@@ -274,11 +274,11 @@ func (d *Dispatcher) invokeDeclared(
 			!raw.Live && leaf.StdinField == nil,
 		)
 		if err != nil {
-			return commandproto.Completion{}, err
+			return cmdproto.Completion{}, err
 		}
 	}
 	if err := output.finish(ctx, code); err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
-	return commandproto.Completion{ExitCode: code}, nil
+	return cmdproto.Completion{ExitCode: code}, nil
 }

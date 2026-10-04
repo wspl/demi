@@ -118,7 +118,7 @@ binaries once as the VM's user and once under sudo:
 
 ```sh
 GOOS=linux GOARCH=arm64 CGO_ENABLED=0 go test -c -o .cache/linux-tests/ \
-  ./internal/machinemanager/... ./internal/machinemanagerproto/...
+  ./internal/machinemanager/... ./internal/machineproto/...
 limactl shell demi-machine-manager -- <test binary>
 limactl shell demi-machine-manager -- sudo <test binary>
 ```

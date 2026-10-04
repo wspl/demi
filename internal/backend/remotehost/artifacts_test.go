@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -24,9 +24,9 @@ type artifactScript struct {
 
 func (s *artifactScript) Resolve(
 	ctx context.Context,
-	_ commandproto.PackageArtifact,
+	_ cmdproto.PackageArtifact,
 	_ string,
-) (commandproto.ArtifactLocation, error) {
+) (cmdproto.ArtifactLocation, error) {
 	s.calls.Add(1)
 	if s.started != nil {
 		s.started <- ctx
@@ -36,43 +36,43 @@ func (s *artifactScript) Resolve(
 		close(s.done)
 		return nil, ctx.Err()
 	}
-	return &commandproto.ArtifactURL{URL: "https://artifacts.example.test/exact"}, nil
+	return &cmdproto.ArtifactURL{URL: "https://artifacts.example.test/exact"}, nil
 }
 
 // catalogFixture pins an executable and one companion archive to a native command.
 func catalogFixture(t *testing.T, r remotehost.ArtifactResolver) (*remotehost.CommandSelection, string) {
 	t.Helper()
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	requirePipe(t, err)
-	descriptor := commandproto.PackageDescriptor{
+	descriptor := cmdproto.PackageDescriptor{
 		ID:              "demicodes.fixture",
 		Version:         "1.0.0",
 		ProtocolVersion: 1,
 		Operations:      []string{"file.read"},
-		Targets: map[string]commandproto.PackageArtifact{
+		Targets: map[string]cmdproto.PackageArtifact{
 			string(target): {SHA256: strings.Repeat("a", 64), Size: 1},
 		},
-		Resources: map[string]commandproto.PackageResource{
+		Resources: map[string]cmdproto.PackageResource{
 			"chrome": {
 				Title: "Chrome for Testing 153.0.8010.36",
-				Targets: map[string]commandproto.ResourceArtifact{
+				Targets: map[string]cmdproto.ResourceArtifact{
 					string(target): {SHA256: strings.Repeat("b", 64), Size: 2, Entry: "chrome-linux64/chrome"},
 				},
 			},
 		},
 	}
-	catalog, err := remotehost.NewCommandCatalog([]commandproto.PackageDescriptor{descriptor}, r)
+	catalog, err := remotehost.NewCommandCatalog([]cmdproto.PackageDescriptor{descriptor}, r)
 	requirePipe(t, err)
 	commands := (&host.CommandSet{})
 	requirePipe(
 		t,
 		commands.Register(
 			host.Leaf(
-				commanddecl.Leaf[commanddecl.NativeOperation]{
+				cmddecl.Leaf[cmddecl.NativeOperation]{
 					Name:    "native",
 					Summary: "Native",
-					Kind: &commanddecl.Native[commanddecl.NativeOperation]{
-						Binding: commanddecl.NativeOperation{Package: descriptor.ID, Operation: "file.read"},
+					Kind: &cmddecl.Native[cmddecl.NativeOperation]{
+						Binding: cmddecl.NativeOperation{Package: descriptor.ID, Operation: "file.read"},
 					},
 				},
 				nil,
@@ -92,10 +92,10 @@ func rpcCommands(t *testing.T, name, summary string) *host.CommandSet {
 		t,
 		commands.Register(
 			host.Leaf(
-				commanddecl.Leaf[commanddecl.NativeOperation]{
+				cmddecl.Leaf[cmddecl.NativeOperation]{
 					Name:    name,
 					Summary: summary,
-					Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+					Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 				},
 				host.RPCHandlerFunc(
 					func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
@@ -181,7 +181,7 @@ func TestArtifactRequestNeedsLiveJobAndItsManifestArtifact(t *testing.T) {
 		if answer.Location == nil {
 			t.Fatal("artifact location missing", answer)
 		}
-		location, ok := (*answer.Location).(*commandproto.ArtifactURL)
+		location, ok := (*answer.Location).(*cmdproto.ArtifactURL)
 		if answer.Error != nil || !ok || location.URL != "https://artifacts.example.test/exact" ||
 			location.ExpiresAt != nil ||
 			resolver.calls.Load() != int32(i+1) {

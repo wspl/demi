@@ -12,7 +12,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/idlewatch"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -23,7 +23,7 @@ func TestConcurrentWakeOwnsTransitionAfterCallerLeaves(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		f := newCloudFixture(t)
 		wake := make(chan struct{})
-		f.hook = func(call machinemanagerproto.Call) (string, error) {
+		f.hook = func(call machineproto.Call) (string, error) {
 			if call.Name() == "wake" {
 				<-wake
 			}
@@ -129,7 +129,7 @@ func TestRecoveryKeepsLiveTokenAndRebootsStoppedRuntime(t *testing.T) {
 				a.Release()
 				f.devices.Disconnect("cloud-device", "test transport loss")
 				if !running {
-					f.runtime = machinemanagerproto.RuntimeStateStopped
+					f.runtime = machineproto.RuntimeStateStopped
 				}
 				result := make(chan *MachineAccess, 1)
 				go func() {
@@ -213,7 +213,7 @@ func TestIdleStopWaitsForDemandAndMaintenance(t *testing.T) {
 		f.flush = true
 		f.services.Tuning.CheckpointInterval = 3 * time.Second
 		checkpoint := make(chan struct{})
-		f.hook = func(call machinemanagerproto.Call) (string, error) {
+		f.hook = func(call machineproto.Call) (string, error) {
 			if call.Name() == "checkpoint" {
 				<-checkpoint
 			}
@@ -326,7 +326,7 @@ func TestResetIdempotencyAndWaitingAdmission(t *testing.T) {
 		a := f.access()
 		a.Release()
 		rebuild := make(chan struct{})
-		f.hook = func(call machinemanagerproto.Call) (string, error) {
+		f.hook = func(call machineproto.Call) (string, error) {
 			if call.Name() == "reset" {
 				<-rebuild
 			}
@@ -390,7 +390,7 @@ func TestFailedResetRetryUsesPinnedBaseAndReleasesHolds(t *testing.T) {
 		f.flush = true
 		f.records.uses = []database.CloudUseRecord{{ID: "target", OnCloud: true}}
 		fail := true
-		f.hook = func(call machinemanagerproto.Call) (string, error) {
+		f.hook = func(call machineproto.Call) (string, error) {
 			if call.Name() == "reset" && fail {
 				return "", errors.New("disk refused")
 			}
@@ -502,7 +502,7 @@ func TestStatusDoesNotAllocateAndGrowthChecksOwnership(t *testing.T) {
 		if f.count("grow_volume") != 1 {
 			t.Fatal("growth count")
 		}
-		f.hook = func(call machinemanagerproto.Call) (string, error) {
+		f.hook = func(call machineproto.Call) (string, error) {
 			if call.Name() == "image_state" {
 				return "", io.EOF
 			}
@@ -609,7 +609,7 @@ func TestStartupReconcilesAndRecoversWithoutBooting(t *testing.T) {
 		if f.calls[0].Name() != "reconcile" {
 			t.Fatal("startup did not reconcile first")
 		}
-		reset, ok := f.calls[1].(*machinemanagerproto.Reset)
+		reset, ok := f.calls[1].(*machineproto.Reset)
 		if !ok || reset.Params.BaseVersion != "pinned-base" || reset.Params.OperationID != "interrupted" {
 			t.Fatal("startup lost durable reset identity")
 		}
@@ -657,7 +657,7 @@ func TestResetDuringBootJoinsItAndSharesItsPermit(t *testing.T) {
 		f.services.Capacity = NewCapacity(1)
 		booting := make(chan struct{})
 		first := true
-		f.hook = func(call machinemanagerproto.Call) (string, error) {
+		f.hook = func(call machineproto.Call) (string, error) {
 			if call.Name() == "wake" && first {
 				first = false
 				<-booting
@@ -697,7 +697,7 @@ func TestCheckpointFailureRetriesWithoutStoppingCloud(t *testing.T) {
 		f.flush = true
 		f.services.Tuning.CheckpointInterval = 2 * time.Second
 		fail := true
-		f.hook = func(call machinemanagerproto.Call) (string, error) {
+		f.hook = func(call machineproto.Call) (string, error) {
 			if call.Name() == "checkpoint" && fail {
 				return "", errors.New("checkpoint refused")
 			}

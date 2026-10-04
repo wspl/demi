@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/klauspost/compress/zstd"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Entry is a regular archive file, or a symbolic link when Link is nonempty.
@@ -41,14 +41,14 @@ type CloudImage struct {
 	// Directory holds the fixture release files.
 	Directory string
 	// Manifest is the fixture release manifest.
-	Manifest machinemanagerproto.CloudImageManifest
+	Manifest machineproto.CloudImageManifest
 }
 
 // NewCloudImage writes a tar/zstd release and matching generated manifest.
 func NewCloudImage(
 	t *testing.T,
 	entries []Entry,
-	architecture machinemanagerproto.Architecture,
+	architecture machineproto.Architecture,
 	executables ...Entry,
 ) *CloudImage {
 	t.Helper()
@@ -67,7 +67,7 @@ func NewCloudImage(
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := machinemanagerproto.DecodeCloudImageManifest(manifestFixture)
+	manifest, err := machineproto.DecodeCloudImageManifest(manifestFixture)
 	if err != nil {
 		t.Fatal(err)
 	}

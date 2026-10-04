@@ -9,7 +9,7 @@ import (
 	"github.com/coder/websocket"
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -41,7 +41,7 @@ func TestNativeDevelopmentReleaseServesOnlyLoadedArtifacts(t *testing.T) {
 	if err := socket.Close(websocket.StatusNormalClosure, ""); err != nil {
 		t.Fatal(err)
 	}
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		t.Fatal(err)
 	}

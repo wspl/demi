@@ -13,7 +13,7 @@ import (
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -85,7 +85,7 @@ func (e *Server) runnerArtifact(w http.ResponseWriter, r *http.Request) error {
 	if strings.Contains(target, "windows") {
 		executable += ".exe"
 	}
-	if e.state.Site.RunnerReleases == "" || !commandproto.IsDigest(release) || !commandproto.IsTarget(target) ||
+	if e.state.Site.RunnerReleases == "" || !cmdproto.IsDigest(release) || !cmdproto.IsTarget(target) ||
 		name != executable {
 		return missing
 	}

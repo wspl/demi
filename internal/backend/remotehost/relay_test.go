@@ -12,7 +12,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -29,10 +29,10 @@ func relayCommands(t *testing.T, handler host.RPCHandlerFunc) *host.CommandSet {
 				"probe",
 				"Probes.",
 				host.Leaf(
-					commanddecl.Leaf[commanddecl.NativeOperation]{
+					cmddecl.Leaf[cmddecl.NativeOperation]{
 						Name:    "live",
 						Summary: "Live input.",
-						Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+						Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 					},
 					handler,
 				),

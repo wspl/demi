@@ -16,7 +16,7 @@ import (
 	"github.com/wspl/demi/internal/backend/pluginhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/webapiproto"
 )

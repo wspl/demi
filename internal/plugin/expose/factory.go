@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 )
 
@@ -14,9 +14,9 @@ import (
 type Factory struct {
 	id       plugin.ID
 	commands *plugin.CommandPlugin
-	state    *commanddecl.Schema
-	params   *commanddecl.Schema
-	result   *commanddecl.Schema
+	state    *cmddecl.Schema
+	params   *cmddecl.Schema
+	result   *cmddecl.Schema
 }
 
 // New constructs the expose plugin's factory from its generated contracts.
@@ -29,15 +29,15 @@ func New() (*Factory, error) {
 	if err != nil {
 		return nil, fmt.Errorf("declare expose commands: %w", err)
 	}
-	state, err := commanddecl.NewSchema(ExposeStatePluginJSONSchema())
+	state, err := cmddecl.NewSchema(ExposeStatePluginJSONSchema())
 	if err != nil {
 		return nil, fmt.Errorf("declare expose state: %w", err)
 	}
-	params, err := commanddecl.NewSchema(ExposeCallPluginJSONSchema())
+	params, err := cmddecl.NewSchema(ExposeCallPluginJSONSchema())
 	if err != nil {
 		return nil, fmt.Errorf("declare expose calls: %w", err)
 	}
-	result, err := commanddecl.NewSchema(json.RawMessage(`{"title":"null","type":"null"}`))
+	result, err := cmddecl.NewSchema(json.RawMessage(`{"title":"null","type":"null"}`))
 	if err != nil {
 		return nil, fmt.Errorf("declare expose result: %w", err)
 	}

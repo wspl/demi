@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/pluginhost"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/types"
@@ -21,7 +21,7 @@ import (
 func portFixture(t *testing.T) (*pluginhost.User, *fakeShard, plugin.Port, plugin.Port) {
 	t.Helper()
 	m := manifest(t, "storage")
-	m.Page.Methods[1].Operations = []commanddecl.NativeOperation{{Package: "allowed", Operation: "declared"}}
+	m.Page.Methods[1].Operations = []cmddecl.NativeOperation{{Package: "allowed", Operation: "declared"}}
 	var ports []plugin.Port
 	f := &fakeFactory{manifest: m, make: func() plugin.Plugin {
 		return &fakePlugin{call: func(_ context.Context, _ plugin.Request, port plugin.Port) (plugin.Reply, error) {
@@ -260,11 +260,11 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 	}
 	raw := json.RawMessage(`{"z":1,"a":"<&"}`)
 	// Calls are allowed for the package, not just the one declared operation.
-	operation := commanddecl.NativeOperation{Package: "allowed", Operation: "another"}
+	operation := cmddecl.NativeOperation{Package: "allowed", Operation: "another"}
 	shard.packageCall = func(
 		_ context.Context,
 		c webapiproto.ConversationID,
-		receivedOperation commanddecl.NativeOperation,
+		receivedOperation cmddecl.NativeOperation,
 		args json.RawMessage,
 		kind plugin.CallKind,
 	) (json.RawMessage, error) {
@@ -376,7 +376,7 @@ func TestProductPortsForwardServicesAndRefusals(t *testing.T) {
 	for _, message := range []plugin.PortMessage{
 		&plugin.PortMessageRPC{Request: &host.PortStdout{Bytes: bytes}},
 		&plugin.PortMessagePackageCall{
-			Operation: commanddecl.NativeOperation{Package: "foreign", Operation: "run"},
+			Operation: cmddecl.NativeOperation{Package: "foreign", Operation: "run"},
 			Args:      raw,
 			Kind:      plugin.CallKindStarts,
 		},

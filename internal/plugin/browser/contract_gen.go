@@ -5,7 +5,7 @@ package browser
 import (
 	"encoding/json"
 	"fmt"
-	browserproto "github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	browserproto "github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 	"github.com/wspl/demi/internal/contract"
 )
 

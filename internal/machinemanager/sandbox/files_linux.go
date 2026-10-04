@@ -14,7 +14,7 @@ import (
 
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -58,13 +58,13 @@ func (d RuntimeDirectory) Base() string {
 }
 
 // Volume returns where a working image is mounted.
-func (d RuntimeDirectory) Volume(volume machinemanagerproto.Volume) string {
+func (d RuntimeDirectory) Volume(volume machineproto.Volume) string {
 	return filepath.Join(d.root, string(volume))
 }
 
 // Home returns the mounted home filesystem.
 func (d RuntimeDirectory) Home() string {
-	return d.Volume(machinemanagerproto.VolumeHome)
+	return d.Volume(machineproto.VolumeHome)
 }
 
 // RootFS returns the overlay the sandbox sees as /.

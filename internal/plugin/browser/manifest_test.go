@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/plugin/browser"
 )
@@ -25,7 +25,7 @@ func TestManifestCallersCannotChangeFactory(t *testing.T) {
 	manifest.Page.Methods[0].Operations[0].Operation = "changed"
 	manifest.Page.Conversation.Topics[0] = plugin.TopicExposes
 	manifest.Page.Conversation.Operations[0].Operation = "changed"
-	manifest.Commands[0].Tree.Node.(*commanddecl.Group[commanddecl.NativeOperation]).Name = "changed"
+	manifest.Commands[0].Tree.Node.(*cmddecl.Group[cmddecl.NativeOperation]).Name = "changed"
 	other := factory.Manifest()
 	if string(other.Streams[0].Constants[0].Value) != "1" ||
 		other.Streams[0].Constants[0].Name != "LIVE_CONTROL_FRAME" {
@@ -34,7 +34,7 @@ func TestManifestCallersCannotChangeFactory(t *testing.T) {
 	if other.Page.Methods[0].Operations[0].Operation != "browser.open" ||
 		other.Page.Conversation.Topics[0] != plugin.TopicJobs ||
 		other.Page.Conversation.Operations[0].Operation != "browser.tabs" ||
-		commanddecl.Name(other.Commands[0].Tree.Node) != "browser" {
+		cmddecl.Name(other.Commands[0].Tree.Node) != "browser" {
 		t.Fatal("caller changed factory manifest")
 	}
 }

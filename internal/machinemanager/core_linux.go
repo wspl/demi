@@ -10,7 +10,7 @@ import (
 	"github.com/wspl/demi/internal/machinemanager/sandbox"
 	"github.com/wspl/demi/internal/machinemanager/storage"
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Core holds immutable infrastructure shared by device workers.
@@ -92,13 +92,13 @@ func (d diskAdapter) Capacity(ctx context.Context, image string) (uint64, error)
 type workingImages struct{ *storage.WorkingPair }
 
 // Image returns the path for the selected volume.
-func (w workingImages) Image(v machinemanagerproto.Volume) string {
+func (w workingImages) Image(v machineproto.Volume) string {
 	return w.Images().ForVolume(v)
 }
 
 type imagePaths struct{ storage.ImagePair[string] }
 
 // Image returns the path for the selected volume.
-func (p imagePaths) Image(v machinemanagerproto.Volume) string {
+func (p imagePaths) Image(v machineproto.Volume) string {
 	return p.ForVolume(v)
 }

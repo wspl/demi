@@ -13,9 +13,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
-	"github.com/wspl/demi/internal/commandpackage/file/fileproto"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/file/fileproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/version"
 	"go.uber.org/goleak"
@@ -86,10 +86,10 @@ func TestNamedTargetsMustBeEachExecutablesAndUnnamedAreAllOfTheirs(t *testing.T)
 		programs, named, want []string
 		refused               bool
 	}{
-		{[]string{"demi-runner", "demi-machine-manager"}, []string{commandproto.Targets[0]}, nil, true},
+		{[]string{"demi-runner", "demi-machine-manager"}, []string{cmdproto.Targets[0]}, nil, true},
 		{[]string{"demi-runner", "demi-machine-manager"}, []string{linux[1], linux[0]}, linux, false},
 		{[]string{"demi-machine-manager"}, nil, linux, false},
-		{defaultPrograms, nil, commandproto.Targets, false},
+		{defaultPrograms, nil, cmdproto.Targets, false},
 	} {
 		got, err := selectTargets(test.programs, test.named)
 		if test.refused && (err == nil || err.Error() != "demi-machine-manager is not built for aarch64-apple-darwin") {
@@ -102,7 +102,7 @@ func TestNamedTargetsMustBeEachExecutablesAndUnnamedAreAllOfTheirs(t *testing.T)
 	a := appFixture(t)
 	if err := a.run(
 		t.Context(),
-		[]string{"native", "build", "--package", "demi-machine-manager", "--target", commandproto.Targets[0]},
+		[]string{"native", "build", "--package", "demi-machine-manager", "--target", cmdproto.Targets[0]},
 	); err == nil ||
 		err.Error() != "demi-machine-manager is not built for aarch64-apple-darwin" {
 		t.Fatal("unsupported build accepted")
@@ -116,7 +116,7 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 	a := appFixture(t)
 	output := filepath.Join(a.Root, "runners")
 	args := []string{"native", "package", "--package", "demi-runner", "--output", output}
-	nativeFixture(t, a.Root, "demi-runner", commandproto.Targets, "first")
+	nativeFixture(t, a.Root, "demi-runner", cmdproto.Targets, "first")
 	if err := a.run(t.Context(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +140,7 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 	if !reflect.DeepEqual(readRunner(t, output), first) {
 		t.Fatal("repeat changed identity")
 	}
-	nativeFixture(t, a.Root, "demi-runner", commandproto.Targets, "second")
+	nativeFixture(t, a.Root, "demi-runner", cmdproto.Targets, "second")
 	if err := a.run(t.Context(), args); err != nil {
 		t.Fatal(err)
 	}
@@ -149,12 +149,12 @@ func TestEachRunnerReleaseHasItsDirectoryAndManifestNamesLastInPlace(t *testing.
 		t.Fatal("build changed without new identity")
 	}
 	requireReleaseEntries(t, output, first.Release, second.Release, "manifest.json")
-	writeFixture(t, filepath.Join(output, first.Release, commandproto.Targets[2], "demi-runner"), []byte("corrupt"))
-	nativeFixture(t, a.Root, "demi-runner", commandproto.Targets, "first")
+	writeFixture(t, filepath.Join(output, first.Release, cmdproto.Targets[2], "demi-runner"), []byte("corrupt"))
+	nativeFixture(t, a.Root, "demi-runner", cmdproto.Targets, "first")
 	requireConflict(
 		t,
 		a.run(t.Context(), args),
-		filepath.Join(output, first.Release, commandproto.Targets[2], "demi-runner"),
+		filepath.Join(output, first.Release, cmdproto.Targets[2], "demi-runner"),
 	)
 	if !reflect.DeepEqual(readRunner(t, output), second) {
 		t.Fatal("failed publication moved pointer")
@@ -211,16 +211,16 @@ func TestBackendOrManagerReleaseRecordsVersionAndIsImmutable(t *testing.T) {
 
 func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T) {
 	a := appFixture(t)
-	targets := []string{commandproto.Targets[0], commandproto.Targets[3]}
+	targets := []string{cmdproto.Targets[0], cmdproto.Targets[3]}
 	nativeFixture(t, a.Root, "demi-file", targets, "file")
 	output := filepath.Join(a.Root, "file")
 	args := []string{"native", "package", "--package", "demi-file", "--output", output}
 	missingBuild := a.run(t.Context(), args)
 	// The message names the first missing build and how to make it.
-	source := filepath.Join(a.Root, ".cache/native-target", commandproto.Targets[1], "release", "demi-file")
+	source := filepath.Join(a.Root, ".cache/native-target", cmdproto.Targets[1], "release", "demi-file")
 	want := fmt.Sprintf(
 		"no build of demi-file for %s at %s: run go run ./tools/release native build first: ",
-		commandproto.Targets[1],
+		cmdproto.Targets[1],
 		source,
 	)
 	if !errors.Is(missingBuild, os.ErrNotExist) || !strings.HasPrefix(missingBuild.Error(), want) {
@@ -235,7 +235,7 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 	if err := a.run(t.Context(), args); err != nil {
 		t.Fatal(err)
 	}
-	descriptor, err := commandproto.DecodePackageDescriptor(readFixture(t, filepath.Join(output, "descriptor.json")))
+	descriptor, err := cmdproto.DecodePackageDescriptor(readFixture(t, filepath.Join(output, "descriptor.json")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,7 +262,7 @@ func TestDevelopmentReleaseCarriesNamedTargetsAndProgramsOperations(t *testing.T
 func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	// Accepted R5 removal: Chrome is the only resource a command package carries.
 	a := appFixture(t)
-	target := commandproto.Targets[3]
+	target := cmdproto.Targets[3]
 	program := filepath.Join(a.Root, "browser")
 	writeFixture(t, program, []byte("browser"))
 	cache := filepath.Join(a.Root, ".cache/resources")
@@ -276,7 +276,7 @@ func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	cached := filepath.Join(cache, digest.SHA256)
 	writeFixture(t, cached, archive)
 	chrome := browserproto.BrowserRelease{Version: "153.0.8010.36"}
-	for _, target := range []string{target, commandproto.Targets[0]} {
+	for _, target := range []string{target, cmdproto.Targets[0]} {
 		chrome.Platforms = append(
 			chrome.Platforms,
 			browserproto.ReleasePlatform{
@@ -293,7 +293,7 @@ func TestCommandPackageCarriesResourcesForItsTargets(t *testing.T) {
 	if err := a.publishNative(t.Context(), options, sources, chrome); err != nil {
 		t.Fatal(err)
 	}
-	descriptor, err := commandproto.DecodePackageDescriptor(
+	descriptor, err := cmdproto.DecodePackageDescriptor(
 		readFixture(t, filepath.Join(options.Output, "descriptor.json")),
 	)
 	if err != nil {

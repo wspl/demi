@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/agent/tools"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -68,10 +68,10 @@ func TestConnectedNodeJobKeepsAdmissionThroughEditRetention(t *testing.T) {
 			Files: []runnerproto.JobFileChange{
 				{
 					Path:    "/work/file",
-					Kind:    commandproto.EditModified,
+					Kind:    cmdproto.EditModified,
 					Added:   1,
 					Removed: 1,
-					Edits: []commandproto.EditCopies{
+					Edits: []cmdproto.EditCopies{
 						{Original: new("/copies/before"), Modified: new("/copies/after")},
 					},
 				},

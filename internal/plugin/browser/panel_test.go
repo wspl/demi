@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -27,7 +27,7 @@ func TestCreatedTabFollowsLatestAddressOrClosesAfterRemoval(t *testing.T) {
 				t,
 				func(
 					_ context.Context,
-					op commanddecl.NativeOperation,
+					op cmddecl.NativeOperation,
 					args json.RawMessage,
 					kind plugin.CallKind,
 				) (json.RawMessage, error) {
@@ -103,7 +103,7 @@ func TestFailedTabRecordsReasonAndRetryBinds(t *testing.T) {
 	var patches []string
 	p, demi := world(
 		t,
-		func(context.Context, commanddecl.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
+		func(context.Context, cmddecl.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
 			attempts++
 			if attempts == 1 {
 				return nil, &plugin.PortRefusalHost{
@@ -155,7 +155,7 @@ func TestRemovedTabClosesItsBrowserTab(t *testing.T) {
 		t,
 		func(
 			_ context.Context,
-			op commanddecl.NativeOperation,
+			op cmddecl.NativeOperation,
 			args json.RawMessage,
 			kind plugin.CallKind,
 		) (json.RawMessage, error) {
@@ -190,7 +190,7 @@ func TestRemovedTabClosesItsBrowserTab(t *testing.T) {
 func TestJobSyncUsesStableIDsAndMarksMissingTabsClosed(t *testing.T) {
 	p, demi := world(
 		t,
-		func(context.Context, commanddecl.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
+		func(context.Context, cmddecl.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
 			return json.RawMessage(
 				`{"tabs":[{"id":"t1","title":"A","url":"https://a.test","createdBy":{"kind":"user"},"loading":false},` +
 					`{"id":"t2","title":"B","url":"https://b.test",` +

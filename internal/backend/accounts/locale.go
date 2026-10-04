@@ -8,7 +8,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/webapiproto"
 	"golang.org/x/text/language"
 )
@@ -45,31 +45,31 @@ var normalizedZones = func() map[string]string {
 	return zones
 }()
 
-func canonicalLocale(locale commandproto.CommandLocale) (commandproto.CommandLocale, error) {
+func canonicalLocale(locale cmdproto.CommandLocale) (cmdproto.CommandLocale, error) {
 	zone, ok := normalizedZones[strings.ToLower(locale.TimeZone)]
 	if !ok || strings.ContainsFunc(locale.TimeZone, func(r rune) bool {
 		return r > 127
 	}) {
-		return commandproto.CommandLocale{}, fmt.Errorf(
+		return cmdproto.CommandLocale{}, fmt.Errorf(
 			"locale.timeZone: %q is not a time zone the backend knows",
 			locale.TimeZone,
 		)
 	}
-	languages := make([]commandproto.LanguageTag, 0, len(locale.Languages))
+	languages := make([]cmdproto.LanguageTag, 0, len(locale.Languages))
 	for i, tag := range locale.Languages {
 		canonical, err := canonicalLanguage(string(tag))
 		if err != nil {
-			return commandproto.CommandLocale{}, fmt.Errorf(
+			return cmdproto.CommandLocale{}, fmt.Errorf(
 				"locale.languages[%d]: %q is not a BCP 47 language tag",
 				i,
 				string(tag),
 			)
 		}
-		if !slices.Contains(languages, commandproto.LanguageTag(canonical)) {
-			languages = append(languages, commandproto.LanguageTag(canonical))
+		if !slices.Contains(languages, cmdproto.LanguageTag(canonical)) {
+			languages = append(languages, cmdproto.LanguageTag(canonical))
 		}
 	}
-	return commandproto.CommandLocale{TimeZone: zone, Languages: languages}, nil
+	return cmdproto.CommandLocale{TimeZone: zone, Languages: languages}, nil
 }
 
 // x/text accepts underscore separators, grandfathered tags and private-use-only

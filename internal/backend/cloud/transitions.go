@@ -8,7 +8,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -20,7 +20,7 @@ func boot(ctx context.Context, s Shard, m *machine) error {
 		if _, saved := Call(
 			ctx,
 			s.CloudServices().Machines,
-			machinemanagerproto.HibernateParams{DeviceID: string(m.device.ID)},
+			machineproto.HibernateParams{DeviceID: string(m.device.ID)},
 		); saved != nil {
 			slog.Warn("a Cloud whose boot failed was not saved", "error", saved)
 		}
@@ -43,7 +43,7 @@ func startSandbox(ctx context.Context, s Shard, m *machine) error {
 	_, err := Call(
 		ctx,
 		s.CloudServices().Machines,
-		machinemanagerproto.WakeParams{
+		machineproto.WakeParams{
 			DeviceID: string(m.device.ID),
 			Boot:     runnerproto.ManagedBoot{BackendURL: backend, DeviceToken: token},
 		},
@@ -100,12 +100,12 @@ func recoverMachine(ctx context.Context, s Shard, m *machine) error {
 	state, err := Call(
 		ctx,
 		s.CloudServices().Machines,
-		machinemanagerproto.RuntimeStateParams{DeviceID: string(m.device.ID)},
+		machineproto.RuntimeStateParams{DeviceID: string(m.device.ID)},
 	)
 	if err != nil {
 		return failed(err)
 	}
-	if state == machinemanagerproto.RuntimeStateRunning {
+	if state == machineproto.RuntimeStateRunning {
 		wait, cancel := context.WithTimeout(s.Cloud().ctx, s.CloudServices().Tuning.RunnerConnection)
 		defer cancel()
 		if err := s.Devices().UntilOnline(wait, m.device.ID); err != nil {
@@ -195,7 +195,7 @@ func hibernate(ctx context.Context, s Shard, m *machine) error {
 // save flushes best effort, asks the manager to persist storage, and disconnects the runner.
 func save(ctx context.Context, s Shard, m *machine) error {
 	flush(ctx, s, m.device.ID)
-	_, err := Call(ctx, s.CloudServices().Machines, machinemanagerproto.HibernateParams{DeviceID: string(m.device.ID)})
+	_, err := Call(ctx, s.CloudServices().Machines, machineproto.HibernateParams{DeviceID: string(m.device.ID)})
 	s.Devices().Disconnect(m.device.ID, "Cloud stopped")
 	return failed(err)
 }

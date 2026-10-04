@@ -7,14 +7,14 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
 // finishEdits reports retained snapshots rather than attributing subsequent workspace writes.
-func finishEdits(ctx context.Context, recorder *commandsdk.Recorder) ([]runnerproto.JobFileChange, bool) {
+func finishEdits(ctx context.Context, recorder *cmdsdk.Recorder) ([]runnerproto.JobFileChange, bool) {
 	files := []runnerproto.JobFileChange{}
 	if recorder == nil {
 		return files, false
@@ -74,11 +74,11 @@ func readEditSnapshot(path string) ([]byte, error) {
 	defer func() {
 		_ = file.Close()
 	}()
-	bytes, err := io.ReadAll(io.LimitReader(file, commandproto.EditFileBytes+1))
+	bytes, err := io.ReadAll(io.LimitReader(file, cmdproto.EditFileBytes+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(bytes) > commandproto.EditFileBytes || !commandproto.IsText(bytes) {
+	if len(bytes) > cmdproto.EditFileBytes || !cmdproto.IsText(bytes) {
 		return nil, errors.New("invalid edit snapshot")
 	}
 	return bytes, nil

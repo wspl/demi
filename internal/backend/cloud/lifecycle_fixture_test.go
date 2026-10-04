@@ -22,7 +22,7 @@ import (
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/backend/runners/runnerstest"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -157,10 +157,10 @@ type cloudFixture struct {
 	records  *memoryRecords
 	// mu protects scripted observations; scripts change only when workers are quiescent.
 	mu                sync.Mutex
-	calls             []machinemanagerproto.Call
+	calls             []machineproto.Call
 	changed           chan struct{}
-	hook              func(machinemanagerproto.Call) (string, error)
-	runtime           machinemanagerproto.RuntimeState
+	hook              func(machineproto.Call) (string, error)
+	runtime           machineproto.RuntimeState
 	connect           bool
 	flush             bool
 	activity          map[webapiproto.ConversationID]idlewatch.Activity
@@ -294,7 +294,7 @@ func newCloudFixture(t *testing.T) *cloudFixture {
 		cancel:   cancel,
 		changed:  make(chan struct{}),
 		connect:  true,
-		runtime:  machinemanagerproto.RuntimeStateRunning,
+		runtime:  machineproto.RuntimeStateRunning,
 		activity: make(map[webapiproto.ConversationID]idlewatch.Activity),
 		attended: make(map[webapiproto.ConversationID]bool),
 	}
@@ -449,7 +449,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 			<-closed
 		}
 	}()
-	responses := make(chan machinemanagerproto.MachineResponse, 64)
+	responses := make(chan machineproto.MachineResponse, 64)
 	var replies sync.WaitGroup
 	writerDone := make(chan struct{})
 	go func() {
@@ -459,7 +459,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 			case <-ctx.Done():
 				return
 			case response := <-responses:
-				data, err := machinemanagerproto.EncodeLine(response)
+				data, err := machineproto.EncodeLine(response)
 				if err != nil {
 					f.t.Error(err)
 					return
@@ -477,7 +477,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 	}()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
-		request, err := machinemanagerproto.DecodeRequest(scanner.Bytes())
+		request, err := machineproto.DecodeRequest(scanner.Bytes())
 		if err != nil {
 			f.t.Error(err)
 			return
@@ -490,9 +490,9 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 		close(changed)
 		replies.Go(func() {
 			result, err := f.answer(request.Call)
-			var response machinemanagerproto.MachineResponse = &machinemanagerproto.OK{ID: request.ID, Result: []byte(result)}
+			var response machineproto.MachineResponse = &machineproto.OK{ID: request.ID, Result: []byte(result)}
 			if err != nil {
-				response = &machinemanagerproto.ErrorResponse{ID: request.ID, Message: err.Error()}
+				response = &machineproto.ErrorResponse{ID: request.ID, Message: err.Error()}
 			}
 			select {
 			case responses <- response:
@@ -502,7 +502,7 @@ func (f *cloudFixture) serveManager(conn net.Conn) {
 	}
 }
 
-func (f *cloudFixture) answer(call machinemanagerproto.Call) (string, error) {
+func (f *cloudFixture) answer(call machineproto.Call) (string, error) {
 	if f.hook != nil {
 		result, err := f.hook(call)
 		if result != "" || err != nil {

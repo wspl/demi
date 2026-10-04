@@ -17,7 +17,7 @@ import (
 	"github.com/wspl/demi/internal/backend/pluginhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/types"
@@ -81,7 +81,7 @@ func TestCloudStopOrdersExposeCreation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		registry, err := pluginhost.NewRegistry(nil, func(commanddecl.NativeOperation) bool {
+		registry, err := pluginhost.NewRegistry(nil, func(cmddecl.NativeOperation) bool {
 			return false
 		})
 		if err != nil {

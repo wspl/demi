@@ -1,7 +1,7 @@
 package database
 
 import (
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -10,7 +10,7 @@ import (
 // the same operation on the same base.
 type ManagedOperation struct {
 	ID          webapiproto.OperationID
-	BaseVersion machinemanagerproto.BaseVersion
+	BaseVersion machineproto.BaseVersion
 	Phase       webapiproto.ResetPhase
 	Error       *string
 }

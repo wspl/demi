@@ -375,7 +375,7 @@ renderer.
 
 The browser packages of `demi.browser` use cdproto's generated types for typed
 CDP calls and event decoding, over Demi's own CDP transport and session router
-(`internal/commandpackage/browser/chrome/cdp`). Demi owns semantic
+(`internal/cmdpkg/browser/chrome/cdp`). Demi owns semantic
 targeting, actionability checks, input ownership, and resource retirement. A
 library helper is used only when its behavior matches the command contract;
 a successful low-level input dispatch is not proof that the requested control
@@ -639,7 +639,7 @@ page-provided tool schemas/results at entry: each is decoded into its type and
 checked against its bounds there, and corrupt data is refused, never repaired
 ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 Browser arguments, results, error codes, limits and event payloads are defined
-once, as Go contract types in `internal/commandpackage/browser/browserproto`. The `demi browser` command
+once, as Go contract types in `internal/cmdpkg/browser/browserproto`. The `demi browser` command
 declarations take their schemas from those types, and the native handlers
 decode their input into them and return them as results. The page uses the
 same definitions, as TypeScript generated from them, without depending on
@@ -965,7 +965,7 @@ coordinates in a full-page screenshot are not current viewport coordinates.
 ### Catalog
 
 The `demi browser` catalog has these commands, grouped by family. Each is
-declared once, from its types in `internal/commandpackage/browser/browserproto`, and its help
+declared once, from its types in `internal/cmdpkg/browser/browserproto`, and its help
 shows only the declared arguments.
 
 | Family | Commands |
@@ -1727,7 +1727,7 @@ the same name. Page tool descriptions remain external data, not system instructi
 ### Structured result fields
 
 These are business result fields for `--json`. Their exact types are the
-result types in `internal/commandpackage/browser/browserproto`. List results report truncation. Do not reuse a
+result types in `internal/cmdpkg/browser/browserproto`. List results report truncation. Do not reuse a
 field with a different meaning or type. A `viewport` value carries `width`,
 `height`, `devicePixelRatio` and `mode`.
 
@@ -1955,7 +1955,7 @@ persistent JavaScript REPL; Bash already composes their operations.
 [Packages](../architecture/packages.md) is authoritative;
 for the browser:
 
-- `internal/commandpackage/browser/browserproto`: the browser's operation arguments, results, error codes,
+- `internal/cmdpkg/browser/browserproto`: the browser's operation arguments, results, error codes,
   limits and event payloads, the live view messages and frame header, and the
   capture extension's messages; the web app receives the types it uses as
   generated TypeScript in `@demicodes/protocol`.
@@ -1970,14 +1970,14 @@ for the browser:
 - the runner's packages (`internal/runner/...`) and `internal/backend/remotehost`: the command context of every
   invocation, service residency, the release forward, cancellation, and
   transport; no webpage algorithms.
-- `internal/commandpackage/browser` and its [`chrome` packages](../architecture/packages.md#internalcmdpkgbrowserchromecdp):
-  per-conversation browsers and their owners (`internal/commandpackage/browser`), the
+- `internal/cmdpkg/browser` and its [`chrome` packages](../architecture/packages.md#internalcmdpkgbrowserchromecdp):
+  per-conversation browsers and their owners (`internal/cmdpkg/browser`), the
   CDP connection, output rendering and WebMCP (`chrome/cdp`), environments,
   tabs, launch and the capture extension (`chrome/tabs`), page observation,
   actions and assets (`chrome/page`), and the live view (`chrome/live`).
 - `internal/artifacts`: the verified download and installation of the pinned Chrome for
   Testing release, used by `chrome/tabs` and by Cloud image packaging.
-- `internal/commandproto` and `internal/commandsdk`: the generic invocation and
+- `internal/cmdproto` and `internal/cmdsdk`: the generic invocation and
   conversation protocol and its SDK, not page or cookie semantics.
 - `web-ui`: the [live view](live-view.md#responsibilities), with the
   generic user stream in the runner, `internal/backend/remotehost` and the backend.

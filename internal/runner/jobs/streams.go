@@ -10,9 +10,9 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -22,7 +22,7 @@ import (
 type ServiceStreams struct {
 	connection *Connection
 	pipes      *process.PipeClient
-	services   *commandpackages.ServiceRegistry
+	services   *cmdpkgs.ServiceRegistry
 	lifetime   context.Context
 	cancel     context.CancelFunc
 	draining   <-chan struct{}
@@ -36,7 +36,7 @@ type ServiceStreams struct {
 }
 type streamBinding struct {
 	digest string
-	lease  *commandpackages.ServiceLease
+	lease  *cmdpkgs.ServiceLease
 }
 
 // NewServiceStreams creates an owner that cancels streams with ctx. Closing
@@ -45,7 +45,7 @@ func NewServiceStreams(
 	ctx context.Context,
 	connection *Connection,
 	pipes *process.PipeClient,
-	services *commandpackages.ServiceRegistry,
+	services *cmdpkgs.ServiceRegistry,
 	draining <-chan struct{},
 ) *ServiceStreams {
 	lifetime, cancel := context.WithCancel(ctx)
@@ -68,13 +68,13 @@ func (s *ServiceStreams) HandleOpen(message runnerproto.Inbound) error {
 	if !ok {
 		return errors.New("not a service_open request")
 	}
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		return err
 	}
 	artifact, hasArtifact := request.Package.Targets[string(target)]
 	var moved *streamBinding
-	var oldLease *commandpackages.ServiceLease
+	var oldLease *cmdpkgs.ServiceLease
 	s.mu.Lock()
 	if s.closing || s.lifetime.Err() != nil {
 		s.mu.Unlock()
@@ -166,7 +166,7 @@ func (s *ServiceStreams) run(request *runnerproto.ServiceOpen, moved *streamBind
 		)
 		return
 	}
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		refuse(runnerproto.ServiceErrorCodeServiceFailed, err.Error())
 		return
@@ -205,7 +205,7 @@ func (s *streamInput) Next(ctx context.Context) ([]byte, error) {
 		}
 		s.body = body
 	}
-	bytes := make([]byte, commandproto.MaxRecordBytes)
+	bytes := make([]byte, cmdproto.MaxRecordBytes)
 	n, err := s.body.Read(bytes)
 	if n > 0 {
 		return bytes[:n], nil
@@ -275,7 +275,7 @@ func (s *ServiceStreams) invokeStream(
 	ctx context.Context,
 	cancel context.CancelFunc,
 	request *runnerproto.ServiceOpen,
-	resident *commandpackages.Resident,
+	resident *cmdpkgs.Resident,
 	log func(string),
 	refuse func(runnerproto.ServiceErrorCode, string),
 ) {
@@ -300,7 +300,7 @@ func (s *ServiceStreams) invokeStream(
 		err := s.pipes.Put(
 			uploadCtx,
 			request.Output.URL,
-			newInvocationBody(uploadCtx, commandsdk.NewInput(&chunkSource{chunks: uploads})),
+			newInvocationBody(uploadCtx, cmdsdk.NewInput(&chunkSource{chunks: uploads})),
 		)
 		if err != nil {
 			cancel()
@@ -313,7 +313,7 @@ func (s *ServiceStreams) invokeStream(
 		conversation: request.Context.Conversation,
 		operation:    request.Operation,
 	}
-	completion, result := (commandsdk.Exchange{Input: input, Output: response}).Run(ctx, source, sink)
+	completion, result := (cmdsdk.Exchange{Input: input, Output: response}).Run(ctx, source, sink)
 	if result != nil {
 		stopUpload()
 	}
@@ -327,7 +327,7 @@ func (s *ServiceStreams) invokeStream(
 
 func (s *ServiceStreams) finishStream(
 	request *runnerproto.ServiceOpen,
-	completion commandproto.Completion,
+	completion cmdproto.Completion,
 	result, upload error,
 	sink *streamOutput,
 	cancel context.CancelFunc,
@@ -335,7 +335,7 @@ func (s *ServiceStreams) finishStream(
 ) {
 	var inputResult error
 	if result != nil {
-		var exchange *commandsdk.ExchangeError
+		var exchange *cmdsdk.ExchangeError
 		if errors.As(result, &exchange) && exchange.Side == "input" {
 			inputResult = exchange.Cause
 		} else if errors.As(result, &exchange) && exchange.Side == "service" && !errors.Is(result, context.Canceled) {
@@ -385,12 +385,12 @@ func (s *ServiceStreams) finishStream(
 	log("ended")
 }
 
-func streamInvocation(request *runnerproto.ServiceOpen) commandproto.Invocation {
+func streamInvocation(request *runnerproto.ServiceOpen) cmdproto.Invocation {
 	args := json.RawMessage(`{}`)
 	if request.Args != nil {
 		args = *request.Args
 	}
-	invocation := commandproto.Invocation{
+	invocation := cmdproto.Invocation{
 		Operation:    request.Operation,
 		InvocationID: request.StreamID,
 		Context:      request.Context,

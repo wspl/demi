@@ -9,8 +9,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -20,7 +20,7 @@ import (
 // by channels. Its cleanup joins workers and releases services and contexts.
 type Dispatch struct {
 	// Services owns the fixture service registry.
-	Services *commandpackages.ServiceRegistry
+	Services *cmdpkgs.ServiceRegistry
 	// Dispatcher runs fixture command invocations.
 	Dispatcher *jobs.Dispatcher
 	// Server serves the fixture local command endpoint.
@@ -38,7 +38,7 @@ type Dispatch struct {
 	once     sync.Once
 	closed   chan struct{}
 	err      error
-	leases   []*commandpackages.ServiceLease
+	leases   []*cmdpkgs.ServiceLease
 }
 type removal struct {
 	job  string
@@ -64,7 +64,7 @@ func NewDispatch(
 		}
 	})
 	var err error
-	d.Services, err = commandpackages.NewServiceRegistry(
+	d.Services, err = cmdpkgs.NewServiceRegistry(
 		lifetime,
 		filepath.Join(root, "artifacts"),
 		"",
@@ -109,9 +109,9 @@ func NewDispatch(
 func (d *Dispatch) Context(
 	ctx context.Context,
 	jobID string,
-	command commandproto.Context,
+	command cmdproto.Context,
 ) (*jobs.ExecutionContext, *ContextRegistration, error) {
-	edits := commandproto.EditContext{
+	edits := cmdproto.EditContext{
 		Directory: filepath.Join(d.paths.Directory, jobID),
 		Lock:      filepath.Join(d.paths.Directory, "edits.lock"),
 	}

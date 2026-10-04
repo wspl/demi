@@ -3,7 +3,7 @@ package plugin
 import (
 	"fmt"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/contract"
 )
 
@@ -40,7 +40,7 @@ func validateID(id ID) error {
 
 // Schema carries a compiled declaration schema through the plugin contract.
 // +demi:codec
-type Schema struct{ *commanddecl.Schema }
+type Schema struct{ *cmddecl.Schema }
 
 // MarshalJSON writes the immutable schema document.
 func (s Schema) MarshalJSON() ([]byte, error) {
@@ -52,7 +52,7 @@ func (s Schema) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON compiles the schema through its owning package.
 func (s *Schema) UnmarshalJSON(data []byte) error {
-	v, err := commanddecl.NewSchema(data)
+	v, err := cmddecl.NewSchema(data)
 	if err != nil {
 		return err
 	}
@@ -63,7 +63,7 @@ func (s *Schema) UnmarshalJSON(data []byte) error {
 // Declaration carries the command package's declaration codec.
 // +demi:codec
 type Declaration struct {
-	commanddecl.Node[commanddecl.NativeOperation]
+	cmddecl.Node[cmddecl.NativeOperation]
 }
 
 // MarshalJSON delegates to the declaration's existing encoder.
@@ -76,7 +76,7 @@ func (d Declaration) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON delegates to the generated declaration decoder.
 func (d *Declaration) UnmarshalJSON(data []byte) error {
-	n, err := commanddecl.DecodeDeclaration(data)
+	n, err := cmddecl.DecodeDeclaration(data)
 	if err != nil {
 		return err
 	}

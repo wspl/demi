@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/internal/backend/database/databasetest"
 	"github.com/wspl/demi/internal/backend/pagesync"
 	"github.com/wspl/demi/internal/backend/pluginhost"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
@@ -75,7 +75,7 @@ func (f *fakeFactory) Instance() plugin.Plugin {
 // manifest declares a fake plugin's page, both state scopes and both method scopes.
 func manifest(t *testing.T, id string) plugin.Manifest {
 	t.Helper()
-	schema, err := commanddecl.NewSchema(
+	schema, err := cmddecl.NewSchema(
 		[]byte(`{"type":"object","properties":{"text":{"type":"string"}},"additionalProperties":false}`),
 	)
 	if err != nil {
@@ -110,19 +110,19 @@ func manifest(t *testing.T, id string) plugin.Manifest {
 }
 
 // command declares one group with one leaf for a fake plugin.
-func command(name string, placement plugin.Placement, operation *commanddecl.NativeOperation) plugin.Commands {
-	var kind commanddecl.LeafKind[commanddecl.NativeOperation] = &commanddecl.RPC[commanddecl.NativeOperation]{}
+func command(name string, placement plugin.Placement, operation *cmddecl.NativeOperation) plugin.Commands {
+	var kind cmddecl.LeafKind[cmddecl.NativeOperation] = &cmddecl.RPC[cmddecl.NativeOperation]{}
 	if operation != nil {
-		kind = &commanddecl.Native[commanddecl.NativeOperation]{Binding: *operation}
+		kind = &cmddecl.Native[cmddecl.NativeOperation]{Binding: *operation}
 	}
 	return plugin.Commands{
 		Placement: placement,
 		Tree: plugin.Declaration{
-			Node: &commanddecl.Group[commanddecl.NativeOperation]{
+			Node: &cmddecl.Group[cmddecl.NativeOperation]{
 				Name:    name,
 				Summary: "A group.",
-				Subcommands: []commanddecl.Node[commanddecl.NativeOperation]{
-					&commanddecl.Leaf[commanddecl.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind},
+				Subcommands: []cmddecl.Node[cmddecl.NativeOperation]{
+					&cmddecl.Leaf[cmddecl.NativeOperation]{Name: "run", Summary: "Run.", Kind: kind},
 				},
 			},
 		},
@@ -132,7 +132,7 @@ func command(name string, placement plugin.Placement, operation *commanddecl.Nat
 // registry builds fake plugins against a catalog serving every declared operation.
 func registry(t *testing.T, factories ...plugin.Factory) *pluginhost.Registry {
 	t.Helper()
-	r, err := pluginhost.NewRegistry(factories, func(commanddecl.NativeOperation) bool {
+	r, err := pluginhost.NewRegistry(factories, func(cmddecl.NativeOperation) bool {
 		return true
 	})
 	if err != nil {
@@ -151,7 +151,7 @@ type fakeShard struct {
 	packageCall func(
 		context.Context,
 		webapiproto.ConversationID,
-		commanddecl.NativeOperation,
+		cmddecl.NativeOperation,
 		json.RawMessage,
 		plugin.CallKind,
 	) (json.RawMessage, error)
@@ -194,7 +194,7 @@ func (s *fakeShard) BlobUses() database.OwnerBlobs {
 func (s *fakeShard) PackageCall(
 	ctx context.Context,
 	c webapiproto.ConversationID,
-	operation commanddecl.NativeOperation,
+	operation cmddecl.NativeOperation,
 	args json.RawMessage,
 	kind plugin.CallKind,
 ) (json.RawMessage, error) {

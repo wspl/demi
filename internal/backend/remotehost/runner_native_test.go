@@ -15,8 +15,8 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/remotehost/testdata/fixture"
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -24,12 +24,12 @@ import (
 )
 
 // nativeLeaf binds the declared command name to a fixture operation.
-func nativeLeaf(n *remotehosttest.NativeFixture, name, operation string) commanddecl.Leaf[commanddecl.NativeOperation] {
-	return commanddecl.Leaf[commanddecl.NativeOperation]{
+func nativeLeaf(n *remotehosttest.NativeFixture, name, operation string) cmddecl.Leaf[cmddecl.NativeOperation] {
+	return cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:    name,
 		Summary: "The fixture's " + operation + ".",
-		Kind: &commanddecl.Native[commanddecl.NativeOperation]{
-			Binding: commanddecl.NativeOperation{Package: n.Descriptor.ID, Operation: operation},
+		Kind: &cmddecl.Native[cmddecl.NativeOperation]{
+			Binding: cmddecl.NativeOperation{Package: n.Descriptor.ID, Operation: operation},
 		},
 	}
 }
@@ -38,7 +38,7 @@ func nativeLeaf(n *remotehosttest.NativeFixture, name, operation string) command
 func nativeCommands(t *testing.T, n *remotehosttest.NativeFixture, name string) *host.CommandSet {
 	t.Helper()
 	where := nativeLeaf(n, "where", "where")
-	schema, err := commanddecl.NewSchema(fixture.WhereArgsJSONSchema())
+	schema, err := cmddecl.NewSchema(fixture.WhereArgsJSONSchema())
 	requirePipe(t, err)
 	where.Input = schema
 	leaves := []host.Declared{host.Leaf(where, nil)}
@@ -57,7 +57,7 @@ func selectNative(
 	commands *host.CommandSet,
 ) *remotehost.CommandSelection {
 	t.Helper()
-	catalog, err := remotehost.NewCommandCatalog([]commandproto.PackageDescriptor{n.Descriptor}, n.Resolver())
+	catalog, err := remotehost.NewCommandCatalog([]cmdproto.PackageDescriptor{n.Descriptor}, n.Resolver())
 	requirePipe(t, err)
 	selection, err := catalog.Select(commands)
 	requirePipe(t, err)
@@ -221,10 +221,10 @@ func TestRunnerCommandShowsLeafHintUntilLeafEnds(t *testing.T) {
 	requirePipe(t, base.Stop(t.Context()))
 	nativeHint := nativeLeaf(native, "native", "first")
 	nativeHint.RunningHint = new("native: do not poll")
-	rpc := commanddecl.Leaf[commanddecl.NativeOperation]{
+	rpc := cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:        "rpc",
 		Summary:     "Wait for a line on the backend.",
-		Kind:        &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Kind:        &cmddecl.RPC[cmddecl.NativeOperation]{},
 		RunningHint: new("rpc: do not poll"),
 	}
 	commands := &host.CommandSet{}

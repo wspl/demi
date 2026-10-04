@@ -13,7 +13,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
@@ -31,7 +31,7 @@ func shellFixture(
 	pages := hosttest.NewPages(false)
 	options := remotehost.NewEnvironmentOptions(
 		h,
-		func(context.Context) (commandproto.Context, error) {
+		func(context.Context) (cmdproto.Context, error) {
 			return hosttest.CommandContext(), nil
 		},
 		pages,
@@ -258,12 +258,12 @@ func TestInputWrittenWhileAcquiringHostReachesStartedJob(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		acquired := make(chan struct{})
 		_, l, s, p := shellFixture(t, func(o *remotehost.EnvironmentOptions) {
-			o.Context = func(ctx context.Context) (commandproto.Context, error) {
+			o.Context = func(ctx context.Context) (cmdproto.Context, error) {
 				select {
 				case <-acquired:
 					return hosttest.CommandContext(), nil
 				case <-ctx.Done():
-					return commandproto.Context{}, ctx.Err()
+					return cmdproto.Context{}, ctx.Err()
 				}
 			}
 		})
@@ -540,10 +540,10 @@ func TestCommandEndsOnceEditsPublishedAndKeepsThem(t *testing.T) {
 				Files: []runnerproto.JobFileChange{
 					{
 						Path:    "/work/file",
-						Kind:    commandproto.EditKind("modified"),
+						Kind:    cmdproto.EditKind("modified"),
 						Added:   1,
 						Removed: 1,
-						Edits: []commandproto.EditCopies{
+						Edits: []cmdproto.EditCopies{
 							{Original: new("/copies/before"), Modified: new("/copies/after")},
 						},
 					},
@@ -619,7 +619,7 @@ func TestKeeperAndReleaseFailuresAreLoggedWithoutChangingCompletion(t *testing.T
 				JobID:    job.JobID,
 				ExitCode: new(int32(7)),
 				Files: []runnerproto.JobFileChange{
-					{Path: "/work/file", Kind: commandproto.EditModified, Added: 1, Edits: []commandproto.EditCopies{}},
+					{Path: "/work/file", Kind: cmdproto.EditModified, Added: 1, Edits: []cmdproto.EditCopies{}},
 				},
 			},
 		)

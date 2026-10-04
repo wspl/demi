@@ -8,7 +8,7 @@ import (
 	"sync"
 
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 )
 
 // Store is where runners download loaded packages' executables.
@@ -27,7 +27,7 @@ func (*LocalArtifacts) nativeStore()   {}
 // descriptors are immutable; it can be shared by shards. Construct it with
 // NewNativeCatalog, UnpublishedCatalog or PublishNative.
 type NativeCatalog struct {
-	packages   []commandproto.PackageDescriptor
+	packages   []cmdproto.PackageDescriptor
 	store      Store
 	closeOnce  sync.Once
 	closeStore func() error
@@ -36,11 +36,11 @@ type NativeCatalog struct {
 
 // NewNativeCatalog builds the catalog, refusing invalid descriptors or duplicate
 // package IDs. It borrows store; its external owner retains store cleanup.
-func NewNativeCatalog(packages []commandproto.PackageDescriptor, store Store) (*NativeCatalog, error) {
+func NewNativeCatalog(packages []cmdproto.PackageDescriptor, store Store) (*NativeCatalog, error) {
 	if _, err := remotehost.NewCommandCatalog(packages, unpublished{}); err != nil {
 		return nil, err
 	}
-	owned := make([]commandproto.PackageDescriptor, 0, len(packages))
+	owned := make([]cmdproto.PackageDescriptor, 0, len(packages))
 	for _, descriptor := range packages {
 		owned = append(owned, cloneDescriptor(descriptor))
 	}
@@ -83,14 +83,14 @@ func (c *NativeCatalog) LocalArtifact(ctx context.Context, sha256 string) (Local
 }
 
 // Package returns an owned copy of the loaded descriptor by ID, and false when none has it.
-func (c *NativeCatalog) Package(id string) (commandproto.PackageDescriptor, bool) {
+func (c *NativeCatalog) Package(id string) (cmdproto.PackageDescriptor, bool) {
 	for _, descriptor := range c.packages {
 		if descriptor.ID == id {
 			owned := cloneDescriptor(descriptor)
 			return owned, true
 		}
 	}
-	return commandproto.PackageDescriptor{}, false
+	return cmdproto.PackageDescriptor{}, false
 }
 
 // Serves reports whether the loaded package serves every named operation.
@@ -126,14 +126,14 @@ type unpublished struct{}
 // Resolve locates an executable for the requesting job.
 func (unpublished) Resolve(
 	_ context.Context,
-	_ commandproto.PackageArtifact,
+	_ cmdproto.PackageArtifact,
 	target string,
-) (commandproto.ArtifactLocation, error) {
+) (cmdproto.ArtifactLocation, error) {
 	return nil, fmt.Errorf("no command package is published for %s", target)
 }
 
 // cloneDescriptor gives each catalog caller its own package collections.
-func cloneDescriptor(value commandproto.PackageDescriptor) commandproto.PackageDescriptor {
+func cloneDescriptor(value cmdproto.PackageDescriptor) cmdproto.PackageDescriptor {
 	value.Operations = slices.Clone(value.Operations)
 	value.Targets = maps.Clone(value.Targets)
 	value.Resources = maps.Clone(value.Resources)

@@ -9,7 +9,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandsdk/commandsdktest"
+	"github.com/wspl/demi/internal/cmdsdk/cmdsdktest"
 )
 
 func TestStartBusyExecutable(t *testing.T) {
@@ -40,14 +40,14 @@ func TestStartBusyExecutable(t *testing.T) {
 			var stdout bytes.Buffer
 			cmd.Stdout = &stdout
 			command := Wrap(cmd, true, attributes)
-			baseline := commandsdktest.Pauses()
+			baseline := cmdsdktest.Pauses()
 			done := make(chan error, 1)
 			ctx := t.Context()
 			go func() {
 				done <- command.Start(ctx)
 			}()
 			// The pause counter offers no event, so the loop yields between checks.
-			for commandsdktest.Pauses() == baseline {
+			for cmdsdktest.Pauses() == baseline {
 				select {
 				case err := <-done:
 					t.Fatalf("start did not wait: %v", err)

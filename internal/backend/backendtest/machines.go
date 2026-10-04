@@ -16,7 +16,7 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/usershard/usershardtest"
 	"github.com/wspl/demi/internal/gates"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -66,7 +66,7 @@ type machineArrival struct {
 }
 type machineGuest struct {
 	runner     *remotehosttest.RunnerProcess
-	image      machinemanagerproto.MachineImageState
+	image      machineproto.MachineImageState
 	generation uint64
 }
 

@@ -13,7 +13,7 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/host"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -55,7 +55,7 @@ func (m *ScriptedManager) connection(connection *machineConnection) {
 	}()
 	ctx, cancel := context.WithCancel(m.ctx)
 	defer cancel()
-	outgoing := make(chan machinemanagerproto.MachineResponse, 64)
+	outgoing := make(chan machineproto.MachineResponse, 64)
 	writerDone := make(chan struct{})
 	go func() {
 		defer close(writerDone)
@@ -77,15 +77,15 @@ func (m *ScriptedManager) connection(connection *machineConnection) {
 		if len(line) == 0 {
 			continue
 		}
-		request, err := machinemanagerproto.DecodeRequest(line)
+		request, err := machineproto.DecodeRequest(line)
 		if err != nil {
 			break
 		}
 		requests.Go(func() {
 			result, err := m.handle(m.ctx, request.Call)
-			var response machinemanagerproto.MachineResponse = &machinemanagerproto.OK{ID: request.ID, Result: result}
+			var response machineproto.MachineResponse = &machineproto.OK{ID: request.ID, Result: result}
 			if err != nil {
-				response = &machinemanagerproto.ErrorResponse{ID: request.ID, Message: err.Error()}
+				response = &machineproto.ErrorResponse{ID: request.ID, Message: err.Error()}
 			}
 			select {
 			case outgoing <- response:
@@ -99,8 +99,8 @@ func (m *ScriptedManager) connection(connection *machineConnection) {
 }
 
 // handle implements the scripted manager's device operations with per-device admission.
-func (m *ScriptedManager) handle(ctx context.Context, call machinemanagerproto.Call) (json.RawMessage, error) {
-	if _, ok := call.(*machinemanagerproto.Reconcile); ok {
+func (m *ScriptedManager) handle(ctx context.Context, call machineproto.Call) (json.RawMessage, error) {
+	if _, ok := call.(*machineproto.Reconcile); ok {
 		m.record("reconcile")
 		for _, device := range m.Devices() {
 			if err := m.StopQuietly(ctx, device); err != nil {
@@ -111,29 +111,29 @@ func (m *ScriptedManager) handle(ctx context.Context, call machinemanagerproto.C
 	}
 	var device string
 	switch call := call.(type) {
-	case *machinemanagerproto.Reconcile: // Handled before device admission.
-	case *machinemanagerproto.CurrentBaseVersion:
-		return contract.EncodeJSON(machinemanagerproto.BaseVersion(Base))
-	case *machinemanagerproto.ImageState:
+	case *machineproto.Reconcile: // Handled before device admission.
+	case *machineproto.CurrentBaseVersion:
+		return contract.EncodeJSON(machineproto.BaseVersion(Base))
+	case *machineproto.ImageState:
 		m.mu.Lock()
-		var image *machinemanagerproto.MachineImageState
+		var image *machineproto.MachineImageState
 		if guest := m.guests[call.Params.DeviceID]; guest != nil {
 			snapshot := guest.image
 			image = &snapshot
 		}
 		m.mu.Unlock()
 		return contract.EncodeJSON(image)
-	case *machinemanagerproto.RuntimeStateCall:
+	case *machineproto.RuntimeStateCall:
 		device = call.Params.DeviceID
-	case *machinemanagerproto.Wake:
+	case *machineproto.Wake:
 		device = call.Params.DeviceID
-	case *machinemanagerproto.Hibernate:
+	case *machineproto.Hibernate:
 		device = call.Params.DeviceID
-	case *machinemanagerproto.Checkpoint:
+	case *machineproto.Checkpoint:
 		device = call.Params.DeviceID
-	case *machinemanagerproto.GrowVolume:
+	case *machineproto.GrowVolume:
 		device = call.Params.DeviceID
-	case *machinemanagerproto.Reset:
+	case *machineproto.Reset:
 		device = call.Params.DeviceID
 	}
 	permit, err := m.turns.Acquire(ctx, device)
@@ -148,21 +148,21 @@ func (m *ScriptedManager) handle(ctx context.Context, call machinemanagerproto.C
 func (m *ScriptedManager) handleDevice(
 	ctx context.Context,
 	device string,
-	call machinemanagerproto.Call,
+	call machineproto.Call,
 ) (json.RawMessage, error) {
 	switch call := call.(type) {
-	case *machinemanagerproto.Reconcile, *machinemanagerproto.CurrentBaseVersion, *machinemanagerproto.ImageState:
+	case *machineproto.Reconcile, *machineproto.CurrentBaseVersion, *machineproto.ImageState:
 		return nil, errors.New("manager operation reached device admission unexpectedly")
-	case *machinemanagerproto.RuntimeStateCall:
-		state := machinemanagerproto.RuntimeStateStopped
+	case *machineproto.RuntimeStateCall:
+		state := machineproto.RuntimeStateStopped
 		if m.Running(webapiproto.DeviceID(device)) {
-			state = machinemanagerproto.RuntimeStateRunning
+			state = machineproto.RuntimeStateRunning
 		}
 		return contract.EncodeJSON(state)
-	case *machinemanagerproto.Wake:
+	case *machineproto.Wake:
 		m.record("wake:" + device)
 		return json.RawMessage("null"), m.wake(ctx, device, call.Params)
-	case *machinemanagerproto.Hibernate:
+	case *machineproto.Hibernate:
 		m.record("hibernate:" + device)
 		m.mu.Lock()
 		failure := m.script.FailHibernate
@@ -172,9 +172,9 @@ func (m *ScriptedManager) handleDevice(
 			return nil, errors.New(*failure)
 		}
 		return json.RawMessage("null"), m.stopRunner(ctx, device)
-	case *machinemanagerproto.Checkpoint:
+	case *machineproto.Checkpoint:
 		m.record("checkpoint:" + device)
-	case *machinemanagerproto.GrowVolume:
+	case *machineproto.GrowVolume:
 		p := call.Params
 		m.record(fmt.Sprintf("grow:%s:%s:%d", device, p.Volume, p.Bytes))
 		m.mu.Lock()
@@ -183,12 +183,12 @@ func (m *ScriptedManager) handleDevice(
 		if guest == nil {
 			return nil, errors.New("the device has no storage")
 		}
-		if p.Volume == machinemanagerproto.VolumeSystem {
+		if p.Volume == machineproto.VolumeSystem {
 			guest.image.SystemBytes = max(guest.image.SystemBytes, p.Bytes)
 		} else {
 			guest.image.HomeBytes = max(guest.image.HomeBytes, p.Bytes)
 		}
-	case *machinemanagerproto.Reset:
+	case *machineproto.Reset:
 		if err := m.reset(ctx, device, call.Params); err != nil {
 			return nil, err
 		}
@@ -197,13 +197,13 @@ func (m *ScriptedManager) handleDevice(
 }
 
 // wake starts or resumes the device's existing runner without replacing its home.
-func (m *ScriptedManager) wake(ctx context.Context, device string, params machinemanagerproto.WakeParams) error {
+func (m *ScriptedManager) wake(ctx context.Context, device string, params machineproto.WakeParams) error {
 	m.mu.Lock()
 	script := m.script
 	if m.guests[device] == nil {
 		m.guests[device] = &machineGuest{
 			generation: 1,
-			image: machinemanagerproto.MachineImageState{
+			image: machineproto.MachineImageState{
 				Generation:  "gen-1",
 				BaseVersion: Base,
 				SystemBytes: 1 << 30,
@@ -253,22 +253,22 @@ func (m *ScriptedManager) wake(ctx context.Context, device string, params machin
 func (m *ScriptedManager) writeResponses(
 	ctx context.Context,
 	connection *machineConnection,
-	outgoing <-chan machinemanagerproto.MachineResponse,
+	outgoing <-chan machineproto.MachineResponse,
 ) {
 	for {
-		var message machinemanagerproto.MachineResponse
+		var message machineproto.MachineResponse
 		select {
 		case <-ctx.Done():
 			return
 		case device := <-connection.deaths:
-			message = &machinemanagerproto.Death{DeviceID: device}
+			message = &machineproto.Death{DeviceID: device}
 		case reply, ok := <-outgoing:
 			if !ok {
 				return
 			}
 			message = reply
 		}
-		line, err := machinemanagerproto.EncodeLine(message)
+		line, err := machineproto.EncodeLine(message)
 		if err != nil {
 			return
 		}
@@ -279,7 +279,7 @@ func (m *ScriptedManager) writeResponses(
 }
 
 // reset clears transient runner state and advances the scripted disk generation.
-func (m *ScriptedManager) reset(ctx context.Context, device string, params machinemanagerproto.ResetParams) error {
+func (m *ScriptedManager) reset(ctx context.Context, device string, params machineproto.ResetParams) error {
 	m.record(fmt.Sprintf("reset:%s:%s:%s", device, params.OperationID, params.BaseVersion))
 	if err := m.resets.Pass(ctx, "reset"); err != nil {
 		return err
@@ -305,7 +305,7 @@ func (m *ScriptedManager) reset(ctx context.Context, device string, params machi
 	m.mu.Lock()
 	if guest := m.guests[device]; guest != nil {
 		guest.generation++
-		guest.image.Generation = machinemanagerproto.GenerationID(fmt.Sprintf("gen-%d", guest.generation))
+		guest.image.Generation = machineproto.GenerationID(fmt.Sprintf("gen-%d", guest.generation))
 		guest.image.ResetID = &params.OperationID
 	}
 	m.mu.Unlock()

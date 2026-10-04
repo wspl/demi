@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/types"
@@ -21,30 +21,30 @@ func agentLeaf[H host.Host, A any](
 	stdin *string,
 	run func(context.Context, *Tree[H], types.NodeID, bool, A, host.RPCPort) (uint8, error),
 ) (host.Declared, error) {
-	var input *commanddecl.Schema
+	var input *cmddecl.Schema
 	if shape.input != nil {
 		var err error
-		input, err = commanddecl.NewSchema(shape.input)
+		input, err = cmddecl.NewSchema(shape.input)
 		if err != nil {
 			return host.Declared{}, err
 		}
 	}
-	leaf := commanddecl.Leaf[commanddecl.NativeOperation]{
+	leaf := cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:       name,
 		Summary:    summary,
 		Input:      input,
 		StdinField: stdin,
-		Kind:       &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Kind:       &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}
 	if positionals != nil {
 		leaf.Positionals = &positionals
 	}
 	if shape.output != nil {
-		result, err := commanddecl.NewSchema(shape.output)
+		result, err := cmddecl.NewSchema(shape.output)
 		if err != nil {
 			return host.Declared{}, err
 		}
-		leaf.Output = &commanddecl.LeafOutput{JSON: result}
+		leaf.Output = &cmddecl.LeafOutput{JSON: result}
 	}
 	handler := host.TypedRPC(
 		shape.decode,
@@ -298,7 +298,7 @@ func commandFail(ctx context.Context, port host.RPCPort, verb string, err error)
 func graftCommands(commands *host.CommandSet, agent, shell host.Declared) (*host.CommandSet, error) {
 	hasDemi := false
 	for _, root := range commands.Declarations() {
-		if commanddecl.Name(root) == "demi" {
+		if cmddecl.Name(root) == "demi" {
 			hasDemi = true
 		}
 	}

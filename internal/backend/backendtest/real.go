@@ -14,7 +14,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/cloud"
 	"github.com/wspl/demi/internal/machinemanager/sandbox"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // ChromeProcesses reads independent OS evidence of Chrome executables under
@@ -65,7 +65,7 @@ func ChromeProcesses(ctx context.Context, root string) ([]int, error) {
 }
 
 // RealImageState is the manager's generated committed-generation contract.
-type RealImageState = machinemanagerproto.MachineImageState
+type RealImageState = machineproto.MachineImageState
 
 // RealImage reads a committed generation without reconciling the manager when
 // this observation connection closes, including after the backend has closed.
@@ -77,7 +77,7 @@ func RealImage(ctx context.Context, socket, device string) (*RealImageState, err
 		// Cancellation deliberately closes this observer without reconciling Clouds.
 		_ = client.Close(life)
 	}()
-	return cloud.Call(ctx, client, machinemanagerproto.ImageStateParams{DeviceID: device})
+	return cloud.Call(ctx, client, machineproto.ImageStateParams{DeviceID: device})
 }
 
 // RealCheckpoint asks the existing backend-owned manager connection to save a Cloud.
@@ -85,7 +85,7 @@ func RealCheckpoint(ctx context.Context, b *TestBackend, device string) error {
 	_, err := cloud.Call(
 		ctx,
 		b.Backend.Services().Cloud.Machines,
-		machinemanagerproto.CheckpointParams{DeviceID: device},
+		machineproto.CheckpointParams{DeviceID: device},
 	)
 	return err
 }

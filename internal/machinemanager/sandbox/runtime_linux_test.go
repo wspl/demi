@@ -15,7 +15,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -96,7 +96,7 @@ func TestRealRunscLifecycle(t *testing.T) {
 		if err := os.Mkdir(home, 0o700); err != nil {
 			t.Fatal(err)
 		}
-		device, err := system.Attach(ctx, working.Image(machinemanagerproto.VolumeHome))
+		device, err := system.Attach(ctx, working.Image(machineproto.VolumeHome))
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -9,7 +9,7 @@ import (
 	"syscall"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 
 	"github.com/wspl/demi/internal/runnerproto"
@@ -63,7 +63,7 @@ func (s *Service) openRange(ctx context.Context, request runnerproto.FSReadFile)
 	if err != nil {
 		return nil, err
 	}
-	file, err := commandsdk.Retry(ctx, func() (*os.File, error) {
+	file, err := cmdsdk.Retry(ctx, func() (*os.File, error) {
 		return os.Open(path)
 	})
 	if err != nil {
@@ -137,7 +137,7 @@ func (s *Service) writeFromPipe(ctx context.Context, request runnerproto.FSWrite
 			return err
 		}
 	}
-	staged, err := commandsdk.Retry(ctx, func() (*artifacts.Staged, error) {
+	staged, err := cmdsdk.Retry(ctx, func() (*artifacts.Staged, error) {
 		return artifacts.NewStaged(
 			ctx,
 			target,

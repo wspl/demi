@@ -5,7 +5,7 @@ package plugin
 import (
 	"encoding/json"
 	"fmt"
-	commanddecl "github.com/wspl/demi/internal/commanddecl"
+	cmddecl "github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/contract"
 	host "github.com/wspl/demi/internal/host"
 	types "github.com/wspl/demi/internal/types"
@@ -2153,12 +2153,12 @@ func (v *Method) UnmarshalJSON(data []byte) error {
 			next.Result = value
 		}
 	}
-	next.Operations = make([]commanddecl.NativeOperation, 0)
+	next.Operations = make([]cmddecl.NativeOperation, 0)
 	{
 		raw, ok := obj["operations"]
 		if ok {
-			value, err := func(b []byte) ([]commanddecl.NativeOperation, error) {
-				return contract.List(b, contract.Decode[commanddecl.NativeOperation])
+			value, err := func(b []byte) ([]cmddecl.NativeOperation, error) {
+				return contract.List(b, contract.Decode[cmddecl.NativeOperation])
 			}(raw)
 			if err != nil {
 				return contract.At("operations", err)
@@ -2174,7 +2174,7 @@ func (v *Method) UnmarshalJSON(data []byte) error {
 }
 func (v Method) MarshalJSON() ([]byte, error) {
 	if v.Operations == nil {
-		v.Operations = make([]commanddecl.NativeOperation, 0)
+		v.Operations = make([]cmddecl.NativeOperation, 0)
 	}
 	if err := v.Validate(); err != nil {
 		return nil, err
@@ -4382,7 +4382,7 @@ func (v *PortMessagePackageCall) UnmarshalJSON(data []byte) error {
 			return contract.At("operation", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[commanddecl.NativeOperation](raw)
+			value, err := contract.Decode[cmddecl.NativeOperation](raw)
 			if err != nil {
 				return contract.At("operation", err)
 			}
@@ -7144,12 +7144,12 @@ func (v *State) UnmarshalJSON(data []byte) error {
 			next.Topics = value
 		}
 	}
-	next.Operations = make([]commanddecl.NativeOperation, 0)
+	next.Operations = make([]cmddecl.NativeOperation, 0)
 	{
 		raw, ok := obj["operations"]
 		if ok {
-			value, err := func(b []byte) ([]commanddecl.NativeOperation, error) {
-				return contract.List(b, contract.Decode[commanddecl.NativeOperation])
+			value, err := func(b []byte) ([]cmddecl.NativeOperation, error) {
+				return contract.List(b, contract.Decode[cmddecl.NativeOperation])
 			}(raw)
 			if err != nil {
 				return contract.At("operations", err)
@@ -7168,7 +7168,7 @@ func (v State) MarshalJSON() ([]byte, error) {
 		v.Topics = make([]Topic, 0)
 	}
 	if v.Operations == nil {
-		v.Operations = make([]commanddecl.NativeOperation, 0)
+		v.Operations = make([]cmddecl.NativeOperation, 0)
 	}
 	if err := v.Validate(); err != nil {
 		return nil, err
@@ -7297,7 +7297,7 @@ func (v *Stream) UnmarshalJSON(data []byte) error {
 			return contract.At("operation", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := contract.Decode[commanddecl.NativeOperation](raw)
+			value, err := contract.Decode[cmddecl.NativeOperation](raw)
 			if err != nil {
 				return contract.At("operation", err)
 			}

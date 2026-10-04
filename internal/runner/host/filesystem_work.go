@@ -10,7 +10,7 @@ import (
 	"syscall"
 
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -41,7 +41,7 @@ func (s *Service) resolve(cwd *string, path string) (string, error) {
 	if cwd != nil {
 		base = *cwd
 	}
-	target, err := commandsdk.Resolve(base, path)
+	target, err := cmdsdk.Resolve(base, path)
 	if err != nil {
 		return "", &filesystemError{message: err.Error(), cause: os.ErrInvalid}
 	}
@@ -64,7 +64,7 @@ func removePath(ctx context.Context, path string, recursive bool) error {
 				cause:   syscall.EISDIR,
 			}
 		}
-		_, err = commandsdk.Retry(ctx, func() (struct{}, error) {
+		_, err = cmdsdk.Retry(ctx, func() (struct{}, error) {
 			return struct{}{}, os.RemoveAll(path)
 		})
 		return err
@@ -140,7 +140,7 @@ func copyEntry(ctx context.Context, source, destination string) error {
 		return os.Symlink(target, destination)
 	}
 	if info.Mode().IsRegular() {
-		_, err = commandsdk.Retry(
+		_, err = cmdsdk.Retry(
 			ctx,
 			func() (struct{}, error) {
 				return struct{}{}, copyRegular(ctx, source, destination, info.Mode())
@@ -154,7 +154,7 @@ func copyEntry(ctx context.Context, source, destination string) error {
 	if err = os.MkdirAll(destination, 0o777); err != nil {
 		return err
 	}
-	entries, err := commandsdk.Retry(ctx, func() ([]os.DirEntry, error) {
+	entries, err := cmdsdk.Retry(ctx, func() ([]os.DirEntry, error) {
 		return os.ReadDir(source)
 	})
 	if err != nil {

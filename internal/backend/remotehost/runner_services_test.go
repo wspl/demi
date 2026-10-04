@@ -15,7 +15,7 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/remotehost/testdata/fixture"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -36,7 +36,7 @@ func serviceRequest(
 	args json.RawMessage,
 ) remotehost.ServiceRequest {
 	context := hosttest.CommandContext()
-	context.Caller = &commandproto.UserCaller{}
+	context.Caller = &cmdproto.UserCaller{}
 	request := remotehost.ServiceRequest{
 		Context:   context,
 		Package:   n.Descriptor,
@@ -172,7 +172,7 @@ func TestRunnerOneShotCompletionAndLoggedStreamWords(t *testing.T) {
 	if report.Label == nil || *report.Label != "from the user" {
 		t.Fatal(report)
 	}
-	if _, ok := report.Context.Caller.(*commandproto.UserCaller); !ok {
+	if _, ok := report.Context.Caller.(*cmdproto.UserCaller); !ok {
 		t.Fatal(report.Context)
 	}
 	_, err = call("result", nil)

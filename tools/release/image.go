@@ -19,8 +19,8 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -75,7 +75,7 @@ func validateUVArchive(archive uvArchive) error {
 }
 
 func (a *application) image(ctx context.Context, o imageOptions) error {
-	architecture, ok := machinemanagerproto.HostArchitecture()
+	architecture, ok := machineproto.HostArchitecture()
 	if runtime.GOOS != "linux" || !ok {
 		return errors.New("a Cloud image is packaged on a Linux builder of its architecture")
 	}
@@ -91,7 +91,7 @@ func (a *application) image(ctx context.Context, o imageOptions) error {
 func (a *application) packageImage(
 	ctx context.Context,
 	o imageOptions,
-	architecture machinemanagerproto.Architecture,
+	architecture machineproto.Architecture,
 	pin uvRelease,
 	client *artifacts.Client,
 	writeArchive func(context.Context, string, string) error,
@@ -117,7 +117,7 @@ func (a *application) packageImage(
 	if err != nil {
 		return err
 	}
-	executables := make(map[string]commandproto.PackageArtifact)
+	executables := make(map[string]cmdproto.PackageArtifact)
 	if err := a.installImageRunner(ctx, root, o.Runners, target, runner, runnerArtifact, executables); err != nil {
 		return err
 	}
@@ -125,7 +125,7 @@ func (a *application) packageImage(
 		return err
 	}
 	archive := pin.AMD64
-	if architecture == machinemanagerproto.ArchitectureARM64 {
+	if architecture == machineproto.ArchitectureARM64 {
 		archive = pin.ARM64
 	}
 	if err := installUV(ctx, root, archive, client, executables); err != nil {
@@ -134,11 +134,11 @@ func (a *application) packageImage(
 	if _, err := fmt.Fprintln(a.Err, "Cloud image: uv", pin.Version); err != nil {
 		return err
 	}
-	init, err := measureExecutable(ctx, inTree(root, machinemanagerproto.InitPath))
+	init, err := measureExecutable(ctx, inTree(root, machineproto.InitPath))
 	if err != nil {
 		return err
 	}
-	executables[machinemanagerproto.InitPath] = init
+	executables[machineproto.InitPath] = init
 	return a.publishImageArchive(
 		ctx,
 		imageArchiveOptions{root, output, architecture, ubuntu, inventory, executables, releases, runner, archive, pin},
@@ -165,7 +165,7 @@ func releaseExecutable(directory, target string) (string, error) {
 func installExecutable(
 	ctx context.Context,
 	source, destination string,
-	artifact commandproto.PackageArtifact,
+	artifact cmdproto.PackageArtifact,
 ) (err error) {
 	input, err := os.Open(source)
 	if err != nil {
@@ -192,23 +192,23 @@ func installExecutable(
 	return stage.Publish(ctx)
 }
 
-func measureExecutable(ctx context.Context, path string) (commandproto.PackageArtifact, error) {
+func measureExecutable(ctx context.Context, path string) (cmdproto.PackageArtifact, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return commandproto.PackageArtifact{}, err
+		return cmdproto.PackageArtifact{}, err
 	}
 	if !info.Mode().IsRegular() {
-		return commandproto.PackageArtifact{}, fmt.Errorf("%s is not a regular file", path)
+		return cmdproto.PackageArtifact{}, fmt.Errorf("%s is not a regular file", path)
 	}
 	digest, err := artifacts.DigestFile(ctx, path, math.MaxUint64)
-	return commandproto.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}, err
+	return cmdproto.PackageArtifact{SHA256: digest.SHA256, Size: digest.Size}, err
 }
 
 func (a *application) installResources(
 	ctx context.Context,
 	root, directory, target string,
-	descriptor commandproto.PackageDescriptor,
-	executables map[string]commandproto.PackageArtifact,
+	descriptor cmdproto.PackageDescriptor,
+	executables map[string]cmdproto.PackageArtifact,
 ) error {
 	names := make([]string, 0, len(descriptor.Resources))
 	for name := range descriptor.Resources {
@@ -245,7 +245,7 @@ func (a *application) installResources(
 func installResource(
 	ctx context.Context,
 	root, source string,
-	archive commandproto.ResourceArtifact,
+	archive cmdproto.ResourceArtifact,
 ) (entry string, err error) {
 	_, unpacking, err := artifacts.InstallArchive(
 		ctx,
@@ -295,7 +295,7 @@ func installUV(
 	root string,
 	archive uvArchive,
 	client *artifacts.Client,
-	executables map[string]commandproto.PackageArtifact,
+	executables map[string]cmdproto.PackageArtifact,
 ) (err error) {
 	scratch, err := os.MkdirTemp("", "demi-uv-")
 	if err != nil {
@@ -331,13 +331,13 @@ func installUV(
 	return installUVExecutables(ctx, root, archive, tar.NewReader(zipped), executables)
 }
 
-func installedPackages(root string) ([]machinemanagerproto.InstalledPackage, error) {
+func installedPackages(root string) ([]machineproto.InstalledPackage, error) {
 	path := inTree(root, "/var/lib/dpkg/status")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	packages := []machinemanagerproto.InstalledPackage{}
+	packages := []machineproto.InstalledPackage{}
 	var name, status, version *string
 	for _, line := range append(strings.Split(string(data), "\n"), "") {
 		if strings.TrimSpace(line) == "" {
@@ -398,15 +398,15 @@ func (a *application) writeArchive(ctx context.Context, root, path string) (err 
 	return nil
 }
 
-func imageCommandReleases(o imageOptions, target string) ([]commandproto.PackageDescriptor, error) {
-	releases := make([]commandproto.PackageDescriptor, 0, len(o.Packages))
+func imageCommandReleases(o imageOptions, target string) ([]cmdproto.PackageDescriptor, error) {
+	releases := make([]cmdproto.PackageDescriptor, 0, len(o.Packages))
 	seen := map[string]bool{}
 	for _, directory := range o.Packages {
 		data, err := os.ReadFile(filepath.Join(directory, "descriptor.json"))
 		if err != nil {
 			return nil, err
 		}
-		descriptor, err := commandproto.DecodePackageDescriptor(data)
+		descriptor, err := cmdproto.DecodePackageDescriptor(data)
 		if err != nil {
 			return nil, err
 		}
@@ -433,7 +433,7 @@ func installUVExecutables(
 	root string,
 	archive uvArchive,
 	reader *tar.Reader,
-	executables map[string]commandproto.PackageArtifact,
+	executables map[string]cmdproto.PackageArtifact,
 ) error {
 	found := map[string]bool{}
 	for {
@@ -479,10 +479,10 @@ func installUVExecutables(
 }
 
 func appendInstalledPackage(
-	packages []machinemanagerproto.InstalledPackage,
+	packages []machineproto.InstalledPackage,
 	path string,
 	name, status, version *string,
-) ([]machinemanagerproto.InstalledPackage, error) {
+) ([]machineproto.InstalledPackage, error) {
 	if name == nil || status == nil {
 		return nil, fmt.Errorf("%s lists a package without its name or status", path)
 	}
@@ -495,7 +495,7 @@ func appendInstalledPackage(
 		if version == nil {
 			return nil, fmt.Errorf("%s lists %s without its version", path, *name)
 		}
-		packages = append(packages, machinemanagerproto.InstalledPackage{Name: *name, Version: *version})
+		packages = append(packages, machineproto.InstalledPackage{Name: *name, Version: *version})
 	}
 	return packages, nil
 }
@@ -504,8 +504,8 @@ func (a *application) installImageCommands(
 	ctx context.Context,
 	root, target string,
 	directories []string,
-	releases []commandproto.PackageDescriptor,
-	executables map[string]commandproto.PackageArtifact,
+	releases []cmdproto.PackageDescriptor,
+	executables map[string]cmdproto.PackageArtifact,
 ) error {
 	for i, descriptor := range releases {
 		source, err := releaseExecutable(directories[i], target)
@@ -568,8 +568,8 @@ func (a *application) publishImageArchive(
 	defer func() {
 		err = errors.Join(err, os.RemoveAll(scratch))
 	}()
-	archivePath := filepath.Join(scratch, string(machinemanagerproto.RootfsTarZst))
-	if _, err := fmt.Fprintln(a.Err, "Cloud image: writing", machinemanagerproto.RootfsTarZst); err != nil {
+	archivePath := filepath.Join(scratch, string(machineproto.RootfsTarZst))
+	if _, err := fmt.Fprintln(a.Err, "Cloud image: writing", machineproto.RootfsTarZst); err != nil {
 		return err
 	}
 	if err := writeArchive(ctx, o.root, archivePath); err != nil {
@@ -579,21 +579,21 @@ func (a *application) publishImageArchive(
 	if err != nil {
 		return err
 	}
-	manifest := machinemanagerproto.CloudImageManifest{
+	manifest := machineproto.CloudImageManifest{
 		FormatVersion: 1,
-		OS:            machinemanagerproto.OSLinux,
+		OS:            machineproto.OSLinux,
 		Architecture:  o.architecture,
-		Rootfs: machinemanagerproto.RootfsArchive{
+		Rootfs: machineproto.RootfsArchive{
 			SHA256: digest.SHA256,
 			Size:   digest.Size,
-			File:   machinemanagerproto.RootfsTarZst,
+			File:   machineproto.RootfsTarZst,
 		},
 		Ubuntu:      o.ubuntu,
 		Packages:    o.inventory,
 		Executables: o.executables,
 		Releases:    o.releases,
 		Runner:      o.runner,
-		Tools: []machinemanagerproto.StandaloneTool{
+		Tools: []machineproto.StandaloneTool{
 			{Name: "uv", Version: o.pin.Version, SHA256: o.archive.SHA256},
 		},
 	}
@@ -602,17 +602,17 @@ func (a *application) publishImageArchive(
 
 type imageArchiveOptions struct {
 	root, output string
-	architecture machinemanagerproto.Architecture
+	architecture machineproto.Architecture
 	ubuntu       string
-	inventory    []machinemanagerproto.InstalledPackage
-	executables  map[string]commandproto.PackageArtifact
-	releases     []commandproto.PackageDescriptor
+	inventory    []machineproto.InstalledPackage
+	executables  map[string]cmdproto.PackageArtifact
+	releases     []cmdproto.PackageDescriptor
 	runner       runnerproto.Release
 	archive      uvArchive
 	pin          uvRelease
 }
 
-func imageSystem(root string) ([]machinemanagerproto.InstalledPackage, string, error) {
+func imageSystem(root string) ([]machineproto.InstalledPackage, string, error) {
 	inventory, err := installedPackages(root)
 	if err != nil {
 		return nil, "", err
@@ -633,20 +633,20 @@ func (a *application) installImageRunner(
 	ctx context.Context,
 	root, runners, target string,
 	runner runnerproto.Release,
-	runnerArtifact commandproto.PackageArtifact,
-	executables map[string]commandproto.PackageArtifact,
+	runnerArtifact cmdproto.PackageArtifact,
+	executables map[string]cmdproto.PackageArtifact,
 ) error {
 	source, err := releaseExecutable(filepath.Join(runners, runner.Release), target)
 	if err != nil {
 		return err
 	}
-	if err := installExecutable(ctx, source, inTree(root, machinemanagerproto.RunnerPath), runnerArtifact); err != nil {
+	if err := installExecutable(ctx, source, inTree(root, machineproto.RunnerPath), runnerArtifact); err != nil {
 		return err
 	}
 	if err := os.Symlink("demi-runner", inTree(root, "/usr/bin/demi")); err != nil {
 		return err
 	}
-	executables[machinemanagerproto.RunnerPath] = runnerArtifact
+	executables[machineproto.RunnerPath] = runnerArtifact
 	if _, err := fmt.Fprintln(a.Err, "Cloud image: runner release", runner.Release); err != nil {
 		return err
 	}
@@ -657,7 +657,7 @@ func (a *application) installImageRunner(
 func (a *application) publishImageRecord(
 	ctx context.Context,
 	output string,
-	manifest machinemanagerproto.CloudImageManifest,
+	manifest machineproto.CloudImageManifest,
 	archivePath string,
 	digest artifacts.Digest,
 ) error {
@@ -665,14 +665,14 @@ func (a *application) publishImageRecord(
 	if err != nil {
 		return err
 	}
-	if _, err := machinemanagerproto.DecodeCloudImageManifest(data); err != nil {
+	if _, err := machineproto.DecodeCloudImageManifest(data); err != nil {
 		return err
 	}
 	if err := artifacts.PublishRelease(
 		ctx,
 		output,
 		artifacts.ReleaseRecord{Name: "manifest.json", Bytes: data},
-		[]artifacts.ReleaseFile{{Source: archivePath, Path: string(machinemanagerproto.RootfsTarZst), Digest: digest}},
+		[]artifacts.ReleaseFile{{Source: archivePath, Path: string(machineproto.RootfsTarZst), Digest: digest}},
 	); err != nil {
 		return err
 	}
@@ -687,18 +687,18 @@ func (a *application) publishImageRecord(
 	return err
 }
 
-func imageRunnerRelease(runners, target string) (runnerproto.Release, commandproto.PackageArtifact, error) {
+func imageRunnerRelease(runners, target string) (runnerproto.Release, cmdproto.PackageArtifact, error) {
 	data, err := os.ReadFile(filepath.Join(runners, "manifest.json"))
 	if err != nil {
-		return runnerproto.Release{}, commandproto.PackageArtifact{}, err
+		return runnerproto.Release{}, cmdproto.PackageArtifact{}, err
 	}
 	runner, err := runnerproto.DecodeRelease(data)
 	if err != nil {
-		return runnerproto.Release{}, commandproto.PackageArtifact{}, err
+		return runnerproto.Release{}, cmdproto.PackageArtifact{}, err
 	}
 	runnerArtifact, ok := runner.Targets[target]
 	if !ok {
-		return runnerproto.Release{}, commandproto.PackageArtifact{}, fmt.Errorf(
+		return runnerproto.Release{}, cmdproto.PackageArtifact{}, fmt.Errorf(
 			"the runner release %s carries nothing for %s",
 			runner.Release,
 			target,

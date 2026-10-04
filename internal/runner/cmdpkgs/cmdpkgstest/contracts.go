@@ -1,0 +1,33 @@
+package cmdpkgstest
+
+import (
+	"encoding/json"
+
+	"github.com/wspl/demi/internal/cmdproto"
+)
+
+//go:generate go run github.com/wspl/demi/tools/contractgen
+
+// fixtureArgs keeps each fixture argument as raw JSON.
+// +demi:root
+type fixtureArgs map[string]json.RawMessage
+
+// numberAnswer reports the first reserved number.
+// +demi:root
+type numberAnswer struct {
+	First uint64 `json:"first"`
+}
+
+// whereAnswer exposes the invocation context for native integration tests.
+// +demi:root
+type whereAnswer struct {
+	Label   json.RawMessage  `json:"label"`
+	Context cmdproto.Context `json:"context"`
+	Cwd     string           `json:"cwd"`
+	// +demi:nullable
+	Value *string `json:"value"`
+}
+
+// releaseAnswer acknowledges a conversation release.
+// +demi:root
+type releaseAnswer struct{}

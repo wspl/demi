@@ -12,7 +12,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/gates"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -394,7 +394,7 @@ type JobStart struct {
 	// Env is exactly the variables above the device's environment.
 	Env map[string]string
 	// Context identifies the conversation and command locale.
-	Context commandproto.Context
+	Context cmdproto.Context
 	// Caller identifies the node that owns command callbacks.
 	Caller *host.JobCaller
 	// Commands pins the declared command manifest for this job.
@@ -521,9 +521,9 @@ type LogPage struct {
 // ServiceRequest describes a user stream or one-shot service invocation.
 type ServiceRequest struct {
 	// Context identifies the conversation and command locale.
-	Context commandproto.Context
+	Context cmdproto.Context
 	// Package is the descriptor of the invoked command package.
-	Package commandproto.PackageDescriptor
+	Package cmdproto.PackageDescriptor
 	// Operation names the package operation.
 	Operation string
 	// Args is the optional invocation argument object, encoded with contract codecs.
@@ -541,9 +541,9 @@ type ServiceRequest struct {
 // AttachedArtifact allows a user stream to install an artifact beside its package's own.
 type AttachedArtifact struct {
 	// Artifact describes the artifact bytes.
-	Artifact commandproto.PackageArtifact
+	Artifact cmdproto.PackageArtifact
 	// Location specifies where the runner downloads those bytes.
-	Location commandproto.ArtifactLocation
+	Location cmdproto.ArtifactLocation
 }
 
 // ServiceEnd describes completion and the bounded stderr tail.

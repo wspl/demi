@@ -11,7 +11,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/database"
 	"github.com/wspl/demi/internal/backend/remotehost"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/webapiproto"
@@ -21,17 +21,17 @@ import (
 // Its handlers fail after the shard's Conversations owner has closed.
 func HostGroup(shard HostShard) host.Declared {
 	// These schemas are generated from the declarations beside this file.
-	empty, _ := commanddecl.NewSchema(noArgsJSONSchema())
-	shell, _ := commanddecl.NewSchema(shellArgsJSONSchema())
+	empty, _ := cmddecl.NewSchema(noArgsJSONSchema())
+	shell, _ := cmddecl.NewSchema(shellArgsJSONSchema())
 	return host.Group(
 		"host",
 		hostSummary,
 		host.Leaf(
-			commanddecl.Leaf[commanddecl.NativeOperation]{
+			cmddecl.Leaf[cmddecl.NativeOperation]{
 				Name:    "list",
 				Summary: listSummary,
 				Input:   empty,
-				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+				Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 			},
 			commandVerb(
 				shard,
@@ -42,11 +42,11 @@ func HostGroup(shard HostShard) host.Declared {
 			),
 		),
 		host.Leaf(
-			commanddecl.Leaf[commanddecl.NativeOperation]{
+			cmddecl.Leaf[cmddecl.NativeOperation]{
 				Name:    "current",
 				Summary: currentSummary,
 				Input:   empty,
-				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+				Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 			},
 			commandVerb(
 				shard,
@@ -57,7 +57,7 @@ func HostGroup(shard HostShard) host.Declared {
 			),
 		),
 		host.Leaf(
-			commanddecl.Leaf[commanddecl.NativeOperation]{
+			cmddecl.Leaf[cmddecl.NativeOperation]{
 				Name:        "shell",
 				Summary:     shellSummary,
 				Input:       shell,
@@ -65,7 +65,7 @@ func HostGroup(shard HostShard) host.Declared {
 				FailureOutput: new(
 					"writes the reason to stderr and exits non-zero (127 when the host cannot run bash)",
 				),
-				Kind: &commanddecl.RPC[commanddecl.NativeOperation]{},
+				Kind: &cmddecl.RPC[cmddecl.NativeOperation]{},
 			},
 			commandVerb(
 				shard,

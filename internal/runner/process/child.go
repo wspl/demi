@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -400,7 +400,7 @@ func (c *Command) cancelled() bool {
 // Start retries a single spawn attempt on descriptor exhaustion and briefly
 // on a busy executable.
 func Start[T any](ctx context.Context, attempt func() (T, error)) (T, error) {
-	var backoff commandsdk.Backoff
+	var backoff cmdsdk.Backoff
 	var busy time.Duration
 	for {
 		if err := ctx.Err(); err != nil {
@@ -411,7 +411,7 @@ func Start[T any](ctx context.Context, attempt func() (T, error)) (T, error) {
 		if err == nil {
 			return value, nil
 		}
-		exhausted := commandsdk.Exhausted(err)
+		exhausted := cmdsdk.Exhausted(err)
 		if !exhausted && (!errors.Is(err, syscall.ETXTBSY) || busy >= time.Second) {
 			return value, err
 		}

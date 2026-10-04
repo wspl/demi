@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 	"github.com/wspl/demi/internal/plugin/browser"
 	"github.com/wspl/demi/internal/plugin/plugintest"
 	"go.uber.org/goleak"

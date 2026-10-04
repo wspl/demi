@@ -13,7 +13,7 @@ import (
 
 	"github.com/wspl/demi/internal/machinemanager/system"
 	"github.com/wspl/demi/internal/machinemanager/system/systemtest"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -23,7 +23,7 @@ func (w workingFixture) Directory() string {
 	return string(w)
 }
 
-func (w workingFixture) Image(volume machinemanagerproto.Volume) string {
+func (w workingFixture) Image(volume machineproto.Volume) string {
 	return filepath.Join(string(w), string(volume)+".ext4")
 }
 
@@ -97,7 +97,7 @@ func bootFixture(
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		if _, err := tools.Run(
 			ctx,
 			system.Mke2fs,
@@ -141,7 +141,7 @@ func cleanupBoot(ctx context.Context, t *testing.T, sandbox *Sandbox, working wo
 	if err := sandbox.StopWaiting(context.WithoutCancel(ctx)); err != nil {
 		t.Error(err)
 	}
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		if err := systemtest.WaitLoopDetach(context.WithoutCancel(ctx), working.Image(volume)); err != nil {
 			t.Error(err)
 		}
@@ -208,7 +208,7 @@ func TestCheckpointThawsAfterCopyFailureAndPanic(t *testing.T) {
 		if thawFailures, err := sandbox.Capture(ctx, working, copies); err != nil || len(thawFailures) != 0 {
 			t.Fatalf("capture = %v, %v", thawFailures, err)
 		}
-		volumes := []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome}
+		volumes := []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome}
 		for _, volume := range volumes {
 			info, err := os.Stat(copies.Image(volume))
 			if err != nil || info.Size() != 32<<20 {
@@ -227,7 +227,7 @@ func TestCheckpointThawsAfterCopyFailureAndPanic(t *testing.T) {
 			if !errors.Is(err, failure) || len(thawFailures) != 0 {
 				t.Fatalf("capture failure = %v, %v", thawFailures, err)
 			}
-			volumes := []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome}
+			volumes := []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome}
 			for _, volume := range volumes {
 				thawed, err := system.Thaw(ctx, sandbox.directory.Volume(volume))
 				if err != nil || thawed {
@@ -267,7 +267,7 @@ func TestGrowRefreshesLiveLoopAndNeverShrinks(t *testing.T) {
 		if _, err := sandbox.Grow(
 			ctx,
 			working,
-			machinemanagerproto.VolumeHome,
+			machineproto.VolumeHome,
 			64<<20,
 		); !errors.Is(
 			err,
@@ -300,14 +300,14 @@ func TestGrowRefreshesLiveLoopAndNeverShrinks(t *testing.T) {
 			},
 			// Deliberately distinguish filesystem capacity from requested file length.
 			capacity: func(_ context.Context, image string) (uint64, error) {
-				if image != working.Image(machinemanagerproto.VolumeHome) {
+				if image != working.Image(machineproto.VolumeHome) {
 					t.Errorf("capacity image = %s", image)
 				}
 				return (64 << 20) - 4096, nil
 			},
 		}
 		for _, requested := range []uint64{64 << 20, 32 << 20} {
-			capacity, err := sandbox.Grow(ctx, working, machinemanagerproto.VolumeHome, requested)
+			capacity, err := sandbox.Grow(ctx, working, machineproto.VolumeHome, requested)
 			if err != nil || capacity != (64<<20)-4096 {
 				t.Fatalf("grow = %d, %v", capacity, err)
 			}
@@ -315,7 +315,7 @@ func TestGrowRefreshesLiveLoopAndNeverShrinks(t *testing.T) {
 		if grows != 2 {
 			t.Fatalf("resize calls = %d", grows)
 		}
-		info, err := os.Stat(working.Image(machinemanagerproto.VolumeHome))
+		info, err := os.Stat(working.Image(machineproto.VolumeHome))
 		if err != nil || info.Size() != 64<<20 {
 			t.Fatalf("image size = %v, %v", info, err)
 		}

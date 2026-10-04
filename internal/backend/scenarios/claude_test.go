@@ -12,10 +12,10 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/provider/providertest"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -104,9 +104,9 @@ type accountLocalArtifact string
 // Resolve supplies the local fixture to the runner’s verified artifact cache.
 func (a accountLocalArtifact) Resolve(
 	context.Context,
-	commandproto.PackageArtifact,
-) (commandpackages.ArtifactSource, error) {
-	return commandpackages.ArtifactSource{Path: string(a)}, nil
+	cmdproto.PackageArtifact,
+) (cmdpkgs.ArtifactSource, error) {
+	return cmdpkgs.ArtifactSource{Path: string(a)}, nil
 }
 
 // accountInstallCLI puts the scripted executable through the runner's verified artifact cache.
@@ -116,9 +116,9 @@ func accountInstallCLI(ctx context.Context, t *testing.T, root, version string) 
 	if err := os.WriteFile(source, []byte(accountScriptedCLI), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	installs := &commandpackages.Installs{}
+	installs := &cmdpkgs.Installs{}
 	defer installs.Close()
-	cache, err := commandpackages.NewArtifactCache(ctx, root, "", installs)
+	cache, err := cmdpkgs.NewArtifactCache(ctx, root, "", installs)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,12 +130,12 @@ func accountInstallCLI(ctx context.Context, t *testing.T, root, version string) 
 	digest := fmt.Sprintf("%x", sha256.Sum256([]byte(accountScriptedCLI)))
 	path, err := cache.Install(
 		ctx,
-		commandpackages.Wanted{
+		cmdpkgs.Wanted{
 			Package:  claudecodeproto.Package,
 			Name:     "Claude Code",
 			Version:  version,
-			Artifact: commandproto.PackageArtifact{SHA256: digest, Size: uint64(len(accountScriptedCLI))},
-			Form:     &commandproto.ArtifactFile{},
+			Artifact: cmdproto.PackageArtifact{SHA256: digest, Size: uint64(len(accountScriptedCLI))},
+			Form:     &cmdproto.ArtifactFile{},
 		},
 		accountLocalArtifact(source),
 	)

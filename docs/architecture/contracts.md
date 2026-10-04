@@ -32,15 +32,15 @@ ends import the same package; TypeScript ends use its generated schemas.
 |---|---|---|
 | Web app HTTP requests and responses | `internal/webapiproto` | Backend; `web`, through generated TypeScript |
 | Conversation WebSocket frames, transcript blocks and patches, tool views | `internal/conversationproto`, `internal/types` | Backend; `conversation-client` and `web-ui`, through `@demicodes/protocol` |
-| Runner wire (MessagePack over a WebSocket) and command manifests | `internal/runnerproto`, with manifest nodes from `internal/commanddecl` | Backend; runner |
+| Runner wire (MessagePack over a WebSocket) and command manifests | `internal/runnerproto`, with manifest nodes from `internal/cmddecl` | Backend; runner |
 | Managed boot record | `internal/runnerproto` | Backend and machine manager; the runner in a Cloud sandbox reads it |
-| Command invocations between a runner and a command program | `internal/commandproto` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
-| `demi.file` operations | `internal/commandpackage/file/fileproto` | File plugin declarations; `demi-file` |
-| `demi.browser` operations, live view messages, capture extension events | `internal/commandpackage/browser/browserproto` | Browser plugin declarations, backend and conversation browser packages; the page through `@demicodes/plugin-browser` |
-| `demi.claude-code` operations and the Claude Code release record | `internal/commandpackage/claudecode/claudecodeproto` | Backend; `demi-claude-code` |
+| Command invocations between a runner and a command program | `internal/cmdproto` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
+| `demi.file` operations | `internal/cmdpkg/file/fileproto` | File plugin declarations; `demi-file` |
+| `demi.browser` operations, live view messages, capture extension events | `internal/cmdpkg/browser/browserproto` | Browser plugin declarations, backend and conversation browser packages; the page through `@demicodes/plugin-browser` |
+| `demi.claude-code` operations and the Claude Code release record | `internal/cmdpkg/claudecode/claudecodeproto` | Backend; `demi-claude-code` |
 | Plugin manifests, requests, replies and port messages | `internal/plugin` | Plugin host; every plugin, in process and over stdio with the TypeScript SDK ([Plugins](plugins.md#the-contract)) |
 | A plugin's page state, page call parameters and results | Page contract types of `internal/plugin/<name>` | Plugin; its page package, through generated TypeScript |
-| Machine-manager socket and Cloud image manifest | `internal/machinemanagerproto` | Backend; machine manager; `tools/release` writes the image manifest |
+| Machine-manager socket and Cloud image manifest | `internal/machineproto` | Backend; machine manager; `tools/release` writes the image manifest |
 | JSON stored in control and conversation databases | The package owning the data, such as `internal/types` for blocks | Backend |
 
 Packages that also own behavior keep their contract declarations separate
@@ -348,7 +348,7 @@ descriptions. Other documented scalars, including browser `TabId` and
 The lint requirement that an exported comment start with its name is waived
 for contract packages. Declaration builders may override a property description
 (for example, a browser leaf adds its default deadline to `timeout`);
-`internal/commanddecl` and `internal/host` own that text, not the type generator.
+`internal/cmddecl` and `internal/host` own that text, not the type generator.
 No defaults are inferred.
 
 A `check` function is a rule only Go enforces: schemas omit it, so a
@@ -427,11 +427,11 @@ These are the points where values enter, and what a failure does:
 | A frame on the conversation WebSocket | `conversationproto.DecodeClientFrame` | An `error` frame with code `invalid_frame`, before any state changes; a message that is not JSON closes the socket ([Frame protocol](../agent/runtime.md#frame-protocol)) |
 | A frame or REST response the web app receives | The generated schemas, in `conversation-client` and `web` | `conversation-client` drops the connection and reports the field path; `web` validates a response before applying it to state |
 | A runner message, at either end | `runnerproto.DecodeInbound` or `runnerproto.DecodeOutbound` | The connection closes ([Runner](../execution/runner.md)) |
-| Invocation metadata and records between a runner and a command program | `commandproto.Decode<Type>` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
+| Invocation metadata and records between a runner and a command program | `cmdproto.Decode<Type>` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
 | A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin uses its generated `Decode<Type>` | 400 `invalid_body`, naming the field ([Plugin calls](../product/web-api.md#plugin-calls)) |
 | A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |
-| A machine-manager request or response | `machinemanagerproto.DecodeRequest` or the response decoder for the outstanding operation | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
+| A machine-manager request or response | `machineproto.DecodeRequest` or the response decoder for the outstanding operation | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
 | The managed boot file | `runnerproto.DecodeManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |
 | A capture extension event | `browserproto.Decode<Type>` | The extension connection fails, and the failure is logged ([Live view](../browser/live-view.md)) |
 | A row or JSON column read from a database | `internal/backend/database`, through the owning contract's generated decoder | The restore stops; nothing is repaired or defaulted ([Storage](../backend/storage.md)) |

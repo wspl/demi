@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -104,10 +104,10 @@ func TestBinaryTimesAndContexts(t *testing.T) {
 	if !ok {
 		t.Fatalf("job=%T", start)
 	}
-	agent, ok := job.Context.Caller.(*commandproto.AgentCaller)
+	agent, ok := job.Context.Caller.(*cmdproto.AgentCaller)
 	if !ok || agent.Number != 1 || job.Context.Conversation != "conversation-1" ||
 		job.Context.Locale.TimeZone != "Asia/Shanghai" ||
-		!reflect.DeepEqual(job.Context.Locale.Languages, []commandproto.LanguageTag{"zh-CN", "en"}) {
+		!reflect.DeepEqual(job.Context.Locale.Languages, []cmdproto.LanguageTag{"zh-CN", "en"}) {
 		t.Fatalf("context=%#v", job.Context)
 	}
 	spawn, err := runnerproto.DecodeInbound(frame(t, "backend-to-runner", "spawn"))

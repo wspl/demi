@@ -115,7 +115,7 @@ IO, using the same scheduler and command transport.
 
 ### demi-browser and demi-file
 
-`demi-file` runs one goroutine per invocation through `internal/commandsdk`.
+`demi-file` runs one goroutine per invocation through `internal/cmdsdk`.
 File mutations pass one `gates.Serial`; the invocation performs disk work and
 output publication while holding its permit, outside any state mutex.
 
@@ -132,7 +132,7 @@ run in their owning operation, without holding a state mutex.
 ### demi-claude-code and the command-sdk
 
 `demi-claude-code` owns installation, executable hashing and file writes in its
-invocation goroutines, with installation changes serialized. `internal/commandsdk`
+invocation goroutines, with installation changes serialized. `internal/cmdsdk`
 owns one goroutine per invocation and cancels and joins invocations with their
 connection; it does not choose a separate scheduler.
 

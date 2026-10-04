@@ -5,7 +5,7 @@ import (
 	"testing"
 	"testing/synctest"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -26,7 +26,7 @@ func TestRelayRoutesAnswersAndCancelsLaggingCalls(t *testing.T) {
 		var result error
 		go func() {
 			defer close(returned)
-			first, result = handle.Reserve(ctx, "conversation", commandproto.TabSequence, 3)
+			first, result = handle.Reserve(ctx, "conversation", cmdproto.TabSequence, 3)
 		}()
 		question := (<-requests).(*jobs.AskRequest)
 		frame, err := relay.Ask(question)

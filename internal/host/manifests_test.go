@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/host"
 )
@@ -30,7 +30,7 @@ func TestBuildersPreservePluginDeclarations(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tree, err := commanddecl.DecodeDeclaration(data)
+			tree, err := cmddecl.DecodeDeclaration(data)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,7 +40,7 @@ func TestBuildersPreservePluginDeclarations(t *testing.T) {
 				t.Fatal(err)
 			}
 			actual, err := contract.EncodeJSON(
-				commands.Declarations()[0].(*commanddecl.Group[commanddecl.NativeOperation]).Subcommands[0],
+				commands.Declarations()[0].(*cmddecl.Group[cmddecl.NativeOperation]).Subcommands[0],
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -60,18 +60,18 @@ func TestBuildersPreservePluginDeclarations(t *testing.T) {
 }
 
 // rebuildDeclaration uses Go declaration constructors and the browser's dynamic timeout description rule.
-func rebuildDeclaration(t *testing.T, node commanddecl.Node[commanddecl.NativeOperation]) host.Declared {
+func rebuildDeclaration(t *testing.T, node cmddecl.Node[cmddecl.NativeOperation]) host.Declared {
 	t.Helper()
 	switch node := node.(type) {
-	case *commanddecl.Group[commanddecl.NativeOperation]:
+	case *cmddecl.Group[cmddecl.NativeOperation]:
 		children := make([]host.Declared, 0, len(node.Subcommands))
 		for _, child := range node.Subcommands {
 			children = append(children, rebuildDeclaration(t, child))
 		}
 		return host.Group(node.Name, node.Summary, children...)
-	case *commanddecl.Leaf[commanddecl.NativeOperation]:
+	case *cmddecl.Leaf[cmddecl.NativeOperation]:
 		var handler host.RPCHandler
-		if _, rpc := node.Kind.(*commanddecl.RPC[commanddecl.NativeOperation]); rpc {
+		if _, rpc := node.Kind.(*cmddecl.RPC[cmddecl.NativeOperation]); rpc {
 			handler = host.RPCHandlerFunc(
 				func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
 					return 0, nil

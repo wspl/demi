@@ -8,8 +8,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/jobs/jobstest"
 	"github.com/wspl/demi/internal/runner/process"
@@ -19,7 +19,7 @@ import (
 // dispatchFixture exposes the real dispatcher through its owned local endpoint.
 func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, *jobstest.ContextRegistration) {
 	t.Helper()
-	tree, err := commanddecl.DecodeDeclaration(
+	tree, err := cmddecl.DecodeDeclaration(
 		[]byte(
 			`{"name":"fixture","summary":"Test callback.","kind":"rpc","runningHint":"Working",` +
 				`"input":{"type":"object","properties":{"body":{"type":"string"}},"required":["body"]},"stdinField":"body"}`,
@@ -28,7 +28,7 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest, err := runnerproto.BuildManifest([]commanddecl.Node[commanddecl.NativeOperation]{tree}, nil)
+	manifest, err := runnerproto.BuildManifest([]cmddecl.Node[cmddecl.NativeOperation]{tree}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,10 +52,10 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 		}
 	})
 	fixture := jobstest.NewDispatch(t.Context(), t, t.TempDir(), value, pipes)
-	command := commandproto.Context{
+	command := cmdproto.Context{
 		Conversation: "conversation",
-		Caller:       &commandproto.AgentCaller{Number: 1},
-		Locale:       commandproto.CommandLocale{TimeZone: "UTC", Languages: []commandproto.LanguageTag{"en-US"}},
+		Caller:       &cmdproto.AgentCaller{Number: 1},
+		Locale:       cmdproto.CommandLocale{TimeZone: "UTC", Languages: []cmdproto.LanguageTag{"en-US"}},
 	}
 	execution, registration, err := fixture.Context(t.Context(), "job", command)
 	if err != nil {
@@ -64,7 +64,7 @@ func dispatchFixture(t *testing.T) (*jobstest.Dispatch, *jobs.ExecutionContext, 
 	return fixture, execution, registration
 }
 
-func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...string) commandproto.LocalInvocation {
+func dispatchRequest(t *testing.T, execution *jobs.ExecutionContext, argv ...string) cmdproto.LocalInvocation {
 	t.Helper()
 	raw, err := process.NewRawCommand(execution.ID, "fixture", argv, true)
 	if err != nil {

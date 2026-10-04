@@ -9,18 +9,18 @@ import (
 	"path/filepath"
 
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // NewGeneration returns a new generation ID, reporting a failure to obtain randomness.
-func NewGeneration() (machinemanagerproto.GenerationID, error) {
+func NewGeneration() (machineproto.GenerationID, error) {
 	var id [16]byte
 	if _, err := rand.Read(id[:]); err != nil {
 		return "", err
 	}
 	id[6] = id[6]&0x0f | 0x40
 	id[8] = id[8]&0x3f | 0x80
-	return machinemanagerproto.ParseGenerationID(
+	return machineproto.ParseGenerationID(
 		fmt.Sprintf("%x-%x-%x-%x-%x", id[:4], id[4:6], id[6:8], id[8:10], id[10:]),
 	)
 }
@@ -30,7 +30,7 @@ func NewGeneration() (machinemanagerproto.GenerationID, error) {
 type WorkingPair struct{ directory string }
 
 // NewWorkingPair locates device's pair under the working directory.
-func NewWorkingPair(working string, device machinemanagerproto.DeviceID) *WorkingPair {
+func NewWorkingPair(working string, device machineproto.DeviceID) *WorkingPair {
 	return &WorkingPair{directory: filepath.Join(working, string(device))}
 }
 
@@ -50,12 +50,12 @@ func (p *WorkingPair) SandboxRecord() string {
 }
 
 // Manifest reads the working pair's record; found is false when there is none.
-func (p *WorkingPair) Manifest(ctx context.Context) (machinemanagerproto.MachineImageState, bool, error) {
+func (p *WorkingPair) Manifest(ctx context.Context) (machineproto.MachineImageState, bool, error) {
 	return ReadState(ctx, filepath.Join(p.directory, "manifest.json"))
 }
 
 // WriteManifest replaces the working record durably and syncs its directory.
-func (p *WorkingPair) WriteManifest(ctx context.Context, state machinemanagerproto.MachineImageState) error {
+func (p *WorkingPair) WriteManifest(ctx context.Context, state machineproto.MachineImageState) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (p *WorkingPair) Save(
 	ctx context.Context,
 	tools *system.Tools,
 	store *Store,
-	device machinemanagerproto.DeviceID,
+	device machineproto.DeviceID,
 ) error {
 	state, found, err := p.Manifest(ctx)
 	if err != nil || !found {

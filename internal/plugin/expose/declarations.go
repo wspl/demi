@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
 )
@@ -80,27 +80,27 @@ type commandDeclaration struct {
 }
 
 func exposeCommand(d commandDeclaration) (host.Declared, error) {
-	input, err := commanddecl.NewSchema(d.input)
+	input, err := cmddecl.NewSchema(d.input)
 	if err != nil {
 		return host.Declared{}, fmt.Errorf("%s input: %w", d.name, err)
 	}
-	leaf := commanddecl.Leaf[commanddecl.NativeOperation]{
+	leaf := cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:          d.name,
 		Summary:       d.summary,
 		SuccessOutput: &d.success,
 		FailureOutput: &d.failure,
 		Input:         input,
-		Kind:          &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Kind:          &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}
 	if d.positionals != nil {
 		leaf.Positionals = &d.positionals
 	}
 	if d.output != nil {
-		output, err := commanddecl.NewSchema(d.output)
+		output, err := cmddecl.NewSchema(d.output)
 		if err != nil {
 			return host.Declared{}, fmt.Errorf("%s output: %w", d.name, err)
 		}
-		leaf.Output = &commanddecl.LeafOutput{JSON: output}
+		leaf.Output = &cmddecl.LeafOutput{JSON: output}
 	}
 	return host.Leaf(leaf, plugin.PortHandled{}), nil
 }

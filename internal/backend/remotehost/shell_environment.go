@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/types"
@@ -27,7 +27,7 @@ type CommandKeeper interface {
 }
 
 // ContextSource builds the command context for each job.
-type ContextSource func(context.Context) (commandproto.Context, error)
+type ContextSource func(context.Context) (cmdproto.Context, error)
 
 // EnvironmentOptions supplies a node's Host, commands, page feed and lifetime services.
 type EnvironmentOptions struct {

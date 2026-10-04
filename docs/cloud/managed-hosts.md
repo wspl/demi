@@ -104,7 +104,7 @@ manager -> backend   {"type":"death","deviceId":"<other device>"}
 Each request carries an id the client chooses, an operation, and its
 parameters. The reply names the request and carries a result or an error
 message. A `death` event goes to every connection when a device's sandbox exits
-without being asked to stop. The `internal/machinemanagerproto` package defines every
+without being asked to stop. The `internal/machineproto` package defines every
 message, and both the manager and the backend import it.
 
 - A line holds one message of at most 1 MiB; the largest real message is a few

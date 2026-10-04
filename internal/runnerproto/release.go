@@ -1,6 +1,6 @@
 package runnerproto
 
-import "github.com/wspl/demi/internal/commandproto"
+import "github.com/wspl/demi/internal/cmdproto"
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 
@@ -15,11 +15,11 @@ type Release struct {
 	// +demi:range min=24 max=24
 	Wire uint32 `json:"wire"`
 	// +demi:range min=1 max=1
-	CommandProtocol uint64                                  `json:"commandProtocol"`
-	Targets         map[string]commandproto.PackageArtifact `json:"targets"`
+	CommandProtocol uint64                              `json:"commandProtocol"`
+	Targets         map[string]cmdproto.PackageArtifact `json:"targets"`
 }
 
 // validateRelease checks the executable catalog shared with command packages.
 func validateRelease(release Release) error {
-	return commandproto.TargetArtifacts(release.Targets)
+	return cmdproto.TargetArtifacts(release.Targets)
 }

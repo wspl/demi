@@ -3,7 +3,7 @@ package plugin
 import (
 	"encoding/json"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
@@ -112,9 +112,9 @@ func (*PortMessageChanged) portMessage() {}
 // +demi:variant PortMessage package_call
 // +demi:check validatePackageCall
 type PortMessagePackageCall struct {
-	Operation commanddecl.NativeOperation `json:"operation"`
-	Args      json.RawMessage             `json:"args"`
-	Kind      CallKind                    `json:"kind"`
+	Operation cmddecl.NativeOperation `json:"operation"`
+	Args      json.RawMessage         `json:"args"`
+	Kind      CallKind                `json:"kind"`
 }
 
 func (*PortMessagePackageCall) portMessage() {}

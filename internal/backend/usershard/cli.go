@@ -10,8 +10,8 @@ import (
 	"github.com/wspl/demi/internal/backend/cloud"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider/claudecode"
@@ -26,7 +26,7 @@ type cloudPlacement struct {
 type cliTarget struct {
 	host    *remotehost.Host
 	home    string
-	context commandproto.Context
+	context cmdproto.Context
 }
 
 // Start wakes the Cloud and starts the provider process with its resolved site.
@@ -55,7 +55,7 @@ func (p cloudPlacement) Start(
 }
 
 func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (claudecode.Site, error) {
-	var command commandproto.Context
+	var command cmdproto.Context
 	var err error
 	if p.conversation != nil {
 		command, err = runners.CommandContext(
@@ -63,7 +63,7 @@ func (p cloudPlacement) site(ctx context.Context, access *cloud.MachineAccess) (
 			p.shard.Control(),
 			p.shard.user,
 			*p.conversation,
-			&commandproto.UserCaller{},
+			&cmdproto.UserCaller{},
 		)
 	} else {
 		command, err = runners.ProviderContext(ctx, p.shard.Control(), p.shard.user, p.entry)
@@ -209,8 +209,8 @@ func cliEnsure(
 		attached = append(
 			attached,
 			remotehost.AttachedArtifact{
-				Artifact: commandproto.PackageArtifact{SHA256: artifact.SHA256, Size: artifact.Size},
-				Location: &commandproto.ArtifactURL{URL: artifact.URL},
+				Artifact: cmdproto.PackageArtifact{SHA256: artifact.SHA256, Size: artifact.Size},
+				Location: &cmdproto.ArtifactURL{URL: artifact.URL},
 			},
 		)
 	}

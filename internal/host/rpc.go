@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/types"
 )
@@ -33,7 +33,7 @@ type RPCInvocation struct {
 	CWD  string            `json:"cwd"`
 	Env  map[string]string `json:"env"`
 	// The invoking job's command context, from the backend's record of it.
-	Context commandproto.Context `json:"context"`
+	Context cmdproto.Context `json:"context"`
 	// Whose command storage the invoking job reaches, which a job the
 	// handler starts elsewhere carries on; none for a job no agent started.
 	Caller *JobCaller `json:"caller,omitempty"`

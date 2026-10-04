@@ -19,7 +19,7 @@ import (
 	"github.com/wspl/demi/internal/backend/pluginhost"
 	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/provider"
 	"github.com/wspl/demi/internal/types"
@@ -326,7 +326,7 @@ func assembleProviders(
 
 // serviceRegistry validates plugin declarations against the deployment’s native operation catalog.
 func serviceRegistry(settings ServiceSettings) (*pluginhost.Registry, error) {
-	registry, err := pluginhost.NewRegistry(settings.Plugins, func(operation commanddecl.NativeOperation) bool {
+	registry, err := pluginhost.NewRegistry(settings.Plugins, func(operation cmddecl.NativeOperation) bool {
 		return settings.Native.Serves(operation.Package, []string{operation.Operation})
 	})
 	if err != nil {

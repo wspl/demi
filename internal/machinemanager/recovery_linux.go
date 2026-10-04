@@ -12,7 +12,7 @@ import (
 
 	"github.com/wspl/demi/internal/machinemanager/sandbox"
 	"github.com/wspl/demi/internal/machinemanager/storage"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // FenceAndSave fences recorded sandboxes and publishes every working pair.
@@ -45,7 +45,7 @@ func fenceAndSave(ctx context.Context, core *Core) error {
 		names = append(names, name)
 	}
 	for _, name := range names {
-		device, err := machinemanagerproto.ParseDeviceID(name)
+		device, err := machineproto.ParseDeviceID(name)
 		if err != nil {
 			return fmt.Errorf("a working pair is not named by a device id: %w", err)
 		}

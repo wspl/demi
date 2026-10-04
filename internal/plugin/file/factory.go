@@ -1,8 +1,8 @@
 package file
 
 import (
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandpackage/file/fileproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdpkg/file/fileproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
 )
@@ -57,11 +57,11 @@ func (f *Factory) Instance() plugin.Plugin {
 }
 
 func readCommand() (host.Declared, error) {
-	input, err := commanddecl.NewSchema(fileproto.ReadArgsJSONSchema())
+	input, err := cmddecl.NewSchema(fileproto.ReadArgsJSONSchema())
 	if err != nil {
 		return host.Declared{}, err
 	}
-	return host.Leaf(commanddecl.Leaf[commanddecl.NativeOperation]{
+	return host.Leaf(cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name: "read",
 		Summary: "Read a file. " +
 			"Text files print as text; image and video files are shown to you as viewable media. " +
@@ -72,18 +72,18 @@ func readCommand() (host.Declared, error) {
 		FailureOutput: new("writes the reason to stderr and exits non-zero if the path is missing or unreadable"),
 		Input:         input,
 		Positionals:   &[]string{"path"},
-		Kind: &commanddecl.Native[commanddecl.NativeOperation]{
-			Binding: commanddecl.NativeOperation{Package: fileproto.Package, Operation: "file.read"},
+		Kind: &cmddecl.Native[cmddecl.NativeOperation]{
+			Binding: cmddecl.NativeOperation{Package: fileproto.Package, Operation: "file.read"},
 		},
 	}, nil), nil
 }
 
 func createCommand() (host.Declared, error) {
-	input, err := commanddecl.NewSchema(fileproto.CreateArgsJSONSchema())
+	input, err := cmddecl.NewSchema(fileproto.CreateArgsJSONSchema())
 	if err != nil {
 		return host.Declared{}, err
 	}
-	return host.Leaf(commanddecl.Leaf[commanddecl.NativeOperation]{
+	return host.Leaf(cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:          "create",
 		Summary:       "Create a new file. Fails if the file exists.",
 		SuccessOutput: new("writes \"Created <path>\" to stdout"),
@@ -91,18 +91,18 @@ func createCommand() (host.Declared, error) {
 		Input:         input,
 		Positionals:   &[]string{"path"},
 		StdinField:    new("content"),
-		Kind: &commanddecl.Native[commanddecl.NativeOperation]{
-			Binding: commanddecl.NativeOperation{Package: fileproto.Package, Operation: "file.create"},
+		Kind: &cmddecl.Native[cmddecl.NativeOperation]{
+			Binding: cmddecl.NativeOperation{Package: fileproto.Package, Operation: "file.create"},
 		},
 	}, nil), nil
 }
 
 func editCommand() (host.Declared, error) {
-	input, err := commanddecl.NewSchema(fileproto.EditArgsJSONSchema())
+	input, err := cmddecl.NewSchema(fileproto.EditArgsJSONSchema())
 	if err != nil {
 		return host.Declared{}, err
 	}
-	return host.Leaf(commanddecl.Leaf[commanddecl.NativeOperation]{
+	return host.Leaf(cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:          "edit",
 		Summary:       "Replace exact text in an existing file.",
 		SuccessOutput: new("writes \"Edited <path>\" to stdout"),
@@ -111,18 +111,18 @@ func editCommand() (host.Declared, error) {
 		),
 		Input:       input,
 		Positionals: &[]string{"path"},
-		Kind: &commanddecl.Native[commanddecl.NativeOperation]{
-			Binding: commanddecl.NativeOperation{Package: fileproto.Package, Operation: "file.edit"},
+		Kind: &cmddecl.Native[cmddecl.NativeOperation]{
+			Binding: cmddecl.NativeOperation{Package: fileproto.Package, Operation: "file.edit"},
 		},
 	}, nil), nil
 }
 
 func patchCommand() (host.Declared, error) {
-	input, err := commanddecl.NewSchema(fileproto.PatchArgsJSONSchema())
+	input, err := cmddecl.NewSchema(fileproto.PatchArgsJSONSchema())
 	if err != nil {
 		return host.Declared{}, err
 	}
-	return host.Leaf(commanddecl.Leaf[commanddecl.NativeOperation]{
+	return host.Leaf(cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:          "patch",
 		Summary:       "Apply a unified diff patch to one or more files.",
 		SuccessOutput: new("writes \"Patched <n> file(s)\" to stdout"),
@@ -132,8 +132,8 @@ func patchCommand() (host.Declared, error) {
 		),
 		Input:      input,
 		StdinField: new("patch"),
-		Kind: &commanddecl.Native[commanddecl.NativeOperation]{
-			Binding: commanddecl.NativeOperation{Package: fileproto.Package, Operation: "file.patch"},
+		Kind: &cmddecl.Native[cmddecl.NativeOperation]{
+			Binding: cmddecl.NativeOperation{Package: fileproto.Package, Operation: "file.patch"},
 		},
 	}, nil), nil
 }

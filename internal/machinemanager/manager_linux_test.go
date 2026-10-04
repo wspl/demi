@@ -17,7 +17,7 @@ import (
 	"github.com/wspl/demi/internal/machinemanager/network"
 	"github.com/wspl/demi/internal/machinemanager/storage"
 	"github.com/wspl/demi/internal/machinemanager/system/systemtest"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 var rootTests = flag.Bool(
@@ -51,7 +51,7 @@ func managerFixture(t *testing.T) *Manager {
 		Store:  storage.NewStore(config.Images()),
 		Slots:  network.NewPool(config.Subnet, config.Slots),
 	}
-	base := machinemanagerproto.BaseVersion("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
+	base := machineproto.BaseVersion("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	root := filepath.Join(core.Store.Bases(), string(base), "rootfs/etc/skel")
 	for _, path := range []string{root, config.Working()} {
 		if err = os.MkdirAll(path, 0o700); err != nil {
@@ -72,7 +72,7 @@ func managerFixture(t *testing.T) *Manager {
 			t.Fatal(err)
 		}
 	}
-	m := NewManager(core, base, make(chan machinemanagerproto.DeviceID, 4))
+	m := NewManager(core, base, make(chan machineproto.DeviceID, 4))
 	t.Cleanup(func() {
 		if err := m.Close(context.Background()); err != nil && !errors.Is(err, ErrClosed) {
 			t.Error(err)
@@ -81,7 +81,7 @@ func managerFixture(t *testing.T) *Manager {
 	return m
 }
 
-func stateOf(t *testing.T, m *Manager) (machinemanagerproto.MachineImageState, bool) {
+func stateOf(t *testing.T, m *Manager) (machineproto.MachineImageState, bool) {
 	t.Helper()
 	state, found, err := m.core.Store.Read(t.Context(), "dev-1")
 	if err != nil {
@@ -94,8 +94,8 @@ func resetDevice(t *testing.T, m *Manager, operation string) {
 	t.Helper()
 	if _, err := m.Handle(
 		t.Context(),
-		&machinemanagerproto.Reset{
-			Params: machinemanagerproto.ResetParams{
+		&machineproto.Reset{
+			Params: machineproto.ResetParams{
 				DeviceID:    "dev-1",
 				OperationID: operation,
 				BaseVersion: string(m.base),
@@ -168,8 +168,8 @@ func TestResetPublishesFreshSystemWithSavedHomeOnce(t *testing.T) {
 	}
 	_, err = m.Handle(
 		t.Context(),
-		&machinemanagerproto.Reset{
-			Params: machinemanagerproto.ResetParams{DeviceID: "dev-1", OperationID: "op-3", BaseVersion: "missing"},
+		&machineproto.Reset{
+			Params: machineproto.ResetParams{DeviceID: "dev-1", OperationID: "op-3", BaseVersion: "missing"},
 		},
 	)
 	if err == nil || err.Error() != "Cloud base missing is not imported" {
@@ -177,8 +177,8 @@ func TestResetPublishesFreshSystemWithSavedHomeOnce(t *testing.T) {
 	}
 	_, err = m.Handle(
 		t.Context(),
-		&machinemanagerproto.Reset{
-			Params: machinemanagerproto.ResetParams{DeviceID: "dev-1", OperationID: "op-3", BaseVersion: "../b"},
+		&machineproto.Reset{
+			Params: machineproto.ResetParams{DeviceID: "dev-1", OperationID: "op-3", BaseVersion: "../b"},
 		},
 	)
 	if err == nil {
@@ -205,7 +205,7 @@ func TestRecoveryPublishesWorkingPairAndRemovesStages(t *testing.T) {
 		t.Fatal(err)
 	}
 	sources := m.core.Store.Images("dev-1", committed.Generation)
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		if err := storage.CloneSparse(
 			t.Context(),
 			sources.ForVolume(volume),
@@ -275,23 +275,23 @@ func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 	m := managerFixture(t)
 	if _, err := m.Handle(
 		t.Context(),
-		&machinemanagerproto.Hibernate{Params: machinemanagerproto.HibernateParams{DeviceID: "dev-1"}},
+		&machineproto.Hibernate{Params: machineproto.HibernateParams{DeviceID: "dev-1"}},
 	); err != nil {
 		t.Fatal(err)
 	}
 	state, err := m.Handle(
 		t.Context(),
-		&machinemanagerproto.RuntimeStateCall{Params: machinemanagerproto.RuntimeStateParams{DeviceID: "dev-1"}},
+		&machineproto.RuntimeStateCall{Params: machineproto.RuntimeStateParams{DeviceID: "dev-1"}},
 	)
 	if err != nil || string(state) != `"stopped"` {
 		t.Fatalf("%s %v", state, err)
 	}
 	_, err = m.Handle(
 		t.Context(),
-		&machinemanagerproto.GrowVolume{
-			Params: machinemanagerproto.GrowVolumeParams{
+		&machineproto.GrowVolume{
+			Params: machineproto.GrowVolumeParams{
 				DeviceID: "dev-1",
-				Volume:   machinemanagerproto.VolumeHome,
+				Volume:   machineproto.VolumeHome,
 				Bytes:    1 << 30,
 			},
 		},
@@ -301,7 +301,7 @@ func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 	}
 	if _, err = m.Handle(
 		t.Context(),
-		&machinemanagerproto.Hibernate{Params: machinemanagerproto.HibernateParams{DeviceID: "dev/1"}},
+		&machineproto.Hibernate{Params: machineproto.HibernateParams{DeviceID: "dev/1"}},
 	); err == nil {
 		t.Fatal("invalid device accepted")
 	}
@@ -322,7 +322,7 @@ func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 				return err
 			}
 			m.core = core
-			_, err = m.Handle(ctx, &machinemanagerproto.Reconcile{Params: machinemanagerproto.ReconcileParams{}})
+			_, err = m.Handle(ctx, &machineproto.Reconcile{Params: machineproto.ReconcileParams{}})
 			return err
 		})
 		if err != nil {
@@ -334,7 +334,7 @@ func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 	}
 	if _, err = m.Handle(
 		t.Context(),
-		&machinemanagerproto.Hibernate{Params: machinemanagerproto.HibernateParams{DeviceID: "dev-1"}},
+		&machineproto.Hibernate{Params: machineproto.HibernateParams{DeviceID: "dev-1"}},
 	); !errors.Is(
 		err,
 		ErrClosed,
@@ -347,7 +347,7 @@ func TestStoppedDeviceOperationsAndShutdown(t *testing.T) {
 // operation reporting one before it waits for that operation's permit.
 func TestShutdownUnblocksDeathBeforeWaitingForAdmission(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
-		m := NewManager(nil, "base", make(chan machinemanagerproto.DeviceID))
+		m := NewManager(nil, "base", make(chan machineproto.DeviceID))
 		release, err := m.admission.Enter(t.Context())
 		if err != nil {
 			t.Fatal(err)

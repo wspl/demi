@@ -11,7 +11,7 @@ import (
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/remotehost/testdata/fixture"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 )
@@ -21,16 +21,16 @@ func callbackLeaf(
 	t *testing.T,
 	name, summary string,
 	schema json.RawMessage,
-) commanddecl.Leaf[commanddecl.NativeOperation] {
+) cmddecl.Leaf[cmddecl.NativeOperation] {
 	t.Helper()
-	leaf := commanddecl.Leaf[commanddecl.NativeOperation]{
+	leaf := cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:    name,
 		Summary: summary,
-		Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}
 	if schema != nil {
 		var err error
-		leaf.Input, err = commanddecl.NewSchema(schema)
+		leaf.Input, err = cmddecl.NewSchema(schema)
 		requirePipe(t, err)
 	}
 	return leaf
@@ -202,9 +202,9 @@ func TestRunnerDeclaredCallbacksStorageInputAndCancellation(t *testing.T) {
 func TestRunnerNestedGroupHelpAndValidatedJSONOutput(t *testing.T) {
 	emit := callbackLeaf(t, "emit", "Print a text.", fixture.EmitArgsJSONSchema())
 	emit.Positionals = new([]string{"text"})
-	schema, err := commanddecl.NewSchema(fixture.EmittedJSONSchema())
+	schema, err := cmddecl.NewSchema(fixture.EmittedJSONSchema())
 	requirePipe(t, err)
-	emit.Output = &commanddecl.LeafOutput{JSON: schema}
+	emit.Output = &cmddecl.LeafOutput{JSON: schema}
 	handler := host.TypedRPC(
 		fixture.DecodeEmitArgs,
 		func(ctx context.Context, call host.Call[fixture.EmitArgs], p host.RPCPort) (uint8, error) {

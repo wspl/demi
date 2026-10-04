@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/programtest"
 	"go.uber.org/goleak"
 )
@@ -34,10 +34,10 @@ func TestScriptedManagerProtocolAndClose(t *testing.T) {
 		}
 	}()
 	reader := bufio.NewReader(socket)
-	calls := []machinemanagerproto.Call{&machinemanagerproto.CurrentBaseVersion{}, &machinemanagerproto.Reconcile{}}
+	calls := []machineproto.Call{&machineproto.CurrentBaseVersion{}, &machineproto.Reconcile{}}
 	for i, call := range calls {
-		line, err := machinemanagerproto.EncodeLine(
-			machinemanagerproto.MachineRequest{ID: string(rune('a' + i)), Call: call},
+		line, err := machineproto.EncodeLine(
+			machineproto.MachineRequest{ID: string(rune('a' + i)), Call: call},
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -49,11 +49,11 @@ func TestScriptedManagerProtocolAndClose(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		decoded, err := machinemanagerproto.DecodeResponse(response)
+		decoded, err := machineproto.DecodeResponse(response)
 		if err != nil {
 			t.Fatal(err)
 		}
-		ok, success := decoded.(*machinemanagerproto.OK)
+		ok, success := decoded.(*machineproto.OK)
 		if !success {
 			t.Fatalf("manager refused: %v", decoded)
 		}

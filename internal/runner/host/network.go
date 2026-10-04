@@ -10,7 +10,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 
 	"github.com/wspl/demi/internal/runnerproto"
@@ -95,7 +95,7 @@ func (e *netError) Unwrap() error {
 
 // connectTCP gives each socket attempt ten seconds, excluding descriptor backoff.
 func connectTCP(ctx context.Context, host string, port uint16) (*net.TCPConn, error) {
-	return commandsdk.Retry(ctx, func() (*net.TCPConn, error) {
+	return cmdsdk.Retry(ctx, func() (*net.TCPConn, error) {
 		attempt, cancel := context.WithTimeout(ctx, 10*time.Second)
 		defer cancel()
 		socket, err := (&net.Dialer{}).DialContext(attempt, "tcp", net.JoinHostPort(host, strconv.Itoa(int(port))))

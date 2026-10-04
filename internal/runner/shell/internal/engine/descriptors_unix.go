@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 )
 
 // extraDescriptors forwards writable numbered outputs through the recorder.
@@ -82,7 +82,7 @@ func descriptorFile(
 	if existing := copies[tracked]; existing != nil {
 		return existing, nil
 	}
-	pair, err := commandsdk.Retry(ctx, func() ([2]*os.File, error) {
+	pair, err := cmdsdk.Retry(ctx, func() ([2]*os.File, error) {
 		reader, writer, err := os.Pipe()
 		return [2]*os.File{reader, writer}, err
 	})

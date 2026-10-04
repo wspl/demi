@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandsdk/commandsdktest"
+	"github.com/wspl/demi/internal/cmdsdk/cmdsdktest"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/process"
 	"golang.org/x/sys/unix"
@@ -91,7 +91,7 @@ func TestClientWaitsForBusyRunnerButNotGoneRunner(t *testing.T) {
 			break
 		}
 	}
-	baseline := commandsdktest.Pauses()
+	baseline := cmdsdktest.Pauses()
 	done := make(chan error, 1)
 	waiting, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -103,7 +103,7 @@ func TestClientWaitsForBusyRunnerButNotGoneRunner(t *testing.T) {
 		done <- err
 	}()
 	// The pause counter offers no event, so the loop yields between checks.
-	for commandsdktest.Pauses() == baseline {
+	for cmdsdktest.Pauses() == baseline {
 		select {
 		case err := <-done:
 			t.Fatalf("busy runner refused caller: %v", err)

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/wspl/demi/internal/backend/database"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/webapiproto"
 )
 
@@ -46,11 +46,11 @@ func Reset(ctx context.Context, s Shard, id webapiproto.OperationID) (database.M
 	if found && stored.Phase == webapiproto.ResetPhaseReady {
 		return stored, nil
 	}
-	var base machinemanagerproto.BaseVersion
+	var base machineproto.BaseVersion
 	if found {
 		base = stored.BaseVersion
 	} else {
-		base, err = Call(ctx, s.CloudServices().Machines, machinemanagerproto.CurrentBaseVersionParams{})
+		base, err = Call(ctx, s.CloudServices().Machines, machineproto.CurrentBaseVersionParams{})
 		if err != nil {
 			return database.ManagedOperation{}, failed(err)
 		}
@@ -200,7 +200,7 @@ type resetRecords interface {
 
 // recoverResets orders manager reconciliation and durable reset recovery before serving.
 func recoverResets(ctx context.Context, control resetRecords, services *Services) error {
-	if _, err := Call(ctx, services.Machines, machinemanagerproto.ReconcileParams{}); err != nil {
+	if _, err := Call(ctx, services.Machines, machineproto.ReconcileParams{}); err != nil {
 		return err
 	}
 	if err := control.DeleteCloudExposes(ctx); err != nil {
@@ -222,7 +222,7 @@ func recoverResets(ctx context.Context, control resetRecords, services *Services
 		if _, err := Call(
 			ctx,
 			services.Machines,
-			machinemanagerproto.ResetParams{
+			machineproto.ResetParams{
 				DeviceID:    string(pair.Device),
 				OperationID: string(op.ID),
 				BaseVersion: string(op.BaseVersion),
@@ -249,7 +249,7 @@ func admitReset(
 	s Shard,
 	m *machine,
 	id webapiproto.OperationID,
-	base machinemanagerproto.BaseVersion,
+	base machineproto.BaseVersion,
 ) (database.ManagedOperation, error) {
 	operation := database.ManagedOperation{ID: id, BaseVersion: base, Phase: webapiproto.ResetPhaseStopping}
 	capacity := s.CloudServices().Capacity
@@ -312,7 +312,7 @@ func rebuildReset(ctx context.Context, s Shard, m *machine, op database.ManagedO
 	_, err := Call(
 		ctx,
 		s.CloudServices().Machines,
-		machinemanagerproto.ResetParams{
+		machineproto.ResetParams{
 			DeviceID:    string(m.device.ID),
 			OperationID: string(op.ID),
 			BaseVersion: string(op.BaseVersion),

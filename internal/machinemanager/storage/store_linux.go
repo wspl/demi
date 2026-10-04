@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // ImagePair holds a value for each of a device's two volumes.
@@ -23,23 +23,23 @@ type ImagePair[T any] struct {
 }
 
 // ForVolume returns the value for volume, which must be a validated Volume.
-func (p ImagePair[T]) ForVolume(volume machinemanagerproto.Volume) T {
-	if volume == machinemanagerproto.VolumeSystem {
+func (p ImagePair[T]) ForVolume(volume machineproto.Volume) T {
+	if volume == machineproto.VolumeSystem {
 		return p.System
 	}
 	return p.Home
 }
 
 // ImageFile returns system.ext4 or home.ext4 for a validated volume.
-func ImageFile(volume machinemanagerproto.Volume) string {
+func ImageFile(volume machineproto.Volume) string {
 	return string(volume) + ".ext4"
 }
 
 // ImagesInDirectory names the system.ext4 and home.ext4 images in directory.
 func ImagesInDirectory(directory string) ImagePair[string] {
 	return ImagePair[string]{
-		System: filepath.Join(directory, ImageFile(machinemanagerproto.VolumeSystem)),
-		Home:   filepath.Join(directory, ImageFile(machinemanagerproto.VolumeHome)),
+		System: filepath.Join(directory, ImageFile(machineproto.VolumeSystem)),
+		Home:   filepath.Join(directory, ImageFile(machineproto.VolumeHome)),
 	}
 }
 
@@ -59,20 +59,20 @@ func (s *Store) Bases() string {
 
 // ReadState reads a generation record; found is false when the file does not exist.
 // A record that does not decode is an error; nothing repairs it.
-func ReadState(ctx context.Context, path string) (state machinemanagerproto.MachineImageState, found bool, err error) {
+func ReadState(ctx context.Context, path string) (state machineproto.MachineImageState, found bool, err error) {
 	if err := ctx.Err(); err != nil {
-		return machinemanagerproto.MachineImageState{}, false, err
+		return machineproto.MachineImageState{}, false, err
 	}
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return machinemanagerproto.MachineImageState{}, false, nil
+		return machineproto.MachineImageState{}, false, nil
 	}
 	if err != nil {
-		return machinemanagerproto.MachineImageState{}, false, err
+		return machineproto.MachineImageState{}, false, err
 	}
-	state, err = machinemanagerproto.DecodeMachineImageState(data)
+	state, err = machineproto.DecodeMachineImageState(data)
 	if err != nil {
-		return machinemanagerproto.MachineImageState{}, false, fmt.Errorf(
+		return machineproto.MachineImageState{}, false, fmt.Errorf(
 			"%s is not a valid generation record: %w",
 			path,
 			err,
@@ -84,15 +84,15 @@ func ReadState(ctx context.Context, path string) (state machinemanagerproto.Mach
 // Read returns a device's committed generation; found is false before its first.
 func (s *Store) Read(
 	ctx context.Context,
-	device machinemanagerproto.DeviceID,
-) (machinemanagerproto.MachineImageState, bool, error) {
+	device machineproto.DeviceID,
+) (machineproto.MachineImageState, bool, error) {
 	return ReadState(ctx, filepath.Join(s.root, string(device), "current.json"))
 }
 
 // Images returns the images of one of a device's generations.
 func (s *Store) Images(
-	device machinemanagerproto.DeviceID,
-	generation machinemanagerproto.GenerationID,
+	device machineproto.DeviceID,
+	generation machineproto.GenerationID,
 ) ImagePair[string] {
 	return ImagesInDirectory(filepath.Join(s.root, string(device), "generations", string(generation)))
 }
@@ -104,8 +104,8 @@ func (s *Store) Images(
 // Once publication begins its commit and cleanup complete despite cancellation.
 func (s *Store) Publish(
 	ctx context.Context,
-	device machinemanagerproto.DeviceID,
-	state machinemanagerproto.MachineImageState,
+	device machineproto.DeviceID,
+	state machineproto.MachineImageState,
 	sources ImagePair[string],
 ) error {
 	previous, hadPrevious, err := s.Read(ctx, device)
@@ -162,10 +162,10 @@ func (s *Store) Publish(
 func stageGeneration(
 	ctx context.Context,
 	stage string,
-	state machinemanagerproto.MachineImageState,
+	state machineproto.MachineImageState,
 	sources ImagePair[string],
 ) error {
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		if err := os.Link(sources.ForVolume(volume), filepath.Join(stage, ImageFile(volume))); err != nil {
 			return err
 		}
@@ -179,8 +179,8 @@ func stageGeneration(
 func pruneGenerations(
 	ctx context.Context,
 	generations string,
-	state machinemanagerproto.MachineImageState,
-	previous machinemanagerproto.MachineImageState,
+	state machineproto.MachineImageState,
+	previous machineproto.MachineImageState,
 	hadPrevious bool,
 ) error {
 	entries, err := os.ReadDir(generations)

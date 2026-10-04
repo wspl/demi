@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wspl/demi/internal/commandpackage/browser"
+	"github.com/wspl/demi/internal/cmdpkg/browser"
 )
 
 func main() {

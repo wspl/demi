@@ -17,19 +17,19 @@ import (
 
 	"github.com/wspl/demi/internal/machinemanager"
 	"github.com/wspl/demi/internal/machinemanager/machinemanagertest"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 type serverFixture struct {
 	path    string
 	service *machinemanagertest.Service
-	deaths  chan machinemanagerproto.DeviceID
+	deaths  chan machineproto.DeviceID
 	stop    func()
 }
 
 func server(
 	t *testing.T,
-	script func(context.Context, machinemanagerproto.Call) (json.RawMessage, error),
+	script func(context.Context, machineproto.Call) (json.RawMessage, error),
 ) *serverFixture {
 	t.Helper()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -40,7 +40,7 @@ func server(
 		t.Fatal(err)
 	}
 	service := &machinemanagertest.Service{Script: script}
-	deaths := make(chan machinemanagerproto.DeviceID, 4)
+	deaths := make(chan machineproto.DeviceID, 4)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -82,13 +82,13 @@ func (c *socketClient) send(t *testing.T, line string) {
 	}
 }
 
-func (c *socketClient) receive(t *testing.T) machinemanagerproto.MachineResponse {
+func (c *socketClient) receive(t *testing.T) machineproto.MachineResponse {
 	t.Helper()
 	line, err := c.reader.ReadBytes('\n')
 	if err != nil {
 		t.Fatal(err)
 	}
-	value, err := machinemanagerproto.DecodeResponse(line[:len(line)-1])
+	value, err := machineproto.DecodeResponse(line[:len(line)-1])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,19 +96,19 @@ func (c *socketClient) receive(t *testing.T) machinemanagerproto.MachineResponse
 }
 
 func TestEveryCallReachesService(t *testing.T) {
-	f := server(t, func(_ context.Context, call machinemanagerproto.Call) (json.RawMessage, error) {
+	f := server(t, func(_ context.Context, call machineproto.Call) (json.RawMessage, error) {
 		switch call.(type) {
-		case *machinemanagerproto.CurrentBaseVersion:
-			return machinemanagerproto.BaseVersion("base").MarshalJSON()
-		case *machinemanagerproto.RuntimeStateCall:
-			return machinemanagerproto.RuntimeStateStopped.MarshalJSON()
-		case *machinemanagerproto.Reconcile,
-			*machinemanagerproto.ImageState,
-			*machinemanagerproto.Wake,
-			*machinemanagerproto.Hibernate,
-			*machinemanagerproto.Checkpoint,
-			*machinemanagerproto.GrowVolume,
-			*machinemanagerproto.Reset:
+		case *machineproto.CurrentBaseVersion:
+			return machineproto.BaseVersion("base").MarshalJSON()
+		case *machineproto.RuntimeStateCall:
+			return machineproto.RuntimeStateStopped.MarshalJSON()
+		case *machineproto.Reconcile,
+			*machineproto.ImageState,
+			*machineproto.Wake,
+			*machineproto.Hibernate,
+			*machineproto.Checkpoint,
+			*machineproto.GrowVolume,
+			*machineproto.Reset:
 			return json.RawMessage("null"), nil
 		}
 		return nil, errors.New("unknown call")
@@ -126,12 +126,12 @@ func TestEveryCallReachesService(t *testing.T) {
 		`{"id":"9","op":"hibernate","params":{"deviceId":"dev-1"}}`,
 	}
 	for _, line := range lines {
-		request, err := machinemanagerproto.DecodeRequest([]byte(line))
+		request, err := machineproto.DecodeRequest([]byte(line))
 		if err != nil {
 			t.Fatal(err)
 		}
 		c.send(t, line+"\n")
-		response, ok := c.receive(t).(*machinemanagerproto.OK)
+		response, ok := c.receive(t).(*machineproto.OK)
 		if !ok || response.ID != request.ID {
 			t.Fatalf("reply: %+v", response)
 		}
@@ -152,7 +152,7 @@ func TestEveryCallReachesService(t *testing.T) {
 		t.Fatal(len(calls))
 	}
 	for i, line := range lines {
-		request, _ := machinemanagerproto.DecodeRequest([]byte(line))
+		request, _ := machineproto.DecodeRequest([]byte(line))
 		if !reflect.DeepEqual(request.Call, calls[i]) {
 			t.Fatal(calls)
 		}
@@ -160,7 +160,7 @@ func TestEveryCallReachesService(t *testing.T) {
 }
 
 func TestFailureLeavesConnectionUsable(t *testing.T) {
-	f := server(t, func(_ context.Context, call machinemanagerproto.Call) (json.RawMessage, error) {
+	f := server(t, func(_ context.Context, call machineproto.Call) (json.RawMessage, error) {
 		if call.Name() == "hibernate" {
 			return nil, errors.New("no such machine")
 		}
@@ -168,12 +168,12 @@ func TestFailureLeavesConnectionUsable(t *testing.T) {
 	})
 	c := f.connect(t)
 	c.send(t, "{\"id\":\"1\",\"op\":\"hibernate\",\"params\":{\"deviceId\":\"dev-9\"}}\n")
-	response, ok := c.receive(t).(*machinemanagerproto.ErrorResponse)
+	response, ok := c.receive(t).(*machineproto.ErrorResponse)
 	if !ok || response.ID != "1" || response.Message != "no such machine" {
 		t.Fatalf("%+v", response)
 	}
 	c.send(t, "\n{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n")
-	if reply, ok := c.receive(t).(*machinemanagerproto.OK); !ok || reply.ID != "2" {
+	if reply, ok := c.receive(t).(*machineproto.OK); !ok || reply.ID != "2" {
 		t.Fatalf("%+v", reply)
 	}
 }
@@ -186,7 +186,7 @@ func TestConcurrentRepliesCompleteInOrder(t *testing.T) {
 			close(release)
 		})
 	}
-	f := server(t, func(_ context.Context, call machinemanagerproto.Call) (json.RawMessage, error) {
+	f := server(t, func(_ context.Context, call machineproto.Call) (json.RawMessage, error) {
 		if call.Name() == "current_base_version" {
 			<-release
 		}
@@ -199,11 +199,11 @@ func TestConcurrentRepliesCompleteInOrder(t *testing.T) {
 		"{\"id\":\"slow\",\"op\":\"current_base_version\",\"params\":{}}\n"+
 			"{\"id\":\"fast\",\"op\":\"reconcile\",\"params\":{}}\n",
 	)
-	if reply, ok := c.receive(t).(*machinemanagerproto.OK); !ok || reply.ID != "fast" {
+	if reply, ok := c.receive(t).(*machineproto.OK); !ok || reply.ID != "fast" {
 		t.Fatalf("%+v", reply)
 	}
 	unblock()
-	if reply, ok := c.receive(t).(*machinemanagerproto.OK); !ok || reply.ID != "slow" {
+	if reply, ok := c.receive(t).(*machineproto.OK); !ok || reply.ID != "slow" {
 		t.Fatalf("%+v", reply)
 	}
 }
@@ -215,9 +215,9 @@ func TestDeathReachesEveryConnection(t *testing.T) {
 		c.send(t, "{\"id\":\"1\",\"op\":\"reconcile\",\"params\":{}}\n")
 		c.receive(t)
 	}
-	f.deaths <- machinemanagerproto.DeviceID("dev-1")
+	f.deaths <- machineproto.DeviceID("dev-1")
 	for _, c := range clients {
-		death, ok := c.receive(t).(*machinemanagerproto.Death)
+		death, ok := c.receive(t).(*machineproto.Death)
 		if !ok || death.DeviceID != "dev-1" {
 			t.Fatalf("%+v", death)
 		}
@@ -230,7 +230,7 @@ func TestBadLineDropsConnectionAndLaterLines(t *testing.T) {
 		"{\"id\":\"1\",\"op\":\"wake\",\"params\":{}}\n",
 		"not json\n",
 		string([]byte{255, '\n'}),
-		strings.Repeat("x", machinemanagerproto.MaxLineBytes+1) + "\n",
+		strings.Repeat("x", machineproto.MaxLineBytes+1) + "\n",
 	} {
 		c := f.connect(t)
 		_, _ = c.conn.Write([]byte(bad + "{\"id\":\"2\",\"op\":\"reconcile\",\"params\":{}}\n"))
@@ -255,7 +255,7 @@ func TestDisconnectedRequestCompletes(t *testing.T) {
 			close(release)
 		})
 	}
-	f := server(t, func(_ context.Context, _ machinemanagerproto.Call) (json.RawMessage, error) {
+	f := server(t, func(_ context.Context, _ machineproto.Call) (json.RawMessage, error) {
 		close(entered)
 		<-release
 		close(finished)

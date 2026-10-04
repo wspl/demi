@@ -10,7 +10,7 @@ import (
 	"sync"
 	"syscall"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 )
 
 // commandStreams keeps exec.Cmd free of hidden IO goroutines: the leader is
@@ -37,7 +37,7 @@ func prepareStreams(ctx context.Context, cmd *exec.Cmd) (*commandStreams, error)
 	s := &commandStreams{}
 	sharedOutput := cmd.Stdout != nil && reflect.TypeOf(cmd.Stdout).Comparable() && cmd.Stdout == cmd.Stderr
 	add := func(source io.Reader, target io.Writer, input bool) (*os.File, error) {
-		pair, err := commandsdk.Retry(ctx, func() ([2]*os.File, error) {
+		pair, err := cmdsdk.Retry(ctx, func() ([2]*os.File, error) {
 			r, w, err := os.Pipe()
 			return [2]*os.File{r, w}, err
 		})

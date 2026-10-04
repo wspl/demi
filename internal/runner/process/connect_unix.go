@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"golang.org/x/sys/unix"
 )
 
@@ -18,13 +18,13 @@ func connectLocal(ctx context.Context, endpoint string) (net.Conn, error) {
 	if !filepath.IsAbs(endpoint) {
 		return nil, fmt.Errorf("local socket path must be absolute")
 	}
-	var backoff commandsdk.Backoff
+	var backoff cmdsdk.Backoff
 	for {
 		connection, err := (&net.Dialer{}).DialContext(ctx, "unix", endpoint)
 		if err == nil {
 			return connection, nil
 		}
-		retry := errors.Is(err, unix.ECONNREFUSED) || errors.Is(err, unix.EAGAIN) || commandsdk.Exhausted(err)
+		retry := errors.Is(err, unix.ECONNREFUSED) || errors.Is(err, unix.EAGAIN) || cmdsdk.Exhausted(err)
 		if !retry || !runnerMayLive(endpoint) {
 			return nil, err
 		}
@@ -39,7 +39,7 @@ func connectLocal(ctx context.Context, endpoint string) (net.Conn, error) {
 func runnerMayLive(endpoint string) bool {
 	file, err := os.Open(filepath.Join(filepath.Dir(endpoint), Alive))
 	if err != nil {
-		return commandsdk.Exhausted(err)
+		return cmdsdk.Exhausted(err)
 	}
 	// Cleanup follows the operation result; cancellation may already have closed it.
 	defer func() {

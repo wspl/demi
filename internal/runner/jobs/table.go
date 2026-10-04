@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -60,7 +60,7 @@ type Commands struct {
 	// Paths locates the command aliases and client executable.
 	Paths ContextPaths
 	// Services acquires native command services.
-	Services *commandpackages.ServiceRegistry
+	Services *cmdpkgs.ServiceRegistry
 	// Endpoint is the local endpoint command clients reach.
 	Endpoint string
 	// Home is the installation directory, DEMI_HOME.
@@ -91,7 +91,7 @@ type DeclaredCommands struct {
 	// ManifestHash identifies the job command manifest.
 	ManifestHash string
 	// Context supplies the backend command authority.
-	Context commandproto.Context
+	Context cmdproto.Context
 }
 
 // ProcessCommand runs one raw executable with its arguments.

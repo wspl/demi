@@ -16,7 +16,7 @@ import (
 
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -80,7 +80,7 @@ type Dependencies struct {
 // Images supplies paths for the two volumes. Storage owns image naming; the
 // manager adapts its image pair to this boundary without copying that rule.
 type Images interface {
-	Image(volume machinemanagerproto.Volume) string
+	Image(volume machineproto.Volume) string
 }
 
 // Working supplies the private working images and their containing directory.
@@ -183,7 +183,7 @@ func (s *Sandbox) Start(ctx context.Context, working Working, base string, boot 
 	if err := system.Overlay(
 		ctx,
 		s.directory.Base(),
-		s.directory.Volume(machinemanagerproto.VolumeSystem),
+		s.directory.Volume(machineproto.VolumeSystem),
 		s.directory.RootFS(),
 	); err != nil {
 		return err
@@ -261,13 +261,13 @@ func (s *Sandbox) Capture(ctx context.Context, working Working, copies Images) (
 		}
 		thawFailures = frozen.ThawAll(ctx)
 	}()
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		if err := frozen.Freeze(ctx, s.directory.Volume(volume)); err != nil {
 			return nil, err
 		}
 	}
 	system.FaultPoint("frozen")
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		if err := s.captureImage(ctx, working.Image(volume), copies.Image(volume)); err != nil {
 			return nil, err
 		}
@@ -281,7 +281,7 @@ func (s *Sandbox) Capture(ctx context.Context, working Working, copies Images) (
 func (s *Sandbox) Grow(
 	ctx context.Context,
 	working Working,
-	volume machinemanagerproto.Volume,
+	volume machineproto.Volume,
 	bytes uint64,
 ) (capacity uint64, err error) {
 	if s.loops == nil {
@@ -294,7 +294,7 @@ func (s *Sandbox) Grow(
 		return 0, fmt.Errorf("invalid Cloud image capacity: %d", bytes)
 	}
 	number := s.loops[0]
-	if volume == machinemanagerproto.VolumeHome {
+	if volume == machineproto.VolumeHome {
 		number = s.loops[1]
 	}
 	image := working.Image(volume)
@@ -410,7 +410,7 @@ func (s *Sandbox) StopWaiting(_ context.Context) error {
 func (s *Sandbox) mountImage(
 	ctx context.Context,
 	image string,
-	volume machinemanagerproto.Volume,
+	volume machineproto.Volume,
 ) (number uint32, err error) {
 	device, err := system.Attach(ctx, image)
 	if err != nil {
@@ -500,7 +500,7 @@ func (s *Sandbox) stopRuntime(ctx context.Context) error {
 // mountWorking records loop numbers only after both working volumes have mounted.
 func (s *Sandbox) mountWorking(ctx context.Context, working Working) error {
 	var loops [2]uint32
-	for i, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for i, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		image := working.Image(volume)
 		output, err := s.dependencies.Tools.Output(ctx, system.E2fsck, []string{"-p", image}, 0)
 		if err != nil {
@@ -523,7 +523,7 @@ func (s *Sandbox) mountWorking(ctx context.Context, working Working) error {
 
 // thawVolumes thaws mounted volumes before the runtime is signaled.
 func (s *Sandbox) thawVolumes(ctx context.Context) error {
-	for _, volume := range []machinemanagerproto.Volume{machinemanagerproto.VolumeSystem, machinemanagerproto.VolumeHome} {
+	for _, volume := range []machineproto.Volume{machineproto.VolumeSystem, machineproto.VolumeHome} {
 		path := s.directory.Volume(volume)
 		mounted, _, err := system.MountRoot(ctx, path)
 		if err != nil {

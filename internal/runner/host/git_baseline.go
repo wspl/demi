@@ -15,7 +15,7 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/format/gitignore"
 	"github.com/go-git/go-git/v5/plumbing/format/index"
 	"github.com/go-git/go-git/v5/plumbing/object"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -229,7 +229,7 @@ func retryChanges(
 	slots chan struct{},
 	limit int,
 ) (runnerproto.GitChanges, error) {
-	return commandsdk.Retry(
+	return cmdsdk.Retry(
 		ctx,
 		func() (runnerproto.GitChanges, error) {
 			return computeChanges(ctx, state, root, slots, limit)

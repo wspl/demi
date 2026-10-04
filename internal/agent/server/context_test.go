@@ -14,7 +14,7 @@ import (
 	"github.com/wspl/demi/internal/agent/store/storetest"
 	"github.com/wspl/demi/internal/agent/tools"
 	"github.com/wspl/demi/internal/agent/tools/toolstest"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/provider"
@@ -51,10 +51,10 @@ func product(contextSource *testContext, profiles ...types.Profile) func(*server
 				"greet",
 				"Greets the caller.",
 				host.Leaf(
-					commanddecl.Leaf[commanddecl.NativeOperation]{
+					cmddecl.Leaf[cmddecl.NativeOperation]{
 						Name:    "hello",
 						Summary: "Say hello.",
-						Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+						Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 					},
 					host.RPCHandlerFunc(
 						func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {

@@ -16,7 +16,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -67,7 +67,7 @@ func runnerShell(
 	pages := hosttest.NewPages(false)
 	options := remotehost.NewEnvironmentOptions(
 		f.Host(),
-		func(context.Context) (commandproto.Context, error) {
+		func(context.Context) (cmdproto.Context, error) {
 			return hosttest.CommandContext(), nil
 		},
 		pages,

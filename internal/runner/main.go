@@ -17,7 +17,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/runner/host"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runner/shell"
@@ -231,7 +231,7 @@ func manage(ctx context.Context, state runnerState, action action, release *stri
 	completion, err := process.Forward(
 		ctx,
 		active.Endpoint,
-		commandproto.LocalInvocation{
+		cmdproto.LocalInvocation{
 			Operation:    manageOperation,
 			InvocationID: strings.ReplaceAll(id.String(), "-", ""),
 			Args:         args,
@@ -409,7 +409,7 @@ func runnerInfo(options cliOptions, boot *runnerproto.ManagedBoot) (string, runn
 	if runtime.GOOS == "windows" {
 		platform = runnerproto.RunnerPlatformWin32
 	}
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	if err != nil {
 		return "", runnerproto.Info{}, err
 	}

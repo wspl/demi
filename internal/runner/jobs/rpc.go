@@ -6,9 +6,9 @@ import (
 	"io"
 	"time"
 
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runnerproto"
 )
@@ -64,8 +64,8 @@ func invokeRPC(
 	pipes *process.PipeClient,
 	execution *ExecutionContext,
 	raw process.RawCommand,
-	parsed *commanddecl.Parsed,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
+	parsed *cmddecl.Parsed,
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
 	output *commandOutput,
 	finite bool,
 ) (code uint8, err error) {
@@ -104,7 +104,7 @@ func rpcInput(
 	live bool,
 	reference *runnerproto.PipeRef,
 	pulls <-chan struct{},
-	input *commandsdk.Input,
+	input *cmdsdk.Input,
 ) error {
 	if live {
 		for {
@@ -136,7 +136,7 @@ func rpcInput(
 // invocationBody adapts demand-driven command chunks to a pipe upload without read-ahead.
 type invocationBody struct {
 	ctx     context.Context
-	input   *commandsdk.Input
+	input   *cmdsdk.Input
 	pending []byte
 	cancel  context.CancelFunc
 }
@@ -160,7 +160,7 @@ func (b *invocationBody) Close() error {
 }
 
 // newInvocationBody gives each pipe upload an independently cancellable input read.
-func newInvocationBody(ctx context.Context, input *commandsdk.Input) *invocationBody {
+func newInvocationBody(ctx context.Context, input *cmdsdk.Input) *invocationBody {
 	lifetime, cancel := context.WithCancel(ctx)
 	return &invocationBody{ctx: lifetime, input: input, cancel: cancel}
 }
@@ -202,7 +202,7 @@ type rpcUploadOptions struct {
 	live      bool
 	reference <-chan *runnerproto.PipeRef
 	pulls     <-chan struct{}
-	input     *commandsdk.Input
+	input     *cmdsdk.Input
 	done      chan<- error
 }
 
@@ -310,8 +310,8 @@ func sendRPCCall(
 	connection *Connection,
 	id, job string,
 	raw process.RawCommand,
-	parsed *commanddecl.Parsed,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
+	parsed *cmddecl.Parsed,
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
 	finite bool,
 ) error {
 	args, err := parsed.Values.MarshalJSON()
@@ -355,7 +355,7 @@ func joinRPCWorkers(inputFinished, outputFinished bool, inputDone, outputDone <-
 
 type rpcExchangeOptions struct {
 	live, finite bool
-	invocation   commandsdk.InvocationContext[commandproto.LocalInvocation]
+	invocation   cmdsdk.InvocationContext[cmdproto.LocalInvocation]
 	output       *commandOutput
 	events       <-chan CallEvent
 }

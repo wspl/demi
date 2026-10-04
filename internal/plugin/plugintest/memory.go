@@ -10,7 +10,7 @@ import (
 	"slices"
 	"sync"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/types"
@@ -19,7 +19,7 @@ import (
 // PackageCalls answers a test's package calls. A refusal can be returned as an error.
 type PackageCalls func(
 	context.Context,
-	commanddecl.NativeOperation,
+	cmddecl.NativeOperation,
 	json.RawMessage,
 	plugin.CallKind,
 ) (json.RawMessage, error)
@@ -27,7 +27,7 @@ type PackageCalls func(
 // PackageCall records a package call made by the plugin.
 type PackageCall struct {
 	// Operation identifies the called package operation.
-	Operation commanddecl.NativeOperation
+	Operation cmddecl.NativeOperation
 	// Args contains the call's JSON input.
 	Args json.RawMessage
 	// Kind records the Host access the call needs.

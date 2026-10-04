@@ -16,7 +16,7 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -108,9 +108,9 @@ func TestHostGroupNamesReachableHostsAndRefusesOthers(t *testing.T) {
 			Args: []byte(test.args),
 			CWD:  "/work",
 			Env:  map[string]string{},
-			Context: commandproto.Context{
+			Context: cmdproto.Context{
 				Conversation: string(conversationID),
-				Caller:       &commandproto.AgentCaller{Number: 1},
+				Caller:       &cmdproto.AgentCaller{Number: 1},
 				Locale:       runners.DefaultLocale(),
 			},
 			Caller: &host.JobCaller{Node: "node-1"},

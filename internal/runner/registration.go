@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runner/host"
 	"github.com/wspl/demi/internal/runner/jobs"
 	"github.com/wspl/demi/internal/runner/process"
@@ -37,8 +37,8 @@ type registration struct {
 	state      runnerState
 	token      atomic.Pointer[runnerproto.DeviceToken]
 	management *management
-	services   *commandpackages.ServiceRegistry
-	installs   *commandpackages.InstallsSubscription
+	services   *cmdpkgs.ServiceRegistry
+	installs   *cmdpkgs.InstallsSubscription
 	dispatcher *jobs.Dispatcher
 	contexts   *jobs.Contexts
 	paths      jobs.ContextPaths
@@ -71,7 +71,7 @@ func runRegistration(ctx context.Context, options registrationOptions) (err erro
 	// Shutdown is explicit: cancellation must not kill services before connection work joins.
 	lifetime, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	registry, err := commandpackages.NewServiceRegistry(lifetime, options.artifacts, image, options.cwd, options.env)
+	registry, err := cmdpkgs.NewServiceRegistry(lifetime, options.artifacts, image, options.cwd, options.env)
 	if err != nil {
 		return err
 	}
@@ -196,7 +196,7 @@ func registrationToken(
 func newRegistration(
 	options registrationOptions,
 	state runnerState,
-	registry *commandpackages.ServiceRegistry,
+	registry *cmdpkgs.ServiceRegistry,
 	paths jobs.ContextPaths,
 	token *runnerproto.DeviceToken,
 ) (*registration, error) {
@@ -232,7 +232,7 @@ func prepareRegistration(
 	ctx context.Context,
 	options registrationOptions,
 	state runnerState,
-	registry *commandpackages.ServiceRegistry,
+	registry *cmdpkgs.ServiceRegistry,
 	token *runnerproto.DeviceToken,
 ) (*registration, error) {
 	paths, err := jobs.NewContextPaths(ctx, filepath.Join(state.root, "commands"), options.executable)
@@ -258,7 +258,7 @@ func (r *registration) startServer(ctx context.Context) (*jobs.Server, error) {
 	return server, nil
 }
 
-func (r *registration) run(ctx context.Context, server *jobs.Server, registry *commandpackages.ServiceRegistry) error {
+func (r *registration) run(ctx context.Context, server *jobs.Server, registry *cmdpkgs.ServiceRegistry) error {
 	err := r.reconnect(ctx)
 	if r.management.snapshot().Draining && ctx.Err() == nil {
 		err = errors.Join(err, server.WaitIdle(ctx))

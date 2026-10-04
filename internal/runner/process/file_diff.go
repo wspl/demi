@@ -4,14 +4,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 )
 
 // LineCounts returns lines added and removed using an exact line Myers diff.
 // A nil side is absent; binary or non-UTF-8 content yields zero counts.
 // Callers represent unread or oversized content according to their own limits.
 func LineCounts(before, after []byte) (added, removed uint64) {
-	if !commandproto.IsText(before) || !commandproto.IsText(after) {
+	if !cmdproto.IsText(before) || !cmdproto.IsText(after) {
 		return 0, 0
 	}
 	d := diffmatchpatch.New()

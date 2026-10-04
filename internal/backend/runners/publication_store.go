@@ -11,7 +11,7 @@ import (
 
 	"github.com/gowebpki/jcs"
 	"github.com/wspl/demi/internal/artifacts"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"gocloud.dev/blob"
 	"gocloud.dev/gcerrors"
 	"golang.org/x/sync/errgroup"
@@ -66,7 +66,7 @@ func publish(
 	if err := group.Wait(); err != nil {
 		return nil, err
 	}
-	packages := make([]commandproto.PackageDescriptor, 0, len(verified))
+	packages := make([]cmdproto.PackageDescriptor, 0, len(verified))
 	for _, release := range verified {
 		descriptor := release.descriptor
 		if err := publishDescriptor(ctx, store, prefix, descriptor); err != nil {
@@ -124,7 +124,7 @@ func putImmutable(
 	store artifactStore,
 	key string,
 	data []byte,
-	artifact commandproto.PackageArtifact,
+	artifact cmdproto.PackageArtifact,
 	coding string,
 ) error {
 	err := store.WriteAll(
@@ -156,7 +156,7 @@ func nativeInPlace(
 	ctx context.Context,
 	store artifactStore,
 	key string,
-	artifact commandproto.PackageArtifact,
+	artifact cmdproto.PackageArtifact,
 ) (bool, error) {
 	attributes, err := store.Attributes(ctx, key)
 	if gcerrors.Code(err) == gcerrors.NotFound {
@@ -185,7 +185,7 @@ func publishDescriptor(
 	ctx context.Context,
 	store artifactStore,
 	prefix string,
-	descriptor commandproto.PackageDescriptor,
+	descriptor cmdproto.PackageDescriptor,
 ) error {
 	data, err := descriptor.MarshalJSON()
 	if err != nil {
@@ -199,7 +199,7 @@ func publishDescriptor(
 	if err != nil {
 		return configError(err)
 	}
-	artifact := commandproto.PackageArtifact{SHA256: digest, Size: uint64(len(body))}
+	artifact := cmdproto.PackageArtifact{SHA256: digest, Size: uint64(len(body))}
 	if err := putImmutable(ctx, store, prefix+"/descriptors/"+digest+".json", body, artifact, ""); err != nil {
 		return err
 	}

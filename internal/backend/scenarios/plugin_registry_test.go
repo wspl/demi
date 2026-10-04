@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 	"github.com/wspl/demi/internal/plugin"
@@ -38,10 +38,10 @@ func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
 		"agent",
 		"A group.",
 		host.Leaf(
-			commanddecl.Leaf[commanddecl.NativeOperation]{
+			cmddecl.Leaf[cmddecl.NativeOperation]{
 				Name:    "run",
 				Summary: "Run.",
-				Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+				Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 			},
 			host.RPCHandlerFunc(func(context.Context, host.RPCInvocation, host.RPCPort) (uint8, error) {
 				return 0, errors.New("manifest data must not be invoked")
@@ -52,7 +52,7 @@ func TestPluginGroupsComposeAndCallsReceiveOwnPath(t *testing.T) {
 	wireMust(t, err)
 	var roots []string
 	for _, node := range set.Commands.Declarations() {
-		roots = append(roots, commanddecl.Name(node))
+		roots = append(roots, cmddecl.Name(node))
 	}
 	if !reflect.DeepEqual(roots, []string{"demi", "lint"}) {
 		t.Fatalf("roots: %v", roots)
@@ -113,12 +113,12 @@ func TestPluginUnservedNativeTreeIsOmittedWhole(t *testing.T) {
 		backendtest.ProbeCommand(
 			"served",
 			plugin.PlacementDemi,
-			&commanddecl.NativeOperation{Package: "demi.file", Operation: "file.read"},
+			&cmddecl.NativeOperation{Package: "demi.file", Operation: "file.read"},
 		),
 		backendtest.ProbeCommand(
 			"unserved",
 			plugin.PlacementDemi,
-			&commanddecl.NativeOperation{Package: "demi.missing", Operation: "run"},
+			&cmddecl.NativeOperation{Package: "demi.missing", Operation: "run"},
 		),
 	)
 	p.Declaration.Profiles = []types.Profile{{Name: "explorer", Description: "A profile.", CanSpawnSubagents: true}}

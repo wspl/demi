@@ -11,27 +11,27 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/host/hosttest"
 )
 
 // Command scenarios are in memory and cost less than one second; no external programs run.
-func schema(t *testing.T, data []byte) *commanddecl.Schema {
+func schema(t *testing.T, data []byte) *cmddecl.Schema {
 	t.Helper()
-	s, err := commanddecl.NewSchema(data)
+	s, err := cmddecl.NewSchema(data)
 	if err != nil {
 		t.Fatal(err)
 	}
 	return s
 }
 
-func rpcLeaf(name string) commanddecl.Leaf[commanddecl.NativeOperation] {
-	return commanddecl.Leaf[commanddecl.NativeOperation]{
+func rpcLeaf(name string) cmddecl.Leaf[cmddecl.NativeOperation] {
+	return cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:    name,
 		Summary: "Add.",
-		Kind:    &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Kind:    &cmddecl.RPC[cmddecl.NativeOperation]{},
 	}
 }
 
@@ -77,13 +77,13 @@ func todo(t *testing.T) host.Declared {
 	add.Input = schema(t, hosttest.AddArgsJSONSchema())
 	positionals := []string{"text"}
 	add.Positionals = &positionals
-	add.Output = &commanddecl.LeafOutput{JSON: schema(t, hosttest.ReplyJSONSchema())}
-	read := commanddecl.Leaf[commanddecl.NativeOperation]{
+	add.Output = &cmddecl.LeafOutput{JSON: schema(t, hosttest.ReplyJSONSchema())}
+	read := cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:    "read",
 		Summary: "Read a file.",
 		Input:   add.Input,
-		Kind: &commanddecl.Native[commanddecl.NativeOperation]{
-			Binding: commanddecl.NativeOperation{Package: "demi.file", Operation: "file.read"},
+		Kind: &cmddecl.Native[cmddecl.NativeOperation]{
+			Binding: cmddecl.NativeOperation{Package: "demi.file", Operation: "file.read"},
 		},
 	}
 	return host.Group(
@@ -140,7 +140,7 @@ func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 	fieldCount, fieldText := "count", "text"
 	base := rpcLeaf("add")
 	base.Input = args
-	with := func(f func(*commanddecl.Leaf[commanddecl.NativeOperation])) host.Declared {
+	with := func(f func(*cmddecl.Leaf[cmddecl.NativeOperation])) host.Declared {
 		leaf := base
 		f(&leaf)
 		return host.Leaf(leaf, addHandler())
@@ -152,31 +152,31 @@ func TestRegistrationRefusesReservedTakenMalformedAndUnbound(t *testing.T) {
 		{host.Leaf(rpcLeaf("add"), nil), `"demi add" has no handler`},
 		{host.Group("empty", "Empty."), "no subcommands"},
 		{host.Leaf(rpcLeaf("bad name"), addHandler()), "invalid command name"},
-		{with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
+		{with(func(l *cmddecl.Leaf[cmddecl.NativeOperation]) {
 			l.Positionals = &missing
 		}), "missing"},
 		{
-			with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
+			with(func(l *cmddecl.Leaf[cmddecl.NativeOperation]) {
 				l.StdinField = &fieldCount
 			}),
 			"stdin input must be a string",
 		},
 		{
-			with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
+			with(func(l *cmddecl.Leaf[cmddecl.NativeOperation]) {
 				l.Positionals = &text
 				l.StdinField = &fieldText
 			}),
 			"multiple input sources for text",
 		},
 		{
-			with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
+			with(func(l *cmddecl.Leaf[cmddecl.NativeOperation]) {
 				l.Positionals = &count
 			}),
 			"required positional follows optional positional",
 		},
-		{with(func(l *commanddecl.Leaf[commanddecl.NativeOperation]) {
-			l.Kind = &commanddecl.Native[commanddecl.NativeOperation]{
-				Binding: commanddecl.NativeOperation{Package: "demi.file", Operation: "file.read"},
+		{with(func(l *cmddecl.Leaf[cmddecl.NativeOperation]) {
+			l.Kind = &cmddecl.Native[cmddecl.NativeOperation]{
+				Binding: cmddecl.NativeOperation{Package: "demi.file", Operation: "file.read"},
 			}
 		}), "takes no handler"},
 		{host.Leaf(base, addHandler()).Describe("absent", "x"), "absent"},
@@ -238,7 +238,7 @@ func TestHelpDefaultsAndEveryRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	root := s.Declarations()[0].Help("demi")
-	if s.RenderHelp() != commanddecl.HelpDefaults+"\n\n"+root ||
+	if s.RenderHelp() != cmddecl.HelpDefaults+"\n\n"+root ||
 		!strings.Contains(root, "demi todo add <text> [--count <count>] [--json]") ||
 		!strings.Contains(root, "How many copies") {
 		t.Fatal(s.RenderHelp())
@@ -376,8 +376,8 @@ func TestGraftAndFilterKeepBindingsAtomic(t *testing.T) {
 	}
 	names := func(s *host.CommandSet) []string {
 		var result []string
-		for _, n := range s.Declarations()[0].(*commanddecl.Group[commanddecl.NativeOperation]).Subcommands {
-			result = append(result, commanddecl.Name(n))
+		for _, n := range s.Declarations()[0].(*cmddecl.Group[cmddecl.NativeOperation]).Subcommands {
+			result = append(result, cmddecl.Name(n))
 		}
 		return result
 	}
@@ -436,7 +436,7 @@ func TestDescriptionReplacementAndServedDeclarations(t *testing.T) {
 	if err := s.Register(declared); err != nil {
 		t.Fatal(err)
 	}
-	updated := s.Declarations()[0].(*commanddecl.Leaf[commanddecl.NativeOperation])
+	updated := s.Declarations()[0].(*cmddecl.Leaf[cmddecl.NativeOperation])
 	if !strings.Contains(string(updated.Input.Document()), "How many copies; default 2.") ||
 		strings.Contains(string(leaf.Input.Document()), "default 2") {
 		t.Fatal("description failed or mutated source")
@@ -466,7 +466,7 @@ func TestDescriptionKeepsPropertyOrderAndFirstRefusal(t *testing.T) {
 	if err := set.Register(host.Leaf(leaf, addHandler()).Describe("z", "Dynamic")); err != nil {
 		t.Fatal(err)
 	}
-	doc := string(set.Declarations()[0].(*commanddecl.Leaf[commanddecl.NativeOperation]).Input.Document())
+	doc := string(set.Declarations()[0].(*cmddecl.Leaf[cmddecl.NativeOperation]).Input.Document())
 	if strings.Index(doc, `"z"`) > strings.Index(doc, `"a"`) {
 		t.Fatalf("properties reordered: %s", doc)
 	}

@@ -18,8 +18,8 @@ import (
 	"github.com/wspl/demi/internal/artifacts"
 	"github.com/wspl/demi/internal/artifacts/artifactstest"
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/provider/providertest"
 )
@@ -108,7 +108,7 @@ func TestAnAgentDrivesChromeOnAPairedDeviceWhichTheUserWatchesUntilRelease(t *te
 	laptop := s.pair("laptop")
 	pinned, err := browserproto.PinnedRelease()
 	wireMust(t, err)
-	target, err := commandproto.HostTarget()
+	target, err := cmdproto.HostTarget()
 	wireMust(t, err)
 	platform, ok := pinned.Platform(string(target))
 	if !ok {

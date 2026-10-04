@@ -20,7 +20,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/backendtest"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/gates"
 	browserplugin "github.com/wspl/demi/internal/plugin/browser"

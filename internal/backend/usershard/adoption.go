@@ -12,7 +12,7 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/runnerproto"
 	"github.com/wspl/demi/internal/types"
@@ -93,7 +93,7 @@ func (p shardPolicy) GrowVolume(ctx context.Context, volume runnerproto.VolumeNa
 func (p shardPolicy) ReserveNumbers(
 	ctx context.Context,
 	conversation string,
-	sequence commandproto.ServiceSequence,
+	sequence cmdproto.ServiceSequence,
 	count uint32,
 ) (uint64, error) {
 	id, err := webapiproto.ParseConversationID(conversation)

@@ -3,8 +3,8 @@ package process
 import (
 	"context"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -15,7 +15,7 @@ type JobCommands struct {
 	// Roots is the root commands the job's manifest declares.
 	Roots []string
 	// Handler runs the declared root invocations.
-	Handler commandsdk.Handler[commandproto.LocalInvocation]
+	Handler cmdsdk.Handler[cmdproto.LocalInvocation]
 }
 
 // JobStart supplies what a job starts with. The context passed to JobShell.Start
@@ -32,7 +32,7 @@ type JobStart struct {
 	// Commands supplies the declared roots and invocation handler.
 	Commands *JobCommands
 	// Edits records the files the job changes.
-	Edits *commandsdk.Recorder
+	Edits *cmdsdk.Recorder
 }
 
 // JobShell runs the runner's jobs without exposing its interpreter.

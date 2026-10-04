@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"golang.org/x/sys/unix"
 )
 
@@ -16,7 +16,7 @@ func standardFile(ctx context.Context, descriptor uint32) (*os.File, error) {
 	if fd > 1 {
 		fd = 2
 	}
-	duplicate, err := commandsdk.Retry(
+	duplicate, err := cmdsdk.Retry(
 		ctx,
 		func() (int, error) {
 			return unix.FcntlInt(uintptr(fd), unix.F_DUPFD_CLOEXEC, 0)

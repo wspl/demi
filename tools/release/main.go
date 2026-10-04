@@ -10,7 +10,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 )
 
 const help = `The repository's development commands

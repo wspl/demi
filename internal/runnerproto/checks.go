@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 )
 
@@ -55,7 +55,7 @@ func validateRPCCall(message RPCCall) error {
 
 // validateArtifactResolve checks the native target's release name.
 func validateArtifactResolve(message ArtifactResolve) error {
-	if !commandproto.IsTarget(message.Target) {
+	if !cmdproto.IsTarget(message.Target) {
 		return fmt.Errorf("invalid target: %s", message.Target)
 	}
 	return nil
@@ -63,7 +63,7 @@ func validateArtifactResolve(message ArtifactResolve) error {
 
 // validateRunnerInfo checks the runner's native target when supplied.
 func validateRunnerInfo(info Info) error {
-	if info.NativeTarget != nil && !commandproto.IsTarget(*info.NativeTarget) {
+	if info.NativeTarget != nil && !cmdproto.IsTarget(*info.NativeTarget) {
 		return fmt.Errorf("invalid target: %s", *info.NativeTarget)
 	}
 	return nil

@@ -16,7 +16,7 @@ import (
 	"github.com/wspl/demi/internal/machinemanager/storage"
 	"github.com/wspl/demi/internal/machinemanager/system"
 	"github.com/wspl/demi/internal/machinemanager/system/systemtest"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Cost: one small ext4 mount and the installer's systemd verification, <1 s normally.
@@ -30,7 +30,7 @@ func TestInstallerWritesValidUnitAndSettings(t *testing.T) {
 	}
 	script := filepath.Join(filepath.Dir(source), "../../scripts/machines/install-managed-hosts.sh")
 	directory := t.TempDir()
-	architecture, ok := machinemanagerproto.HostArchitecture()
+	architecture, ok := machineproto.HostArchitecture()
 	if !ok {
 		t.Fatal("unsupported architecture")
 	}

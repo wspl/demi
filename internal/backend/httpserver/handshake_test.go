@@ -12,7 +12,7 @@ import (
 	"github.com/wspl/demi/internal/backend/hostaccess"
 	"github.com/wspl/demi/internal/backend/runners"
 	"github.com/wspl/demi/internal/backend/usershard"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/types"
 	"github.com/wspl/demi/internal/webapiproto"
 )
@@ -46,13 +46,13 @@ func TestBadUserStreamHandshakeNeverReachesAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	native, err := runners.NewNativeCatalog(
-		[]commandproto.PackageDescriptor{
+		[]cmdproto.PackageDescriptor{
 			{
 				ID:              "example.commands",
 				Version:         "1",
 				ProtocolVersion: 1,
 				Operations:      []string{"fixture"},
-				Targets:         map[string]commandproto.PackageArtifact{},
+				Targets:         map[string]cmdproto.PackageArtifact{},
 			},
 		},
 		&runners.UnpublishedStore{},

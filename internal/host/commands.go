@@ -8,22 +8,22 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/contract"
 )
 
 // Declared pairs a command tree with the bindings of its RPC leaves.
 type Declared struct {
-	tree     commanddecl.Node[commanddecl.NativeOperation]
+	tree     cmddecl.Node[cmddecl.NativeOperation]
 	handlers map[string]RPCHandler
 	err      error
 }
 
 // Served binds every RPC leaf of a declaration received as data to one handler.
-func Served(tree commanddecl.Node[commanddecl.NativeOperation], handler RPCHandler) Declared {
+func Served(tree cmddecl.Node[cmddecl.NativeOperation], handler RPCHandler) Declared {
 	d := Declared{tree: cloneNode(tree), handlers: map[string]RPCHandler{}}
-	walkLeaves(d.tree, nil, func(path []string, leaf *commanddecl.Leaf[commanddecl.NativeOperation]) {
-		if _, ok := leaf.Kind.(*commanddecl.RPC[commanddecl.NativeOperation]); ok {
+	walkLeaves(d.tree, nil, func(path []string, leaf *cmddecl.Leaf[cmddecl.NativeOperation]) {
+		if _, ok := leaf.Kind.(*cmddecl.RPC[cmddecl.NativeOperation]); ok {
 			d.handlers[strings.Join(path, " ")] = handler
 		}
 	})
@@ -33,7 +33,7 @@ func Served(tree commanddecl.Node[commanddecl.NativeOperation], handler RPCHandl
 // Group declares a group from its children, using their order.
 func Group(name, summary string, children ...Declared) Declared {
 	d := Declared{handlers: map[string]RPCHandler{}}
-	g := &commanddecl.Group[commanddecl.NativeOperation]{Name: name, Summary: summary}
+	g := &cmddecl.Group[cmddecl.NativeOperation]{Name: name, Summary: summary}
 	for _, child := range children {
 		g.Subcommands = append(g.Subcommands, cloneNode(child.tree))
 		for path, handler := range child.handlers {
@@ -48,7 +48,7 @@ func Group(name, summary string, children ...Declared) Declared {
 }
 
 // Leaf declares a leaf using a struct literal and an optional RPC handler.
-func Leaf(leaf commanddecl.Leaf[commanddecl.NativeOperation], handler RPCHandler) Declared {
+func Leaf(leaf cmddecl.Leaf[cmddecl.NativeOperation], handler RPCHandler) Declared {
 	d := Declared{tree: cloneNode(&leaf), handlers: map[string]RPCHandler{}}
 	if handler != nil {
 		d.handlers[leaf.Name] = handler
@@ -60,7 +60,7 @@ func Leaf(leaf commanddecl.Leaf[commanddecl.NativeOperation], handler RPCHandler
 // It preserves the first refusal, which registration reports.
 func (d Declared) Describe(field, description string) Declared {
 	d.tree = cloneNode(d.tree)
-	leaf, isLeaf := d.tree.(*commanddecl.Leaf[commanddecl.NativeOperation])
+	leaf, isLeaf := d.tree.(*cmddecl.Leaf[cmddecl.NativeOperation])
 	var err error
 	if !isLeaf || leaf.Input == nil {
 		err = fmt.Errorf("describes %s before its input", field)
@@ -69,7 +69,7 @@ func (d Declared) Describe(field, description string) Declared {
 		if rewriteErr != nil {
 			err = fmt.Errorf("describes %s, which its input does not have", field)
 		} else {
-			leaf.Input, err = commanddecl.NewSchema(document)
+			leaf.Input, err = cmddecl.NewSchema(document)
 		}
 	}
 	if d.err == nil {
@@ -134,18 +134,18 @@ func describeSchema(document []byte, path []string, description string) (json.Ra
 // CommandSet holds roots in registration order and their RPC handlers.
 // Its owner serializes mutations with dispatch; declarations returned to callers are copies.
 type CommandSet struct {
-	roots    []commanddecl.Node[commanddecl.NativeOperation]
+	roots    []cmddecl.Node[cmddecl.NativeOperation]
 	handlers map[string]RPCHandler
 }
 
 // Register adds a root atomically after checking declarations and bindings.
 func (s *CommandSet) Register(d Declared) error {
-	name := commanddecl.Name(d.tree)
+	name := cmddecl.Name(d.tree)
 	if IsReserved(name) {
 		return fmt.Errorf("command %q is reserved for shell and system commands", name)
 	}
 	for _, root := range s.roots {
-		if commanddecl.Name(root) == name {
+		if cmddecl.Name(root) == name {
 			return fmt.Errorf("command %q is already registered", name)
 		}
 	}
@@ -169,7 +169,7 @@ func (s *CommandSet) Graft(parent []string, d Declared) error {
 	}
 	index := -1
 	for i, root := range s.roots {
-		if commanddecl.Name(root) == parent[0] {
+		if cmddecl.Name(root) == parent[0] {
 			index = i
 			break
 		}
@@ -179,15 +179,15 @@ func (s *CommandSet) Graft(parent []string, d Declared) error {
 	}
 	root := cloneNode(s.roots[index])
 	node := findNode(root, parent[1:])
-	group, ok := node.(*commanddecl.Group[commanddecl.NativeOperation])
+	group, ok := node.(*cmddecl.Group[cmddecl.NativeOperation])
 	if !ok {
 		return fmt.Errorf("%q is not a group", strings.Join(parent, " "))
 	}
-	name := commanddecl.Name(d.tree)
+	name := cmddecl.Name(d.tree)
 	childIndex := slices.IndexFunc(
 		group.Subcommands,
-		func(n commanddecl.Node[commanddecl.NativeOperation]) bool {
-			return commanddecl.Name(n) == name
+		func(n cmddecl.Node[cmddecl.NativeOperation]) bool {
+			return cmddecl.Name(n) == name
 		},
 	)
 	if childIndex < 0 {
@@ -238,8 +238,8 @@ func (s *CommandSet) Filter(keep func([]string) bool) *CommandSet {
 }
 
 // Declarations returns independent roots in registration order.
-func (s *CommandSet) Declarations() []commanddecl.Node[commanddecl.NativeOperation] {
-	roots := make([]commanddecl.Node[commanddecl.NativeOperation], 0, len(s.roots))
+func (s *CommandSet) Declarations() []cmddecl.Node[cmddecl.NativeOperation] {
+	roots := make([]cmddecl.Node[cmddecl.NativeOperation], 0, len(s.roots))
 	for _, root := range s.roots {
 		roots = append(roots, cloneNode(root))
 	}
@@ -253,9 +253,9 @@ func (s *CommandSet) RenderHelp() string {
 	}
 	roots := make([]string, 0, len(s.roots))
 	for _, root := range s.roots {
-		roots = append(roots, root.Help(commanddecl.Name(root)))
+		roots = append(roots, root.Help(cmddecl.Name(root)))
 	}
-	return commanddecl.HelpDefaults + "\n\n" + strings.Join(roots, "\n\n")
+	return cmddecl.HelpDefaults + "\n\n" + strings.Join(roots, "\n\n")
 }
 
 // Dispatch validates wire arguments without coercion, then invokes the handler.
@@ -270,11 +270,11 @@ func (s *CommandSet) Dispatch(ctx context.Context, invocation RPCInvocation, por
 // Check finds the RPC handler after validating the invocation's arguments.
 func (s *CommandSet) Check(invocation RPCInvocation) (RPCHandler, error) {
 	named := strings.Join(invocation.Path, " ")
-	var leaf *commanddecl.Leaf[commanddecl.NativeOperation]
+	var leaf *cmddecl.Leaf[cmddecl.NativeOperation]
 	if len(invocation.Path) > 0 {
 		for _, root := range s.roots {
-			if commanddecl.Name(root) == invocation.Path[0] {
-				leaf, _ = findNode(root, invocation.Path[1:]).(*commanddecl.Leaf[commanddecl.NativeOperation])
+			if cmddecl.Name(root) == invocation.Path[0] {
+				leaf, _ = findNode(root, invocation.Path[1:]).(*cmddecl.Leaf[cmddecl.NativeOperation])
 				break
 			}
 		}
@@ -292,7 +292,7 @@ func (s *CommandSet) Check(invocation RPCInvocation) (RPCHandler, error) {
 
 // checkDeclared checks a command tree and exactly its RPC bindings.
 func checkDeclared(d Declared) error {
-	name := commanddecl.Name(d.tree)
+	name := cmddecl.Name(d.tree)
 	if d.tree == nil {
 		return fmt.Errorf("command declaration is absent")
 	}
@@ -305,25 +305,25 @@ func checkDeclared(d Declared) error {
 	rpc := map[string]bool{}
 	var paths []string
 	var refused error
-	walkLeaves(d.tree, nil, func(path []string, leaf *commanddecl.Leaf[commanddecl.NativeOperation]) {
+	walkLeaves(d.tree, nil, func(path []string, leaf *cmddecl.Leaf[cmddecl.NativeOperation]) {
 		if refused != nil {
 			return
 		}
 		named := strings.Join(path, " ")
 		paths = append(paths, named)
 		if leaf.Input != nil {
-			if err := commanddecl.CheckInputSubset(leaf.Input); err != nil {
+			if err := cmddecl.CheckInputSubset(leaf.Input); err != nil {
 				refused = fmt.Errorf("%q %w", named, err)
 				return
 			}
 		}
 		switch kind := leaf.Kind.(type) {
-		case *commanddecl.RPC[commanddecl.NativeOperation]:
+		case *cmddecl.RPC[cmddecl.NativeOperation]:
 			if kind != nil {
 				rpc[named] = true
 				return
 			}
-		case *commanddecl.Native[commanddecl.NativeOperation]:
+		case *cmddecl.Native[cmddecl.NativeOperation]:
 			if kind != nil {
 				return
 			}
@@ -348,15 +348,15 @@ func checkDeclared(d Declared) error {
 
 // walkLeaves visits command leaves in declaration order with their root-relative paths.
 func walkLeaves(
-	node commanddecl.Node[commanddecl.NativeOperation],
+	node cmddecl.Node[cmddecl.NativeOperation],
 	path []string,
-	visit func([]string, *commanddecl.Leaf[commanddecl.NativeOperation]),
+	visit func([]string, *cmddecl.Leaf[cmddecl.NativeOperation]),
 ) {
-	path = append(slices.Clone(path), commanddecl.Name(node))
+	path = append(slices.Clone(path), cmddecl.Name(node))
 	switch node := node.(type) {
-	case *commanddecl.Leaf[commanddecl.NativeOperation]:
+	case *cmddecl.Leaf[cmddecl.NativeOperation]:
 		visit(path, node)
-	case *commanddecl.Group[commanddecl.NativeOperation]:
+	case *cmddecl.Group[cmddecl.NativeOperation]:
 		for _, child := range node.Subcommands {
 			walkLeaves(child, path, visit)
 		}
@@ -365,17 +365,17 @@ func walkLeaves(
 
 // findNode resolves a command path below one node.
 func findNode(
-	node commanddecl.Node[commanddecl.NativeOperation],
+	node cmddecl.Node[cmddecl.NativeOperation],
 	path []string,
-) commanddecl.Node[commanddecl.NativeOperation] {
+) cmddecl.Node[cmddecl.NativeOperation] {
 	for _, name := range path {
-		group, ok := node.(*commanddecl.Group[commanddecl.NativeOperation])
+		group, ok := node.(*cmddecl.Group[cmddecl.NativeOperation])
 		if !ok {
 			return nil
 		}
 		node = nil
 		for _, child := range group.Subcommands {
-			if commanddecl.Name(child) == name {
+			if cmddecl.Name(child) == name {
 				node = child
 				break
 			}
@@ -389,18 +389,18 @@ func findNode(
 
 // keepLeaves copies the command subtree accepted by a leaf predicate.
 func keepLeaves(
-	node commanddecl.Node[commanddecl.NativeOperation],
+	node cmddecl.Node[cmddecl.NativeOperation],
 	path []string,
 	keep func([]string) bool,
-) commanddecl.Node[commanddecl.NativeOperation] {
-	path = append(slices.Clone(path), commanddecl.Name(node))
+) cmddecl.Node[cmddecl.NativeOperation] {
+	path = append(slices.Clone(path), cmddecl.Name(node))
 	switch n := node.(type) {
-	case *commanddecl.Leaf[commanddecl.NativeOperation]:
+	case *cmddecl.Leaf[cmddecl.NativeOperation]:
 		if keep(path) {
 			return cloneNode(n)
 		}
-	case *commanddecl.Group[commanddecl.NativeOperation]:
-		group := &commanddecl.Group[commanddecl.NativeOperation]{Name: n.Name, Summary: n.Summary}
+	case *cmddecl.Group[cmddecl.NativeOperation]:
+		group := &cmddecl.Group[cmddecl.NativeOperation]{Name: n.Name, Summary: n.Summary}
 		for _, child := range n.Subcommands {
 			if kept := keepLeaves(child, path, keep); kept != nil {
 				group.Subcommands = append(group.Subcommands, kept)
@@ -414,19 +414,19 @@ func keepLeaves(
 }
 
 // cloneNode gives each command set its own declaration metadata; schemas remain immutable.
-func cloneNode(node commanddecl.Node[commanddecl.NativeOperation]) commanddecl.Node[commanddecl.NativeOperation] {
+func cloneNode(node cmddecl.Node[cmddecl.NativeOperation]) cmddecl.Node[cmddecl.NativeOperation] {
 	switch n := node.(type) {
-	case *commanddecl.Group[commanddecl.NativeOperation]:
+	case *cmddecl.Group[cmddecl.NativeOperation]:
 		if n == nil {
 			return nil
 		}
 		g := *n
-		g.Subcommands = make([]commanddecl.Node[commanddecl.NativeOperation], 0, len(n.Subcommands))
+		g.Subcommands = make([]cmddecl.Node[cmddecl.NativeOperation], 0, len(n.Subcommands))
 		for _, child := range n.Subcommands {
 			g.Subcommands = append(g.Subcommands, cloneNode(child))
 		}
 		return &g
-	case *commanddecl.Leaf[commanddecl.NativeOperation]:
+	case *cmddecl.Leaf[cmddecl.NativeOperation]:
 		if n == nil {
 			return nil
 		}
@@ -457,11 +457,11 @@ func cloneNode(node commanddecl.Node[commanddecl.NativeOperation]) commanddecl.N
 			l.Output = &output
 		}
 		switch k := n.Kind.(type) {
-		case *commanddecl.RPC[commanddecl.NativeOperation]:
+		case *cmddecl.RPC[cmddecl.NativeOperation]:
 			if k != nil {
-				l.Kind = &commanddecl.RPC[commanddecl.NativeOperation]{}
+				l.Kind = &cmddecl.RPC[cmddecl.NativeOperation]{}
 			}
-		case *commanddecl.Native[commanddecl.NativeOperation]:
+		case *cmddecl.Native[cmddecl.NativeOperation]:
 			if k != nil {
 				kind := *k
 				l.Kind = &kind

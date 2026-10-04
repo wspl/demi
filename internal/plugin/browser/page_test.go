@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/plugin/browser"
 	"github.com/wspl/demi/internal/plugin/plugintest"
@@ -80,7 +80,7 @@ func TestEachMethodCallsItsOperationWithoutWakingHost(t *testing.T) {
 		t,
 		func(
 			_ context.Context,
-			operation commanddecl.NativeOperation,
+			operation cmddecl.NativeOperation,
 			args json.RawMessage,
 			_ plugin.CallKind,
 		) (json.RawMessage, error) {
@@ -154,7 +154,7 @@ func TestStoppedHostAndMissingTabs(t *testing.T) {
 		t,
 		func(
 			_ context.Context,
-			operation commanddecl.NativeOperation,
+			operation cmddecl.NativeOperation,
 			_ json.RawMessage,
 			_ plugin.CallKind,
 		) (json.RawMessage, error) {
@@ -234,7 +234,7 @@ func TestPageValidationAndRefusalsDoNotMarkChanges(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			p, demi := world(
 				t,
-				func(context.Context, commanddecl.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
+				func(context.Context, cmddecl.NativeOperation, json.RawMessage, plugin.CallKind) (json.RawMessage, error) {
 					return test.answer, test.failure
 				},
 			)

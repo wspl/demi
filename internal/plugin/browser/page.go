@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+	"github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/webapiproto"

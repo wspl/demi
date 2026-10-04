@@ -8,7 +8,7 @@ import (
 
 	"github.com/wspl/demi/internal/backend/remotehost/remotehosttest"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/host"
 )
 
@@ -65,7 +65,7 @@ func TestRunnerFileListingsAndText(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := large.Truncate(commandproto.EditFileBytes + 1); err != nil {
+	if err := large.Truncate(cmdproto.EditFileBytes + 1); err != nil {
 		_ = large.Close()
 		t.Fatal(err)
 	}

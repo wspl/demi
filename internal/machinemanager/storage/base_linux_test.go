@@ -13,18 +13,18 @@ import (
 
 	"github.com/wspl/demi/internal/machinemanager/storage"
 	"github.com/wspl/demi/internal/machinemanager/storage/storagetest"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Cost: one bsdtar extraction and filesystem sync; normally <1 s in the VM.
 func TestVerifiedBaseImportedOnceUnderManifestDigest(t *testing.T) {
 	tools := storageTools(t)
-	architecture, ok := machinemanagerproto.HostArchitecture()
+	architecture, ok := machineproto.HostArchitecture()
 	if !ok {
 		t.Fatal("unsupported host architecture")
 	}
 	image := storagetest.NewCloudImage(t, storagetest.Entries(), architecture)
-	image.Manifest.Executables["/usr/sbin/init"] = image.Manifest.Executables[machinemanagerproto.InitPath]
+	image.Manifest.Executables["/usr/sbin/init"] = image.Manifest.Executables[machineproto.InitPath]
 	image.Write(t)
 	data, err := os.ReadFile(filepath.Join(image.Directory, "manifest.json"))
 	requireStorage(t, err)
@@ -75,7 +75,7 @@ func TestInvalidReleaseRefusedWithoutStage(t *testing.T) {
 		"escape",
 	} {
 		t.Run(name, func(t *testing.T) {
-			architecture, ok := machinemanagerproto.HostArchitecture()
+			architecture, ok := machineproto.HostArchitecture()
 			if !ok {
 				t.Fatal("unsupported host architecture")
 			}
@@ -88,22 +88,22 @@ func TestInvalidReleaseRefusedWithoutStage(t *testing.T) {
 			case "architecture":
 				runner := manifest.Runner.Targets[manifest.Architecture.Target()]
 				delete(manifest.Runner.Targets, manifest.Architecture.Target())
-				if manifest.Architecture == machinemanagerproto.ArchitectureARM64 {
-					manifest.Architecture = machinemanagerproto.ArchitectureAMD64
+				if manifest.Architecture == machineproto.ArchitectureARM64 {
+					manifest.Architecture = machineproto.ArchitectureAMD64
 				} else {
-					manifest.Architecture = machinemanagerproto.ArchitectureARM64
+					manifest.Architecture = machineproto.ArchitectureARM64
 				}
 				manifest.Runner.Targets[manifest.Architecture.Target()] = runner
 			case "missing-init":
-				delete(manifest.Executables, machinemanagerproto.InitPath)
+				delete(manifest.Executables, machineproto.InitPath)
 			case "absent-executable":
-				manifest.Executables["/usr/bin/demi-helper"] = manifest.Executables[machinemanagerproto.InitPath]
+				manifest.Executables["/usr/bin/demi-helper"] = manifest.Executables[machineproto.InitPath]
 			case "executable-digest":
-				artifact := manifest.Executables[machinemanagerproto.InitPath]
+				artifact := manifest.Executables[machineproto.InitPath]
 				artifact.SHA256 = fmt.Sprintf("%x", sha256.Sum256([]byte("else")))
-				manifest.Executables[machinemanagerproto.InitPath] = artifact
+				manifest.Executables[machineproto.InitPath] = artifact
 			case "escape":
-				manifest.Executables["/usr/bin/escape"] = manifest.Executables[machinemanagerproto.InitPath]
+				manifest.Executables["/usr/bin/escape"] = manifest.Executables[machineproto.InitPath]
 			}
 			image.Write(t)
 			bases := t.TempDir()
@@ -116,12 +116,12 @@ func TestInvalidReleaseRefusedWithoutStage(t *testing.T) {
 				matches = errors.Is(err, storage.ErrArchitecture)
 			case "missing-init":
 				matches = err != nil &&
-					strings.Contains(err.Error(), "Cloud image manifest lacks "+machinemanagerproto.InitPath)
+					strings.Contains(err.Error(), "Cloud image manifest lacks "+machineproto.InitPath)
 			case "absent-executable":
 				matches = errors.Is(err, os.ErrNotExist)
 			case "executable-digest":
 				matches = err != nil &&
-					strings.Contains(err.Error(), "Cloud executable integrity mismatch: "+machinemanagerproto.InitPath)
+					strings.Contains(err.Error(), "Cloud executable integrity mismatch: "+machineproto.InitPath)
 			case "escape":
 				matches = err != nil && strings.Contains(err.Error(), "Invalid image executable path: /usr/bin/escape")
 			}

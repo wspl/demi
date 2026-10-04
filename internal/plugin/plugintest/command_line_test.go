@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/plugin/plugintest"
 )
@@ -12,7 +12,7 @@ import (
 // TestCommandLine checks the test adapter's placement, native pinning and
 // help path against the same declarations used by plugin registration.
 func TestCommandLine(t *testing.T) {
-	node, err := commanddecl.DecodeDeclaration(
+	node, err := cmddecl.DecodeDeclaration(
 		[]byte(
 			`{"name":"file","summary":"Files","subcommands":[{"name":"read","summary":"Read",` +
 				`"kind":"native","binding":{"package":"demi.file","operation":"read"}}]}`,

@@ -5,7 +5,7 @@ import (
 	"errors"
 	"log/slog"
 
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -71,7 +71,7 @@ func (l *Link) reserveNumbers(request *runnerproto.NumbersReserve) {
 type artifactGrant struct {
 	ctx      context.Context
 	resolver ArtifactResolver
-	packages []commandproto.PackageDescriptor
+	packages []cmdproto.PackageDescriptor
 	attached []AttachedArtifact
 }
 
@@ -98,7 +98,7 @@ func (l *Link) grant(owner runnerproto.ArtifactOwner) *artifactGrant {
 		return &artifactGrant{
 			ctx:      stream.ctx,
 			resolver: stream.request.Resolver,
-			packages: []commandproto.PackageDescriptor{stream.request.Package},
+			packages: []cmdproto.PackageDescriptor{stream.request.Package},
 			attached: stream.request.Attached,
 		}
 	}
@@ -137,22 +137,22 @@ func (l *Link) resolveArtifact(request *runnerproto.ArtifactResolve) {
 }
 
 // resolve locates only an attached artifact or one carried by the work's packages.
-func (g *artifactGrant) resolve(digest, target string) (commandproto.ArtifactLocation, error) {
+func (g *artifactGrant) resolve(digest, target string) (cmdproto.ArtifactLocation, error) {
 	for _, attached := range g.attached {
 		if attached.Artifact.SHA256 == digest {
-			if err := commandproto.ValidateArtifactLocation(attached.Location); err != nil {
+			if err := cmdproto.ValidateArtifactLocation(attached.Location); err != nil {
 				return nil, err
 			}
 			return attached.Location, nil
 		}
 	}
 	for _, descriptor := range g.packages {
-		if artifact, ok := descriptor.Carries(commandproto.TargetTriple(target), digest); ok {
+		if artifact, ok := descriptor.Carries(cmdproto.TargetTriple(target), digest); ok {
 			location, err := g.resolver.Resolve(g.ctx, artifact, target)
 			if err != nil {
 				return nil, err
 			}
-			if err := commandproto.ValidateArtifactLocation(location); err != nil {
+			if err := cmdproto.ValidateArtifactLocation(location); err != nil {
 				return nil, err
 			}
 			return location, nil
@@ -163,7 +163,7 @@ func (g *artifactGrant) resolve(digest, target string) (commandproto.ArtifactLoc
 }
 
 // answerArtifact sends a validated location or the refusal's text, and logs a send that fails.
-func (l *Link) answerArtifact(id string, location commandproto.ArtifactLocation, err error) {
+func (l *Link) answerArtifact(id string, location cmdproto.ArtifactLocation, err error) {
 	answer := &runnerproto.ArtifactLocation{ID: id}
 	if err != nil {
 		answer.Error = new(err.Error())

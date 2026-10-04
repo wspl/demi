@@ -12,7 +12,7 @@ import (
 	"github.com/wspl/demi/internal/machinemanager/sandbox"
 	"github.com/wspl/demi/internal/machinemanager/storage"
 	"github.com/wspl/demi/internal/machinemanager/system"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Run recovers and serves until cancellation, then drains every owned operation.
@@ -115,7 +115,7 @@ func serveManager(ctx context.Context, core *Core, namespace *sandbox.SavedNames
 		_ = socket.listener.Close()
 		return err
 	}
-	deaths := make(chan machinemanagerproto.DeviceID, 64)
+	deaths := make(chan machineproto.DeviceID, 64)
 	manager := NewManager(core, base, deaths)
 	limits := "on"
 	if config.Limits == nil {

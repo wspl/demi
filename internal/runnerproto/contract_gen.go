@@ -5,7 +5,7 @@ package runnerproto
 import (
 	"encoding/json"
 	"fmt"
-	commandproto "github.com/wspl/demi/internal/commandproto"
+	cmdproto "github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 )
 
@@ -19,7 +19,7 @@ func contractValidateArtifactLocation(v ArtifactLocation, depth int) error {
 		return contract.At("id", err)
 	}
 	if v.Location != nil {
-		if err := commandproto.ValidateArtifactLocation((*v.Location)); err != nil {
+		if err := cmdproto.ValidateArtifactLocation((*v.Location)); err != nil {
 			return contract.At("location", err)
 		}
 	}
@@ -2256,8 +2256,8 @@ func (v *Manifest) UnmarshalJSON(data []byte) error {
 			return contract.At("packages", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) (map[string]commandproto.PackageDescriptor, error) {
-				return contract.Record(b, contract.Decode[commandproto.PackageDescriptor], false)
+			value, err := func(b []byte) (map[string]cmdproto.PackageDescriptor, error) {
+				return contract.Record(b, contract.Decode[cmdproto.PackageDescriptor], false)
 			}(raw)
 			if err != nil {
 				return contract.At("packages", err)
@@ -2880,8 +2880,8 @@ func (v *Release) UnmarshalJSON(data []byte) error {
 			return contract.At("targets", fmt.Errorf("required field is absent"))
 		}
 		if ok {
-			value, err := func(b []byte) (map[string]commandproto.PackageArtifact, error) {
-				return contract.Record(b, contract.Decode[commandproto.PackageArtifact], false)
+			value, err := func(b []byte) (map[string]cmdproto.PackageArtifact, error) {
+				return contract.Record(b, contract.Decode[cmdproto.PackageArtifact], false)
 			}(raw)
 			if err != nil {
 				return contract.At("targets", err)
@@ -3542,8 +3542,8 @@ func (v *ArtifactLocation) UnmarshalMsgpack(data []byte) error {
 		raw, present := obj["location"]
 		delete(obj, "location")
 		if present {
-			value, err := func(b []byte) (*commandproto.ArtifactLocation, error) {
-				return contract.Pointer(b, commandproto.DecodeArtifactLocationMsgpack)
+			value, err := func(b []byte) (*cmdproto.ArtifactLocation, error) {
+				return contract.Pointer(b, cmdproto.DecodeArtifactLocationMsgpack)
 			}(raw)
 			if err != nil {
 				return contract.At("location", err)
@@ -8238,7 +8238,7 @@ func (v *JobFileChange) UnmarshalMsgpack(data []byte) error {
 			return contract.At("kind", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := contract.DecodeMsgpack[commandproto.EditKind](raw)
+			value, err := contract.DecodeMsgpack[cmdproto.EditKind](raw)
 			if err != nil {
 				return contract.At("kind", err)
 			}
@@ -8252,8 +8252,8 @@ func (v *JobFileChange) UnmarshalMsgpack(data []byte) error {
 			return contract.At("edits", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := func(b []byte) ([]commandproto.EditCopies, error) {
-				return contract.MsgpackList(b, contract.DecodeMsgpack[commandproto.EditCopies])
+			value, err := func(b []byte) ([]cmdproto.EditCopies, error) {
+				return contract.MsgpackList(b, contract.DecodeMsgpack[cmdproto.EditCopies])
 			}(raw)
 			if err != nil {
 				return contract.At("edits", err)
@@ -8848,7 +8848,7 @@ func (v *JobStart) UnmarshalMsgpack(data []byte) error {
 			return contract.At("context", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := contract.DecodeMsgpack[commandproto.Context](raw)
+			value, err := contract.DecodeMsgpack[cmdproto.Context](raw)
 			if err != nil {
 				return contract.At("context", err)
 			}
@@ -9836,7 +9836,7 @@ func (v *NumbersReserve) UnmarshalMsgpack(data []byte) error {
 			return contract.At("sequence", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := contract.DecodeMsgpack[commandproto.ServiceSequence](raw)
+			value, err := contract.DecodeMsgpack[cmdproto.ServiceSequence](raw)
 			if err != nil {
 				return contract.At("sequence", err)
 			}
@@ -11187,7 +11187,7 @@ func (v *ServiceOpen) UnmarshalMsgpack(data []byte) error {
 			return contract.At("context", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := contract.DecodeMsgpack[commandproto.Context](raw)
+			value, err := contract.DecodeMsgpack[cmdproto.Context](raw)
 			if err != nil {
 				return contract.At("context", err)
 			}
@@ -11201,7 +11201,7 @@ func (v *ServiceOpen) UnmarshalMsgpack(data []byte) error {
 			return contract.At("package", fmt.Errorf("required field is absent"))
 		}
 		if present {
-			value, err := contract.DecodeMsgpack[commandproto.PackageDescriptor](raw)
+			value, err := contract.DecodeMsgpack[cmdproto.PackageDescriptor](raw)
 			if err != nil {
 				return contract.At("package", err)
 			}

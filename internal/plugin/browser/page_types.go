@@ -3,7 +3,7 @@
 
 package browser
 
-import "github.com/wspl/demi/internal/commandpackage/browser/browserproto"
+import "github.com/wspl/demi/internal/cmdpkg/browser/browserproto"
 
 //go:generate go run github.com/wspl/demi/tools/contractgen
 

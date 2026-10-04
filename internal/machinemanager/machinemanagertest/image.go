@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/machinemanager/storage/storagetest"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 )
 
 // Entry is a Cloud archive entry supplied by storage's fixture owner.
@@ -22,7 +22,7 @@ func Entries() []Entry {
 func NewCloudImage(
 	t *testing.T,
 	entries []Entry,
-	architecture machinemanagerproto.Architecture,
+	architecture machineproto.Architecture,
 	executables ...Entry,
 ) *CloudImage {
 	t.Helper()

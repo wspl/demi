@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"golang.org/x/sys/windows"
 )
 
@@ -13,7 +13,7 @@ import (
 type borrowedFile struct{ *os.File }
 
 func borrowFile(ctx context.Context, file *os.File) (io.ReadWriteCloser, error) {
-	return commandsdk.Retry(ctx, func() (io.ReadWriteCloser, error) {
+	return cmdsdk.Retry(ctx, func() (io.ReadWriteCloser, error) {
 		raw, err := file.SyscallConn()
 		if err != nil {
 			return nil, err

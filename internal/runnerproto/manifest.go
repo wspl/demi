@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/wspl/demi/internal/commanddecl"
-	"github.com/wspl/demi/internal/commandproto"
+	"github.com/wspl/demi/internal/cmddecl"
+	"github.com/wspl/demi/internal/cmdproto"
 	"github.com/wspl/demi/internal/contract"
 )
 
@@ -17,7 +17,7 @@ type Manifest struct {
 	Hash  string          `json:"hash"`
 	Roots map[string]Root `json:"roots"`
 	// Each package descriptor, under its digest.
-	Packages map[string]commandproto.PackageDescriptor `json:"packages"`
+	Packages map[string]cmdproto.PackageDescriptor `json:"packages"`
 }
 
 // Root holds a command tree, decoded through declare when the manifest is verified.
@@ -28,10 +28,10 @@ type Root struct {
 // BuildManifest files package descriptors under their digests, pins native
 // declarations to them, validates the trees, and hashes the manifest.
 func BuildManifest(
-	roots []commanddecl.Node[commanddecl.NativeOperation],
-	packages []commandproto.PackageDescriptor,
+	roots []cmddecl.Node[cmddecl.NativeOperation],
+	packages []cmdproto.PackageDescriptor,
 ) (Manifest, error) {
-	manifest := Manifest{Roots: make(map[string]Root), Packages: make(map[string]commandproto.PackageDescriptor)}
+	manifest := Manifest{Roots: make(map[string]Root), Packages: make(map[string]cmdproto.PackageDescriptor)}
 	digests := make(map[string]string)
 	for _, descriptor := range packages {
 		digest, err := descriptor.Digest()
@@ -45,7 +45,7 @@ func BuildManifest(
 		manifest.Packages[digest] = descriptor
 	}
 	for _, root := range roots {
-		tree, err := commanddecl.Pin(root, func(operation commanddecl.NativeOperation) (string, error) {
+		tree, err := cmddecl.Pin(root, func(operation cmddecl.NativeOperation) (string, error) {
 			digest, ok := digests[operation.Package]
 			if !ok {
 				return "", fmt.Errorf("command package is not configured: %s", operation.Package)
@@ -61,7 +61,7 @@ func BuildManifest(
 		if err := tree.Validate(); err != nil {
 			return Manifest{}, fmt.Errorf("validate root: %w", err)
 		}
-		name := commanddecl.Name(tree)
+		name := cmddecl.Name(tree)
 		if _, exists := manifest.Roots[name]; exists {
 			return Manifest{}, fmt.Errorf("duplicate root command: %s", name)
 		}
@@ -94,11 +94,11 @@ func verifyManifest(manifest Manifest) error {
 		ids[descriptor.ID] = true
 	}
 	for name, root := range manifest.Roots {
-		tree, err := commanddecl.DecodeManifestNode(root.Tree)
+		tree, err := cmddecl.DecodeManifestNode(root.Tree)
 		if err != nil {
 			return fmt.Errorf("root %s: %w", name, err)
 		}
-		if name != commanddecl.Name(tree) {
+		if name != cmddecl.Name(tree) {
 			return fmt.Errorf("manifest root name mismatch")
 		}
 		if err := tree.Validate(); err != nil {
@@ -127,5 +127,5 @@ func verifyManifest(manifest Manifest) error {
 
 // manifestHash excludes the claimed hash from the canonical digest.
 func manifestHash(manifest Manifest) (string, error) {
-	return commandproto.CanonicalDigest(map[string]any{"roots": manifest.Roots, "packages": manifest.Packages})
+	return cmdproto.CanonicalDigest(map[string]any{"roots": manifest.Roots, "packages": manifest.Packages})
 }

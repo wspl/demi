@@ -60,7 +60,7 @@ rebuild the live transcript from patches: the web app's patch applier is the
 only one, so the [web app contract suite](#web-app-contract-suite) compares
 live with cold.
 
-The scripted machine manager speaks the manager protocol (`internal/machinemanagerproto`) as the real one does:
+The scripted machine manager speaks the manager protocol (`internal/machineproto`) as the real one does:
 operations of one device run in arrival order, requests on a connection are
 answered as they finish, and a death reaches every connection. It starts the
 same runner as a local process with the boot record's backend URL and token,

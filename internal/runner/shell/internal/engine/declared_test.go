@@ -10,8 +10,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/commandsdk"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/cmdsdk"
 	"github.com/wspl/demi/internal/runner/process"
 	"github.com/wspl/demi/internal/runner/shell/internal/engine"
 	"github.com/wspl/demi/internal/runnerproto"
@@ -28,14 +28,14 @@ func (*recordingHandler) Operations() []string {
 
 func (h *recordingHandler) Invoke(
 	ctx context.Context,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
-) (commandproto.Completion, error) {
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+) (cmdproto.Completion, error) {
 	if invocation.Request.Operation != process.Raw {
-		return commandproto.Completion{}, errors.New("declared command did not invoke raw")
+		return cmdproto.Completion{}, errors.New("declared command did not invoke raw")
 	}
 	raw, err := process.DecodeRawCommand(invocation.Request.Args)
 	if err != nil {
-		return commandproto.Completion{}, err
+		return cmdproto.Completion{}, err
 	}
 	h.mu.Lock()
 	h.requests = append(h.requests, raw)
@@ -44,14 +44,14 @@ func (h *recordingHandler) Invoke(
 		b, err := invocation.Input.Next(ctx)
 		if len(b) > 0 {
 			if err := invocation.Output.Stdout(ctx, b); err != nil {
-				return commandproto.Completion{}, err
+				return cmdproto.Completion{}, err
 			}
 		}
 		if errors.Is(err, io.EOF) {
-			return commandproto.Completion{ExitCode: 7}, nil
+			return cmdproto.Completion{ExitCode: 7}, nil
 		}
 		if err != nil {
-			return commandproto.Completion{}, err
+			return cmdproto.Completion{}, err
 		}
 	}
 }
@@ -153,8 +153,8 @@ func (h *stoppedInputHandler) Waiting(delta int) {
 
 func (h *stoppedInputHandler) Invoke(
 	ctx context.Context,
-	invocation commandsdk.InvocationContext[commandproto.LocalInvocation],
-) (commandproto.Completion, error) {
+	invocation cmdsdk.InvocationContext[cmdproto.LocalInvocation],
+) (cmdproto.Completion, error) {
 	inputCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	done := make(chan error, 1)
@@ -171,15 +171,15 @@ func (h *stoppedInputHandler) Invoke(
 	cancel()
 	err := <-done
 	if !errors.Is(err, context.Canceled) {
-		return commandproto.Completion{}, errors.New("input read did not return cancellation")
+		return cmdproto.Completion{}, errors.New("input read did not return cancellation")
 	}
 	if ctx.Err() != nil {
-		return commandproto.Completion{}, errors.New("input read waited for outer command cancellation")
+		return cmdproto.Completion{}, errors.New("input read waited for outer command cancellation")
 	}
 	// Only supply bytes after the canceled read has ended. The next shell
 	// command must receive them, with no abandoned reader consuming them.
 	_, err = h.writer.WriteString("still readable\n")
-	return commandproto.Completion{}, err
+	return cmdproto.Completion{}, err
 }
 
 // One in-process shell and pipe; normally finishes in milliseconds.

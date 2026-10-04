@@ -11,23 +11,23 @@ import (
 
 	"github.com/wspl/demi/internal/agent/store"
 	"github.com/wspl/demi/internal/agent/tools"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/host"
 	"github.com/wspl/demi/internal/types"
 )
 
 func (t *Tree[H]) shellGroup() (host.Declared, error) {
 	shape := shellOutputContract()
-	input, err := commanddecl.NewSchema(shape.input)
+	input, err := cmddecl.NewSchema(shape.input)
 	if err != nil {
 		return host.Declared{}, err
 	}
-	leaf := commanddecl.Leaf[commanddecl.NativeOperation]{
+	leaf := cmddecl.Leaf[cmddecl.NativeOperation]{
 		Name:        "output",
 		Summary:     shellOutputSummary,
 		Input:       input,
 		Positionals: new([]string{"id"}),
-		Kind:        &commanddecl.RPC[commanddecl.NativeOperation]{},
+		Kind:        &cmddecl.RPC[cmddecl.NativeOperation]{},
 		SuccessOutput: new(
 			"the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out",
 		),

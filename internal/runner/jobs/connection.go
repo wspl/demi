@@ -6,8 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/wspl/demi/internal/commandproto"
-	"github.com/wspl/demi/internal/runner/commandpackages"
+	"github.com/wspl/demi/internal/cmdproto"
+	"github.com/wspl/demi/internal/runner/cmdpkgs"
 	"github.com/wspl/demi/internal/runnerproto"
 )
 
@@ -56,19 +56,19 @@ func (h *Connection) Locate(
 	ctx context.Context,
 	owner runnerproto.ArtifactOwner,
 	sha256 string,
-) (commandproto.ArtifactLocation, error) {
+) (cmdproto.ArtifactLocation, error) {
 	wait, cancel := context.WithCancel(ctx)
 	defer cancel()
 	q := &LocateQuestion{Owner: owner, SHA256: sha256, ready: make(chan struct{})}
 	if err := h.request(wait, &AskRequest{Question: q, Abandoned: wait}); err != nil {
-		return nil, &commandpackages.RuntimeError{Kind: commandpackages.Cancelled, Cause: err}
+		return nil, &cmdpkgs.RuntimeError{Kind: cmdpkgs.Cancelled, Cause: err}
 	}
 	if err := h.waitAnswer(wait, q.ready, "artifact location"); err != nil {
 		return nil, err
 	}
 	if q.err != nil {
-		return nil, &commandpackages.RuntimeError{
-			Kind:   commandpackages.LocationFailure,
+		return nil, &cmdpkgs.RuntimeError{
+			Kind:   cmdpkgs.LocationFailure,
 			Detail: q.err.Error(),
 			Cause:  q.err,
 		}
@@ -82,7 +82,7 @@ func (h *Connection) Locate(
 func (h *Connection) RegisterContext(
 	ctx context.Context,
 	execution *ExecutionContext,
-	leases []*commandpackages.ServiceLease,
+	leases []*cmdpkgs.ServiceLease,
 ) error {
 	r := &ContextRequest{
 		ctx:        ctx,
@@ -111,14 +111,14 @@ func (h *Connection) RegisterContext(
 func (h *Connection) Reserve(
 	ctx context.Context,
 	conversation string,
-	sequence commandproto.ServiceSequence,
+	sequence cmdproto.ServiceSequence,
 	count uint32,
 ) (uint64, error) {
 	wait, cancel := context.WithCancel(ctx)
 	defer cancel()
 	q := &ReserveQuestion{Conversation: conversation, Sequence: sequence, Count: count, ready: make(chan struct{})}
 	if err := h.request(wait, &AskRequest{Question: q, Abandoned: wait}); err != nil {
-		return 0, &commandpackages.RuntimeError{Kind: commandpackages.Cancelled, Cause: err}
+		return 0, &cmdpkgs.RuntimeError{Kind: cmdpkgs.Cancelled, Cause: err}
 	}
 	if err := h.waitAnswer(wait, q.ready, "conversation numbers"); err != nil {
 		return 0, err
@@ -134,19 +134,19 @@ func (h *Connection) waitAnswer(ctx context.Context, ready <-chan struct{}, what
 	case <-ready:
 		return nil
 	case <-h.Done():
-		return &commandpackages.RuntimeError{Kind: commandpackages.Cancelled, Cause: context.Canceled}
+		return &cmdpkgs.RuntimeError{Kind: cmdpkgs.Cancelled, Cause: context.Canceled}
 	case <-ctx.Done():
-		return &commandpackages.RuntimeError{Kind: commandpackages.Cancelled, Cause: ctx.Err()}
+		return &cmdpkgs.RuntimeError{Kind: cmdpkgs.Cancelled, Cause: ctx.Err()}
 	case <-timer.C:
-		return &commandpackages.RuntimeError{
-			Kind:   commandpackages.Deadline,
+		return &cmdpkgs.RuntimeError{
+			Kind:   cmdpkgs.Deadline,
 			Detail: what,
 			Cause:  context.DeadlineExceeded,
 		}
 	}
 }
 
-var _ commandpackages.NumberSource = (*Connection)(nil)
+var _ cmdpkgs.NumberSource = (*Connection)(nil)
 
 // Request is work waiting for the composition's connection owner.
 // The owner handles queued registrations before routing backend replies.
@@ -188,7 +188,7 @@ type ContextRequest struct {
 	ctx        context.Context
 	connection context.Context
 	execution  *ExecutionContext
-	leases     []*commandpackages.ServiceLease
+	leases     []*cmdpkgs.ServiceLease
 	ready      chan struct{}
 	finished   bool
 	err        error
@@ -232,7 +232,7 @@ type LocateQuestion struct {
 	SHA256   string
 	once     sync.Once
 	ready    chan struct{}
-	location commandproto.ArtifactLocation
+	location cmdproto.ArtifactLocation
 	err      error
 }
 
@@ -240,7 +240,7 @@ func (*LocateQuestion) backendQuestion() {}
 
 // Answer delivers the location or failure once without blocking; a departed
 // asker needs no answer. Repeated answers are ignored.
-func (q *LocateQuestion) Answer(location commandproto.ArtifactLocation, err error) {
+func (q *LocateQuestion) Answer(location cmdproto.ArtifactLocation, err error) {
 	q.once.Do(func() {
 		q.location = location
 		q.err = err
@@ -253,7 +253,7 @@ type ReserveQuestion struct {
 	// Conversation identifies the conversation requesting numbers.
 	Conversation string
 	// Sequence selects the conversation number sequence.
-	Sequence commandproto.ServiceSequence
+	Sequence cmdproto.ServiceSequence
 	// Count is the number of consecutive values requested.
 	Count uint32
 	once  sync.Once
@@ -374,7 +374,7 @@ func (r *Relay) Ask(request *AskRequest) ([]byte, error) {
 	var message runnerproto.Outbound
 	switch q := request.Question.(type) {
 	case *LocateQuestion:
-		target, err := commandproto.HostTarget()
+		target, err := cmdproto.HostTarget()
 		if err != nil {
 			return nil, err
 		}
@@ -531,7 +531,7 @@ func (r *Relay) answer(id string) Question {
 func (r *Relay) locateAnswer(m *runnerproto.ArtifactLocation) {
 	if q, ok := r.answer(m.ID).(*LocateQuestion); ok {
 		var err error
-		var location commandproto.ArtifactLocation
+		var location cmdproto.ArtifactLocation
 		if m.Location != nil && m.Error == nil {
 			location = *m.Location
 		} else if m.Location == nil && m.Error != nil {

@@ -18,7 +18,7 @@ import (
 	"github.com/wspl/demi/internal/backend/providerhost"
 	"github.com/wspl/demi/internal/backend/remotehost"
 	"github.com/wspl/demi/internal/backend/runners"
-	"github.com/wspl/demi/internal/commanddecl"
+	"github.com/wspl/demi/internal/cmddecl"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/plugin"
 	"github.com/wspl/demi/internal/types"
@@ -242,7 +242,7 @@ func (s *Shard) JobEnded(conversation webapiproto.ConversationID) {
 func (s *Shard) PackageCall(
 	ctx context.Context,
 	conversation webapiproto.ConversationID,
-	operation commanddecl.NativeOperation,
+	operation cmddecl.NativeOperation,
 	args json.RawMessage,
 	kind plugin.CallKind,
 ) (json.RawMessage, error) {

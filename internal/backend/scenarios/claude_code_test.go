@@ -17,7 +17,7 @@ import (
 	"testing"
 
 	"github.com/wspl/demi/internal/backend/backendtest"
-	"github.com/wspl/demi/internal/commandpackage/claudecode/claudecodeproto"
+	"github.com/wspl/demi/internal/cmdpkg/claudecode/claudecodeproto"
 	"github.com/wspl/demi/internal/contract"
 	"github.com/wspl/demi/internal/conversationproto"
 	"github.com/wspl/demi/internal/provider/providertest"

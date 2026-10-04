@@ -192,9 +192,9 @@ Only Uncommitted mode lists files and offers a changed-file tree.
 | Where | Responsibility |
 | --- | --- |
 | `third_party/mvdan-sh` | Route writable redirections in every in-process scope through the job's open handler, preserving it in nested interpreters and executable fallback. |
-| `internal/commandproto` | Define the recording context, the journal and the test of whether bytes are text. |
-| `internal/commandsdk` | Implement the shared bounded recorder with OS locking. |
-| `internal/commandpackage/file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
+| `internal/cmdproto` | Define the recording context, the journal and the test of whether bytes are text. |
+| `internal/cmdsdk` | Implement the shared bounded recorder with OS locking. |
+| `internal/cmdpkg/file` | Record create, edit, patch publication and rollback using the invocation's recorder. |
 | `internal/runner/jobs`, `internal/runner/shell` | Create job recording contexts, associate descriptors with paths, forward redirected external output, finalize reports and share line counting with the working tree. |
 | `internal/runnerproto`, `internal/host`, `internal/backend/remotehost` | Carry the report through command completion. |
 | `internal/backend/usershard` | Store the copies as blobs before tool completion; the blob route serves them. |

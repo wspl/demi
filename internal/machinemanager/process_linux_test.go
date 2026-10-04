@@ -22,7 +22,7 @@ import (
 	"github.com/wspl/demi/internal/machinemanager"
 	"github.com/wspl/demi/internal/machinemanager/machinemanagertest"
 	"github.com/wspl/demi/internal/machinemanager/sandbox"
-	"github.com/wspl/demi/internal/machinemanagerproto"
+	"github.com/wspl/demi/internal/machineproto"
 	"github.com/wspl/demi/internal/programtest"
 	"golang.org/x/sys/unix"
 )
@@ -113,7 +113,7 @@ type processSettings struct {
 
 func settings(t *testing.T) *processSettings {
 	t.Helper()
-	architecture, ok := machinemanagerproto.HostArchitecture()
+	architecture, ok := machineproto.HostArchitecture()
 	if !ok {
 		t.Fatal("unsupported architecture")
 	}
@@ -366,7 +366,7 @@ func TestLimitsOffStartsWithoutCgroups(t *testing.T) {
 	}
 	client := (&serverFixture{path: socket}).connect(t)
 	client.send(t, "{\"id\":\"reconcile\",\"op\":\"reconcile\",\"params\":{}}\n")
-	if reply, ok := client.receive(t).(*machinemanagerproto.OK); !ok || reply.ID != "reconcile" {
+	if reply, ok := client.receive(t).(*machineproto.OK); !ok || reply.ID != "reconcile" {
 		t.Fatalf("reconcile: %+v", reply)
 	}
 	p.stop(t, syscall.SIGTERM)
