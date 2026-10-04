@@ -11,8 +11,10 @@
 #          --output DIR [--work DIR] [--mirror URL] [--ca FILE]
 #
 # apt inside the tree runs with a cleared environment. A builder that reaches
-# the mirror only through an HTTPS proxy sets https_proxy, which apt there
-# then uses too. A builder whose proxy re-signs TLS passes --ca with the bundle
+# the mirror through a proxy, or through a local package cache such as
+# apt-cacher-ng, sets http_proxy or https_proxy, which apt there then uses
+# too; the tree's sources.list keeps the mirror itself.
+# A builder whose proxy re-signs TLS passes --ca with the bundle
 # that holds the proxy's authority, which apt there then trusts instead of the
 # tree's own; the file is gone from the tree when the build ends. debootstrap
 # and the release tool run with the caller's environment.
@@ -87,9 +89,12 @@ in_chroot() {
   chroot "$work" /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     DEBIAN_FRONTEND=noninteractive HOME=/root "$@"
 }
-# What apt inside the tree needs of the caller's network: its HTTPS proxy and
-# the certificate bundle --ca names.
+# What apt inside the tree needs of the caller's network: its HTTP and HTTPS
+# proxies and the certificate bundle --ca names.
 apt_options=()
+if [ -n "${http_proxy:-}" ]; then
+  apt_options+=(-o "Acquire::http::Proxy=$http_proxy")
+fi
 if [ -n "${https_proxy:-}" ]; then
   apt_options+=(-o "Acquire::https::Proxy=$https_proxy")
 fi
