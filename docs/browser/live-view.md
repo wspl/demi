@@ -141,10 +141,11 @@ page                         backend (panel, plugin-browser)            Host
   the list for one conversation one piece of work at a time, so it never
   adds a tab for a browser tab it is opening for a panel tab, and never marks
   a tab closed on a list read before the tab opened.
-- **A Host that cannot be reached.** A stopped Cloud, an offline device, or a
-  lost connection changes no tab. The content keeps what it shows and says
-  over it what is wrong, reconnects by itself where that can help, and offers
-  Retry where it cannot.
+- **A Host that cannot be reached.** An offline device or a lost connection
+  changes no tab: the browser may still run there. The content keeps what it
+  shows and says over it what is wrong, reconnects by itself where that can
+  help, and offers Retry where it cannot. A stopped Cloud is not this case: it
+  keeps no browser, so its tabs are gone from the Host, as above.
 - **A plugin that could not open a browser tab** sets `failure`; the content
   shows the message with Retry, which asks the plugin to open it again.
 - **A user's browser that cannot decode the pictures.** The page decodes the
