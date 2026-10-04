@@ -105,8 +105,6 @@ struct GrokModel {
     #[serde(default)]
     supports_reasoning_effort: Option<bool>,
     #[serde(default)]
-    reasoning_effort: Option<NonEmpty>,
-    #[serde(default)]
     reasoning_efforts: Option<Vec<ReasoningEffort>>,
 }
 
@@ -118,28 +116,18 @@ struct ReasoningEffort {
     id: Option<NonEmpty>,
     #[serde(default)]
     value: Option<NonEmpty>,
-    #[serde(default)]
-    default: Option<bool>,
 }
 
 impl GrokModel {
     fn into_model(self) -> Option<ProviderModel> {
         let id = self.id.or(self.model)?.0;
-        let mut efforts = Vec::new();
-        let mut flagged = None;
-        for effort in self.reasoning_efforts.into_iter().flatten() {
-            let Some(name) = effort.id.or(effort.value) else {
-                continue;
-            };
-            if effort.default == Some(true) && flagged.is_none() {
-                flagged = Some(name.0.clone());
-            }
-            efforts.push(name.0);
-        }
-        // The flagged effort starts, else the model's own, else the first.
-        let default_effort = flagged
-            .or(self.reasoning_effort.map(|effort| effort.0))
-            .or_else(|| efforts.first().cloned());
+        let efforts: Vec<String> = self
+            .reasoning_efforts
+            .into_iter()
+            .flatten()
+            .filter_map(|effort| effort.id.or(effort.value))
+            .map(|name| name.0)
+            .collect();
         let reasoning = self.supports_reasoning_effort == Some(true) || !efforts.is_empty();
         Some(ProviderModel {
             display_name: self.name.map_or_else(|| id.clone(), |name| name.0),
@@ -155,7 +143,6 @@ impl GrokModel {
             accepted_extensions: None,
             supports_reasoning: reasoning.then_some(true),
             supported_thinking_efforts: (!efforts.is_empty()).then_some(efforts),
-            default_thinking_effort: default_effort,
             can_disable_thinking: None,
             service_tiers: Vec::new(),
             default_service_tier_id: None,

@@ -18,8 +18,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -33,7 +32,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -132,7 +130,6 @@
               "low",
               "xhigh"
             ],
-            "defaultEffort": "low",
             "summaries": [],
             "defaultSummary": null
           }
@@ -178,7 +175,6 @@
               "low",
               "xhigh"
             ],
-            "defaultEffort": "low",
             "summaries": [],
             "defaultSummary": null
           }
@@ -214,7 +210,6 @@
               "low",
               "xhigh"
             ],
-            "defaultEffort": "low",
             "summaries": [],
             "defaultSummary": null
           }
@@ -248,8 +243,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -263,7 +257,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -311,8 +304,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -326,7 +318,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -379,8 +370,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -394,7 +384,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -456,8 +445,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -471,7 +459,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -534,8 +521,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -549,7 +535,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -596,8 +581,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -611,7 +595,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -658,8 +641,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -673,7 +655,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -721,8 +702,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -736,7 +716,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -784,8 +763,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -799,7 +777,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -846,8 +823,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -861,7 +837,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -909,8 +884,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -924,7 +898,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -971,8 +944,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -986,7 +958,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1038,8 +1009,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1053,7 +1023,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1195,8 +1164,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1210,7 +1178,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1271,8 +1238,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1286,7 +1252,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1352,8 +1317,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1367,7 +1331,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1428,8 +1391,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1443,7 +1405,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1495,8 +1456,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1510,7 +1470,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1565,8 +1524,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1580,7 +1538,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1628,8 +1585,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1643,7 +1599,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1694,8 +1649,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1709,7 +1663,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"
@@ -1757,8 +1710,7 @@
               "low",
               "medium",
               "high"
-            ],
-            "defaultEffort": "medium"
+            ]
           },
           {
             "type": "budget",
@@ -1772,7 +1724,6 @@
               "low",
               "high"
             ],
-            "defaultEffort": null,
             "summaries": [
               "auto",
               "detailed"

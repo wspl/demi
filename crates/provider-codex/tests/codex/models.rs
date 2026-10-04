@@ -16,7 +16,7 @@ fn fixture() -> Value {
     json!({ "models": [
         {
             "slug": "gpt-5.5", "visibility": "list", "priority": 2, "display_name": "GPT-5.5", "context_window": 272_000,
-            "input_modalities": ["text", "image"], "tool_mode": "default", "default_reasoning_level": "medium",
+            "input_modalities": ["text", "image"], "tool_mode": "default",
             "service_tiers": [{ "id": "priority", "name": "Fast", "description": "1.5x speed, increased usage" }],
             "additional_speed_tiers": ["fast"],
             "supported_reasoning_levels": [{ "effort": "low" }, { "effort": "medium" }, { "effort": "high" }, { "effort": "xhigh" }, { "effort": "ultra" }],
@@ -89,13 +89,7 @@ async fn the_catalog_lists_the_pickers_models_by_priority_with_their_efforts_and
         gpt.supported_thinking_efforts.as_deref(),
         Some(&["low", "medium", "high", "xhigh", "ultra"].map(String::from)[..])
     );
-    assert_eq!(
-        (
-            gpt.default_thinking_effort.as_deref(),
-            gpt.can_disable_thinking
-        ),
-        (Some("medium"), Some(false))
-    );
+    assert_eq!(gpt.can_disable_thinking, Some(false));
     let fast = ServiceTier {
         id: "priority".into(),
         label: "Fast".into(),
@@ -160,12 +154,12 @@ async fn a_catalog_that_cannot_be_read_is_refused_and_one_that_fails_is_unavaila
     malformed["models"][0]["supported_reasoning_levels"] = json!([{ "effort": 3 }]);
     vendor.respond_at(MODELS, answer(&malformed));
     let mut mistyped = fixture();
-    mistyped["models"][0]["default_reasoning_level"] = json!(3);
+    mistyped["models"][0]["default_service_tier"] = json!(3);
     vendor.respond_at(MODELS, answer(&mistyped));
     vendor.respond_at(MODELS, MockResponse::status(503).chunk("overloaded"));
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&vendor, &pool, TransportMode::Sse);
-    for field in ["effort", "default_reasoning_level"] {
+    for field in ["effort", "default_service_tier"] {
         match provider.list_models().await {
             Err(CatalogError::Invalid(message)) => assert!(message.contains(field), "{message}"),
             other => panic!("{other:?}"),

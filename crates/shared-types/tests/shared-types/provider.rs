@@ -19,7 +19,6 @@ fn catalog() -> Value {
             "acceptedExtensions": null,
             "supportsReasoning": true,
             "supportedThinkingEfforts": ["low", "high"],
-            "defaultThinkingEffort": null,
             "canDisableThinking": false,
             "serviceTiers": [{ "id": "priority", "label": "Fast", "description": null, "fast": true }],
             "defaultServiceTierId": null,

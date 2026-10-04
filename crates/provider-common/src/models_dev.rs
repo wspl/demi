@@ -376,7 +376,6 @@ impl ModelsDevModel {
             accepted_extensions: None,
             supports_reasoning: self.reasoning,
             supported_thinking_efforts: self.efforts(),
-            default_thinking_effort: None,
             can_disable_thinking: None,
             service_tiers: Vec::new(),
             default_service_tier_id: None,

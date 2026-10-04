@@ -91,10 +91,6 @@ pub struct ProviderModel {
     #[schemars(with = "Nullable<Vec<String>>")]
     #[garde(skip)]
     pub supported_thinking_efforts: Option<Vec<String>>,
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    #[garde(skip)]
-    pub default_thinking_effort: Option<String>,
     /// Whether thinking can be turned off entirely; a transport that only
     /// levels thinking says no.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -250,7 +246,6 @@ impl ProviderModel {
         };
         vec![ThinkingCapability::Effort {
             efforts: efforts.clone(),
-            default_effort: self.default_thinking_effort.clone(),
             summaries: vec![
                 ThinkingSummary::Auto,
                 ThinkingSummary::Concise,

@@ -382,7 +382,6 @@ mod tests {
                 accepted_extensions: None,
                 supports_reasoning: Some(false),
                 supported_thinking_efforts: None,
-                default_thinking_effort: None,
                 can_disable_thinking: None,
                 service_tiers: Vec::new(),
                 default_service_tier_id: None,

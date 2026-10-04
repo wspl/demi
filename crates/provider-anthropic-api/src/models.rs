@@ -41,7 +41,6 @@ fn model(id: &str, name: &str, output_limit: u32, efforts: &[&str]) -> ProviderM
         accepted_extensions: None,
         supports_reasoning: Some(true),
         supported_thinking_efforts: Some(efforts.iter().map(|effort| (*effort).into()).collect()),
-        default_thinking_effort: None,
         can_disable_thinking: Some(false),
         service_tiers: Vec::new(),
         default_service_tier_id: None,

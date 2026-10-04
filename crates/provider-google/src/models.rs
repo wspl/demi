@@ -40,7 +40,6 @@ fn model(id: &str, name: &str) -> ProviderModel {
         accepted_extensions: None,
         supports_reasoning: Some(true),
         supported_thinking_efforts: Some(efforts.iter().map(|effort| (*effort).into()).collect()),
-        default_thinking_effort: Some("medium".into()),
         can_disable_thinking: None,
         service_tiers: Vec::new(),
         default_service_tier_id: None,

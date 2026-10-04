@@ -48,7 +48,6 @@ pub fn catalog(names: &[&str]) -> ProviderModelList {
                 accepted_extensions: None,
                 supports_reasoning: Some(true),
                 supported_thinking_efforts: Some(vec!["low".into(), "high".into()]),
-                default_thinking_effort: Some("low".into()),
                 can_disable_thinking: None,
                 service_tiers: Vec::new(),
                 default_service_tier_id: None,

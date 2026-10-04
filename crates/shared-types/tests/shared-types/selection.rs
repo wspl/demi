@@ -21,7 +21,6 @@ fn model() -> ProviderModel {
         accepted_extensions: None,
         supports_reasoning: None,
         supported_thinking_efforts: None,
-        default_thinking_effort: None,
         can_disable_thinking: None,
         service_tiers: Vec::new(),
         default_service_tier_id: None,
@@ -120,12 +119,11 @@ fn accepted_types_come_from_the_catalog_or_from_its_flags() {
 
 #[test]
 fn the_thinking_choices_follow_what_the_catalog_says_of_reasoning() {
-    let capabilities = |reasoning, efforts: Option<&[&str]>, default: Option<&str>| {
+    let capabilities = |reasoning, efforts: Option<&[&str]>| {
         ProviderModel {
             supports_reasoning: reasoning,
             supported_thinking_efforts: efforts
                 .map(|efforts| efforts.iter().map(|effort| (*effort).to_owned()).collect()),
-            default_thinking_effort: default.map(str::to_owned),
             ..model()
         }
         .selection("p", None, None)
@@ -133,16 +131,15 @@ fn the_thinking_choices_follow_what_the_catalog_says_of_reasoning() {
         .thinking
     };
     assert_eq!(
-        capabilities(Some(false), Some(&["low"]), None),
+        capabilities(Some(false), Some(&["low"])),
         [ThinkingCapability::Disabled {}]
     );
-    assert_eq!(capabilities(None, None, None), []);
-    assert_eq!(capabilities(Some(true), Some(&[]), None), []);
+    assert_eq!(capabilities(None, None), []);
+    assert_eq!(capabilities(Some(true), Some(&[])), []);
     assert_eq!(
-        capabilities(Some(true), Some(&["low", "high"]), Some("high")),
+        capabilities(Some(true), Some(&["low", "high"])),
         [ThinkingCapability::Effort {
             efforts: vec!["low".into(), "high".into()],
-            default_effort: Some("high".into()),
             summaries: vec![
                 ThinkingSummary::Auto,
                 ThinkingSummary::Concise,

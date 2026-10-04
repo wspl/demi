@@ -22,8 +22,7 @@ use crate::vault::entries::{EntryCredential, ProviderEntry};
 pub struct NotConfigured(pub String);
 
 /// A configured model as a catalog model: it states its facts directly, its
-/// first effort is its default, its Fast tier is its only tier, and it is
-/// taken to call tools.
+/// Fast tier is its only tier, and it is taken to call tools.
 pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
     let efforts = &model.thinking_efforts;
     ProviderModel {
@@ -41,7 +40,6 @@ pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
         accepted_extensions: model.accepted_extensions.clone(),
         supports_reasoning: Some(!efforts.is_empty()),
         supported_thinking_efforts: Some(efforts.clone()),
-        default_thinking_effort: efforts.first().cloned(),
         can_disable_thinking: None,
         service_tiers: model
             .fast_tier

@@ -61,7 +61,6 @@ fn model(
         accepted_extensions: None,
         supports_reasoning: Some(true),
         supported_thinking_efforts: Some(efforts.iter().map(|effort| (*effort).into()).collect()),
-        default_thinking_effort: None,
         can_disable_thinking: None,
         service_tiers,
         default_service_tier_id: None,
