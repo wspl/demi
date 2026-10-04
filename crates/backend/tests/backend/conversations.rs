@@ -3,7 +3,8 @@
 //! protocol): creation under the web app's id, the list and the product
 //! state, a chat over the socket with an Anthropic endpoint the test
 //! scripts, a reload whose history is what the database holds, a client that
-//! falls behind, the frames the backend refuses, provider edits
+//! falls behind, the frames the backend refuses, a user's context limit
+//! on a model, provider edits
 //! and deletion at the inference boundary, the rate limit, a shutdown in the
 //! middle of a turn and one that a page which stopped reading cannot hold
 //! up, and the patches and batches of the sidebar. No test calls a real
@@ -965,6 +966,77 @@ async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_
             "response"
         ]
     );
+    backend.close().await;
+}
+
+/// A configured model `id` with a window of 800,000 tokens, which offers
+/// the limits 300K and 200K.
+fn large_window(id: &str) -> Value {
+    json!({
+        "id": id, "displayName": id, "contextWindow": 800000, "outputLimit": null,
+        "thinkingEfforts": [], "acceptedExtensions": [], "fastTier": null
+    })
+}
+
+/// Whether the turn's frames show a compaction pass.
+fn compacted(turn: &[ServerFrame]) -> bool {
+    turn.iter().any(|frame| {
+        matches!(
+            frame,
+            ServerFrame::Phase {
+                phase: SessionPhase::Compacting
+            }
+        )
+    })
+}
+
+// A backend, a scripted vendor, three conversations and seven requests:
+// about a second.
+#[tokio::test]
+async fn a_users_context_limit_on_a_model_applies_to_each_of_their_conversations_with_it() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let body = json!({
+        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "baseUrl": vendor.url("/v1"),
+        "models": [large_window("model-a"), large_window("model-b")]
+    });
+    let provider = entry(&backend, &master, body).await;
+    let limit = json!({ "contextLimit": { "providerId": provider, "modelId": "model-a", "tokens": 200000 } });
+    let limited = backend
+        .patch("/api/settings/preferences", &master, limit)
+        .await;
+    assert_eq!(limited.status, StatusCode::OK);
+
+    // An answer that reports 170,000 tokens: over 80% of 200K, under 80% of
+    // the model's own 800K.
+    for (id, model, limited) in [
+        (FIRST, "model-a", true),
+        (SECOND, "model-a", true),
+        (THIRD, "model-b", false),
+    ] {
+        create(&backend, &master, id).await;
+        choose(&backend, &master, id, &provider, model).await;
+        let mut socket = Socket::connect(&backend, &master, id).await;
+        socket.open().await;
+        let before = vendor.requests().len();
+        vendor.respond(answer(&["An answer."], 170_000, 5));
+        if limited {
+            vendor.respond(answer(&["The user asked a question."], 10, 5));
+            vendor.respond(answer(&["Continued."], 20, 2));
+        }
+        let turn = socket.chat("m1", "A question").await;
+
+        // The limited model's turn compacts after the answer and goes on
+        // from the summary; the other model's ends with its answer.
+        let requests = vendor.requests().len() - before;
+        assert_eq!(
+            (compacted(&turn), requests),
+            if limited { (true, 3) } else { (false, 1) },
+            "{id} {model}"
+        );
+    }
     backend.close().await;
 }
 

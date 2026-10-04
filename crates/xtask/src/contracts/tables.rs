@@ -1,19 +1,23 @@
 //! The constant tables the page shares with the Rust side, with their
 //! lookups (`contracts.md` § Logic the web app and backend share): the
-//! file-type table the page chooses a viewer by, and the file types a model
-//! reads. The values come from the Rust constants; the lookups do what
+//! file-type table the page chooses a viewer by, the file types a model
+//! reads, and the context limits a model's window offers. The values come from the Rust constants; the lookups do what
 //! core's lookups do, and the page's tests check them with core's cases.
 
 use std::fmt::Write as _;
 
-use demi_shared_types::{ATTACHMENT_FILE_EXTENSIONS, PREVIEW_TYPES, VIDEO_FILE_EXTENSIONS};
+use demi_shared_types::{
+    ATTACHMENT_FILE_EXTENSIONS, CONTEXT_LIMIT_STEPS, PREVIEW_TYPES, VIDEO_FILE_EXTENSIONS,
+};
 
 use super::zod::push_doc;
 
 /// The module's source; it imports the tables' types from `contracts`.
 pub fn module(header: &str) -> String {
     let mut source = String::from(header);
-    source.push_str("import type { FileExtension, PreviewType } from \"./contracts\"\n");
+    source.push_str(
+        "import type { ContextLimitStep, FileExtension, PreviewType } from \"./contracts\"\n",
+    );
 
     source.push('\n');
     push_doc(
@@ -54,6 +58,23 @@ pub fn module(header: &str) -> String {
         )
         .expect("writing to a string");
     }
+
+    source.push('\n');
+    push_doc(
+        &mut source,
+        Some(
+            "The limits a user may set on the context window Demi uses for a model, largest\n\
+             first, each with the smallest window that offers it (`models.md` § Context limit).",
+        ),
+        0,
+    );
+    let steps = serde_json::to_string_pretty(&CONTEXT_LIMIT_STEPS).expect("the steps serialize");
+    writeln!(
+        source,
+        "export const CONTEXT_LIMIT_STEPS: readonly ContextLimitStep[] = {steps}"
+    )
+    .expect("writing to a string");
+    source.push_str(CONTEXT_LIMIT_LOOKUPS);
 
     source.push('\n');
     push_doc(
@@ -100,5 +121,28 @@ export function previewMediaType(path: string): string | null {
 /** Whether the page shows `mediaType` in place instead of downloading it. */
 export function showsInPlace(mediaType: string): boolean {
   return PREVIEW_TYPES.some((entry) => entry.inPlace && entry.mediaType === mediaType)
+}
+"#;
+
+/// core's `context_limits` and `applied_context_limit`, over the steps.
+const CONTEXT_LIMIT_LOOKUPS: &str = r#"
+/**
+ * The limits a model whose context window is `window` offers below its full
+ * window, largest first; none for a window of at most 500,000 tokens or an
+ * unknown one.
+ */
+export function contextLimits(window: number | null): number[] {
+  return CONTEXT_LIMIT_STEPS.filter((step) => window !== null && window >= step.minWindow).map(
+    (step) => step.tokens,
+  )
+}
+
+/**
+ * The limit that applies to a model whose context window is `window` when
+ * the user stored `limit` on it: the limit while the window offers it, and
+ * null, the full window, otherwise.
+ */
+export function appliedContextLimit(window: number | null, limit: number | null): number | null {
+  return limit !== null && contextLimits(window).includes(limit) ? limit : null
 }
 "#;

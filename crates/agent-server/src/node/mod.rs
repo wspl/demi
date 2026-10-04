@@ -25,6 +25,8 @@ use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{Clock, CommandId, ModelSelection, NodeId, QueuedMessage, TurnId};
 use futures_util::future::LocalBoxFuture;
 
+use crate::server::ProviderResolver;
+
 /// A node's place in its tree, which sets its lifecycle policy: a child
 /// resumes a turn the process interrupted and closes once it is quiescent;
 /// the root leaves both to its client.
@@ -178,10 +180,13 @@ impl<H: HostResolver> Node<H> {
 
 /// What the session calls in its node: the tree's admission, the system
 /// prompt rendered at assembly, the preamble, the context sources, the
-/// tools, and the hold on its children that an edit needs.
+/// tools, the window its model is used with, and the hold on its children
+/// that an edit needs.
 pub(crate) struct NodeRuntime<H: HostResolver> {
     node: NodeId,
     root: NodeId,
+    /// Where the window in use for a model comes from.
+    providers: Rc<dyn ProviderResolver>,
     cwd: String,
     hosts: Rc<H>,
     /// The instructions of its system prompt.
@@ -264,6 +269,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         Box::pin(async move { text })
     }
 
+    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
+        self.providers.context_window(model)
+    }
+
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {
         let text = self.preamble.clone();
         Box::pin(async move { text })
@@ -331,6 +340,7 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) cwd: String,
     pub(crate) model: ModelSelection,
     pub(crate) runtime: Box<dyn ProviderRuntime>,
+    pub(crate) providers: Rc<dyn ProviderResolver>,
     pub(crate) hosts: Rc<H>,
     pub(crate) instructions: Rc<str>,
     /// A child's identity, the text before each of its user turns.
@@ -386,6 +396,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         cwd,
         model,
         runtime,
+        providers,
         hosts,
         instructions,
         preamble,
@@ -420,6 +431,7 @@ pub(crate) async fn assemble<H: HostResolver>(
     let node_runtime = Rc::new(NodeRuntime {
         node: record.id.clone(),
         root,
+        providers,
         cwd: cwd.clone(),
         hosts,
         instructions,

@@ -59,6 +59,7 @@ pub fn protocol() -> Vec<Root> {
         receives::<core::QuotaSnapshot>(),
         receives::<core::WireApi>(),
         receives::<core::PreviewType>(),
+        receives::<core::ContextLimitStep>(),
     ]
 }
 

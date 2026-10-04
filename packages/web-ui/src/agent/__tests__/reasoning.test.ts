@@ -10,6 +10,7 @@ const base: ModelInfo = {
   id: 'm',
   name: 'M',
   contextWindow: 200000,
+  contextLimit: null,
   inputLimit: null,
   acceptedExtensions: [],
   reasoning: {
