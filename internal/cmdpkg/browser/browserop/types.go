@@ -1000,6 +1000,8 @@ type BrowserTab struct {
 	Title     string           `json:"title"`
 	URL       string           `json:"url"`
 	CreatedBy BrowserCreatedBy `json:"createdBy"`
+	// Whether the browser loads the tab's top-level page.
+	Loading bool `json:"loading"`
 }
 
 // A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio

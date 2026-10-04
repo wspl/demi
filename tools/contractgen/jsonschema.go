@@ -318,6 +318,12 @@ func (e *schemaEmitter) schemaField(
 	if err != nil {
 		return fmt.Errorf("%s.%s: %w", d.name, f.Name(), err)
 	}
+	if has(m, "object") {
+		child = schemaKeywords(
+			contract.Field{Name: "type", Value: "object"},
+			contract.Field{Name: "additionalProperties", Value: true},
+		)
+	}
 	if has(m, "nullable") {
 		child = nullableSchema(child)
 	}

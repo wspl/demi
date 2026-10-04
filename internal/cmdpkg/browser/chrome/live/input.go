@@ -76,6 +76,8 @@ type heldInput struct {
 
 func (in *viewerInput) run(ctx context.Context, w *writer, mac bool) {
 	var tab *tabs.Tab
+	var ahead inputItem
+	var hasAhead bool
 	held := heldInput{keys: make(map[string]*input.DispatchKeyEventParams)}
 	defer func() { releaseInput(ctx, tab, &held) }()
 	for {
@@ -83,10 +85,15 @@ func (in *viewerInput) run(ctx context.Context, w *writer, mac bool) {
 			return
 		}
 		var item inputItem
-		select {
-		case <-ctx.Done():
-			return
-		case item = <-in.items:
+		if hasAhead {
+			item = ahead
+			hasAhead = false
+		} else {
+			select {
+			case <-ctx.Done():
+				return
+			case item = <-in.items:
+			}
 		}
 		if item.kind == inputFinish {
 			return
@@ -113,6 +120,7 @@ func (in *viewerInput) run(ctx context.Context, w *writer, mac bool) {
 		if tab == nil {
 			continue
 		}
+		item.message, ahead, hasAhead = newestInput(item.message, in.items)
 		if err := deliverInput(ctx, tab, &held, item.message, mac, w); err != nil && tab.Context().Err() == nil {
 			w.notice(ctx, "input_failed", err.Error())
 		}

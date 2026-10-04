@@ -152,7 +152,8 @@ func markers(doc *ast.CommentGroup) map[string]string {
 		}
 		key, value, _ := strings.Cut(strings.TrimPrefix(text, "+demi:"), " ")
 		switch key {
-		case "integer",
+		case "object",
+			"integer",
 			"default",
 			"codec",
 			"flatten",
@@ -330,6 +331,10 @@ func (g *generator) emitGo(d *definition) {
 
 func (g *generator) validation(t types.Type, expr, path string, m map[string]string) {
 	if isJSON(t) {
+		if has(m, "object") {
+			g.line("if _,err:=contract.JSONObject(%s);err!=nil{return contract.At(%s,err)}", expr, path)
+			return
+		}
 		g.line("if err:=contract.CheckJSON(%s);err!=nil{return contract.At(%s,err)}", expr, path)
 		return
 	}

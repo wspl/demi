@@ -116,6 +116,9 @@ func (g *generator) emitTS(name string) {
 
 func (g *generator) tsType(t types.Type, m map[string]string) (string, bool) {
 	if isJSON(t) {
+		if has(m, "object") {
+			return "z.record(z.string(), z.json())", false
+		}
 		return "z.json()", false
 	}
 	code := ""

@@ -308,6 +308,7 @@ func (s *viewSession) state(ctx context.Context) {
 				URL:       t.URL,
 				CreatedBy: t.Tab.CreatedBy(),
 				Viewport:  t.Tab.Viewport(),
+				Loading:   t.Tab.Loading(),
 			},
 		)
 	}

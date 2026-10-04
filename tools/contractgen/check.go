@@ -44,6 +44,7 @@ func checkMarks(m map[string]string) error {
 	}
 
 	for _, key := range []string{
+		"object",
 		"default",
 		"nullable",
 		"strict",

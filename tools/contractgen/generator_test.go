@@ -40,6 +40,7 @@ func TestRegeneration(t *testing.T) {
 	if err := generate(
 		t.Context(),
 		[]string{
+			"./testdata/orderedobject",
 			"./testdata/integers",
 			"./testdata/private",
 			"./testdata/presence",

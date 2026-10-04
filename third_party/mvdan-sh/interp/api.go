@@ -158,6 +158,9 @@ type Runner struct {
 	// tasks links every subshell to its job, independently of shell-visible wait IDs.
 	tasks *taskGroup
 
+	// procSubstPaths belongs to the current statement, not nested statements.
+	procSubstPaths []*procSubstPath
+
 	opts runnerOpts
 
 	origDir    string

@@ -51,8 +51,8 @@ working images on the VM's Linux disk, never on the shared Mac directory.
 
 ## Machine manager in Lima
 
-`crates/machine-manager/lima/demi-machine-manager.yaml` and
-`crates/machine-manager/scripts/lima-machines.sh` provision the Linux dependencies, a
+`scripts/machines/lima/demi-machine-manager.yaml` and
+`scripts/machines/lima-machines.sh` provision the Linux dependencies, a
 separate persistent data disk, the manager service, the network policy, and
 Unix socket forwarding. The VM runs the same privileged manager and runsc
 profile as a Linux execution host. The script copies the manager built for the
@@ -63,7 +63,7 @@ replaces the executable of a running manager.
 cargo xtask native build --package demi-machine-manager --target aarch64-unknown-linux-musl
 cargo xtask native package --package demi-machine-manager \
   --target aarch64-unknown-linux-musl --output .cache/releases/demi-machine-manager-<build>
-bash crates/machine-manager/scripts/lima-machines.sh \
+bash scripts/machines/lima-machines.sh \
   --manager .cache/releases/demi-machine-manager-<build>/aarch64-unknown-linux-musl/demi-machine-manager \
   --image /opt/demi-cloud/releases/build-id \
   --backend-url http://<the Mac's address>:3271 --dns 1.1.1.1

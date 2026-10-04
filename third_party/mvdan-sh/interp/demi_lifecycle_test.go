@@ -110,6 +110,72 @@ func TestRecursiveCancellation(t *testing.T) {
 	}
 }
 
+// The receiving function waits for the substitution before opening its path.
+// Completion and cancellation are ordered with wait, without a timer.
+func TestProcessSubstitutionPathLivesUntilCommandReturns(t *testing.T) {
+	for _, scenario := range []struct {
+		name   string
+		source string
+	}{
+		{"completed reader", `consume() { rendezvous "$1"; wait; reopen "$1"; }; consume <(true)`},
+		{"completed writer", `consume() { rendezvous "$1"; wait; reopen "$1"; }; consume >(true)`},
+		{"cancelled reader", `consume() { terminate "$!"; wait; reopen "$1"; }; consume <(true)`},
+		{"cancelled writer", `consume() { terminate "$!"; wait; reopen "$1"; }; consume >(true)`},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			dir := t.TempDir()
+			var peer *os.File
+			var path string
+			t.Cleanup(func() {
+				if peer != nil {
+					peer.Close()
+				}
+			})
+			r, err := interp.New(
+				interp.Env(expand.ListEnviron("TMPDIR="+dir)),
+				interp.ExecHandlers(func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+					return func(ctx context.Context, args []string) error {
+						switch args[0] {
+						case "terminate":
+							return interp.HandlerCtx(ctx).TerminateBackground(args[1], 143)
+						case "rendezvous":
+							path = args[1]
+							var err error
+							peer, err = os.OpenFile(path, os.O_RDWR, 0)
+							return err
+						case "reopen":
+							path = args[1]
+							file, err := os.OpenFile(args[1], os.O_RDWR, 0)
+							if err != nil {
+								return fmt.Errorf("receiving command lost its FIFO: %w", err)
+							}
+							return file.Close()
+						default:
+							return next(ctx, args)
+						}
+					}
+				}),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithCancel(t.Context())
+			defer func() {
+				cancel()
+				r.Wait()
+			}()
+			err = r.Run(ctx, script(t, scenario.source))
+			if err != nil {
+				t.Fatal(err)
+			}
+			r.Wait()
+			if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("FIFO after command returned: got %v, want not exist", err)
+			}
+		})
+	}
+}
+
 func TestUnusedProcessSubstitutionCancellation(t *testing.T) {
 	for _, src := range []string{`: <(echo unused)`, `: >(read -r unused)`} {
 		t.Run(src, func(t *testing.T) {

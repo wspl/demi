@@ -1821,8 +1821,10 @@ not a tab registry, so the split introduces no dependency cycle.
 upstream metadata and licenses, and its patch as a file in that directory so an
 upgrade can reapply and review every change. The patch provides nested task
 joining, process-substitution cancellation and writable-redirection
-interception; Demi adapters stay in the runner shell. The fork is an external
-module, not a first-party graph entry.
+interception. A process-substitution FIFO remains named until both the receiving
+statement and the substitution task finish, including on cancellation; neither
+owner blocks on the other's cleanup. Demi adapters stay in the runner shell.
+The fork is an external module, not a first-party graph entry.
 
 `go run ./tools/release fork diff` shows how the fork differs from the upstream
 release it was taken from, so an upgrade or a review sees every local change,

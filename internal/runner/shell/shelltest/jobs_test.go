@@ -131,7 +131,9 @@ func TestJobsShareTheRunnerProcessAndCancellationIsIsolated(t *testing.T) {
 	marker(ctx, t, sibling, strconv.Itoa(os.Getpid()))
 	scripts := []string{
 		"while :; do :; done",
-		"printf line | sed ':again; b again'",
+		// Separate expressions keep the label portable to BSD sed; otherwise
+		// it treats the branch as part of the label and exits instead of looping.
+		`printf 'line\n' | sed -e ':again' -e 'b again'`,
 		"cat", "tee file", "wc -c", "head -c 99999", "tail -c +1", "od -j 99999",
 		"(sleep 60) & wait", "cat <(sleep 60)", "touch file; tail -f -s 60 file",
 		"while :; do printf 'a long line to fill the output pipe\n'; done",

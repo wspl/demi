@@ -2,15 +2,25 @@ package contract
 
 import (
 	"encoding/json"
+	"fmt"
+	"reflect"
 	"strconv"
 	"strings"
 )
 
 // EncodeJSON encodes a contract value with the contract's string escaping
 // (appendJSONString) and floating-point spelling (formatJSONFloat).
+// Raw values normalize number spellings as parsed JSON values. Custom codecs
+// retain their numeric representations; all strings use the same escaping.
 // Call this or generated MarshalJSON methods directly for wire bytes: wrapping
 // them in encoding/json.Marshal reapplies Go's HTML and JavaScript escaping.
 func EncodeJSON(value any) ([]byte, error) {
+	_, custom := value.(json.Marshaler)
+	v := reflect.ValueOf(value)
+	if !custom && v.IsValid() && (v.Kind() == reflect.Slice || v.Kind() == reflect.Array) &&
+		v.Type().Elem().Kind() != reflect.Uint8 {
+		return encodeJSONList(v)
+	}
 	data, err := json.Marshal(value)
 	if err != nil {
 		return nil, err
@@ -21,8 +31,31 @@ func EncodeJSON(value any) ([]byte, error) {
 	case float64:
 		return formatJSONFloat(number, 64)
 	}
+	_, raw := value.(json.RawMessage)
+	_, rawPointer := value.(*json.RawMessage)
+	return normalizeJSON(data, raw || rawPointer)
+}
+
+// normalizeJSON writes compact, normalized tokens without sorting object members.
+// Its input has already passed through the standard encoder's syntax checks.
+// Only raw values normalize numbers: a generated codec may encode float32,
+// whose exponent thresholds differ from those of a parsed JSON float64.
+func normalizeJSON(data []byte, numbers bool) ([]byte, error) {
 	output := make([]byte, 0, len(data))
 	for i := 0; i < len(data); {
+		if numbers && (data[i] == '-' || data[i] >= '0' && data[i] <= '9') {
+			end := i + 1
+			for end < len(data) && strings.ContainsRune("0123456789.eE+-", rune(data[end])) {
+				end++
+			}
+			number, err := normalizeJSONNumber(string(data[i:end]))
+			if err != nil {
+				return nil, err
+			}
+			output = append(output, number...)
+			i = end
+			continue
+		}
 		if data[i] != '"' {
 			output = append(output, data[i])
 			i++
@@ -107,4 +140,46 @@ func formatJSONFloat(number float64, bits int) ([]byte, error) {
 		text = mantissa + "e" + sign + strconv.Itoa(power)
 	}
 	return []byte(text), nil
+}
+
+// encodeJSONList applies the scalar number spelling to collection elements.
+func encodeJSONList(value reflect.Value) ([]byte, error) {
+	// Keep the standard encoder's cycle and unsupported-value checks before
+	// traversing elements to normalize their numeric representations.
+	if _, err := json.Marshal(value.Interface()); err != nil {
+		return nil, err
+	}
+	if value.Kind() == reflect.Slice && value.IsNil() {
+		return []byte("null"), nil
+	}
+	output := []byte{'['}
+	for i := 0; i < value.Len(); i++ {
+		item, err := EncodeJSON(value.Index(i).Interface())
+		if err != nil {
+			return nil, At("["+strconv.Itoa(i)+"]", err)
+		}
+		if i > 0 {
+			output = append(output, ',')
+		}
+		output = append(output, item...)
+	}
+	return append(output, ']'), nil
+}
+
+// normalizeJSONNumber retains signed and unsigned integer precision and spells
+// decimal, exponent, negative-zero and larger integer tokens as finite floats.
+func normalizeJSONNumber(text string) ([]byte, error) {
+	if !strings.ContainsAny(text, ".eE") && text != "-0" {
+		if _, err := strconv.ParseInt(text, 10, 64); err == nil {
+			return []byte(text), nil
+		}
+		if _, err := strconv.ParseUint(text, 10, 64); err == nil {
+			return []byte(text), nil
+		}
+	}
+	number, err := strconv.ParseFloat(text, 64)
+	if err != nil {
+		return nil, fmt.Errorf("decode JSON number: %w", err)
+	}
+	return formatJSONFloat(number, 64)
 }

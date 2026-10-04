@@ -1,8 +1,12 @@
 # Browser plugin schema modes
 
-`manifest.json` is an unchanged copy of g-browser's `TestManifestMatchesFixture` fixture
+`manifest.json` is a copy of g-browser's `TestManifestMatchesFixture` fixture
 (`internal/plugins/browser/testdata/manifest.json`), originally captured from
-the Rust plugin. No Go-produced expected schema is stored here.
+the Rust plugin. Its `BrowserTab` and `LiveTab` definitions include the required
+`loading` boolean and its verbatim doc description from
+`crates/command-package-browser-protocol/src/browser/mod.rs` and `src/live.rs`.
+These additions repair the older fixture after that contract change; no
+Go-produced expected schema is stored here.
 
 `types.go` copies g-browser's page contract declarations and imports the actual
 browserop contracts. `TestBrowserPluginSchemas` compares all eight non-null
