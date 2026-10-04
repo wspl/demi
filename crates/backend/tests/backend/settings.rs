@@ -1,11 +1,16 @@
-//! The instance's settings and each user's preferences (`web-api.md` §
-//! User preferences).
+//! The instance's settings, each user's preferences and each user's
+//! subagent settings (`web-api.md` § User preferences, § Subagents).
 
+use demi_provider_common::testing::MockVendor;
+use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::settings::{InstanceMode, Settings, UserPreferences};
+use demi_web_api_protocol::state::SyncEvent;
+use demi_web_api_protocol::subagents::{ProfileAnswer, SubagentSettings};
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
+use crate::conversations::{entry, leveled};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend};
 
 const PREFERENCES: &str = "/api/settings/preferences";
@@ -173,5 +178,163 @@ async fn a_reported_locale_is_checked_and_kept_in_canonical_form() {
         serde_json::to_value(answer.json::<UserPreferences>().preferences.locale).unwrap(),
         json!({ "timeZone": "Asia/Shanghai", "languages": ["zh-CN", "en", "he"] })
     );
+    backend.close().await;
+}
+
+const PROFILES: &str = "/api/subagents/profiles";
+
+/// The subagent settings the next `subagents` message of `page` carries.
+async fn synced(page: &mut crate::support::SyncChannel) -> SubagentSettings {
+    let events = page
+        .until(|event| matches!(event, SyncEvent::Subagents { .. }))
+        .await;
+    match events.last() {
+        Some(SyncEvent::Subagents { subagents }) => subagents.clone(),
+        other => panic!("no subagents message: {other:?}"),
+    }
+}
+
+#[tokio::test]
+async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_the_user() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let body = json!({
+        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "baseUrl": vendor.url("/v1"), "models": [leveled("m", Some("priority"))]
+    });
+    let provider = entry(&backend, &master, body).await;
+    let mut page = backend.sync(&master).await;
+    page.snapshot().await;
+
+    // A model that names no effort is stored with the model's first.
+    let explore = json!({
+        "name": "explore", "description": "Finds code; it changes nothing.",
+        "model": { "providerId": provider, "modelId": "m", "thinkingEffort": null, "serviceTierId": null },
+        "instructions": "Report, never edit.", "canSpawn": false
+    });
+    let created = backend.post(PROFILES, Some(&master), explore.clone()).await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let profile = created.json::<ProfileAnswer>().profile;
+    assert_eq!(
+        serde_json::to_value(&profile).unwrap(),
+        json!({
+            "id": profile.id, "name": "explore", "description": "Finds code; it changes nothing.",
+            "model": { "providerId": provider, "modelId": "m", "thinkingEffort": "low", "serviceTierId": null },
+            "instructions": "Report, never edit.", "canSpawn": false, "enabled": true
+        })
+    );
+    assert_eq!(synced(&mut page).await.profiles, [profile.clone()]);
+
+    // Each body is checked before anything is written.
+    let with = |field: &str, value: Value| {
+        let mut body = explore.clone();
+        body["name"] = json!("other");
+        body[field] = value;
+        body
+    };
+    let refusals = [
+        (explore.clone(), StatusCode::CONFLICT, ErrorCode::ProfileExists),
+        (with("name", json!("default")), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+        (with("name", json!("Explore")), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+        (with("name", json!("1st")), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+        (with("name", json!("a".repeat(41))), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+        (with("description", json!("two\nlines")), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+        (with("description", json!(" ")), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+        (with("instructions", json!("  ")), StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+        (
+            with("model", json!({ "providerId": provider, "modelId": "m", "thinkingEffort": "max", "serviceTierId": null })),
+            StatusCode::CONFLICT,
+            ErrorCode::SettingUnavailable,
+        ),
+        (
+            with("model", json!({ "providerId": provider, "modelId": "x", "thinkingEffort": null, "serviceTierId": null })),
+            StatusCode::NOT_FOUND,
+            ErrorCode::ModelNotFound,
+        ),
+        (
+            with("model", json!({ "providerId": "gone", "modelId": "m", "thinkingEffort": null, "serviceTierId": null })),
+            StatusCode::NOT_FOUND,
+            ErrorCode::ProviderNotFound,
+        ),
+    ];
+    for (body, status, code) in refusals {
+        let refused = backend.post(PROFILES, Some(&master), body.clone()).await;
+        assert_eq!(refused.refusal(), (status, code), "{body}");
+    }
+
+    // A patch changes the fields it names; null returns to the parent's.
+    let path = format!("{PROFILES}/{}", profile.id);
+    let patched = backend
+        .patch(
+            &path,
+            &master,
+            json!({ "name": "finder", "model": null, "instructions": null, "canSpawn": true }),
+        )
+        .await;
+    assert_eq!(patched.status, StatusCode::OK);
+    let finder = patched.json::<ProfileAnswer>().profile;
+    assert_eq!(
+        (finder.name.as_str(), &finder.model, &finder.instructions, finder.can_spawn),
+        ("finder", &None, &None, true)
+    );
+    assert_eq!(finder.description, profile.description);
+    assert_eq!(synced(&mut page).await.profiles, [finder.clone()]);
+    let reviewer = backend
+        .post(PROFILES, Some(&master), with("name", json!("reviewer")))
+        .await
+        .json::<ProfileAnswer>()
+        .profile;
+    synced(&mut page).await;
+    let taken = backend.patch(&path, &master, json!({ "name": "reviewer" })).await;
+    assert_eq!(taken.refusal(), (StatusCode::CONFLICT, ErrorCode::ProfileExists));
+
+    // With its entry gone the reviewer is unavailable, and is still turned
+    // off and on as it is.
+    let deleted = backend
+        .delete(&format!("/api/providers/{provider}"), &master)
+        .await;
+    assert_eq!(deleted.status, StatusCode::NO_CONTENT);
+    let reviewer_path = format!("{PROFILES}/{}", reviewer.id);
+    for enabled in [false, true] {
+        let switched = backend
+            .patch(&reviewer_path, &master, json!({ "enabled": enabled }))
+            .await;
+        assert_eq!(switched.status, StatusCode::OK);
+        assert_eq!(switched.json::<ProfileAnswer>().profile.enabled, enabled);
+    }
+
+    // The switch, in the product state.
+    let off = backend.put("/api/subagents", &master, json!({ "enabled": false })).await;
+    assert_eq!(off.status, StatusCode::NO_CONTENT);
+    let settings = page
+        .until(|event| matches!(event, SyncEvent::Subagents { subagents } if !subagents.enabled))
+        .await;
+    assert!(!settings.is_empty());
+
+    // Another user sees and reaches none of them.
+    harness.add_user("ana@example.test", "correct horse battery", Role::User);
+    let ana = backend.login("ana@example.test", "correct horse battery").await;
+    let foreign = backend.patch(&path, &ana, json!({ "enabled": false })).await;
+    assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProfileNotFound));
+    let mut ana_page = backend.sync(&ana).await;
+    let state = ana_page.snapshot().await;
+    assert_eq!(
+        state.subagents,
+        SubagentSettings {
+            enabled: true,
+            profiles: Vec::new()
+        }
+    );
+
+    let removed = backend.delete(&path, &master).await;
+    assert_eq!(removed.status, StatusCode::NO_CONTENT);
+    let again = backend.delete(&path, &master).await;
+    assert_eq!(again.refusal(), (StatusCode::NOT_FOUND, ErrorCode::ProfileNotFound));
+    let mut fresh = backend.sync(&master).await;
+    let state = fresh.snapshot().await;
+    assert!(!state.subagents.enabled);
+    assert_eq!(state.subagents.profiles.len(), 1);
+    assert_eq!(state.subagents.profiles[0].name, "reviewer");
     backend.close().await;
 }

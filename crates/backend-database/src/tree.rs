@@ -171,15 +171,17 @@ impl AgentTreeStore for SqliteTreeStore {
                     }
                     let (phase, closed_at, result, failure) = close_columns(record.closed.as_ref());
                     transaction.execute(
-                        "INSERT INTO nodes (id, number, parent_id, description, profile, round, started_at, can_spawn,
-                           closed_phase, closed_at, result, failure, delivered, state, block_count, output_revision)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, 0, 0)",
+                        "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
+                           can_spawn, closed_phase, closed_at, result, failure, delivered, state, block_count,
+                           output_revision)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0)",
                         params![
                             record.id.as_str(),
                             integer(record.number),
                             record.parent.as_ref().map(NodeId::as_str),
                             record.description,
                             record.profile,
+                            record.instructions,
                             integer(record.round),
                             record.started_at.as_millisecond(),
                             record.can_spawn_subagents,
@@ -572,8 +574,8 @@ fn node_state(
 }
 
 const NODE_COLUMNS: &str =
-    "id, number, parent_id, description, profile, round, started_at, can_spawn, closed_phase,
-     closed_at, result, failure, delivered";
+    "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
+     closed_phase, closed_at, result, failure, delivered";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
     let mut statement =
@@ -639,6 +641,7 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             .transpose()?,
         description: row.get("description")?,
         profile: row.get("profile")?,
+        instructions: row.get("instructions")?,
         round: decode(TABLE, "round", u64::try_from(row.get::<_, i64>("round")?))?,
         started_at: instant(row, TABLE, "started_at")?,
         can_spawn_subagents: row.get("can_spawn")?,
@@ -907,6 +910,7 @@ mod tests {
             parent: parent.map(id),
             description: format!("{node} task"),
             profile: None,
+            instructions: None,
             round: 1,
             started_at: Timestamp::UNIX_EPOCH,
             can_spawn_subagents: true,

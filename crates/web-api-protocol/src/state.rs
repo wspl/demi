@@ -15,6 +15,7 @@ use crate::ids::ConversationId;
 use crate::plugins::PluginEntry;
 use crate::providers::ProviderState;
 use crate::settings::{InstanceMode, Preferences};
+use crate::subagents::SubagentSettings;
 use crate::workspaces::WorkspaceDto;
 
 /// The product state: the signed-in user, the instance mode, the user's
@@ -22,7 +23,7 @@ use crate::workspaces::WorkspaceDto;
 /// workspaces in their order, the user's devices, the paired ones and the
 /// Cloud, the backend's public URL, the summaries of the user's
 /// conversations, the active ones first, then the archived, the Cloud's
-/// status, the backend's plugins with whether the user has each on, and the
+/// status, the user's Subagent switch and profiles, the backend's plugins with whether the user has each on, and the
 /// state of each plugin the user has on that gives one, by its id. The backend
 /// reads it for each channel, without waking a Cloud or running inference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -40,6 +41,7 @@ pub struct ProductState {
     pub public_url: String,
     pub conversations: Vec<ConversationSummary>,
     pub cloud: CloudStatus,
+    pub subagents: SubagentSettings,
     /// The backend's plugins, in their order of registration.
     pub plugins: Vec<PluginEntry>,
     /// The state of each plugin the user has on that gives one, valid
@@ -100,6 +102,11 @@ pub enum SyncEvent {
     },
     Cloud {
         cloud: CloudStatus,
+    },
+    /// The user turned subagents on or off, or created, changed, enabled,
+    /// disabled or deleted a profile.
+    Subagents {
+        subagents: SubagentSettings,
     },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,

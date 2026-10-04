@@ -3,17 +3,22 @@
 //! conversation's Host in its parent's files, keeps its own identity even
 //! for a command it runs through `demi host shell`, and runs on after
 //! its spawn command has exited; a Fork taken while a child runs leaves the
-//! child with its source. The model is a scripted family that answers each
+//! child with its source; a spawn reads the user's subagent settings and
+//! builds its child's model from the catalog; and a Cloud reset holds a
+//! conversation whose child's profile infers with a provider on the Cloud.
+//! The model is a scripted family that answers each
 //! node of a tree from a script of its own; the device is a real runner. No
 //! test calls a real model.
 
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
-use demi_conversation_socket_protocol::JobPhase;
+use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent};
+use demi_provider_claude_code::Placement;
 use demi_provider_common::testing::event;
 use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun,
@@ -28,9 +33,11 @@ use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{StreamExt as _, stream};
 use reqwest::StatusCode;
 use serde_json::json;
+use tokio::sync::Notify;
 
 use crate::conversations::{FIRST, SECOND, Socket, choose, create, on_device, transcript};
-use crate::support::{Harness, Session, TestBackend};
+use crate::cloud::reset;
+use crate::support::{Harness, Session, TestBackend, eventually};
 
 /// One scripted answer: the events of one request.
 type Answer = Vec<ProviderEvent>;
@@ -49,7 +56,8 @@ struct ScriptState {
     unclaimed: VecDeque<VecDeque<Answer>>,
     /// The scripts of the children that have asked, by session.
     children: HashMap<String, VecDeque<Answer>>,
-    /// Every request: its session and what it carried.
+    /// Every request: its session, and its model, thinking, system prompt
+    /// and items.
     asked: Vec<(String, String)>,
 }
 
@@ -86,9 +94,11 @@ impl Scripts {
         let mut guard = self.state.lock().unwrap();
         let state = &mut *guard;
         let session = request.session_id.clone();
-        state
-            .asked
-            .push((session.clone(), format!("{:?}", request.items)));
+        let carried = format!(
+            "model={} thinking={:?} system={:?} items={:?}",
+            request.model_id, request.thinking, request.system_prompt, request.items
+        );
+        state.asked.push((session.clone(), carried));
         let script = match state.roots.get_mut(&session) {
             Some(script) => script,
             None => {
@@ -123,7 +133,12 @@ fn say(text: &str) -> Answer {
     vec![event::text(text), event::response(1, 1)]
 }
 
-struct Tree(Arc<Scripts>);
+struct Tree {
+    scripts: Arc<Scripts>,
+    /// Whether its provider runs a process on a Host, which the user's Cloud
+    /// then is.
+    process: bool,
+}
 
 impl ProviderFamily for Tree {
     fn credential(&self) -> CredentialKind {
@@ -135,18 +150,32 @@ impl ProviderFamily for Tree {
             return Err(FamilyError::WrongCredential);
         };
         Ok(Arc::new(TreeProvider {
-            scripts: self.0.clone(),
+            scripts: self.scripts.clone(),
+            process: self.process,
         }))
+    }
+
+    /// The scripted runtime, wherever the placement would start the process.
+    fn process_runtime(
+        &self,
+        _: FamilyArgs,
+        _: Rc<dyn Placement>,
+    ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
+        let runtime: Box<dyn ProviderRuntime> = Box::new(TreeRuntime(self.scripts.clone()));
+        self.process.then_some(Ok(runtime))
     }
 }
 
 struct TreeProvider {
     scripts: Arc<Scripts>,
+    process: bool,
 }
 
 impl Provider for TreeProvider {
     fn capabilities(&self) -> Capabilities {
-        Capabilities::default()
+        Capabilities {
+            process_host: self.process,
+        }
     }
 
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
@@ -197,9 +226,12 @@ impl ProviderRuntime for TreeRuntime {
     }
 }
 
-/// A backend whose master has an entry of the scripted family, and the
-/// conversation `FIRST` on the entry's model `m` and a paired device's
+/// A backend whose master has an entry of the scripted family `tree`, with the
+/// model `m`, which lists no effort, and the model `n`, which lists `low`
+/// and `high`, and the conversation `FIRST` on `m` and a paired device's
 /// `work` directory; the harness holds the backend's data and the device.
+/// Answers the entry's id last. The family `tree-process` scripts the same
+/// answers from a provider that runs a process on the Cloud.
 async fn tree(
     scripts: &Arc<Scripts>,
 ) -> (
@@ -208,9 +240,16 @@ async fn tree(
     Session,
     crate::support::Paired,
     String,
+    String,
 ) {
-    let harness = Harness::new()
-        .with_families(demi_backend::families::builtin().with("tree", Tree(scripts.clone())));
+    let tree = |process| Tree {
+        scripts: scripts.clone(),
+        process,
+    };
+    let families = demi_backend::families::builtin()
+        .with("tree", tree(false))
+        .with("tree-process", tree(true));
+    let harness = Harness::new().with_families(families);
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post(
@@ -218,10 +257,17 @@ async fn tree(
             Some(&master),
             json!({
                 "source": "custom", "providerType": "tree", "label": "Tree", "apiKey": "k",
-                "models": [{
-                    "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
-                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
-                }]
+                "models": [
+                    {
+                        "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
+                        "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                    },
+                    {
+                        "id": "n", "displayName": "N", "contextWindow": 100000, "outputLimit": null,
+                        "thinkingEfforts": ["low", "high"], "acceptedExtensions": null,
+                        "fastTier": null
+                    }
+                ]
             }),
         )
         .await;
@@ -240,7 +286,7 @@ async fn tree(
     create(&backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "m").await;
     let (paired, root) = on_device(&harness, &backend, &master, FIRST).await;
-    (harness, backend, master, paired, root)
+    (harness, backend, master, paired, root, provider)
 }
 
 /// The shell that waits until the file `go` appears where it works.
@@ -251,7 +297,7 @@ const WAIT: &str = "until [ -f go ]; do sleep 0.05; done";
 #[tokio::test]
 async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after_its_spawn() {
     let scripts = Arc::new(Scripts::default());
-    let (_harness, backend, master, _paired, root) = tree(&scripts).await;
+    let (_harness, backend, master, _paired, root, _provider) = tree(&scripts).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
@@ -332,7 +378,7 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
 #[tokio::test]
 async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
     let scripts = Arc::new(Scripts::default());
-    let (_harness, backend, master, _paired, root) = tree(&scripts).await;
+    let (_harness, backend, master, _paired, root, _provider) = tree(&scripts).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     scripts.child(vec![shell("c1", WAIT), say("the child's result")]);
@@ -408,5 +454,157 @@ async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
         listed.contains("(root session)") && !listed.contains("worker"),
         "{listed}"
     );
+    backend.close().await;
+}
+
+/// The text of the last request of the sessions `keep` accepts.
+fn last_asked(scripts: &Scripts, keep: impl Fn(&str) -> bool) -> String {
+    scripts.asked(keep).pop().expect("a request was made")
+}
+
+// Several seconds: the root's three shell jobs run on a real device.
+#[tokio::test]
+async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_catalog() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _paired, _root, provider) = tree(&scripts).await;
+    let explore = json!({
+        "name": "explore", "description": "Finds code; it changes nothing.",
+        "model": { "providerId": provider, "modelId": "n", "thinkingEffort": "high", "serviceTierId": null },
+        "instructions": "You only report.", "canSpawn": false
+    });
+    let created = backend
+        .post("/api/subagents/profiles", Some(&master), explore)
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    scripts.child(vec![say("found it")]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell(
+                "t1",
+                "demi agent profiles && demi agent spawn --profile explore <<< 'Find the parser'",
+            ),
+            say("dispatched"),
+            say("received"),
+        ],
+    );
+    socket.chat("m1", "Find the parser").await;
+    // The child's completion wakes the root, which answers it.
+    socket
+        .until(|frame| {
+            matches!(
+                frame,
+                ServerFrame::Subagent {
+                    event: SubagentEvent::Closed,
+                    ..
+                }
+            )
+        })
+        .await;
+    socket.until_idle().await;
+    let child = last_asked(&scripts, |session| session != FIRST);
+    assert!(child.contains("model=n "), "{child}");
+    assert!(child.contains("effort: \"high\""), "{child}");
+    assert!(child.contains("system=\"You only report."), "{child}");
+    let listed = &scripts.asked(|session| session == FIRST)[1];
+    assert!(
+        listed.contains("explore  Finds code; it changes nothing."),
+        "{listed}"
+    );
+
+    // Turned off in settings, the open tree's next spawn fails.
+    let off = backend
+        .put("/api/subagents", &master, json!({ "enabled": false }))
+        .await;
+    assert_eq!(off.status, StatusCode::NO_CONTENT);
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t2", "demi agent spawn <<< 'Find it again'"),
+            say("refused"),
+        ],
+    );
+    socket.chat("m2", "Again").await;
+    let refused = last_asked(&scripts, |session| session == FIRST);
+    assert!(
+        refused.contains("subagents are turned off in settings"),
+        "{refused}"
+    );
+    backend.close().await;
+}
+
+// Several seconds: the child's shell job runs on a real device until the
+// reset holds the conversation.
+#[tokio::test]
+async fn a_reset_holds_a_conversation_whose_subagent_infers_with_a_provider_on_the_cloud() {
+    let scripts = Arc::new(Scripts::default());
+    let (harness, backend, master, _paired, _root, _provider) = tree(&scripts).await;
+    // Its files and commands and its root's provider are on the device;
+    // only the provider of its child's profile runs on the Cloud.
+    let created = backend
+        .post(
+            "/api/providers",
+            Some(&master),
+            json!({
+                "source": "custom", "providerType": "tree-process", "label": "On the Cloud",
+                "apiKey": "k",
+                "models": [{
+                    "id": "c", "displayName": "C", "contextWindow": 100000, "outputLimit": null,
+                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                }]
+            }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let process = created.json::<ProviderAnswer>().provider.id;
+    let profile = json!({
+        "name": "cloud", "description": "Runs on the Cloud's provider.",
+        "model": { "providerId": process, "modelId": "c", "thinkingEffort": null, "serviceTierId": null },
+        "instructions": null, "canSpawn": true
+    });
+    let created = backend
+        .post("/api/subagents/profiles", Some(&master), profile)
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.child(vec![shell("c1", WAIT), say("never said")]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi agent spawn --profile cloud <<< 'Wait for go'"),
+            say("dispatched"),
+        ],
+    );
+    socket.chat("m1", "Delegate").await;
+    eventually("the child runs its command", || async {
+        scripts.asked(|session| session != FIRST).len() == 1
+    })
+    .await;
+    drop(socket);
+
+    let (held, proceed) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
+    harness
+        .manager
+        .script(|script| script.hold_reset = Some((held.clone(), proceed.clone())));
+    reset(&backend, &master, "6e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a19").await;
+    held.notified().await;
+    // The reset holds the conversation for its child: an open waits at its
+    // file gate and goes on when the reset ends.
+    let mut waiting = backend.file_gate(&master, FIRST).await.waiting();
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    {
+        let opening = socket.open();
+        tokio::pin!(opening);
+        tokio::select! {
+            _ = &mut opening => panic!("the open did not wait for the reset"),
+            waits = waiting.wait_for(|count| *count > 0) => assert!(waits.is_ok()),
+        }
+        proceed.notify_one();
+        opening.await;
+    }
     backend.close().await;
 }

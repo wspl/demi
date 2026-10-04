@@ -25,6 +25,7 @@ mod schema;
 pub mod sequences;
 pub mod sidebar;
 mod sqlite;
+pub mod subagents;
 pub mod tree;
 pub mod usage;
 pub mod workspaces;

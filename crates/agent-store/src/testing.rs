@@ -557,6 +557,7 @@ pub mod store_contract {
             parent: parent.map(id),
             description: String::new(),
             profile: None,
+            instructions: None,
             round: 1,
             started_at: Timestamp::UNIX_EPOCH,
             can_spawn_subagents: true,
@@ -668,13 +669,21 @@ pub mod store_contract {
             update(Vec::new(), Vec::new()),
         )
         .await;
+        // What a child was spawned with stays in its record.
+        let spawned = NodeRecord {
+            profile: Some("explore".into()),
+            instructions: Some("explore prompt".into()),
+            can_spawn_subagents: false,
+            ..record("child", Some("root"), 1)
+        };
         create(
             store,
-            record("child", Some("root"), 1),
+            spawned.clone(),
             update(vec![message("m1")], Vec::new()),
         )
         .await;
 
+        assert_eq!(stored(store, "child").await, Some(spawned));
         let children: Vec<NodeId> = store
             .children(&id("root"))
             .await

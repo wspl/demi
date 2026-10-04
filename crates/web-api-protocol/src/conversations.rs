@@ -104,9 +104,9 @@ pub struct ConversationSummary {
     pub title_current: bool,
     /// Whether a title request of the conversation is in flight.
     pub title_generating: bool,
-    /// Whether the conversation's tree is open with commands or profiles of
-    /// plugins the user has since turned on or off, so a reload would
-    /// change them (`plugins.md` § A user's plugins).
+    /// Whether the conversation's tree is open with commands of plugins the
+    /// user has since turned on or off, so a reload would change them
+    /// (`plugins.md` § A user's plugins).
     pub plugins_changed: bool,
     /// The revision of the conversation's draft, 0 before its first save
     /// (`web-api.md` § Conversation drafts): a page reads the draft only when

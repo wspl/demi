@@ -33,6 +33,7 @@ serde_path_to_error = "0.1"
 serde_with.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+thiserror.workspace = true
 
 [dev-dependencies]
 demi-agent-store = { path = "../agent-store", features = ["testing"] }

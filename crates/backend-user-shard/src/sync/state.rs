@@ -36,6 +36,10 @@ impl Shard {
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
         let cloud = self.cloud_shard().cloud_status().await?;
+        let subagents = services
+            .control
+            .subagent_settings(self.user().clone())
+            .await?;
         let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
         Ok(ProductState {
@@ -56,6 +60,7 @@ impl Shard {
                 .to_owned(),
             conversations,
             cloud,
+            subagents,
             plugins,
             plugin_states,
             web_build: services.web_build.clone(),
@@ -102,6 +107,9 @@ impl Shard {
             },
             Part::Devices => SyncEvent::Devices {
                 devices: self.device_list().await?,
+            },
+            Part::Subagents => SyncEvent::Subagents {
+                subagents: control.subagent_settings(self.user().clone()).await?,
             },
             Part::Plugins => SyncEvent::Plugins {
                 plugins: self.plugins().entries().await?,

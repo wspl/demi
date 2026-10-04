@@ -20,6 +20,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{ProviderDetails, ProviderReading, ProviderState};
 use demi_web_api_protocol::settings::{InstanceMode, Preferences, Theme};
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
+use demi_web_api_protocol::subagents::SubagentSettings;
 use jiff::SignedDuration;
 use reqwest::{Method, StatusCode};
 use serde_json::json;
@@ -157,6 +158,11 @@ async fn the_snapshot_is_the_users_product_state() {
                     system_bytes: 16 << 30,
                     home_bytes: 32 << 30,
                 },
+            },
+            // A new user has subagents on and no profile.
+            subagents: SubagentSettings {
+                enabled: true,
+                profiles: Vec::new(),
             },
             // Checked below by what the page needs of them.
             plugins: state.plugins.clone(),
