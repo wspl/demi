@@ -98,6 +98,8 @@
   --on-highlight: #fde68a;
   /* Solid accent fill for primary controls; --on-accent stays a text color. */
   --accent-fill: #2b74dc;
+  /* The shadows here are the gallery's carved look; the product's hairline look
+     (product-appearance.css) and the gallery's soft one (paradigms.css) replace them. */
   --th-shadow-sm:
     rgba(119, 119, 113, 0.35) 0 0 0 0.5px,
     rgba(0, 0, 0, 0.16) 0 0 0 1px,
@@ -112,9 +114,10 @@
     rgba(0, 0, 0, 0.16) 0 0 0 1px,
     rgba(0, 0, 0, 0.08) 0 1.5px 0,
     rgba(0, 0, 0, 0.12) 0 8px 16px -4px;
+  /* A floating layer's edge (floating layers, below): the warm hairline and a drop
+     pulled in under the surface, never a dark band around it. */
   --th-shadow-2xl:
     rgba(119, 119, 113, 0.45) 0 0 0 0.5px,
-    rgba(0, 0, 0, 0.28) 0 0 0 1px,
     rgba(0, 0, 0, 0.2) 0 24px 32px -12px;
   --shadow-float:
     rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
@@ -123,9 +126,8 @@
     rgba(0, 0, 0, 0.12) 0 12px 24px -8px;
   --shadow-overlay:
     0 0 0 0.5px var(--line-overlay),
-    rgba(0, 0, 0, 0.125) 0 3px 8px,
-    rgba(0, 0, 0, 0.125) 0 2px 5px,
-    rgba(0, 0, 0, 0.125) 0 1px 1px;
+    rgba(0, 0, 0, 0.2) 0 2px 4px -1px,
+    rgba(0, 0, 0, 0.25) 0 8px 16px -6px;
   --shadow-window:
     0 0 0 1px var(--line-overlay),
     0 10px 28px rgba(0, 0, 0, 0.32);
@@ -192,16 +194,15 @@
     0 8px 20px rgba(0, 0, 0, 0.05);
   --th-shadow-2xl:
     0 0 0 0.5px rgba(0, 0, 0, 0.1),
-    0 20px 40px rgba(0, 0, 0, 0.08);
+    0 20px 40px -12px rgba(0, 0, 0, 0.12);
   --shadow-float:
     inset 0 0.5px 0 rgba(255, 255, 255, 0.9),
     0 0 0 0.5px rgba(0, 0, 0, 0.08),
     0 8px 20px rgba(0, 0, 0, 0.04);
   --shadow-overlay:
     0 0 0 0.5px var(--line-overlay),
-    rgba(0, 0, 0, 0.06) 0 3px 8px,
-    rgba(0, 0, 0, 0.04) 0 2px 5px,
-    rgba(0, 0, 0, 0.04) 0 1px 1px;
+    rgba(0, 0, 0, 0.06) 0 2px 4px -1px,
+    rgba(0, 0, 0, 0.08) 0 8px 16px -6px;
   --shadow-window:
     0 0 0 1px var(--line-overlay),
     0 10px 28px rgba(0, 0, 0, 0.12);

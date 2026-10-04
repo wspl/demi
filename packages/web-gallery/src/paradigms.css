@@ -45,9 +45,7 @@ html[data-radius="soft"] {
 
 /* ── shadow ───────────────────────────────────────────────────────── */
 
-
-
-
+/* Carved is base.css's own shadow set, so it has no tokens here. */
 
 html[data-theme="dark"][data-shadow="soft"] {
   --th-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3), 0 1px 2px -1px rgba(0, 0, 0, 0.3);
@@ -76,65 +74,6 @@ html[data-theme="light"][data-shadow="soft"] {
   --shadow-btn: 0 0 0 1px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.05);
   --shadow-btn-hover: 0 0 0 1px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
 }
-
-html[data-theme="dark"][data-shadow="carved"] {
-  --th-shadow-sm:
-    rgba(119, 119, 113, 0.35) 0 0 0 0.5px,
-    rgba(0, 0, 0, 0.16) 0 0 0 1px,
-    rgba(0, 0, 0, 0.08) 0 1.5px 0;
-  --th-shadow-md:
-    rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
-    rgba(0, 0, 0, 0.2) 0 0 0 1px,
-    rgba(0, 0, 0, 0.12) 0 1.5px 1px,
-    rgba(0, 0, 0, 0.1) 0 4px 8px;
-  --th-shadow-lg:
-    rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
-    rgba(0, 0, 0, 0.16) 0 0 0 1px,
-    rgba(0, 0, 0, 0.08) 0 1.5px 0,
-    rgba(0, 0, 0, 0.12) 0 8px 16px -4px;
-  --th-shadow-2xl:
-    rgba(119, 119, 113, 0.45) 0 0 0 0.5px,
-    rgba(0, 0, 0, 0.28) 0 0 0 1px,
-    rgba(0, 0, 0, 0.2) 0 24px 32px -12px;
-  --shadow-float:
-    rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
-    rgba(0, 0, 0, 0.16) 0 0 0 1px,
-    rgba(0, 0, 0, 0.08) 0 1.5px 0,
-    rgba(0, 0, 0, 0.12) 0 12px 24px -8px;
-  --shadow-btn:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.16),
-    inset 0 -0.5px 0 rgba(255, 255, 255, 0.04),
-    0 0 0 0.5px rgba(255, 255, 255, 0.12);
-  --shadow-btn-hover:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.22),
-    0 0 0 0.5px rgba(255, 255, 255, 0.18);
-}
-
-html[data-theme="light"][data-shadow="carved"] {
-  --th-shadow-sm: inset 0 0.5px 0 rgba(255, 255, 255, 0.7), 0 0 0 0.5px rgba(0, 0, 0, 0.08);
-  --th-shadow-md:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.8),
-    0 0 0 0.5px rgba(0, 0, 0, 0.08),
-    0 2px 6px rgba(0, 0, 0, 0.04);
-  --th-shadow-lg:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.85),
-    0 0 0 0.5px rgba(0, 0, 0, 0.08),
-    0 8px 20px rgba(0, 0, 0, 0.05);
-  --th-shadow-2xl:
-    0 0 0 0.5px rgba(0, 0, 0, 0.1),
-    0 20px 40px rgba(0, 0, 0, 0.08);
-  --shadow-float:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.9),
-    0 0 0 0.5px rgba(0, 0, 0, 0.08),
-    0 8px 20px rgba(0, 0, 0, 0.04);
-  --shadow-btn:
-    inset 0 0.5px 0 rgba(255, 255, 255, 0.9),
-    0 0 0 0.5px rgba(0, 0, 0, 0.1);
-  --shadow-btn-hover:
-    inset 0 0.5px 0 rgba(255, 255, 255, 1),
-    0 0 0 0.5px rgba(0, 0, 0, 0.14);
-}
-
 
 html[data-shadow="carved"] .input-float {
   outline-width: 0;
