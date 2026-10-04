@@ -15,7 +15,7 @@ import (
 	"github.com/wspl/demi/tools/contractgen/testdata/pluginbrowser"
 )
 
-// The unmodified full golden browser manifest pins each page and stream use,
+// The full golden browser manifest pins each page and stream use,
 // including definition order and nullable references. Local generation <2 s.
 func TestBrowserPluginSchemas(t *testing.T) {
 	if err := generate(t.Context(), []string{"./testdata/pluginbrowser"}, false, "", true); err != nil {

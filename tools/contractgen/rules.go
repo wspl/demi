@@ -33,6 +33,12 @@ func checkRuleType(t types.Type, m map[string]string, field bool) error {
 		}
 		t = p.Elem()
 	}
+	if has(m, "object") {
+		if !field || !isJSON(original) || len(m) != 1 {
+			return fmt.Errorf("object requires a json.RawMessage field without other markers")
+		}
+		return nil
+	}
 	if isJSON(t) && len(m) > 0 {
 		return fmt.Errorf("arbitrary JSON does not support field rules")
 	}

@@ -6451,6 +6451,10 @@
                 },
                 "viewport": {
                   "$ref": "#/$defs/BrowserViewport"
+                },
+                "loading": {
+                  "type": "boolean",
+                  "description": "Whether the browser loads the tab's top-level page."
                 }
               },
               "required": [
@@ -6458,7 +6462,8 @@
                 "title",
                 "url",
                 "createdBy",
-                "viewport"
+                "viewport",
+                "loading"
               ],
               "description": "A tab as the view lists it."
             },
@@ -7764,13 +7769,18 @@
                 },
                 "createdBy": {
                   "$ref": "#/$defs/BrowserCreatedBy"
+                },
+                "loading": {
+                  "type": "boolean",
+                  "description": "Whether the browser loads the tab's top-level page."
                 }
               },
               "required": [
                 "id",
                 "title",
                 "url",
-                "createdBy"
+                "createdBy",
+                "loading"
               ],
               "description": "A tab as `tabs` lists it and the conversation browser's tab methods return it."
             },
@@ -7919,13 +7929,18 @@
                   },
                   "createdBy": {
                     "$ref": "#/$defs/BrowserCreatedBy"
+                  },
+                  "loading": {
+                    "type": "boolean",
+                    "description": "Whether the browser loads the tab's top-level page."
                   }
                 },
                 "required": [
                   "id",
                   "title",
                   "url",
-                  "createdBy"
+                  "createdBy",
+                  "loading"
                 ],
                 "description": "A tab as `tabs` lists it and the conversation browser's tab methods return it."
               },
