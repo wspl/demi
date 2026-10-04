@@ -31,7 +31,7 @@ mod rpc;
 pub mod testing;
 
 pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
-pub use commands::{CommandSet, Declared, RegisterError};
+pub use commands::{Checked, CommandSet, Declared, RegisterError};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES, DEFAULT_OBSERVATION,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, MAX_OBSERVATION, Newest,

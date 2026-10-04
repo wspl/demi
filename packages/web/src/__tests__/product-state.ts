@@ -42,7 +42,8 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
 export function conversationSummary(id: string, title = '', parts: Partial<ConversationSummary> = {}): ConversationSummary {
   return {
     id, title, pinned: false, archived: false, readRevision: 0, revision: 0, unread: false,
-    titleCurrent: true, titleGenerating: false, pluginsChanged: false, draftRevision: 0, panelRevision: 0, pluginRevisions: [], workingTreeRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
+    titleCurrent: true, titleGenerating: false, pluginsChanged: false, draftRevision: 0, panelRevision: 0, pluginRevisions: [], workingTreeRevision: 0,
+    permissionRequests: 0, permissionsRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
     contextVersion: 0, model: null, createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
     status: 'idle', ...parts,
   }

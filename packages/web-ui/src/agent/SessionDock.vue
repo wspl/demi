@@ -15,6 +15,10 @@ const emit = defineEmits<{
 
 <template>
   <div class="relative">
+    <!-- What waits for the user's decision sits over the chips, below the transcript. -->
+    <div v-if="$slots.above" class="pb-2">
+      <slot name="above" />
+    </div>
     <!-- Keep the control row in the measured dock, even at the scroll bottom.
          Chips read from the left; the scroll control keeps the right edge. -->
     <div class="flex items-center gap-1.5 pb-2">

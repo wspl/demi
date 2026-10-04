@@ -67,6 +67,7 @@ pub fn protocol() -> Vec<Root> {
 pub fn web() -> Vec<Root> {
     use api::{
         attachments, auth, cloud, conversations, devices, drafts, error, files, hosts, panel,
+        permissions,
         plugins, providers, settings, sidebar, state, subagents, usage, users, workspaces,
     };
     vec![
@@ -161,5 +162,7 @@ pub fn web() -> Vec<Root> {
         sends::<drafts::DraftSave>(),
         sends::<drafts::ReplacedDraftAction>(),
         receives::<drafts::DraftAnswer>(),
+        receives::<permissions::ConversationPermissions>(),
+        sends::<permissions::DecidePermission>(),
     ]
 }

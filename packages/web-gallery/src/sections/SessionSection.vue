@@ -3,7 +3,10 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
-import { agentReceiptMessages, editedFile } from '../fixtures/blocks'
+import { agentReceiptMessages, editedFile, permissionReceiptMessages } from '../fixtures/blocks'
+import PermissionCard from '@demicodes/web-ui/permissions/PermissionCard.vue'
+import { afterDecision, type PermissionDecision, type PermissionRequestView } from '@demicodes/web-ui/permissions/types'
+import { queuedRequests, rootRequest, subagentRequest } from '../fixtures/permissions'
 import { readGalleryEdit } from '../fixtures/blobs'
 import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
@@ -113,6 +116,30 @@ import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
 const historyModelBlocks = transcriptDemoBlocks()
+
+/**
+ * The permission card's specimens, each over its own requests: a decision
+ * drops what the product's would (an allow every request of its category, a
+ * deny that one) and says what the product would tell the agent; Show Again
+ * brings the requests back.
+ */
+const permissionSpecimens = reactive([
+  { variant: 'one request', fixture: () => [rootRequest()], requests: [rootRequest()] },
+  { variant: 'a queue of three', fixture: queuedRequests, requests: queuedRequests() },
+  { variant: 'a subagent asked', fixture: () => [subagentRequest()], requests: [subagentRequest()] },
+])
+function decidePermission(
+  requests: PermissionRequestView[],
+  id: string,
+  decision: PermissionDecision,
+): PermissionRequestView[] {
+  productWould(decision === 'allow'
+    ? 'Allow the Category and Tell Each Agent That Asked'
+    : 'Tell the Agent the Request Was Denied')
+  return afterDecision(requests, id, decision)
+}
+// The product session opens with the root's request waiting, above its chips.
+const sessionRequests = ref<PermissionRequestView[]>([rootRequest()])
 const submissionError = ref<string | null>('Connection closed before confirmation')
 
 const messageEdit = ref<MessageEditState | null>(null)
@@ -933,6 +960,32 @@ onBeforeUnmount(() => {
       </GallerySection>
 
       <GallerySection
+        title="PermissionCard"
+        note="An agent's command needs the user's permission (permissions.md): the oldest request waits above the composer, below the transcript and over the dock's chips, while the transcript and the composer stay usable. It says what the conversation would be allowed, the command the agent ran, the subagent that ran it, what a grant allows, and which one of how many it is. Allow for This Conversation decides every request of its category; Deny decides this one, and the next takes its place. A category the user's command set no longer declares shows its id."
+      >
+        <div class="specimen-stack">
+          <GallerySpecimen
+            v-for="specimen in permissionSpecimens"
+            :key="specimen.variant"
+            :variant="specimen.variant"
+            wide
+          >
+            <div class="w-full max-w-[44rem]">
+              <PermissionCard
+                v-if="specimen.requests.length"
+                :requests="specimen.requests"
+                @decide="(id, decision) => (specimen.requests = decidePermission(specimen.requests, id, decision))"
+              />
+              <div v-else class="flex items-center gap-3 text-chrome text-fg-subtle">
+                Every request is decided.
+                <Button size="sm" @click="specimen.requests = specimen.fixture()">Show Again</Button>
+              </div>
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="ModelSelector"
         note="The model dropdown aligns to the trigger’s right edge, extending to the left. A new conversation inherits the saved model, reasoning and Fast Mode; the product adapter persists this preference to the backend. A model over 500K offers a Context row: the limit is the user's for that model in every conversation, so the context specimens share one store, and the usage indicator counts against the limit."
       >
@@ -1120,11 +1173,11 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts. Expand to read the message; these rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates, completion receipts, and the user's decisions on permission requests as the agent that asked received them. Expand to read the message; these rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
             <GallerySpecimen
-              v-for="(message, index) in agentReceiptMessages"
+              v-for="(message, index) in [...agentReceiptMessages, ...permissionReceiptMessages]"
               :key="message.id"
               :variant="message.event.type === 'message' ? 'update' : message.event.outcome"
               wide
@@ -1882,6 +1935,8 @@ onBeforeUnmount(() => {
         :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true; view = 'panel' }"
         :files="sessionFiles"
         :edit-version="editVersion"
+        :permission-requests="sessionRequests"
+        @decide-permission="(id, decision) => (sessionRequests = decidePermission(sessionRequests, id, decision))"
         v-model:message-edit="messageEdit"
         @retry="sessionFlow.resume()"
         @rename="session.title = $event"

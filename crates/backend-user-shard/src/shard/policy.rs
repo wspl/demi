@@ -54,16 +54,27 @@ impl LinkPolicy for ShardPolicy {
         }
     }
 
+    /// Runs the call in its node's commands: once the command set checked
+    /// the call, its leaf's permission category, if it names one, is checked
+    /// against the conversation's grants before the handler runs
+    /// (`permissions.md` § The check).
     fn dispatch(
         &self,
         job: Rc<JobOrigin>,
         invocation: RpcInvocation,
         port: RpcPort,
     ) -> LocalBoxFuture<'static, Result<u8, RpcError>> {
-        match self.shard() {
-            Ok(shard) => shard.commands().dispatch(&job, invocation, port),
-            Err(reason) => Box::pin(async move { Err(RpcError::Failed(reason)) }),
-        }
+        let shard = self.shard();
+        Box::pin(async move {
+            let shard = shard.map_err(RpcError::Failed)?;
+            let commands = shard.commands().commands_of(&job).map_err(RpcError::Failed)?;
+            let checked = commands.check(&invocation)?;
+            if let Some(category) = checked.category {
+                demi_backend_permissions::check(shard.permission_shard(), &invocation, category)
+                    .await?;
+            }
+            checked.handler.call(invocation, port).await
+        })
     }
 
     /// The blobs of the user's namespace a handler returns as media.

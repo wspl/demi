@@ -28,9 +28,9 @@ use demi_provider_common::{
     ToolDefinition,
 };
 use demi_shared_types::{
-    AgentMessage, BlobRef, Block, BlockId, Clock, FailureSource, ModelSelection, NodeId,
-    PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock,
-    ToolView, TurnId, UserContentBlock, WakeupId, WakeupPlacement,
+    AgentMessage, AgentMessageEvent, BlobRef, Block, BlockId, Clock, FailureSource, ModelSelection,
+    NodeId, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
+    ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupId, WakeupPlacement,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -473,6 +473,11 @@ impl SessionCore {
                 return;
             }
         };
+        self.start_action(kind, turn, reply);
+    }
+
+    /// Runs `kind` as the session's action, writing `turn`.
+    fn start_action(&mut self, kind: ActionKind, turn: TurnId, reply: Option<ActionReply>) {
         let cancel = TurnCancel::new();
         self.held = false;
         let unwritten_media = match &kind {
@@ -512,6 +517,17 @@ impl SessionCore {
     pub(super) fn wake(&mut self) {
         if matches!(self.activity, Activity::Idle) && self.pending.is_empty() {
             self.start_next();
+        }
+    }
+
+    /// Opens a continuation for the user's decision on a permission request
+    /// when nothing runs or waits, also after the user stopped the last turn
+    /// or while the session is held: the decision is the user's own next
+    /// action (`permissions.md` § The decision's message).
+    fn wake_for_user(&mut self) {
+        if matches!(self.activity, Activity::Idle) && self.pending.is_empty() && !self.disposing {
+            let turn = self.new_turn();
+            self.start_action(ActionKind::Continue, turn, None);
         }
     }
 
@@ -919,12 +935,17 @@ impl SessionCore {
             Activity::Running(run) => run.turn.clone(),
             _ => TurnId::try_from(message.id.as_str()).expect("a message id is never empty"),
         };
+        let decided = matches!(message.event, AgentMessageEvent::Permission { .. });
         self.inputs.add(Input::Agent(PendingAgentInput {
             turn_id,
             model: self.model.clone(),
             message,
         }));
-        self.wake();
+        if decided {
+            self.wake_for_user();
+        } else {
+            self.wake();
+        }
         Ok(())
     }
 

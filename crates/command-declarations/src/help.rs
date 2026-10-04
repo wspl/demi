@@ -73,6 +73,9 @@ impl<B> Node<B> {
             {
                 lines.push(format!("    Failure output: {failure}"));
             }
+            if let Some(permission) = &leaf.permission {
+                lines.push(format!("    Permission: needs the user's permission ({permission}) in each conversation; without it, the command fails at once and the user is asked."));
+            }
             if let Some(properties) = leaf.properties() {
                 let fields: Vec<_> = properties
                     .iter()

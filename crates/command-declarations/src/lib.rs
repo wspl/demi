@@ -7,6 +7,11 @@
 //! declaration names the package and the operation ([`NativeOperation`]); the
 //! manifest a runner receives pins each to the descriptor that serves it
 //! ([`Binding`]), and [`Node::pin`] turns the one into the other.
+//!
+//! A group may declare permission categories, and a leaf names the one it
+//! needs as its `permission` (`permissions.md` § Categories): the
+//! declaration is all a command does about permissions, which the backend's
+//! dispatch checks before a handler runs.
 
 mod help;
 mod input;
@@ -61,7 +66,37 @@ pub enum Node<B = Binding> {
 pub struct Group<B = Binding> {
     pub name: String,
     pub summary: String,
+    /// The permission categories the group's leaves name.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub permissions: Vec<Category>,
     pub subcommands: Vec<Node<B>>,
+}
+
+/// One power over Demi itself that a user allows for a conversation
+/// (`permissions.md` § Categories).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Category {
+    /// Unique in the command set; it starts with its group's name and a
+    /// dot, such as `skills.manage`.
+    pub id: String,
+    /// A lowercase verb phrase that completes "Allow this conversation to
+    /// …", such as `manage skills`.
+    pub action: String,
+    /// What a grant allows, including its reach beyond the conversation.
+    pub description: String,
+}
+
+impl Category {
+    /// The category's title: its action with its first letter capitalized,
+    /// such as "Manage skills".
+    pub fn title(&self) -> String {
+        let mut characters = self.action.chars();
+        match characters.next() {
+            Some(first) => first.to_uppercase().chain(characters).collect(),
+            None => String::new(),
+        }
+    }
 }
 
 /// A command: its help texts, the JSON Schema of its input object, where its
@@ -88,6 +123,9 @@ pub struct Leaf<B = Binding> {
     pub output: Option<LeafOutput>,
     /// Whether the command may return media (`commands.md` § Return media).
     pub media: bool,
+    /// The id of the permission category the command needs, which one of
+    /// its groups declares; only an `rpc` leaf names one.
+    pub permission: Option<String>,
     pub kind: LeafKind<B>,
 }
 
@@ -239,13 +277,43 @@ impl<B> Node<B> {
         }
     }
 
-    /// Checks the tree's rules: names, at most [`MAX_DEPTH`] levels, groups
-    /// with distinctly named subcommands, and each leaf's input declaration.
-    pub fn validate(&self) -> Result<(), DeclarationError> {
-        self.validate_at(0)
+    /// The permission categories the tree's groups declare, depth first.
+    pub fn categories(&self) -> Vec<&Category> {
+        match self {
+            Self::Group(group) => group
+                .permissions
+                .iter()
+                .chain(group.subcommands.iter().flat_map(Node::categories))
+                .collect(),
+            Self::Leaf(_) => Vec::new(),
+        }
     }
 
-    fn validate_at(&self, depth: usize) -> Result<(), DeclarationError> {
+    /// Checks the tree's rules: names, at most [`MAX_DEPTH`] levels, groups
+    /// with distinctly named subcommands, each leaf's input declaration, and
+    /// the permission categories: each declared once, and a leaf's
+    /// `permission` naming one its groups declare, on an `rpc` leaf only.
+    pub fn validate(&self) -> Result<(), DeclarationError> {
+        self.validate_at(0, &mut Vec::new())?;
+        let mut ids = HashSet::new();
+        for category in self.categories() {
+            if !ids.insert(category.id.as_str()) {
+                return Err(invalid(format!(
+                    "permission category {} is declared twice",
+                    category.id
+                )));
+            }
+        }
+        Ok(())
+    }
+
+    /// `declared` holds the ids of the categories the groups above this
+    /// node declare.
+    fn validate_at<'a>(
+        &'a self,
+        depth: usize,
+        declared: &mut Vec<&'a str>,
+    ) -> Result<(), DeclarationError> {
         if depth > MAX_DEPTH {
             return Err(invalid(format!("command tree exceeds {MAX_DEPTH} levels")));
         }
@@ -260,16 +328,45 @@ impl<B> Node<B> {
                         group.name
                     )));
                 }
+                for category in &group.permissions {
+                    category.validate(&group.name)?;
+                }
+                let above = declared.len();
+                declared.extend(group.permissions.iter().map(|category| category.id.as_str()));
                 let mut names = HashSet::new();
+                let mut checked = Ok(());
                 for child in &group.subcommands {
                     if !names.insert(child.name()) {
-                        return Err(invalid(format!("duplicate command name: {}", child.name())));
+                        checked = Err(invalid(format!("duplicate command name: {}", child.name())));
+                        break;
                     }
-                    child.validate_at(depth + 1)?;
+                    checked = child.validate_at(depth + 1, declared);
+                    if checked.is_err() {
+                        break;
+                    }
+                }
+                declared.truncate(above);
+                checked
+            }
+            Self::Leaf(leaf) => {
+                leaf.validate()?;
+                let Some(permission) = &leaf.permission else {
+                    return Ok(());
+                };
+                if matches!(leaf.kind, LeafKind::Native(_)) {
+                    return Err(invalid(format!(
+                        "native command {} names a permission; only an rpc command can",
+                        leaf.name
+                    )));
+                }
+                if !declared.contains(&permission.as_str()) {
+                    return Err(invalid(format!(
+                        "command {} names permission category {permission}, which none of its groups declares",
+                        leaf.name
+                    )));
                 }
                 Ok(())
             }
-            Self::Leaf(leaf) => leaf.validate(),
         }
     }
 }
@@ -285,6 +382,7 @@ impl Node<NativeOperation> {
             Self::Group(group) => Node::Group(Group {
                 name: group.name.clone(),
                 summary: group.summary.clone(),
+                permissions: group.permissions.clone(),
                 subcommands: group
                     .subcommands
                     .iter()
@@ -303,6 +401,7 @@ impl Node<NativeOperation> {
                 rest_field: leaf.rest_field.clone(),
                 output: leaf.output.clone(),
                 media: leaf.media,
+                permission: leaf.permission.clone(),
                 kind: match &leaf.kind {
                     LeafKind::Rpc => LeafKind::Rpc,
                     LeafKind::Native(operation) => LeafKind::Native(Binding {
@@ -313,6 +412,30 @@ impl Node<NativeOperation> {
                 },
             }),
         })
+    }
+}
+
+impl Category {
+    /// A category's id names its group, and its texts are not blank.
+    fn validate(&self, group: &str) -> Result<(), DeclarationError> {
+        let named = self
+            .id
+            .strip_prefix(group)
+            .and_then(|rest| rest.strip_prefix('.'))
+            .is_some_and(is_command_name);
+        if !named {
+            return Err(invalid(format!(
+                "permission category {} of group {group} must be named {group}.<name>",
+                self.id
+            )));
+        }
+        if self.action.trim().is_empty() || self.description.trim().is_empty() {
+            return Err(invalid(format!(
+                "permission category {} has no action or no description",
+                self.id
+            )));
+        }
+        Ok(())
     }
 }
 
@@ -482,6 +605,12 @@ struct RawLeaf<B> {
     output: Option<LeafOutput>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     media: bool,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    permission: Option<String>,
     kind: RawKind,
     #[serde(
         default,
@@ -520,6 +649,7 @@ impl<B> TryFrom<RawLeaf<B>> for Leaf<B> {
             rest_field: raw.rest_field,
             output: raw.output,
             media: raw.media,
+            permission: raw.permission,
             kind,
         })
     }
@@ -543,6 +673,7 @@ impl<B> From<Leaf<B>> for RawLeaf<B> {
             rest_field: leaf.rest_field,
             output: leaf.output,
             media: leaf.media,
+            permission: leaf.permission,
             kind,
             binding,
         }

@@ -64,6 +64,17 @@ export function demoConversations(): SidebarConversation[] {
       unread: true
     },
     {
+      id: 'c-skills',
+      title: 'Set up the web design skill',
+      updatedAt: ago(12 * 60 * 1000),
+      status: 'done',
+      projectId: null,
+      pinned: false,
+      unread: true,
+      // A permission request waits: the yellow mark wins over the unread one.
+      needsYou: true,
+    },
+    {
       id: 'c-wording',
       title: 'Release note wording for the tier contract',
       updatedAt: ago(5 * HOUR),
@@ -89,7 +100,9 @@ export function demoConversations(): SidebarConversation[] {
       status: 'active',
       projectId: 'p-demi',
       pinned: true,
-      unread: false
+      unread: false,
+      // Running, open, and a subagent asks: the yellow mark wins over the breathing one.
+      needsYou: true,
     },
     {
       id: 'c-cookie',

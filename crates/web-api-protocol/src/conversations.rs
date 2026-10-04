@@ -127,6 +127,16 @@ pub struct ConversationSummary {
     /// § File text and working tree changes).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub working_tree_revision: u64,
+    /// How many permission requests of the conversation wait for the user,
+    /// which the sidebar shows as the needs-you mark (`web-api.md`
+    /// § Conversation permissions).
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub permission_requests: u64,
+    /// Rises with each change of the conversation's permission requests or
+    /// grants since the backend started: a page reads them only when this is
+    /// higher than the revision it holds.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub permissions_revision: u64,
 }
 
 /// The revision of one plugin's state for a conversation.

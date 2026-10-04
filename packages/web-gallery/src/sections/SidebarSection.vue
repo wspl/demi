@@ -22,6 +22,9 @@ import { createSettingsState } from '../fixtures/settings'
 import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
 import { productWould } from '../product-would'
 import { demoAccount, demoConversations, demoProjects, emailOnlyAccount } from '../sidebar/sidebar-data'
+import PermissionsDialog from '@demicodes/web-ui/permissions/PermissionsDialog.vue'
+import type { PermissionGrantView } from '@demicodes/web-ui/permissions/types'
+import { demoGrants } from '../fixtures/permissions'
 
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
@@ -41,6 +44,24 @@ const settingsSections = computed(() => withPluginSections(SETTINGS_SECTIONS, PL
 const sectionEntries = computed(() => sidebarEntries(PLUGIN_PAGES, pluginOn))
 const settingsOpen = ref(false)
 const settingsTab = ref<SettingsTab>('general')
+
+// Permissions from a row's menu: the conversations that need the user have the demo grants, the
+// others none, and Revoke takes a grant away, as the product's dialog does.
+const permissionsFor = ref<string | null>(null)
+const grants = ref<Record<string, PermissionGrantView[]>>({})
+function grantsOf(id: string): PermissionGrantView[] {
+  if (!(id in grants.value)) {
+    const asked = conversations.value.find((conversation) => conversation.id === id)?.needsYou
+    grants.value[id] = asked ? demoGrants() : []
+  }
+  return grants.value[id]!
+}
+function revoke(id: string, category: string): void {
+  grants.value[id] = grantsOf(id).filter((grant) => grant.category.id !== category)
+}
+const permissionsTitle = computed(
+  () => conversations.value.find((conversation) => conversation.id === permissionsFor.value)?.title ?? '',
+)
 
 /** Opens the settings dialog, on `section` when an entry names one, as the product does. */
 function openSettings(section?: string): void {
@@ -73,11 +94,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Row',
-    'A title and one quiet dot: breathing while running, blue for a result waiting to be read, orange when the conversation needs the user, a faint ring when settled. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list\'s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; breathing while running, blue for a result waiting to be read, orange when the conversation failed or was stopped, a faint ring when settled. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list\'s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
-    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, move to a project and archive for any count; a conversation is archived, never deleted. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
+    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename, copy conversation ID and Permissions, the categories the user allowed the conversation with Revoke, for one row; pin, move to a project and archive for any count; a conversation is archived, never deleted. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
   ],
   [
     'Keys',
@@ -263,6 +284,7 @@ onBeforeUnmount(() => listRestore.stop())
             @pin="(ids, pinned) => patchMany(ids, (c) => ({ ...c, pinned }))"
             @move-to-project="(ids, projectId) => patchMany(ids, (c) => ({ ...c, projectId }))"
             @archive="dropMany"
+            @permissions="(id) => (permissionsFor = id)"
             @open-settings="openSettings"
             @sign-out="productWould('Sign Out')"
           />
@@ -284,6 +306,14 @@ onBeforeUnmount(() => listRestore.stop())
             >
               <GallerySettingsFull :tab="settingsTab" :state="settings" />
             </SettingsDialog>
+            <PermissionsDialog
+              :is-open="permissionsFor !== null"
+              :overlay-store="appOverlayStore"
+              :title="permissionsTitle"
+              :grants="permissionsFor ? grantsOf(permissionsFor) : []"
+              @close="permissionsFor = null"
+              @revoke="(category) => permissionsFor && revoke(permissionsFor, category)"
+            />
           </template>
           </SidebarLayout>
         </div>

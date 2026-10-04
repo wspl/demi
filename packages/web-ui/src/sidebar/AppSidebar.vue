@@ -57,6 +57,8 @@ const emit = defineEmits<{
   pin: [ids: string[], pinned: boolean]
   moveToProject: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
+  /** The conversation's Permissions dialog. */
+  permissions: [id: string]
   /** Settings, on a section when an entry names one (`archived`, or an entry's own). */
   openSettings: [section?: string]
   signOut: []
@@ -571,6 +573,10 @@ function selectProjectConversations(project: SidebarProject): void {
         @copy-id="(id) => {
           rowMenu.close()
           void copyConversationId(id)
+        }"
+        @permissions="(id) => {
+          rowMenu.close()
+          emit('permissions', id)
         }"
         @pin="(ids, pinned) => {
           rowMenu.close()

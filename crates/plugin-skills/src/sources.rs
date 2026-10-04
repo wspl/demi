@@ -12,7 +12,6 @@ use demi_plugin_interface::{
 use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 
 use crate::fetch::{Fetched, Skipped};
 use crate::skill;
@@ -362,13 +361,13 @@ pub struct SkillState {
     pub taken_by: Option<String>,
 }
 
-/// The page state of `sources`, `fetching` naming those being fetched and
+/// The page state of `sources`, `fetching` telling those being fetched and
 /// `heads` what is known of each one's default branch.
 pub(crate) fn state(
     sources: &Sources,
-    fetching: &BTreeSet<String>,
+    fetching: impl Fn(&str) -> bool,
     heads: &BTreeMap<String, Head>,
-) -> Value {
+) -> SkillsState {
     let mut ordered: Vec<(&String, &Source)> = sources
         .iter()
         .map(|(id, (source, _))| (id, source))
@@ -380,7 +379,7 @@ pub(crate) fn state(
             on.insert(directory_name(&skill.name), &source.origin);
         }
     }
-    let state = SkillsState {
+    SkillsState {
         sources: ordered
             .into_iter()
             .map(|(id, source)| SourceState {
@@ -388,7 +387,7 @@ pub(crate) fn state(
                 origin: source.origin.clone(),
                 commit: source.commit.clone(),
                 fetched_at: source.fetched_at,
-                fetching: fetching.contains(id),
+                fetching: fetching(id),
                 failure: source.failure.clone(),
                 update_available: source
                     .commit
@@ -413,6 +412,5 @@ pub(crate) fn state(
                 skipped: source.skipped.clone(),
             })
             .collect(),
-    };
-    serde_json::to_value(state).expect("the state encodes as JSON")
+    }
 }

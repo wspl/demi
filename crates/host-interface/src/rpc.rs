@@ -23,7 +23,7 @@ use crate::JobCaller;
 pub struct RpcInvocation {
     /// The leaf's path, root first.
     pub path: Vec<String>,
-    /// The command line after the root's name, as the process wrote it.
+    /// The command line as the process wrote it, the root's name first.
     pub argv: Vec<String>,
     /// The arguments, valid against the leaf's input; a `stdinField` body is
     /// among them.

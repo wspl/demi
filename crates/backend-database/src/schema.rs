@@ -273,6 +273,34 @@ CREATE TABLE conversation_drafts (
   CHECK ((replaced IS NULL) = (replaced_revision IS NULL))
 ) STRICT;
 
+-- Conversation permissions (permissions.md): each command an agent ran
+-- without the grant of its category, undecided until the user decides and
+-- then kept until the decision's message is in the agent's checkpoint; and
+-- each category the user allowed for a conversation. The agent is the root
+-- when its number and description are null.
+CREATE TABLE permission_requests (
+  id                TEXT PRIMARY KEY,
+  conversation_id   TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  category          TEXT NOT NULL,
+  command           TEXT NOT NULL,
+  node_id           TEXT NOT NULL,
+  agent_number      INTEGER,
+  agent_description TEXT,
+  created_at        INTEGER NOT NULL,
+  decision          TEXT CHECK (decision IN ('allowed', 'denied')),
+  decided_at        INTEGER,
+  CHECK ((agent_number IS NULL) = (agent_description IS NULL)),
+  CHECK ((decision IS NULL) = (decided_at IS NULL))
+) STRICT;
+CREATE INDEX permission_requests_of_conversation ON permission_requests (conversation_id, created_at);
+
+CREATE TABLE permission_grants (
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  category        TEXT NOT NULL,
+  granted_at      INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, category)
+) STRICT;
+
 -- Records that make interrupted multi-step work discoverable. A Fork
 -- reserves its destination's conversation id, compared as the index
 -- compares it.
