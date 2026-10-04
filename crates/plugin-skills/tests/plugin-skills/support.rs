@@ -95,7 +95,7 @@ impl Plugged {
         }
     }
 
-    /// Gives the conversation's main Host `files`, by absolute path, and
+    /// Gives the conversation's primary Host `files`, by absolute path, and
     /// says it runs.
     pub fn host(&self, files: &[(&str, &str)]) {
         let files = files

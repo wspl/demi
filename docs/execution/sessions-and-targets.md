@@ -49,7 +49,7 @@ device, the shell and the invoking Host, and holds the job's
 the agent node. These identities remain fixed for that job even when another
 shell starts or another conversation uses the same device.
 
-For example, node `a1` can run jobs on both the main laptop and attached device
+For example, node `a1` can run jobs on both the primary laptop and attached device
 `ci`. The table shows which node a callback acts for:
 
 | Job | Execution device | Callback node | Invoking Host |
@@ -69,7 +69,7 @@ Pipe authorization remains bound to the participating device endpoints.
 where it holds the device's runner connection, in the owner's shard, rather
 than delegating product authorization to the generic Host adapter.
 
-## Switch the main target
+## Switch the primary target
 
 Switching requires an unarchived conversation with an idle agent tree and no
 conflicting conversation file operation. A running child counts as active even
@@ -98,7 +98,7 @@ For a switch from an allocated Cloud device to a laptop, the result is:
 
 | State | Before | After |
 | --- | --- | --- |
-| Main device | Cloud | laptop |
+| Primary device | Cloud | laptop |
 | Attached devices | None | Cloud, with its last cwd |
 | `report.txt` created on Cloud | On Cloud | Still on Cloud |
 | Conversation transcript | Backend | Same backend transcript |
@@ -123,15 +123,15 @@ its shells start in.
 ## Attached hosts
 
 The user grants access by attaching devices; the agent cannot attach a device
-for itself. Each device appears once across the main and attached bindings.
+for itself. Each device appears once across the primary and attached bindings.
 Aliases begin with device names and use numeric suffixes for collisions. The
 host API supports alias changes, promotion through target exchange, and detach.
 
-`demi host list` reports accessible main and attached hosts.
+`demi host list` reports accessible primary and attached hosts.
 `demi host shell --host <name|id> <script>` verifies ownership and the conversation
 binding before starting a job. A sleeping Cloud device wakes for work; attachment
 alone does not keep it running. The product picker offers paired devices, while
-Cloud can become attached when it is a departed main target.
+Cloud can become attached when it is a departed primary target.
 
 Attached cwd is a starting directory, not a permission boundary. It is updated
 from completed cross-host jobs. Files can be transferred explicitly with ordinary
@@ -148,7 +148,7 @@ conversation's state on it.
 
 ## Host operations
 
-Everything that reaches a conversation's main or attached Host on the
+Everything that reaches a conversation's primary or attached Host on the
 conversation's behalf goes through one entry, the conversation's host access.
 The agent resolves its Host through it for each tool call and runs each shell
 job inside it, and everything the backend does for the user outside the agent
@@ -156,8 +156,8 @@ uses it too, whether it writes an attachment, lists the working tree, or reads
 a file for the web app. A plugin never writes to a Host: the
 [Host directories](../architecture/plugins.md#host-directories) its user
 needs are installed by a job's own admission, before the job starts, and its
-reads of a conversation's files never wake the Host. An operation can name a device bound as the main or an
-attached host; omitting the device selects the current main host. The binding
+reads of a conversation's files never wake the Host. An operation can name a device bound as the primary or an
+attached host; omitting the device selects the current primary host. The binding
 and ownership are checked after taking the file gate and before reaching the
 Host. An unknown or detached device is refused; detaching prevents new access,
 while an already admitted operation may finish. A target whose device no
@@ -206,7 +206,7 @@ enters a conversation's file gate while it holds a lease of it: the gate is
 first-in, first-out, so a reservation waiting between the two entries would
 wait for the first lease while the second waits behind the reservation. A
 conversation socket's frame is handled under one lease of the file gate; a
-frame whose content has uploads is instead admitted on the conversation's main
+frame whose content has uploads is instead admitted on the conversation's primary
 Host once, through this entry, and its uploads are written through that
 admission. Going back to the start
 repeats every check, because while the attempt waited the conversation may
@@ -311,7 +311,7 @@ makes the project's directory before any conversation uses it. A provider's
 process runs in a directory of Demi's on the Cloud, for a conversation's
 requests (the [`provider` role](#how-a-conversation-uses-a-device)) and for
 account work that belongs to no conversation, such as **Test connection**.
-Anything that reaches a conversation's main or attached Host goes through the
+Anything that reaches a conversation's primary or attached Host goes through the
 conversation's host access.
 
 ### Lifecycle access
@@ -396,7 +396,7 @@ user calls admitted like them, and file transfers are the exception the table
 names: a transition ends them instead of waiting for them, and the page reopens
 its streams by itself afterwards. A request for another transition, a target
 change, a detach or an archive, does not wait either: it answers busy, as
-[Switch the main target](#switch-the-main-target) describes. The page shows
+[Switch the primary target](#switch-the-primary-target) describes. The page shows
 that the conversation is waiting and why (`Cloud is resetting`), from the
 Cloud status it already follows.
 

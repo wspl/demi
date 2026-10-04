@@ -9,7 +9,7 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 
 /// Whose a Host handle is.
 pub(crate) enum HostOwner<'a> {
-    /// A conversation's main or attached Host, reached through the
+    /// A conversation's primary or attached Host, reached through the
     /// conversation's host access.
     Conversation(&'a ConversationId),
     /// Device access, which touches no conversation's files.

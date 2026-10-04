@@ -1,7 +1,7 @@
 //! Files on the user's devices that a message refers to (`web-api.md`
 //! § Device files and remote references): every referenced device must be
 //! the user's and connected before any is granted; a device that is not the
-//! conversation's main Host is attached, which the conversation's nodes hear
+//! conversation's primary Host is attached, which the conversation's nodes hear
 //! of at their next context block; and each reference keeps its device's
 //! identity and the shell-quoted `demi host shell --host` command that reads
 //! the file when the agent runs it. A reference is no snapshot of the
@@ -77,9 +77,9 @@ impl dyn HostShard + '_ {
                 reference(device, &file.path)
             })
             .collect::<Result<Vec<_>, _>>()?;
-        let main = self.resolve_target(&record).await?.device().cloned();
+        let primary = self.resolve_target(&record).await?.device().cloned();
         for device in devices {
-            if Some(&device.id) == main.as_ref() {
+            if Some(&device.id) == primary.as_ref() {
                 continue;
             }
             let host = AttachedHostRecord {

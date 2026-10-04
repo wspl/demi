@@ -171,8 +171,8 @@ it through `POST /api/devices/claim`. Device tokens are delivered only to the
 runner.
 
 Attached-host responses contain device identity, name, cwd, online state, and
-attachment time. A conversation's main device cannot also be attached: attaching
-it answers 409 `host_is_main`. Names are unique within the conversation; a
+attachment time. A conversation's primary device cannot also be attached: attaching
+it answers 409 `host_is_primary`. Names are unique within the conversation; a
 conflicting rename returns 409 `name_taken`, and renaming a device that is not
 attached answers 404 `host_not_attached`. A detach is a transition, like a target
 change; detaching a device that is not attached answers 204.
@@ -268,7 +268,7 @@ Host handle while the Cloud was changing state
 
 `WS /api/conversations/:id/streams/:name` opens the declared
 [user stream](../execution/native-runtime.md#user-streams) `name` on the
-conversation's main Host. A plugin declares each stream
+conversation's primary Host. A plugin declares each stream
 ([Calling its command package](../architecture/plugins.md#calling-its-command-package)):
 `plugin-browser`'s `browser` is the [live browser view](../browser/live-view.md). The upgrade requires the session
 cookie and a conversation the user owns, and is refused from a page that is
@@ -751,7 +751,7 @@ streams and the [conversation browser's tab methods](../browser/live-view.md#the
 that do not wake a stopped Cloud do not refuse it: archive ends them instead
 ([Host operations](../execution/sessions-and-targets.md#host-operations)). A
 target change refuses and ends the same way
-([Switch the main target](../execution/sessions-and-targets.md#switch-the-main-target)).
+([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
 A target that names a workspace or a device the user does not have answers
 404 `workspace_not_found` or `device_not_found`, and a target change that
 another one overtook answers 409 `target_conflict`.
@@ -1058,7 +1058,7 @@ so a device that is not connected answers 409 `device_offline`.
 
 The content of a send, steer or edit frame may contain
 `{ type: "remote_file", deviceId, path }`, where path is absolute. The backend validates ownership and current connectivity for
-all referenced devices before adding any attachment grant. It attaches non-main
+all referenced devices before adding any attachment grant. It attaches non-primary
 devices as [attached hosts](../execution/sessions-and-targets.md#attached-hosts),
 then supplies text preserving the device identity and a shell-quoted
 `demi host shell --host` read command. The agent reads the file's contents at
@@ -1132,7 +1132,7 @@ the workspace.
 
 The remote attachment picker lists and creates directories through
 `GET/POST /api/conversations/:id/hosts/:deviceId/fs`, with the same directory
-contract. The device must be the conversation's main or an attached host,
+contract. The device must be the conversation's primary or an attached host,
 otherwise the request answers 404 `host_not_attached`. Omitting `path` lists
 that Host's starting directory. These routes use the same Host access as the
 work panel, including waking an attached Cloud. They do not read file contents;

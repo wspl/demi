@@ -1,5 +1,5 @@
 //! Where a conversation's work runs, changed through the API
-//! (`sessions-and-targets.md` § Switch the main target, § Attached hosts;
+//! (`sessions-and-targets.md` § Switch the primary target, § Attached hosts;
 //! `web-api.md` § Workspaces, devices, and attached hosts): a target switch
 //! moves the work and attaches the device it leaves, a switch ends the
 //! conversation's open transfers instead of waiting for them, and attached
@@ -163,7 +163,7 @@ async fn a_switch_moves_the_work_and_attaches_the_device_it_leaves() {
         .collect();
     assert_eq!(names, ["report.txt"]);
 
-    // Back to the laptop: it is main alone, and the device left is attached.
+    // Back to the laptop: it is primary alone, and the device left is attached.
     let back = switch(&backend, &master, target(&laptop, &on_laptop)).await;
     assert_eq!(
         back.status,
@@ -318,7 +318,7 @@ async fn an_attached_host_is_attached_once_named_uniquely_and_detached() {
     assert_eq!(summary(&backend, &master).await["contextVersion"], context);
     assert_eq!(
         attach(laptop.id()).await.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::HostIsMain)
+        (StatusCode::CONFLICT, ErrorCode::HostIsPrimary)
     );
     assert_eq!(
         attach("nothing").await.refusal(),
@@ -356,7 +356,7 @@ async fn an_attached_host_is_attached_once_named_uniquely_and_detached() {
         (StatusCode::CONFLICT, ErrorCode::NameTaken)
     );
     assert_eq!(
-        rename(laptop.id(), "main").await.refusal(),
+        rename(laptop.id(), "primary").await.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::HostNotAttached)
     );
     assert_eq!(
