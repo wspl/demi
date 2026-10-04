@@ -2,6 +2,7 @@
 import { ChevronRight, Cloud, Folder, FolderOpen, SquarePen } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { SidebarProject } from './types'
 
@@ -35,7 +36,7 @@ const emit = defineEmits<{
       class="shrink-0 text-fg-muted"
     />
     <span class="flex min-w-0 flex-1 items-center gap-1">
-      <span class="min-w-0 truncate font-medium text-fg-emphasis">{{ project.name }}</span>
+      <TruncatedText class="font-medium text-fg-emphasis" :text="project.name" />
       <ChevronRight
         :size="ICON_PX.in20"
         aria-hidden="true"
