@@ -833,7 +833,9 @@ async fn live(
             artifact: start.artifact.clone(),
             form: &ArtifactForm::File,
         };
-        let executable = cache.install(&wanted, start.resolver, &stop).await?;
+        let executable = cache
+            .install(&wanted, start.resolver, crate::cache::SILENT, &stop)
+            .await?;
         let artifacts = Arc::new(ServiceArtifacts {
             cache: cache.clone(),
             package: descriptor.id.clone(),
