@@ -1,10 +1,11 @@
 # Installation
 
-A Demi server is installed on a Linux machine in two commands, by a person
-or by an AI agent: one puts `demi-server` on the machine, and its `setup`
-sets the server up. Every choice is a parameter of `setup`, its `--help` is
-the complete guide to them, and it asks only when a required parameter is
-missing and a terminal is there to answer. It installs the layout that
+A Demi server is installed on a Linux machine with one command, by a person
+or by an AI agent: it puts `demi-server` on the machine and goes on into its
+`setup`, which sets the server up. Every choice is a parameter of `setup`.
+A person at a terminal is asked for what is missing; an agent, which runs
+commands without a terminal, gets the guide to the parameters, `setup
+--help`, and runs `setup` again with them. It installs the layout that
 [Upgrades](upgrades.md#one-release-on-a-server) defines, and the server
 moves between releases with `demi-server upgrade` from then on.
 
@@ -14,9 +15,13 @@ and forwards to port 3271:
 
 ```sh
 curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
-sudo demi-server setup --help
+# no terminal: prints the guide; the agent reads it and runs
 sudo demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
 ```
+
+Run by a person in a terminal, the first command asks for the domain, the
+mode and the listening address instead, and sets the server up with the
+answers.
 
 `setup` checks the machine, installs the few system packages the
 machine manager needs, fetches the newest release, writes the configuration,
@@ -36,9 +41,11 @@ It takes no parameter and does only what a shell must: it checks that it
 runs as root on Linux, picks the target from the machine's architecture,
 downloads that `demi-server` and the release's `SHA256SUMS` from the release
 it came from, checks the one against the other, installs it as
-`/usr/local/bin/demi-server`, and prints the next command, `demi-server
-setup --help`. On a machine that has a Demi server already, it changes
-nothing and points to `demi-server upgrade`.
+`/usr/local/bin/demi-server`, and runs `demi-server setup` with the
+parameters it was given (`bash -s -- <parameters>`), its input the session's
+terminal, `/dev/tty`, when there is one, since its own input is the script.
+On a machine that has a Demi server already, it changes nothing and points
+to `demi-server upgrade`.
 
 Everything else is `demi-server`'s, the program that upgrades the server
 later, so setting up and upgrading share the fetch, the layout and the
@@ -47,6 +54,20 @@ the `demi-server` that runs it unless `--version` names another. Once it has
 started that release, `/usr/local/bin/demi-server` becomes a link to
 `/opt/demi/current/bin/demi-server`, so the server's program on the path is
 always the current release's.
+
+## A person or an agent
+
+No program can tell a person from an agent, but whether a terminal is there
+to answer comes close, and it is what `setup` decides by:
+
+| `setup` runs | With every required parameter | Without |
+| --- | --- | --- |
+| With a terminal | Sets the server up, asking nothing | Asks for each missing parameter, offering the defaults of the optional ones, then sets the server up |
+| Without a terminal, as an agent runs it | Sets the server up | Prints the guide, `--help`, and exits with 0: the guide is the answer, not a failure |
+
+`--no-input` makes a run with a terminal behave as one without. An agent
+that already knows the parameters passes them to the first command, as
+`bash -s -- --domain …`, and `setup` runs at once.
 
 ## Parameters
 
@@ -66,7 +87,7 @@ and composes the command.
 | `--cloud-limits on\|off` | Whether Clouds run under cgroup limits. Default `on`; a machine without the cgroup v2 controllers is refused unless it is `off`. |
 | `--version <version>` | The release to set up. Default the release of the running `demi-server`. |
 | `--no-packages` | Install no system package: the operator installed e2fsprogs, bsdtar and nftables, on a distribution `setup` does not know ([Distributions](#distributions)). |
-| `--no-input` | Never ask: a missing required parameter fails with its name. Without a terminal, `setup` never asks anyway. |
+| `--no-input` | Never ask, as without a terminal ([A person or an agent](#a-person-or-an-agent)). |
 
 A setting with no parameter keeps its default, as
 [Configuration](../backend/backend.md#configuration) and
