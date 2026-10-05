@@ -6,7 +6,8 @@ import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
 import { ICON_PX } from './icon-metrics'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
-import CornerDot, { type CornerDotTone } from './CornerDot.vue'
+import CornerDot from './CornerDot.vue'
+import type { StatusDotTone } from './StatusDot.vue'
 import Tooltip from './Tooltip.vue'
 import type { SentenceText } from './ui-text'
 
@@ -39,7 +40,7 @@ const props = withDefaults(
     /** Turns the icon one whole revolution per click. Every button that refreshes, renews or restarts does. */
     spinOnClick?: boolean
     /** A status on the icon's top-right corner: a small dot in this tone, none when null. */
-    indicator?: CornerDotTone | null
+    indicator?: StatusDotTone | null
     /** What the dot means, for assistive technology; decorative without it. */
     indicatorLabel?: string
   }>(),

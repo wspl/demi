@@ -69,7 +69,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Projects',
-    'Every checkout the agent works in, in manual order, each with the host it lives on. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+    'Every checkout the agent works in, in manual order, each with the host it lives on: the Cloud icon, or the device\'s name and a dot, green while the device is online and faint while it is offline. The host takes at most 30% of the row, so a long device name is cut before the project\'s name; on hover New conversation takes the host\'s place. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
   ],
   [
     'Row',
@@ -136,6 +136,7 @@ function addProject(): void {
       name: `project-${nextId}`,
       host: 'zan-mbp',
       hostKind: 'device',
+      online: true,
       path: `/Users/zan/Projects/project-${nextId}`
     }
   ]

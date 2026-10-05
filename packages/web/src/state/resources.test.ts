@@ -31,3 +31,38 @@ test("a plugin page's sidebar entry shows while its plugin is on and opens the s
   expect(resources.settingsOpen).toBe(true)
   expect(resources.settingsTab).toBe('skills')
 })
+
+test("a device project's row follows its device online and offline; a Cloud project has no online state", () => {
+  const product = useProduct()
+  const resources = useResources()
+  const device = {
+    id: 'laptop',
+    name: 'ZandeMacBook-Pro.local',
+    kind: 'user' as const,
+    platform: 'darwin' as const,
+    claimedAt: '2026-09-10T00:00:00.000Z',
+    lastSeenAt: null,
+    online: true,
+    home: null,
+    installs: [],
+    installed: [],
+  }
+  const cloud = { ...device, id: 'cloud', name: 'Cloud', kind: 'managed' as const }
+  const workspace = (id: string, deviceId: string) => ({
+    id,
+    deviceId,
+    path: `/${id}`,
+    name: id,
+    createdAt: '2026-09-10T00:00:00.000Z',
+  })
+  const workspaces = [workspace('ledger', 'laptop'), workspace('notes', 'cloud')]
+
+  product.snapshot = productState({ devices: [device, cloud], workspaces })
+  expect(resources.projects).toEqual([
+    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', host: 'ZandeMacBook-Pro.local', hostKind: 'device', online: true },
+    { id: 'notes', name: 'notes', path: '/notes', deviceId: 'cloud', host: 'Cloud', hostKind: 'cloud' },
+  ])
+
+  product.snapshot = productState({ devices: [{ ...device, online: false }, cloud], workspaces })
+  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', online: false })
+})

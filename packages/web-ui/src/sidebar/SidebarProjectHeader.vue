@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { ChevronRight, Cloud, Folder, FolderOpen, SquarePen } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
+import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { SidebarProject } from './types'
 
-/** A project row: the checkout's name and the host it is on, and the fold. */
+/** A project row: the checkout's name, the host it is on with a device's online state, and the fold. */
 defineProps<{
   project: SidebarProject
   collapsed: boolean
@@ -44,17 +45,22 @@ const emit = defineEmits<{
         :class="collapsed ? 'rotate-0' : 'rotate-90'"
       />
     </span>
-    <span class="grid min-w-6 max-w-[45%] items-center">
+    <!-- The host takes at most 30% of the row, so the project's name keeps the larger share. -->
+    <span class="grid min-w-hit-sm max-w-[30%] items-center">
       <span
-        class="pointer-events-none col-start-1 row-start-1 flex min-w-0 items-center justify-end gap-1 text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
+        class="pointer-events-none col-start-1 row-start-1 flex min-w-0 items-center justify-end text-[11px] leading-none text-fg-subtle transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0"
         :aria-label="project.host"
       >
-        <Cloud
-          v-if="project.hostKind === 'cloud'"
-          :size="ICON_PX.in20"
-          class="shrink-0"
-        />
-        <span v-if="project.hostKind !== 'cloud'" class="truncate">{{ project.host }}</span>
+        <span v-if="project.hostKind === 'device'" class="truncate">{{ project.host }}</span>
+        <!-- The host's mark stands where New conversation appears, so it keeps the button's inset from the row's edges. -->
+        <span class="flex size-hit-sm shrink-0 items-center justify-center">
+          <Cloud v-if="project.hostKind === 'cloud'" :size="ICON_PX.in20" />
+          <StatusDot
+            v-else
+            :tone="project.online ? 'success' : 'muted'"
+            :label="project.online ? 'Online' : 'Offline'"
+          />
+        </span>
       </span>
       <span
         class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto"

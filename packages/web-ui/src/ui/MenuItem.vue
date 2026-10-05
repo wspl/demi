@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import CornerDot from './CornerDot.vue'
+import StatusDot from './StatusDot.vue'
 import { computed, inject, onBeforeUnmount, ref, useSlots } from 'vue'
 import type { Component } from 'vue'
 import { Check, ChevronRight } from '@lucide/vue'
@@ -173,18 +174,7 @@ const toneClass = computed(() => {
         />
         <!-- The dot rides the icon's corner, or stands alone in the gutter. -->
         <CornerDot v-if="indicator && icon" :tone="indicator" :label="indicatorLabel" />
-        <span
-          v-else-if="indicator"
-          class="size-1.5 shrink-0 rounded-full"
-          :class="
-            indicator === 'success' ? 'bg-on-success'
-              : indicator === 'accent' ? 'bg-on-accent'
-                : indicator === 'danger' ? 'bg-on-danger'
-                  : 'bg-fg-faint'
-          "
-          role="img"
-          :aria-label="indicatorLabel"
-        />
+        <StatusDot v-else-if="indicator" :tone="indicator" :label="indicatorLabel" />
       </span>
       <span class="menu-cell-label on-fill" :class="faded ? 'faded' : ''">
         <slot>

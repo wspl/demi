@@ -85,6 +85,6 @@ export interface Device {
   installs: readonly HostInstall[]
 }
 
-export interface Project extends SidebarProject {
+export type Project = SidebarProject & {
   deviceId: string
 }

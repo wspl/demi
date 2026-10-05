@@ -29,6 +29,7 @@ export function demoProjects(): SidebarProject[] {
       name: 'demi',
       host: 'zan-mbp',
       hostKind: 'device',
+      online: true,
       path: '/Users/zan/Projects/demi'
     },
     {
@@ -36,15 +37,25 @@ export function demoProjects(): SidebarProject[] {
       name: 'assetsfactory',
       host: 'build-01',
       hostKind: 'device',
+      online: false,
       path: '/srv/assetsfactory'
     },
     {
       id: 'p-dotfiles',
-      // Longer than the sidebar holds: cut at its end, whole on hover.
+      // Both longer than the sidebar holds: the device's name gives way first, at 30% of the row;
+      // each is cut at its end, the project's name whole on hover.
       name: 'dotfiles-and-machine-setup-scripts',
-      host: 'zan-mbp',
+      host: 'ZandeMacBook-Pro.local',
       hostKind: 'device',
+      online: true,
       path: '/Users/zan/dotfiles-and-machine-setup-scripts'
+    },
+    {
+      id: 'p-notebooks',
+      name: 'notebooks',
+      host: 'Cloud',
+      hostKind: 'cloud',
+      path: '/home/demi/notebooks'
     },
   ]
 }

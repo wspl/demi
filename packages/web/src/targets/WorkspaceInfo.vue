@@ -32,10 +32,7 @@ const recentDirectories = computed(() =>
     .map((project) => ({
       id: project.id,
       path: project.path,
-      disabled:
-        project.hostKind !== 'cloud' &&
-        !resources.devices.find((device) => device.id === project.deviceId)
-          ?.online,
+      disabled: project.hostKind === 'device' && !project.online,
     })),
 )
 const hosts = computed(() =>
