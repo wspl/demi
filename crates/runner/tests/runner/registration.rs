@@ -313,3 +313,59 @@ async fn uninstall_leaves_a_directory_without_an_installation_as_it_was() {
     .await
     .unwrap();
 }
+
+/// An installation in the user's home directory, or in a directory that
+/// contains it, as a mistaken `DEMI_HOME` makes, loses only the runner's own
+/// files: the directory stays with everything else in it (`runner.md`
+/// § Installation, pairing and removal). The home is a directory the test
+/// made, never the real one.
+#[tokio::test]
+async fn uninstall_keeps_a_home_and_its_parent_and_removes_only_the_runners_files() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("user");
+        // The installation in the home itself, then in the directory that
+        // contains the home.
+        for (installation, kept) in [
+            (home.clone(), vec!["notes.txt"]),
+            (root.path().to_owned(), vec!["notes.txt", "user"]),
+        ] {
+            std::fs::create_dir_all(installation.join("releases/r1")).unwrap();
+            std::fs::create_dir_all(installation.join("log")).unwrap();
+            std::fs::write(installation.join("notes.txt"), "mine").unwrap();
+            // A runner that was never paired asks no backend for a
+            // revocation; the backend's port takes no connection.
+            std::fs::write(
+                installation.join("runner.json"),
+                r#"{"backendUrl":"http://127.0.0.1:9/"}"#,
+            )
+            .unwrap();
+            std::fs::write(installation.join("runner.log"), "").unwrap();
+            let uninstalled = tokio::process::Command::new(runner_binary())
+                .arg("uninstall")
+                .arg("--home")
+                .arg(&installation)
+                .env("HOME", &home)
+                .env_remove("DEMI_HOME")
+                .env_remove("DEMI_RELEASE_ID")
+                .output()
+                .await
+                .unwrap();
+            let printed = String::from_utf8_lossy(&uninstalled.stdout);
+            assert!(
+                uninstalled.status.success(),
+                "{printed}{}",
+                String::from_utf8_lossy(&uninstalled.stderr)
+            );
+            assert!(printed.contains("which stays with everything else in it"), "{printed}");
+            let mut left: Vec<_> = std::fs::read_dir(&installation)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+                .collect();
+            left.sort();
+            assert_eq!(left, kept, "{}", installation.display());
+        }
+    })
+    .await
+    .unwrap();
+}
