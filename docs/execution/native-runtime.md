@@ -263,7 +263,12 @@ To download, the runner completes these steps:
 
 A download has no overall deadline, since an artifact of hundreds of megabytes
 takes minutes on a slow link; it fails when the
-connection makes no progress for 60 seconds, or when its work is cancelled.
+connection makes no progress for 60 seconds, or when its work is cancelled. A
+command that installs on purpose, such as `demi browser install`, reports its
+download in its own output, a line at each tenth of the size and one as it
+unpacks, which the agent reads as it reads any command's output; an artifact
+a command needs on its first use installs silently, before the command
+starts.
 
 Concurrent callers share one download per digest. Cancelling one caller preserves
 a download still needed by another. If the download fails or is cancelled, the
