@@ -24,6 +24,7 @@ demi-runner-process = { path = "../runner-process" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-runner-command-packages = { path = "../runner-command-packages" }
 demi-runner-shell = { path = "../runner-shell" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
 clap = { version = "4", features = ["derive", "env"] }
 futures-util.workspace = true
 hostname = "0.4"

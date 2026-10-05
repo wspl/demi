@@ -2482,6 +2482,7 @@ dependencies = [
  "demi-runner-process",
  "demi-runner-protocol",
  "demi-runner-shell",
+ "demi-shared-artifacts",
  "futures-util",
  "hostname",
  "libc",

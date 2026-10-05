@@ -62,6 +62,12 @@ impl Releases {
     /// manifest names from now on. Each target's file links the program
     /// rather than copying it.
     fn publish(&self, name: &str) -> String {
+        self.publish_naming(name, &self.artifact.clone())
+    }
+
+    /// Publishes a release whose every target names `artifact`, which need
+    /// not be the program's.
+    fn publish_naming(&self, name: &str, artifact: &Value) -> String {
         let release = sha(name.as_bytes());
         let files = self.directory.path().join("files");
         std::fs::create_dir_all(&files).unwrap();
@@ -77,7 +83,7 @@ impl Releases {
         // Test-only: every target names this machine's runner.
         let targets: serde_json::Map<String, Value> = TARGETS
             .iter()
-            .map(|target| ((*target).to_owned(), self.artifact.clone()))
+            .map(|target| ((*target).to_owned(), artifact.clone()))
             .collect();
         let manifest = json!({
             "release": release,
@@ -294,6 +300,69 @@ async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_onl
     drop(installations);
     a.close().await;
     b.close().await;
+}
+
+/// The release the installation's active runner runs, once one is active.
+fn active_release(state: &Path) -> Option<Value> {
+    let bytes = std::fs::read(state.join("active.json")).ok()?;
+    let active: Value = serde_json::from_slice(&bytes).ok()?;
+    Some(active["release"].clone())
+}
+
+// Several seconds: the installer downloads this build's runner (170 MB) and
+// starts it, and the runner downloads it again for each backend release it
+// tries.
+#[tokio::test]
+async fn an_installed_runner_follows_its_backend_to_another_release() {
+    let releases = Releases::new(runner_binary());
+    let initial = releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let backend = harness.start().await;
+    let address = backend.address();
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    succeeded(&installations.install(&backend, &[]).await);
+    assert_eq!(active(&state)["release"], json!(initial));
+
+    // The backend comes back with a release whose runner it cannot supply:
+    // the runner stays on its own and says why.
+    backend.close().await;
+    let size = std::fs::metadata(runner_binary()).unwrap().len();
+    let broken = releases.publish_naming(
+        "broken",
+        &json!({ "sha256": sha(b"another program"), "size": size }),
+    );
+    let backend = harness.start_at(address).await;
+    let log = state.join("runner.log");
+    eventually("the runner reports the failed update", || async {
+        std::fs::read_to_string(&log)
+            .unwrap()
+            .contains(&format!("the update to runner release {broken} failed"))
+    })
+    .await;
+    assert_eq!(active(&state)["release"], json!(initial));
+
+    // Once the backend's release has a runner, the runner's next attempt
+    // replaces it with that one, which connects in its place.
+    let upgraded = releases.publish("upgraded");
+    eventually("the runner of the backend's release is active", || async {
+        active_release(&state) == Some(json!(upgraded))
+    })
+    .await;
+    assert_eq!(
+        std::fs::read_to_string(state.join("release-id")).unwrap(),
+        format!("{upgraded}\n")
+    );
+    let mut kept: Vec<String> = std::fs::read_dir(state.join("releases"))
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    kept.sort();
+    let mut expected = vec![initial, upgraded];
+    expected.sort();
+    assert_eq!(kept, expected);
+    drop(installations);
+    backend.close().await;
 }
 
 /// A file's permission bits.

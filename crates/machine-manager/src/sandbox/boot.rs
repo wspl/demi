@@ -124,6 +124,7 @@ impl Sandbox {
         core: &Core,
         working: &WorkingPair,
         base: &Path,
+        runner_release: &str,
         boot: &ManagedBoot,
     ) -> Result<(), SandboxError> {
         if boot.backend_url.url() != &core.config.backend_url {
@@ -186,6 +187,7 @@ impl Sandbox {
                 name: self.record.id.as_str(),
                 limits,
             }),
+            runner_release,
         })?;
         let directory = self.directory.clone();
         let log = blocking::run(move |off| -> io::Result<_> {

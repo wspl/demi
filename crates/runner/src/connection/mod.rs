@@ -13,4 +13,4 @@ mod owner;
 mod transport;
 
 pub use owner::{End, Registered, serve};
-pub use transport::Transport;
+pub use transport::{Connected, Transport};

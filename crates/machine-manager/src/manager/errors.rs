@@ -11,7 +11,7 @@ use crate::{
     network::{NetworkError, slots::Exhausted},
     recovery::RecoveryError,
     sandbox::SandboxError,
-    storage::{ext4::Ext4Error, store::StoreError, working::SaveError},
+    storage::{base::BaseError, ext4::Ext4Error, store::StoreError, working::SaveError},
     tools::ToolError,
 };
 
@@ -37,6 +37,8 @@ pub enum OpError {
     CheckpointRecovery(#[source] Parts),
     #[error("Cloud shutdown failed; working state retained")]
     Shutdown(#[source] Parts),
+    #[error(transparent)]
+    Base(#[from] BaseError),
     #[error(transparent)]
     Store(#[from] StoreError),
     #[error(transparent)]

@@ -4,7 +4,8 @@
 //! connection in turn is served by its own owner
 //! ([`crate::connection::serve`]).
 
-use crate::connection::{self, End, Registered, Transport};
+use crate::connection::{self, Connected, End, Registered, Transport};
+use crate::update::{Installed, Successor};
 use crate::{
     host_log::HostLogReader,
     management::{Endpoint, Management, Phase},
@@ -46,9 +47,21 @@ pub struct Options {
     pub volumes: Vec<ManagedVolume>,
     /// Runs the jobs' scripts (`concurrency.md` § Runner).
     pub shell: Arc<dyn JobShell>,
+    /// The installation an installer made, which updates itself to its
+    /// backend's runner release; none for a runner started otherwise.
+    pub installed: Option<Installed>,
 }
 
-pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
+/// How a registration ended.
+pub enum Ending {
+    Stopped,
+    /// The backend runs another runner release, which is in place: the
+    /// successor starts once this registration has let everything go
+    /// (`runner.md` § Runner updates).
+    Replaced(Successor),
+}
+
+pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending> {
     let state = RunnerState::open(options.directory.clone()).await?;
     let mut lease = state.lock()?;
     let saved = state.config().await?;
@@ -117,6 +130,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
             },
         )
         .await?;
+    let installed = options.installed;
     let registered = Registered {
         backend: options.backend,
         runner: options.runner,
@@ -139,7 +153,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
         env: options.env,
         volumes: options.volumes,
     };
-    let outcome = reconnect(&registered).await;
+    let outcome = reconnect(&registered, installed.as_ref()).await;
     if registered.management.draining.is_cancelled() && !registered.management.stop.is_cancelled() {
         server.wait_idle().await;
     }
@@ -147,10 +161,12 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<()> {
     let closed = server.close().await;
     tracing::info!("runner stopped");
     let released = lease.release();
-    outcome.and(closed).and(released)
+    let ending = outcome?;
+    closed.and(released)?;
+    Ok(ending)
 }
 
-async fn reconnect(registered: &Registered) -> io::Result<()> {
+async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io::Result<Ending> {
     let management = &registered.management;
     let mut delay = Duration::from_millis(250);
     // A backend that stays away fails the same way every few seconds. The
@@ -158,13 +174,36 @@ async fn reconnect(registered: &Registered) -> io::Result<()> {
     let mut failure: Option<String> = None;
     loop {
         if management.stop.is_cancelled() || management.draining.is_cancelled() {
-            return Ok(());
+            return Ok(Ending::Stopped);
         }
         management.set_phase(Phase::Connecting);
         if failure.is_none() {
             tracing::info!("connecting to {}", registered.backend);
         }
         let result = connection(registered).await;
+        let result = match result {
+            Ok(Attempt::Update(update)) => {
+                let Some(installed) = installed else {
+                    return Err(io::Error::other(format!(
+                        "this runner is release {}, and its backend runs release {}: install the backend's runner",
+                        registered.runner.version, update.release
+                    )));
+                };
+                tracing::info!("updating to runner release {}", update.release);
+                match installed
+                    .update(&registered.backend, &update, &management.stop)
+                    .await
+                {
+                    Ok(successor) => return Ok(Ending::Replaced(successor)),
+                    Err(error) => Err(io::Error::other(format!(
+                        "the update to runner release {} failed: {error}",
+                        update.release
+                    ))),
+                }
+            }
+            Ok(Attempt::Ended(end)) => Ok(end),
+            Err(error) => Err(error),
+        };
         match result {
             Ok(End::Rejected) => {
                 return Err(io::Error::new(
@@ -172,7 +211,7 @@ async fn reconnect(registered: &Registered) -> io::Result<()> {
                     "backend rejected runner registration",
                 ));
             }
-            Ok(End::Stopped) => return Ok(()),
+            Ok(End::Stopped) => return Ok(Ending::Stopped),
             Ok(End::Disconnected) => {
                 tracing::warn!("backend connection lost");
                 failure = None;
@@ -189,20 +228,32 @@ async fn reconnect(registered: &Registered) -> io::Result<()> {
             }
         }
         tokio::select! {
-            _ = management.stop.cancelled() => return Ok(()),
-            _ = management.draining.cancelled() => return Ok(()),
+            _ = management.stop.cancelled() => return Ok(Ending::Stopped),
+            _ = management.draining.cancelled() => return Ok(Ending::Stopped),
             _ = tokio::time::sleep(delay) => {},
         }
         delay = (delay * 2).min(Duration::from_secs(10));
     }
 }
 
+/// What one connection attempt came to.
+enum Attempt {
+    Ended(End),
+    /// The backend opens no socket for this runner's release.
+    Update(demi_runner_protocol::release::RunnerUpdate),
+}
+
 /// Opens one backend connection and serves it until it ends.
-async fn connection(registered: &Registered) -> io::Result<End> {
+async fn connection(registered: &Registered) -> io::Result<Attempt> {
     let management = &registered.management;
-    let transport = tokio::select! {
-        _ = management.draining.cancelled() => return Ok(End::Stopped),
-        result = Transport::connect(&registered.backend, management.stop.clone()) => result?,
+    let connected = tokio::select! {
+        _ = management.draining.cancelled() => return Ok(Attempt::Ended(End::Stopped)),
+        result = Transport::connect(&registered.backend, &registered.runner.version, management.stop.clone()) => result?,
     };
-    connection::serve(registered, transport).await
+    match connected {
+        Connected::Open(transport) => connection::serve(registered, transport)
+            .await
+            .map(Attempt::Ended),
+        Connected::Update(update) => Ok(Attempt::Update(update)),
+    }
 }
