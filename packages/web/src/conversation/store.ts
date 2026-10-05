@@ -1283,7 +1283,7 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     try {
-      await apiRequest(
+      const response = await apiRequest(
         `/conversations/${encodeURIComponent(conversation.id)}/hosts`,
         {
           method: 'POST',
@@ -1291,7 +1291,8 @@ export const useConversations = defineStore('conversations', () => {
           ...jsonBody({ deviceId } satisfies AttachHost),
         },
       )
-      await loadHosts(conversation)
+      // The answer lists the hosts as the attach left them.
+      conversation.attachedHosts = (await readResponse(response, attachedHostsSchema)).hosts
     } catch (error) {
       report('Could Not Attach the Device', error)
     }
@@ -1334,7 +1335,10 @@ export const useConversations = defineStore('conversations', () => {
           signal: lifetime.signal,
         },
       )
-      await loadHosts(conversation)
+      // The answer says the device is detached.
+      conversation.attachedHosts = conversation.attachedHosts.filter(
+        (host) => host.deviceId !== deviceId,
+      )
     } catch (error) {
       report('Could Not Detach the Device', error)
     }
@@ -1356,7 +1360,7 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     try {
-      await apiRequest(
+      const response = await apiRequest(
         `/conversations/${encodeURIComponent(
           conversation.id,
         )}/hosts/${encodeURIComponent(deviceId)}`,
@@ -1366,7 +1370,8 @@ export const useConversations = defineStore('conversations', () => {
           ...jsonBody({ name } satisfies RenameHost),
         },
       )
-      await loadHosts(conversation)
+      // The answer lists the hosts as the rename left them.
+      conversation.attachedHosts = (await readResponse(response, attachedHostsSchema)).hosts
     } catch (error) {
       report('Could Not Rename the Project', error)
     }
