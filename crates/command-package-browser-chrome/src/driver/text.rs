@@ -818,17 +818,39 @@ fn assets_export(result: &AssetsExportResult) -> String {
     )
 }
 
-/// Where the browser is, then, on Linux, what the Host lacks for it and the
-/// Ubuntu packages that provide it (`browser.md` § Installation).
+/// Where the browser is, then, on Linux, what the Host lacks for it: the
+/// Ubuntu packages that provide its libraries and fonts, and the AppArmor
+/// profile its sandbox needs (`browser.md` § Installation).
 fn install(result: &InstallResult) -> String {
     let mut text = format!(
         "Installed {} at {}\n",
         plain(&result.browser),
         plain(&result.path)
     );
-    if result.missing_libraries.is_empty() && result.missing_fonts.is_empty() {
-        return text;
+    if !result.missing_libraries.is_empty() || !result.missing_fonts.is_empty() {
+        text.push_str(&packages(result));
     }
+    if let Some(sandbox) = &result.sandbox_profile {
+        let path = plain(&sandbox.path);
+        text.push_str(
+            "This Host restricts user namespaces with AppArmor, so Chrome's sandbox cannot start.\n",
+        );
+        // Not indented: a heredoc ends only at a line that is its word alone.
+        text.push_str(&format!(
+            "Allow them for this Chrome with a profile:\nsudo tee {path} > /dev/null <<'EOF'\n"
+        ));
+        for line in sandbox.profile.lines() {
+            text.push_str(&format!("{}\n", plain(line)));
+        }
+        text.push_str(&format!("EOF\nsudo apparmor_parser -r {path}\n"));
+    }
+    text
+}
+
+/// The libraries and fonts the Host lacks, and the Ubuntu packages that
+/// provide them.
+fn packages(result: &InstallResult) -> String {
+    let mut text = String::new();
     if !result.missing_libraries.is_empty() {
         let names: Vec<&str> = result
             .missing_libraries
@@ -1329,6 +1351,24 @@ mod tests {
                     "Recommended fonts are missing: color emoji; Chinese, Japanese and Korean text\n",
                     // Each package once, whatever it provides.
                     "On Ubuntu, install them with:\n  sudo apt-get install -y libnss3 libgbm1 fonts-noto-color-emoji fonts-noto-cjk\n",
+                ],
+            ),
+            (
+                "install",
+                json!({}),
+                json!({
+                    "browser": "Chrome for Testing 153.0.8010.36",
+                    "path": "/home/demi/.demi/artifacts/a/chrome-linux64/chrome",
+                    "sandboxProfile": {
+                        "path": "/etc/apparmor.d/demi-chrome",
+                        "profile": "abi <abi/4.0>,\nprofile demi-chrome /home/demi/.demi/artifacts/*/chrome-linux64/chrome flags=(unconfined) {\n  userns,\n}\n",
+                    },
+                }),
+                vec![
+                    "This Host restricts user namespaces with AppArmor, so Chrome's sandbox cannot start.\n",
+                    // The commands paste as they are: the heredoc's lines
+                    // start at the margin.
+                    "\nsudo tee /etc/apparmor.d/demi-chrome > /dev/null <<'EOF'\nabi <abi/4.0>,\nprofile demi-chrome /home/demi/.demi/artifacts/*/chrome-linux64/chrome flags=(unconfined) {\n  userns,\n}\nEOF\nsudo apparmor_parser -r /etc/apparmor.d/demi-chrome\n",
                 ],
             ),
         ];

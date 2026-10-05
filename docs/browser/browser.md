@@ -1072,6 +1072,37 @@ On a Host that has everything, the first line is the whole output. The
 package names are Ubuntu's, the distribution of the Cloud image; on another
 distribution the libraries' names tell the user what to look for.
 
+Chrome keeps its sandbox, which needs user namespaces. Ubuntu 23.10 and
+later restrict them with AppArmor
+(`kernel.apparmor_restrict_unprivileged_userns`), so there Chrome stops with
+"No usable sandbox!" unless a profile allows them for its executable, as
+Ubuntu's own profile does for Google Chrome. When the Host restricts them and
+`/etc/apparmor.d/demi-chrome` holds no profile for this Chrome, `install`
+ends with the profile and the commands that write and load it. Only root may
+read which profiles the kernel loaded, so `install` looks at the file, which
+AppArmor loads at boot. The profile covers every version of the line this runner installs, each
+in a directory of its cache named by the archive's digest:
+
+```text
+This Host restricts user namespaces with AppArmor, so Chrome's sandbox cannot start.
+Allow them for this Chrome with a profile:
+sudo tee /etc/apparmor.d/demi-chrome > /dev/null <<'EOF'
+abi <abi/4.0>,
+include <tunables/global>
+
+profile demi-chrome /home/demi/.demi/artifacts/*/chrome-linux64/chrome flags=(unconfined) {
+  userns,
+
+  include if exists <local/demi-chrome>
+}
+EOF
+sudo apparmor_parser -r /etc/apparmor.d/demi-chrome
+```
+
+The commands start at the line's margin, so they can be pasted as printed.
+Demi never starts Chrome with `--no-sandbox`, and never lifts the
+restriction for the whole Host.
+
 On a platform the pinned version has no archive for, it fails: `Chrome for
 Testing 153.0.8010.36 is unavailable on aarch64-pc-windows-msvc`.
 
