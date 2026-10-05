@@ -287,8 +287,24 @@ export const useProduct = defineStore('product', () => {
       snapshot.value = withPart(snapshot.value, event)
     }
     if (event.type === 'providers') {
-      void loadModels().catch(() => {})
+      providersChanged()
     }
+  }
+
+  /**
+   * The channel brought the providers part: the catalog is loaded again,
+   * whatever changed, an API key no view shows included (`models.md`
+   * § Catalog cache). A load on its way may predate the change, so it gives
+   * way; the catalog shown stays until the new one arrives.
+   */
+  function providersChanged(): void {
+    modelRequest?.controller.abort()
+    modelRequest = null
+    modelError.value = null
+    if (modelSnapshot.value) {
+      modelSnapshot.value = { ...modelSnapshot.value, checkedAt: 0 }
+    }
+    void loadModels().catch(() => {})
   }
 
   /** Where the channel stands as a write is sent, which its answer is measured against. */
@@ -395,9 +411,9 @@ export const useProduct = defineStore('product', () => {
   }
 
   /**
-   * Loads the catalog again, asking the backend to refresh it, as a change
-   * of an entry's configuration or account does (`models.md` § Catalog
-   * cache); the catalog records a failure itself.
+   * Loads the catalog again, asking the backend to refresh it, as the
+   * user's explicit refresh does (`models.md` § Catalog cache); the catalog
+   * records a failure itself.
    */
   async function reloadModels(): Promise<void> {
     clearModels()
