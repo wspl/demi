@@ -76,11 +76,13 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
     }
 }
 
-/// Asks the installation's active runner for its status or to drain.
+/// Asks the installation's active runner for its status, to drain, or to
+/// remove itself; the status it answers goes to `stdout`.
 async fn manage(
     state: RunnerState,
     action: management::Action,
     release: Option<&str>,
+    stdout: impl tokio::io::AsyncWrite + Unpin,
 ) -> io::Result<u8> {
     let active = state.active().await?;
     let request = LocalInvocation {
@@ -99,7 +101,7 @@ async fn manage(
         &request,
         Stdio {
             stdin: tokio::io::empty(),
-            stdout: tokio::fs::File::from_std(standard_file(1)?),
+            stdout,
             stderr: tokio::fs::File::from_std(standard_file(2)?),
         },
         CancellationToken::new(),
@@ -110,7 +112,7 @@ async fn manage(
     }
     match action {
         // The drained runner releases the installation lock as it ends.
-        management::Action::Drain => loop {
+        management::Action::Drain | management::Action::Uninstall => loop {
             match state.try_lock()? {
                 Some(lease) => {
                     lease.release()?;
@@ -194,6 +196,12 @@ enum Action {
         #[command(flatten)]
         installation: Installation,
     },
+    /// Removes the runner from this device: asks the backend to revoke the
+    /// device, drains the runner, and removes the installation.
+    Uninstall {
+        #[command(flatten)]
+        installation: Installation,
+    },
 }
 
 /// Which installation a command acts on.
@@ -212,23 +220,47 @@ struct Installation {
 }
 
 async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
-    let (installation, boot_path, name, managed, artifacts) = match cli.action {
+    let (installation, boot_path, name, managed, artifacts, removing) = match cli.action {
         Action::Run {
             installation,
             managed_boot,
             name,
             managed,
             artifacts,
-        } => (installation, managed_boot, name, managed, artifacts),
+        } => (installation, managed_boot, name, managed, artifacts, false),
         Action::Status { installation } => {
             let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
-            return manage(state, management::Action::Status, release).await;
+            let stdout = tokio::fs::File::from_std(standard_file(1)?);
+            return manage(state, management::Action::Status, release, stdout).await;
         }
         Action::Drain { installation } => {
             let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
-            return manage(state, management::Action::Drain, release).await;
+            let stdout = tokio::fs::File::from_std(standard_file(1)?);
+            return manage(state, management::Action::Drain, release, stdout).await;
+        }
+        Action::Uninstall { installation } => {
+            let directory = directory(&installation, None)?;
+            let state = RunnerState::open(directory.clone()).await?;
+            match state.try_lock()? {
+                // The active runner asks its backend to revoke the device,
+                // drains and ends; then its installation goes.
+                None => {
+                    let action = management::Action::Uninstall;
+                    let code = manage(state, action, None, tokio::io::sink()).await?;
+                    if code != 0 {
+                        return Ok(code);
+                    }
+                    return uninstalled(&directory);
+                }
+                // No runner is active: this process runs one that asks the
+                // backend, then removes the installation.
+                Some(lease) => {
+                    lease.release()?;
+                    (installation, None, None, None, None, true)
+                }
+            }
         }
     };
     let boot = match boot_path {
@@ -265,9 +297,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         Some(_) => None,
         None => update::Installed::of(&directory, installation.release.as_deref(), &executable),
     };
-    // A managed guest is never paired, so nobody removes its runner.
-    let removal = boot
-        .is_none()
+    // A managed guest is never paired, so nobody removes its runner; one that
+    // `uninstall` runs is being removed.
+    let removal = (boot.is_none() && !removing)
         .then(|| removal::command(&directory, installed.is_some(), &executable));
     let identity = identity(home.to_string_lossy().into_owned())?;
     let runner = wire::RunnerInfo {
@@ -350,8 +382,11 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             vec![]
         },
         shell: Arc::new(shell),
-        installed,
+        // One that `uninstall` runs only asks for the revocation, and never
+        // updates itself.
+        installed: installed.filter(|_| !removing),
         removal,
+        removing,
     };
     let stop = CancellationToken::new();
     let running = registration::run(options, stop.clone());
@@ -371,6 +406,11 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         tracing::error!("{error}");
     }
     log.close().await;
+    // Whatever the backend answered, or when it could not be reached, the
+    // installation goes.
+    if removing {
+        return uninstalled(&installation_directory);
+    }
     match outcome {
         Ok(Ending::Stopped) => {}
         Ok(Ending::Replaced(successor)) => successor.start()?,
@@ -380,6 +420,14 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         }
         Err(_) => return Ok(1),
     }
+    Ok(0)
+}
+
+/// Removes the installation in `directory` once its runner ended, and says
+/// so.
+fn uninstalled(directory: &Path) -> io::Result<u8> {
+    removal::remove(directory)?;
+    println!("Removed the runner of {}", directory.display());
     Ok(0)
 }
 

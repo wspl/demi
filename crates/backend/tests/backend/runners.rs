@@ -170,6 +170,22 @@ impl RawRunner {
         self.0.send(Message::Binary(frame.into())).await.unwrap();
     }
 
+    /// Asks the backend to revoke the device, as `run uninstall` does, and
+    /// returns its answer. What the backend sent the device before, such as
+    /// its manifest, is passed over.
+    async fn revoke(&mut self) -> Inbound {
+        self.send(&Outbound::Revoke {}).await;
+        loop {
+            match self.next().await {
+                Some(answer @ (Inbound::Revoked {} | Inbound::RevokeRefused { .. })) => {
+                    return answer;
+                }
+                Some(_) => {}
+                None => panic!("the connection closed without an answer"),
+            }
+        }
+    }
+
     /// The next message the backend sends; none once it closed the socket.
     async fn next(&mut self) -> Option<Inbound> {
         loop {
@@ -392,6 +408,61 @@ async fn a_revoked_devices_runner_hears_it_was_revoked_before_its_connection_clo
         }
     }
     assert_eq!(runner.next().await, None);
+    backend.close().await;
+}
+
+/// A runner asks the backend to revoke its device, as `run uninstall` does
+/// (`runner.md` § Installation, pairing and removal), under the rules of the
+/// user's revocation: a device a workspace points at stays, and a revoked
+/// one leaves the list with its attachments while its connection ends with
+/// `revoked`.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_runner_asks_for_its_devices_revocation_under_the_users_rules() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let token = laptop.token().await;
+    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let workspace = backend
+        .post(
+            "/api/workspaces",
+            Some(&master),
+            json!({ "kind": "device", "deviceId": laptop.id(), "path": home, "name": "proj" }),
+        )
+        .await;
+    assert_eq!(workspace.status, StatusCode::CREATED);
+    let workspace = workspace.json::<serde_json::Value>()["workspace"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let conversation = uuid::Uuid::new_v4().to_string();
+    create(&backend, &master, &conversation).await;
+    let hosts = format!("/api/conversations/{conversation}/hosts");
+    let attached = backend
+        .post(&hosts, Some(&master), json!({ "deviceId": laptop.id() }))
+        .await;
+    assert_eq!(attached.status, StatusCode::CREATED);
+    laptop.runner.stop().await;
+    backend.until_online(&master, laptop.id(), false).await;
+
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    assert!(matches!(runner.next().await, Some(Inbound::HelloOk { .. })));
+    match runner.revoke().await {
+        Inbound::RevokeRefused { reason } => assert!(reason.contains("workspace"), "{reason}"),
+        other => panic!("expected the device to stay, got {other:?}"),
+    }
+    assert_eq!(backend.devices(&master).await.len(), 1);
+
+    let removed = backend
+        .delete(&format!("/api/workspaces/{workspace}"), &master)
+        .await;
+    assert_eq!(removed.status, StatusCode::NO_CONTENT);
+    assert_eq!(runner.revoke().await, Inbound::Revoked {});
+    assert_eq!(runner.next().await, None);
+    assert!(backend.devices(&master).await.is_empty());
+    let attached: serde_json::Value = backend.get(&hosts, Some(&master)).await.json();
+    assert_eq!(attached["hosts"], json!([]));
     backend.close().await;
 }
 

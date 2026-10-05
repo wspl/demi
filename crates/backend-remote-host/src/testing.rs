@@ -92,6 +92,10 @@ impl LinkPolicy for CommandPolicy {
         Box::pin(async { Err("volume growth is not available".into()) })
     }
 
+    fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("revocation is not available".into()) })
+    }
+
     /// Counts each conversation's sequence from 1, as the backend's
     /// sequences do for a new conversation.
     fn reserve_numbers(

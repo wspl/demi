@@ -1538,6 +1538,10 @@ impl LinkPolicy for Refusing {
         Box::pin(async { Err("no".into()) })
     }
 
+    fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
+        Box::pin(async { Err("no".into()) })
+    }
+
     fn reserve_numbers(
         &self,
         _: String,

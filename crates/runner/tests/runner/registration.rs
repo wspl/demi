@@ -3,7 +3,8 @@
 //! builtin of its shell, answers `status` while it runs, and on `drain`
 //! ends its connection with a close frame and releases the installation.
 //! Its removal (`runner.md` § Installation, pairing and removal): a revoked
-//! runner removes its installation, and a refused one keeps it.
+//! runner removes its installation, a refused one keeps it, and `uninstall`
+//! asks the backend to revoke the device and removes the installation.
 
 use std::{collections::BTreeMap, time::Duration};
 
@@ -194,6 +195,76 @@ async fn a_runner_refused_at_its_hello_keeps_its_installation_and_says_how_to_re
                 && output.contains(&format!("uninstall --home {}", state.display())),
             "{output}"
         );
+    })
+    .await
+    .unwrap();
+}
+
+/// `uninstall` asks the active runner to remove itself: the runner asks its
+/// backend to revoke the device and ends, and the installation goes, while
+/// an artifact cache `DEMI_ARTIFACTS` names and another backend's
+/// installation stay (`runner.md` § Installation, pairing and removal).
+#[tokio::test]
+async fn uninstall_removes_the_installation_and_keeps_a_shared_cache_and_other_installations() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let cache = tempfile::tempdir().unwrap();
+        let env = BTreeMap::from([(
+            "DEMI_ARTIFACTS".to_owned(),
+            cache.path().to_string_lossy().into_owned(),
+        )]);
+        let mut host = Host::start(env).await.online().await;
+        let state = host.state();
+        std::fs::write(cache.path().join("artifact"), "shared").unwrap();
+        let other = tempfile::tempdir_in(state.parent().unwrap()).unwrap();
+        std::fs::write(other.path().join("runner-token"), "other\n").unwrap();
+
+        let backend = async {
+            assert!(matches!(host.frame().await, Outbound::Revoke {}));
+            host.send(Inbound::Revoked {}).await;
+            // The runner ends its connection, and this end answers its close.
+            while host.socket.next().await.is_some() {}
+        };
+        // The shell `uninstall` runs in names the shared cache too.
+        let uninstall = tokio::process::Command::new(runner_binary())
+            .arg("uninstall")
+            .env("DEMI_HOME", &state)
+            .env("DEMI_ARTIFACTS", cache.path())
+            .env_remove("DEMI_RELEASE_ID")
+            .status();
+        let (uninstalled, ()) = tokio::join!(uninstall, backend);
+        assert!(uninstalled.unwrap().success());
+        assert!(!state.exists());
+        assert!(cache.path().join("artifact").exists());
+        assert!(other.path().join("runner-token").exists());
+        exited(&mut host).await;
+    })
+    .await
+    .unwrap();
+}
+
+/// Without an active runner, `uninstall` connects as the device itself to
+/// ask the backend to revoke it, then removes the installation.
+#[tokio::test]
+async fn uninstall_without_an_active_runner_asks_the_backend_itself() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        let state = host.state();
+        host.stop().await;
+
+        let backend = async {
+            host.reconnected().await;
+            host.send(Inbound::HelloOk {
+                device_id: "device".into(),
+                device_name: "fixture".into(),
+            })
+            .await;
+            assert!(matches!(host.frame().await, Outbound::Revoke {}));
+            host.send(Inbound::Revoked {}).await;
+            while host.socket.next().await.is_some() {}
+        };
+        let (uninstalled, ()) = tokio::join!(manage("uninstall", &state), backend);
+        assert_eq!(uninstalled, Some(0));
+        assert!(!state.exists());
     })
     .await
     .unwrap();

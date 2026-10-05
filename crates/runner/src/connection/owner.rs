@@ -151,6 +151,8 @@ struct Owner<'r> {
     volumes: Volumes,
     /// What the artifact cache holds.
     cached: watch::Receiver<Vec<wire::HostArtifact>>,
+    /// Whether this connection asked the backend to revoke the device.
+    revoke_asked: bool,
 }
 
 /// Serves one connection until it ends, then ends everything it owns.
@@ -203,6 +205,7 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
         ),
         handle,
         cached: registered.cached.clone(),
+        revoke_asked: false,
     };
     let result = owner.run(&mut transport, &mut requests).await;
     // Requests still queued get no answer; their askers see the end.
@@ -235,6 +238,15 @@ impl Owner<'_> {
             tokio::select! {
                 biased;
                 _ = management.stop.cancelled() => return Ok(End::Stopped),
+                // Asked to remove itself, the runner asks its backend to
+                // revoke the device, which ends the connection with
+                // `revoked` (`runner.md` § Installation, pairing and
+                // removal).
+                _ = management.removing.cancelled(), if !self.revoke_asked && management.phase() == Phase::Online => {
+                    self.revoke_asked = true;
+                    let revoke = wire::encode(&wire::Outbound::Revoke {}).map_err(io::Error::other)?;
+                    self.send(revoke).await?;
+                }
                 // Draining waits for the jobs that run (`runner.md`
                 // § Connection and identity).
                 _ = management.draining.cancelled(), if self.jobs.is_empty() => {
@@ -421,6 +433,10 @@ impl Owner<'_> {
             }
             Inbound::Revoked {} if management.phase() == Phase::Online => {
                 return Ok(Some(End::Revoked));
+            }
+            Inbound::RevokeRefused { reason } if management.phase() == Phase::Online => {
+                tracing::warn!("the backend keeps this device: {reason}");
+                management.draining.cancel();
             }
             Inbound::Ping {} => {
                 let pong = wire::encode(&wire::Outbound::Pong {

@@ -100,23 +100,18 @@ pub(super) async fn revoke(
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
-    let workspaces = state
-        .services
-        .control
-        .workspaces_on_device(device.id.clone())
-        .await?;
-    if workspaces > 0 {
-        return Err(ApiError::new(
-            StatusCode::CONFLICT,
-            ErrorCode::DeviceInUse,
-            format!("{workspaces} workspace(s) still point at this device"),
-        ));
-    }
-    state
+    let revoked = state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move { shard.revoke_device(device.id).await })
         .await??;
+    revoked.map_err(|in_use| {
+        ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::DeviceInUse,
+            in_use.to_string(),
+        )
+    })?;
     Ok(StatusCode::NO_CONTENT)
 }
 

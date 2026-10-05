@@ -20,6 +20,12 @@ use tokio::sync::oneshot;
 use super::Shard;
 use super::policy::ShardPolicy;
 
+/// A device that workspaces still point at, which a revocation keeps
+/// (`web-api.md` § Workspaces, devices, and attached hosts).
+#[derive(Debug, thiserror::Error)]
+#[error("{0} workspace(s) still point at this device")]
+pub struct DeviceInUse(pub u64);
+
 impl Shard {
     /// Takes the socket of a runner that presented `device`'s token.
     pub async fn adopt_runner(
@@ -115,10 +121,22 @@ impl Shard {
         Some(serving)
     }
 
-    /// Revokes a device: its exposes end with their connections, its row
-    /// goes with its attachments, and its runner hears that it was revoked
-    /// and removes itself.
-    pub async fn revoke_device(&self, device: DeviceId) -> Result<(), StorageError> {
+    /// Revokes a device, unless workspaces still point at it: its exposes
+    /// end with their connections, its row goes with its attachments, and
+    /// its runner hears that it was revoked and removes itself. The user's
+    /// revocation and the runner's own request both come here.
+    pub async fn revoke_device(
+        &self,
+        device: DeviceId,
+    ) -> Result<Result<(), DeviceInUse>, StorageError> {
+        let workspaces = self
+            .services()
+            .control
+            .workspaces_on_device(device.clone())
+            .await?;
+        if workspaces > 0 {
+            return Ok(Err(DeviceInUse(workspaces)));
+        }
         self.expose_shard().destroy_exposes_on(&device).await;
         self.services()
             .control
@@ -126,7 +144,7 @@ impl Shard {
             .await?;
         self.mark(Part::Devices);
         self.devices().revoke(&device);
-        Ok(())
+        Ok(Ok(()))
     }
 
     /// The user's devices as the web app sees them.

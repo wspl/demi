@@ -51,10 +51,15 @@ pub enum Inbound {
         code: HelloErrorCode,
         reason: String,
     },
-    /// The user revoked the device: the runner removes itself from it, and
-    /// the backend closes the connection (`runner.md` § Installation,
-    /// pairing and removal).
+    /// The user revoked the device, or the backend did at the runner's
+    /// `revoke`: the runner removes itself from it, and the backend closes
+    /// the connection (`runner.md` § Installation, pairing and removal).
     Revoked {},
+    /// The backend keeps the device the runner asked it to revoke, for
+    /// `reason`.
+    RevokeRefused {
+        reason: String,
+    },
     Ping {},
     /// Flush writable filesystems before the guest is stopped; `sync_done`
     /// answers.
@@ -630,6 +635,9 @@ pub enum Outbound {
         #[garde(custom(demi_command_protocol::target))]
         target: String,
     },
+    /// Asks the backend to revoke this device, as `run uninstall` does;
+    /// `revoked` or `revoke_refused` answers.
+    Revoke {},
     Hello {
         protocol: u32,
         /// Absent on an unclaimed first start.

@@ -26,6 +26,7 @@ use demi_runner_protocol::{
 };
 use std::{
     collections::BTreeMap,
+    convert::Infallible,
     io,
     path::PathBuf,
     sync::{Arc, atomic::AtomicBool},
@@ -57,8 +58,11 @@ pub struct Options {
     /// backend's runner release; none for a runner started otherwise.
     pub installed: Option<Installed>,
     /// The command that removes this runner, which it tells its console once
-    /// paired; none for a managed guest's.
+    /// paired; none for a managed guest's, and for one that `uninstall` runs.
     pub removal: Option<String>,
+    /// Whether this registration runs only to ask the backend to revoke the
+    /// device, for an `uninstall` that found no active runner.
+    pub removing: bool,
 }
 
 /// How a registration ended.
@@ -119,6 +123,9 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     let pipes = PipeClient::new(&options.backend, token.subscribe())?;
     let secret = uuid::Uuid::new_v4().simple().to_string();
     let management = Management::new(secret.clone(), options.runner.version.clone(), stop.clone());
+    if options.removing {
+        management.removing.cancel();
+    }
     let dispatcher = Arc::new(Dispatcher {
         contexts: Contexts::new(index.subscribe()),
         services: registry.handle(),
@@ -167,7 +174,10 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         removal: options.removal,
         announced: AtomicBool::new(false),
     };
-    let outcome = reconnect(&registered, installed.as_ref()).await;
+    let outcome = tokio::select! {
+        outcome = reconnect(&registered, installed.as_ref()) => outcome,
+        never = revocation_window(&registered) => match never {},
+    };
     if registered.management.draining.is_cancelled() && !registered.management.stop.is_cancelled() {
         server.wait_idle().await;
     }
@@ -226,6 +236,9 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
                 ));
             }
             Ok(End::Stopped) => return Ok(Ending::Stopped),
+            // An `uninstall` asked for the revocation, and removes the
+            // installation once this runner has ended.
+            Ok(End::Revoked) if management.removing.is_cancelled() => return Ok(Ending::Stopped),
             Ok(End::Revoked) => return Ok(Ending::Removed),
             Ok(End::Disconnected) => {
                 tracing::warn!("backend connection lost");
@@ -249,6 +262,31 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
         }
         delay = (delay * 2).min(Duration::from_secs(10));
     }
+}
+
+/// How long a runner asked to remove itself waits for its backend to revoke
+/// the device before it drains all the same.
+const REVOCATION_WAIT: Duration = Duration::from_secs(10);
+
+/// Once the runner is asked to remove itself, gives its backend a bounded
+/// time to revoke the device, then drains; a backend it cannot reach keeps
+/// listing the device until the user revokes it (`runner.md` § Installation,
+/// pairing and removal). It never ends: the registration ends instead.
+async fn revocation_window(registered: &Registered) -> Infallible {
+    let management = &registered.management;
+    management.removing.cancelled().await;
+    // A runner that was never paired has no device to revoke.
+    if registered.token.borrow().is_some() {
+        tokio::select! {
+            // The backend refused, and the connection began the drain.
+            _ = management.draining.cancelled() => {}
+            _ = tokio::time::sleep(REVOCATION_WAIT) => {
+                tracing::warn!("the backend could not be asked to revoke this device; it lists the device until the user revokes it");
+            }
+        }
+    }
+    management.draining.cancel();
+    std::future::pending().await
 }
 
 /// What one connection attempt came to.
