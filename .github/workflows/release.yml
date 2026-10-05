@@ -32,7 +32,7 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - id: version
         name: Check the version
         env:
@@ -88,7 +88,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Install Zig and cargo-zigbuild
         if: runner.os == 'Linux'
         run: |
@@ -113,13 +113,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: cargo xtask native build ${{ matrix.arguments }}
+      # Relative paths only: GNU tar on Windows reads C:\... as host:path.
       - name: Collect the executables
         run: |
           cd .cache/native-target
           find . -maxdepth 3 -type f -path '*/release/demi-*' \
-            ! -name '*.d' ! -name '*.pdb' -print > "$RUNNER_TEMP/built"
-          tar -cf "$GITHUB_WORKSPACE/native-${{ matrix.name }}.tar" -T "$RUNNER_TEMP/built"
-      - uses: actions/upload-artifact@v4
+            ! -name '*.d' ! -name '*.pdb' -print > built.txt
+          tar -cf ../../native-${{ matrix.name }}.tar -T built.txt
+      - uses: actions/upload-artifact@v7
         with:
           name: native-${{ matrix.name }}
           path: native-${{ matrix.name }}.tar
@@ -130,11 +131,12 @@ jobs:
     needs: version
     runs-on: ubuntu-26.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
-      - run: bun run web:build
-      - uses: actions/upload-artifact@v4
+      # The packages the web app imports are built first, as their dist/.
+      - run: bun run build
+      - uses: actions/upload-artifact@v7
         with:
           name: web
           path: packages/web/dist
@@ -147,13 +149,13 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           pattern: native-*
           path: ${{ runner.temp }}/native
           merge-multiple: true
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: web
           path: ${{ runner.temp }}/web
@@ -174,7 +176,7 @@ jobs:
               --server "$target" --web "$RUNNER_TEMP/web"
             tar --zstd -cf "dist/demi-$VERSION-server-linux-$arch.tar.zst" -C "$root" .
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: server
           path: dist
@@ -195,8 +197,8 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           name: server
           path: ${{ runner.temp }}/server
@@ -222,7 +224,7 @@ jobs:
             --output "$RUNNER_TEMP/out/image"
           mkdir -p dist
           tar -cf "dist/demi-$VERSION-image-linux-${{ matrix.arch }}.tar" -C "$RUNNER_TEMP/out" image
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: image-${{ matrix.arch }}
           path: dist
@@ -238,11 +240,11 @@ jobs:
       VERSION: ${{ needs.version.outputs.version }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: server
           path: dist
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           pattern: image-*
           path: dist
