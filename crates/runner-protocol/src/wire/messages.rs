@@ -32,15 +32,20 @@ pub enum Inbound {
         #[garde(custom(conversation_name))]
         conversation_id: String,
     },
+    /// The device the hello's token names, by its id and the name the
+    /// user sees.
     HelloOk {
         device_id: String,
+        device_name: String,
     },
     ClaimPending {
         claim_token: String,
     },
+    /// The runner was paired: its device token, and the name the user sees.
     Claimed {
         #[garde(skip)]
         device_token: DeviceToken,
+        device_name: String,
     },
     HelloError {
         code: HelloErrorCode,
