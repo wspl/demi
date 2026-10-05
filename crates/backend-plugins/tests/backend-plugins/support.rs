@@ -398,7 +398,7 @@ pub fn exec(id: &str, script: &str, timeout_ms: u32) -> ProviderEvent {
     event::tool_call(
         id,
         "shell_exec",
-        json!({"description": "Workspace state", "script": script, "timeoutMs": timeout_ms}),
+        json!({"description": "Run the test script", "script": script, "timeoutMs": timeout_ms}),
     )
 }
 

@@ -1033,7 +1033,7 @@
     },
     "toolUseId": "toolu_02",
     "toolName": "shell_exec",
-    "input": "{\"script\":\"npm test\",\"description\":\"Tests pass\"}",
+    "input": "{\"script\":\"npm test\",\"description\":\"Run the tests\"}",
     "status": "completed",
     "output": [
       {

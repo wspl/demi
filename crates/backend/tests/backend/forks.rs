@@ -297,7 +297,7 @@ async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_
     vendor.respond(tool_use(
         "toolu_1",
         "shell_exec",
-        &json!({ "description": "Notes file", "script": script, "timeoutMs": 60_000 }),
+        &json!({ "description": "Write the notes file", "script": script, "timeoutMs": 60_000 }),
     ));
     vendor.respond(answer(&["Written."], 1, 1));
     source.chat("m1", "Write the notes").await;
