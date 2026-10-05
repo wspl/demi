@@ -433,7 +433,11 @@ fn page_account(account: &Account) -> String {
 /// Creates the master account, which setup signs in; answers its session's
 /// cookies.
 async fn setup(http: &reqwest::Client, origin: &str, account: &Account) -> Result<String, Error> {
-    let setup = json!({ "email": account.email, "password": account.password });
+    let setup = json!({
+        "nickname": "Developer",
+        "email": account.email,
+        "password": account.password,
+    });
     let answer = http
         .post(format!("{origin}/api/setup"))
         .header(CONTENT_TYPE, "application/json")

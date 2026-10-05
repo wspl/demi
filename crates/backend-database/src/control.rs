@@ -75,6 +75,7 @@ impl ControlService {
     /// at all; `None` once setup has run.
     pub async fn create_master(
         &self,
+        nickname: String,
         email: EmailAddress,
         password_hash: PasswordHash,
     ) -> Result<Option<UserDto>, StorageError> {
@@ -89,10 +90,11 @@ impl ControlService {
             }
             transaction.execute(
                 "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
-                 VALUES (?1, ?2, '', ?3, ?4, ?5)",
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
                 params![
                     id.as_str(),
                     email.as_str(),
+                    nickname,
                     password_hash.as_str(),
                     Role::Master.to_string(),
                     now.as_millisecond()
@@ -102,7 +104,7 @@ impl ControlService {
             Ok(Some(UserDto {
                 id,
                 email,
-                nickname: String::new(),
+                nickname,
                 role: Role::Master,
                 created_at: now,
             }))
@@ -575,7 +577,11 @@ pub mod testing {
         )
         .unwrap();
         let email = EmailAddress::try_from("master@example.test".to_owned()).unwrap();
-        control.create_master(email, hash).await.unwrap().unwrap()
+        control
+            .create_master("Master".to_owned(), email, hash)
+            .await
+            .unwrap()
+            .unwrap()
     }
 
     /// Runs `sql` on the control database with text parameters, for a test

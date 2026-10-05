@@ -112,10 +112,26 @@ impl JsonSchema for Password {
     }
 }
 
-/// `POST /setup`: the master account's address and password.
+/// An account's nickname as a request sets it: trimmed, then 1 to 80
+/// characters.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(transparent)]
+#[schemars(inline)]
+#[garde(transparent)]
+pub struct Nickname(#[garde(length(chars, min = 1, max = 80))] Trimmed);
+
+impl Nickname {
+    pub fn into_string(self) -> String {
+        self.0.into_string()
+    }
+}
+
+/// `POST /setup`: the master account's nickname, address and password.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct SetupRequest {
+    #[garde(dive)]
+    pub nickname: Nickname,
     /// An `EmailAddress` is valid once it is decoded.
     #[garde(skip)]
     pub email: EmailAddress,
@@ -138,8 +154,8 @@ pub struct Credentials {
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct NicknamePatch {
-    #[garde(length(chars, min = 1, max = 80))]
-    pub nickname: Trimmed,
+    #[garde(dive)]
+    pub nickname: Nickname,
 }
 
 /// `PUT /auth/password`: the current password and the next one.
@@ -216,6 +232,7 @@ mod tests {
         assert_eq!(setup["properties"]["email"]["format"], "email");
         assert_eq!(setup["properties"]["password"]["minLength"], 8);
         assert_eq!(setup["properties"]["password"]["maxLength"], 1024);
+        assert_eq!(setup["properties"]["nickname"]["maxLength"], 80);
         let nickname = schema(schemars::schema_for!(NicknamePatch));
         assert_eq!(nickname["properties"]["nickname"]["maxLength"], 80);
         let confirm = schema(schemars::schema_for!(EmailChangeConfirm));

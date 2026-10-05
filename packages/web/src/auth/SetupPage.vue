@@ -7,13 +7,14 @@ import { useSession } from './session'
 
 const session = useSession()
 const router = useRouter()
+const name = ref('')
 const email = ref('')
 const password = ref('')
 const confirmation = ref('')
 const phase = ref<SetupPhase>({})
 let request: AbortController | null = null
 
-async function submit(address: string, secret: string): Promise<void> {
+async function submit(nickname: string, address: string, secret: string): Promise<void> {
   if (phase.value.busy) {
     return
   }
@@ -21,7 +22,7 @@ async function submit(address: string, secret: string): Promise<void> {
   request = controller
   phase.value = { busy: true }
   try {
-    await session.setUp(address, secret, controller.signal)
+    await session.setUp(nickname, address, secret, controller.signal)
     password.value = ''
     confirmation.value = ''
     await router.replace('/chat')
@@ -50,6 +51,7 @@ onUnmounted(() => request?.abort())
 
 <template>
   <SetupForm
+    v-model:name="name"
     v-model:email="email"
     v-model:password="password"
     v-model:confirmation="confirmation"
