@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import AgentMessageVirtualBlock from '@demicodes/web-ui/agent/blocks/AgentMessageVirtualBlock.vue'
-import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
-import type { PendingSubmissionState } from '@demicodes/web-ui/agent/types'
+import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
+import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { composerAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
-import type { Block } from '@demicodes/protocol'
+import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
+import type { Block, UserContentBlock } from '@demicodes/protocol'
+import { useTurnFlow } from '../turn-flow'
 import { demoModel, errorTool } from '../fixtures/blocks'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
@@ -77,16 +79,33 @@ const records: { block: Block; tail: boolean }[] = [
   },
 ]
 const toolFailure = errorTool as Block
-const pending: PendingSubmissionState = {
-  id: 'failed-submission',
-  text: `Please keep this exact message, the plan ${ATTACHMENT_MARK} and the capture ${ATTACHMENT_MARK}.`,
-  attachments: [
-    composerAttachment({ name: 'plan.pdf', phase: 'ready' }),
-    composerAttachment({ name: 'reference.png', phase: 'ready' }),
-  ],
-  error: 'The server did not confirm the message. Retry checks whether it was accepted before sending it again.',
-  sending: false,
+// The exact message stays with the failure under it. Retry sends it again
+// with the same id, and Requesting shows until its turn answers.
+const undeliveredFlow = useTurnFlow({ id: 'gallery-undelivered-message' })
+const undeliveredText = `Please keep this exact message, the plan ${ATTACHMENT_MARK} and the capture ${ATTACHMENT_MARK}.`
+const undeliveredFiles = [
+  { name: 'plan.pdf', mediaType: 'application/pdf' },
+  { name: 'reference.png', mediaType: 'image/png' },
+]
+
+function failDelivery(): void {
+  undeliveredFlow.undelivered(
+    joinMessageContent(undeliveredText, undeliveredFiles.map(({ name, mediaType }) => [{
+      type: 'attachment',
+      name,
+      path: `/home/demi/.demi/attachments/gallery/${name}`,
+      mediaType,
+      sizeBytes: 4096,
+      sha256: '0'.repeat(64),
+    } satisfies UserContentBlock])),
+    {
+      text: undeliveredText,
+      attachments: undeliveredFiles.map(({ name }) => composerAttachment({ name, phase: 'ready' })),
+    },
+    'The server did not confirm the message. Retry checks whether it was accepted before sending it again.',
+  )
 }
+failDelivery()
 </script>
 
 <template>
@@ -122,12 +141,26 @@ const pending: PendingSubmissionState = {
     </GallerySection>
     <GallerySection
       title="Undelivered Message · the Notice Follows the Message"
-      note="The exact text and its attachments stay on screen; the failure follows them in flow, with Retry."
+      note="The exact text and its attachments stay on screen; the failure follows them in flow, with Retry, which sends the message again and shows Requesting from then."
     >
       <GallerySpecimen wide variant="Send failed">
-        <div class="rounded-lg bg-surface">
-          <PendingSubmission v-bind="pending" />
+        <div class="flex h-[18rem] flex-col overflow-hidden rounded-lg bg-surface">
+          <AgentMessageList
+            class="min-h-0 flex-1"
+            :conversation-id="undeliveredFlow.state.id"
+            :blocks="undeliveredFlow.state.blocks"
+            :pending-steers="[]"
+            :queue="[]"
+            :phase="undeliveredFlow.state.phase"
+            :load="undeliveredFlow.state.load"
+            :pending-submission="undeliveredFlow.pendingSubmission.value"
+            :bottom-offset="0"
+            :persisted-scroll-state="undefined"
+            read-only
+            @retry-submission="undeliveredFlow.retrySubmission"
+          />
         </div>
+        <Button size="sm" class="mt-2" @click="failDelivery">Fail Again</Button>
       </GallerySpecimen>
     </GallerySection>
   </div>

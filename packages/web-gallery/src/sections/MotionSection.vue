@@ -28,6 +28,13 @@ const foldOpen = ref(false)
 const progressLoading = ref(true)
 // Each replay remounts the rows, so they arrive again.
 const entranceKey = ref(0)
+// The wait the entrance's tail row shows starts with each replay.
+const entranceSince = ref(Date.now())
+
+function replayEntrance(): void {
+  entranceKey.value += 1
+  entranceSince.value = Date.now()
+}
 const entranceThinkingStartedAt = new Date(Date.now() - 8_000).toISOString()
 const entranceThinkingEndedAt = new Date().toISOString()
 const entranceThinking: Block = {
@@ -180,7 +187,7 @@ const exploratoryMarks: {
         <Button
           variant="ghost"
           size="sm"
-          @click="entranceKey += 1"
+          @click="replayEntrance"
         >Replay</Button>
       </div>
       <div
@@ -190,6 +197,7 @@ const exploratoryMarks: {
         <ActivitySlot
           v-bind="chromeEntrance(true)"
           kind="requesting"
+          :since="entranceSince"
         />
         <AgentMessageVirtualBlock
           :block="entranceThinking"

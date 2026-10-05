@@ -163,7 +163,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
               conversation?.files.filter((file) => file.id === id) ?? [],
             ),
             error: conversation.pendingSend.error,
-            sending: conversation.submission === 'sending',
           }
         : null
     "

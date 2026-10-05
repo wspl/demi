@@ -6,8 +6,9 @@ import type { SessionLoad } from './session-status'
 
 /**
  * Why the transcript's tail row is waiting. `connecting` is the socket;
- * `requesting` is the provider being asked: a recovery the server has not
- * acknowledged yet and the agent's own retries included, which are the same
+ * `requesting` is the wait for the provider's answer: from the send of a
+ * message that starts a turn, its delivery included, and a recovery the server
+ * has not acknowledged yet and the agent's own retries, which are the same
  * wait and keep the same word (`product.md` § Recovering an unfinished turn).
  */
 export type ActivityKind = 'connecting' | 'requesting'
@@ -38,6 +39,12 @@ export interface ActivitySlotInput {
   load: SessionLoad
   phase: SessionPhase
   pendingAction: PendingAction
+  /**
+   * A message sent to start a turn is on its way to Demi: the wait for its
+   * answer has begun, though the server has confirmed neither the message nor
+   * the turn yet.
+   */
+  startingTurn: boolean
   /** The visible transcript, including a record a pending recovery hides from the list. */
   transcriptBlocks: readonly MessageListBlock[]
   /** What the list renders: the transcript with pending steers and the queue after it. */
@@ -53,7 +60,7 @@ export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null 
   if (input.load === 'reconnecting') {
     return 'connecting'
   }
-  if (input.pendingAction === 'resume') {
+  if (input.pendingAction === 'resume' || input.startingTurn) {
     return 'requesting'
   }
   return isWaitingForProvider(input) ? 'requesting' : null

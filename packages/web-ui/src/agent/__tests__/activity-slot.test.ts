@@ -1,8 +1,12 @@
-import { expect, test } from 'bun:test'
+import { expect, spyOn, test } from 'bun:test'
+import { effectScope, nextTick, reactive } from 'vue'
 import type { Block, SessionPhase, ToolCallStatus } from '@demicodes/protocol'
 import type { MessageListBlock } from '../pending-steers'
 import { activitySlotKind, type PendingAction } from '../activity-slot'
+import { listTailBlocks } from '../list-tail'
 import type { SessionLoad } from '../session-status'
+import type { PendingSubmissionState } from '../types'
+import { useActivitySlot } from '../useActivitySlot'
 
 function kind(
   phase: SessionPhase,
@@ -14,6 +18,7 @@ function kind(
     load: options.load ?? 'ready',
     phase,
     pendingAction: options.pendingAction ?? null,
+    startingTurn: false,
     transcriptBlocks,
     renderBlocks,
   })
@@ -82,6 +87,100 @@ test('connecting wins over a pending recovery and a running turn', () => {
   expect(kind('idle', [], undefined, { load: 'reconnecting' })).toBe('connecting')
   expect(kind('idle', [errorBlock()], [], { load: 'reconnecting', pendingAction: 'resume' })).toBe('connecting')
   expect(kind('running', [thinkingBlock()], undefined, { load: 'reconnecting' })).toBe('connecting')
+})
+
+/**
+ * The tail row as the message list drives it, over a conversation the test
+ * changes the way the page's state changes, at a clock the test sets.
+ */
+function slotOver(phase: SessionPhase, blocks: MessageListBlock[]) {
+  const clock = spyOn(Date, 'now').mockReturnValue(0)
+  const conversation = reactive({
+    phase,
+    blocks,
+    pendingSubmission: null as PendingSubmissionState | null,
+  })
+  const scope = effectScope()
+  const { slot } = scope.run(() => useActivitySlot({
+    input: () => ({
+      load: 'ready',
+      phase: conversation.phase,
+      pendingAction: null,
+      transcriptBlocks: conversation.blocks,
+      renderBlocks: [
+        ...conversation.blocks,
+        ...listTailBlocks({
+          phase: conversation.phase,
+          pendingSteers: [],
+          queue: [],
+          pendingSubmission: conversation.pendingSubmission,
+        }),
+      ],
+    }),
+    pendingSubmission: () => conversation.pendingSubmission,
+    tail: () => conversation.blocks.at(-1),
+    scope: () => 'conversation',
+  }))!
+  return {
+    conversation,
+    slot,
+    at: (ms: number) => clock.mockReturnValue(ms),
+    [Symbol.dispose]() {
+      scope.stop()
+      clock.mockRestore()
+    },
+  }
+}
+
+function sent(error: string | null = null): PendingSubmissionState {
+  return { id: 'turn-1', text: 'hello', attachments: [], error }
+}
+
+test('a message sent to an idle conversation says Requesting from the send, through its confirmation, on one clock', async () => {
+  using session = slotOver('idle', [textBlock()])
+  const { conversation, slot, at } = session
+  expect(slot.value).toBeNull()
+
+  at(5_000)
+  conversation.pendingSubmission = sent()
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+
+  // The backend starts the turn before it writes the message.
+  at(6_000)
+  conversation.phase = 'running'
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+
+  // The message's block confirms it; the page drops the pending message in the same update.
+  at(8_000)
+  conversation.blocks = [textBlock(), userBlock()]
+  conversation.pendingSubmission = null
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+})
+
+test('a failed delivery ends the wait, and Retry starts it again from the retry', async () => {
+  using session = slotOver('idle', [])
+  const { conversation, slot, at } = session
+  conversation.pendingSubmission = sent()
+  await nextTick()
+  conversation.pendingSubmission = sent('Connection closed before confirmation')
+  await nextTick()
+  expect(slot.value).toBeNull()
+
+  at(9_000)
+  conversation.pendingSubmission = sent()
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 9_000 })
+})
+
+test('a message sent during a turn joins the queue and adds no Requesting under the streaming answer', async () => {
+  using session = slotOver('running', [userBlock(), textBlock()])
+  const { conversation, slot } = session
+  conversation.pendingSubmission = sent()
+  await nextTick()
+  expect(slot.value).toBeNull()
 })
 
 const createdAt = '2026-06-24T00:00:00.000Z'

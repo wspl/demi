@@ -17,8 +17,8 @@ export interface PendingSubmissionState {
   id: string
   text: string
   attachments: ComposerAttachment[]
+  /** Why the delivery failed; null while the message is on its way. */
   error: string | null
-  sending: boolean
 }
 
 /** One conversation's live state, as the runtime keeps it and `ChatSession` reads it. */
