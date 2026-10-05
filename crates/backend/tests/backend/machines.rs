@@ -19,7 +19,7 @@ use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 use demi_host_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
     BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState,
-    decode_request, encode_line,
+    WIRE_VERSION, decode_request, encode_line,
 };
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
@@ -280,6 +280,11 @@ async fn serve(listener: UnixListener, shared: Arc<Shared>) {
 async fn connection(stream: UnixStream, shared: Arc<Shared>) {
     let (read, mut write) = stream.into_split();
     let (lines, mut outgoing) = mpsc::channel::<Vec<u8>>(64);
+    // A manager's first line names its wire version.
+    let hello = encode_line(&MachineResponse::Hello {
+        version: WIRE_VERSION,
+    });
+    lines.try_send(hello).expect("a new connection's queue has room");
     let mut deaths = shared.deaths.subscribe();
     let writer = AbortOnDropHandle::new(tokio::spawn(async move {
         loop {

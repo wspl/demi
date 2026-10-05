@@ -10,13 +10,16 @@
 //!
 //! A supervisor task owns the connection, the calls in flight and the id
 //! counter; the client is its handle, and the task ends with the client.
+//! A connection serves calls once the manager's `hello` names this
+//! backend's wire version; a manager of another release fails the call that
+//! connected.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 use demi_machine_manager_protocol::{
     DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Operation,
-    ReconcileParams, decode_response, encode_line,
+    ReconcileParams, WIRE_VERSION, decode_response, encode_line,
 };
 use futures_util::StreamExt as _;
 use tokio::io::AsyncWriteExt as _;
@@ -34,6 +37,10 @@ const INCOMING: usize = 64;
 
 /// Death events waiting for the backend's router.
 pub(crate) const DEATHS: usize = 256;
+
+/// How long a new connection waits for the manager's `hello`, which it
+/// writes as it accepts.
+const HELLO_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// Why a call to the manager has no result.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -259,6 +266,10 @@ impl Supervisor {
             }
         };
         let (id, result) = match response {
+            MachineResponse::Hello { .. } => {
+                tracing::warn!("the machine manager sent a second hello, which was dropped");
+                return;
+            }
             MachineResponse::Death { device_id } => {
                 match DeviceId::parse(device_id) {
                     // The router only ends when the backend does, which ends
@@ -327,9 +338,24 @@ async fn connect(socket: &Path) -> Result<Connection, String> {
         .await
         .map_err(|error| format!("{}: {error}", socket.display()))?;
     let (read, writer) = stream.into_split();
+    let mut framed = FramedRead::new(read, LinesCodec::new_with_max_length(MAX_LINE_BYTES));
+    let hello = tokio::time::timeout(HELLO_WAIT, framed.next())
+        .await
+        .map_err(|_| "the machine manager sent no hello".to_owned())?;
+    let version = match hello.map(|line| line.map(|line| decode_response(&line))) {
+        Some(Ok(Ok(MachineResponse::Hello { version }))) => version,
+        Some(Ok(Ok(_))) => return Err("the machine manager's first message was no hello".into()),
+        Some(Ok(Err(error))) => return Err(format!("the machine manager's hello did not read: {error}")),
+        Some(Err(error)) => return Err(error.to_string()),
+        None => return Err("the machine manager closed the connection".into()),
+    };
+    if version != WIRE_VERSION {
+        return Err(format!(
+            "the machine manager speaks wire version {version} and this backend {WIRE_VERSION}: start both from one release"
+        ));
+    }
     let (lines, incoming) = mpsc::channel(INCOMING);
     let reader = tokio::spawn(async move {
-        let mut framed = FramedRead::new(read, LinesCodec::new_with_max_length(MAX_LINE_BYTES));
         let end = loop {
             match framed.next().await {
                 Some(Ok(line)) if line.is_empty() => {}

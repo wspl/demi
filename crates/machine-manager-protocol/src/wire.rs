@@ -14,6 +14,11 @@ use crate::{BaseVersion, MachineImageState, RuntimeState, Volume};
 /// message is a few kilobytes.
 pub const MAX_LINE_BYTES: usize = 1 << 20;
 
+/// The wire's version, which the manager's `hello` names. The backend and
+/// the manager of a deployment run one release, so a change to any message
+/// changes it (`managed-hosts.md` § Control and ownership).
+pub const VERSION: u32 = 1;
+
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 pub struct MachineRequest {
@@ -147,6 +152,12 @@ pub struct ResetParams {
     rename_all_fields = "camelCase"
 )]
 pub enum MachineResponse {
+    /// The manager's first message on a connection: the wire version it
+    /// speaks.
+    Hello {
+        #[garde(skip)]
+        version: u32,
+    },
     /// The operation's result, which the client decodes as the operation's
     /// [`Operation::Output`] once it knows which request this answers.
     Ok {
