@@ -1,7 +1,11 @@
-//! `cargo xtask native build` (`builds-and-releases.md` § Cross builds):
-//! one release build per target with the machine's own cross tools,
-//! cargo-zigbuild for the Apple and Linux targets and cargo-xwin for
-//! Windows, or inside the build container's image.
+//! `cargo xtask native build` (`builds-and-releases.md` § Executables and
+//! targets, § Cross builds): one release build per target. A target of the
+//! machine's own platform builds with that platform's toolchain, Apple's on
+//! a Mac and MSVC on Windows, checked against the pins; Linux keeps
+//! cargo-zigbuild for its static musl build; a target of another platform
+//! builds with the cross tools, cargo-zigbuild for the Apple and Linux
+//! targets and cargo-xwin for Windows, here or inside the build container's
+//! image.
 
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
@@ -11,11 +15,17 @@ use serde::Deserialize;
 
 use super::{Error, Executable, apple, windows};
 
-/// The Apple SDK the Apple targets are built against.
-pub(super) const APPLE_SDK_VERSION: &str = "15.4";
-/// The Windows SDK and C runtime that cargo-xwin downloads.
+/// The Apple SDK the Apple targets are built against: the one the Command
+/// Line Tools and Xcode 26.6 install, on a developer's Mac and on the
+/// release workflow's `macos-26` runner alike.
+pub(super) const APPLE_SDK_VERSION: &str = "26.5";
+/// The Windows SDK and C runtime: what cargo-xwin downloads from another
+/// platform, and what a Windows build's Visual Studio environment must
+/// select.
 const WINDOWS_SDK_VERSION: &str = "10.0.26100";
 const WINDOWS_CRT_VERSION: &str = "14.44.17.14";
+/// The MSVC toolset of that C runtime, as `VCToolsVersion` begins.
+const MSVC_TOOLSET: &str = "14.44.";
 /// The oldest macOS the Apple builds run on.
 const MACOS_MINIMUM: &str = "13.0";
 /// The build container's paths: the checkout, the Cargo target directory
@@ -66,12 +76,21 @@ pub fn run(options: Options) -> Result<(), Error> {
     } else {
         None
     };
+    // The container is a Linux machine, whatever this one is.
+    let host = match &options.container {
+        Some(_) => Platform::Linux,
+        None => Platform::HOST,
+    };
+    if host == Platform::Windows && targets.iter().any(|target| windows(target)) {
+        check_msvc(|name| std::env::var(name).ok())?;
+    }
     let artifacts = super::artifacts(options.artifacts.as_deref())?;
     std::fs::create_dir_all(&artifacts)?;
     let build = Build {
         repository: &repository,
         artifacts: &artifacts,
         sdk: sdk.as_deref(),
+        host,
     };
     for target in targets {
         let built: Vec<Executable> = executables
@@ -119,20 +138,81 @@ fn apple_sdk(named: Option<&Path>) -> Result<PathBuf, Error> {
     Ok(sdk)
 }
 
+/// Checks that the Visual Studio environment a Windows build runs in,
+/// whose variables `variable` reads, selects the pinned MSVC toolset and
+/// Windows SDK.
+fn check_msvc(variable: impl Fn(&str) -> Option<String>) -> Result<(), Error> {
+    let toolset = variable("VCToolsVersion").ok_or(Error::NoMsvc)?;
+    let sdk = variable("WindowsSDKVersion").ok_or(Error::NoMsvc)?;
+    if !toolset.starts_with(MSVC_TOOLSET) || !sdk.starts_with(WINDOWS_SDK_VERSION) {
+        return Err(Error::MsvcVersion {
+            toolset,
+            sdk,
+            pinned: format!("{MSVC_TOOLSET}x and {WINDOWS_SDK_VERSION}"),
+        });
+    }
+    Ok(())
+}
+
+/// The platform a build runs on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Platform {
+    Mac,
+    Linux,
+    Windows,
+}
+
+impl Platform {
+    /// This machine's platform.
+    const HOST: Self = if cfg!(target_os = "macos") {
+        Self::Mac
+    } else if cfg!(windows) {
+        Self::Windows
+    } else {
+        Self::Linux
+    };
+}
+
+/// What compiles and links a target's build.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Tool {
+    /// Cargo with the platform's own toolchain: Apple's on a Mac, MSVC on
+    /// Windows.
+    Cargo,
+    /// cargo-zigbuild: the Linux targets everywhere, since Zig carries the
+    /// musl that `aws-lc-sys` builds against, and the Apple targets from
+    /// another platform.
+    Zig,
+    /// cargo-xwin: the Windows targets from another platform.
+    Xwin,
+}
+
+impl Tool {
+    /// The tool that builds `target` on `host`.
+    fn of(host: Platform, target: &str) -> Self {
+        match (host, apple(target), windows(target)) {
+            (Platform::Mac, true, _) | (Platform::Windows, _, true) => Self::Cargo,
+            (_, _, true) => Self::Xwin,
+            _ => Self::Zig,
+        }
+    }
+}
+
 /// What every target's build shares.
 struct Build<'a> {
     repository: &'a Path,
     artifacts: &'a Path,
     sdk: Option<&'a Path>,
+    host: Platform,
 }
 
 impl Build<'_> {
     /// Cargo's arguments for `target`'s release build of `executables`.
-    fn arguments(target: &str, executables: &[Executable]) -> Vec<OsString> {
-        let mut arguments: Vec<OsString> = if windows(target) {
-            vec!["xwin".into(), "build".into()]
-        } else {
-            vec!["zigbuild".into()]
+    fn arguments(&self, target: &str, executables: &[Executable]) -> Vec<OsString> {
+        let mut arguments: Vec<OsString> = match Tool::of(self.host, target) {
+            Tool::Cargo => vec!["build".into()],
+            Tool::Zig => vec!["zigbuild".into()],
+            Tool::Xwin => vec!["xwin".into(), "build".into()],
         };
         for argument in ["--release", "--locked", "--target", target] {
             arguments.push(argument.into());
@@ -146,19 +226,29 @@ impl Build<'_> {
 
     /// The settings of the pinned inputs, the same here and in the
     /// container.
-    fn pins(target: &str) -> Vec<(&'static str, &'static str)> {
+    fn pins(&self, target: &str) -> Vec<(&'static str, &'static str)> {
         let mut pins = vec![
             ("XWIN_SDK_VERSION", WINDOWS_SDK_VERSION),
             ("XWIN_CRT_VERSION", WINDOWS_CRT_VERSION),
             ("MACOSX_DEPLOYMENT_TARGET", MACOS_MINIMUM),
         ];
         if windows(target) {
-            // aws-lc-sys, rustls's provider, compiles C with cargo-xwin's
-            // clang: keep its MSVC driver dialect, with its SDK include
-            // flags, and optimization.
-            pins.push(("CFLAGS", "--driver-mode=cl /O2"));
-            // Its x86-64 assembly needs NASM, which the cross tools lack;
-            // the crate's prebuilt NASM objects take its place.
+            match Tool::of(self.host, target) {
+                // aws-lc-sys, rustls's provider, compiles C with
+                // cargo-xwin's clang: keep its MSVC driver dialect, with its
+                // SDK include flags, and optimization.
+                Tool::Xwin => pins.push(("CFLAGS", "--driver-mode=cl /O2")),
+                // On Windows arm64 the crate requires clang-cl, which the
+                // Visual Studio installation carries.
+                Tool::Cargo if target.starts_with("aarch64") => {
+                    pins.push(("CC_aarch64_pc_windows_msvc", "clang-cl"));
+                    pins.push(("CXX_aarch64_pc_windows_msvc", "clang-cl"));
+                }
+                Tool::Cargo | Tool::Zig => {}
+            }
+            // Its x86-64 assembly needs NASM, which neither the cross tools
+            // nor Visual Studio carry; the crate's prebuilt NASM objects
+            // take its place.
             pins.push(("AWS_LC_SYS_PREBUILT_NASM", "1"));
         }
         pins
@@ -173,10 +263,14 @@ impl Build<'_> {
     }
 
     /// The linker flags of `target`'s build: Windows links its C runtime
-    /// statically, and the Apple targets find the SDK's frameworks.
-    fn rustflags(target: &str, sdk: Option<&Path>) -> Option<OsString> {
+    /// statically, and the Apple targets find the SDK's frameworks when Zig
+    /// links them; Apple's linker finds them in `SDKROOT`.
+    fn rustflags(&self, target: &str, sdk: Option<&Path>) -> Option<OsString> {
         if windows(target) {
             return Some("-C target-feature=+crt-static".into());
+        }
+        if Tool::of(self.host, target) != Tool::Zig {
+            return None;
         }
         let sdk = sdk.filter(|_| apple(target))?;
         let mut flags = OsString::from("-L framework=");
@@ -191,12 +285,12 @@ impl Build<'_> {
         let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
         let mut command = Command::new(cargo);
         command
-            .args(Self::arguments(target, executables))
+            .args(self.arguments(target, executables))
             .current_dir(self.repository)
-            .envs(Self::pins(target))
+            .envs(self.pins(target))
             .env("CARGO_TARGET_DIR", self.artifacts)
             .env("XWIN_CACHE_DIR", Self::xwin_cache(self.repository));
-        match Self::rustflags(target, self.sdk) {
+        match self.rustflags(target, self.sdk) {
             Some(flags) => command.env("RUSTFLAGS", flags),
             None => command.env_remove("RUSTFLAGS"),
         };
@@ -221,7 +315,8 @@ impl Build<'_> {
         std::fs::create_dir_all(&registry)?;
         std::fs::create_dir_all(&git)?;
         let checkout = Path::new(CONTAINER_CHECKOUT);
-        let mut environment: Vec<(&str, OsString)> = Self::pins(target)
+        let mut environment: Vec<(&str, OsString)> = self
+            .pins(target)
             .into_iter()
             .map(|(name, value)| (name, value.into()))
             .collect();
@@ -236,7 +331,7 @@ impl Build<'_> {
             .sdk
             .filter(|_| apple(target))
             .map(|_| Path::new(CONTAINER_SDK));
-        if let Some(flags) = Self::rustflags(target, sdk) {
+        if let Some(flags) = self.rustflags(target, sdk) {
             environment.push(("RUSTFLAGS", flags));
         }
         if let Some(sdk) = sdk {
@@ -272,7 +367,7 @@ impl Build<'_> {
         command
             .arg(image)
             .arg("cargo")
-            .args(Self::arguments(target, executables));
+            .args(self.arguments(target, executables));
         Ok(command)
     }
 }
@@ -294,7 +389,7 @@ mod tests {
         };
         let pinned = sdk(
             "pinned",
-            Some(r#"{"CanonicalName":"macosx15.4","Version":"15.4"}"#),
+            Some(r#"{"CanonicalName":"macosx26.5","Version":"26.5"}"#),
         );
         assert_eq!(apple_sdk(Some(&pinned)).unwrap(), pinned);
         let older = sdk(
@@ -312,5 +407,46 @@ mod tests {
             Err(Error::SdkSettings { .. })
         ));
         assert!(matches!(apple_sdk(None), Err(Error::NoSdk)));
+    }
+
+    #[test]
+    fn a_target_builds_with_its_own_platforms_toolchain_and_cross_tools_elsewhere() {
+        let mac = "aarch64-apple-darwin";
+        let linux = "x86_64-unknown-linux-musl";
+        let windows = "aarch64-pc-windows-msvc";
+        assert_eq!(Tool::of(Platform::Mac, mac), Tool::Cargo);
+        assert_eq!(Tool::of(Platform::Mac, linux), Tool::Zig);
+        assert_eq!(Tool::of(Platform::Mac, windows), Tool::Xwin);
+        assert_eq!(Tool::of(Platform::Linux, mac), Tool::Zig);
+        assert_eq!(Tool::of(Platform::Linux, linux), Tool::Zig);
+        assert_eq!(Tool::of(Platform::Windows, windows), Tool::Cargo);
+        assert_eq!(Tool::of(Platform::Windows, linux), Tool::Zig);
+    }
+
+    #[test]
+    fn a_windows_build_runs_only_in_the_pinned_visual_studio_environment() {
+        fn environment(
+            toolset: Option<&'static str>,
+            sdk: Option<&'static str>,
+        ) -> impl Fn(&str) -> Option<String> {
+            move |name| match name {
+                "VCToolsVersion" => toolset.map(str::to_owned),
+                "WindowsSDKVersion" => sdk.map(str::to_owned),
+                _ => None,
+            }
+        }
+        check_msvc(environment(Some("14.44.35207"), Some("10.0.26100.0\\"))).unwrap();
+        assert!(matches!(
+            check_msvc(environment(None, Some("10.0.26100.0\\"))),
+            Err(Error::NoMsvc)
+        ));
+        assert!(matches!(
+            check_msvc(environment(Some("14.43.34808"), Some("10.0.26100.0\\"))),
+            Err(Error::MsvcVersion { .. })
+        ));
+        assert!(matches!(
+            check_msvc(environment(Some("14.44.35207"), Some("10.0.22621.0\\"))),
+            Err(Error::MsvcVersion { .. })
+        ));
     }
 }

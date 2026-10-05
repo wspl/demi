@@ -361,7 +361,10 @@ mod tests {
         // One root commits, and the backend stops before it publishes the
         // destination; a device is revoked meanwhile.
         let blobs = BlobStores::new(
-            objects::open(data.path(), None).await.unwrap(),
+            objects::open(data.path(), &objects::Storage::Local)
+                .await
+                .unwrap()
+                .store,
             Arc::new(demi_shared_types::SystemClock),
         )
         .for_user(&master);

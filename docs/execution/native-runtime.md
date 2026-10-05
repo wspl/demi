@@ -989,10 +989,11 @@ is.
 
 The backend publishes every command package release in the `commands/`
 directory of its [server release](../delivery/builds-and-releases.md#server-release),
-one release per directory. Each holds `descriptor.json`, one executable under
-each target triple, named by the descriptor's executable, a basename without
-an extension, and each resource archive the descriptor names as
-`resources/<sha256>`. Windows filenames end in `.exe`. An empty `commands/`
+one release per directory, named as its program, such as `demi-file`. Each
+holds `descriptor.json`; under each target triple, the executable, named as
+its directory, and its compressed copy beside it with `.zst` added; and each
+resource archive the descriptor names as `resources/<sha256>`. Windows
+executables end in `.exe`. An empty `commands/`
 means no command packages: the backend publishes nothing and starts with an
 empty catalog, so conversations offer no `demi file` or `demi browser`
 commands. A root without `commands/` is an error, since only the empty

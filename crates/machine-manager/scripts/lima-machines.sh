@@ -1,26 +1,27 @@
 #!/usr/bin/env bash
 # Installs the Cloud manager in the local Lima VM
-# (`docs/guides/mac-development.md`): starts or creates the VM, copies the manager built for its
-# Linux target into it, and runs the host install script there. --backend-url
+# (`docs/guides/mac-development.md`): starts or creates the VM, copies the
+# manager built for its Linux target into the bin/ of the manager's server
+# release root in the VM, whose image/ the image build wrote, writes the VM's
+# configuration file, and runs the host install script there. --public-url
 # is the backend's URL at the Mac's address on its network, which the Cloud
 # guests reach through Lima and the Mac's own runner reaches too; Lima's
 # gateway address (host.lima.internal) exists only inside the VM.
 #
-# With --root DIR the install script only writes the unit and configuration
-# beneath DIR inside the VM, which changes nothing else there.
+# With --root DIR the configuration file and the unit are written beneath DIR
+# inside the VM for review; the manager still goes into the release.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 instance=demi-machine-manager
-backend=""
+public_url=""
 slots=16
 manager=""
-image=""
-dns=""
+release=""
 data=/mnt/lima-demi-cloud-data/state
 data_size=100GiB
 root=""
 usage() {
-  echo 'usage: lima-machines.sh --manager PATH --image DIR --backend-url URL --dns ADDRESSES' >&2
+  echo 'usage: lima-machines.sh --manager PATH --release DIR --public-url URL' >&2
   echo '         [--data DIR] [--data-size SIZE] [--slots COUNT] [--root DIR]' >&2
   exit 2
 }
@@ -28,19 +29,18 @@ while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || usage
   case "$1" in
     --manager) manager=$2 ;;
-    --image) image=$2 ;;
-    --dns) dns=$2 ;;
+    --release) release=$2 ;;
     --data) data=$2 ;;
     --data-size) data_size=$2 ;;
-    --backend-url) backend=$2 ;;
+    --public-url) public_url=$2 ;;
     --slots) slots=$2 ;;
     --root) root=$2 ;;
     *) echo "unknown argument: $1" >&2; usage ;;
   esac
   shift 2
 done
-# --manager is the Linux build on this Mac; --image and --data are VM paths.
-[ -n "$manager" ] && [ -n "$image" ] && [ -n "$backend" ] && [ -n "$dns" ] || usage
+# --manager is the Linux build on this Mac; --release and --data are VM paths.
+[ -n "$manager" ] && [ -n "$release" ] && [ -n "$public_url" ] || usage
 [ -f "$manager" ] || { echo "no manager executable at $manager" >&2; exit 2; }
 manager="$(cd "$(dirname "$manager")" && pwd)/$(basename "$manager")"
 case "$(limactl list --format '{{.Status}}' "$instance" 2>/dev/null)" in
@@ -53,15 +53,23 @@ case "$(limactl list --format '{{.Status}}' "$instance" 2>/dev/null)" in
 esac
 guest_user=$(limactl shell "$instance" -- id -un)
 uid=$(limactl shell "$instance" -- id -u)
-settings=(
-  --user "$guest_user" --image "$image"
-  --backend-url "$backend" --dns "$dns"
-  --data "$data" --socket "/run/user/$uid/demi-machine-manager.sock" --slots "$slots"
-)
+prefix=${root%/}
+# The VM's configuration file: the Clouds use the VM's own resolver, the
+# manager's default.
+limactl shell "$instance" -- sudo install -d "$prefix/etc/demi"
+printf '%s\n' \
+  "DEMI_BACKEND_PUBLIC_URL=$public_url" \
+  "DEMI_MACHINE_MANAGER_SOCKET=/run/user/$uid/demi-machine-manager.sock" \
+  "DEMI_MANAGED_DATA=$data" \
+  "DEMI_MANAGED_SLOTS=$slots" |
+  limactl shell "$instance" -- sudo tee "$prefix/etc/demi/demi.env" >/dev/null
+# The manager is renamed into place, so a running manager keeps its own file.
+limactl shell "$instance" -- sudo install -D -m 0755 "$manager" "$release/bin/.demi-machine-manager.new"
+limactl shell "$instance" -- sudo mv "$release/bin/.demi-machine-manager.new" "$release/bin/demi-machine-manager"
 if [ -n "$root" ]; then
-  # The VM sees this Mac's home at the same path, so the build is read there.
+  # The VM sees this Mac's home at the same path, so the script is read there.
   limactl shell "$instance" -- bash "$here/scripts/install-managed-hosts.sh" \
-    "${settings[@]}" --manager "$manager" --root "$root"
+    --user "$guest_user" --release "$release" --root "$root"
   exit 0
 fi
 # An existing instance needs a prepared Linux directory supplied through --data.
@@ -70,13 +78,8 @@ if [ "$data" = /mnt/lima-demi-cloud-data/state ]; then
   limactl shell "$instance" -- findmnt /mnt/lima-demi-cloud-data >/dev/null
   limactl shell "$instance" -- sudo mkdir -p "$data"
 fi
-# The service runs a copy named by its digest, so a later build never
-# replaces the executable of a running manager.
-digest=$(shasum -a 256 "$manager" | awk '{print $1}')
-installed="/opt/demi-machine-manager/$digest/demi-machine-manager"
-limactl shell "$instance" -- sudo install -D -m 0755 "$manager" "$installed"
 limactl shell "$instance" -- sudo bash "$here/scripts/install-managed-hosts.sh" \
-  "${settings[@]}" --manager "$installed"
+  --user "$guest_user" --release "$release"
 echo "DEMI_MACHINE_MANAGER_SOCKET=$HOME/.lima/$instance/sock/demi-machine-manager.sock"
-echo "DEMI_BACKEND_PUBLIC_URL=$backend"
+echo "DEMI_BACKEND_PUBLIC_URL=$public_url"
 limactl shell "$instance" -- sudo journalctl -u demi-machine-manager.service -n 10 --no-pager

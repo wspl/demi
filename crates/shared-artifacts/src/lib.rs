@@ -19,7 +19,7 @@ mod release;
 pub use archive::{
     Archive, ArchiveInstall, Unpacking, install_archive, installed, recorded, zip_holds,
 };
-pub use coding::{CONTENT_CODING, Effort, encode_blocking};
+pub use coding::{CONTENT_CODING, Effort, check_encoded_blocking, encode_blocking};
 pub use digest::{Digest, Verifier, digest};
 pub use download::{client, client_allowing_http, copy, download, download_measured};
 pub use lock::InstallLock;

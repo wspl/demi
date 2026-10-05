@@ -6,10 +6,14 @@
 mod boundaries;
 mod browser;
 mod cloud_image;
+// Generating the contracts reads the backend's plugins, whose library builds
+// only where the backend runs; on Windows xtask builds the native releases.
+#[cfg(unix)]
 mod contracts;
 #[cfg(unix)]
 mod dev;
 mod native;
+mod server_release;
 mod vendor;
 
 use std::path::{Path, PathBuf};
@@ -28,10 +32,13 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Generates the web app's TypeScript contracts from the Rust contract types.
+    #[cfg(unix)]
     Contracts,
     /// Builds the native executables and packages their releases.
     #[command(subcommand)]
     Native(native::Command),
+    /// Assembles a server release root from the built executables.
+    ServerRelease(server_release::Options),
     /// Pins a Chrome for Testing version: writes its release record.
     BrowserRelease(browser::Options),
     /// Completes a Cloud image release on its Linux builder.
@@ -120,6 +127,7 @@ fn stop_requested() -> std::io::Result<impl Future<Output = ()>> {
 
 fn main() -> ExitCode {
     match Cli::parse().command {
+        #[cfg(unix)]
         Command::Contracts => match contracts::run() {
             Ok(written) => {
                 for path in written {
@@ -136,6 +144,13 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask native: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::ServerRelease(options) => match server_release::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask server-release: {error}");
                 ExitCode::FAILURE
             }
         },

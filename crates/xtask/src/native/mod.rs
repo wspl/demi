@@ -1,11 +1,13 @@
 //! `cargo xtask native` (`builds-and-releases.md`): builds the workspace's
-//! executables for their targets with this machine's cross tools, and
-//! packages the built executables into releases.
+//! executables for their targets with this machine's toolchain and cross
+//! tools, and packages the built executables into releases.
 
 mod build;
 mod package;
 
+#[cfg(unix)]
 pub use package::development_package;
+pub use package::{Caches, Spec, Versioning, compressed_copy, package};
 
 use std::path::{Path, PathBuf};
 
@@ -51,6 +53,16 @@ pub enum Error {
     SdkVersion { path: PathBuf, found: String },
     #[error("{}: {reason}", path.display())]
     SdkSettings { path: PathBuf, reason: String },
+    #[error(
+        "a Windows build runs in a Visual Studio developer environment: VCToolsVersion and WindowsSDKVersion are not set"
+    )]
+    NoMsvc,
+    #[error("Visual Studio selects MSVC {toolset} and Windows SDK {sdk}, not the pinned {pinned}")]
+    MsvcVersion {
+        toolset: String,
+        sdk: String,
+        pinned: String,
+    },
     #[error("the build for {target} failed: {status}")]
     Build {
         target: &'static str,
@@ -133,7 +145,7 @@ impl Executable {
 }
 
 /// Parses a `--target` option: one of the release matrix's targets.
-fn target(value: &str) -> Result<&'static str, String> {
+pub fn target(value: &str) -> Result<&'static str, String> {
     TARGETS
         .iter()
         .copied()
@@ -152,7 +164,10 @@ fn apple(target: &str) -> bool {
 /// The targets `executables` are built or packaged for, in the release
 /// matrix's order: the `named` ones, each of which every executable must
 /// run on, or else every target of each executable.
-fn targets(executables: &[Executable], named: &[&'static str]) -> Result<Vec<&'static str>, Error> {
+pub fn targets(
+    executables: &[Executable],
+    named: &[&'static str],
+) -> Result<Vec<&'static str>, Error> {
     for target in named {
         if let Some(executable) = executables
             .iter()
@@ -176,8 +191,17 @@ fn targets(executables: &[Executable], named: &[&'static str]) -> Result<Vec<&'s
     Ok(TARGETS.iter().copied().filter(selected).collect())
 }
 
+/// Where a build of `executable` for `target` lies in the Cargo target
+/// directory `artifacts`.
+pub fn built(artifacts: &Path, executable: Executable, target: &str) -> PathBuf {
+    artifacts
+        .join(target)
+        .join("release")
+        .join(executable.file_name(target))
+}
+
 /// The Cargo target directory `artifacts` names, or the default one.
-fn artifacts(named: Option<&Path>) -> Result<PathBuf, Error> {
+pub fn artifacts(named: Option<&Path>) -> Result<PathBuf, Error> {
     let directory = match named {
         Some(directory) => std::path::absolute(directory)?,
         None => crate::repository().join(ARTIFACTS),

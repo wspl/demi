@@ -53,6 +53,8 @@ http-body = "1"
 hyper = { version = "1", features = ["client", "http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 mime = "0.3"
+# A local store's command artifact, served as it was stored.
+object_store.workspace = true
 percent-encoding = "2"
 serde.workspace = true
 serde_json.workspace = true

@@ -9,10 +9,10 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex, OnceLock};
 use std::time::Duration;
 
-use demi_backend::{Backend, BackendConfig};
+use demi_backend::{Backend, BackendConfig, publish_commands};
 use demi_backend_accounts::email_change::{AccountMail, MailError, VerificationMail};
 use demi_backend_blobs::counting::ObjectCounts;
 use demi_backend_cloud::tuning::CloudTuning;
@@ -21,8 +21,6 @@ use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_remote_host::testing::{
     NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary,
 };
-use demi_backend_runners::native::NativeCatalog;
-use demi_backend_runners::publication::publish_native;
 use demi_backend_user_shard::tuning::{
     ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning,
 };
@@ -50,7 +48,6 @@ use reqwest::{Method, StatusCode};
 use serde::de::DeserializeOwned;
 use serde_json::{Value, json};
 use std::rc::Rc;
-use tokio::sync::OnceCell;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_util::sync::CancellationToken;
@@ -71,21 +68,23 @@ pub const MASTER_EMAIL: &str = "master@example.test";
 pub const MASTER_PASSWORD: &str = "master-pass-1";
 pub const SESSION_COOKIE: &str = "demi_session";
 
-/// Where the harness keeps the development releases of the packages the
-/// workspace built: Cargo's directory for integration tests, which outlives
-/// the test process, since every backend of the process serves the same
-/// release files.
+/// Where the harness keeps the releases of the packages the workspace
+/// built: Cargo's directory for integration tests, which outlives the test
+/// process, since every backend of the process publishes the same release
+/// files.
 const RELEASES: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/backend-releases");
 
 /// A command package the workspace built: its descriptor for this machine's
-/// target and its program, and the catalog a backend loads from its
-/// development release. Each test process computes the digest once and
-/// publishes the release once: both read the whole program, most of a second
-/// for `demi-browser`.
+/// target and its program, and the `commands/` directory of a server release
+/// that holds its release, from which every backend publishes it into its
+/// own object store (`native-runtime.md` § Backend deployment
+/// configuration). Each test process computes the digest and writes the
+/// release once: both read the whole program, most of a second for
+/// `demi-browser`.
 pub struct Built {
     pub descriptor: PackageDescriptor,
     pub program: PathBuf,
-    published: OnceCell<NativeCatalog>,
+    commands: OnceLock<PathBuf>,
 }
 
 impl Built {
@@ -94,34 +93,27 @@ impl Built {
         Self {
             descriptor,
             program,
-            published: OnceCell::new(),
+            commands: OnceLock::new(),
         }
     }
 
-    /// The catalog of this package's development release for this machine's
-    /// target, published as a backend publishes the releases its
-    /// `DEMI_NATIVE_CONFIG` names (`native-runtime.md` § Backend deployment
-    /// configuration): the conversations bind to its package, and every
+    /// The `commands/` directory that holds this package's release for this
+    /// machine's target: the conversations bind to its package, and every
     /// runner, a paired device's or the Cloud's, downloads its program from
     /// the backend.
-    async fn catalog(&self) -> NativeCatalog {
-        let published = self.published.get_or_init(|| async {
-            let config = self.write_release();
-            publish_native(&config, &CancellationToken::new())
-                .await
-                .unwrap()
-        });
-        published.await.clone()
+    fn commands(&self) -> &std::path::Path {
+        self.commands.get_or_init(|| self.write_release())
     }
 
     /// Writes the release, which links the program the workspace built
-    /// rather than copying it, and the configuration that names it; answers
-    /// the configuration's path. Each file is replaced whole, so a backend
-    /// of another test process that reads it meanwhile reads it whole.
+    /// rather than copying it, beside the program's compressed copy, and
+    /// answers the `commands/` directory that holds it. Each file is
+    /// replaced whole, so a backend of another test process that reads it
+    /// meanwhile reads it whole.
     fn write_release(&self) -> PathBuf {
-        let root = PathBuf::from(RELEASES);
         let executable = self.program.file_name().unwrap().to_str().unwrap();
-        let release = root.join(executable);
+        let commands = PathBuf::from(RELEASES).join(format!("commands-{executable}"));
+        let release = commands.join(executable);
         let target = release.join(host_target());
         std::fs::create_dir_all(&target).unwrap();
         let link = target.join(executable);
@@ -131,17 +123,18 @@ impl Built {
         let _ = std::fs::remove_file(&staged);
         std::os::unix::fs::symlink(&self.program, &staged).unwrap();
         std::fs::rename(&staged, &link).unwrap();
+        // A test's copy is made fast: the backend checks only that it
+        // decodes to the program.
+        let bytes = std::fs::read(&self.program).unwrap();
+        let encoded =
+            demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Fast)
+                .unwrap();
+        replace(&target.join(format!("{executable}.zst")), &encoded);
         replace(
             &release.join("descriptor.json"),
             &serde_json::to_vec(&self.descriptor).unwrap(),
         );
-        let config = json!({
-            "releases": [{ "directory": executable, "executable": executable }],
-            "store": { "provider": "local" },
-        });
-        let path = root.join(format!("{executable}.json"));
-        replace(&path, config.to_string().as_bytes());
-        path
+        commands
     }
 }
 
@@ -188,7 +181,7 @@ static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
 pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
     descriptor: NativeFixture::load().descriptor,
     program: native_fixture_binary(),
-    published: OnceCell::new(),
+    commands: OnceLock::new(),
 });
 
 /// Captures verification mail, or refuses it while `failing` is set.
@@ -250,10 +243,10 @@ pub struct Harness {
     /// A real machine manager's socket, which the backends use instead of
     /// the scripted manager's (`scenarios.md` § Cloud suite).
     pub machines: Option<PathBuf>,
-    /// A native configuration whose releases the backends load
+    /// A server release's `commands/` whose releases the backends publish
     /// (`native-runtime.md` § Backend deployment configuration), instead of
     /// a package the workspace built.
-    pub native: Option<PathBuf>,
+    pub commands: Option<PathBuf>,
     expose_domain: Option<ExposeDomain>,
     pub exposes: ExposeTuning,
     /// Counts what reaches the object store of every backend this harness
@@ -306,7 +299,7 @@ impl Harness {
             cloud: CloudTuning::default(),
             manager: ScriptedManager::start(),
             machines: None,
-            native: None,
+            commands: None,
             expose_domain: None,
             exposes: ExposeTuning::default(),
             objects: None,
@@ -509,14 +502,15 @@ impl Harness {
         config.public_url = self.public_url.clone();
         config.object_counts = self.objects.clone();
         assert!(
-            self.release.is_none() || self.native.is_none(),
-            "a harness loads a workspace package or a native configuration, not both"
+            self.release.is_none() || self.commands.is_none(),
+            "a harness loads a workspace package or a server release's commands, not both"
         );
-        if let Some(built) = self.release {
-            config.native = built.catalog().await;
-        }
-        if let Some(native) = &self.native {
-            config.native = publish_native(native, &CancellationToken::new())
+        let commands = match (self.release, &self.commands) {
+            (Some(built), _) => Some(built.commands()),
+            (None, commands) => commands.as_deref(),
+        };
+        if let Some(commands) = commands {
+            config.native = publish_commands(&config, commands, &CancellationToken::new())
                 .await
                 .unwrap();
         }

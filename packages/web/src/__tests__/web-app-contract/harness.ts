@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Subprocess, WebSocketOptions } from 'bun'
@@ -167,19 +167,19 @@ async function launchBackend(root: string, socket: string): Promise<Backend> {
   const data = join(root, 'backend')
   const port = freePort()
   const origin = `http://127.0.0.1:${port}`
-  const native = join(root, 'native.json')
-  // No release to publish, so the store is never asked.
-  await writeFile(native, JSON.stringify({ releases: [], store: { provider: 's3', bucket: 'demi-contract', region: 'us-east-1' } }))
+  // A server release with no command package to publish.
+  const release = join(root, 'release')
+  await mkdir(join(release, 'commands'), { recursive: true })
   const lines: string[] = []
   const child = Bun.spawn([testProgram('demi-backend')], {
     env: {
       ...programEnvironment(),
+      DEMI_RELEASE: release,
       DEMI_BACKEND_DATA: data,
-      DEMI_BACKEND_PORT: String(port),
+      DEMI_BACKEND_LISTEN: `127.0.0.1:${port}`,
       DEMI_INSTANCE_MODE: 'shared',
       DEMI_BACKEND_PUBLIC_URL: origin,
       DEMI_MACHINE_MANAGER_SOCKET: socket,
-      DEMI_NATIVE_CONFIG: native,
     },
     stdout: 'pipe',
     stderr: 'pipe',

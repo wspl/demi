@@ -1342,7 +1342,10 @@ demi-backend (executable: configuration, composition)
   `bun run contracts` runs after it builds the workspace;
   [Contracts](contracts.md#generated-typescript),
   [Registration](plugin-pages.md#registration)), native build and
-  release packaging for every executable, the pinned Chrome for Testing
+  release packaging for every executable, the server release root
+  (`xtask server-release`;
+  [Server release](../delivery/builds-and-releases.md#server-release)), the
+  pinned Chrome for Testing
   release record, Cloud image packaging, and the comparison of the vendored
   crates with their upstream releases (`xtask vendor diff`), the one-command
   development backend with its development models (`xtask dev`;

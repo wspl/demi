@@ -42,7 +42,7 @@ const REQUIRED: [(&str, &str); 4] = [
         "DEMI_MACHINE_MANAGER_SOCKET",
         "/nonexistent/demi-machine-manager.sock",
     ),
-    ("DEMI_NATIVE_CONFIG", "/nonexistent/native.json"),
+    ("DEMI_RELEASE", "/nonexistent/release"),
 ];
 
 fn refused_naming(output: &Output, variable: &str) {
@@ -52,17 +52,42 @@ fn refused_naming(output: &Output, variable: &str) {
 }
 
 #[test]
-fn a_port_that_is_not_a_number_stops_startup_naming_the_variable() {
+fn a_listening_address_without_a_port_stops_startup_naming_the_variable() {
     let mut variables = REQUIRED.to_vec();
-    variables.push(("DEMI_BACKEND_PORT", "abc"));
-    refused_naming(&start(&variables), "DEMI_BACKEND_PORT");
+    variables.push(("DEMI_BACKEND_LISTEN", "127.0.0.1"));
+    refused_naming(&start(&variables), "DEMI_BACKEND_LISTEN");
 }
 
 #[test]
 fn a_variable_the_backend_does_not_read_stops_startup_naming_it() {
     let mut variables = REQUIRED.to_vec();
-    variables.push(("DEMI_BACKEND_PORTT", "3272"));
-    refused_naming(&start(&variables), "DEMI_BACKEND_PORTT");
+    variables.push(("DEMI_BACKEND_LISTENN", "127.0.0.1:3272"));
+    refused_naming(&start(&variables), "DEMI_BACKEND_LISTENN");
+}
+
+/// The backend and the machine manager read one configuration file: the
+/// manager's own settings are the manager's to check, so the backend goes
+/// on to the next step, here the release root that does not exist.
+#[test]
+fn the_machine_managers_settings_pass_the_backends_check() {
+    let mut variables = REQUIRED.to_vec();
+    variables.push(("DEMI_MANAGED_SLOTS", "16"));
+    let output = start(&variables);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(!output.status.success(), "{stderr}");
+    assert!(!stderr.contains("DEMI_MANAGED_SLOTS"), "{stderr}");
+    assert!(stderr.contains("/nonexistent/release/commands"), "{stderr}");
+}
+
+#[test]
+fn s3_settings_without_an_s3_store_stop_startup_naming_them() {
+    let mut variables = REQUIRED.to_vec();
+    variables.push(("DEMI_S3_BUCKET", "demi"));
+    refused_naming(&start(&variables), "DEMI_S3_BUCKET");
+    let mut variables = REQUIRED.to_vec();
+    variables.push(("DEMI_STORAGE", "s3"));
+    variables.push(("DEMI_S3_BUCKET", "demi"));
+    refused_naming(&start(&variables), "DEMI_S3_REGION");
 }
 
 #[test]

@@ -42,7 +42,7 @@ fn fixture() -> Fixture {
     let data = directory.path().join("data");
     let config = Config {
         mode: Mode::Serve,
-        socket: None,
+        socket: PathBuf::from("/nonexistent/machines.sock"),
         data: data.clone(),
         runsc: PathBuf::from("/nonexistent/runsc"),
         image: directory.path().join("image"),

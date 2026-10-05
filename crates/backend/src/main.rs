@@ -1,13 +1,13 @@
-//! `demi-backend`: reads its configuration, serves until SIGINT or SIGTERM,
-//! then shuts down in order (`backend.md` § Startup and shutdown).
+//! `demi-backend`: reads its configuration, publishes its server release's
+//! command packages, serves until SIGINT or SIGTERM, then shuts down in
+//! order (`backend.md` § Startup and shutdown).
 
 use std::path::Path;
 use std::process::ExitCode;
 
 use clap::{CommandFactory as _, Parser as _};
-use demi_backend::{Backend, Config};
+use demi_backend::{Backend, BackendConfig, Config, StartError, publish_commands};
 use demi_backend_runners::native::NativeCatalog;
-use demi_backend_runners::publication::{PublicationError, publish_native};
 use tokio::signal::unix::{Signal, SignalKind, signal};
 use tokio_util::sync::CancellationToken;
 use tracing_subscriber::layer::SubscriberExt as _;
@@ -15,10 +15,16 @@ use tracing_subscriber::util::SubscriberInitExt as _;
 
 fn main() -> ExitCode {
     // An unusable value stops here, naming its variable, and so does a
-    // variable no setting reads, such as a misspelt one.
+    // variable no setting reads, such as a misspelt one. The machine
+    // manager's own settings, which share the configuration file, are its
+    // to check.
     let config = Config::parse();
-    if let Some(name) =
-        demi_shared_cli::unknown_variable(&Config::command(), "DEMI_", std::env::vars_os())
+    let variables = std::env::vars_os().filter(|(name, _)| {
+        !name
+            .to_string_lossy()
+            .starts_with(demi_shared_cli::MANAGED_PREFIX)
+    });
+    if let Some(name) = demi_shared_cli::unknown_variable(&Config::command(), "DEMI_", variables)
     {
         eprintln!(
             "demi-backend: {name} is not a backend setting; `demi-backend --help` lists them"
@@ -52,14 +58,21 @@ async fn run(config: Config) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut settings = match config.backend() {
+    let release = match config.release() {
+        Ok(release) => release,
+        Err(error) => {
+            eprintln!("demi-backend: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let mut settings = match config.backend(&release) {
         Ok(settings) => settings,
         Err(error) => {
             eprintln!("demi-backend: {error}");
             return ExitCode::FAILURE;
         }
     };
-    settings.native = match publish(&config.native_config, &mut stop).await {
+    settings.native = match publish(&settings, &release.join("commands"), &mut stop).await {
         Ok(native) => native,
         Err(error) => {
             eprintln!("demi-backend: {error}");
@@ -90,12 +103,16 @@ async fn run(config: Config) -> ExitCode {
     }
 }
 
-/// Publishes the native releases before the backend accepts requests
-/// (`native-runtime.md` § Publish artifacts before enabling commands); a
-/// stop signal interrupts it.
-async fn publish(path: &Path, stop: &mut StopSignals) -> Result<NativeCatalog, PublicationError> {
+/// Publishes the server release's command packages before the backend
+/// accepts requests (`native-runtime.md` § Publish artifacts before enabling
+/// commands); a stop signal interrupts it.
+async fn publish(
+    settings: &BackendConfig,
+    commands: &Path,
+    stop: &mut StopSignals,
+) -> Result<NativeCatalog, StartError> {
     let cancel = CancellationToken::new();
-    let publication = publish_native(path, &cancel);
+    let publication = publish_commands(settings, commands, &cancel);
     tokio::pin!(publication);
     tokio::select! {
         published = &mut publication => return published,

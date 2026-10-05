@@ -11,7 +11,9 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use demi_backend_blobs::ObjectError;
-use demi_backend_blobs::store::{self as objects, S3Config, S3ConfigError};
+use demi_backend_blobs::store as objects;
+use demi_backend_runners::native::NativeCatalog;
+use demi_backend_runners::publication::{PublicationError, publish_native};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
@@ -54,8 +56,8 @@ pub enum StartError {
     Storage(#[from] StorageError),
     #[error("the object store cannot be opened: {0}")]
     Objects(#[from] ObjectError),
-    #[error("DEMI_OBJECT_STORE_CONFIG cannot be used: {0}")]
-    ObjectStore(S3ConfigError),
+    #[error(transparent)]
+    Publication(#[from] PublicationError),
     #[error(transparent)]
     Services(#[from] ServicesError),
     #[error("the shard threads cannot start: {0}")]
@@ -101,6 +103,19 @@ impl fmt::Display for ShutdownErrors {
 
 impl std::error::Error for ShutdownErrors {}
 
+/// Publishes the command packages in `commands`, a server release's
+/// `commands/`, into the object store `config` names, before the backend
+/// that serves them starts (`native-runtime.md` § Publish artifacts before
+/// enabling commands); `cancel` interrupts it.
+pub async fn publish_commands(
+    config: &BackendConfig,
+    commands: &std::path::Path,
+    cancel: &tokio_util::sync::CancellationToken,
+) -> Result<NativeCatalog, StartError> {
+    let objects = objects::open(&config.data_dir, &config.storage).await?;
+    Ok(publish_native(commands, &objects, cancel).await?)
+}
+
 impl Backend {
     /// Starts the backend. It serves once this returns: the data directory
     /// and the instance secret, then the databases and the object store, the
@@ -117,17 +132,8 @@ impl Backend {
             Some(secret) => secret.clone(),
             None => InstanceSecret::load_or_create(&data_dir).await?,
         };
-        let s3 = match &config.object_store {
-            Some(path) => Some(
-                S3Config::read(path)
-                    .await
-                    .map_err(StartError::ObjectStore)?,
-            ),
-            None => None,
-        };
-        // The object store: the S3 bucket the configuration names, or the
-        // data directory.
-        let objects = objects::open(&data_dir, s3.as_ref()).await?;
+        // The object store: the data directory or the S3 bucket.
+        let objects = objects::open(&data_dir, &config.storage).await?.store;
         #[cfg(feature = "testing")]
         let objects = match &config.object_counts {
             Some(counts) => counts.observe(objects),

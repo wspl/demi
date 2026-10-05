@@ -6,7 +6,12 @@
 //! runner release is named by the SHA-256 of its versions and targets, and
 //! the top-level manifest names the release packaged last; the backend's and
 //! the machine manager's record names the executable, its version and its
-//! targets.
+//! targets. A command package carries each executable's zstd-compressed copy
+//! beside it, kept by the executable's SHA-256 so that packaging an unchanged
+//! program again compresses nothing, and is versioned with the workspace
+//! version only when published by the release workflow, with a development
+//! version naming its artifacts otherwise (`package-versioning.md` § Rust
+//! executables).
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -32,6 +37,21 @@ const RELEASE: &str = "release.json";
 /// Where packaging keeps the resource archives it downloaded, in the
 /// repository, so packaging again downloads nothing.
 const RESOURCES: &str = ".cache/resources";
+/// Where packaging keeps the executables' compressed copies, each named by
+/// the executable's SHA-256, so packaging again compresses nothing.
+const COMPRESSED: &str = ".cache/compressed";
+/// What a compressed copy's name adds to its executable's.
+const COMPRESSED_SUFFIX: &str = ".zst";
+/// How many hexadecimal digits of its artifacts' digest a development
+/// version carries.
+const DEVELOPMENT_DIGITS: usize = 12;
+
+/// Whether `path` is a command package's compressed copy of an executable.
+pub fn compressed_copy(path: &Path) -> bool {
+    path.as_os_str()
+        .to_string_lossy()
+        .ends_with(COMPRESSED_SUFFIX)
+}
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -49,14 +69,68 @@ pub struct Options {
     /// The release directory; for the runner, the directory of its releases.
     #[arg(long, value_name = "DIRECTORY")]
     output: PathBuf,
+    #[command(flatten)]
+    caches: Caches,
+}
+
+/// Where packaging keeps what it would otherwise make again.
+#[derive(clap::Args, Clone)]
+pub struct Caches {
     /// Where the resource archives are kept, each named by its SHA-256
     /// [default: .cache/resources in the repository].
     #[arg(long, value_name = "DIRECTORY")]
-    resources: Option<PathBuf>,
+    pub resources: Option<PathBuf>,
+    /// Where the executables' compressed copies are kept, each named by the
+    /// executable's SHA-256 [default: .cache/compressed in the repository].
+    #[arg(long, value_name = "DIRECTORY")]
+    pub compressed: Option<PathBuf>,
+}
+
+impl Caches {
+    /// The directory `named`, or `default` in the repository.
+    fn directory(named: Option<&Path>, default: &str) -> Result<PathBuf, Error> {
+        Ok(match named {
+            Some(directory) => std::path::absolute(directory)?,
+            None => crate::repository().join(default),
+        })
+    }
+}
+
+/// How a command package is versioned.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Versioning {
+    /// The workspace version itself: only the release workflow's packaging.
+    Published,
+    /// The workspace version with build metadata naming its artifacts.
+    Development,
+}
+
+/// One release to package: the executable, the targets it carries, the
+/// Cargo target directory the build wrote, and the release directory.
+pub struct Spec<'a> {
+    pub executable: Executable,
+    pub targets: &'a [&'static str],
+    pub artifacts: &'a Path,
+    pub output: &'a Path,
+    pub caches: &'a Caches,
+    pub versioning: Versioning,
 }
 
 pub fn run(options: Options) -> Result<(), Error> {
-    let packaged = crate::interruptible(|cancel| async move { package(&options, &cancel).await })??;
+    let packaged = crate::interruptible(|cancel| async move {
+        let targets = super::targets(&[options.package], &options.targets)?;
+        let artifacts = super::artifacts(options.artifacts.as_deref())?;
+        let output = std::path::absolute(&options.output)?;
+        let spec = Spec {
+            executable: options.package,
+            targets: &targets,
+            artifacts: &artifacts,
+            output: &output,
+            caches: &options.caches,
+            versioning: Versioning::Development,
+        };
+        package(&spec, &cancel).await
+    })??;
     println!("{packaged}");
     Ok(())
 }
@@ -244,6 +318,69 @@ impl Built {
         }
         Ok(())
     }
+
+    /// Adds the compressed copy of each executable the release carries,
+    /// beside it, taken from `cache`, where a copy missing is made first.
+    async fn add_compressed(&mut self, cache: &Path, cancel: &CancellationToken) -> Result<(), Error> {
+        let executables: Vec<ReleaseFile> = self
+            .files
+            .iter()
+            .filter(|file| file.executable)
+            .cloned()
+            .collect();
+        for executable in executables {
+            let source = cache.join(&executable.digest.sha256);
+            if !tokio::fs::try_exists(&source).await? {
+                compress(&executable.source, &source).await?;
+            }
+            let digest = demi_shared_artifacts::digest(&source, u64::MAX, cancel).await?;
+            let mut name = executable.path.clone().into_os_string();
+            name.push(COMPRESSED_SUFFIX);
+            self.files.push(ReleaseFile {
+                source,
+                path: name.into(),
+                digest,
+                executable: false,
+            });
+        }
+        Ok(())
+    }
+
+    /// The version of the command package this release is, as `versioning`
+    /// names it: a development version carries the leading digits of the
+    /// digest of its targets' executables.
+    fn version(&self, versioning: Versioning) -> Result<String, Error> {
+        match versioning {
+            Versioning::Published => Ok(VERSION.to_owned()),
+            Versioning::Development => {
+                let digest = canonical_digest(&self.targets)
+                    .map_err(|error| Error::Record(error.to_string()))?;
+                Ok(format!("{VERSION}+dev.{}", &digest[..DEVELOPMENT_DIGITS]))
+            }
+        }
+    }
+}
+
+/// Writes `executable` compressed for its download to `destination`, which
+/// holds the copy only once it is whole.
+async fn compress(executable: &Path, destination: &Path) -> Result<(), Error> {
+    if let Some(parent) = destination.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+    eprintln!("Compressing {}", executable.display());
+    let bytes = tokio::fs::read(executable).await?;
+    let encoded = tokio::task::spawn_blocking(move || {
+        demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Published)
+    })
+    .await
+    .map_err(std::io::Error::other)??;
+    let publication = Publication {
+        mode: Mode::Replace,
+        permissions: Permissions::Default,
+        durable: true,
+    };
+    demi_shared_artifacts::publish_bytes(destination, &encoded, publication).await?;
+    Ok(())
 }
 
 /// Downloads `archive` to `destination`, which holds it only once its size
@@ -276,40 +413,37 @@ async fn download(
     Ok(())
 }
 
-/// Publishes the release `options` name and says what it published.
-async fn package(options: &Options, cancel: &CancellationToken) -> Result<String, Error> {
-    let executable = options.package;
-    let artifacts = super::artifacts(options.artifacts.as_deref())?;
-    let output = std::path::absolute(&options.output)?;
+/// Publishes the release `spec` names and says what it published.
+pub async fn package(spec: &Spec<'_>, cancel: &CancellationToken) -> Result<String, Error> {
+    let executable = spec.executable;
     let mut built = Built::new();
-    for target in super::targets(&[executable], &options.targets)? {
-        let source = artifacts
-            .join(target)
-            .join("release")
-            .join(executable.file_name(target));
+    for &target in spec.targets {
+        let source = super::built(spec.artifacts, executable, target);
         built.add(executable, target, source, cancel).await?;
     }
     match Release::of(executable)? {
-        Release::Runner => runner(&output, built, cancel).await,
+        Release::Runner => runner(spec.output, built, cancel).await,
         Release::Package {
             id,
             operations,
             resources,
         } => {
-            let cache = match &options.resources {
-                Some(cache) => std::path::absolute(cache)?,
-                None => crate::repository().join(RESOURCES),
-            };
-            built.add_resources(resources, &cache, cancel).await?;
-            command_package(&output, id, operations, built, cancel).await
+            let caches = spec.caches;
+            let archives = Caches::directory(caches.resources.as_deref(), RESOURCES)?;
+            let compressed = Caches::directory(caches.compressed.as_deref(), COMPRESSED)?;
+            built.add_compressed(&compressed, cancel).await?;
+            built.add_resources(resources, &archives, cancel).await?;
+            let version = built.version(spec.versioning)?;
+            command_package(spec.output, id, &version, operations, built, cancel).await
         }
-        Release::Executable => executable_release(&output, executable, built, cancel).await,
+        Release::Executable => executable_release(spec.output, executable, built, cancel).await,
     }
 }
 
 /// Publishes at `output` the development release of `command`, one of
 /// [`Executable::COMMANDS`], whose one target is this machine's and whose
 /// program is `program` (`backend.md` § One-command development backend).
+#[cfg(unix)]
 pub async fn development_package(
     command: Executable,
     program: PathBuf,
@@ -334,24 +468,29 @@ pub async fn development_package(
         )
         .await?;
     built
+        .add_compressed(&crate::repository().join(COMPRESSED), cancel)
+        .await?;
+    built
         .add_resources(resources, &crate::repository().join(RESOURCES), cancel)
         .await?;
-    command_package(output, id, operations, built, cancel).await?;
+    let version = built.version(Versioning::Development)?;
+    command_package(output, id, &version, operations, built, cancel).await?;
     Ok(())
 }
 
-/// Publishes the command package `id`, which serves `operations`, at
-/// `output`.
+/// Publishes the command package `id` of `version`, which serves
+/// `operations`, at `output`.
 async fn command_package(
     output: &Path,
     id: &str,
+    version: &str,
     operations: Vec<String>,
     built: Built,
     cancel: &CancellationToken,
 ) -> Result<String, Error> {
     let descriptor = PackageDescriptor {
         id: id.to_owned(),
-        version: VERSION.to_owned(),
+        version: version.to_owned(),
         protocol_version: demi_command_protocol::VERSION,
         operations,
         targets: built.targets,
@@ -367,7 +506,7 @@ async fn command_package(
     };
     demi_shared_artifacts::publish_release(output, record, &built.files, cancel).await?;
     Ok(format!(
-        "Command package {id}@{VERSION}: {digest}\n{}",
+        "Command package {id}@{version}: {digest}\n{}",
         output.join(DESCRIPTOR).display()
     ))
 }
@@ -476,19 +615,30 @@ mod tests {
         }
     }
 
-    fn options(
+    /// Packages `executable`'s build in `artifacts` for `targets` (every
+    /// target of the executable when none is named) at `output`, with the
+    /// caches beside the build.
+    async fn package_at(
         executable: Executable,
         artifacts: &Path,
         output: &Path,
         targets: &[&'static str],
-    ) -> Options {
-        Options {
-            package: executable,
-            targets: targets.to_vec(),
-            artifacts: Some(artifacts.to_owned()),
-            output: output.to_owned(),
+        cancel: &CancellationToken,
+    ) -> Result<String, Error> {
+        let targets = super::super::targets(&[executable], targets)?;
+        let caches = Caches {
             resources: Some(artifacts.join("resources")),
-        }
+            compressed: Some(artifacts.join("compressed")),
+        };
+        let spec = Spec {
+            executable,
+            targets: &targets,
+            artifacts,
+            output,
+            caches: &caches,
+            versioning: Versioning::Development,
+        };
+        package(&spec, cancel).await
     }
 
     fn names(directory: &Path) -> Vec<String> {
@@ -511,10 +661,7 @@ mod tests {
         let output = root.path().join("runners");
         let cancel = CancellationToken::new();
         build(&artifacts, Executable::Runner, TARGETS, "first");
-        package(
-            &options(Executable::Runner, &artifacts, &output, &[]),
-            &cancel,
-        )
+        package_at(Executable::Runner, &artifacts, &output, &[], &cancel)
         .await
         .unwrap();
         let first = pointer(&output);
@@ -531,20 +678,14 @@ mod tests {
             b"first x86_64-pc-windows-msvc"
         );
         // Packaged again, the same release is the one in place.
-        package(
-            &options(Executable::Runner, &artifacts, &output, &[]),
-            &cancel,
-        )
+        package_at(Executable::Runner, &artifacts, &output, &[], &cancel)
         .await
         .unwrap();
         assert_eq!(pointer(&output), first);
         // Another build is another release, which the manifest names from
         // now on; the first one stays for the runners installed from it.
         build(&artifacts, Executable::Runner, TARGETS, "second");
-        package(
-            &options(Executable::Runner, &artifacts, &output, &[]),
-            &cancel,
-        )
+        package_at(Executable::Runner, &artifacts, &output, &[], &cancel)
         .await
         .unwrap();
         let second = pointer(&output);
@@ -563,10 +704,7 @@ mod tests {
             .join("x86_64-unknown-linux-musl/demi-runner");
         std::fs::write(&linux, b"corrupt").unwrap();
         build(&artifacts, Executable::Runner, TARGETS, "first");
-        let refused = package(
-            &options(Executable::Runner, &artifacts, &output, &[]),
-            &cancel,
-        )
+        let refused = package_at(Executable::Runner, &artifacts, &output, &[], &cancel)
         .await;
         assert!(
             matches!(&refused, Err(Error::Artifact(demi_shared_artifacts::Error::Conflict(path))) if *path == linux),
@@ -584,10 +722,7 @@ mod tests {
         let cancel = CancellationToken::new();
         build(&artifacts, Executable::Machines, &linux, "manager");
         let output = root.path().join("demi-machine-manager");
-        package(
-            &options(Executable::Machines, &artifacts, &output, &[]),
-            &cancel,
-        )
+        package_at(Executable::Machines, &artifacts, &output, &[], &cancel)
         .await
         .unwrap();
         let mut targets = serde_json::Map::new();
@@ -613,10 +748,7 @@ mod tests {
         // Another build of the same version is refused: a published version
         // is immutable.
         build(&artifacts, Executable::Machines, &linux, "rebuilt");
-        let refused = package(
-            &options(Executable::Machines, &artifacts, &output, &[]),
-            &cancel,
-        )
+        let refused = package_at(Executable::Machines, &artifacts, &output, &[], &cancel)
         .await;
         assert!(
             matches!(
@@ -637,27 +769,20 @@ mod tests {
         build(&artifacts, Executable::Runner, &carried, "runner");
         // Without named targets, a release needs every target's build.
         let output = root.path().join("demi-file");
-        let incomplete = package(
-            &options(Executable::File, &artifacts, &output, &[]),
-            &cancel,
-        )
+        let incomplete = package_at(Executable::File, &artifacts, &output, &[], &cancel)
         .await;
         assert!(
             matches!(incomplete, Err(Error::NotBuilt { .. })),
             "{incomplete:?}"
         );
         assert!(!output.exists());
-        package(
-            &options(Executable::File, &artifacts, &output, &carried),
-            &cancel,
-        )
+        package_at(Executable::File, &artifacts, &output, &carried, &cancel)
         .await
         .unwrap();
         let descriptor =
             serde_json::from_slice(&std::fs::read(output.join(DESCRIPTOR)).unwrap()).unwrap();
         let descriptor = PackageDescriptor::parse(descriptor).unwrap();
         assert_eq!(descriptor.id, demi_command_package_file_protocol::PACKAGE);
-        assert_eq!(descriptor.version, VERSION);
         assert_eq!(
             descriptor.operations,
             demi_command_package_file_protocol::OPERATIONS
@@ -665,11 +790,37 @@ mod tests {
         assert!(descriptor.resources.is_empty());
         assert_eq!(descriptor.targets.keys().collect::<Vec<_>>(), carried);
         assert_eq!(names(&output), [carried[0], DESCRIPTOR, carried[1]]);
+        // Beside each executable lies its compressed copy, which decodes to
+        // it.
+        let linux = output.join(carried[1]);
+        assert_eq!(names(&linux), ["demi-file", "demi-file.zst"]);
+        let decoded = zstd::decode_all(&std::fs::read(linux.join("demi-file.zst")).unwrap()[..]);
+        assert_eq!(decoded.unwrap(), std::fs::read(linux.join("demi-file")).unwrap());
+        // A development version names the build: the same programs give the
+        // same version, a rebuilt one another.
+        let development = descriptor.version.clone();
+        assert!(
+            development.starts_with(&format!("{VERSION}+dev.")),
+            "{development}"
+        );
+        let again = root.path().join("demi-file-again");
+        package_at(Executable::File, &artifacts, &again, &carried, &cancel)
+            .await
+            .unwrap();
+        let version = |output: &Path| {
+            let value =
+                serde_json::from_slice(&std::fs::read(output.join(DESCRIPTOR)).unwrap()).unwrap();
+            PackageDescriptor::parse(value).unwrap().version
+        };
+        assert_eq!(version(&again), development);
+        build(&artifacts, Executable::File, &carried, "rebuilt");
+        let rebuilt = root.path().join("demi-file-rebuilt");
+        package_at(Executable::File, &artifacts, &rebuilt, &carried, &cancel)
+            .await
+            .unwrap();
+        assert_ne!(version(&rebuilt), development);
         let runners = root.path().join("runners");
-        package(
-            &options(Executable::Runner, &artifacts, &runners, &carried),
-            &cancel,
-        )
+        package_at(Executable::Runner, &artifacts, &runners, &carried, &cancel)
         .await
         .unwrap();
         let release = pointer(&runners);
@@ -727,6 +878,7 @@ mod tests {
         command_package(
             &output,
             "demi.browser",
+            VERSION,
             vec!["browser.open".to_owned()],
             built,
             &cancel,

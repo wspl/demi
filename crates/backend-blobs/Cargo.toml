@@ -14,14 +14,15 @@ bench = false
 [features]
 # An S3 fake (`fake_s3::FakeS3`) and an object store that counts what reaches
 # it (`counting::ObjectCounts`).
-testing = ["dep:async-trait", "dep:axum"]
+testing = ["dep:axum"]
 
 [dependencies]
 demi-agent-store = { path = "../agent-store" }
 demi-shared-types = { path = "../shared-types" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
-# Implements `object_store`'s trait for the counting store of `testing`.
-async-trait = { version = "0.1", optional = true }
+# Implements `object_store`'s trait for the local store, which keeps its
+# objects' attributes beside them, and the counting store of `testing`.
+async-trait = "0.1"
 # Serves the S3 fake of `testing`.
 axum = { version = "0.8", optional = true }
 bytes.workspace = true
@@ -37,6 +38,5 @@ url = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
-async-trait = "0.1"
 axum = "0.8"
 tempfile = "3"

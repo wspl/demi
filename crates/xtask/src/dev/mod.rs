@@ -196,14 +196,14 @@ async fn session(
     let manager = processes.manager.insert(spawn_manager()?);
     let socket = manager_socket(manager.process.as_mut()).await?;
 
-    let native = native_config(root).await?;
+    let release = release_root(root).await?;
     let origin = format!("http://127.0.0.1:{}", options.port);
     let backend = processes.backend.insert(spawn_backend(
         &root.join("backend"),
         options.port,
         &origin,
         &socket,
-        &native,
+        &release,
     )?);
 
     let http = reqwest::Client::builder().no_proxy().build()?;
@@ -257,30 +257,22 @@ async fn session(
     }
 }
 
-/// Publishes a development release of each command program the build
-/// made, for this machine's target, under `root`, and writes the native
-/// configuration that names them with the development store; answers its
-/// path.
-async fn native_config(root: &Path) -> Result<PathBuf, Error> {
+/// Assembles under `root` the server release root the backend publishes
+/// and serves: a development release of each command program the build
+/// made, for this machine's target, in its `commands/`, and nothing else,
+/// since Vite serves the page and the scripted manager starts its runners
+/// itself (`backend.md` § One-command development backend). Answers the
+/// root.
+async fn release_root(root: &Path) -> Result<PathBuf, Error> {
     // Never cancelled: an interrupt drops the whole session instead.
     let cancel = CancellationToken::new();
-    let mut releases = Vec::new();
+    let release = root.join("release");
     for command in Executable::COMMANDS {
         let name = command.name();
-        let directory = format!("releases/{name}");
-        development_package(
-            command,
-            built_program(name),
-            &root.join(&directory),
-            &cancel,
-        )
-        .await?;
-        releases.push(json!({ "directory": directory, "executable": name }));
+        let directory = release.join("commands").join(name);
+        development_package(command, built_program(name), &directory, &cancel).await?;
     }
-    let native = root.join("native.json");
-    let config = json!({ "releases": releases, "store": { "provider": "local" } });
-    tokio::fs::write(&native, config.to_string()).await?;
-    Ok(native)
+    Ok(release)
 }
 
 /// A command for the program `name` the workspace built beside this one,
@@ -361,17 +353,17 @@ fn spawn_backend(
     port: u16,
     origin: &str,
     socket: &str,
-    native: &Path,
+    release: &Path,
 ) -> Result<Box<dyn ChildWrapper>, Error> {
     let mut command = program("demi-backend");
     command
         .command_mut()
+        .env("DEMI_RELEASE", release)
         .env("DEMI_BACKEND_DATA", data)
-        .env("DEMI_BACKEND_PORT", port.to_string())
+        .env("DEMI_BACKEND_LISTEN", format!("127.0.0.1:{port}"))
         .env("DEMI_INSTANCE_MODE", "isolated")
         .env("DEMI_BACKEND_PUBLIC_URL", origin)
         .env("DEMI_MACHINE_MANAGER_SOCKET", socket)
-        .env("DEMI_NATIVE_CONFIG", native)
         .stdin(Stdio::null());
     Ok(command.spawn()?)
 }

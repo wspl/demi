@@ -85,16 +85,12 @@ fail configuration. Counts and MiB sizes are positive decimal integers.
 | Variable | Meaning |
 | --- | --- |
 | `DEMI_MANAGED_DATA` | The manager's persistent state, on one filesystem; default `/var/lib/demi-machine-manager`. |
+| `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default `/opt/gvisor/<pinned version>/runsc`, where `install-runsc.sh` installs it. A deployment leaves it out; the manager's tests name a stand-in. |
 | `DEMI_MANAGED_DNS` | The IPv4 resolvers a Cloud uses. Optional: the host's own upstream resolvers otherwise (below). |
 | `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory, and PID limits ([Resource limits](managed-hosts.md#resource-limits)). |
 | `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on; either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
 | `DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB` | Initial writable filesystem capacities. |
 | `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS` | Non-overlapping IPv4 address pool and maximum network slots. |
-
-The runsc the manager runs is not a setting. The manager carries its pinned
-runtime release, and runs `/opt/gvisor/<pinned version>/runsc`, where
-`install-runsc.sh` installs it
-([Linux requirements](#linux-requirements)).
 
 The sizing defaults and limits live in
 [lifecycle and capacity](managed-hosts.md#lifecycle-and-capacity), rather than

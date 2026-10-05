@@ -7,6 +7,7 @@ pub mod blobs;
 pub mod counting;
 #[cfg(any(test, feature = "testing"))]
 pub mod fake_s3;
+pub mod local;
 pub mod store;
 
 /// Why an operation on the object store failed.
