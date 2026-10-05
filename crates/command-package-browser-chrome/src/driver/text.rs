@@ -819,16 +819,15 @@ fn assets_export(result: &AssetsExportResult) -> String {
     )
 }
 
-/// A line of `install`'s download of `browser`, whose archive is `size`
-/// bytes: how much has arrived, or that it is being unpacked
-/// (`browser.md` § Installation).
-pub fn install_progress(browser: &str, size: u64, progress: ArtifactProgress) -> String {
+/// A line of `install`'s download of `browser`: how much has arrived, or
+/// that it is being unpacked (`browser.md` § Installation).
+pub fn install_progress(browser: &str, progress: ArtifactProgress) -> String {
     let browser = plain(browser);
     match progress {
-        ArtifactProgress::Download { done } => format!(
+        ArtifactProgress::Download { done, total } => format!(
             "Downloading {browser}: {} of {} MB\n",
             megabytes(done),
-            megabytes(size)
+            megabytes(total)
         ),
         ArtifactProgress::Unpack => format!("Unpacking {browser}\n"),
     }

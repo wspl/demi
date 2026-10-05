@@ -156,13 +156,7 @@ fn platform(release: &BrowserRelease) -> Result<&ReleasePlatform> {
 /// The line `install` prints for `progress` of the pinned release
 /// (`browser.md` § Installation).
 pub fn progress_line(progress: ArtifactProgress) -> Result<String> {
-    let release = release()?;
-    let platform = platform(&release)?;
-    Ok(crate::driver::text::install_progress(
-        &release.title(),
-        platform.size,
-        progress,
-    ))
+    Ok(crate::driver::text::install_progress(&release()?.title(), progress))
 }
 
 /// The pinned release's version, such as `153.0.8010.36`.

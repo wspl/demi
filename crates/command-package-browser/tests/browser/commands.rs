@@ -415,8 +415,14 @@ async fn install_reports_its_download_in_its_output() {
                 let path = path.clone();
                 async move {
                     assert!(matches!(request.ask(), Ok(ArtifactAsk::Install(_))));
-                    reporter.report(ArtifactProgress::Download { done: size / 2 });
-                    reporter.report(ArtifactProgress::Download { done: size });
+                    reporter.report(ArtifactProgress::Download {
+                        done: size / 2,
+                        total: size,
+                    });
+                    reporter.report(ArtifactProgress::Download {
+                        done: size,
+                        total: size,
+                    });
                     reporter.report(ArtifactProgress::Unpack);
                     Ok(ArtifactReply::Path(path))
                 }

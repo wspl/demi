@@ -193,14 +193,20 @@ async fn an_archive_reports_its_download_by_tenths_and_is_unpacked_once() {
     let tenths: Vec<u64> = downloads
         .iter()
         .map(|progress| match progress {
-            ArtifactProgress::Download { done } => done * 10 / size,
+            ArtifactProgress::Download { done, total } => {
+                assert_eq!(*total, size);
+                done * 10 / size
+            }
             ArtifactProgress::Unpack => panic!("unpacking before the download ends"),
         })
         .collect();
     assert_eq!(tenths, (1..=10).collect::<Vec<_>>());
     assert_eq!(
         downloads.last(),
-        Some(&ArtifactProgress::Download { done: size })
+        Some(&ArtifactProgress::Download {
+            done: size,
+            total: size
+        })
     );
     assert_eq!(
         entry,
