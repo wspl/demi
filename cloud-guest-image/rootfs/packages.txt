@@ -1,52 +1,8 @@
-# The preinstalled toolchain (managed-hosts.md § The shipped base): Ubuntu
-# packages only; nothing here keeps state in the user's home.
+# The base (images.md § Root filesystem contents): what Demi needs in every
+# Cloud and what nearly every task needs, on top of Ubuntu's container image.
+# Everything else, compilers, language runtimes and other tools, is installed
+# on demand by the agent or the user. Ubuntu packages only; nothing here
+# keeps state in the user's home.
 sudo
 ca-certificates
-gnupg
-locales
-tzdata
-file
-curl
-wget
-openssh-client
-iproute2
-iputils-ping
-dnsutils
-build-essential
-clang
-cmake
-ninja-build
-pkg-config
-autoconf
-automake
-libtool
 git
-git-lfs
-gh
-ripgrep
-fd-find
-fzf
-bat
-jq
-yq
-tree
-less
-zip
-unzip
-xz-utils
-zstd
-procps
-psmisc
-htop
-tmux
-e2fsprogs
-util-linux-extra
-sqlite3
-shellcheck
-vim
-nano
-nodejs
-npm
-python3
-python3-pip
-python3-venv

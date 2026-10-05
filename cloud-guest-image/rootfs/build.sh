@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Builds a Cloud image release (images.md § Build pipeline) as root on a Linux
 # builder, for the builder's architecture. This script is the first stage:
-# Ubuntu 26.04 by debootstrap, the toolchain from packages.txt and tini, the
+# Ubuntu 26.04 from Ubuntu's container root filesystem that ubuntu.json pins,
+# its packages brought up to date, the packages of packages.txt and tini, the
 # guest user `demi` (uid 1000) with passwordless sudo, and the file overlay.
 # The second stage is `xtask cloud-image package`, built for this builder: it
 # embeds the runner and the command packages of a server release, taken from
-# the release's files, and uv, and publishes the verified root archive and
-# manifest.
+# the release's files, and publishes the verified root archive and manifest.
 #
 # Usage: sudo bash rootfs/build.sh --xtask PATH --release DIR --files DIR
 #          --output DIR [--work DIR] [--mirror URL] [--ca FILE]
@@ -15,8 +15,10 @@
 # the mirror only through an HTTPS proxy sets https_proxy, which apt there
 # then uses too. A builder whose proxy re-signs TLS passes --ca with the bundle
 # that holds the proxy's authority, which apt there then trusts instead of the
-# tree's own; the file is gone from the tree when the build ends. debootstrap
-# and xtask run with the caller's environment.
+# tree's own, and so does curl here; the file is gone from the tree when the
+# build ends. curl, which downloads the container image, and xtask run with
+# the caller's environment.
+# The builder needs curl, jq, GNU tar and util-linux.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 xtask=""
@@ -71,18 +73,36 @@ umask 022
 
 rm -rf "$work"
 mkdir -p "$work"
-# debootstrap's Ubuntu suites are one script under different names; a host
-# older than the suite lacks the name, and gets the script as an argument
-# rather than a new file among its own.
-scripts=/usr/share/debootstrap/scripts
-script="$scripts/$suite"
-[ -e "$script" ] || script="$scripts/gutsy"
-debootstrap --arch="$deb_arch" --variant=minbase --include=apt-utils \
-  "$suite" "$work" "$mirror" "$script"
-cat > "$work/etc/apt/sources.list" <<SOURCES
-deb $mirror $suite main universe
-deb $mirror $suite-updates main universe
-deb $mirror $suite-security main universe
+# The container image of the pinned serial, checked against the pin before a
+# byte of it is unpacked. The archive lies in the tree's directory until it is
+# unpacked, so a failed build leaves it where the next one removes it.
+pin="$here/rootfs/ubuntu.json"
+url="$(jq -er --arg arch "$deb_arch" '.[$arch].url' "$pin")"
+size="$(jq -er --arg arch "$deb_arch" '.[$arch].size' "$pin")"
+sha256="$(jq -er --arg arch "$deb_arch" '.[$arch].sha256' "$pin")"
+archive="$work/ubuntu-root.tar.gz"
+curl_options=(--fail --silent --show-error --location --proto '=https')
+if [ -n "$ca" ]; then
+  curl_options+=(--cacert "$ca")
+fi
+curl "${curl_options[@]}" --output "$archive" "$url"
+downloaded="$(stat -c %s "$archive")"
+[ "$downloaded" = "$size" ] || {
+  echo "$url has $downloaded bytes, the pin $size" >&2
+  exit 1
+}
+echo "$sha256  $archive" | sha256sum --check --quiet - || {
+  echo "$url is not the SHA-256 the pin names" >&2
+  exit 1
+}
+tar --numeric-owner -xpzf "$archive" -C "$work"
+rm "$archive"
+cat > "$work/etc/apt/sources.list.d/ubuntu.sources" <<SOURCES
+Types: deb
+URIs: $mirror
+Suites: $suite $suite-updates $suite-security
+Components: main universe
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 SOURCES
 in_chroot() {
   chroot "$work" /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
@@ -114,14 +134,18 @@ mount --bind /dev "$work/dev"
 cp /etc/resolv.conf "$work/etc/resolv.conf"
 printf '#!/bin/sh\nexit 101\n' > "$work/usr/sbin/policy-rc.d"
 chmod 0755 "$work/usr/sbin/policy-rc.d"
+# The serial's packages brought up to date, so the image carries the security
+# updates published by its build, then the base's own.
 in_chroot apt-get "${apt_options[@]}" update
+in_chroot apt-get "${apt_options[@]}" full-upgrade -y --no-install-recommends
 in_chroot apt-get "${apt_options[@]}" install -y --no-install-recommends \
   $(grep -v '^#' "$here/rootfs/packages.txt") tini
-in_chroot locale-gen en_US.UTF-8
 in_chroot apt-get clean
 rm -rf "$work/var/lib/apt/lists/"*
 
-# The guest user, its sudo, its shell.
+# The guest user, its sudo, its shell. The container image's own user,
+# `ubuntu`, holds uid and gid 1000, which are the guest user's.
+in_chroot userdel --remove ubuntu
 in_chroot groupadd -g 1000 demi
 in_chroot useradd -m -u 1000 -g 1000 -s /bin/bash demi
 # The runner's Host log and its job output live on the system layer, so they
