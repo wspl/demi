@@ -1,0 +1,26 @@
+# The backend's unit, which a server release carries in its systemd/
+# (docs/delivery/upgrades.md § One release on a server). It runs the release
+# /opt/demi/current points to, as the system user demi, whose demi-cloud
+# group reaches the machine manager's socket. Type=notify: the backend
+# reports readiness once it listens, after its migrations, which have no
+# deadline; nor has its shutdown, which saves every Cloud.
+[Unit]
+Description=Demi backend
+After=network-online.target demi-machine-manager.service
+Wants=network-online.target demi-machine-manager.service
+
+[Service]
+Type=notify
+User=demi
+Group=demi
+SupplementaryGroups=demi-cloud
+UMask=0077
+TimeoutStartSec=infinity
+TimeoutStopSec=infinity
+Restart=on-failure
+RestartSec=3
+EnvironmentFile=/etc/demi/demi.env
+ExecStart=/opt/demi/current/bin/demi-backend
+
+[Install]
+WantedBy=multi-user.target

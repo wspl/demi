@@ -1,0 +1,31 @@
+# The Cloud machine manager's unit, which a server release carries in its
+# systemd/ (docs/cloud/setup.md § Storage and service setup). It runs the
+# release /opt/demi/current points to. Type=notify: the manager reports
+# readiness once it has recovered, installed its network policy, imported
+# its base and opened its socket; none of that, nor a stop's drain and its
+# recovery, has a deadline. KillMode=mixed signals the manager alone, which
+# stops its own children while it drains.
+[Unit]
+Description=Demi Cloud machine manager
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+User=root
+Group=demi-cloud
+PrivateMounts=yes
+UMask=0077
+KillMode=mixed
+TimeoutStartSec=infinity
+TimeoutStopSec=infinity
+Restart=on-failure
+RestartSec=3
+RuntimeDirectory=demi-cloud
+RuntimeDirectoryMode=0750
+EnvironmentFile=/etc/demi/demi.env
+ExecStart=/opt/demi/current/bin/demi-machine-manager
+ExecStopPost=/opt/demi/current/bin/demi-machine-manager --recover
+
+[Install]
+WantedBy=multi-user.target
