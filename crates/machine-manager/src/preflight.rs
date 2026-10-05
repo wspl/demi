@@ -5,6 +5,8 @@
 
 use std::{io, num::NonZeroU64, os::unix::fs::MetadataExt, path::Path};
 
+use demi_machine_manager_protocol::runtime::RuntimeRelease;
+
 use crate::{
     blocking::{self, OffLoop},
     linux::{freeze, loopdev, mount},
