@@ -161,7 +161,7 @@ separately and point the manager at it. Capacity planning includes working
 images, retained generations, and image imports, not just the user-visible
 quotas.
 
-A server is installed with `demi-server install`, which checks these
+A server is set up with `demi-server setup`, which checks these
 requirements with the release's own manager and refuses a machine that
 fails them ([Installation](../delivery/installation.md)).
 
