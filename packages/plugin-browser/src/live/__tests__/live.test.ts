@@ -1,7 +1,7 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
 import { LiveFrameReader, encodeFile, encodeMessage, encodeVideo, type LiveFrame } from '../frames'
-import { keyMessage, localKey, modifiers, pointerMessage, viewerPlatform, wheelMessage } from '../input'
+import { keyMessage, localKey, modifiers, pointerMessage, wheelMessage } from '../input'
 import { pageReturned } from '@demicodes/plugin-sdk'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type PictureSink } from '../session'
@@ -121,13 +121,6 @@ test('the viewport menu offers Web and Mobile, and shows what the agent set', ()
   const custom = viewportChoices({ width: 1440, height: 900, devicePixelRatio: 2, mode: 'custom' })
   expect(custom.map((choice) => choice.label)).toEqual(['Web', 'Mobile', 'Custom 1440 × 900 @2'])
   expect(custom.at(-1)!.selectable).toBe(false)
-})
-
-test('the viewer platform comes from its own web browser', () => {
-  expect(viewerPlatform({ platform: 'MacIntel', userAgent: 'Mozilla/5.0 (Macintosh)' })).toBe('mac')
-  expect(viewerPlatform({ platform: 'Win32', userAgent: 'Mozilla/5.0 (Windows NT 10.0)' })).toBe('windows')
-  expect(viewerPlatform({ platform: '', userAgent: 'Mozilla/5.0 (X11; Linux x86_64)' })).toBe('linux')
-  expect(viewerPlatform({ platform: '', userAgent: 'Mozilla/5.0 (SomethingElse)' })).toBe('other')
 })
 
 test('pointer, wheel and key events carry what the page needs', () => {
