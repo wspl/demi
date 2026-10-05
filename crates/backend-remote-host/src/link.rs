@@ -81,6 +81,11 @@ pub trait LinkPolicy {
         bytes: u64,
     ) -> LocalBoxFuture<'static, Result<(), String>>;
 
+    /// The device's runner asks that the device be revoked, as `run
+    /// uninstall` does (`runner.md` § Installation, pairing and removal):
+    /// once it is, its connection ends with `revoked`; or why it stays.
+    fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>>;
+
     /// A native service on the device asks for `count` numbers of
     /// `conversation`'s `sequence` (`native-runtime.md` § Conversation
     /// numbers): the first of them, reserved, or why there are none.
@@ -691,6 +696,7 @@ impl Link {
                 }
             }
             Outbound::VolumeGrow { id, volume, bytes } => self.grow_volume(id, volume, bytes),
+            Outbound::Revoke {} => self.revoke(),
             Outbound::FsOk(reply) => {
                 let op = reply.result.op();
                 self.answer(&reply.id, Expected::Fs(op), Answer::Fs(reply.result));
@@ -949,6 +955,23 @@ impl Link {
             };
             if let Err(error) = link.send(&answer).await {
                 tracing::warn!(device = %link.0.device, "volume growth answer not sent: {error}");
+            }
+        });
+    }
+
+    /// Revokes the device at its runner's request. A revoked device's
+    /// connection ends with `revoked`, which its end sends; a device that
+    /// stays is answered with the reason.
+    fn revoke(&self) {
+        let revocation = self.0.policy.revoke_device();
+        let link = self.clone();
+        self.0.tasks.spawn_local(async move {
+            let Err(reason) = revocation.await else {
+                return;
+            };
+            tracing::info!(device = %link.0.device, "the runner's revocation was refused: {reason}");
+            if let Err(error) = link.send(&Inbound::RevokeRefused { reason }).await {
+                tracing::warn!(device = %link.0.device, "revocation refusal not sent: {error}");
             }
         });
     }
