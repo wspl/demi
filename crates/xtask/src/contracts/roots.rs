@@ -157,7 +157,7 @@ pub fn web() -> Vec<Root> {
         sends::<sidebar::SidebarReorder>(),
         receives::<panel::WorkPanel>(),
         sends::<panel::PanelChanges>(),
-        receives::<panel::PanelRevision>(),
+        receives::<panel::PanelAnswer>(),
         sends::<drafts::DraftSave>(),
         sends::<drafts::ReplacedDraftAction>(),
         receives::<drafts::DraftAnswer>(),
