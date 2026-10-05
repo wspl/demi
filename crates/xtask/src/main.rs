@@ -8,9 +8,9 @@ mod browser;
 mod cloud_image;
 // Generating the contracts reads the backend's plugins, whose library builds
 // only where the backend runs; on Windows xtask builds the native releases.
-#[cfg(unix)]
+#[cfg(all(unix, feature = "developer"))]
 mod contracts;
-#[cfg(unix)]
+#[cfg(all(unix, feature = "developer"))]
 mod dev;
 mod native;
 mod server_release;
@@ -32,7 +32,7 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Generates the web app's TypeScript contracts from the Rust contract types.
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "developer"))]
     Contracts,
     /// Builds the native executables and packages their releases.
     #[command(subcommand)]
@@ -48,7 +48,7 @@ enum Command {
     #[command(subcommand)]
     Vendor(vendor::Command),
     /// Runs a development backend with a scripted Cloud and the models `.env` turns on.
-    #[cfg(unix)]
+    #[cfg(all(unix, feature = "developer"))]
     Dev(dev::Options),
 }
 
@@ -127,7 +127,7 @@ fn stop_requested() -> std::io::Result<impl Future<Output = ()>> {
 
 fn main() -> ExitCode {
     match Cli::parse().command {
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "developer"))]
         Command::Contracts => match contracts::run() {
             Ok(written) => {
                 for path in written {
@@ -175,7 +175,7 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
-        #[cfg(unix)]
+        #[cfg(all(unix, feature = "developer"))]
         Command::Dev(options) => match dev::run(options) {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {

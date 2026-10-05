@@ -373,7 +373,7 @@ pub async fn package(spec: &Spec<'_>, cancel: &CancellationToken) -> Result<Stri
 /// Publishes at `output` the development release of `command`, one of
 /// [`Executable::COMMANDS`], whose one target is this machine's and whose
 /// program is `program` (`backend.md` § One-command development backend).
-#[cfg(unix)]
+#[cfg(all(unix, feature = "developer"))]
 pub async fn development_package(
     command: Executable,
     program: PathBuf,

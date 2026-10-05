@@ -1361,6 +1361,10 @@ demi-backend (executable: configuration, composition)
   of its tests ([Boundary checks](#boundary-checks)).
   The checks and tests are plain Cargo and bun commands
   ([Validation](../delivery/builds-and-releases.md#validation)).
+  `xtask contracts` and `xtask dev` need the backend, so they exist on Unix
+  with the `developer` feature, which is on by default; the release
+  workflow builds `xtask` without it
+  ([Release workflow](../delivery/builds-and-releases.md#release-workflow)).
 - **Public boundary:** its commands; no crate links it.
 - **Must not:** hold a second implementation of something a crate owns: it
   downloads and publishes through `shared-artifacts` and writes every record with its

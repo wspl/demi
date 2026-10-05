@@ -5,7 +5,7 @@
 mod build;
 mod package;
 
-#[cfg(unix)]
+#[cfg(all(unix, feature = "developer"))]
 pub use package::development_package;
 pub use package::{Caches, Spec, Versioning, package, split, write_server_release};
 
