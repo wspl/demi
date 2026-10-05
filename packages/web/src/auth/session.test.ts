@@ -21,6 +21,19 @@ function respond(body: unknown, status = 200): void {
   globalThis.fetch = (async () => Response.json(body, { status })) as unknown as typeof fetch
 }
 
+/** Answers each `<method> <path>` with its body and status. */
+function serve(answers: Record<string, [unknown, number]>): void {
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const answer = answers[`${init?.method ?? 'GET'} ${String(input)}`]
+    if (!answer) {
+      throw new Error(`unexpected request ${init?.method ?? 'GET'} ${String(input)}`)
+    }
+    return Response.json(answer[0], { status: answer[1] })
+  }) as unknown as typeof fetch
+}
+
+const signedOut: [unknown, number] = [{ code: 'unauthenticated', message: 'Sign in first' }, 401]
+
 describe('cookie session', () => {
   test('restores the server identity and uses same-origin credentials', async () => {
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -37,7 +50,7 @@ describe('cookie session', () => {
 
   test('a missing cookie is signed out; an ended session is expired', async () => {
     const session = useSession()
-    respond({ code: 'unauthenticated', message: 'Sign in first' }, 401)
+    serve({ 'GET /api/auth/me': signedOut, 'GET /api/setup': [{ needed: false }, 200] })
     await session.restore()
     expect(session.current).toEqual({ status: 'signedOut', reason: undefined })
     respond({ user })
@@ -45,6 +58,30 @@ describe('cookie session', () => {
     respond({ code: 'unauthenticated', message: 'Sign in first' }, 401)
     await session.restore()
     expect(session.current).toEqual({ status: 'signedOut', reason: 'expired' })
+  })
+
+  test('a Demi without accounts asks for setup, which signs the master account in', async () => {
+    const session = useSession()
+    serve({ 'GET /api/auth/me': signedOut, 'GET /api/setup': [{ needed: true }, 200] })
+    await session.restore()
+    expect(session.current).toEqual({ status: 'setupNeeded' })
+    serve({ 'POST /api/setup': [{ user: { ...user, role: 'master' } }, 200] })
+    await session.setUp(user.email, 'correct horse', new AbortController().signal)
+    expect(session.user?.role).toBe('master')
+  })
+
+  test('a visitor whose setup came second is sent to sign in', async () => {
+    const session = useSession()
+    serve({ 'GET /api/auth/me': signedOut, 'GET /api/setup': [{ needed: true }, 200] })
+    await session.restore()
+    expect(session.current).toEqual({ status: 'setupNeeded' })
+    serve({
+      'POST /api/setup': [{ code: 'already_set_up', message: 'Demi is set up already' }, 404],
+    })
+    await expect(session.setUp(
+      user.email, 'correct horse', new AbortController().signal,
+    )).rejects.toMatchObject({ code: 'already_set_up' })
+    expect(session.current).toEqual({ status: 'signedOut' })
   })
 
   test('posts credentials and reports backend rate limiting', async () => {

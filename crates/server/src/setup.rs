@@ -42,7 +42,8 @@ must pass the Origin and Host headers unchanged and allow WebSocket upgrades.
 
 The machine must be able to run Cloud: setup checks it with the release's
 machine manager and refuses one that cannot. The first visitor of the domain
-afterwards creates the master account.
+afterwards creates the master account on its setup page, so open it right
+away.
 
 Examples:
   demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
@@ -236,7 +237,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     std::fs::remove_file(marker(layout))?;
     println!(
         "\nDemi {version} is set up at https://{0}.\n\
-         Open https://{0} now and create the master account: until it exists, the first visitor creates it.",
+         Open https://{0} now and create the master account on its setup page: until it exists, anyone who reaches it can.",
         choices.domain
     );
     Ok(Outcome::SetUp)
