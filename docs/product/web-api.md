@@ -39,12 +39,12 @@ Partial conversation mutations use the explicit outcomes described below.
 | Page synchronization | `WS /sync` sends the product state, then each part of it that changes ([Page synchronization](#page-synchronization)) |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Subagents | `PUT /subagents { enabled }`; `POST /subagents/profiles`, `PATCH /subagents/profiles/:id`, `DELETE /subagents/profiles/:id`; the switch and the profiles are part of the product state ([Subagents](#subagents)) |
-| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
+| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
-| Work panel | `GET /conversations/:id/panel` reads the [work panel's tabs](#work-panel-state); `POST /conversations/:id/panel/tabs`, `PATCH` and `DELETE /conversations/:id/panel/tabs/:tab` and `POST /conversations/:id/panel/tabs/:tab/move` change them |
+| Work panel | `GET /conversations/:id/panel` reads the [work panel's tabs](#work-panel-state); `POST /conversations/:id/panel/changes { changes }` changes them |
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
 | Conversation permissions | `GET /conversations/:id/permissions` reads the conversation's [permission requests](#conversation-permissions); `POST /conversations/:id/permissions/requests/:request { decision }` decides a request |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
@@ -126,9 +126,16 @@ the blob as a download.
 ## Conversation creation and Fork
 
 `POST /conversations` requires a client-generated UUID. A new conversation uses
-Cloud as its target without waking a machine. Retrying the same ID for the same
-owner returns the existing record (200 instead of 201). Both answer
-`{ conversation }`, the conversation as the list shows it. An ID owned by
+Cloud as its target without waking a machine. The body may also carry what a
+new conversation starts with, so creating it is one request: the fields
+`PATCH /conversations/:id` takes except `archived` (`title`, `pinned`,
+`target` and the model settings), and `hosts`, the devices to attach, each
+`{ deviceId, name? }` as `POST .../hosts` attaches it. They apply as part of
+the creation: one that fails refuses the creation with its status and
+`{ code, message }`, and nothing is created. Retrying the same ID for the same
+owner returns the existing record (200 instead of 201) and applies nothing.
+Both answer `{ conversation }`, the conversation as the list shows it, and
+`hosts`, its attached hosts as `GET .../hosts` lists them. An ID owned by
 another user or reserved for a Fork returns 409 `id_unavailable`.
 
 `POST /conversations/:id/fork` takes a destination UUID and an assistant block ID.
@@ -320,23 +327,30 @@ The selection is not part of it: each page keeps its own.
 For example, a page creates a browser tab, and the browser plugin binds it:
 
 ```text
-POST  .../panel/tabs        { id: "a1", kind: "browser", data: { url: "about:blank" } }  -> { revision: 4 }
-      (the plugin)          update a1 with { tab: "t3" }                                  -> revision 5
+POST  .../panel/changes     { changes: [{ op: "create", id: "a1", kind: "browser",
+                                          data: { url: "about:blank" } }] }        -> { revision: 4 }
+      (the plugin)          update a1 with { tab: "t3" }                          -> revision 5
 GET   .../panel             -> { revision: 5, tabs: [{ id: "a1", kind: "browser",
                                                        data: { url: "about:blank", tab: "t3" } }] }
 ```
 
-| Route | Body | Does |
-| --- | --- | --- |
-| `GET /api/conversations/:id/panel` | None | Returns the panel; `{ revision: 0, tabs: [] }` for a conversation never changed |
-| `POST /api/conversations/:id/panel/tabs` | `{ id, kind, data, index? }` | Creates the tab at `index`, after the others without one |
-| `PATCH /api/conversations/:id/panel/tabs/:tab` | `{ data }`, an object | Sets each of its fields in the tab's `data`, removing those that are null, and leaves the other fields |
-| `DELETE /api/conversations/:id/panel/tabs/:tab` | None | Removes the tab |
-| `POST /api/conversations/:id/panel/tabs/:tab/move` | `{ index }` | Moves the tab to `index` among the others |
+`GET /api/conversations/:id/panel` returns the panel, `{ revision: 0, tabs:
+[] }` for a conversation never changed. `POST
+/api/conversations/:id/panel/changes { changes }` applies a list of changes in
+order, as one change of the panel: Close Others, which removes eight tabs, is
+one request and one new revision, and other pages see the eight tabs go at
+once.
 
-Each change answers `{ revision }`: the panel's revision once the change is
-in it. A change that has nothing to do answers the current revision and
-changes nothing: an update, move or removal of a tab the panel no longer has,
+| Change | Fields | Does |
+| --- | --- | --- |
+| `create` | `id, kind, data, index?` | Creates the tab at `index`, after the others without one |
+| `update` | `id, data`, an object | Sets each of its fields in the tab's `data`, removing those that are null, and leaves the other fields |
+| `delete` | `id` | Removes the tab |
+| `move` | `id, index` | Moves the tab to `index` among the others |
+
+The request answers `{ revision }`: the panel's revision once the changes are
+in it. A change that has nothing to do changes nothing, and a request of only
+such changes answers the current revision: an update, move or removal of a tab the panel no longer has,
 and a create of an id the panel has, or had. **A tab's id is used once per
 conversation.** The page makes a new one for each tab it creates, so sending a
 create again after a lost answer creates nothing more, and a create that
@@ -352,9 +366,10 @@ when the revision is higher than its own
 applies the changes of a conversation one at a time, the page's and the
 plugin's alike, so `revision` orders them all.
 
-A panel holds at most 64 tabs and 64 KiB of `data` in all: a create past
-either answers 409 `panel_full`, and an update past the size 413
-`too_large`. A create of a `kind` no plugin the user has on declares answers
+A request's changes apply all or none: a change that is refused refuses the
+request with its status, and the panel stays as it was. A panel holds at most
+64 tabs and 64 KiB of `data` in all: a create past either answers 409
+`panel_full`, and an update past the size 413 `too_large`. A create of a `kind` no plugin the user has on declares answers
 400 `unknown_panel_kind`. Archived conversations allow the read and refuse
 every change with 409 `conversation_archived`.
 
@@ -1239,9 +1254,11 @@ transfers, a new one answers 409 `conversation_busy`.
 request body, a file's raw bytes, to `path`, streaming it to the Host as the
 Host takes it. The file appears whole or not at all: an upload cut short
 leaves the path as it was ([Runner](../execution/runner.md#file-contents)).
-When the upload starts, a directory at the path answers 409 `is_directory`,
-and a file there answers 409 `file_exists` unless `replace=true`. A missing
-directory above the path answers 404; the web app makes directories first
+A directory at the path answers 409 `is_directory`, and a file there answers
+409 `file_exists` unless `replace=true`; the Host checks as it writes, and no
+check precedes the write ([Host operations](../execution/runner.md#host-operations)).
+The write makes the missing directories above the path, so an uploaded
+folder's files make its folders, and the web app makes only an empty folder
 with `POST`. Success answers 204. An upload is a file transfer whose pace the
 user's browser sets, under the same Host access, stall rule and ending as a
 download
