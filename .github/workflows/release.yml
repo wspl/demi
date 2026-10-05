@@ -10,9 +10,6 @@ name: Release
 on:
   push:
     tags: ["v*"]
-    # Temporary: runs the workflow on this branch before it is on the
-    # default branch, which a manual start requires. Removed once it passes.
-    branches: [feat/demi-next]
   workflow_dispatch:
 
 permissions:
@@ -105,6 +102,9 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
         with:
           arch: ${{ matrix.msvc }}
+          # The pinned toolset, which Visual Studio 2022 carries beside newer
+          # ones it would select by default.
+          toolset: "14.44"
       - name: Build
         if: runner.os != 'Windows'
         run: cargo xtask native build ${{ matrix.arguments }}
