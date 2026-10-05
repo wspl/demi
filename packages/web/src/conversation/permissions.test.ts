@@ -114,3 +114,26 @@ test('a decision shows at once and is not read back; a refused one gives the req
   expect(state.requests.map((request) => request.id)).toEqual(['pr-1'])
   expect(reads.value).toBe(1)
 })
+
+test('a page that opens a conversation while its summary arrives reads the requests once', async () => {
+  const product = useProduct()
+  product.start()
+  channels.last().connect(at('run-1', 4, 1))
+  const permissions = usePermissions()
+  let release!: () => void
+  const held = new Promise<void>((resolve) => { release = resolve })
+  answers.push(() => answer(5, 1)())
+  const fetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    await held
+    return fetch(input, init)
+  }) as typeof fetch
+  permissions.follow(CONVERSATION)
+  // The summary of the same revision arrives while the read is on its way.
+  channels.last().send({ type: 'conversation', conversation: at('run-1', 5, 1).conversations[0]! })
+  await Promise.resolve()
+  release()
+  await until(() => permissions.stateFor(CONVERSATION).requests.length).toBe(1)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(reads.value).toBe(1)
+})
