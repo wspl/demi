@@ -110,7 +110,7 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
             "HOME=/home/demi".into(),
             "USER=demi".into(),
             "LOGNAME=demi".into(),
-            "LANG=en_US.UTF-8".into(),
+            "LANG=C.UTF-8".into(),
             "PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin".into(),
             format!("{RELEASE_ENV}={}", boot.runner_release),
         ])

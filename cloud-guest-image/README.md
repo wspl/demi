@@ -6,9 +6,9 @@ format, the build pipeline, import, and acceptance;
 [Cloud setup](../docs/cloud/setup.md) describes deployment.
 
 A build runs as root on a Linux builder of the image's architecture.
-`rootfs/build.sh` makes the Ubuntu tree, then runs `xtask cloud-image package`,
-which embeds the runner release, the command packages' executables and uv,
-and publishes the release. The image goes into the `image/` directory of
+`rootfs/build.sh` makes the Ubuntu tree from Ubuntu's container image, then
+runs `xtask cloud-image package`, which embeds the runner release and the
+command packages' executables, and publishes the release. The image goes into the `image/` directory of
 the [server release](../docs/delivery/builds-and-releases.md#server-release)
 whose runner and command package releases it embeds. The release workflow
 builds the published images this way on its `ubuntu-26.04` and
@@ -31,7 +31,7 @@ cargo zigbuild --release --locked -p xtask \
   --target aarch64-unknown-linux-musl --target-dir .cache/native-target
 ```
 
-Then, from the repository root on the builder, with debootstrap, GNU tar, and
+Then, from the repository root on the builder, with curl, jq, GNU tar, and
 util-linux installed:
 
 ```sh
@@ -58,11 +58,22 @@ the build hands it two things of the builder's network. A builder that
 reaches the mirror only through an HTTPS proxy sets `https_proxy`, which apt
 inside the tree then uses as well. A builder whose proxy re-signs TLS names
 the bundle that holds the proxy's authority with `--ca FILE`, which apt inside
-the tree then trusts; the build removes the file from the tree. The last line the build prints is the release's base version.
+the tree then trusts, and so does curl when it downloads the container image;
+the build removes the file from the tree. The last line the build prints is
+the release's base version.
 The build neither starts nor resets a Cloud device; see
 [Acceptance and local refresh](../docs/cloud/images.md#acceptance-and-local-refresh).
 
-`rootfs/uv.json` pins uv: its version and, for each architecture, the
-archive's URL, size, SHA-256, and executables. To change the pin, download each
-archive, check its SHA-256 against the uv release's published digest, record
-it, and rebuild `xtask`, which carries the pin it was built with.
+`rootfs/ubuntu.json` pins Ubuntu's container image: the serial and, for each
+architecture, the root archive's URL on
+`https://partner-images.canonical.com/oci/resolute/`, its size, and its
+SHA-256. The build checks the download against it, then brings the packages
+up to date from the mirror, so a serial's age does not hold back security
+updates. To change the pin, choose a serial listed there, download each
+architecture's `ubuntu-resolute-oci-<arch>-root.tar.gz`, check its SHA-256
+against the serial's `SHA256SUMS`, and record the serial, URL, size, and
+SHA-256.
+
+`rootfs/packages.txt` lists the packages the build installs on the container
+image: only what Demi needs in every Cloud and what nearly every task needs.
+The agent or the user installs everything else on demand.

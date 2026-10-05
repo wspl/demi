@@ -247,7 +247,6 @@ fn manifest() -> serde_json::Value {
             "commandProtocol": 1,
             "targets": { "aarch64-unknown-linux-musl": runner },
         },
-        "tools": [{ "name": "uv", "version": "0.12.13", "sha256": "9".repeat(64) }],
     })
 }
 
