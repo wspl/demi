@@ -27,15 +27,19 @@ names the capability. An ordinary hardware-virtualized VPS can provide these
 facilities without exposing KVM. A restricted container sold as a VPS may not;
 check the facilities instead of relying on the provider's product name.
 
-The installer installs the complete pinned runsc distribution and verifies its
-release checksum on amd64. On arm64 it builds the pinned source with the shipped
-seccomp ABI fix and runs the native/systrap regression probe. Build dependencies
-and pinned inputs are in `crates/machine-manager/runtime/README.md`. Keep `runsc` and
-its accompanying `gvisor-bin/` directory together; upstream packaging can
-include helper binaries. The runtime release manifest pins the release and
-archive hash, and startup requires the configured executable to report exactly
-the pinned version. Follow the upstream
-[installation instructions](https://gvisor.dev/docs/user_guide/install/).
+The server release carries the complete pinned runsc distribution of its
+architecture in `runtime/`, `runsc` with its accompanying `gvisor-bin/`
+directory, since upstream packaging can include helper binaries
+([Server release](../delivery/builds-and-releases.md#server-release)). So the
+manager and the runsc it was built against arrive and leave together, and
+nothing installs runsc on the host. On amd64 the distribution is the upstream
+release, checked against the SHA-512 that the runtime release manifest,
+`crates/machine-manager/runtime/release.json`, pins. On arm64 it is built
+from the same pinned source with the shipped seccomp ABI fix and the
+native/systrap regression probe, once per pin, and published as a release of
+its own whose SHA-256 the manifest pins too; build dependencies and inputs
+are in `crates/machine-manager/runtime/README.md`. Startup requires the
+executable to report exactly the pinned version.
 
 The manager is a Linux executable, released for amd64 and arm64
 ([Builds and releases](../delivery/builds-and-releases.md)). Besides `runsc`, it
@@ -72,7 +76,9 @@ The manager reads the deployment's one configuration file,
 three of the backend's settings, and the backend's definition of each holds:
 
 - `DEMI_RELEASE`, the [server release](../delivery/builds-and-releases.md#server-release)
-  root: the manager imports the Cloud image in its `image/`.
+  root: the manager imports the Cloud image in its `image/` and runs its
+  `runtime/runsc`. A server leaves it out, so the manager takes the release
+  of its own executable, as the backend does.
 - `DEMI_BACKEND_PUBLIC_URL`: the one endpoint, address and port, that a Cloud
   may reach on the host or a private address, and the URL every boot record
   must name.
@@ -85,7 +91,7 @@ fail configuration. Counts and MiB sizes are positive decimal integers.
 | Variable | Meaning |
 | --- | --- |
 | `DEMI_MANAGED_DATA` | The manager's persistent state, on one filesystem; default `/var/lib/demi-machine-manager`. |
-| `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default `/opt/gvisor/<pinned version>/runsc`, where `install-runsc.sh` installs it. A deployment leaves it out; the manager's tests name a stand-in. |
+| `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default the release root's `runtime/runsc`. A deployment leaves it out; the manager's tests name a stand-in. |
 | `DEMI_MANAGED_DNS` | The IPv4 resolvers a Cloud uses. Optional: the host's own upstream resolvers otherwise (below). |
 | `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory, and PID limits ([Resource limits](managed-hosts.md#resource-limits)). |
 | `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on; either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
@@ -156,69 +162,34 @@ separately and point the manager at it. Capacity planning includes working
 images, retained generations, and image imports, not just the user-visible
 quotas.
 
-The installer writes a systemd unit that runs the manager binary as root with
-the `demi-cloud` group, private mounts, and a restrictive umask. The unit uses
+The manager's systemd unit is part of the server release, in its
+`systemd/`, and `demi-server` copies it into place whenever the server moves
+to a release ([One release on a server](../delivery/upgrades.md#one-release-on-a-server)).
+It runs `/opt/demi/current/bin/demi-machine-manager` as root with the
+`demi-cloud` group, private mounts, and a restrictive umask, and loads the
+deployment's configuration file, `/etc/demi/demi.env`. The unit uses
 `Type=notify`: the manager reports readiness only after it has recovered and
 saved leftover devices, installed its network policy, imported its base,
-checked storage, and opened its owner/group-restricted socket, so the installer
-and every restart see real readiness or a real failure. Startup has no timeout
-(`TimeoutStartSec=infinity`), because a first import or a large recovery can
-take minutes. `KillMode=mixed` sends the stop signal to the manager alone, so it
-drains its devices with its own child processes; systemd kills whatever remains
-only after the manager exits. The unit's stop-post command then runs the
-manager's recovery (`--recover`), which has work to do only when the drain did
-not finish ([Startup and recovery](managed-hosts.md#startup-and-recovery)).
-Stopping has no timeout either (`TimeoutStopSec=infinity`): the drain and the
-recovery check and publish filesystems, and killing a check midway does more
-harm than waiting. No host shell command supplied by a user becomes a
-privileged launcher argument. The installer operates only on its own service,
-network namespace/interface names, cgroup subtree, and nftables table.
+checked storage, and opened its owner/group-restricted socket, so the
+installer, an upgrade and every restart see real readiness or a real failure.
+Startup has no timeout (`TimeoutStartSec=infinity`), because a first import
+or a large recovery can take minutes. `KillMode=mixed` sends the stop signal
+to the manager alone, so it drains its devices with its own child processes;
+systemd kills whatever remains only after the manager exits. The unit's
+stop-post command then runs the manager's recovery (`--recover`), which has
+work to do only when the drain did not finish
+([Startup and recovery](managed-hosts.md#startup-and-recovery)). Stopping has
+no timeout either (`TimeoutStopSec=infinity`): the drain and the recovery
+check and publish filesystems, and killing a check midway does more harm than
+waiting. No host shell command supplied by a user becomes a privileged
+launcher argument. The manager operates only on its own service, network
+namespace/interface names, cgroup subtree, and nftables table.
 
-The unit loads the deployment's configuration file, `/etc/demi/demi.env`,
-which must exist before the installer runs; the installer reads the state
-directory from it and checks its filesystem, and writes no setting into it.
-When a manager is already installed, the installer stops it under its current
-unit, so that manager's own stop-post recovery runs, and only then puts the new
-unit in place and starts it. With `--root <directory>`, the installer writes
-the unit beneath that directory for review and changes nothing else.
-
-The manager runs from the `bin/` of a
-[server release](../delivery/builds-and-releases.md#server-release) for the
-host's Linux target, whose `image/` holds the Cloud image. After installing
-the Linux dependencies, unpacking the release and writing the configuration
-file, install the service with absolute paths:
-
-```sh
-sudo bash crates/machine-manager/scripts/install-managed-hosts.sh \
-  --user backend --release /opt/demi/0.1.3
-```
-
-`--release` names the root; the unit runs its `bin/demi-machine-manager` with
-`DEMI_RELEASE` set to it, so installing another release points the service at
-that release. The backend user joins the `demi-cloud` group. Restart its
-service or login session to acquire that membership. The installer never
-starts the backend itself.
-
-Publish a new image, restart the manager, and explicitly reset a device when it
-should use the new base. Restart alone does not upgrade pinned devices. A new
-runtime starts only after prior writers have stopped.
-
-### Upgrading from demi-machines
-
-The manager was called `demi-machines` before, with the service
-`demi-machines.service` and the state directory `/var/lib/demi-machines`. Its
-state directory has the layout the manager reads, so a host keeps its users'
-Clouds through the upgrade:
-
-1. Stop and disable the old service, whose stop-post recovery runs as it
-   stops: `systemctl stop demi-machines.service && systemctl disable
-   demi-machines.service`. Then remove its unit file. The installer refuses to
-   run while that unit is installed, because the two managers would share the
-   socket, the network names and the nftables table.
-2. Set `DEMI_MANAGED_DATA=/var/lib/demi-machines` in the configuration file
-   and install the manager as above. Without it, the manager starts from an
-   empty state directory, and each user's Cloud starts again from an empty
-   home on its next wake.
+The backend runs as the system user `demi`, a member of the `demi-cloud`
+group, which is what lets it use the manager's socket. A server moves to a
+new image, manager and runsc only by moving to a new release
+([Upgrades](../delivery/upgrades.md)); a Cloud's system moves to the new
+image when its user resets it.
 
 ## Acceptance before use
 

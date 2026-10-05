@@ -18,12 +18,15 @@ Backend data directory (DEMI_BACKEND_DATA)
 +-- native/                        the published command packages (object store)
 +-- .attributes/                   the local store's object attributes
 +-- instance-secret                seals credentials, unless configured
++-- snapshots/<version>/           the databases as an upgrade from that release found them
 ```
 
 The names identify storage responsibilities; deployment options supply the
 actual roots, and `blobs/` and `native/` move to an S3 bucket when the
-deployment's store is one ([The object store](#the-object-store)). The `storage`
-module owns the databases and the object store. The `vault` module owns
+deployment's store is one ([The object store](#the-object-store)).
+`snapshots/` belongs to `demi-server`, which keeps there the copy that a
+[rollback](../delivery/upgrades.md#rollback) restores; the backend never
+reads it. The `storage` module owns the databases and the object store. The `vault` module owns
 credential records and access; credentials are control records, never files.
 The machine manager keeps each Cloud's disk generations in its own data
 directory ([Managed hosts](../cloud/managed-hosts.md#provisioning)); the
@@ -47,19 +50,54 @@ Product modules call the control service's operations rather than issuing
 control SQL. This document defines data meaning and atomicity; the SQL lives in
 the storage module's schema.
 
-### Schemas
+### Schemas and migrations
 
-Each kind of database has one schema, a SQL text. Its version is a digest of
-that text: the first 31 bits of its SHA-256, which a database records in
-SQLite's own `user_version` field. Opening a database applies the schema to a
-new one in a transaction and records its version; a database that records the
-version opens as it is. Any other database stops the open, and with it the
-backend's start, with an error that names the file and says to move the data
-directory away and start with a new one. That covers a database another build
-made after the schema text changed, and one the TypeScript backend made, which
-records no version but holds tables. Demi changes no such database and
-migrates none: until a release commits to a schema, an edited schema means a
-new data directory.
+Each kind of database has its schema, a SQL text, and the history of the
+schemas that formal releases shipped before it, each with the migration that
+leads from it to the next. A schema's version is a digest of its text: the
+first 31 bits of its SHA-256, which a database records in SQLite's own
+`user_version` field.
+
+For example, 0.2.0 adds a column to the devices table. The control schema's
+text changes, so its version does too, and the history gains the schema that
+0.1.0 shipped, with a migration that adds the column. A 0.2.0 backend that
+opens 0.1.0's control database finds 0.1.0's version in the history and
+applies that migration.
+
+Opening a database does one of these, in one transaction:
+
+| The database records | Opening it |
+| --- | --- |
+| No version, and holds no table | Applies the schema to the new database and records its version |
+| The schema's version | Opens it as it is |
+| A version in the history | Applies each migration from that version to the schema's, in order, and records the schema's version |
+| Anything else | Stops the open, with an error that names the file |
+
+Anything else is a database that a newer release made, after a rollback that
+did not restore its snapshot, or one a development build made. The error says
+which: a version newer than every one this release knows names the
+[rollback](../delivery/upgrades.md#rollback) that restores the databases of
+this release. A migration that fails rolls its transaction back, so the
+database stays at the version it had, and the open fails with the step that
+failed.
+
+A migration is SQL, or a Rust function on the transaction where SQL cannot
+express the change, such as re-encoding a stored value; what it writes goes
+through the same encoding and validation as any write. The control database
+is migrated as the backend starts, before it serves
+([Startup and shutdown](backend.md#startup-and-shutdown)); a conversation's
+database when its conversation is next opened, so a start does not wait for
+every conversation a server ever had.
+The [upgrade](../delivery/upgrades.md#the-upgrade) copies every database
+that will migrate before the new release first opens it.
+
+A migration is tested once: a database of each schema in the history,
+migrated, has the same tables, columns and indexes as a new one, and a
+migration that rewrites values is tested on its rows.
+
+The history starts with the first formal release. Until then it is empty: an
+edited schema means a new data directory, and a database that records
+another version, such as one a build of another schema made, stops the open.
 
 ## Control records
 

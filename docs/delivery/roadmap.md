@@ -39,6 +39,7 @@ Contracts and crate boundaries
 | Live browser view | The user watches and operates the conversation's tabs in the work panel on paired devices and Cloud | [Live browser view](../browser/live-view.md#acceptance) |
 | Host expose | A device service gets a one-hour public URL; HTTP, streaming, and WebSocket relay byte-faithfully on paired devices and Cloud; expiry, removal, Cloud stop, and revocation destroy it | [Host expose](../execution/expose.md#acceptance) |
 | Packaging | The released runner, command programs, backend, and machine manager install and start on their targets; shipped images run under gVisor/systrap on supported Linux hosts | [Builds and releases](builds-and-releases.md), [Cloud setup](../cloud/setup.md) |
+| Upgrades | A server moves between formal releases with one command, paired devices and Clouds follow without their users, data migrates, and a failed upgrade or a rollback leaves the server on the earlier release with its data | [Upgrades](upgrades.md) |
 | Distributed deployment | Ownership loss fences stale writers before reassignment; metadata and disk generations recover consistently | [Backend](../backend/backend.md#deployment-and-user-ownership), [Storage](../backend/storage.md#multi-worker-storage-placement) |
 
 ### Plugins
@@ -167,26 +168,6 @@ reverse proxy pins each user to one backend worker
   names the objects it must remove. When an unreferenced blob goes is decided
   ([Retention](../backend/storage.md#retention)). Removing project metadata
   must never implicitly delete the user's Cloud machine or files.
-- **Upgrades.** Moving a server from one release to the next is not
-  designed. Today each part changes in its own way, and the design must
-  settle all of them together:
-  - The backend and the web app change only with a backend restart, which
-    interrupts running turns (the user resumes them), hibernates every Cloud,
-    and ends resident command services, a conversation's browser among them;
-    a page still open on the old web app is told to reload.
-  - The machine manager and its pinned runsc change together, and the wire
-    between the backend and the manager checks no version.
-  - A new Cloud image reaches a Cloud only through an explicit reset, and
-    nothing reports a Cloud that still runs an old base.
-  - A paired device takes a new runner only when its user runs the installer
-    again; the backend does not record which runner version a device runs.
-  - A new runner wire version refuses every older runner: a paired device
-    stops reconnecting without telling its user, and a Cloud on an old base
-    fails to boot until it is reset.
-  - Data formats: before the first formal release, a schema change still
-    means a new data directory, as [Schemas](../backend/storage.md#schemas)
-    says; compatibility and migration are part of this decision for formal
-    releases.
 - **Resource profiles.** Choose resource profiles and unattended lifetime from
   measured memory, startup, and storage costs. Add transport prioritization or
   batching only for demonstrated contention, without changing job attribution

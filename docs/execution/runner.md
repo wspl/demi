@@ -79,6 +79,74 @@ the connection; only a message that breaks the protocol, by its size or its
 content, does. In the other direction the backend queues at most 64 messages
 for a runner, and a sender waits for room instead of buffering without limit.
 
+### Runner updates
+
+A runner always runs the runner release of the backend it serves, and
+follows it when the backend moves to another release
+([Upgrades](../delivery/upgrades.md)). For example, a laptop's runner of
+release `a1b2…` reconnects after its server was upgraded. The backend now
+installs release `c3d4…`, so it answers the connection with 409 and the
+executable of `c3d4…` for the laptop's target. The runner downloads it,
+checks it, starts it in its own place, and the new runner connects. The
+laptop is back online seconds after the backend, and nobody ran the
+installer.
+
+The runner opens its socket at `/api/runner` with two headers:
+`Demi-Runner-Release`, the release it was installed from, and
+`Demi-Runner-Target`, its target. Before the socket opens, the backend
+compares the release with its current runner release, the one `runners/`
+names ([Runner releases](native-runtime.md#runner-releases)). The same
+release opens the socket, and the hello follows as above. Another release
+gets 409 and a JSON body that names the backend's release and, when that
+release has one for the runner's target, the executable's size and SHA-256:
+
+```json
+{ "release": "<release>", "executable": { "sha256": "<SHA-256 in hex>", "size": 9461832 } }
+```
+
+A backend without runner releases, as in development, checks no release;
+the hello's protocol check still refuses a runner of another wire version.
+
+The check is made before the socket opens because the runner wire changes
+from release to release: a runner of an earlier release could not read a
+refusal written in a later one. The two headers and the 409 body are the
+one part of the connection that every release keeps
+([What crosses releases](../delivery/upgrades.md#what-crosses-releases)):
+fields may be added to them, never changed or removed. `runner-protocol`'s
+`release` module defines them.
+
+A paired device's runner that receives an executable updates itself:
+
+1. It takes the installation's install lock, the one the installers take,
+   so that no installer runs meanwhile.
+2. It downloads the executable from
+   `/runner-artifacts/<release>/<target>/<file>` on its backend, checks its
+   size and SHA-256 against the answer, and puts it in place in
+   `releases/<release>/` through a staging directory, as the installers do.
+3. It ends what it still runs, as a drain does: its local clients and its
+   command services. It runs no job, since it holds no connection.
+4. It records the new release in its installation state, releases its
+   locks, and starts the new release as the installation's launcher would.
+   On Linux and macOS it executes the launcher in its own process. On
+   Windows it starts the new executable with its own arguments and
+   environment but the new release, and exits; the successor waits for the
+   installation lock, which the predecessor releases as it exits.
+5. The new runner connects, and removes every release directory of its
+   installation except its own and the one it replaced.
+
+An update that fails, such as a download that breaks off or an executable
+whose SHA-256 differs, leaves the runner on its release. It writes the
+reason to the Host log and tries again at its next connection attempt; the
+device shows as offline meanwhile. A 409 without an executable means the
+backend has no runner for the device's target: the runner writes that to the
+Host log and keeps trying, since a later release may have one.
+
+A managed guest's runner never updates itself: it comes from the image the
+machine manager is configured with, which is built from the same release as
+the backend ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)).
+A 409 for it means the backend and the manager run different releases; the
+runner exits with an error that names both, and the Cloud's boot fails.
+
 ## Host operations
 
 Filesystem and raw process requests do not require a shell job. The runner
