@@ -83,7 +83,8 @@ pub trait LinkPolicy {
 
     /// The device's runner asks that the device be revoked, as `run
     /// uninstall` does (`runner.md` § Installation, pairing and removal):
-    /// once it is, its connection ends with `revoked`; or why it stays.
+    /// once it is, its connection ends with `revoked`; or why it could not
+    /// be.
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>>;
 
     /// A native service on the device asks for `count` numbers of
@@ -960,18 +961,15 @@ impl Link {
     }
 
     /// Revokes the device at its runner's request. A revoked device's
-    /// connection ends with `revoked`, which its end sends; a device that
-    /// stays is answered with the reason.
+    /// connection ends with `revoked`, which its end sends. A revocation
+    /// that failed is answered with nothing: the runner, which waits a
+    /// bounded time, removes itself all the same.
     fn revoke(&self) {
         let revocation = self.0.policy.revoke_device();
-        let link = self.clone();
+        let device = self.0.device.clone();
         self.0.tasks.spawn_local(async move {
-            let Err(reason) = revocation.await else {
-                return;
-            };
-            tracing::info!(device = %link.0.device, "the runner's revocation was refused: {reason}");
-            if let Err(error) = link.send(&Inbound::RevokeRefused { reason }).await {
-                tracing::warn!(device = %link.0.device, "revocation refusal not sent: {error}");
+            if let Err(error) = revocation.await {
+                tracing::warn!(device = %device, "the runner's revocation failed: {error}");
             }
         });
     }

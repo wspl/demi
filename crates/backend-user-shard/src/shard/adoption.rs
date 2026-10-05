@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::StorageError;
-use demi_backend_database::devices::DeviceRecord;
+use demi_backend_database::devices::{DeviceRecord, DeviceRemoval};
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Link, LinkOptions, host_identity};
 use demi_backend_runners::devices::{DeviceRecorder, Serving, send};
@@ -19,12 +19,6 @@ use tokio::sync::oneshot;
 
 use super::Shard;
 use super::policy::ShardPolicy;
-
-/// A device that workspaces still point at, which a revocation keeps
-/// (`web-api.md` § Workspaces, devices, and attached hosts).
-#[derive(Debug, thiserror::Error)]
-#[error("{0} workspace(s) still point at this device")]
-pub struct DeviceInUse(pub u64);
 
 impl Shard {
     /// Takes the socket of a runner that presented `device`'s token.
@@ -121,30 +115,32 @@ impl Shard {
         Some(serving)
     }
 
-    /// Revokes a device, unless workspaces still point at it: its exposes
-    /// end with their connections, its row goes with its attachments, and
-    /// its runner hears that it was revoked and removes itself. The user's
-    /// revocation and the runner's own request both come here.
-    pub async fn revoke_device(
-        &self,
-        device: DeviceId,
-    ) -> Result<Result<(), DeviceInUse>, StorageError> {
-        let workspaces = self
-            .services()
-            .control
-            .workspaces_on_device(device.clone())
-            .await?;
-        if workspaces > 0 {
-            return Ok(Err(DeviceInUse(workspaces)));
-        }
+    /// Revokes a device, which nothing refuses: its exposes end with their
+    /// connections, its row goes with its attachments and its workspaces,
+    /// whose conversations stay outside any workspace, and its runner hears
+    /// that it was revoked and removes itself. The user's revocation and the
+    /// runner's own request both come here.
+    pub async fn revoke_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         self.expose_shard().destroy_exposes_on(&device).await;
-        self.services()
+        let removal = self
+            .services()
             .control
             .delete_device(device.clone())
             .await?;
         self.mark(Part::Devices);
-        self.devices().revoke(&device);
-        Ok(Ok(()))
+        if !removal.workspaces.is_empty() {
+            self.mark(Part::Workspaces);
+        }
+        for conversation in &removal.conversations {
+            self.mark(Part::Conversation(conversation.clone()));
+        }
+        let projects = removal
+            .workspaces
+            .iter()
+            .map(|workspace| workspace.name.clone())
+            .collect();
+        self.devices().revoke(&device, projects);
+        Ok(removal)
     }
 
     /// The user's devices as the web app sees them.

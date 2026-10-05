@@ -7,13 +7,30 @@
 use demi_runner_protocol::wire::{HostArtifact, RunnerPlatform};
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::ids::{DeviceId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
 use super::accounts::TokenHash;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
+
+/// What a device's deletion removed with it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeviceRemoval {
+    /// The workspaces whose device it was.
+    pub workspaces: Vec<RemovedWorkspace>,
+    /// The conversations that targeted those workspaces, which now target
+    /// their directories on the device directly.
+    pub conversations: Vec<ConversationId>,
+}
+
+/// A workspace that went with its device.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemovedWorkspace {
+    pub id: WorkspaceId,
+    pub name: String,
+}
 
 /// A `devices` row.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,31 +162,63 @@ impl ControlService {
         .await
     }
 
-    /// How many workspaces point at the device.
-    pub async fn workspaces_on_device(&self, device: DeviceId) -> Result<u64, StorageError> {
-        self.call(move |connection, _| {
-            let count: i64 = connection.query_row(
-                "SELECT COUNT(*) FROM workspaces WHERE device_id = ?1",
-                [device.as_str()],
-                |row| row.get(0),
-            )?;
-            decode("workspaces", "device_id", u64::try_from(count))
-        })
-        .await
-    }
-
-    /// Deletes the device with its attachments to conversations; its
-    /// exposes go with it.
-    pub async fn delete_device(&self, device: DeviceId) -> Result<(), StorageError> {
+    /// Deletes the device with its attachments to conversations and its
+    /// workspaces, one transaction; its exposes go with it. The workspaces'
+    /// conversations first move off them, each to its workspace's directory
+    /// on the device as a direct device target, which no longer runs
+    /// (`web-api.md` § Workspaces, devices, and attached hosts). A
+    /// workspace is a pointer: no file goes.
+    pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
+            let conversations = {
+                let mut statement = transaction.prepare_cached(
+                    "UPDATE conversations SET target_kind = 'device', target_device_id = w.device_id,
+                       target_path = w.path, target_workspace_id = NULL
+                     FROM workspaces w
+                     WHERE conversations.target_workspace_id = w.id AND w.device_id = ?1
+                     RETURNING id",
+                )?;
+                let mut rows = statement.query([device.as_str()])?;
+                let mut conversations = Vec::new();
+                while let Some(row) = rows.next()? {
+                    conversations.push(decode(
+                        "conversations",
+                        "id",
+                        ConversationId::try_from(row.get::<_, String>("id")?),
+                    )?);
+                }
+                conversations
+            };
+            let workspaces = {
+                let mut statement = transaction.prepare_cached(
+                    "DELETE FROM workspaces WHERE device_id = ?1 RETURNING id, name",
+                )?;
+                let mut rows = statement.query([device.as_str()])?;
+                let mut workspaces = Vec::new();
+                while let Some(row) = rows.next()? {
+                    let id = decode(
+                        "workspaces",
+                        "id",
+                        WorkspaceId::try_from(row.get::<_, String>("id")?),
+                    )?;
+                    workspaces.push(RemovedWorkspace {
+                        id,
+                        name: row.get("name")?,
+                    });
+                }
+                workspaces
+            };
             transaction.execute(
                 "DELETE FROM conversation_hosts WHERE device_id = ?1",
                 [device.as_str()],
             )?;
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;
-            Ok(())
+            Ok(DeviceRemoval {
+                workspaces,
+                conversations,
+            })
         })
         .await
     }

@@ -4,7 +4,11 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { cloudResetAnswerSchema, type CloudReset } from '../api/generated/web-api'
+import {
+  cloudResetAnswerSchema,
+  revokedDeviceSchema,
+  type CloudReset,
+} from '../api/generated/web-api'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
@@ -41,10 +45,13 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     const current = lifetime
     revoking.value.push(id)
     try {
-      await apiRequest(`/devices/${encodeURIComponent(id)}`, {
+      const response = await apiRequest(`/devices/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         signal: current.signal,
       })
+      // The device's projects went with it; the channel brings the lists
+      // without them.
+      await readResponse(response, revokedDeviceSchema)
     } catch (error) {
       if (!current.signal.aborted) {
         reportError('Could Not Revoke Device', error, { userVisible: true })

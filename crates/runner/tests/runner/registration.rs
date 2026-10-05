@@ -166,7 +166,7 @@ async fn a_runner_whose_device_is_revoked_removes_its_installation() {
         let mut host = Host::start(BTreeMap::new()).await.online().await;
         let state = host.state();
         assert!(state.join("runner-token").exists());
-        host.send(Inbound::Revoked {}).await;
+        host.send(Inbound::Revoked { projects: vec![] }).await;
         exited(&mut host).await;
         assert!(!state.exists(), "{}", host.process.output());
     })
@@ -220,7 +220,8 @@ async fn uninstall_removes_the_installation_and_keeps_a_shared_cache_and_other_i
 
         let backend = async {
             assert!(matches!(host.frame().await, Outbound::Revoke {}));
-            host.send(Inbound::Revoked {}).await;
+            let projects = vec!["notes".to_owned()];
+            host.send(Inbound::Revoked { projects }).await;
             // The runner ends its connection, and this end answers its close.
             while host.socket.next().await.is_some() {}
         };
@@ -230,9 +231,13 @@ async fn uninstall_removes_the_installation_and_keeps_a_shared_cache_and_other_i
             .env("DEMI_HOME", &state)
             .env("DEMI_ARTIFACTS", cache.path())
             .env_remove("DEMI_RELEASE_ID")
-            .status();
+            .output();
         let (uninstalled, ()) = tokio::join!(uninstall, backend);
-        assert!(uninstalled.unwrap().success());
+        let uninstalled = uninstalled.unwrap();
+        let printed = String::from_utf8_lossy(&uninstalled.stdout);
+        assert!(uninstalled.status.success(), "{printed}");
+        // It names the project that went with the device.
+        assert!(printed.contains("files stay: notes"), "{printed}");
         assert!(!state.exists());
         assert!(cache.path().join("artifact").exists());
         assert!(other.path().join("runner-token").exists());
@@ -259,11 +264,20 @@ async fn uninstall_without_an_active_runner_asks_the_backend_itself() {
             })
             .await;
             assert!(matches!(host.frame().await, Outbound::Revoke {}));
-            host.send(Inbound::Revoked {}).await;
+            let projects = vec!["notes".to_owned()];
+            host.send(Inbound::Revoked { projects }).await;
             while host.socket.next().await.is_some() {}
         };
-        let (uninstalled, ()) = tokio::join!(manage("uninstall", &state), backend);
-        assert_eq!(uninstalled, Some(0));
+        let uninstall = tokio::process::Command::new(runner_binary())
+            .arg("uninstall")
+            .env("DEMI_HOME", &state)
+            .env_remove("DEMI_RELEASE_ID")
+            .output();
+        let (uninstalled, ()) = tokio::join!(uninstall, backend);
+        let uninstalled = uninstalled.unwrap();
+        let printed = String::from_utf8_lossy(&uninstalled.stdout);
+        assert!(uninstalled.status.success(), "{printed}");
+        assert!(printed.contains("files stay: notes"), "{printed}");
         assert!(!state.exists());
     })
     .await
