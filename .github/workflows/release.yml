@@ -21,9 +21,6 @@ concurrency:
 
 env:
   CARGO_TERM_COLOR: always
-  # The cross tools' pins, as scripts/native/Dockerfile names them.
-  ZIG_VERSION: "0.15.2"
-  CARGO_ZIGBUILD_VERSION: "0.23.4"
 
 jobs:
   version:
@@ -51,80 +48,109 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  build:
-    name: Build ${{ matrix.name }}
+  # Each target's programs in two jobs, the runner and the command programs,
+  # so no runner compiles two targets or two groups one after the other.
+  programs:
+    name: ${{ matrix.group }} ${{ matrix.target }}
     needs: version
     runs-on: ${{ matrix.runner }}
     strategy:
-      # Every platform's result in one run: any failure stops the release
-      # anyway, at the server release that needs them all.
+      # Every job's result in one run: any failure stops the release anyway,
+      # at the server release that needs them all.
       fail-fast: false
       matrix:
+        target:
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+          - x86_64-pc-windows-msvc
+          - aarch64-pc-windows-msvc
+        group: [runner, commands]
         include:
-          - name: macos
+          - target: aarch64-apple-darwin
             runner: macos-26
-            arguments: --target aarch64-apple-darwin --target x86_64-apple-darwin
-          - name: linux-x86_64
+          - target: x86_64-apple-darwin
+            runner: macos-26
+          - target: x86_64-unknown-linux-musl
             runner: ubuntu-26.04
-            arguments: >-
-              --target x86_64-unknown-linux-musl
-              --package demi-runner --package demi-file --package demi-browser
-              --package demi-claude-code --package demi-backend --package demi-machine-manager
-          - name: linux-arm64
+          - target: aarch64-unknown-linux-musl
             runner: ubuntu-26.04-arm
-            arguments: >-
-              --target aarch64-unknown-linux-musl
-              --package demi-runner --package demi-file --package demi-browser
-              --package demi-claude-code --package demi-backend --package demi-machine-manager
-          - name: windows-x86_64
+          - target: x86_64-pc-windows-msvc
             runner: windows-2025
             msvc: amd64
-            arguments: --target x86_64-pc-windows-msvc
-          - name: windows-arm64
+          - target: aarch64-pc-windows-msvc
             runner: windows-11-arm
             msvc: arm64
-            arguments: --target aarch64-pc-windows-msvc
+          - group: runner
+            packages: --package demi-runner
+          - group: commands
+            packages: --package demi-file --package demi-browser --package demi-claude-code
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v7
-      - name: Install Zig and cargo-zigbuild
-        if: runner.os == 'Linux'
-        run: |
-          python3 -m pip install --user --break-system-packages "ziglang==$ZIG_VERSION"
-          cargo install --locked cargo-zigbuild --version "$CARGO_ZIGBUILD_VERSION"
-      - name: Select the pinned Apple SDK
-        if: runner.os == 'macOS'
-        run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
-      - name: Enter the Visual Studio environment
-        if: runner.os == 'Windows'
-        uses: ilammy/msvc-dev-cmd@v1
+      - uses: ./.github/actions/native-tools
         with:
-          arch: ${{ matrix.msvc }}
-          # The pinned toolset, which Visual Studio 2022 carries beside newer
-          # ones it would select by default.
-          toolset: "14.44"
+          msvc: ${{ matrix.msvc }}
       - name: Build
         if: runner.os != 'Windows'
-        run: cargo xtask native build ${{ matrix.arguments }}
+        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
       # Not in bash: Git's /usr/bin/link comes before MSVC's link.exe there.
       - name: Build
         if: runner.os == 'Windows'
         shell: pwsh
-        run: cargo xtask native build ${{ matrix.arguments }}
-      # Relative paths only: GNU tar on Windows reads C:\... as host:path.
-      - name: Collect the executables
+        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
+      # Packaging compresses each program into the cache, by its SHA-256,
+      # where the server release finds the copies made; what it packages is
+      # thrown away.
+      - name: Compress the command programs
+        if: matrix.group == 'commands'
         run: |
-          cd .cache/native-target
-          find . -maxdepth 3 -type f -path '*/release/demi-*' \
-            ! -name '*.d' ! -name '*.pdb' -print > built.txt
-          tar -cf ../../native-${{ matrix.name }}.tar -T built.txt
-      - uses: actions/upload-artifact@v7
+          for package in demi-file demi-browser demi-claude-code; do
+            cargo run --locked --package xtask --no-default-features -- native package \
+              --package "$package" --target ${{ matrix.target }} \
+              --output "$RUNNER_TEMP/packages/$package" --compressed compressed
+          done
+      - uses: ./.github/actions/collect-programs
         with:
-          name: native-${{ matrix.name }}
-          path: native-${{ matrix.name }}.tar
+          name: native-${{ matrix.target }}-${{ matrix.group }}
+      - uses: actions/upload-artifact@v7
+        if: matrix.group == 'commands'
+        with:
+          name: compressed-${{ matrix.target }}
+          path: compressed
           retention-days: 1
+      # The server release and the image of this architecture run the xtask
+      # this job built rather than compiling their own.
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux' && matrix.group == 'runner'
+        with:
+          name: xtask-${{ matrix.target }}
+          path: target/debug/xtask
+          retention-days: 1
+
+  server:
+    name: server ${{ matrix.target }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-26.04
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-26.04-arm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/native-tools
+      - name: Build
+        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} --package demi-backend --package demi-machine-manager
+      - uses: ./.github/actions/collect-programs
+        with:
+          name: native-${{ matrix.target }}-server
 
   web:
     name: Web app
@@ -144,12 +170,11 @@ jobs:
 
   server-release:
     name: Server release
-    needs: [version, build, web]
+    needs: [version, programs, server, web]
     runs-on: ubuntu-26.04
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           pattern: native-*
@@ -157,13 +182,23 @@ jobs:
           merge-multiple: true
       - uses: actions/download-artifact@v8
         with:
+          pattern: compressed-*
+          path: compressed
+          merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
           name: web
           path: ${{ runner.temp }}/web
+      - uses: actions/download-artifact@v8
+        with:
+          name: xtask-x86_64-unknown-linux-musl
+          path: ${{ runner.temp }}/xtask
       - name: Gather the executables
         run: |
-          mkdir -p .cache/native-target
+          chmod +x "$RUNNER_TEMP/xtask/xtask"
+          mkdir -p native-target
           for archive in "$RUNNER_TEMP"/native/native-*.tar; do
-            tar -xf "$archive" -C .cache/native-target
+            tar -xf "$archive" -C native-target
           done
       # Both roots share the release's files, which the release offers at
       # its download location.
@@ -175,8 +210,9 @@ jobs:
             arch=${pair%%:*}
             target=${pair#*:}
             root="$RUNNER_TEMP/roots/$arch"
-            cargo xtask server-release --publish --output "$root" --files files \
-              --downloads "$downloads" --server "$target" --web "$RUNNER_TEMP/web"
+            "$RUNNER_TEMP/xtask/xtask" server-release --publish --output "$root" \
+              --files files --downloads "$downloads" --server "$target" \
+              --web "$RUNNER_TEMP/web" --artifacts native-target --compressed compressed
             tar --zstd -cf "dist/demi-$VERSION-server-linux-$arch.tar.zst" -C "$root" .
           done
       - uses: actions/upload-artifact@v7
@@ -192,7 +228,7 @@ jobs:
 
   image:
     name: Image ${{ matrix.arch }}
-    needs: [version, server-release]
+    needs: [version, programs, server-release]
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: true
@@ -200,8 +236,10 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-26.04
+            target: x86_64-unknown-linux-musl
           - arch: arm64
             runner: ubuntu-26.04-arm
+            target: aarch64-unknown-linux-musl
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
@@ -214,21 +252,23 @@ jobs:
         with:
           name: files
           path: ${{ runner.temp }}/files
+      - uses: actions/download-artifact@v8
+        with:
+          name: xtask-${{ matrix.target }}
+          path: ${{ runner.temp }}/xtask
       - name: Unpack the root
         run: |
+          chmod +x "$RUNNER_TEMP/xtask/xtask"
           mkdir "$RUNNER_TEMP/root"
           tar --zstd -xf "$RUNNER_TEMP/server/demi-$VERSION-server-linux-${{ matrix.arch }}.tar.zst" \
             -C "$RUNNER_TEMP/root"
-      - name: Build xtask for this builder
-        run: cargo build --locked -p xtask
       - name: Build the image
         run: |
           sudo apt-get update
           sudo apt-get install -y debootstrap
-          root="$RUNNER_TEMP/root"
           sudo bash cloud-guest-image/rootfs/build.sh \
-            --xtask target/debug/xtask \
-            --release "$root" \
+            --xtask "$RUNNER_TEMP/xtask/xtask" \
+            --release "$RUNNER_TEMP/root" \
             --files "$RUNNER_TEMP/files" \
             --work "$RUNNER_TEMP/work" \
             --output "$RUNNER_TEMP/out/image"

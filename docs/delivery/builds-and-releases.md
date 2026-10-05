@@ -121,7 +121,7 @@ cargo-xwin with LLVM for the Windows targets. With these tools a developer's
 machine, Linux or macOS, builds every target a change needs; no target needs a
 build machine of its own platform. `scripts/native/Dockerfile` pins their
 versions, and the release workflow installs the same Zig and cargo-zigbuild
-on its Linux runners. Install the same versions on the build machine; on
+on its Linux runners, cargo-zigbuild as its prebuilt executable. Install the same versions on the build machine; on
 macOS:
 
 ```sh
