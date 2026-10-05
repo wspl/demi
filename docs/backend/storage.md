@@ -336,7 +336,7 @@ keeps: the users' blobs and the published command packages.
 
 ```text
 blobs/<userId>/<sha256>                uploads, transcript media, edit copies and commands' outputs
-native/blobs/<sha256>                  a command package's executable or resource archive
+native/blobs/<sha256>                  a command package's or the runner's executable
 native/descriptors/<digest>.json       a command package's descriptor
 native/packages/<id>/<version>.json    the descriptor a package version names
 ```
@@ -344,7 +344,7 @@ native/packages/<id>/<version>.json    the descriptor a package version names
 `DEMI_STORAGE` chooses where the store lives, and the two choices are
 equal: the same keys, the same rules for creating and reading an object, and
 the same publication of the command packages
-([Publish artifacts before enabling commands](../execution/native-runtime.md#publish-artifacts-before-enabling-commands)).
+([Publish packages, then source artifacts on demand](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)).
 
 | `DEMI_STORAGE` | The store | How a runner downloads a command artifact |
 | --- | --- | --- |

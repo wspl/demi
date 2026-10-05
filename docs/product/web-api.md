@@ -960,7 +960,7 @@ later one is the current value of one part of it that changed:
 | `preferences` | `preferences` | A preferences patch |
 | `user` | `user` | The nickname or the email address changes |
 | `workspaces` | `workspaces`, in the user's order | A workspace is created, renamed, moved or deleted |
-| `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, its runner's installs change, or the Cloud's device is made |
+| `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, its runner's installs or installed artifacts change, or the Cloud's device is made |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off |
@@ -976,7 +976,10 @@ now, as the runner last reported them, each as `{ package, name, version,
 phase, done, total }`, where `name` and `version` are the artifact's, such as
 `Chrome for Testing` and `153.0.8010.36`, `phase` is `download` or `unpack`,
 and `done` and `total` count bytes
-([Installation progress](../execution/native-runtime.md#installation-progress))),
+([Installation progress](../execution/native-runtime.md#installation-progress)),
+and `installed`, the artifacts its runner's cache holds, as the runner last
+reported them and kept while it is away, each as `{ package, name, version }`
+([Installed artifacts](../execution/native-runtime.md#installed-artifacts))),
 the summaries of the active and then the
 archived conversations, the Cloud's state, `subagents`, the user's
 [Subagent switch and profiles](#subagents), `plugins`, the plugin list, and

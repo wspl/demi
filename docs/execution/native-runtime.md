@@ -129,26 +129,14 @@ carries; a published release carries all six of the
 | `protocolVersion` | Command-service wire major version. |
 | `operations` | Unique operation IDs supplied by the package, written from the package's Rust operation enum when the release is packaged. |
 | `targets` | The target triples the release carries, each with executable SHA-256 and byte size. |
-| `resources` | What the program needs beside itself, by name, such as `chrome`: each with its `title` and, per target, the zip archive's SHA-256 and byte size and its `entry`. Absent when the package needs nothing. |
 
-A **resource** is a file set a command program needs on the Host and does not
-carry in its executable, too large or released by someone else. For example,
-`demi.browser` needs Chrome for Testing: its descriptor names the resource
-`chrome`, titled `Chrome for Testing 153.0.8010.36`, and for
-`x86_64-unknown-linux-musl` the official zip archive of that version with its
-size and SHA-256 and the entry `chrome-linux64/chrome`, the file the program
-starts. The release carries the archive, and the backend serves it beside the
-executable; the program asks the runner for it when it first needs it
-([Install artifacts](#install-artifacts)). A resource
-name is 1 to 64 lowercase letters, digits and hyphens, starting with a letter;
-an entry is a relative path inside the archive, with `/` between its
-components. A resource may lack targets the release carries: Chrome for
-Testing has no Windows arm64 build, so on that target `demi-browser` fails
-each operation that needs Chrome with `Chrome for Testing 153.0.8010.36 is
-unavailable on aarch64-pc-windows-msvc`, and asks for nothing.
-Packaging writes the resources from the record the package's contract crate
-keeps, for `chrome` the pinned browser release
-([Browser distribution](../browser/browser.md#browser-distribution)).
+Software a program needs beside itself, released by someone else, is the
+program's own concern, not the release's. For example, `demi-browser` needs
+Chrome for Testing: its package's record pins the version and, per platform,
+the official archive's URL, size and SHA-256, and the program asks the runner
+to install it from that URL when the agent runs `demi browser install`
+([Browser distribution](../browser/browser.md#browser-distribution)). The
+release carries only the program.
 
 A package declares its operations once, as the operation enum its service
 routes by, so the descriptor, the service's own answer to `GET /v1/info`, and
@@ -181,7 +169,7 @@ differs is only who asks for it and why:
 | Artifact | Who asks, and when | Where its digest comes from |
 | --- | --- | --- |
 | A package's executable | The runner, before it starts the program | The pinned descriptor |
-| A resource the release carries, such as Chrome | The program, through the [artifacts stream](#the-artifacts-stream), when it first needs it | The release's record, which the program and the descriptor share |
+| Software the program installs from its official source, such as Chrome for Testing | The program, through the [artifacts stream](#the-artifacts-stream), when its user asks, as `demi browser install` does | The program's own record, which also names the source |
 | A file the backend chose at run time, such as a Claude Code CLI version | The program, through the artifacts stream, during the call that named it | The record the backend gave the call |
 
 An artifact has a **form**: `file`, one executable file, or `archive`, a zip
@@ -193,16 +181,18 @@ and its version the package's), and the SHA-256 and size of its bytes. The
 package and the name together are the artifact's **line**: the versions of
 one thing, of which the Host needs only the newest.
 
-For example, the first `demi browser open` on an arm64 Mac:
+For example, the first `demi browser install` on an arm64 Mac:
 
 ```text
 runner   descriptor of demi.browser 0.1.3, target aarch64-apple-darwin
            install demi.browser / program 0.1.3, file          -> starts the program
-program  first tab: Chrome is needed
+           cache? image? no -> asks the backend where, downloads
+program  install: Chrome for Testing 153.0.8010.36 is needed
            artifacts stream: install Chrome for Testing 153.0.8010.36,
-           archive with entry chrome-mac-arm64/.../Google Chrome for Testing
-runner     cache? image? no -> asks the backend where, downloads, unpacks
-           -> answers the entry's path; the program starts Chrome from it
+           archive with entry chrome-mac-arm64/.../Google Chrome for Testing,
+           from https://storage.googleapis.com/chrome-for-testing-public/...
+runner     cache? no -> downloads from that URL, verifies, unpacks
+           -> answers the entry's path
 ```
 
 ### Where an artifact comes from
@@ -212,7 +202,9 @@ The runner takes the first of these that it has for an artifact's digest:
 1. A verified entry of its own cache.
 2. A verified copy that the Host's image preinstalled
    ([Preinstalled artifacts](#preinstalled-artifacts)); a Mac has none.
-3. A download: the runner asks the backend where to download the artifact.
+3. A download from the URL the program's request names, when it names one.
+4. A download from where the backend says, for a package's executable or an
+   artifact the backend attached to a stream.
 
 The download request names the artifact's exact digest and target and the
 live work it serves: the job and the hash of the manifest it runs with, or a
@@ -224,11 +216,9 @@ for one job or one stream.
 The backend answers only for live work on that connection that the artifact
 belongs to:
 
-- an artifact of a package the work binds: for a job, a package its pinned
-  manifest with that hash names; for a stream, the stream's package. A
-  package's artifacts are its executable for the target and each archive its
-  `resources` carry for the target
-  ([Bind an exact package](#bind-an-exact-package));
+- the executable for the target of a package the work binds: for a job, a
+  package its pinned manifest with that hash names; for a stream, the
+  stream's package ([Bind an exact package](#bind-an-exact-package));
 - an artifact the backend attached to the stream when it opened it, with its
   location. For example, the backend opens `claude-code.ensure` with a
   release record and attaches each of the record's downloads, located at the
@@ -338,10 +328,11 @@ Service                        Runner                          Backend
   and one of:
   - `install`: `invocation`, the invocation it serves, which must be one the
     runner started in this service and that has not ended; `name`,
-    `version`, `sha256`, `size`; and `form`, `{ kind: "file" }` or
-    `{ kind: "archive", entry }`. The runner answers `{id, path}`, the
-    absolute path of the file or of the archive's entry, once the artifact
-    is installed.
+    `version`, `sha256`, `size`; `form`, `{ kind: "file" }` or
+    `{ kind: "archive", entry }`; and, for software the program installs
+    from its official source, `url`, an HTTPS URL without credentials. The
+    runner answers `{id, path}`, the absolute path of the file or of the
+    archive's entry, once the artifact is installed.
   - `installed`: `name`. The runner answers `{id, installed}`: the artifacts
     of that line its cache and the image hold, each with its `version`,
     `sha256` and `path`, the cache's newest install first. It reads only the
@@ -354,17 +345,20 @@ Service                        Runner                          Backend
 - The stream ends with the service; a request still waiting fails.
 
 A program uses only the paths the runner answers: it never downloads or
-looks for an artifact itself. It knows what it asks for from its own release
-record, as `demi-browser` knows the pinned Chrome for Testing, or from the
-call's input, as `demi-claude-code` receives the release the backend chose.
+looks for an artifact itself. It knows what it asks for, and from where,
+from its own record, as `demi-browser` knows the pinned Chrome for Testing
+and its official URL, or from the call's input, as `demi-claude-code`
+receives the release the backend chose. A URL the program names cannot
+change what runs either: the runner checks the download against the size
+and SHA-256 the same request gives, as it does every download.
 
 ### Installation progress
 
-The first `demi browser open` on a paired laptop downloads the `demi-browser`
-executable, then Chrome. The user sees both in the conversation's browser
-tab: `Installing demi.browser: program 0.1.3, 40 of 120 MB`, then `Installing
-demi.browser: Chrome for Testing 153.0.8010.36, 120 of 196 MB`, then
-`unpacking`, and the tab opens once Chrome starts. A new Claude Code CLI
+The first `demi browser install` on a paired laptop downloads the
+`demi-browser` executable, then Chrome. The user sees both below the
+running command: `Installing demi.browser: program 0.1.3, 4 of 12 MB`, then
+`Installing demi.browser: Chrome for Testing 153.0.8010.36, 120 of 196 MB`,
+then `unpacking`. A new Claude Code CLI
 installing on the Cloud shows the same way, as `demi.claude-code: Claude Code
 2.1.278`, under the **Requesting** of the conversation that waits for it.
 
@@ -402,20 +396,37 @@ entry names its CLI's package (`cliPackage`,
 [Model configuration and provider inspection](../product/web-api.md#model-configuration-and-provider-inspection)),
 so no page knows a package by name.
 
-Since installing is a step of an artifact's first use, the progress needs no
-separate start: a conversation that never uses the browser downloads no
-Chrome. An install leaves nothing in the transcript; its line goes when the
+Since installing is a step of an artifact's first use, or of the command
+that asks for it, the progress needs no separate start: a Host whose agent
+never installs the browser downloads no Chrome. An install leaves nothing in the transcript; its line goes when the
 list no longer has it.
+
+### Installed artifacts
+
+The runner also reports what its cache holds, so a page can tell what a Host
+has without asking it. For example, after `demi browser install` on a
+laptop, the laptop's device lists `demi.browser: Chrome for Testing
+153.0.8010.36`, and the conversation browser's panel offers new tabs on that
+laptop ([Live browser view](../browser/live-view.md#a-browser-tab-in-the-panel)).
+
+The runner sends `installed { artifacts }`, each with its package, name and
+version, once when it connects and again whenever an install or a retirement
+changes its cache ([The cache](#the-cache)); an executable is listed as the
+others are. The backend keeps each device's last list with the device's
+record, so it outlives the connection: a stopped Cloud keeps showing what
+its cache held, since the cache lies on its home image. The product state
+carries each device's list ([Page synchronization](../product/web-api.md#page-synchronization)).
+A plugin reads it for its own package's artifacts; the runner and the
+backend know no artifact's meaning.
 
 ### Preinstalled artifacts
 
-A Cloud image holds the artifacts of each command package it was built with
-([Cloud images](../cloud/images.md#root-filesystem-contents)), so a new or
-reset Cloud need not download them. The runner looks there before it asks
+A Cloud image holds the executable of each command package it was built
+with ([Cloud images](../cloud/images.md#root-filesystem-contents)), so a new
+or reset Cloud need not download them. The runner looks there before it asks
 the backend: the directory `/opt/demi/artifacts/<sha256>`, named by the
-artifact's SHA-256, holds a `file` as its one file, under the name its
-release gives it, or an `archive` unpacked with its receipt, as the runner's
-own cache holds it. For example, the first `demi file patch` on a
+executable's SHA-256, holds it as its one file, under the name its release
+gives it. For example, the first `demi file patch` on a
 Cloud after a reset finds `/opt/demi/artifacts/<sha256>/demi-file`, checks
 it, and starts the service from there, without asking the backend for a
 location or downloading anything.
@@ -423,11 +434,9 @@ location or downloading anything.
 The copy lies outside the runner's private cache, so the runner checks it as
 it checks a download instead of trusting it as it trusts a cache entry:
 
-- For a `file`, the directory must hold exactly one regular file, with the
-  size and SHA-256 the runner was given. A request does not name the file,
-  so the runner takes the directory's one file. For an `archive`, the
-  receipt must name the archive's SHA-256, and the entry must have the
-  SHA-256 the receipt gives it.
+- The directory must hold exactly one regular file, with the size and
+  SHA-256 the runner was given. A request does not name the file, so the
+  runner takes the directory's one file.
 - The runner checks a copy once per runner process, the first time it needs
   it. A copy that matched is used in place, like a cache hit, and is not read
   again while the process runs.
@@ -934,7 +943,7 @@ toolchain setup. Managed guest images consume the Linux runner. Their image
 lifecycle and execution-surface verification follow the
 [managed host design](../cloud/managed-hosts.md#images).
 
-### Publish artifacts before enabling commands
+### Publish packages, then source artifacts on demand
 
 The backend's artifact module publishes the command packages into the
 deployment's one object store, local or S3, the store that holds the users'
@@ -944,11 +953,35 @@ conditional writes and SHA-256 checksums publication needs, and, for S3, the
 presigned URLs. Before the backend accepts requests, the module completes
 these steps:
 
-1. Validate every release's descriptor, sizes, and hashes.
-2. Upload missing content-addressed blobs. Bound upload concurrency and suppress
-   duplicate uploads.
-3. Publish the descriptor and immutable package/version mapping.
-4. Enable the catalog.
+1. Validate every release's descriptor.
+2. Publish each descriptor and its immutable package/version mapping.
+3. Enable the catalog.
+
+No artifact is stored at startup. An artifact enters the store the first
+time something needs it: a runner asks where to download a package's
+executable, or an installer asks for a runner executable
+([Runner releases](#runner-releases)). The backend then takes it from the
+first source that holds it:
+
+1. The store itself: an artifact needed before is there already.
+2. The release's files, where the server release's `release.json` says
+   ([Backend deployment configuration](#backend-deployment-configuration)):
+   the executable's file read from a directory on the backend's machine, as
+   a developer's release keeps them, or downloaded over HTTPS, following
+   redirects, as GitHub serves a published release's assets.
+
+It checks the bytes, a package executable's compressed copy by what it
+decodes to and anything else by itself, against the size and SHA-256 the
+descriptor or the runner manifest gives, stores them, and answers the request.
+Needs of one artifact that arrive together share one fetch. When no source
+holds the artifact, or a download fails, the request fails with the reason,
+and the next need tries again. For example, the first `demi file read` on a
+Windows laptop paired with a server that runs a published release: the
+runner asks where `demi-file` for `x86_64-pc-windows-msvc` downloads from; the
+store does not hold it yet, so the backend downloads
+`demi-file-x86_64-pc-windows-msvc.exe.zst` from the release's location, checks that it decodes to the executable the descriptor
+names, stores it, and answers with its location; the laptop downloads it from
+there, as every later laptop does.
 
 Conditional writes reject conflicting content. Repeated startup reuses existing
 objects. Interrupted publication can leave unreferenced blobs, but it cannot
@@ -957,30 +990,29 @@ ETags must not be treated as SHA-256 checksums.
 
 Under the store's `native/` keys
 ([The object store](../backend/storage.md#the-object-store)), an executable
-or a resource's archive is `native/blobs/<sha256>`, a descriptor's canonical
-JSON is `native/descriptors/<digest>.json`, and the package/version mapping
-is `native/packages/<id>/<version>.json`, with the version percent-encoded as
-a URI component.
+is `native/blobs/<sha256>`, a descriptor's canonical JSON is
+`native/descriptors/<digest>.json`, and the package/version mapping is
+`native/packages/<id>/<version>.json`, with the version percent-encoded as a
+URI component.
 
-An executable's object holds the executable compressed with zstd and carries
-`Content-Encoding: zstd`; descriptors and mappings are stored as they are.
-HTTP's own content coding is the mechanism: the store serves the stored
-bytes with the coding they were stored with, and the runner's HTTP client
-decodes them ([Install artifacts](#install-artifacts)),
-so no descriptor, manifest or cache entry knows about compression. zstd rather
-than gzip because it matters here: the release runner compresses to about 28%
-of its size with zstd and to 41% with gzip. Packaging compresses each
-executable, at zstd's slowest ordinary level, and the release carries the
-compressed copy beside the executable
-([Packaging](../delivery/builds-and-releases.md#packaging)). Publication stores
-that copy after checking that it decodes to the executable's size and SHA-256,
-so no backend start compresses anything. A resource's archive is stored as
-it is, without a content coding: it is compressed already.
+A package executable's object holds the executable compressed with zstd and
+carries `Content-Encoding: zstd`; descriptors, mappings and runner
+executables are stored as they are. HTTP's own content coding is the
+mechanism: the store serves the stored bytes with the coding they were
+stored with, and the runner's HTTP client decodes them
+([Install artifacts](#install-artifacts)), so no descriptor, manifest or cache
+entry knows about compression. zstd rather than gzip because it matters
+here: the release runner compresses to about 28% of its size with zstd and to
+41% with gzip. Packaging compresses each executable, at zstd's slowest
+ordinary level, and the release's files hold the compressed copy
+([Packaging](../delivery/builds-and-releases.md#packaging)); the backend
+stores that copy once it decodes to the executable's size and SHA-256, so no
+backend compresses anything.
 
 Every object carries `sha256` and `size` metadata, which describe what the
-object stands for: for an executable, the SHA-256 and byte size of the
-executable, not of the compressed bytes; for any other object, a resource's
-archive among them, of its stored bytes. An object already in place counts as the one being published when both
+object stands for: for a package executable, the SHA-256 and byte size of the
+executable, not of the compressed bytes; for any other object, of its stored
+bytes. An object already in place counts as the one being stored when both
 values match, and as a conflict otherwise. The compressed bytes of one
 executable may differ between zstd versions without changing what the object
 is.
@@ -989,19 +1021,30 @@ is.
 
 The backend publishes every command package release in the `commands/`
 directory of its [server release](../delivery/builds-and-releases.md#server-release),
-one release per directory, named as its program, such as `demi-file`. Each
-holds `descriptor.json`; under each target triple, the executable, named as
-its directory, and its compressed copy beside it with `.zst` added; and each
-resource archive the descriptor names as `resources/<sha256>`. Windows
-executables end in `.exe`. An empty `commands/`
-means no command packages: the backend publishes nothing and starts with an
-empty catalog, so conversations offer no `demi file` or `demi browser`
-commands. A root without `commands/` is an error, since only the empty
-directory means none.
+one release per directory, named as its program, such as `demi-file`, which
+holds the release's `descriptor.json`. The programs are not in the server
+release: they are the release's files, one per program and target, at the
+location its `release.json` names, an HTTPS URL or a directory on the
+backend's machine:
+
+```json
+{ "files": "https://github.com/wspl/demi/releases/download/v0.1.3/" }
+```
+
+A file is named by the executable and the target, with `.exe` on Windows: a
+command program's compressed copy as `demi-file-x86_64-unknown-linux-musl.zst`
+or `demi-file-x86_64-pc-windows-msvc.exe.zst`, and a runner executable as it
+is, `demi-runner-aarch64-apple-darwin`
+([Server release](../delivery/builds-and-releases.md#server-release)). An empty
+`commands/` means no command packages: the backend publishes nothing and
+starts with an empty catalog, so conversations offer no `demi file` or
+`demi browser` commands. A root without `commands/` or without
+`release.json` is an error, since only the empty directory means none.
 
 The deployment's object store says where runners download the artifacts
 from ([The object store](../backend/storage.md#the-object-store)). A runner
-receives the location when it asks for an artifact
+receives the location when it asks for an artifact, once the backend has
+sourced it
 ([Where an artifact comes from](#where-an-artifact-comes-from)):
 
 - With an S3 store, a GET URL signed for five minutes.
@@ -1016,10 +1059,9 @@ receives the location when it asks for an artifact
 
 Downloads from a local store need no credentials because they reveal nothing
 a user owns and cannot change what runs. The objects are the released
-programs and the Chrome for Testing archives, which the release publishes
-anyway, and each URL names a digest, which the runner checks the download
-against; the digest reached it over its authenticated connection to the
-backend.
+programs, which the release publishes anyway, and each URL names a digest,
+which the runner checks the download against; the digest reached it over its
+authenticated connection to the backend.
 
 The backend builds its package catalog and artifact resolver from
 `commands/` at startup. A job that `demi host shell` starts on another Host
@@ -1035,6 +1077,20 @@ with a version that carries a digest of its artifacts
 ([Rust executables](../delivery/package-versioning.md#rust-executables)), so
 a backend whose data directory outlives the rebuild publishes it beside the
 earlier one instead of conflicting with it.
+
+### Runner releases
+
+The server release's `runners/` holds the runner release the installers
+install: `manifest.json`, which names the current release, and the release's
+directory with its own `manifest.json`, which lists each target's executable
+by size and SHA-256
+([Packaging](../delivery/builds-and-releases.md#packaging)). The executables
+themselves are the release's files, sourced like a package's. The
+installer's download,
+`GET /runner-artifacts/<release>/<target>/<file>`, answers from the object
+store, sourcing the executable first when the store lacks it, and streams it
+from S3 as from the data directory, since an installer knows only the
+backend.
 
 ## Acceptance
 

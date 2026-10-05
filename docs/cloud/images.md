@@ -1,7 +1,9 @@
 # Build and release Cloud images
 
 A Cloud base supplies the files that gVisor runs: Ubuntu, development tools,
-Chrome, init, and the native runner. It contains no guest kernel or virtual
+init, the native runner and the command programs. It holds no browser: the
+agent installs one with `demi browser install` when it needs it
+([Browser distribution](../browser/browser.md#browser-distribution)). It contains no guest kernel or virtual
 hardware configuration. The manager combines those files with each device's
 persistent storage, as defined in [Managed hosts](managed-hosts.md#images).
 
@@ -38,7 +40,8 @@ No Docker daemon, image pull, archive extraction, or compilation is part of an
 ordinary wake. Transport can copy the release directory to an execution host;
 the manager consumes local verified artifacts. An image release is the
 `image/` directory of a [server release](../delivery/builds-and-releases.md#server-release),
-built from that root's runner and command package releases, and a published
+built from that release's runner and command packages, whose programs for
+the image's target it takes from the release's files, and a published
 release carries it as an asset of its own per architecture
 ([Release workflow](../delivery/builds-and-releases.md#release-workflow)).
 
@@ -65,8 +68,8 @@ stages:
    drive a package manager inside the tree, so a shell script runs them.
 2. The packaging command, `cargo xtask cloud-image package`, completes the
    release. It installs the runner and its `demi` alias from the verified
-   runner release, the command packages from their verified releases, Chrome,
-   and uv. It reads the package inventory from the tree's dpkg database without
+   runner release, the command packages' executables from their verified
+   releases, and uv. It reads the package inventory from the tree's dpkg database without
    running a program of the image: the packages dpkg records as installed,
    with their versions. A package whose installation did not finish fails the
    build; one removed with only its configuration left is not installed. The
@@ -93,14 +96,13 @@ options for a builder behind such a proxy.
 The base is the Ubuntu release that the build script pins, and the manifest
 records it. Its system package inventory has one source:
 [packages.txt](../../cloud-guest-image/rootfs/packages.txt). The build also
-installs standalone `uv` and the shipped native artifacts, pinned Chrome for
-Testing among them as `demi.browser`'s resource. It records resolved versions and hashes rather than maintaining a
-second version list in documentation.
+installs standalone `uv` and the shipped native executables. It records
+resolved versions and hashes rather than maintaining a second version list in
+documentation. Nothing in it is there for the browser: Chrome's system
+libraries and fonts are the agent's to install with Chrome, as on any Linux
+Host ([Browser distribution](../browser/browser.md#browser-distribution)).
 
-Chrome comes from the `demi.browser` release the image embeds, which carries
-the archive pinned in the repository, and is unpacked by the same installer
-that runners use, in the `shared-artifacts` crate, so one implementation
-verifies and unpacks it everywhere. uv is checked
+uv is checked
 against a digest pinned in the repository: a digest fetched from the same
 release as uv would prove only that the download arrived intact, not that it is
 the file that was reviewed. `cloud-guest-image/rootfs/uv.json` pins its
@@ -114,10 +116,9 @@ The image supplies `demi` UID/GID 1000, passwordless sudo, a minimal init
 the native runtime. It makes the runner's two directories on the system layer,
 private to `demi`: `/var/lib/demi` for the job directories and `/var/log/demi`
 for the Host log ([Images](managed-hosts.md#images)). Each embedded command
-package's artifacts lie at their content-addressed paths: an executable as
+package's executable lies at its content-addressed path,
 `/opt/demi/artifacts/<sha256>/<executable>`, the one file in the directory its
-SHA-256 names, and a resource unpacked with its receipt in the directory its
-archive's SHA-256 names, such as Chrome's `chrome-linux64/` tree. The runner
+SHA-256 names. The runner
 starts command services from these copies instead of downloading the
 artifacts, after checking each against the backend's pinned descriptor
 ([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
@@ -176,7 +177,8 @@ Collection and reset pinning follow
 
 Verify the full image on each supported architecture with the shipped runsc
 profile: init reaps orphans, jobs use UID 1000, sudo works, package installation
-and standalone tools work, and Chrome retains its sandbox. Test shell/native
+and standalone tools work, and Chrome, once the agent has installed it and
+its libraries, retains its sandbox. Test shell/native
 commands and the conversation browser through the real managed runner
 connection.
 
