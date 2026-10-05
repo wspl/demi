@@ -1,15 +1,14 @@
 # Builds a release and publishes it as a GitHub release
-# (docs/delivery/builds-and-releases.md § Release workflow). A tag
-# v<workspace version> publishes that release; a manual start builds the
-# workspace version into a draft. Each platform's targets build natively on
+# (docs/delivery/builds-and-releases.md § Release workflow). A manual start
+# on a branch publishes the branch's workspace version and creates its tag
+# v<version>; a run started by a tag could not read the previous release's
+# caches. Each platform's targets build natively on
 # the newest free standard runner of that platform, and every step is a
 # command of the repository: the workflow only orders them and carries files
 # between jobs.
 name: Release
 
 on:
-  push:
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
@@ -37,12 +36,11 @@ jobs:
         run: |
           version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
           [ -n "$version" ] || { echo 'no workspace version in Cargo.toml' >&2; exit 1; }
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            [ "$GITHUB_REF_NAME" = "v$version" ] || {
-              echo "the tag $GITHUB_REF_NAME does not name the workspace version $version" >&2
-              exit 1
-            }
-          elif gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+          [ "$GITHUB_REF_TYPE" = branch ] || {
+            echo 'a release starts on a branch, whose caches the next release reads' >&2
+            exit 1
+          }
+          if gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             echo "v$version has a release already: a published version is immutable" >&2
             exit 1
           fi
@@ -94,6 +92,9 @@ jobs:
       - uses: ./.github/actions/native-tools
         with:
           msvc: ${{ matrix.msvc }}
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: ${{ matrix.target }}-${{ matrix.group }}
       - name: Build
         if: runner.os != 'Windows'
         run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
@@ -146,6 +147,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/native-tools
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: ${{ matrix.target }}
       - name: Build
         run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} --package demi-backend --package demi-machine-manager --package demi-server
       - uses: ./.github/actions/collect-programs
@@ -159,6 +163,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+      # The contracts the packages are built from compile the workspace.
+      - uses: ./.github/actions/rust-cache
       - run: bun install --frozen-lockfile
       # The packages the web app imports are built first, as their dist/.
       - run: bun run build
@@ -311,10 +317,5 @@ jobs:
         run: |
           cd dist
           sha256sum demi-* > SHA256SUMS
-          if [ "$GITHUB_REF_TYPE" = tag ]; then
-            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
-              --title "Demi $VERSION" --generate-notes ./*
-          else
-            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft \
-              --target "$GITHUB_SHA" --title "Demi $VERSION" --generate-notes ./*
-          fi
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "Demi $VERSION" --generate-notes ./*
