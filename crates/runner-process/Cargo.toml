@@ -21,7 +21,10 @@ futures-util.workspace = true
 # The line counts of a change, the diff gix's blob diff is.
 gix-imara-diff = "0.2.5"
 process-wrap.workspace = true
-reqwest = { workspace = true, features = ["rustls", "stream"] }
+# HTTP/2 where the backend's edge offers it over TLS, so concurrent pipes
+# share one connection (`runner.md` § Host operations); plain HTTP stays
+# HTTP/1.1.
+reqwest = { workspace = true, features = ["http2", "rustls", "stream"] }
 serde.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

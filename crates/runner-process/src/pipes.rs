@@ -67,9 +67,14 @@ impl PipeClient {
         }
         origin.set_path("/");
         origin.set_query(None);
+        // Over TLS the edge's ALPN picks HTTP/2 when it offers it, and the
+        // pipes share that one connection (`runner.md` § Host operations);
+        // its windows grow with the link, so a file far away moves at the
+        // link's pace.
         let http = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .connect_timeout(connect_timeout)
+            .http2_adaptive_window(true)
             .build()
             .map_err(io::Error::other)?;
         Ok(Self {
