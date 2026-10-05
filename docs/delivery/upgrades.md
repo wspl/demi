@@ -286,15 +286,17 @@ Installing a server, the first time, is the installer's.
 
 ## Acceptance
 
-An upgrade is accepted on a real Linux server of each architecture, from the
-previous formal release to the new one, with a paired device of another
-platform and a Cloud with a package the user installed:
+Tests protect each mechanism where it is observable, without a real server:
+a database of an earlier schema migrates and one of a newer schema is
+refused; a runner answered with 409 replaces itself and connects with the
+new release, and one whose download does not match stays on its release; the
+backend answers the release check; `demi-server`, with its services
+simulated, returns to the old release when a service does not start and
+finishes or undoes an upgrade interrupted after any step; a page shows the
+restart screen and loads a new build once.
 
-- During the interruption the page shows the restart screen, and afterwards
-  it runs the new build without anyone reloading it, the conversation that ran a turn offers Resume, the
-  paired device is online with the new runner without anyone touching it, and
-  the Cloud runs the new runner and still has the user's package.
-- An upgrade whose backend fails to start, and one killed between the
-  journal's steps, each leave the server on the old release with its data.
-- A rollback after an upgrade that migrated restores the snapshot and
-  starts the old release; one after an upgrade that did not loses nothing.
+One real upgrade accepts the whole: a Linux server with a paired device and
+a Cloud with a package its user installed moves from one release to the
+next. Afterwards the page runs the new build, the device is online with the
+new runner without anyone touching it, and the Cloud runs the new runner and
+still has the package.
