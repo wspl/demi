@@ -40,8 +40,12 @@ struct Cli {
     #[arg(long, hide = true)]
     recover_namespace: bool,
     /// Validate the configuration as a start would, then exit.
-    #[arg(long, conflicts_with_all = ["recover", "recover_namespace", "import"])]
+    #[arg(long, conflicts_with_all = ["recover", "recover_namespace", "import", "check_host"])]
     check_config: bool,
+    /// Check that this machine can run Cloud, as a start would, changing
+    /// nothing, then exit; run in a private mount namespace.
+    #[arg(long, conflicts_with_all = ["recover", "recover_namespace", "import"])]
+    check_host: bool,
     /// Import the release's Cloud image into the state directory beside a
     /// running manager, then exit, as an upgrade does before it stops the
     /// running one.
@@ -137,6 +141,8 @@ pub enum Mode {
     RecoverNamespace,
     /// Validate the configuration, then exit.
     CheckConfig,
+    /// Check the machine, then exit.
+    CheckHost,
     /// Import the configured release's image, then exit.
     Import,
 }
@@ -225,6 +231,8 @@ impl Config {
             Mode::RecoverNamespace
         } else if cli.check_config {
             Mode::CheckConfig
+        } else if cli.check_host {
+            Mode::CheckHost
         } else if cli.import {
             Mode::Import
         } else {

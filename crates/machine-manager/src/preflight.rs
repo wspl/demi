@@ -16,6 +16,10 @@ use crate::{
 
 const PROBE_PREFIX: &str = ".preflight-";
 const PROBE_BYTES: u64 = 32 << 20;
+/// The bit of `CAP_SYS_RESOURCE` in a capability set.
+const SYS_RESOURCE: u32 = 24;
+/// How long a probe sandbox may take to run `/bin/true`.
+const RUNTIME_PROBE: std::time::Duration = std::time::Duration::from_secs(60);
 
 #[derive(Debug, thiserror::Error)]
 pub enum PreflightError {
@@ -29,6 +33,12 @@ pub enum PreflightError {
         "DEMI_MACHINE_MANAGER_DATA must be one filesystem: {0} and {1} are on different filesystems"
     )]
     Filesystems(String, String),
+    #[error(
+        "Cloud requires CAP_SYS_RESOURCE, which the kernel requires to grow a mounted ext4 filesystem; this machine drops it, as some container platforms do"
+    )]
+    SysResource,
+    #[error("Cloud's gVisor sandbox does not run on this machine: {0}")]
+    Runtime(ToolError),
     #[error(transparent)]
     Tool(#[from] ToolError),
     #[error(transparent)]
@@ -53,6 +63,51 @@ pub fn require_private_namespace(_: &OffLoop) -> Result<(), PreflightError> {
     if (own.dev(), own.ino()) == (host.dev(), host.ino()) {
         return Err(PreflightError::SharedNamespace);
     }
+    Ok(())
+}
+
+/// Requires `CAP_SYS_RESOURCE` among the process's effective capabilities.
+pub fn require_sys_resource(_: &OffLoop) -> Result<(), PreflightError> {
+    let status = fs_err::read_to_string("/proc/self/status")?;
+    let effective = status
+        .lines()
+        .find_map(|line| line.strip_prefix("CapEff:"))
+        .and_then(|value| u64::from_str_radix(value.trim(), 16).ok())
+        .ok_or_else(|| io::Error::other("/proc/self/status names no effective capabilities"))?;
+    if effective & (1 << SYS_RESOURCE) == 0 {
+        return Err(PreflightError::SysResource);
+    }
+    Ok(())
+}
+
+/// Runs `/bin/true` in a gVisor sandbox on the host's root, with the
+/// platform the profile uses and no network or cgroup, which shows the
+/// kernel lets runsc run at all; the probe's state goes with it.
+pub async fn probe_runtime(core: &Core) -> Result<(), PreflightError> {
+    let state = core
+        .config
+        .runtime()
+        .join(format!("{PROBE_PREFIX}{}", uuid::Uuid::new_v4()));
+    let created = state.clone();
+    blocking::run(move |off| crate::storage::durable::create_private(off, &created)).await?;
+    let root = format!("--root={}", state.display());
+    let ran = core
+        .tools
+        .run(
+            crate::tools::Tool::Runsc,
+            [
+                root.as_str(),
+                "--platform=systrap",
+                "--network=none",
+                "--ignore-cgroups",
+                "do",
+                "/bin/true",
+            ],
+            Some(RUNTIME_PROBE),
+        )
+        .await;
+    blocking::run(move |off| remove_tree(off, &state)).await?;
+    ran.map_err(PreflightError::Runtime)?;
     Ok(())
 }
 

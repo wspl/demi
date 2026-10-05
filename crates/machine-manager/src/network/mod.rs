@@ -94,21 +94,7 @@ mod linux {
         /// Checks that the pool overlaps no host route, resolves the
         /// backend, enables forwarding, and installs the firewall table.
         pub async fn prepare(&self) -> Result<(), NetworkError> {
-            let routes =
-                netlink::session(|handle| async move { netlink::main_routes(&handle).await })
-                    .await?;
-            for (network, interface) in routes {
-                let default = network.prefix_len() == 0;
-                let ours = interface.is_some_and(|name| name.starts_with(HOST_INTERFACES));
-                if default || ours {
-                    continue;
-                }
-                if self.pool.contains(&network.network()) || network.contains(&self.pool.network())
-                {
-                    return Err(NetworkError::Overlap(network));
-                }
-            }
-            let backend = self.backend_addresses().await?;
+            let backend = self.check().await?;
             let port = self
                 .backend
                 .port_or_known_default()
@@ -125,6 +111,27 @@ mod linux {
                 apply(&nft, &table)
             })
             .await
+        }
+
+        /// Checks that the pool overlaps no host route and that the backend
+        /// resolves to addresses a sandbox can reach, changing nothing;
+        /// answers those addresses.
+        pub async fn check(&self) -> Result<Vec<Ipv4Addr>, NetworkError> {
+            let routes =
+                netlink::session(|handle| async move { netlink::main_routes(&handle).await })
+                    .await?;
+            for (network, interface) in routes {
+                let default = network.prefix_len() == 0;
+                let ours = interface.is_some_and(|name| name.starts_with(HOST_INTERFACES));
+                if default || ours {
+                    continue;
+                }
+                if self.pool.contains(&network.network()) || network.contains(&self.pool.network())
+                {
+                    return Err(NetworkError::Overlap(network));
+                }
+            }
+            self.backend_addresses().await
         }
 
         /// The backend's IPv4 addresses, none of them loopback or
