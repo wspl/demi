@@ -1,0 +1,39 @@
+# Builds the pinned gVisor runtime for arm64, with Demi's seccomp trap fix,
+# and publishes it as the GitHub release runsc-<arm64Version>
+# (docs/delivery/builds-and-releases.md § gVisor runtime). It runs once per
+# pin, started by hand; every release then takes the published archive,
+# which crates/machine-manager/runtime/release.json pins by its SHA-512.
+name: Runtime
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  arm64:
+    name: runsc arm64
+    runs-on: ubuntu-26.04-arm
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+      - name: Install the build's tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends jq git curl python3 build-essential \
+            crossbuild-essential-amd64 clang pkg-config libffi-dev libssl-dev libnuma-dev libbpf-dev patch
+      - name: Build and probe the runtime
+        run: sudo bash crates/machine-manager/scripts/build-runsc-arm64.sh "$RUNNER_TEMP/runtime"
+      - name: Publish the runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(jq -er .arm64Version crates/machine-manager/runtime/release.json)
+          archive="$RUNNER_TEMP/gvisor-arm64.tar.bz2"
+          tar -cjf "$archive" --owner=0 --group=0 -C "$RUNNER_TEMP/runtime" .
+          sum=$(sha512sum "$archive" | cut -d' ' -f1)
+          echo "arm64ArchiveSha512: $sum" >> "$GITHUB_STEP_SUMMARY"
+          gh release create "runsc-$version" "$archive" --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "runsc $version" \
+            --notes "The gVisor runtime $version for arm64. SHA-512: $sum"
