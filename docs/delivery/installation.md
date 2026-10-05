@@ -172,8 +172,9 @@ cgroup v2, which their current releases have.
 
 ## Acceptance
 
-`install.sh` and `setup` run end to end on a fresh Ubuntu machine, behind a reverse proxy the test sets up, and the server serves the
-setup page at its domain with a valid certificate; on Ubuntu also with `s3`.
+`install.sh` and `setup` run end to end on a fresh Ubuntu machine, behind a
+reverse proxy the test sets up, and the server serves the setup page at its
+domain with a valid certificate, with the local store and with `s3`.
 A second `setup` of a finished server is refused, one that stopped before
 the proxy was ready continues, and the server then moves with `demi-server
 upgrade` as any other.
