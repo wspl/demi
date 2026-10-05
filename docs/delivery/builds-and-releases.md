@@ -275,7 +275,9 @@ Each executable has its own kind of release:
   ([Publish packages, then source artifacts on demand](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)).
   Packaging keeps each compressed copy in `.cache/compressed/<sha256>`, named
   by the executable's SHA-256, and reuses it for the same executable, so
-  packaging an unchanged program again compresses nothing. The descriptor's id
+  packaging an unchanged program again compresses nothing. `xtask dev`
+  compresses its development programs at zstd's fast level instead, into
+  `.cache/compressed-fast`, which no release reads. The descriptor's id
   and operations are the ones the
   package's contract crate declares (`command-package-file-protocol` for `demi-file`,
   `command-package-browser-protocol` for `demi-browser`, `command-package-claude-code-protocol` for
