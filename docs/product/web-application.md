@@ -287,8 +287,8 @@ work allows, and never one per item:
   channel, not from a second request.
 - **Several uploads run at once,** up to four at a time: dropping a folder
   uploads its files, whose writes make their folders, and makes only its
-  empty folders; no listing follows each file, the tree takes the new entries
-  from the uploads' answers.
+  empty folders; no listing follows each file: the tree adds each entry it
+  uploaded, with the name and size it sent, when its upload succeeds.
 
 ### Liveness and reconnection
 

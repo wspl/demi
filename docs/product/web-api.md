@@ -355,9 +355,13 @@ once.
 | `delete` | `id` | Removes the tab |
 | `move` | `id, index` | Moves the tab to `index` among the others |
 
-The request answers `{ revision }`: the panel's revision once the changes are
-in it. A change that has nothing to do changes nothing, and a request of only
-such changes answers the current revision: an update, move or removal of a tab the panel no longer has,
+The request answers `{ revision, changed }`: the panel's revision once the
+changes are in it, and whether the request changed the panel. A change that
+has nothing to do changes nothing, and a request of only such changes answers
+the current revision with `changed` false. A page that made a change reads the
+panel only when the answer shows another change it does not hold: `changed`
+with a revision past its own plus one, or `changed` false with a revision past
+its own: an update, move or removal of a tab the panel no longer has,
 and a create of an id the panel has, or had. **A tab's id is used once per
 conversation.** The page makes a new one for each tab it creates, so sending a
 create again after a lost answer creates nothing more, and a create that

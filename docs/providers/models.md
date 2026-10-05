@@ -224,7 +224,10 @@ defines the route.
   Concurrent readers share one request, and a failed load waits one minute
   before it is tried again by itself.
 - A change to any entry's configuration or active account loads the catalog
-  again. An explicit refresh asks with `refresh=true`.
+  again: the page loads it when the synchronization channel's `providers`
+  part changes, whatever changed, an API key that no view shows included,
+  and never as a second request after its own change. An explicit refresh
+  asks with `refresh=true`.
 - Signing out clears the catalog, its timer and its pending request.
 - The catalog does not depend on a conversation. To show whether a model is
   available, the web app combines each entry's health, and whether it needs a
