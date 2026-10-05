@@ -520,7 +520,9 @@ may not have reached the manager yet: the backend completes such a reset's
 disk step when it next starts ([System reset](#system-reset)), so after one
 backend start under the new release no recorded reset names an older base.
 A removal deletes only the base's directory; a Cloud pinned to it is named
-by a generation and keeps it.
+by a generation and keeps it. A base imported ahead of an upgrade that did
+not happen is removed at the manager's next start, like any other base
+nothing needs.
 
 Cross-host storage and execution fencing are a
 [scaled-deployment requirement](../backend/backend.md#deployment-and-user-ownership).
