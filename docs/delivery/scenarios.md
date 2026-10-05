@@ -272,7 +272,9 @@ Chrome, or Claude Code CLI:
 
 The browser suite has two parts, both with the pinned Chrome for Testing that
 `DEMI_TEST_CHROME` names ([Browser suite](#browser-suite)). The Cloud suite
-opens Chrome on a Cloud but does not watch its live view. A test of the
+installs Chrome on a Cloud with `demi browser install`, adds the libraries and
+fonts that command names with `sudo apt-get install`, as an agent would, and
+opens Chrome there, but does not watch its live view. A test of the
 conversation browser's live view on a Cloud is not written, and whether to
 write it is open. Until it is, release acceptance checks what it would observe
 by hand on a real Cloud.

@@ -59,7 +59,8 @@ serves them to the runners itself:
 
 ```sh
 cargo xtask native build --target <triple>...
-cargo xtask server-release --output .cache/release-<build> --target <triple>...
+cargo xtask server-release --output .cache/release-<build> \
+  --files .cache/release-<build>-files --target <triple>...
 cargo build --workspace --all-targets --features demi-runner/test-fixtures
 DEMI_RELEASE=.cache/release-<build> DEMI_INSTANCE_MODE=isolated \
   DEMI_BACKEND_PUBLIC_URL=<URL> DEMI_MACHINE_MANAGER_SOCKET=<socket> \
