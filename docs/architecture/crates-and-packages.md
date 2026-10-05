@@ -281,6 +281,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     `STDIN_CHUNK_BYTES`, `LOG_READ_LINES` and `SERVICE_STDERR_CHARS`;
   - where a Cloud image embeds the command package executables that the
     runner starts in place of downloading them (`image::ARTIFACTS_PATH`).
+  - the lines a runner writes to its console that the installers read
+    (`console`): the pairing code, the paired device with its removal
+    command, and the removed projects
+    ([Installation, pairing and removal](../execution/runner.md#installation-pairing-and-removal)).
 - **Conversation scope:** jobs and service streams carry the
   [command context](../execution/native-runtime.md#command-context);
   `conversation_release` is the one generic release message, and
