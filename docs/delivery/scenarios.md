@@ -302,40 +302,38 @@ the scripted one, configured by four variables:
   reads it: it looks inside the generation a checkpoint saved, and finds a
   boot's host processes to measure their memory.
 
-The suite runs on the manager's host, as root. Its tests share the manager,
-and a backend that starts reconciles the manager, which stops every Cloud, so
-the tests run one at a time. The suite asks the manager directly only for a
-checkpoint, whose time the backend's schedule would otherwise choose, and for
-a device's committed generation, which it looks inside. It
-observes what [Verification](../cloud/managed-hosts.md#verification) lists
-with the resource limits off, except the rows that section leaves to release
+The suite runs on a Linux machine, as root, against a manager of its own that
+`crates/machine-manager/scripts/cloud-suite.sh` starts, never against an
+installed one: the suite's backend reconciles its manager as it starts, which
+stops every Cloud of that manager, and every test makes Clouds of its own,
+which the manager has no operation to delete. The script's manager keeps them
+in a state directory of its own, which the script removes. Its tests share the
+manager, so they run one at a time. The suite asks the manager directly only
+for a checkpoint, whose time the backend's schedule would otherwise choose,
+and for a device's committed generation, which it looks inside. It observes
+what [Verification](../cloud/managed-hosts.md#verification) lists with the
+resource limits off, except the rows that section leaves to release
 acceptance. Each test prints what it measures, apart from its assertions: the
 first boot until the Cloud runs, the first command, Chrome's first and later
 tab, the checkpoint, the stop, the reset, and the peak memory of the Cloud's
 processes on the host.
-
-Against a manager installed on the host:
-
-```sh
-DEMI_TEST_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
-DEMI_TEST_CLOUD_URL=http://<address>:<port> \
-DEMI_TEST_MACHINES_DATA=/opt/demi/data/cloud \
-DEMI_TEST_CLOUD_RELEASE=<server release root> \
-  cargo test --workspace --features demi-runner/test-fixtures --test backend \
-  -- --include-ignored real_cloud --test-threads=1 --nocapture
-```
-
-On a Linux machine without an installed manager,
-`crates/machine-manager/scripts/cloud-suite.sh` runs the same command against a
-manager of its own, as root:
 
 ```sh
 sudo bash crates/machine-manager/scripts/cloud-suite.sh --release <root> \
   --work <directory>
 ```
 
-The script starts the manager the workspace built (`target/debug`), with the
-pinned `runsc` that the workspace's `demi-server runtime` fetches unless
+The script gives the suite the four variables. By default it runs the suite
+with `cargo test` and takes the manager and `demi-server` from the
+workspace's build (`target/debug`). A machine without the workspace's
+toolchain, such as the Lima VM of a Mac, runs programs built for it
+elsewhere: `--programs <directory>` names the directory that holds the
+manager, `demi-server` and the backend's scenario test executable, and the
+script runs that executable instead of `cargo test`
+([Machine manager in Lima](../guides/mac-development.md#machine-manager-in-lima)).
+
+The script starts the manager, with the
+pinned `runsc` that its `demi-server runtime` fetches unless
 `--runsc` names another, and with its resource limits off, in a stand-in execution host: the init of a throwaway PID
 and mount namespace with its own `/run` and an empty, read-only cgroup root,
 sharing the machine's network namespace so that the Clouds reach the backend.

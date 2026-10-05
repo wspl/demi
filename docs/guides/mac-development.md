@@ -90,7 +90,23 @@ ipconfig getifaddr en0
 The script prints the backend's two settings: the forwarded socket and the
 public URL. When the Mac joins another network, its address changes: run the
 script again with the new URL and restart the backend with it. The Clouds use
-the VM's own upstream resolver, the manager's default.
+the VM's own upstream resolver, the manager's default, unless `--dns
+<addresses>` names others. A proxy on the Mac that answers name lookups with
+its own addresses in `198.18.0.0/15`, as a proxy in fake-IP mode does, needs
+it: the manager's network policy refuses that range to the Clouds, so every
+name a Cloud looks up would be unreachable. `--dns 1.1.1.1` then gives the
+Clouds a resolver that answers with the real addresses.
+
+The [Cloud suite](../delivery/scenarios.md#cloud-suite) runs in the VM, as
+root, with programs built for it on the Mac: build the manager, `demi-server`
+and the backend's scenario test executable for the VM's Linux target with the
+Mac's cross tools, then run `cloud-suite.sh` in the VM with `--programs`
+naming their directory and `--release` naming the VM's release root. The
+suite's manager and the installed one cannot run at once, since both own the
+same firewall table, and the script refuses to start while it exists: stop the
+installed service for the run and start it again afterwards. The suite's
+manager has a state directory and a socket of its own, so the installed
+manager's Clouds stay as they were.
 
 `--root <directory>` passes on to the installer, which then only writes the
 unit and the link beneath that directory inside the VM. The script prepares its default
