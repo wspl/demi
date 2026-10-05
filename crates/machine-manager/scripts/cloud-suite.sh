@@ -115,7 +115,8 @@ snapshot() {
   local into=$1
   mkdir -p "$into"
   pgrep -a -f '^runsc' | sort > "$into/runsc-processes" || true
-  pgrep -a -x demi-machine-manager | sort > "$into/managers" || true
+  # pgrep -x compares only the first 15 characters of a process's name.
+  pgrep -a -f '^[^ ]*demi-machine-manager( |$)' | sort > "$into/managers" || true
   awk '{ print $4, $5, $9, $10 }' /proc/self/mountinfo | sort > "$into/mounts"
   for backing in /sys/block/loop*/loop/backing_file; do
     # Without an attached loop device the pattern matches nothing.
