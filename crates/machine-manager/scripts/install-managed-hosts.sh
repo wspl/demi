@@ -1,58 +1,41 @@
 #!/usr/bin/env bash
-# Installs the Cloud machine manager as a systemd service (`setup.md` §
-# Storage and service setup): the pinned runsc, the service's group, its
-# configuration and its unit. The manager executable, the image release and
-# the state directory on its own Linux filesystem must exist already.
+# Installs the Cloud machine manager of a server release as a systemd
+# service (`setup.md` § Storage and service setup): the pinned runsc, the
+# service's group and its unit, which runs the release's manager with the
+# deployment's configuration file. The release, the configuration file and
+# the state directory on its own Linux filesystem must exist already; the
+# installer reads the state directory from the file and writes no setting.
 #
-# With --root DIR the unit and configuration are written beneath DIR for
-# review, and nothing else on the system changes.
+# With --root DIR the unit is written beneath DIR for review, the
+# configuration file is read from beneath DIR, and nothing else on the
+# system changes.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 user=""
-manager=""
-image=""
-backend=""
-dns=""
-data=/var/lib/demi-machine-manager
-socket=/run/demi-cloud/machines.sock
-slots=256
-# The resource limits (managed-hosts.md § Resource limits); off for a host
-# without the cgroup v2 controllers.
-limits=on
+release=""
 root=/
+config=/etc/demi/demi.env
 usage() {
-  echo 'usage: install-managed-hosts.sh --user USER --manager PATH --image DIR --backend-url URL --dns ADDRESSES' >&2
-  echo '         [--data DIR] [--socket PATH] [--slots COUNT] [--limits on|off] [--root DIR]' >&2
+  echo 'usage: install-managed-hosts.sh --user USER --release DIR [--root DIR]' >&2
   exit 2
 }
 while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || usage
   case "$1" in
     --user) user=$2 ;;
-    --manager) manager=$2 ;;
-    --image) image=$2 ;;
-    --backend-url) backend=$2 ;;
-    --dns) dns=$2 ;;
-    --data) data=$2 ;;
-    --socket) socket=$2 ;;
-    --slots) slots=$2 ;;
-    --limits) limits=$2 ;;
+    --release) release=$2 ;;
     --root) root=$2 ;;
     *) echo "unknown argument: $1" >&2; usage ;;
   esac
   shift 2
 done
-[ -n "$user" ] && [ -n "$manager" ] && [ -n "$image" ] && [ -n "$backend" ] && [ -n "$dns" ] || usage
-case "$limits" in
-  on|off) ;;
-  *) echo "--limits is on or off, not $limits" >&2; usage ;;
-esac
-# The unit and the environment file take the values verbatim: none may bring
-# quoting, expansion or a systemd specifier.
-for value in "$user" "$manager" "$image" "$backend" "$dns" "$data" "$socket" "$slots" "$root"; do
+[ -n "$user" ] && [ -n "$release" ] || usage
+# The unit takes the values verbatim: none may bring quoting, expansion or a
+# systemd specifier.
+for value in "$user" "$release" "$root"; do
   [[ "$value" =~ ^[a-zA-Z0-9_./:@,?=+\&-]+$ ]] || { echo "unsupported service configuration characters: $value" >&2; exit 2; }
 done
-for path in "$manager" "$image" "$data" "$socket" "$root"; do
+for path in "$release" "$root"; do
   [[ "$path" = /* ]] || { echo "service paths must be absolute: $path" >&2; exit 2; }
 done
 installing=true
@@ -67,9 +50,17 @@ if $installing; then
     exit 2
   fi
 fi
-[ -x "$manager" ] || { echo "the manager is not an executable: $manager" >&2; exit 2; }
-[ -f "$image/manifest.json" ] || { echo "no Cloud image release at $image" >&2; exit 2; }
+manager="$release/bin/demi-machine-manager"
+[ -x "$manager" ] || { echo "the release has no manager: $manager" >&2; exit 2; }
+[ -f "$release/image/manifest.json" ] || { echo "the release has no Cloud image: $release/image" >&2; exit 2; }
 id "$user" >/dev/null
+settings="${root%/}$config"
+[ -f "$settings" ] || { echo "write the configuration file first: $settings" >&2; exit 2; }
+# The state directory the manager will use: its setting in the file, or its
+# default.
+data=$(sed -n 's/^DEMI_MANAGED_DATA=//p' "$settings" | tail -n 1)
+data=${data:-/var/lib/demi-machine-manager}
+[[ "$data" = /* ]] || { echo "DEMI_MANAGED_DATA must be absolute: $data" >&2; exit 2; }
 [ -d "$data" ] || { echo "prepare a Linux state directory first: $data" >&2; exit 2; }
 filesystem=$(findmnt -n -o FSTYPE -T "$data")
 case "$filesystem" in
@@ -77,37 +68,25 @@ case "$filesystem" in
   *) echo "unsupported Cloud storage filesystem: $filesystem" >&2; exit 2 ;;
 esac
 if $installing; then
-  runsc=$(bash "$here/install-runsc.sh")
-else
-  runsc=$(bash "$here/install-runsc.sh" --path)
+  bash "$here/install-runsc.sh" >/dev/null
 fi
 
 unit="${root%/}/etc/systemd/system/demi-machine-manager.service"
-config="${root%/}/etc/demi-machine-manager/manager.env"
-mkdir -p "$(dirname "$unit")" "$(dirname "$config")"
-# Each file is written beside its place and renamed into it, so a failed
+mkdir -p "$(dirname "$unit")"
+# The unit is written beside its place and renamed into it, so a failed
 # install leaves the previous one whole and no half-written file behind.
-trap 'rm -f "$config.new" "$unit.new"' EXIT
-cat > "$config.new" <<CONFIG
-DEMI_MACHINE_MANAGER_SOCKET=$socket
-DEMI_MACHINE_MANAGER_DATA=$data
-DEMI_MANAGED_RUNSC=$runsc
-DEMI_MANAGED_IMAGE=$image
-DEMI_MANAGED_BACKEND_URL=$backend
-DEMI_MANAGED_DNS=$dns
-DEMI_MANAGED_SLOTS=$slots
-DEMI_MANAGED_LIMITS=$limits
-CONFIG
+trap 'rm -f "$unit.new"' EXIT
 # Type=notify: the manager reports readiness once it has recovered, installed
 # its network policy, imported its base and opened its socket; none of that,
 # nor a stop's drain and its recovery, has a deadline. KillMode=mixed signals
-# the manager alone, which stops its own children while it drains.
+# the manager alone, which stops its own children while it drains. The
+# manager finds its release from where its executable lies.
 cat > "$unit.new" <<UNIT
 [Unit]
 Description=Demi Cloud machine manager
 After=network-online.target
 Wants=network-online.target
-RequiresMountsFor=$data $image $manager
+RequiresMountsFor=$data $release
 
 [Service]
 Type=notify
@@ -122,18 +101,17 @@ Restart=on-failure
 RestartSec=3
 RuntimeDirectory=demi-cloud
 RuntimeDirectoryMode=0750
-EnvironmentFile=/etc/demi-machine-manager/manager.env
+EnvironmentFile=$config
 ExecStart=$manager
 ExecStopPost=$manager --recover
 
 [Install]
 WantedBy=multi-user.target
 UNIT
-chmod 0644 "$config.new" "$unit.new"
+chmod 0644 "$unit.new"
 if ! $installing; then
-  mv "$config.new" "$config"
   mv "$unit.new" "$unit"
-  echo "wrote $unit and $config"
+  echo "wrote $unit"
   exit 0
 fi
 
@@ -150,7 +128,6 @@ fi
 if systemctl is-active --quiet demi-machine-manager.service; then
   systemctl stop demi-machine-manager.service
 fi
-mv "$config.new" "$config"
 mv "$unit.new" "$unit"
 systemctl daemon-reload
 systemctl enable demi-machine-manager.service

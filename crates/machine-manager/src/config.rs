@@ -1,5 +1,7 @@
-//! The manager's configuration (`setup.md` § Configuration): its command line
-//! and the `DEMI_MACHINE_MANAGER_*` and `DEMI_MANAGED_*` variables, validated at
+//! The manager's configuration (`setup.md` § Configuration): its command line,
+//! its own `DEMI_MANAGED_*` variables and the backend's settings it shares
+//! (`DEMI_RELEASE`, `DEMI_BACKEND_PUBLIC_URL`, `DEMI_MACHINE_MANAGER_SOCKET`),
+//! all read from the deployment's one configuration file and validated at
 //! startup. An invalid or unknown setting stops the manager with an error
 //! that names the variable.
 
@@ -17,9 +19,13 @@ use ipnet::Ipv4Net;
 /// Where the manager keeps its runtime bundles, locks and namespace handle.
 pub const RUNTIME_DIRECTORY: &str = "/run/demi-machine-manager";
 
-/// The prefix of the variables the manager owns: one it does not know is an
-/// error, so a setting from another runtime cannot be silently ignored.
-const MANAGED_PREFIX: &str = "DEMI_MANAGED_";
+/// The socket the manager listens on unless `DEMI_MACHINE_MANAGER_SOCKET`
+/// names another, the backend's default too.
+const SOCKET: &str = "/run/demi-cloud/machines.sock";
+
+/// Where the host's own resolvers are named: systemd-resolved's upstream
+/// file, which a host running it has, else the classic one.
+const RESOLVER_FILES: [&str; 2] = ["/run/systemd/resolve/resolv.conf", "/etc/resolv.conf"];
 
 /// The Cloud machine manager: runs users' Cloud machines as gVisor
 /// sandboxes and serves the backend over a Unix socket.
@@ -33,29 +39,38 @@ struct Cli {
     /// Recover inside a saved mount namespace; only the manager starts this.
     #[arg(long, hide = true)]
     recover_namespace: bool,
-    /// The socket the backend connects to; required to serve.
-    #[arg(long, env = "DEMI_MACHINE_MANAGER_SOCKET", value_name = "DEMI_MACHINE_MANAGER_SOCKET", value_parser = absolute)]
-    socket: Option<PathBuf>,
+    /// The server release root, whose image/ holds the Cloud image [default:
+    /// the directory above the one that holds this executable].
+    #[arg(long, env = "DEMI_RELEASE", value_name = "DEMI_RELEASE", value_parser = absolute)]
+    release: Option<PathBuf>,
+    /// The socket the backend connects to.
+    #[arg(
+        long,
+        env = "DEMI_MACHINE_MANAGER_SOCKET",
+        value_name = "DEMI_MACHINE_MANAGER_SOCKET",
+        default_value = SOCKET,
+        value_parser = absolute
+    )]
+    socket: PathBuf,
     /// The persistent state directory, on one filesystem.
     #[arg(
         long,
-        env = "DEMI_MACHINE_MANAGER_DATA",
-        value_name = "DEMI_MACHINE_MANAGER_DATA",
+        env = "DEMI_MANAGED_DATA",
+        value_name = "DEMI_MANAGED_DATA",
         default_value = "/var/lib/demi-machine-manager",
         value_parser = absolute
     )]
     data: PathBuf,
-    /// The pinned runsc executable.
+    /// The pinned runsc executable [default: where install-runsc.sh installs
+    /// it, /opt/gvisor/<pinned version>/runsc].
     #[arg(long, env = "DEMI_MANAGED_RUNSC", value_name = "DEMI_MANAGED_RUNSC", value_parser = absolute)]
-    runsc: PathBuf,
-    /// The directory holding the Cloud image manifest and archive.
-    #[arg(long, env = "DEMI_MANAGED_IMAGE", value_name = "DEMI_MANAGED_IMAGE", value_parser = absolute)]
-    image: PathBuf,
-    /// The only backend a sandbox's runner may connect to.
+    runsc: Option<PathBuf>,
+    /// The backend's public URL: the only backend a sandbox's runner may
+    /// connect to.
     #[arg(
         long,
-        env = "DEMI_MANAGED_BACKEND_URL",
-        value_name = "DEMI_MANAGED_BACKEND_URL",
+        env = "DEMI_BACKEND_PUBLIC_URL",
+        value_name = "DEMI_BACKEND_PUBLIC_URL",
         value_parser = backend_url
     )]
     backend_url: url::Url,
@@ -85,13 +100,13 @@ struct Cli {
     /// How many sandboxes may run at once; each takes four addresses.
     #[arg(long, env = "DEMI_MANAGED_SLOTS", value_name = "DEMI_MANAGED_SLOTS", default_value = "256", value_parser = slots)]
     slots: u16,
-    /// The resolvers a sandbox uses, separated by commas.
+    /// The resolvers a sandbox uses, separated by commas [default: the
+    /// host's own upstream resolvers].
     #[arg(
         long,
         env = "DEMI_MANAGED_DNS",
         value_name = "DEMI_MANAGED_DNS",
         value_delimiter = ',',
-        required = true,
         value_parser = resolver
     )]
     dns: Vec<Ipv4Addr>,
@@ -119,8 +134,7 @@ pub enum Mode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Config {
     pub mode: Mode,
-    /// Present in [`Mode::Serve`].
-    pub socket: Option<PathBuf>,
+    pub socket: PathBuf,
     pub data: PathBuf,
     pub runsc: PathBuf,
     pub image: PathBuf,
@@ -158,8 +172,13 @@ pub enum ConfigError {
     Unknown(String),
     #[error("DEMI_MANAGED_SLOTS exceeds DEMI_MANAGED_SUBNET capacity")]
     SlotsExceedSubnet,
-    #[error("DEMI_MACHINE_MANAGER_SOCKET is required")]
-    MissingSocket,
+    #[error("DEMI_RELEASE is not set and the executable's directory is unknown: {0}")]
+    NoRelease(std::io::Error),
+    #[error(
+        "DEMI_MANAGED_DNS is not set and the host names no resolver a sandbox can use in {}",
+        RESOLVER_FILES.join(" or ")
+    )]
+    NoResolver,
     #[error("{0} applies only with DEMI_MANAGED_LIMITS=on")]
     LimitsOff(&'static str),
 }
@@ -178,7 +197,9 @@ impl Config {
         vars: impl IntoIterator<Item = (OsString, OsString)>,
     ) -> Result<Self, ConfigError> {
         let command = Cli::command();
-        if let Some(name) = demi_shared_cli::unknown_variable(&command, MANAGED_PREFIX, vars) {
+        if let Some(name) =
+            demi_shared_cli::unknown_variable(&command, demi_shared_cli::MANAGED_PREFIX, vars)
+        {
             return Err(ConfigError::Unknown(name));
         }
         let matches = command.try_get_matches_from(args)?;
@@ -194,9 +215,16 @@ impl Config {
         } else {
             Mode::Serve
         };
-        if mode == Mode::Serve && cli.socket.is_none() {
-            return Err(ConfigError::MissingSocket);
-        }
+        let release = match cli.release {
+            Some(release) => release,
+            None => release_of_executable()?,
+        };
+        let runsc = cli.runsc.unwrap_or_else(installed_runsc);
+        let dns = if cli.dns.is_empty() {
+            host_resolvers()?
+        } else {
+            cli.dns
+        };
         let limits = match cli.limits {
             Switch::On => Some(Limits {
                 cpus: cli.cpus,
@@ -219,15 +247,15 @@ impl Config {
             mode,
             socket: cli.socket,
             data: cli.data,
-            runsc: cli.runsc,
-            image: cli.image,
+            runsc,
+            image: release.join("image"),
             backend_url: cli.backend_url,
             limits,
             system_mib: cli.system_mib,
             home_mib: cli.home_mib,
             subnet: cli.subnet,
             slots: cli.slots,
-            dns: cli.dns,
+            dns,
         })
     }
 
@@ -255,6 +283,68 @@ impl Config {
     pub fn home_bytes(&self) -> NonZeroU64 {
         mebibytes(self.home_mib)
     }
+}
+
+/// The server release root this executable lies in: the directory above
+/// its own, as `<root>/bin/demi-machine-manager`.
+fn release_of_executable() -> Result<PathBuf, ConfigError> {
+    let executable = std::env::current_exe().map_err(ConfigError::NoRelease)?;
+    executable
+        .parent()
+        .and_then(Path::parent)
+        .map(Path::to_owned)
+        .ok_or_else(|| {
+            ConfigError::NoRelease(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "the executable lies in no directory of a release",
+            ))
+        })
+}
+
+/// Where `install-runsc.sh` installs the pinned runsc.
+fn installed_runsc() -> PathBuf {
+    let version = crate::sandbox::runsc::RuntimeRelease::pinned().version();
+    let directory = version.strip_prefix("release-").unwrap_or(&version);
+    Path::new("/opt/gvisor").join(directory).join("runsc")
+}
+
+/// The resolvers the host itself forwards to, from the first of
+/// [`RESOLVER_FILES`] that exists.
+fn host_resolvers() -> Result<Vec<Ipv4Addr>, ConfigError> {
+    for path in RESOLVER_FILES {
+        match std::fs::read_to_string(path) {
+            Ok(text) => {
+                let resolvers = usable_resolvers(&text);
+                if resolvers.is_empty() {
+                    return Err(ConfigError::NoResolver);
+                }
+                return Ok(resolvers);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(_) => return Err(ConfigError::NoResolver),
+        }
+    }
+    Err(ConfigError::NoResolver)
+}
+
+/// The `nameserver` addresses of a resolv.conf that a sandbox can use: IPv4
+/// ones that [`resolver`] accepts. A stub on loopback, such as
+/// systemd-resolved's `127.0.0.53`, and IPv6, which the sandbox profile
+/// turns off, are left out.
+fn usable_resolvers(text: &str) -> Vec<Ipv4Addr> {
+    let mut resolvers = Vec::new();
+    for line in text.lines() {
+        let mut words = line.split_whitespace();
+        if words.next() != Some("nameserver") {
+            continue;
+        }
+        if let Some(address) = words.next().and_then(|word| resolver(word).ok())
+            && !resolvers.contains(&address)
+        {
+            resolvers.push(address);
+        }
+    }
+    resolvers
 }
 
 fn mebibytes(value: NonZeroU32) -> NonZeroU64 {
@@ -329,8 +419,8 @@ mod tests {
 
     const REQUIRED: [(&str, &str); 4] = [
         ("DEMI_MANAGED_RUNSC", "/opt/gvisor/runsc"),
-        ("DEMI_MANAGED_IMAGE", "/opt/image"),
-        ("DEMI_MANAGED_BACKEND_URL", "https://backend.example.com"),
+        ("DEMI_RELEASE", "/opt/demi/0.1.3"),
+        ("DEMI_BACKEND_PUBLIC_URL", "https://backend.example.com"),
         ("DEMI_MANAGED_DNS", "1.1.1.1,8.8.8.8"),
     ];
 
@@ -372,6 +462,7 @@ mod tests {
         let config = parse(&[], &[]).expect("valid configuration");
         assert_eq!(config.mode, Mode::Serve);
         assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
+        assert_eq!(config.image, PathBuf::from("/opt/demi/0.1.3/image"));
         assert_eq!(config.data, PathBuf::from("/var/lib/demi-machine-manager"));
         assert_eq!(
             config.working(),
@@ -392,7 +483,7 @@ mod tests {
 
     #[test]
     fn obsolete_malformed_and_insufficient_settings_are_refused() {
-        let refused: [&[(&str, &str)]; 20] = [
+        let refused: [&[(&str, &str)]; 21] = [
             &[("DEMI_MANAGED_FIRECRACKER", "/old")],
             &[("DEMI_MANAGED_SUBNET", "172.30.1.0/16")],
             &[("DEMI_MANAGED_SUBNET", "172.30.0.0/31")],
@@ -414,8 +505,9 @@ mod tests {
             &[("DEMI_MANAGED_HOME_MIB", "+12")],
             &[("DEMI_MANAGED_SLOTS", "16385")],
             &[("DEMI_MANAGED_RUNSC", "runsc")],
-            &[("DEMI_MACHINE_MANAGER_DATA", "state")],
-            &[("DEMI_MANAGED_BACKEND_URL", "file:///tmp/backend")],
+            &[("DEMI_MANAGED_DATA", "state")],
+            &[("DEMI_RELEASE", "release")],
+            &[("DEMI_BACKEND_PUBLIC_URL", "file:///tmp/backend")],
             &[("DEMI_MANAGED_LIMITS", "yes")],
         ];
         for settings in refused {
@@ -453,10 +545,13 @@ mod tests {
     }
 
     #[test]
-    fn serving_needs_a_socket_and_recovery_does_not() {
+    fn the_socket_and_the_runsc_default_to_where_the_backend_and_the_installer_put_them() {
         let command = Cli::command();
         let mut args = vec![OsString::from("demi-machine-manager"), "--recover".into()];
-        for (name, value) in REQUIRED {
+        for (name, value) in REQUIRED
+            .into_iter()
+            .filter(|(name, _)| *name != "DEMI_MANAGED_RUNSC")
+        {
             let flag = command
                 .get_arguments()
                 .find(|argument| argument.get_env().is_some_and(|env| env == name))
@@ -464,14 +559,27 @@ mod tests {
                 .expect("a flag");
             args.push(format!("--{flag}={value}").into());
         }
-        let recovering = Config::parse(args.clone(), Vec::new()).expect("recovery needs no socket");
+        let recovering = Config::parse(args, Vec::new()).expect("valid configuration");
         assert_eq!(recovering.mode, Mode::Recover);
-        args.remove(1);
-        assert!(matches!(
-            Config::parse(args, Vec::new()),
-            Err(ConfigError::MissingSocket)
-        ));
+        assert_eq!(recovering.socket, PathBuf::from(SOCKET));
+        assert!(
+            recovering.runsc.starts_with("/opt/gvisor/") && recovering.runsc.ends_with("runsc"),
+            "{}",
+            recovering.runsc.display()
+        );
         assert!(parse(&["--recover", "--recover-namespace"], &[]).is_err());
+    }
+
+    #[test]
+    fn the_hosts_resolvers_are_the_ones_a_sandbox_can_use() {
+        let conf = "# systemd-resolved\nnameserver 127.0.0.53\nnameserver 185.12.64.1\n\
+                    nameserver 2a01:4ff:ff00::add:1\nnameserver 185.12.64.2\nnameserver 185.12.64.1\n\
+                    search example.test\n";
+        assert_eq!(
+            usable_resolvers(conf),
+            [Ipv4Addr::new(185, 12, 64, 1), Ipv4Addr::new(185, 12, 64, 2)]
+        );
+        assert!(usable_resolvers("nameserver 127.0.0.53\noptions edns0\n").is_empty());
     }
 
     /// The installer's unit and settings (`scripts/install-managed-hosts.sh`),
@@ -508,13 +616,31 @@ mod tests {
         let device = loopdev::attach(&off, &image).unwrap();
         mount::ext4(&off, &device.path(), &data).unwrap();
         drop(device);
-        let release = directory.path().join("image");
-        std::fs::create_dir(&release).unwrap();
-        std::fs::write(release.join("manifest.json"), "{}").unwrap();
-        let manager = directory.path().join("demi-machine-manager");
+        // A server release with its manager and its image.
+        let release = directory.path().join("release");
+        std::fs::create_dir_all(release.join("bin")).unwrap();
+        std::fs::create_dir_all(release.join("image")).unwrap();
+        std::fs::write(release.join("image/manifest.json"), "{}").unwrap();
+        let manager = release.join("bin/demi-machine-manager");
         std::fs::write(&manager, "#!/bin/sh\n").unwrap();
         std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // The deployment's configuration file, which the backend reads too.
         let root = directory.path().join("root");
+        let settings = root.join("etc/demi/demi.env");
+        std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
+        std::fs::write(
+            &settings,
+            format!(
+                "DEMI_BACKEND_PUBLIC_URL=https://backend.example.com\n\
+                 DEMI_INSTANCE_MODE=isolated\n\
+                 DEMI_MANAGED_DATA={}\n\
+                 DEMI_MANAGED_DNS=1.1.1.1,8.8.8.8\n\
+                 DEMI_MANAGED_SLOTS=16\n\
+                 DEMI_MANAGED_LIMITS=off\n",
+                data.display()
+            ),
+        )
+        .unwrap();
         let script = concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/scripts/install-managed-hosts.sh"
@@ -523,19 +649,8 @@ mod tests {
             .arg(script)
             .arg("--root")
             .arg(&root)
-            .args(["--user", "root", "--manager"])
-            .arg(&manager)
-            .arg("--image")
+            .args(["--user", "root", "--release"])
             .arg(&release)
-            .args([
-                "--backend-url",
-                "https://backend.example.com",
-                "--dns",
-                "1.1.1.1,8.8.8.8",
-                "--data",
-            ])
-            .arg(&data)
-            .args(["--slots", "16", "--limits", "off"])
             .output()
             .unwrap();
         assert!(
@@ -555,7 +670,7 @@ mod tests {
             "PrivateMounts=yes".to_owned(),
             "UMask=0077".to_owned(),
             "Group=demi-cloud".to_owned(),
-            "EnvironmentFile=/etc/demi-machine-manager/manager.env".to_owned(),
+            "EnvironmentFile=/etc/demi/demi.env".to_owned(),
             format!("ExecStart={manager}"),
             format!("ExecStopPost={manager} --recover"),
         ] {
@@ -576,31 +691,31 @@ mod tests {
             "{warnings}"
         );
 
-        // Each setting is one this manager knows, passed as the flag clap
-        // gives it, and together they configure the manager.
-        let settings =
-            std::fs::read_to_string(root.join("etc/demi-machine-manager/manager.env")).unwrap();
+        // The file configures this manager: each of the manager's settings
+        // passed as the flag clap gives it, the backend's own left to the
+        // backend, and the release the one the manager's executable lies in.
         let command = Cli::command();
-        let mut args = vec![OsString::from("demi-machine-manager")];
+        let mut args = vec![
+            OsString::from("demi-machine-manager"),
+            format!("--release={}", release.display()).into(),
+        ];
         let mut vars = Vec::new();
-        for line in settings.lines() {
+        for line in std::fs::read_to_string(&settings).unwrap().lines() {
             let (name, value) = line.split_once('=').expect("a setting is NAME=VALUE");
+            vars.push((OsString::from(name), OsString::from(value)));
             let flag = command
                 .get_arguments()
                 .find(|argument| argument.get_env().is_some_and(|env| env == name))
-                .and_then(clap::Arg::get_long)
-                .unwrap_or_else(|| panic!("{name} is not a setting of this manager"));
-            args.push(format!("--{flag}={value}").into());
-            vars.push((OsString::from(name), OsString::from(value)));
+                .and_then(clap::Arg::get_long);
+            if let Some(flag) = flag {
+                args.push(format!("--{flag}={value}").into());
+            }
         }
         let config = Config::parse(args, vars).expect("the installed settings");
         assert_eq!(config.mode, Mode::Serve);
         assert_eq!(config.data, data);
-        assert_eq!(config.image, release);
-        assert_eq!(
-            config.socket.as_deref(),
-            Some(Path::new("/run/demi-cloud/machines.sock"))
-        );
+        assert_eq!(config.image, release.join("image"));
+        assert_eq!(config.socket, PathBuf::from(SOCKET));
         assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
         assert_eq!(
             config.dns,
@@ -608,11 +723,6 @@ mod tests {
         );
         assert_eq!(config.slots, 16);
         assert_eq!(config.limits, None);
-        assert!(
-            config.runsc.starts_with("/opt/gvisor"),
-            "{}",
-            config.runsc.display()
-        );
         mount::unmount(&off, &data).unwrap();
     }
 }

@@ -16,7 +16,6 @@ use axum::http::header::{CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTEN
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_backend_runners::install::{backend_url, powershell_script, shell_script};
-use demi_backend_runners::local_store::LocalArtifact;
 use demi_command_protocol::{is_digest, is_target};
 use demi_runner_protocol::release::RunnerRelease;
 use demi_web_api_protocol::error::ErrorCode;
@@ -165,10 +164,10 @@ pub(super) async fn artifact(
     immutable_download(opened).await
 }
 
-/// A development store's command artifact, by its SHA-256, as object
-/// storage serves it: an executable in the content coding, a resource's
-/// archive as it is. Only one that a release the backend loaded carries; any
-/// other digest answers 404.
+/// A local store's command artifact, by its SHA-256, as S3 would serve it:
+/// the stored bytes with the content coding they were stored with, an
+/// executable's compressed copy in zstd and a resource's archive as it is.
+/// Only one that the backend published; any other digest answers 404.
 pub(super) async fn native_artifact(
     State(state): State<AppState>,
     Path(sha256): Path<String>,
@@ -181,28 +180,22 @@ pub(super) async fn native_artifact(
         ));
     };
     let artifact = artifact.map_err(|error| ApiError::internal_message(error.to_string()))?;
-    match artifact {
-        LocalArtifact::Encoded(encoded) => {
-            let headers = [
-                (
-                    CONTENT_TYPE,
-                    HeaderValue::from_static("application/octet-stream"),
-                ),
-                (
-                    CONTENT_ENCODING,
-                    HeaderValue::from_static(demi_shared_artifacts::CONTENT_CODING),
-                ),
-                (CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE)),
-            ];
-            Ok((headers, encoded).into_response())
-        }
-        LocalArtifact::Plain(path) => {
-            let opened = tokio::fs::File::open(&path).await.map_err(|error| {
-                ApiError::internal_message(format!("{}: {error}", path.display()))
-            })?;
-            immutable_download(opened).await
-        }
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE));
+    headers.insert(CONTENT_LENGTH, HeaderValue::from(artifact.meta.size));
+    if let Some(coding) = artifact
+        .attributes
+        .get(&object_store::Attribute::ContentEncoding)
+    {
+        let coding = HeaderValue::from_str(coding.as_ref())
+            .map_err(|error| ApiError::internal_message(error.to_string()))?;
+        headers.insert(CONTENT_ENCODING, coding);
     }
+    Ok((headers, Body::from_stream(artifact.into_stream())).into_response())
 }
 
 /// `file`, an immutable executable or archive, as a download: its whole length in large

@@ -1,60 +1,54 @@
-//! The object store that holds the blobs (`storage.md` § The object store):
-//! the data directory of a single-backend deployment, or the S3 bucket
-//! `DEMI_OBJECT_STORE_CONFIG` names, reached through `object_store` either
-//! way, so a blob is the object `blobs/<user>/<sha256>`. S3's credentials
-//! come from the standard AWS environment variables, a web identity token,
-//! or container or instance metadata; no profile file is read.
+//! The deployment's one object store (`storage.md` § The object store): the
+//! data directory, or the S3 bucket the `DEMI_S3_*` settings name, reached
+//! through `object_store` either way. It holds the users' blobs and the
+//! published command packages under the same keys whichever it is. S3's
+//! credentials come from the standard AWS environment variables, a web
+//! identity token, or container or instance metadata; no profile file is
+//! read.
 
 use std::path::Path;
 use std::sync::Arc;
 
 use object_store::ObjectStore;
 use object_store::aws::{AmazonS3Builder, Checksum};
-use object_store::local::LocalFileSystem;
-use serde::Deserialize;
+use object_store::signer::Signer;
 use url::Url;
 
 use crate::ObjectError;
+use crate::local::LocalObjects;
 
-/// Where `DEMI_OBJECT_STORE_CONFIG` puts the object store: an S3 bucket.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// Where the deployment's object store lives (`DEMI_STORAGE`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Storage {
+    /// The data directory.
+    Local,
+    /// An S3 bucket.
+    S3(S3Config),
+}
+
+/// The bucket of an S3 store.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct S3Config {
     pub bucket: String,
     pub region: String,
     /// An S3-compatible service instead of AWS, over HTTPS.
-    #[serde(default)]
     pub endpoint: Option<Url>,
     /// Names the bucket in the request path instead of the host name.
-    #[serde(default)]
     pub force_path_style: bool,
 }
 
-/// Why the S3 configuration cannot be used.
+/// Why the S3 settings cannot be used.
 #[derive(Debug, thiserror::Error)]
-pub enum S3ConfigError {
-    #[error("{0}")]
-    Read(#[from] std::io::Error),
-    #[error("{0}")]
-    Invalid(String),
-}
+#[error("{0}")]
+pub struct S3ConfigError(String);
 
 impl S3Config {
-    /// The configuration in the JSON file at `path`, checked.
-    pub async fn read(path: &Path) -> Result<Self, S3ConfigError> {
-        let bytes = tokio::fs::read(path).await?;
-        let config: Self = serde_json::from_slice(&bytes)
-            .map_err(|error| S3ConfigError::Invalid(error.to_string()))?;
-        config.check()?;
-        Ok(config)
-    }
-
-    /// Checks what the JSON's shape cannot: a bucket and a region, and an
+    /// Checks what the settings' types cannot: a bucket and a region, and an
     /// HTTPS endpoint.
     pub fn check(&self) -> Result<(), S3ConfigError> {
         if self.bucket.is_empty() || self.region.is_empty() {
-            return Err(S3ConfigError::Invalid(
-                "bucket and region must not be empty".into(),
+            return Err(S3ConfigError(
+                "DEMI_S3_BUCKET and DEMI_S3_REGION must not be empty".into(),
             ));
         }
         if self
@@ -62,8 +56,8 @@ impl S3Config {
             .as_ref()
             .is_some_and(|endpoint| endpoint.scheme() != "https")
         {
-            return Err(S3ConfigError::Invalid(
-                "the endpoint must be an HTTPS URL".into(),
+            return Err(S3ConfigError(
+                "DEMI_S3_ENDPOINT must be an HTTPS URL".into(),
             ));
         }
         Ok(())
@@ -99,19 +93,43 @@ impl S3Config {
     }
 }
 
-/// The object store: the S3 bucket `s3` names, or the data directory.
-pub async fn open(
-    data_dir: &Path,
-    s3: Option<&S3Config>,
-) -> Result<Arc<dyn ObjectStore>, ObjectError> {
-    if let Some(config) = s3 {
-        return Ok(Arc::new(config.builder().build()?));
+/// The opened object store, and for S3 the signer of the download URLs a
+/// runner fetches a command artifact from; a local store's downloads go
+/// through the backend instead.
+#[derive(Clone)]
+pub struct Objects {
+    pub store: Arc<dyn ObjectStore>,
+    pub signer: Option<Arc<dyn Signer>>,
+}
+
+/// Opens the object store `storage` names: the S3 bucket, or the data
+/// directory, which it creates when it does not exist.
+pub async fn open(data_dir: &Path, storage: &Storage) -> Result<Objects, ObjectError> {
+    match storage {
+        Storage::S3(config) => {
+            let bucket = Arc::new(config.builder().build()?);
+            Ok(Objects {
+                store: bucket.clone(),
+                signer: Some(bucket),
+            })
+        }
+        Storage::Local => {
+            let root = data_dir.to_owned();
+            // Making and resolving the directory is file system work.
+            let local = tokio::task::spawn_blocking(move || {
+                std::fs::create_dir_all(&root).map_err(|error| object_store::Error::Generic {
+                    store: "the local object store",
+                    source: error.into(),
+                })?;
+                LocalObjects::new(&root)
+            })
+            .await??;
+            Ok(Objects {
+                store: Arc::new(local),
+                signer: None,
+            })
+        }
     }
-    let root = data_dir.to_owned();
-    // Resolving the directory is file system work.
-    let local =
-        tokio::task::spawn_blocking(move || LocalFileSystem::new_with_prefix(root)).await??;
-    Ok(Arc::new(local))
 }
 
 #[cfg(test)]
@@ -144,24 +162,18 @@ mod tests {
         assert_eq!(fake.written(), [format!("blobs/ana/{first}")]);
     }
 
-    #[tokio::test]
-    async fn the_s3_configuration_names_a_bucket_and_region_over_https() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("s3.json");
-        let write = |text: &str| std::fs::write(&path, text).unwrap();
-        write(
-            r#"{"bucket":"demi","region":"eu-west-1","endpoint":"https://objects.example.com","forcePathStyle":true}"#,
-        );
-        let config = S3Config::read(&path).await.unwrap();
-        assert!(config.force_path_style);
-        for refused in [
-            r#"{"bucket":"demi","region":"eu-west-1","endpoint":"http://objects.example.com"}"#,
-            r#"{"bucket":"","region":"eu-west-1"}"#,
-            r#"{"bucket":"demi","region":"eu-west-1","profile":"default"}"#,
-            r#"{"region":"eu-west-1"}"#,
-        ] {
-            write(refused);
-            assert!(S3Config::read(&path).await.is_err(), "{refused}");
-        }
+    #[test]
+    fn the_s3_settings_name_a_bucket_and_region_over_https() {
+        let config = |bucket: &str, endpoint: Option<&str>| S3Config {
+            bucket: bucket.to_owned(),
+            region: "eu-west-1".to_owned(),
+            endpoint: endpoint.map(|endpoint| endpoint.parse().unwrap()),
+            force_path_style: true,
+        };
+        config("demi", Some("https://objects.example.com"))
+            .check()
+            .unwrap();
+        assert!(config("demi", Some("http://objects.example.com")).check().is_err());
+        assert!(config("", None).check().is_err());
     }
 }

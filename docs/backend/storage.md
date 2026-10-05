@@ -16,6 +16,7 @@ Backend data directory (DEMI_BACKEND_DATA)
 +-- conversations/<id>.sqlite      one agent tree per conversation
 +-- blobs/<userId>/<sha256>        user-owned bytes: uploads, media, edit copies, commands' outputs (object store)
 +-- native/                        the published command packages (object store)
++-- .attributes/                   the local store's object attributes
 +-- instance-secret                seals credentials, unless configured
 ```
 
@@ -358,11 +359,13 @@ backend reaches the store through the `object_store` library, so one code
 path serves a local directory and S3, and conditional creation and checksums
 come from the library. An object carries metadata, such as the SHA-256 and
 size of a command artifact; S3 keeps it with the object, and locally it lies
-in a file beside the object's own, since a file has no place for it.
+in a file of its own under `.attributes/` in the data directory, written
+before the object, since a file has no place for it. No listing of the
+store shows those files.
 
 A local object counts as written only once it is durable, as an S3 object is
-when its PUT succeeds. The store writes the object and its metadata to
-temporary files, syncs them, renames them into place, and syncs their
+when its PUT succeeds. The store writes the object and its attributes to
+temporary files, syncs them, links them into place, and syncs their
 directory. For example, a session writes a tool's image, then commits the
 checkpoint that references it; if power fails right after the commit, the
 image is on disk, so the committed block never points at a missing or

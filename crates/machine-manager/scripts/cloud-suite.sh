@@ -16,20 +16,23 @@
 # Build the Cargo selection first, so the manager is in target/debug:
 #   cargo build --workspace --all-targets --features demi-runner/test-fixtures
 #
-# Usage: sudo bash crates/machines/scripts/cloud-suite.sh --image DIR
-#          --native CONFIG --work DIR [--runsc PATH] [--dns ADDRESSES]
+# --release names the server release root whose image/ the manager imports
+# and whose commands/, the command packages the image embeds, the backend
+# publishes.
+#
+# Usage: sudo bash crates/machine-manager/scripts/cloud-suite.sh --release DIR
+#          --work DIR [--runsc PATH] [--dns ADDRESSES]
 #          [--address ADDRESS] [-- TEST-ARGUMENTS...]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repository="$(cd "$here/../../.." && pwd)"
-image=""
-native=""
+release=""
 work=""
 runsc=""
 dns=""
 address=""
 usage() {
-  echo 'usage: cloud-suite.sh --image DIR --native CONFIG --work DIR [--runsc PATH]' >&2
+  echo 'usage: cloud-suite.sh --release DIR --work DIR [--runsc PATH]' >&2
   echo '         [--dns ADDRESSES] [--address ADDRESS] [-- TEST-ARGUMENTS...]' >&2
   exit 2
 }
@@ -37,8 +40,7 @@ while [ "$#" -gt 0 ]; do
   [ "$1" = -- ] && { shift; break; }
   [ "$#" -ge 2 ] || usage
   case "$1" in
-    --image) image=$2 ;;
-    --native) native=$2 ;;
+    --release) release=$2 ;;
     --work) work=$2 ;;
     --runsc) runsc=$2 ;;
     --dns) dns=$2 ;;
@@ -47,10 +49,10 @@ while [ "$#" -gt 0 ]; do
   esac
   shift 2
 done
-[ -n "$image" ] && [ -n "$native" ] && [ -n "$work" ] || usage
+[ -n "$release" ] && [ -n "$work" ] || usage
 [ "$(id -u)" = 0 ] || { echo 'run as root' >&2; exit 2; }
-[ -f "$image/manifest.json" ] || { echo "no Cloud image release at $image" >&2; exit 2; }
-[ -f "$native" ] || { echo "no native configuration at $native" >&2; exit 2; }
+[ -f "$release/image/manifest.json" ] || { echo "no Cloud image release at $release/image" >&2; exit 2; }
+[ -d "$release/commands" ] || { echo "no command packages at $release/commands" >&2; exit 2; }
 manager="$repository/target/debug/demi-machine-manager"
 [ -x "$manager" ] || {
   echo "no manager at $manager: build the selection first" >&2
@@ -210,11 +212,11 @@ stand_in_namespace=$(readlink "/proc/$stand_in/ns/pid_for_children")
 nsenter --mount="/proc/$stand_in/ns/mnt" --pid="/proc/$stand_in/ns/pid_for_children" -- \
   taskset -c "$cpu" unshare --mount --propagation slave -- \
   taskset -c "$cpus" env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+  DEMI_RELEASE="$release" \
   DEMI_MACHINE_MANAGER_SOCKET="$socket" \
-  DEMI_MACHINE_MANAGER_DATA="$state" \
+  DEMI_MANAGED_DATA="$state" \
   DEMI_MANAGED_RUNSC="$runsc" \
-  DEMI_MANAGED_IMAGE="$image" \
-  DEMI_MANAGED_BACKEND_URL="$url" \
+  DEMI_BACKEND_PUBLIC_URL="$url" \
   DEMI_MANAGED_DNS="$dns" \
   DEMI_MANAGED_SLOTS=4 \
   DEMI_MANAGED_LIMITS=off \
@@ -246,7 +248,7 @@ set +e
   DEMI_TEST_MACHINES_SOCKET="$socket" \
     DEMI_TEST_CLOUD_URL="$url" \
     DEMI_TEST_MACHINES_DATA="$state" \
-    DEMI_TEST_CLOUD_NATIVE="$native" \
+    DEMI_TEST_CLOUD_RELEASE="$release" \
     cargo test --workspace --features demi-runner/test-fixtures --test backend \
     -- --include-ignored real_cloud --test-threads=1 --nocapture "$@"
 ) 2>&1 | tee "$work/suite.log"

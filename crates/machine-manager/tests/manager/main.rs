@@ -117,6 +117,10 @@ impl Settings {
         std::fs::set_permissions(&runsc, std::fs::Permissions::from_mode(0o755)).unwrap();
         let notify = directory.join("notify");
         let data = directory.join("data");
+        // The manager imports its server release's image/.
+        let release = directory.join("release");
+        std::fs::create_dir(&release).unwrap();
+        std::os::unix::fs::symlink(image, release.join("image")).unwrap();
         Self {
             variables: vec![
                 ("PATH", "/usr/sbin:/usr/bin:/sbin:/bin".to_owned()),
@@ -125,11 +129,11 @@ impl Settings {
                     "DEMI_MACHINE_MANAGER_SOCKET",
                     directory.join("machines.sock").display().to_string(),
                 ),
-                ("DEMI_MACHINE_MANAGER_DATA", data.display().to_string()),
+                ("DEMI_MANAGED_DATA", data.display().to_string()),
                 ("DEMI_MANAGED_RUNSC", runsc.display().to_string()),
-                ("DEMI_MANAGED_IMAGE", image.display().to_string()),
+                ("DEMI_RELEASE", release.display().to_string()),
                 (
-                    "DEMI_MANAGED_BACKEND_URL",
+                    "DEMI_BACKEND_PUBLIC_URL",
                     "http://203.0.113.10:3271".to_owned(),
                 ),
                 ("DEMI_MANAGED_DNS", "1.1.1.1".to_owned()),
