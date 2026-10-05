@@ -139,16 +139,28 @@ pub enum ArtifactReply {
     Installed(Vec<InstalledArtifact>),
 }
 
-/// How far an install has come: `done` bytes of the artifact's size have
-/// arrived, or the archive arrived whole and is being unpacked.
+/// How far an install has come: `done` bytes of the artifact's `total`
+/// have arrived, or the archive arrived whole and is being unpacked.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(tag = "phase", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ArtifactProgress {
     Download {
-        #[garde(range(max = MAX_SAFE_INTEGER))]
+        #[garde(range(max = MAX_SAFE_INTEGER), custom(not_past(total)))]
         done: u64,
+        #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
+        total: u64,
     },
     Unpack,
+}
+
+/// Checks that `done` bytes are not more than the `total`.
+fn not_past(total: &u64) -> impl FnOnce(&u64, &()) -> garde::Result + '_ {
+    move |done, _| {
+        if done > total {
+            return Err(garde::Error::new("is past the total"));
+        }
+        Ok(())
+    }
 }
 
 /// What an answer to a request says: how far an install has come, which
