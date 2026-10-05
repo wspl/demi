@@ -1144,7 +1144,9 @@ pub struct FileStat {
     pub is_fifo: Option<bool>,
 }
 
-/// One entry of a directory listing, with its file type.
+/// One entry of a directory listing, with its type, size and modification
+/// time as the entry's own metadata reports them, as `lstat` does: a
+/// symbolic link's are the link's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirEntry {
@@ -1152,6 +1154,8 @@ pub struct DirEntry {
     pub is_file: bool,
     pub is_directory: bool,
     pub is_symbolic_link: bool,
+    pub size: u64,
+    pub mtime: Timestamp,
 }
 
 /// A working tree's changes, as `git status` lists them. The web app

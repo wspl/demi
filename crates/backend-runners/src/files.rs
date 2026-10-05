@@ -51,36 +51,109 @@ pub async fn read_text_file(fs: &dyn HostFs, path: &str) -> Result<String, TextE
     Ok(text_of(fs.read_file(path).await?)?)
 }
 
-/// A directory's entries with their metadata. Each entry's metadata is
-/// awaited before the next is asked for, so one listing cannot flood the
-/// runner's queue; an entry that disappears meanwhile is left out.
+/// A directory's entries with their metadata, which the listing carries,
+/// so the whole answer is one request to the Host (`runner.md` § Host
+/// operations).
 pub async fn browse_directory(
     fs: &dyn HostFs,
     path: &str,
 ) -> Result<Vec<DirectoryEntry>, HostError> {
-    let names = fs.read_dir(path).await?;
-    let directory = path.trim_end_matches('/');
-    let mut entries = Vec::with_capacity(names.len());
-    for entry in names {
-        let stat = match fs.lstat(&format!("{directory}/{}", entry.name)).await {
-            Ok(stat) => stat,
-            Err(error) if error.code() == Some("ENOENT") => continue,
-            Err(error) => return Err(error),
-        };
-        entries.push(DirectoryEntry {
+    let entries = fs.read_dir(path).await?;
+    Ok(entries
+        .into_iter()
+        .map(|entry| DirectoryEntry {
             name: entry.name,
             is_directory: entry.kind == FileKind::Directory,
-            is_symbolic_link: stat.kind == FileKind::Symlink,
-            size: stat.size,
-            modified_at: stat.modified,
-        });
-    }
-    Ok(entries)
+            is_symbolic_link: entry.kind == FileKind::Symlink,
+            size: entry.size,
+            modified_at: entry.modified,
+        })
+        .collect())
 }
 
 #[cfg(test)]
 mod tests {
+    use std::time::{Duration, UNIX_EPOCH};
+
+    use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture};
+    use demi_runner_protocol::wire::Outbound;
+    use tokio::sync::mpsc;
+
     use super::*;
+
+    /// The modification time `path` itself has, in milliseconds.
+    fn modified(path: &std::path::Path) -> i64 {
+        let time = std::fs::symlink_metadata(path).unwrap().modified().unwrap();
+        let milliseconds = time.duration_since(UNIX_EPOCH).unwrap().as_millis();
+        i64::try_from(milliseconds).unwrap()
+    }
+
+    // About a tenth of a second: a real runner process lists the directory.
+    #[tokio::test(flavor = "local")]
+    async fn a_listing_is_one_request_to_the_host_and_carries_each_entrys_own_metadata() {
+        let (tap, mut replies) = mpsc::channel(1 << 10);
+        let fixture = RunnerFixture::start(FixtureOptions {
+            tap: Some(tap),
+            ..FixtureOptions::default()
+        })
+        .await;
+        let directory = fixture.home_dir().join("listed");
+        std::fs::create_dir(&directory).unwrap();
+        std::fs::write(directory.join("notes.txt"), "four").unwrap();
+        let written = UNIX_EPOCH + Duration::from_millis(1_600_000_000_123);
+        std::fs::File::options()
+            .write(true)
+            .open(directory.join("notes.txt"))
+            .unwrap()
+            .set_modified(written)
+            .unwrap();
+        std::fs::create_dir(directory.join("photos")).unwrap();
+        // A link's own size is its target's name, nine bytes, not the four
+        // the target holds.
+        std::os::unix::fs::symlink("notes.txt", directory.join("link")).unwrap();
+        while replies.try_recv().is_ok() {}
+
+        let host = fixture.host();
+        let path = format!("{}/listed", fixture.home());
+        let entries = browse_directory(&host, &path).await.unwrap();
+
+        let mut requests = 0;
+        while let Ok(message) = replies.try_recv() {
+            if matches!(message, Outbound::FsOk(_) | Outbound::FsError { .. }) {
+                requests += 1;
+            }
+        }
+        assert_eq!(requests, 1, "one request lists the directory");
+        let mut listed: Vec<_> = entries
+            .iter()
+            .map(|entry| {
+                (
+                    entry.name.as_str(),
+                    entry.is_directory,
+                    entry.is_symbolic_link,
+                    entry.size,
+                    entry.modified_at.as_millisecond(),
+                )
+            })
+            .collect();
+        listed.sort_unstable();
+        let photos = directory.join("photos");
+        assert_eq!(
+            listed,
+            [
+                ("link", false, true, 9, modified(&directory.join("link"))),
+                ("notes.txt", false, false, 4, 1_600_000_000_123),
+                (
+                    "photos",
+                    true,
+                    false,
+                    std::fs::symlink_metadata(&photos).unwrap().len(),
+                    modified(&photos),
+                ),
+            ]
+        );
+        fixture.stop().await;
+    }
 
     #[test]
     fn text_is_utf8_without_a_nul_byte_up_to_the_snapshot_limit() {
