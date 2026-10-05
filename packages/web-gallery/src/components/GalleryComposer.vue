@@ -31,6 +31,7 @@ import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protoc
 import { demoModels, demoProviders, usageAt } from '../fixtures/catalog'
 import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { productWould } from '../product-would'
+import type { SentMessage } from '../turn-flow'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
 
@@ -78,7 +79,7 @@ const props = withDefaults(
   },
 )
 const emit = defineEmits<{
-  send: [content: UserContentBlock[]]
+  send: [content: UserContentBlock[], message: SentMessage]
   queue: [content: UserContentBlock[]]
   stop: []
   configure: []
@@ -219,6 +220,8 @@ function submit() {
   if (!content.length) {
     return
   }
+  // The message as the composer shows it, which the page holds until the server confirms it.
+  const message: SentMessage = { text: draft.value, attachments: sent }
   draft.value = ''
   carried.value = []
   while (attached.value.length) {
@@ -227,7 +230,7 @@ function submit() {
   if (props.running) {
     emit('queue', content)
   } else {
-    emit('send', content)
+    emit('send', content, message)
   }
 }
 
