@@ -13,6 +13,10 @@ pub struct Settings {
 }
 
 impl Settings {
+    pub fn new(variables: Vec<(String, String)>) -> Self {
+        Self { variables }
+    }
+
     pub fn read(path: &Path) -> io::Result<Self> {
         let variables = dotenvy::from_path_iter(path)
             .map_err(|error| io::Error::other(format!("{}: {error}", path.display())))?
@@ -46,6 +50,18 @@ impl Settings {
     /// The machine manager's state directory.
     pub fn manager_data(&self) -> io::Result<PathBuf> {
         self.directory("DEMI_MANAGED_DATA")
+    }
+
+    /// The configuration file's text: one `NAME="value"` per line, which
+    /// systemd's environment files and `read` both read.
+    pub fn file(&self) -> String {
+        self.variables
+            .iter()
+            .map(|(name, value)| {
+                let value = value.replace('\\', "\\\\").replace('"', "\\\"");
+                format!("{name}=\"{value}\"\n")
+            })
+            .collect()
     }
 
     /// `program` with the configuration as its environment, as systemd
