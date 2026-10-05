@@ -33,6 +33,9 @@ const RELEASE: &str = "release.json";
 /// Where packaging keeps the executables' compressed copies, each named by
 /// the executable's SHA-256, so packaging again compresses nothing.
 const COMPRESSED: &str = ".cache/compressed";
+/// Where `xtask dev` keeps the copies it compresses at the fast level, apart
+/// from a release's, so no release reuses one.
+const COMPRESSED_FAST: &str = ".cache/compressed-fast";
 /// What a compressed copy's name adds to its executable's.
 const COMPRESSED_SUFFIX: &str = ".zst";
 /// How many hexadecimal digits of its artifacts' digest a development
@@ -210,8 +213,14 @@ impl Built {
     }
 
     /// Adds the compressed copy of each executable the release carries,
-    /// beside it, taken from `cache`, where a copy missing is made first.
-    async fn add_compressed(&mut self, cache: &Path, cancel: &CancellationToken) -> Result<(), Error> {
+    /// beside it, taken from `cache`, where a copy missing is made first
+    /// with `effort`.
+    async fn add_compressed(
+        &mut self,
+        cache: &Path,
+        effort: demi_shared_artifacts::Effort,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
         let executables: Vec<ReleaseFile> = self
             .files
             .iter()
@@ -221,7 +230,7 @@ impl Built {
         for executable in executables {
             let source = cache.join(&executable.digest.sha256);
             if !tokio::fs::try_exists(&source).await? {
-                compress(&executable.source, &source).await?;
+                compress(&executable.source, &source, effort).await?;
             }
             let digest = demi_shared_artifacts::digest(&source, u64::MAX, cancel).await?;
             let mut name = executable.path.clone().into_os_string();
@@ -251,16 +260,20 @@ impl Built {
     }
 }
 
-/// Writes `executable` compressed for its download to `destination`, which
-/// holds the copy only once it is whole.
-async fn compress(executable: &Path, destination: &Path) -> Result<(), Error> {
+/// Writes `executable` compressed with `effort` for its download to
+/// `destination`, which holds the copy only once it is whole.
+async fn compress(
+    executable: &Path,
+    destination: &Path,
+    effort: demi_shared_artifacts::Effort,
+) -> Result<(), Error> {
     if let Some(parent) = destination.parent() {
         tokio::fs::create_dir_all(parent).await?;
     }
     eprintln!("Compressing {}", executable.display());
     let bytes = tokio::fs::read(executable).await?;
     let encoded = tokio::task::spawn_blocking(move || {
-        demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Published)
+        demi_shared_artifacts::encode_blocking(&bytes, effort)
     })
     .await
     .map_err(std::io::Error::other)??;
@@ -362,7 +375,9 @@ pub async fn package(spec: &Spec<'_>, cancel: &CancellationToken) -> Result<Stri
         Release::Runner => runner(spec.output, built, cancel).await,
         Release::Package { id, operations } => {
             let compressed = Caches::directory(spec.caches.compressed.as_deref(), COMPRESSED)?;
-            built.add_compressed(&compressed, cancel).await?;
+            built
+                .add_compressed(&compressed, demi_shared_artifacts::Effort::Published, cancel)
+                .await?;
             let version = built.version(spec.versioning)?;
             command_package(spec.output, id, &version, operations, built, cancel).await
         }
@@ -394,7 +409,11 @@ pub async fn development_package(
         )
         .await?;
     built
-        .add_compressed(&crate::repository().join(COMPRESSED), cancel)
+        .add_compressed(
+            &crate::repository().join(COMPRESSED_FAST),
+            demi_shared_artifacts::Effort::Fast,
+            cancel,
+        )
         .await?;
     let version = built.version(Versioning::Development)?;
     command_package(output, id, &version, operations, built, cancel).await?;
