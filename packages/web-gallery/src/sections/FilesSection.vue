@@ -15,7 +15,7 @@ import FileTree from '@demicodes/web-ui/files/FileTree.vue'
 import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
 import { uploadsOf, type FileUploads, type UploadClash, type UploadItem, type UploadPlacement } from '@demicodes/web-ui/files/file-uploads'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import { TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
+import { SHOTS_DIR, TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, screenshotsSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
@@ -401,6 +401,9 @@ type TreeHandle = { scrollToRow: (path: string) => void; scrollBy: (px: number) 
 const pinnedTwo = ref<TreeHandle | null>(null)
 const pinnedLeaving = ref<TreeHandle | null>(null)
 const pinnedPast = ref<TreeHandle | null>(null)
+const pinnedFolder = ref<TreeHandle | null>(null)
+const shotsSource = screenshotsSource()
+const shotsSelected = ref<string | null>(`${SHOTS_DIR}/screenshot-01.png`)
 
 /** Once the listings are in, scroll each pinned-path specimen to its state. */
 async function scrollPinnedSpecimens() {
@@ -413,6 +416,9 @@ async function scrollPinnedSpecimens() {
   pinnedLeaving.value?.scrollBy(3 * 29 + 14)
   // Past: everything in src scrolled out, nothing pins.
   pinnedPast.value?.scrollToRow(`${TREE_ROOT}/tests`)
+  // A pinned folder to click: ten of its screenshots scrolled out under it.
+  pinnedFolder.value?.scrollToRow(SHOTS_DIR)
+  pinnedFolder.value?.scrollBy(10 * 29)
   // A drop into oauth, its row scrolled under the stack like the path pinned above.
   dropPinned.value?.scrollToRow(`${TREE_ROOT}/src/auth/providers/oauth`)
 }
@@ -501,7 +507,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Pinned Path"
-        note="The workspace name always heads the tree. Its lower fade is absent at scroll position zero and appears only when rows scroll underneath the pinned stack. Under it pin the directories the rows at the top sit in, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. A closed directory never pins. Scroll each tree to move through the states."
+        note="The workspace name always heads the tree. Its lower fade is absent at scroll position zero and appears only when rows scroll underneath the pinned stack. Under it pin the directories the rows at the top sit in, each once its own row scrolls out above and until its last row has too; the deepest slides out under the ones above. A closed directory never pins. A click on a pinned directory folds it as a click on its row would, and its row then rests where the pinned copy was. Scroll each tree to move through the states."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="at the top">
@@ -522,6 +528,11 @@ onMounted(() => {
           <GallerySpecimen variant="past, at a closed directory">
             <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
               <FileTree ref="pinnedPast" :source="rowsSource()" :root="TREE_ROOT" :selected="TREE_SELECTED" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="pinned folder, folding">
+            <div class="gallery-frame h-[16rem] w-[220px] overflow-hidden bg-surface-editor">
+              <FileTree ref="pinnedFolder" :source="shotsSource" :root="TREE_ROOT" :selected="shotsSelected" @open="shotsSelected = $event" />
             </div>
           </GallerySpecimen>
         </div>
