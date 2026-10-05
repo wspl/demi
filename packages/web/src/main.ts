@@ -52,14 +52,22 @@ const router = createRouter({
 const resources = useResources(pinia)
 const conversations = useConversations(pinia)
 const session = useSession(pinia)
+const product = useProduct(pinia)
 const startup = new AbortController()
-const restored = session.restore(startup.signal).catch((error) => {
+// The synchronization channel starts beside the session check
+// (`web-application.md` § Requests for one action); a page the check finds
+// signed out has no channel.
+product.start()
+const restored = session.restore(startup.signal).then(() => {
+  if (!session.signedIn) {
+    product.stop()
+  }
+}).catch((error) => {
   // Hot replacement can dispose this composition root before startup finishes.
   if (!startup.signal.aborted) {
     throw error
   }
 })
-const product = useProduct(pinia)
 const preferences = usePreferences(pinia)
 const stopIdentity = watch(
   () => session.user?.id,

@@ -25,7 +25,8 @@ import {
   composerRemoteAttachment,
   isComposerFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
-import { connectConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
+import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
+import { loadDraft } from '../api/drafts'
 import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
@@ -34,6 +35,7 @@ import {
   conversationUpdateSchema,
   transcriptSchema,
   type AttachHost,
+  type AttachedHosts,
   type ConversationBatch,
   type ConversationDraft,
   type ConversationPatch,
@@ -44,6 +46,7 @@ import {
   type ReadRequest,
   type RenameHost,
   type SidebarReorder,
+  type Transcript,
 } from '../api/generated/web-api'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { createConversationUploads } from './uploads'
@@ -301,6 +304,12 @@ export const useConversations = defineStore('conversations', () => {
       }
       items.value = next
       cache.retain(new Set(next.map((item) => item.id)))
+      // Reads started for an address the state does not name are nobody's.
+      for (const id of earlyReads.keys()) {
+        if (!next.some((item) => item.id === id)) {
+          earlyReads.delete(id)
+        }
+      }
       const active = next.find((item) => item.id === product.activeConversationId)
       if (active && active.load !== 'failed' && !cache.get(active.id)) {
         void activate(active.id)
@@ -672,6 +681,12 @@ export const useConversations = defineStore('conversations', () => {
     product.activeConversationId = id
     const conversation = items.value.find((item) => item.id === id)
     if (!conversation) {
+      // The first load opens the conversation its address names by its id,
+      // before the channel's first state names it (`web-application.md`
+      // § Requests for one action).
+      if (id && !product.snapshot && !earlyReads.has(id)) {
+        earlyReads.set(id, openingReads(id, lifetime.signal))
+      }
       return
     }
     // A conversation the page shows already stays shown while it opens: the
@@ -696,33 +711,80 @@ export const useConversations = defineStore('conversations', () => {
     await activate(id)
   }
 
+  /**
+   * The reads an opening needs that name only the conversation: its
+   * transcript, its attached hosts and its draft, sent together
+   * (`web-application.md` § Requests for one action).
+   */
+  interface OpeningReads {
+    transcript: Promise<Transcript>
+    hosts: Promise<AttachedHosts>
+    draft: Promise<ConversationDraft>
+  }
+
+  /** Reads the first load started for the conversation its address names, before the channel's first state. */
+  const earlyReads = new Map<string, OpeningReads>()
+
+  function openingReads(id: string, signal: AbortSignal): OpeningReads {
+    const path = `/conversations/${encodeURIComponent(id)}`
+    const reads = {
+      transcript: apiRequest(`${path}/transcript`, { signal }).then((response) => readResponse(response, transcriptSchema)),
+      hosts: apiRequest(`${path}/hosts`, { signal }).then((response) => readResponse(response, attachedHostsSchema)),
+      draft: loadDraft(id, signal),
+    }
+    // The opening that takes them reports their failures; one never taken has nobody to tell.
+    for (const read of Object.values(reads)) {
+      read.catch(() => {})
+    }
+    return reads
+  }
+
+  /** The conversation's socket address. */
+  function streamUrl(id: string): string {
+    const url = new URL(`/api/conversations/${encodeURIComponent(id)}/stream`, window.location.href)
+    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+    return url.toString()
+  }
+
   async function loadConversation(
     conversation: Conversation,
     entry: CachedConversation,
   ): Promise<void> {
     const { controller } = entry
+    const { signal } = controller
+    // The socket's connection is made beside the reads, for a conversation
+    // whose record names a model, which is one that can open; its `open`
+    // waits for the transcript, which the socket's frames continue.
+    const runnable = conversation.persistence === 'synced' && !conversation.archived &&
+      !!conversation.model.providerId && !!conversation.model.modelId
+    let early: ReturnType<typeof connectConversationClient> | null = runnable ? connectConversationClient(streamUrl(conversation.id), signal) : null
+    early?.catch(() => {})
+    const discardEarly = () => {
+      void early?.then((client) => client.disconnect(), () => {})
+      early = null
+    }
     try {
-      await restoreDraft(conversation, controller.signal)
+      const draftRestored = restoreDraft(conversation, signal)
       if (conversation.persistence !== 'synced') {
+        await draftRestored
         conversation.load = 'ready'
         return
       }
+      const reads = earlyReads.get(conversation.id) ?? openingReads(conversation.id, signal)
+      earlyReads.delete(conversation.id)
       // Share global model discovery, but render history before it completes.
       // Model load errors belong to the composer, not transcript restoration.
       const modelsLoaded = product.loadModels().catch(() => {})
-      controller.signal.throwIfAborted()
-      // Read beside the history; a submission it confirms clears the draft after it.
-      const draftRead = draftSync.read(conversation)
-      // Its failure fails the load below, unless an earlier one did.
-      draftRead.catch(() => {})
-      await loadHosts(conversation, controller.signal)
-      const response = await apiRequest(
-        `/conversations/${encodeURIComponent(conversation.id)}/transcript`,
-        { signal: controller.signal },
-      )
-      const transcript = await readResponse(response, transcriptSchema)
-      await draftRead
-      controller.signal.throwIfAborted()
+      // Taken after this web browser's own copy; a submission it confirms
+      // clears the draft after it, so the transcript waits for it.
+      const draftRead = draftRestored.then(() => draftSync.read(conversation, reads.draft))
+      const hostsRead = reads.hosts.then((answer) => {
+        signal.throwIfAborted()
+        conversation.attachedHosts = answer.hosts
+      })
+      hostsRead.catch(() => {})
+      const [transcript] = await Promise.all([reads.transcript, draftRead])
+      signal.throwIfAborted()
       conversation.blocks = transcript.blocks
       conversation.failures = transcript.failures ?? {}
       reconcileSubmission(conversation)
@@ -738,8 +800,9 @@ export const useConversations = defineStore('conversations', () => {
       }))
       updateLiveStatus(conversation)
       conversation.load = 'ready'
+      await hostsRead
       await modelsLoaded
-      controller.signal.throwIfAborted()
+      signal.throwIfAborted()
       const pick = composerModel(
         resources.providerInfos,
         resources.modelsFor(),
@@ -747,17 +810,16 @@ export const useConversations = defineStore('conversations', () => {
         conversation.model.modelId,
       )
       if (conversation.archived || pick.kind !== 'ready') {
+        discardEarly()
         return
       }
       const runtime = new ConversationRuntime({
         state: conversation,
-        connect: (signal) => {
-          const url = new URL(
-            `/api/conversations/${encodeURIComponent(conversation.id)}/stream`,
-            window.location.href,
-          )
-          url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-          return connectConversationClient(url.toString(), signal)
+        // The first connection is the one made beside the reads.
+        connect: (attempt) => {
+          const made = early
+          early = null
+          return made ? takeConnection(made, attempt) : connectConversationClient(streamUrl(conversation.id), attempt)
         },
         onEvent: (next) => {
           applyConversationEvent(conversation, next)
@@ -767,7 +829,8 @@ export const useConversations = defineStore('conversations', () => {
       entry.runtime = runtime
       await runtime.connect()
     } catch (error) {
-      if (!controller.signal.aborted) {
+      discardEarly()
+      if (!signal.aborted) {
         conversation.load = 'failed'
         conversation.lastError =
           error instanceof Error ? error.message : String(error)
@@ -1467,6 +1530,7 @@ export const useConversations = defineStore('conversations', () => {
   function stopAll(): void {
     pendingChanges.value = []
     cache.clear()
+    earlyReads.clear()
     draftSync.stop()
     lifetime.abort()
     lifetime = new AbortController()

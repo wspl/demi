@@ -915,6 +915,83 @@ function serveHistory(gate?: ReturnType<typeof deferred<void>>) {
   return requested.promise
 }
 
+/**
+ * Serves an opening's reads, each held until the test answers it: the
+ * transcript, the attached hosts and the draft. `arrived` names each as it
+ * reaches the backend.
+ */
+function holdOpening() {
+  const held = {
+    transcript: deferred<void>(),
+    hosts: deferred<void>(),
+    draft: deferred<void>(),
+    arrived: [] as string[],
+  }
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    const read = /\/(transcript|hosts|draft)$/.exec(path)?.[1]
+    if (read && (init?.method ?? 'GET') === 'GET') {
+      held.arrived.push(read)
+      if (read === 'draft') {
+        await held.draft.promise
+        return originalFetch(input, init)
+      }
+      await held[read as 'transcript' | 'hosts'].promise
+      return read === 'hosts' ? Response.json({ hosts: [] }) : Response.json({ blocks: [], subagents: [] })
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  return held
+}
+
+test('opening a conversation sends its reads at once and shows the transcript before its hosts answer', async () => {
+  const held = holdOpening()
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  const opened = store.activate(FIRST)
+  await waitFor(() => held.arrived.length === 3)
+  expect(held.arrived.toSorted()).toEqual(['draft', 'hosts', 'transcript'])
+  held.draft.resolve()
+  held.transcript.resolve()
+  await waitFor(() => first.load === 'ready')
+  held.hosts.resolve()
+  await opened
+})
+
+test('a conversation that can run makes its socket beside its reads', async () => {
+  records[0]!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+  await changed(FIRST)
+  const held = holdOpening()
+  const store = useConversations()
+  const opened = store.activate(FIRST)
+  await waitFor(() => held.arrived.includes('transcript'))
+  expect(channels.opened.map((channel) => new URL(channel.url).pathname)).toContain(`/api/conversations/${FIRST}/stream`)
+  held.draft.resolve()
+  held.hosts.resolve()
+  held.transcript.resolve()
+  await opened
+})
+
+test('the first load reads the conversation its address names before the channel\'s first state', async () => {
+  useConversations().stopAll()
+  useProduct().stop()
+  const held = holdOpening()
+  held.draft.resolve()
+  held.hosts.resolve()
+  held.transcript.resolve()
+  const store = useConversations()
+  await store.activate(FIRST)
+  // Nothing names the conversation yet, and its reads are on their way.
+  expect(store.items).toEqual([])
+  await waitFor(() => held.arrived.length === 3)
+  await connect()
+  const first = store.items.find((item) => item.id === FIRST)!
+  await waitFor(() => first.load === 'ready')
+  // The opening took the reads the address started.
+  expect(held.arrived.toSorted()).toEqual(['draft', 'hosts', 'transcript'])
+})
+
 test('switching between opened sessions performs no reads or load reset', async () => {
   serveHistory()
   const store = useConversations()

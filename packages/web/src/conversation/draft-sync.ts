@@ -215,15 +215,15 @@ export function createDraftSync(options: {
   }
 
   /**
-   * Reads the draft, after the conversation's requests before it. A change
-   * the backend has not confirmed, such as one this page restored from the
-   * web browser's storage or kept while the conversation was archived, is
-   * saved after it.
+   * Reads the draft, after the conversation's requests before it, or takes
+   * `loaded`, a read of it already under way. A change the backend has not
+   * confirmed, such as one this page restored from the web browser's
+   * storage or kept while the conversation was archived, is saved after it.
    */
-  function read(conversation: Conversation): Promise<void> {
+  function read(conversation: Conversation, loaded?: Promise<ConversationDraft>): Promise<void> {
     const signal = lifetime.signal
     return queue(conversation.id).run(async () => {
-      const draft = await loadDraft(conversation.id, signal)
+      const draft = await (loaded ?? loadDraft(conversation.id, signal))
       signal.throwIfAborted()
       receive(conversation, draft)
       schedule(conversation, DRAFT_SAVE_DELAY_MS)
