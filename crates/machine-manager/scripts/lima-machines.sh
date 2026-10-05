@@ -59,7 +59,10 @@ case "$(limactl list --format '{{.Status}}' "$instance" 2>/dev/null)" in
   Running) ;;
   Stopped) limactl start "$instance" ;;
   *)
-    limactl disk ls --format '{{.Name}}' | grep -qx demi-cloud-data || limactl disk create demi-cloud-data --size "$data_size"
+    # grep reads the whole list, so limactl never writes into a closed pipe.
+    if ! limactl disk ls --json | jq -r .name | grep -x demi-cloud-data >/dev/null; then
+      limactl disk create demi-cloud-data --size "$data_size"
+    fi
     limactl start --name "$instance" "$here/lima/demi-machine-manager.yaml"
     ;;
 esac

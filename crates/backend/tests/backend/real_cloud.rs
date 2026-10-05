@@ -1008,8 +1008,15 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     );
     let saved = read_in_image(&home, &format!("/demi/sessions/{FIRST}/mapped"));
     assert!(saved.starts_with("written through a mapping"), "{saved:?}");
-    // On ext4 a copy allocates no more blocks than cp's sparse copy.
-    let copies = tempfile::tempdir().unwrap();
+    // On ext4 a copy allocates no more blocks than cp's sparse copy on the
+    // same filesystem, which counts its extent tree too. cp copies into the
+    // work directory the script made the state directory in, not into /tmp,
+    // which may be tmpfs, whose files have no extent tree.
+    let work = environment
+        .data
+        .parent()
+        .expect("the state directory lies in the work directory");
+    let copies = tempfile::tempdir_in(work).unwrap();
     for image in [&system, &home] {
         let copy = copies.path().join("copy.ext4");
         let copied = Command::new("cp")
