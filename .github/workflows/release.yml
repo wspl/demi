@@ -40,7 +40,7 @@ jobs:
         run: |
           version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
           [ -n "$version" ] || { echo 'no workspace version in Cargo.toml' >&2; exit 1; }
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
             [ "$GITHUB_REF_NAME" = "v$version" ] || {
               echo "the tag $GITHUB_REF_NAME does not name the workspace version $version" >&2
               exit 1
@@ -240,7 +240,7 @@ jobs:
         run: |
           cd dist
           sha256sum demi-* > SHA256SUMS
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
             gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
               --title "Demi $VERSION" --generate-notes ./*
           else
