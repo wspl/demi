@@ -8,23 +8,24 @@ format, the build pipeline, import, and acceptance;
 A build runs as root on a Linux builder of the image's architecture.
 `rootfs/build.sh` makes the Ubuntu tree, then runs `xtask cloud-image package`,
 which embeds the runner release, the command packages, Chrome for Testing, and
-uv, and publishes the release.
+uv, and publishes the release. The image goes into the `image/` directory of
+the [server release](../docs/delivery/builds-and-releases.md#server-release)
+whose runner and command package releases it embeds. The release workflow
+builds the published images this way on its `ubuntu-26.04` and
+`ubuntu-26.04-arm` runners
+([Release workflow](../docs/delivery/builds-and-releases.md#release-workflow));
+the steps below are a developer's build.
 
-First, on the developer's machine, build and package the image's target with
-the [native cross tools](../docs/delivery/builds-and-releases.md), and build
-`xtask` for the builder. For an arm64 image (use `x86_64-unknown-linux-musl`
-for amd64):
+First, on the developer's machine, build the image's target with the
+[native cross tools](../docs/delivery/builds-and-releases.md), assemble a
+server release of the targets in use, and build `xtask` for the builder. For
+an arm64 image (use `x86_64-unknown-linux-musl` for amd64), with the Mac's
+target for its own runner:
 
 ```sh
-cargo xtask native build --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-runner \
-  --target aarch64-unknown-linux-musl --output .cache/releases/runners
-cargo xtask native package --package demi-file \
-  --target aarch64-unknown-linux-musl --output .cache/releases/demi-file-<build>
-cargo xtask native package --package demi-browser \
-  --target aarch64-unknown-linux-musl --output .cache/releases/demi-browser-<build>
-cargo xtask native package --package demi-claude-code \
-  --target aarch64-unknown-linux-musl --output .cache/releases/demi-claude-<build>
+cargo xtask native build --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
+cargo xtask server-release --output .cache/release-<build> \
+  --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
 cargo zigbuild --release --locked -p xtask \
   --target aarch64-unknown-linux-musl --target-dir .cache/native-target
 ```
@@ -35,15 +36,19 @@ util-linux installed:
 ```sh
 sudo bash cloud-guest-image/rootfs/build.sh \
   --xtask .cache/native-target/aarch64-unknown-linux-musl/release/xtask \
-  --runners .cache/releases/runners \
-  --package .cache/releases/demi-file-<build> \
-  --package .cache/releases/demi-browser-<build> \
-  --package .cache/releases/demi-claude-<build> \
-  --output /opt/demi-cloud/releases/<build>
+  --runners .cache/release-<build>/runners \
+  --package .cache/release-<build>/commands/demi-file \
+  --package .cache/release-<build>/commands/demi-browser \
+  --package .cache/release-<build>/commands/demi-claude-code \
+  --output <root on the builder>/image
 ```
 
 `--output` names a new directory on a Linux filesystem: a release is
-immutable, so every build publishes a new one. The script builds the tree in
+immutable, so every build publishes a new one. When the server release lies
+on a Linux filesystem of the builder, the output is its own `image/`; a root
+on a shared Mac directory cannot hold it, so the builder's manager gets a root
+of its own ([Develop on a Mac with Lima](../docs/guides/mac-development.md)).
+The script builds the tree in
 `/var/tmp/demi-cloud-root`, or in the directory `--work` names, and removes it
 after a successful build. `--mirror` names an Ubuntu mirror other than the
 official one, such as `https://archive.ubuntu.com/ubuntu` on a builder whose

@@ -33,9 +33,10 @@ The scenario harness, the *world*, starts the backend inside the test process,
 with its production shard threads and a temporary data directory. In place of
 external services it uses a scripted model, serves a scripted machine manager
 on a Unix socket, and serves local fixtures in place of models.dev and the
-Claude Code release distribution. It loads the
-command packages the workspace built as development releases, which the
-backend's development store serves to the runners
+Claude Code release distribution. It assembles
+the command packages the workspace built into a server release of its Host's
+target, which the backend publishes into the local store of its data
+directory and serves to the runners
 ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
 It pairs real runner processes and owns cleanup. The runners are the real
 runner executable, which the test starts from the target directory it runs from
@@ -287,13 +288,14 @@ the scripted one, configured by four variables:
 
 - `DEMI_TEST_MACHINES_SOCKET`: the manager's socket, which the backend
   connects to.
-- `DEMI_TEST_CLOUD_URL`: the backend URL the manager allows, its
-  `DEMI_MANAGED_BACKEND_URL`. The backend listens on that address and port and
-  gives the URL to the Clouds' runners as its public URL.
-- `DEMI_TEST_CLOUD_NATIVE`: a native configuration with a development store
-  ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration))
-  that names the command package releases the image embeds, so a Cloud's
-  runner starts them from the image instead of downloading them.
+- `DEMI_TEST_CLOUD_URL`: the backend URL the manager allows, the
+  `DEMI_BACKEND_PUBLIC_URL` of its configuration. The backend listens on that
+  address and port and gives the URL to the Clouds' runners as its public URL.
+- `DEMI_TEST_CLOUD_RELEASE`: the server release root
+  ([Server release](builds-and-releases.md#server-release)) whose `image/`
+  the manager imported; the backend publishes its `commands/`, the command
+  package releases the image embeds, so a Cloud's runner starts them from the
+  image instead of downloading them.
 - `DEMI_TEST_MACHINES_DATA`: the manager's state directory. The suite only
   reads it: it looks inside the generation a checkpoint saved, and finds a
   boot's host processes to measure their memory.
@@ -326,8 +328,8 @@ On a Linux machine without an installed manager,
 manager of its own, as root:
 
 ```sh
-sudo bash crates/machine-manager/scripts/cloud-suite.sh --image <release> \
-  --native <native configuration> --work <directory>
+sudo bash crates/machine-manager/scripts/cloud-suite.sh --release <root> \
+  --work <directory>
 ```
 
 The script starts the manager the workspace built (`target/debug`) with its

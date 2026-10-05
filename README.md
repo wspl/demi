@@ -52,20 +52,17 @@ Every Rust command selects the whole workspace with the runner's test
 fixtures, so they share one build
 ([Validation](docs/delivery/builds-and-releases.md#validation)).
 
-To run the product locally with the native programs you built, package
-development releases of the targets your Hosts use, name the command releases
-in a `DEMI_NATIVE_CONFIG` whose store is `local`, and start the backend; it
-serves the runners those programs itself:
+To run the product locally with the native programs you built, assemble a
+server release of the targets your Hosts use and start the backend with it;
+it publishes those programs into the local store of its data directory and
+serves them to the runners itself:
 
 ```sh
 cargo xtask native build --target <triple>...
-cargo xtask native package --package demi-runner --output .cache/releases/runners --target <triple>...
-cargo xtask native package --package demi-file --output .cache/releases/demi-file --target <triple>...
-cargo xtask native package --package demi-browser --output .cache/releases/demi-browser --target <triple>...
-cargo xtask native package --package demi-claude-code --output .cache/releases/demi-claude-code --target <triple>...
+cargo xtask server-release --output .cache/release-<build> --target <triple>...
 cargo build --workspace --all-targets --features demi-runner/test-fixtures
-DEMI_NATIVE_CONFIG=.cache/releases/native.json DEMI_RUNNER_RELEASE_DIR=.cache/releases/runners \
-  DEMI_INSTANCE_MODE=isolated DEMI_BACKEND_PUBLIC_URL=<URL> DEMI_MACHINE_MANAGER_SOCKET=<socket> \
+DEMI_RELEASE=.cache/release-<build> DEMI_INSTANCE_MODE=isolated \
+  DEMI_BACKEND_PUBLIC_URL=<URL> DEMI_MACHINE_MANAGER_SOCKET=<socket> \
   target/debug/demi-backend
 ```
 

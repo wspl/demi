@@ -167,6 +167,26 @@ reverse proxy pins each user to one backend worker
   names the objects it must remove. When an unreferenced blob goes is decided
   ([Retention](../backend/storage.md#retention)). Removing project metadata
   must never implicitly delete the user's Cloud machine or files.
+- **Upgrades.** Moving a server from one release to the next is not
+  designed. Today each part changes in its own way, and the design must
+  settle all of them together:
+  - The backend and the web app change only with a backend restart, which
+    interrupts running turns (the user resumes them), hibernates every Cloud,
+    and ends resident command services, a conversation's browser among them;
+    a page still open on the old web app is told to reload.
+  - The machine manager and its pinned runsc change together, and the wire
+    between the backend and the manager checks no version.
+  - A new Cloud image reaches a Cloud only through an explicit reset, and
+    nothing reports a Cloud that still runs an old base.
+  - A paired device takes a new runner only when its user runs the installer
+    again; the backend does not record which runner version a device runs.
+  - A new runner wire version refuses every older runner: a paired device
+    stops reconnecting without telling its user, and a Cloud on an old base
+    fails to boot until it is reset.
+  - Data formats: before the first formal release, a schema change still
+    means a new data directory, as [Schemas](../backend/storage.md#schemas)
+    says; compatibility and migration are part of this decision for formal
+    releases.
 - **Resource profiles.** Choose resource profiles and unattended lifetime from
   measured memory, startup, and storage costs. Add transport prioritization or
   batching only for demonstrated contention, without changing job attribution

@@ -24,7 +24,7 @@ layout and interaction; these documents do not repeat it.
 ## How does the backend serve requests and keep data?
 
 - [Backend](backend/backend.md): the backend binary's modules and runtime model, authentication and ownership, page synchronization, media by reference, failure facts, startup and shutdown, configuration, a development backend with the native programs a developer built, and deployment and user placement.
-- [Storage](backend/storage.md): the data directory, control and conversation databases, encodings and digests, passwords and credentials at rest, the object store for blobs, [retention](backend/storage.md#retention) of tool media and blobs, multi-worker placement, and open durability decisions.
+- [Storage](backend/storage.md): the data directory, control and conversation databases, encodings and digests, passwords and credentials at rest, the one object store for blobs and the published command packages, [retention](backend/storage.md#retention) of tool media and blobs, multi-worker placement, and open durability decisions.
 
 ## How does the agent run a conversation?
 
@@ -70,7 +70,7 @@ layout and interaction; these documents do not repeat it.
 - [Roadmap](delivery/roadmap.md): dependency order, completion conditions, required evidence and open deployment decisions.
 - [Scenarios](delivery/scenarios.md): backend scenario acceptance, the web app contract suite and real-machine acceptance.
 - [Testing](delivery/testing.md): what a test protects, its level, how it proves itself, time and stability, cost, resources and coverage.
-- [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `cargo xtask` packaging, the Chrome for Testing pin, targets per executable and Cloud image refresh.
+- [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `cargo xtask` packaging, the server release, the release workflow on GitHub's hosted runners, the Chrome for Testing pin, targets per executable and Cloud image refresh.
 - [Package versioning](delivery/package-versioning.md): the npm release set and changesets, and how the Rust executables are versioned.
 
 ## How do I extend Demi?

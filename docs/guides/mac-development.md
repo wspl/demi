@@ -24,30 +24,31 @@ Lima VM (Linux, the Mac's architecture)
 
 On an Apple silicon Mac, the Hosts in use are the Mac,
 `aarch64-apple-darwin`, and the Cloud guest, `aarch64-unknown-linux-musl`.
-Build and package those two targets with the Mac's own cross tools and its
-Apple SDK ([Builds and releases](../delivery/builds-and-releases.md)):
+Build those two targets with the Mac's own toolchain, cross tools and Apple
+SDK ([Builds and releases](../delivery/builds-and-releases.md)), and assemble
+a server release of them, which the backend on the Mac uses:
 
 ```sh
 cargo xtask native build \
-  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk \
+  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-runner --output .cache/releases/runners \
-  --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-file --output .cache/releases/demi-file \
-  --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-browser --output .cache/releases/demi-browser \
-  --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-claude-code --output .cache/releases/demi-claude-code \
+cargo xtask server-release --output .cache/release-<build> \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 ```
+
+The root has no `bin/` and no `image/`: the backend runs from the Cargo
+target directory, and the image belongs to the machine manager's own root in
+the VM, on the VM's Linux disk.
 
 ## Cloud image in Lima
 
 Build the image inside the VM as the
-[guest image build](../../cloud-guest-image/README.md) describes, prefixing
-the build command with `limactl shell demi-machine-manager --`. The VM sees the Mac's
-home directory at the same path. Keep the image's output and the manager's
-working images on the VM's Linux disk, never on the shared Mac directory.
+[guest image build](../../cloud-guest-image/README.md) describes, from the
+root above, prefixing the build command with
+`limactl shell demi-machine-manager --`. The VM sees the Mac's home directory
+at the same path. Its output is the `image/` of the manager's root on the
+VM's Linux disk, such as `/opt/demi/dev-<build>/image`, never a shared Mac
+directory.
 
 ## Machine manager in Lima
 
@@ -55,21 +56,22 @@ working images on the VM's Linux disk, never on the shared Mac directory.
 `crates/machine-manager/scripts/lima-machines.sh` provision the Linux dependencies, a
 separate persistent data disk, the manager service, the network policy, and
 Unix socket forwarding. The VM runs the same privileged manager and runsc
-profile as a Linux execution host. The script copies the manager built for the
-VM's architecture into the VM under its SHA-256, so a later build never
-replaces the executable of a running manager.
+profile as a Linux execution host. `--release` names the manager's root in
+the VM, the one whose `image/` the image build wrote. The script copies the
+manager built for the VM's architecture into that root's `bin/`, renaming it
+into place so that a running manager keeps its own file, writes the VM's
+configuration file with the public URL, the socket and the state directory,
+and installs the service from the root.
 
 ```sh
 cargo xtask native build --package demi-machine-manager --target aarch64-unknown-linux-musl
-cargo xtask native package --package demi-machine-manager \
-  --target aarch64-unknown-linux-musl --output .cache/releases/demi-machine-manager-<build>
 bash crates/machine-manager/scripts/lima-machines.sh \
-  --manager .cache/releases/demi-machine-manager-<build>/aarch64-unknown-linux-musl/demi-machine-manager \
-  --image /opt/demi-cloud/releases/build-id \
-  --backend-url http://<the Mac's address>:3271 --dns 1.1.1.1
+  --manager .cache/native-target/aarch64-unknown-linux-musl/release/demi-machine-manager \
+  --release /opt/demi/dev-<build> \
+  --public-url http://<the Mac's address>:3271
 ```
 
-`--backend-url` is the backend's public URL. The Cloud guests connect to it
+`--public-url` is the backend's public URL. The Cloud guests connect to it
 through Lima's network, and the Mac's own runner connects to it directly, so
 it names the Mac's address on its network, such as Wi-Fi's
 `192.168.75.36`. Lima's gateway address, `host.lima.internal` or
@@ -82,12 +84,13 @@ ipconfig getifaddr en0
 
 The script prints the backend's two settings: the forwarded socket and the
 public URL. When the Mac joins another network, its address changes: run the
-script again with the new URL and restart the backend with it.
+script again with the new URL and restart the backend with it. The Clouds use
+the VM's own upstream resolver, the manager's default.
 
 `--root <directory>` passes on to the installer, which then only writes the
-unit and settings beneath that directory inside the VM. The script prepares
-its default state directory on the Lima data disk; `--data` names another
-prepared Linux state directory.
+unit beneath that directory inside the VM. The script prepares its default
+state directory on the Lima data disk; `--data` names another prepared Linux
+state directory.
 
 Stopping or recreating the Lima instance preserves the data disk; deleting it
 is a separate explicit action. Lima formats the data disk only while it is
@@ -97,10 +100,11 @@ state directory to make a start succeed.
 ## Backend on the Mac
 
 Follow the [Development backend](../backend/backend.md#development-backend)
-steps with the two targets above, and start the backend with the two
-settings the script printed:
+steps with the root above, and start the backend with the two settings the
+script printed:
 
 ```sh
+DEMI_RELEASE=.cache/release-<build> \
 DEMI_BACKEND_PUBLIC_URL=http://<the Mac's address>:3271 \
 DEMI_MACHINE_MANAGER_SOCKET=~/.lima/demi-machine-manager/sock/demi-machine-manager.sock \
 ...

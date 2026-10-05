@@ -66,25 +66,35 @@ public egress and private destination refusal through a real sandbox.
 
 ## Configuration
 
-The manager and the backend each validate their configuration at startup.
-Unknown or malformed managed settings fail configuration: the manager refuses
-any `DEMI_MANAGED_*` variable it does not know. Counts and MiB sizes are
-positive decimal integers. Cloud is mandatory, so a missing manager
-configuration is a startup error.
+The manager reads the deployment's one configuration file,
+`/etc/demi/demi.env`, which the backend reads too
+([Backend configuration](../backend/backend.md#configuration)). It reads
+three of the backend's settings, and the backend's definition of each holds:
 
-| Variable | Owner and meaning |
+- `DEMI_RELEASE`, the [server release](../delivery/builds-and-releases.md#server-release)
+  root: the manager imports the Cloud image in its `image/`.
+- `DEMI_BACKEND_PUBLIC_URL`: the one endpoint, address and port, that a Cloud
+  may reach on the host or a private address, and the URL every boot record
+  must name.
+- `DEMI_MACHINE_MANAGER_SOCKET`: the socket the manager listens on.
+
+Its own settings carry the prefix `DEMI_MANAGED_`, and it refuses a
+`DEMI_MANAGED_*` variable it does not read. Unknown or malformed settings
+fail configuration. Counts and MiB sizes are positive decimal integers.
+
+| Variable | Meaning |
 | --- | --- |
-| `DEMI_MACHINE_MANAGER_SOCKET` | Manager listen path; backend connect path. |
-| `DEMI_MACHINE_MANAGER_DATA` | Manager's persistent state, on one filesystem; default `/var/lib/demi-machine-manager`. |
-| `DEMI_MANAGED_RUNSC` | Required absolute path to the pinned runsc executable. |
-| `DEMI_MANAGED_IMAGE` | Required directory containing the Cloud image manifest and archive. |
+| `DEMI_MANAGED_DATA` | The manager's persistent state, on one filesystem; default `/var/lib/demi-machine-manager`. |
+| `DEMI_MANAGED_DNS` | The IPv4 resolvers a Cloud uses. Optional: the host's own upstream resolvers otherwise (below). |
 | `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory, and PID limits ([Resource limits](managed-hosts.md#resource-limits)). |
 | `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on; either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
 | `DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB` | Initial writable filesystem capacities. |
 | `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS` | Non-overlapping IPv4 address pool and maximum network slots. |
-| `DEMI_MANAGED_DNS` | Required reachable IPv4 resolver addresses, validated as an address list. |
-| `DEMI_MANAGED_BACKEND_URL` | Manager's allowed runner destination; each wake must match it. |
-| `DEMI_BACKEND_PUBLIC_URL` | Backend's runner-reachable URL; must name the same endpoint as the manager allowlist. |
+
+The runsc the manager runs is not a setting. The manager carries its pinned
+runtime release, and runs `/opt/gvisor/<pinned version>/runsc`, where
+`install-runsc.sh` installs it
+([Linux requirements](#linux-requirements)).
 
 The sizing defaults and limits live in
 [lifecycle and capacity](managed-hosts.md#lifecycle-and-capacity), rather than
@@ -92,16 +102,20 @@ being duplicated here. The network pool defaults to `172.30.0.0/16` with 256
 slots, validated against host routes before use. Each slot takes four
 addresses, a /30. The pool is written as its network address with a prefix
 length from 8 to 30, and it must hold four addresses for every slot; the slot
-count ranges from 1 to 16384. `DEMI_MANAGED_DNS` is a comma-separated nonempty
-list with no loopback, unspecified, multicast, or broadcast address.
-`DEMI_MANAGED_BACKEND_URL` uses `http` or `https`. Runtime security flags,
-mount sizes, capability policy, and process limits are a single shipped
-profile, not environment overrides.
+count ranges from 1 to 16384. Runtime security flags, mount sizes, capability
+policy, and process limits are a single shipped profile, not environment
+overrides.
 
-The backend's own settings, among them the manager socket, the public URL, and
-its native release configuration, are defined in
-[Backend configuration](../backend/backend.md#configuration). An image release
-and the backend's command releases must agree.
+`DEMI_MANAGED_DNS` is a comma-separated nonempty list with no loopback,
+unspecified, multicast, or broadcast address. Without it, the manager takes
+the resolvers the host itself forwards to: those of systemd-resolved's
+`/run/systemd/resolve/resolv.conf` when the host runs it, else those of
+`/etc/resolv.conf`. It skips the addresses a sandbox cannot use, such as
+systemd-resolved's own `127.0.0.53`, and IPv6 addresses, which the sandbox
+profile turns off ([Networking](managed-hosts.md#networking)). If none
+remains, startup fails and names `DEMI_MANAGED_DNS`; the manager never falls
+back to a public resolver of its choosing. A host whose resolver is a local
+cache with no upstream file, for example, sets the variable.
 
 A reverse proxy in front of the backend, such as the one that serves its
 public URL over TLS, must pass each request's `Origin` and `Host` headers to
@@ -112,21 +126,18 @@ drops `Origin`.
 [Authentication and ownership](../backend/backend.md#authentication-and-ownership)
 gives the rule and the request that checks a deployment.
 
-Example manager configuration for an already prepared Linux execution host:
+For example, a server whose backend sits behind Caddy has a configuration
+file such as this one; the manager uses its defaults for everything but the
+settings it shares with the backend:
 
 ```dotenv
-DEMI_MACHINE_MANAGER_SOCKET=/run/demi-cloud/machines.sock
-DEMI_MACHINE_MANAGER_DATA=/var/lib/demi-machine-manager
-DEMI_MANAGED_RUNSC=/opt/gvisor/<pinned-version>/runsc
-DEMI_MANAGED_IMAGE=/opt/demi-cloud/current
-DEMI_MANAGED_BACKEND_URL=https://backend.example.com
-DEMI_MANAGED_DNS=1.1.1.1,8.8.8.8
+DEMI_BACKEND_PUBLIC_URL=https://demi.example.com
+DEMI_INSTANCE_MODE=isolated
+DEMI_BACKEND_LISTEN=127.0.0.1:3271
 ```
 
-Resolver addresses above are examples, not a product requirement. Choose
-permitted resolvers reachable from the actual sandbox. Public endpoints use TLS.
-A local HTTP development endpoint is allowed only on the explicit private path
-protected by host rules or the development tunnel.
+Public endpoints use TLS. A local HTTP development endpoint is allowed only on
+the explicit private path protected by host rules or the development tunnel.
 
 ## Storage and service setup
 
@@ -167,34 +178,30 @@ harm than waiting. No host shell command supplied by a user becomes a
 privileged launcher argument. The installer operates only on its own service,
 network namespace/interface names, cgroup subtree, and nftables table.
 
-The unit reads the manager's settings from `/etc/demi-machine-manager/manager.env`,
-which the installer writes from its arguments. When a manager is already
-installed, the installer stops it under its current unit, so that manager's own
-stop-post recovery runs, and only then puts the new unit in place and starts
-it. With `--root <directory>`, the installer writes the unit and the settings
-beneath that directory for review and changes nothing else.
+The unit loads the deployment's configuration file, `/etc/demi/demi.env`,
+which must exist before the installer runs; the installer reads the state
+directory from it and checks its filesystem, and writes no setting into it.
+When a manager is already installed, the installer stops it under its current
+unit, so that manager's own stop-post recovery runs, and only then puts the new
+unit in place and starts it. With `--root <directory>`, the installer writes
+the unit beneath that directory for review and changes nothing else.
 
-The manager binary comes from its release for the host's Linux target
-([Packaging](../delivery/builds-and-releases.md#packaging)); check the copy on
-the host against the release's `release.json`. After installing the Linux
-dependencies and the manager binary and publishing an image, install the
-service with absolute paths:
+The manager runs from the `bin/` of a
+[server release](../delivery/builds-and-releases.md#server-release) for the
+host's Linux target, whose `image/` holds the Cloud image. After installing
+the Linux dependencies, unpacking the release and writing the configuration
+file, install the service with absolute paths:
 
 ```sh
 sudo bash crates/machine-manager/scripts/install-managed-hosts.sh \
-  --user backend \
-  --manager /opt/demi/bin/demi-machine-manager \
-  --image /opt/demi-cloud/releases/build-id \
-  --backend-url https://backend.example.com --dns 1.1.1.1 \
-  --data /var/lib/demi-machine-manager
+  --user backend --release /opt/demi/0.1.3
 ```
 
-`--manager` names the manager executable. `--limits off` installs the manager
-with its [resource limits](managed-hosts.md#resource-limits) off, for a host
-without the cgroup v2 controllers; without it, the settings say
-`DEMI_MANAGED_LIMITS=on`. The backend user joins the `demi-cloud` group.
-Restart its service or login session to acquire that membership. The installer
-never starts the backend itself.
+`--release` names the root; the unit runs its `bin/demi-machine-manager` with
+`DEMI_RELEASE` set to it, so installing another release points the service at
+that release. The backend user joins the `demi-cloud` group. Restart its
+service or login session to acquire that membership. The installer never
+starts the backend itself.
 
 Publish a new image, restart the manager, and explicitly reset a device when it
 should use the new base. Restart alone does not upgrade pinned devices. A new
@@ -212,9 +219,10 @@ Clouds through the upgrade:
    demi-machines.service`. Then remove its unit file. The installer refuses to
    run while that unit is installed, because the two managers would share the
    socket, the network names and the nftables table.
-2. Install the manager as above with `--data /var/lib/demi-machines`. Without
-   it, the manager starts from an empty state directory, and each user's Cloud
-   starts again from an empty home on its next wake.
+2. Set `DEMI_MANAGED_DATA=/var/lib/demi-machines` in the configuration file
+   and install the manager as above. Without it, the manager starts from an
+   empty state directory, and each user's Cloud starts again from an empty
+   home on its next wake.
 
 ## Acceptance before use
 

@@ -565,8 +565,8 @@ repository's other scripts (`bunfig.toml`), Vite's proxy cannot forward a
 WebSocket, since Bun's `node:http` client never reports the backend's
 upgrade, and the conversation would never connect. Create the first account
 through the setup API (`POST /api/setup`).
-The script `web:build` writes `packages/web/dist`, which the backend serves when
-`DEMI_WEB_DIRECTORY` names it
+The script `web:build` writes `packages/web/dist`, which becomes the `web/` of
+a server release, and the backend serves it from there
 ([Serving the web app build](web-api.md#serving-the-web-app-build)). The
 script `web:gallery` runs the component catalog independently of credentials
 and model services. Generated contract files are not committed; the scripts

@@ -36,15 +36,22 @@ The manager generates the per-boot OCI bundle. Image content cannot select
 runtime flags, privileged mounts, cgroups, network exceptions, or credentials.
 No Docker daemon, image pull, archive extraction, or compilation is part of an
 ordinary wake. Transport can copy the release directory to an execution host;
-the manager consumes local verified artifacts.
+the manager consumes local verified artifacts. An image release is the
+`image/` directory of a [server release](../delivery/builds-and-releases.md#server-release),
+built from that root's runner and command package releases, and a published
+release carries it as an asset of its own per architecture
+([Release workflow](../delivery/builds-and-releases.md#release-workflow)).
 
 Build amd64 and arm64 separately. Native executable targets are
-`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, respectively. Use
+`x86_64-unknown-linux-musl` and `aarch64-unknown-linux-musl`, respectively.
+Assemble the Linux filesystem on a Linux builder of the image's architecture:
+for a published release, the release workflow's `ubuntu-26.04` and
+`ubuntu-26.04-arm` runners, which give a job root through passwordless `sudo`;
+for development, a Linux machine or VM of the developer's, with the targets of
+the Hosts in use packaged by the
 [native cross tools](../delivery/builds-and-releases.md) on the developer's
-machine and package only the targets of the Hosts in use. Assemble the Linux
-filesystem on a Linux builder of the image's architecture. Do
-not confuse cross-compiling a Rust executable with validating the complete
-image on another architecture.
+machine. Do not confuse cross-compiling a Rust executable with validating the
+complete image on another architecture.
 
 ## Build pipeline
 
@@ -69,9 +76,11 @@ stages:
    manifest; publishes the release directory atomically; and prints the
    `baseVersion`.
 
-On the builder, the script runs a Linux build of `xtask` that the developer's
-machine cross-compiles for the builder's architecture with its own cross tools,
-as it does the runner ([Builds and releases](../delivery/builds-and-releases.md)).
+On the builder, the script runs a Linux build of `xtask`: one that the
+developer's machine cross-compiles for the builder's architecture with its own
+cross tools, as it does the runner
+([Builds and releases](../delivery/builds-and-releases.md)), or, in the
+release workflow, one the runner builds for itself.
 The image has the architecture that build runs on. On a Linux builder, the
 `xtask` that the workspace's one Cargo selection builds into `target/debug`
 also works: it trusts the platform's certificate authorities beside its own

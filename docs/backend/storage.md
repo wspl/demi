@@ -15,12 +15,13 @@ Backend data directory (DEMI_BACKEND_DATA)
 +-- control.sqlite                 deployment-wide product records
 +-- conversations/<id>.sqlite      one agent tree per conversation
 +-- blobs/<userId>/<sha256>        user-owned bytes: uploads, media, edit copies, commands' outputs (object store)
++-- native/                        the published command packages (object store)
 +-- instance-secret                seals credentials, unless configured
 ```
 
 The names identify storage responsibilities; deployment options supply the
-actual roots, and the blob namespace moves to an S3 bucket when one is
-configured ([The object store](#the-object-store)). The `storage`
+actual roots, and `blobs/` and `native/` move to an S3 bucket when the
+deployment's store is one ([The object store](#the-object-store)). The `storage`
 module owns the databases and the object store. The `vault` module owns
 credential records and access; credentials are control records, never files.
 The machine manager keeps each Cloud's disk generations in its own data
@@ -329,17 +330,45 @@ blob, on the conversation's read-only connection.
 
 ## The object store
 
-The blobs are one key namespace of the object store:
+A deployment has one object store, and it holds every object the backend
+keeps: the users' blobs and the published command packages.
 
 ```text
-blobs/<userId>/<sha256>           uploads, transcript media, edit copies and commands' outputs
+blobs/<userId>/<sha256>                uploads, transcript media, edit copies and commands' outputs
+native/blobs/<sha256>                  a command package's executable or resource archive
+native/descriptors/<digest>.json       a command package's descriptor
+native/packages/<id>/<version>.json    the descriptor a package version names
 ```
 
-A single-backend deployment keeps the object store in its data directory;
-`DEMI_OBJECT_STORE_CONFIG` puts it in an S3 bucket, which the multi-worker
-deployment requires. The backend reaches it through the `object_store`
-library, so one code path serves a local directory and S3, and conditional
-creation and checksums come from the library.
+`DEMI_STORAGE` chooses where the store lives, and the two choices are
+equal: the same keys, the same rules for creating and reading an object, and
+the same publication of the command packages
+([Publish artifacts before enabling commands](../execution/native-runtime.md#publish-artifacts-before-enabling-commands)).
+
+| `DEMI_STORAGE` | The store | How a runner downloads a command artifact |
+| --- | --- | --- |
+| `local`, the default | The data directory, each key a file beneath it | From the backend, at `GET /native-artifacts/<sha256>` on its public URL |
+| `s3` | A bucket the `DEMI_S3_*` settings below name | From the bucket, through a URL the backend signs |
+
+The one difference is where a runner downloads from: a file in the data
+directory is reachable only through the backend, so the backend serves it.
+The multi-worker deployment requires `s3`, since its workers share the store
+([Multi-worker storage placement](#multi-worker-storage-placement)). The
+backend reaches the store through the `object_store` library, so one code
+path serves a local directory and S3, and conditional creation and checksums
+come from the library. An object carries metadata, such as the SHA-256 and
+size of a command artifact; S3 keeps it with the object, and locally it lies
+in a file beside the object's own, since a file has no place for it.
+
+A local object counts as written only once it is durable, as an S3 object is
+when its PUT succeeds. The store writes the object and its metadata to
+temporary files, syncs them, renames them into place, and syncs their
+directory. For example, a session writes a tool's image, then commits the
+checkpoint that references it; if power fails right after the commit, the
+image is on disk, so the committed block never points at a missing or
+truncated object. Committed machine generations sync before they are
+published in the same way
+([Save a generation](../cloud/managed-hosts.md#save-a-generation)).
 
 A blob put hashes the bytes with SHA-256 on the blocking pool, since a 25 MiB
 upload would hold an async thread for tens of milliseconds, and then asks
@@ -354,16 +383,20 @@ costs the HEAD alone, where a conditional PUT would send the whole body, up to
 staged copy of it. A get of a malformed hash or of a missing object returns
 absent; any other error propagates.
 
-`DEMI_OBJECT_STORE_CONFIG` names a JSON file with `bucket`, `region`, an
-optional HTTPS `endpoint` for an S3-compatible service, and an optional
-`forcePathStyle`, false by default, which names the bucket in the request path
-instead of the host name. An S3-compatible service must support conditional
-writes (a PUT with `If-None-Match: *`, which the conditional creation above
-sends) and SHA-256 upload checksums (`x-amz-checksum-sha256`, which every
-upload carries and the service verifies). Native publication requires both of
-its store as well
-([Publish artifacts before enabling commands](../execution/native-runtime.md#publish-artifacts-before-enabling-commands)),
-so a deployment needs them of its S3 service either way.
+With `DEMI_STORAGE=s3`, four settings name the bucket:
+
+| Variable | Meaning |
+| --- | --- |
+| `DEMI_S3_BUCKET` | The bucket. Required with `s3`; refused with `local`, like the other three. |
+| `DEMI_S3_REGION` | The bucket's region. Required with `s3`. |
+| `DEMI_S3_ENDPOINT` | An HTTPS endpoint of an S3-compatible service. Optional: the region's AWS endpoint otherwise. |
+| `DEMI_S3_FORCE_PATH_STYLE` | `true` names the bucket in the request path instead of the host name. Optional, `false` by default. |
+
+The bucket belongs to the deployment: its keys are the ones above, with no
+prefix. An S3-compatible service must support conditional writes (a PUT with
+`If-None-Match: *`, which the conditional creation above sends), SHA-256
+upload checksums (`x-amz-checksum-sha256`, which every upload carries and the
+service verifies), object metadata and presigned GET requests.
 Credentials come from the standard AWS environment variables, a web identity
 token, or container or instance metadata; shared credentials and profile
 files are not read. Shutdown releases the storage client.
@@ -765,20 +798,12 @@ deployment configuration.
 
 ## Open decisions
 
-These durability questions are open. Each must be decided before the behavior
-that depends on it is built. The second also gates the multi-worker
-deployment, and the [Roadmap](../delivery/roadmap.md#decisions-before-expanding-deployment)
-lists it with its other decisions; this section describes what each one
-means for stored data.
+This durability question is open, and must be decided before the behavior
+that depends on it is built. It also gates the multi-worker deployment, and
+the [Roadmap](../delivery/roadmap.md#decisions-before-expanding-deployment)
+lists it with its other decisions; this section describes what it means for
+stored data.
 
-- **Local object durability.** A session writes a tool's image into the local
-  object store, then commits the checkpoint that references it. If power fails
-  after the commit but before the operating system has written the object's
-  data, the committed block can point at a missing or truncated object,
-  although publication preceded the checkpoint in the process. Whether a local
-  publication syncs file and directory data before it counts as published is
-  undecided. Until it is, blobs do not claim the durability of committed
-  machine generations, which sync before they are published.
 - **Fencing and user movement.** A worker can lose its route while it still
   runs. If the destination restores the replicated conversation databases
   while the stale worker still writes a checkpoint or a disk, the two diverge.
