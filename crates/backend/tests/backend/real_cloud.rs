@@ -265,9 +265,9 @@ async fn open_tab(
     let id = uuid::Uuid::new_v4().to_string();
     let created = backend
         .post(
-            &format!("/api/conversations/{conversation}/panel/tabs"),
+            &format!("/api/conversations/{conversation}/panel/changes"),
             Some(session),
-            json!({ "id": id, "kind": "browser", "data": { "url": url } }),
+            json!({ "changes": [{ "op": "create", "id": id, "kind": "browser", "data": { "url": url } }] }),
         )
         .await;
     assert!(
