@@ -107,11 +107,11 @@ message, and both the manager and the backend link it.
 
 The backend and the manager of a deployment run one release
 ([Upgrades](../delivery/upgrades.md)), so the wire accepts one version. The
-first request on a connection is `hello`, which carries the wire version the
-crate defines; a manager of another version answers with an error that names
-its own, and closes the connection. The backend then fails the request that
-opened the connection, its start's `reconcile` among them, with an error
-that names both versions and says to start both services from one release.
+manager's first message on every connection is `hello`, which names the wire
+version the crate defines. A backend of another version closes the
+connection unused and fails the call that opened it, its start's `reconcile`
+among them, with an error that names both versions and says to start both
+services from one release.
 
 - A line holds one message of at most 1 MiB; the largest real message is a few
   kilobytes.
@@ -132,7 +132,6 @@ socket.
 
 | Operation | Meaning |
 | --- | --- |
-| `hello` | Check that both ends speak the same wire version. |
 | `current_base_version`, `image_state` | Read the configured base and a device's committed generation. |
 | `runtime_state` | Read whether the manager runs a sandbox for the device, after the device's earlier operations. |
 | `reconcile` | Stop and save every device, recover incomplete operations, and install the network policy again. |

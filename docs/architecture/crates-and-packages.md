@@ -304,7 +304,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   `decode_response`, `encode_line`, `MAX_LINE_BYTES`); machine image state
   (`MachineImageState`, `RuntimeState`, `Volume`) and the names of stored
   images (`DeviceId`, `GenerationId`, `BaseVersion`: one path component
-  each); the wire version that `hello` checks and the format of the
+  each); the wire version the manager's `hello` names and the format of the
   manager's state directory; and the Cloud image manifest
   (`image::CloudImageManifest`), which embeds `runner-protocol`'s runner
   release and `command-sdk`'s package descriptors.
