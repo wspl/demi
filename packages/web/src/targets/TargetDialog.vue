@@ -4,6 +4,7 @@ import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import type { WorkspaceDraft } from '@demicodes/web-ui/hosts/workspace'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useResources } from '../state/resources'
+import { useConversationNavigation } from '../conversation/navigation'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { baseName } from '@demicodes/web-ui/files/paths'
@@ -12,6 +13,7 @@ import { fileSourceFor, placesFor } from '../devices/files'
 const resources = useResources()
 const product = useProduct()
 const preferences = usePreferences()
+const navigation = useConversationNavigation()
 const message = ref('')
 const pending = ref(false)
 const deviceById = (id: string) =>
@@ -29,7 +31,7 @@ async function create(draft: WorkspaceDraft) {
   pending.value = true
   message.value = ''
   try {
-    await resources.createProject(
+    await navigation.createProject(
       draft.kind === 'cloud'
         ? {
             kind: 'cloud',
