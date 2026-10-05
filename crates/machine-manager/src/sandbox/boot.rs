@@ -117,13 +117,16 @@ impl Sandbox {
         &self.record.id
     }
 
-    /// Starts the boot on the working pair with the base at `base`. On an
-    /// error the caller closes the sandbox, which releases what it holds.
+    /// Starts the boot on the working pair with the base at `base` and
+    /// Demi's programs from `programs`, the configured base's, whose runner
+    /// is of `runner_release`. On an error the caller closes the sandbox,
+    /// which releases what it holds.
     pub async fn start(
         &mut self,
         core: &Core,
         working: &WorkingPair,
         base: &Path,
+        programs: &Path,
         runner_release: &str,
         boot: &ManagedBoot,
     ) -> Result<(), SandboxError> {
@@ -133,6 +136,7 @@ impl Sandbox {
         let record = self.record.clone();
         let directory = self.directory.clone();
         let base = base.to_owned();
+        let programs = programs.to_owned();
         let pair = working.clone();
         blocking::run(move |off| -> io::Result<()> {
             write_json(off, &pair.sandbox_record(), &record)?;
@@ -141,6 +145,8 @@ impl Sandbox {
             directory.create(off)?;
             mount::bind(off, &base, &directory.base())?;
             mount::remount_read_only(off, &directory.base())?;
+            mount::bind(off, &programs, &directory.programs())?;
+            mount::remount_read_only(off, &directory.programs())?;
             fault::point("base-bound");
             Ok(())
         })

@@ -8,7 +8,7 @@
     "terminal": false,
     "user": { "uid": 1000, "gid": 1000, "umask": 18 },
     "cwd": "/home/demi",
-    "args": ["/usr/bin/tini", "--", "/usr/bin/demi-runner", "run", "--managed-boot", "/run/demi-boot.json"],
+    "args": ["/usr/bin/tini", "--", "/opt/demi/bin/demi-runner", "run", "--managed-boot", "/run/demi-boot.json"],
     "env": [
       "HOME=/home/demi",
       "USER=demi",
@@ -65,6 +65,12 @@
       "type": "bind",
       "source": "/run/demi-machine-manager/demi-00000000-0000-4000-8000-000000000000/home",
       "options": ["bind", "nodev"]
+    },
+    {
+      "destination": "/opt/demi",
+      "type": "bind",
+      "source": "/run/demi-machine-manager/demi-00000000-0000-4000-8000-000000000000/programs",
+      "options": ["bind", "ro", "nodev"]
     },
     {
       "destination": "/run/demi-boot.json",
