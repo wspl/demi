@@ -71,7 +71,7 @@ user, conversation or time arrives through requests.
 | Contribution | Declared | When Demi asks |
 | --- | --- | --- |
 | Identity | Its id, its name and a one-sentence description, which settings show | Never |
-| Packages | Nothing: they are the [command packages](../execution/native-runtime.md) whose operations its commands, streams, page states and methods bind | Never: the page shows their installs ([Installation progress](../execution/native-runtime.md#installation-progress)) |
+| Packages | Nothing: they are the [command packages](../execution/native-runtime.md) whose operations its commands, streams, page states and methods bind | Never |
 | [Commands](#commands) | Their declarations, as data | Each time the model runs an `rpc` leaf of them |
 | [Context](#prompt-text-and-context) | That the plugin is a context source | Before each provider request of every node |
 | [Host directories](#host-directories) | Nothing | The plugin sets them through its port when its user's needs change |
@@ -609,11 +609,8 @@ session, the plugin host validates the parameters against the method's
 declared schema, as a command's arguments are validated
 ([Contracts](contracts.md#validation-at-entry)), and the user's instance
 handles the call on the user's shard. A page also reaches the plugin's user
-streams of a conversation, and the installs of the plugin's packages on the
-conversation's primary Host, from that device's `installs` in the product state,
-which a component that waits for a call shows with the kit's installs
-component ([Installation progress](../execution/native-runtime.md#installation-progress)).
-No plugin declares or starts an install: it follows from the call.
+streams of a conversation. No plugin declares or starts an install: it
+follows from the call.
 
 A page reaches all of this only through its page context
 ([The page context](plugin-pages.md#the-page-context)) and knows no route;
