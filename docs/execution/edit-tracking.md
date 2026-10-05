@@ -138,8 +138,10 @@ The edit sequence belongs only to the call's history.
 ## Edit copies
 
 When a command's exit reaches the backend, the backend reads each entry's
-copies from the target and stores each as a blob in the conversation owner's
-namespace, then hands the tool its status with the list. The read is part of
+copies from the target, every copy of the command in one request and one pipe
+([Host operations](runner.md#host-operations)), a copy two edits share once,
+and stores each as a blob in the conversation owner's namespace, then hands
+the tool its status with the list. The read is part of
 completing the command inside the tool call's host access, the same way the
 command's kept output is read back; it is not a separate operation on the Host
 from outside the agent ([Host operations](sessions-and-targets.md#host-operations)).
