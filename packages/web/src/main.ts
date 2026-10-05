@@ -19,6 +19,7 @@ import { onSessionExpired } from './api/client'
 import { useSession } from './auth/session'
 import ChatPage from './conversation/ChatPage.vue'
 import LoginPage from './auth/LoginPage.vue'
+import SetupPage from './auth/SetupPage.vue'
 import App from './App.vue'
 import './style.css'
 
@@ -37,6 +38,10 @@ const router = createRouter({
     {
       path: '/login',
       component: LoginPage,
+    },
+    {
+      path: '/setup',
+      component: SetupPage,
     },
     {
       path: '/:pathMatch(.*)*',
@@ -86,13 +91,16 @@ router.beforeEach(async (to) => {
   if (startup.signal.aborted) {
     return false
   }
-  if (!session.signedIn && to.path !== '/login') {
-    return '/login'
+  // Each session state has its pages: setup while no account exists, sign-in
+  // without a session, and the product with one.
+  const status = session.current.status
+  if (status === 'setupNeeded') {
+    return to.path === '/setup' ? true : '/setup'
   }
-  if (session.signedIn && to.path === '/login') {
-    return '/chat'
+  if (status === 'signedIn') {
+    return to.path === '/login' || to.path === '/setup' ? '/chat' : true
   }
-  return true
+  return to.path === '/login' ? true : '/login'
 })
 for (const [axis, value] of Object.entries(productAppearance)) {
   document.documentElement.setAttribute(`data-${axis}`, value)

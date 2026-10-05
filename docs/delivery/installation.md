@@ -27,7 +27,10 @@ answers.
 machine manager needs, fetches the newest release, writes the configuration,
 starts the backend and the machine manager, and checks the server from
 outside. It ends by printing `https://demi.example.com`, where the first
-visitor creates the master account on the setup page.
+visitor creates the master account on the setup page
+([Authentication](../product/web-application.md#authentication)). Until it
+exists anyone who reaches the domain can create it, so the operator opens the
+page right away.
 
 Installation is Linux only, on the distributions below, and a machine that
 cannot run Cloud is refused: every deployment has Cloud. There is no
