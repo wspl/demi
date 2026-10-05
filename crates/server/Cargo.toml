@@ -11,6 +11,7 @@ doctest = false
 bench = false
 
 [dependencies]
+bzip2 = "0.6"
 clap = { version = "4", features = ["derive"] }
 demi-backend-database = { path = "../backend-database" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
@@ -21,6 +22,7 @@ rustix = { version = "1", features = ["fs", "process"] }
 semver = { workspace = true, features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
 tempfile = "3"
 thiserror.workspace = true
@@ -33,4 +35,3 @@ zstd = { version = "0.13", default-features = false }
 
 [dev-dependencies]
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
-sha2 = "0.10"

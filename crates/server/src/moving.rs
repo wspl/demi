@@ -14,6 +14,7 @@ use semver::Version;
 
 use crate::{
     data,
+    gvisor,
     journal::{Data, Journal, Step},
     layout::{Layout, UNITS},
     services::Services,
@@ -78,7 +79,7 @@ pub fn start(layout: &Layout, services: &dyn Services, to: &Version) -> Result<(
 }
 
 /// Everything that can fail without stopping anything: the configuration,
-/// the image, the room for the copy, and the manager's state format.
+/// gVisor, the image, the room for the copy, and the manager's state format.
 fn prepare(
     layout: &Layout,
     settings: &Settings,
@@ -89,6 +90,7 @@ fn prepare(
     run(settings.command(&bin.join("demi-backend")).arg("--check-config"))?;
     let manager = bin.join("demi-machine-manager");
     run(settings.command(&manager).arg("--check-config"))?;
+    gvisor::of_release(layout, to)?;
     let format = manager_format(&settings.manager_data()?)?;
     let backend = settings.backend_data()?;
     if to < from {
@@ -216,15 +218,16 @@ fn return_to_from(
     })
 }
 
-/// Keeps the two releases of the move, and the one snapshot a rollback may
-/// need: an upgrade's copy of the release it left, or a rollback's
-/// databases it moved aside.
+/// Keeps the two releases of the move with their gVisor versions, and the
+/// one snapshot a rollback may need: an upgrade's copy of the release it
+/// left, or a rollback's databases it moved aside.
 fn prune(layout: &Layout, backend: &std::path::Path, journal: &Journal) -> io::Result<()> {
     for version in layout.versions()? {
         if version != journal.to && version != journal.from {
             std::fs::remove_dir_all(layout.release(&version))?;
         }
     }
+    gvisor::prune(layout, &[&journal.to, &journal.from])?;
     let kept = match journal.data {
         Data::Keep => Vec::new(),
         Data::Snapshot => vec![journal.from.to_string()],

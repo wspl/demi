@@ -5,8 +5,7 @@
 //! `release.json`, which says where the release's files are, and, when
 //! asked, a Linux target's backend, machine manager and `demi-server` in
 //! `bin/` with the
-//! pinned runsc distribution in `runtime/` and the services' units in
-//! `systemd/`, and the built web app in `web/`. The release's files hold each target's runner
+//! services' units in `systemd/`, and the built web app in `web/`. The release's files hold each target's runner
 //! executable and each command program's compressed copy. Packaging makes
 //! each release whole first, so its records and its files are the ones
 //! packaging checked. The root is assembled in a stage beside it and renamed
@@ -58,12 +57,8 @@ pub struct Options {
     targets: Vec<&'static str>,
     /// The Linux target whose backend and machine manager go in bin/, with
     /// the units in systemd/ [default: no bin/].
-    #[arg(long, value_name = "TRIPLE", value_parser = native::target, requires = "runtime")]
+    #[arg(long, value_name = "TRIPLE", value_parser = native::target)]
     server: Option<&'static str>,
-    /// The unpacked runsc distribution of the server's architecture, which
-    /// fetch-runsc.sh fetched and checked, to copy into runtime/.
-    #[arg(long, value_name = "DIRECTORY", requires = "server")]
-    runtime: Option<PathBuf>,
     /// The built web app to copy into web/ [default: no web/].
     #[arg(long, value_name = "DIRECTORY")]
     web: Option<PathBuf>,
@@ -88,8 +83,6 @@ pub enum Error {
     NotLinux(&'static str),
     #[error("{} holds no {WEB_BUILD}: it is not a built web app", .0.display())]
     NotWeb(PathBuf),
-    #[error("{} holds no runsc: it is not a runsc distribution", .0.display())]
-    NotRuntime(PathBuf),
     #[error("{} has no parent directory to assemble it beside", .0.display())]
     NoParent(PathBuf),
     #[error("the release's record is invalid: {0}")]
@@ -127,16 +120,6 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
                 return Err(Error::NotWeb(web));
             }
             Some(web)
-        }
-        None => None,
-    };
-    let runtime = match &options.runtime {
-        Some(runtime) => {
-            let runtime = std::path::absolute(runtime)?;
-            if !tokio::fs::try_exists(runtime.join("runsc")).await? {
-                return Err(Error::NotRuntime(runtime));
-            }
-            Some(runtime)
         }
         None => None,
     };
@@ -205,9 +188,6 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
         for (name, unit) in UNITS {
             tokio::fs::write(systemd.join(name), unit).await?;
         }
-    }
-    if let Some(runtime) = runtime {
-        copy_directory(runtime, stage.path().join("runtime")).await?;
     }
     if let Some(web) = web {
         copy_directory(web, stage.path().join("web")).await?;
@@ -289,10 +269,6 @@ mod tests {
         let mut programs = vec![Executable::Runner];
         programs.extend(Executable::COMMANDS);
         build(&artifacts, &programs, &[windows]);
-        let runtime = root.path().join("runsc");
-        std::fs::create_dir_all(runtime.join("gvisor-bin")).unwrap();
-        std::fs::write(runtime.join("runsc"), "runsc").unwrap();
-        std::fs::write(runtime.join("gvisor-bin/helper"), "helper").unwrap();
         let web = root.path().join("dist");
         std::fs::create_dir_all(web.join("assets")).unwrap();
         std::fs::write(web.join(WEB_BUILD), r#"{"build":"fixture"}"#).unwrap();
@@ -305,7 +281,6 @@ mod tests {
             downloads: downloads.map(str::to_owned),
             targets: vec![windows],
             server: Some(linux),
-            runtime: Some(runtime.clone()),
             web: Some(web.clone()),
             publish: false,
             artifacts: Some(artifacts.clone()),
@@ -321,7 +296,7 @@ mod tests {
             matches!(missing, Err(Error::Native(native::Error::NotBuilt { .. }))),
             "{missing:?}"
         );
-        assert_eq!(names(root.path()), ["artifacts", "dist", "files", "runsc"]);
+        assert_eq!(names(root.path()), ["artifacts", "dist", "files"]);
         build(
             &artifacts,
             &[Executable::Backend, Executable::Machines, Executable::Server],
@@ -330,9 +305,8 @@ mod tests {
         assemble(&options(&output, None), &cancel).await.unwrap();
         assert_eq!(
             names(&output),
-            ["bin", "commands", "release.json", "runners", "runtime", "systemd", "web"]
+            ["bin", "commands", "release.json", "runners", "systemd", "web"]
         );
-        assert_eq!(names(&output.join("runtime")), ["gvisor-bin", "runsc"]);
         assert_eq!(
             names(&output.join("systemd")),
             ["demi-backend.service", "demi-machine-manager.service"]

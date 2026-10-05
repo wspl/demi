@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Installs the Cloud manager in the local Lima VM
 # (`docs/guides/mac-development.md`): starts or creates the VM, copies the
-# manager built for its Linux target into the bin/ of the manager's server
-# release root in the VM, whose image/ the image build wrote, writes the VM's
+# manager and demi-server built for its Linux target into the bin/ of the
+# manager's server release root in the VM, whose image/ the image build
+# wrote, has demi-server fetch the pinned gVisor version, writes the VM's
 # configuration file, and runs the host install script there. --public-url
 # is the backend's URL at the Mac's address on its network, which the Cloud
 # guests reach through Lima and the Mac's own runner reaches too; Lima's
@@ -16,12 +17,13 @@ instance=demi-machine-manager
 public_url=""
 slots=16
 manager=""
+server=""
 release=""
 data=/mnt/lima-demi-cloud-data/state
 data_size=100GiB
 root=""
 usage() {
-  echo 'usage: lima-machines.sh --manager PATH --release DIR --public-url URL' >&2
+  echo 'usage: lima-machines.sh --manager PATH --server PATH --release DIR --public-url URL' >&2
   echo '         [--data DIR] [--data-size SIZE] [--slots COUNT] [--root DIR]' >&2
   exit 2
 }
@@ -29,6 +31,7 @@ while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || usage
   case "$1" in
     --manager) manager=$2 ;;
+    --server) server=$2 ;;
     --release) release=$2 ;;
     --data) data=$2 ;;
     --data-size) data_size=$2 ;;
@@ -39,10 +42,14 @@ while [ "$#" -gt 0 ]; do
   esac
   shift 2
 done
-# --manager is the Linux build on this Mac; --release and --data are VM paths.
-[ -n "$manager" ] && [ -n "$release" ] && [ -n "$public_url" ] || usage
-[ -f "$manager" ] || { echo "no manager executable at $manager" >&2; exit 2; }
+# --manager and --server are the Linux builds on this Mac; --release and
+# --data are VM paths.
+[ -n "$manager" ] && [ -n "$server" ] && [ -n "$release" ] && [ -n "$public_url" ] || usage
+for program in "$manager" "$server"; do
+  [ -f "$program" ] || { echo "no executable at $program" >&2; exit 2; }
+done
 manager="$(cd "$(dirname "$manager")" && pwd)/$(basename "$manager")"
+server="$(cd "$(dirname "$server")" && pwd)/$(basename "$server")"
 case "$(limactl list --format '{{.Status}}' "$instance" 2>/dev/null)" in
   Running) ;;
   Stopped) limactl start "$instance" ;;
@@ -56,22 +63,23 @@ uid=$(limactl shell "$instance" -- id -u)
 prefix=${root%/}
 # The VM's configuration file: the Clouds use the VM's own resolver, the
 # manager's default.
-limactl shell "$instance" -- sudo install -d "$prefix/etc/demi"
+limactl shell "$instance" -- sudo install -d "$prefix/opt/demi/config"
 printf '%s\n' \
   "DEMI_BACKEND_PUBLIC_URL=$public_url" \
   "DEMI_MACHINE_MANAGER_SOCKET=/run/user/$uid/demi-machine-manager.sock" \
   "DEMI_MANAGED_DATA=$data" \
   "DEMI_MANAGED_SLOTS=$slots" |
-  limactl shell "$instance" -- sudo tee "$prefix/etc/demi/demi.env" >/dev/null
-# The manager is renamed into place, so a running manager keeps its own file.
-limactl shell "$instance" -- sudo install -D -m 0755 "$manager" "$release/bin/.demi-machine-manager.new"
-limactl shell "$instance" -- sudo mv "$release/bin/.demi-machine-manager.new" "$release/bin/demi-machine-manager"
-# The root the image build made holds no unit and no runsc; a server
-# release carries both, and so does this one from here on.
+  limactl shell "$instance" -- sudo tee "$prefix/opt/demi/config/demi.env" >/dev/null
+# Each program is renamed into place, so a running one keeps its own file.
+for program in "$manager" "$server"; do
+  name=$(basename "$program")
+  limactl shell "$instance" -- sudo install -D -m 0755 "$program" "$release/bin/.$name.new"
+  limactl shell "$instance" -- sudo mv "$release/bin/.$name.new" "$release/bin/$name"
+done
+# The root the image build made holds no unit; a server release carries it,
+# and so does this one from here on.
 limactl shell "$instance" -- sudo install -D -m 0644 "$here/systemd/demi-machine-manager.service" "$release/systemd/demi-machine-manager.service"
-if ! limactl shell "$instance" -- test -x "$release/runtime/runsc"; then
-  limactl shell "$instance" -- sudo bash "$here/scripts/fetch-runsc.sh" arm64 "$release/runtime"
-fi
+limactl shell "$instance" -- sudo "$release/bin/demi-server" runtime
 if [ -n "$root" ]; then
   # The VM sees this Mac's home at the same path, so the script is read there.
   limactl shell "$instance" -- bash "$here/scripts/install-managed-hosts.sh" \

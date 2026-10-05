@@ -17,7 +17,7 @@ use semver::Version;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    fetch,
+    fetch, gvisor,
     layout::{Layout, UNITS},
     services::Services,
     settings::Settings,
@@ -111,7 +111,7 @@ pub struct Options {
     #[arg(long, value_name = "NAME")]
     expose_domain: Option<String>,
     /// The machine manager's state directory, on one filesystem.
-    #[arg(long, value_name = "DIRECTORY", default_value = "/var/lib/demi/machine-manager")]
+    #[arg(long, value_name = "DIRECTORY", default_value = "/opt/demi/data/cloud")]
     cloud_data: PathBuf,
     /// Whether Clouds run under cgroup CPU, memory and PID limits.
     #[arg(long, value_enum, default_value = "on")]
@@ -132,8 +132,8 @@ pub struct Options {
     no_input: bool,
 }
 
-/// The backend's data directory on every server.
-const BACKEND_DATA: &str = "/var/lib/demi/backend";
+/// The backend's data directory on every server, also the home of its user.
+const BACKEND_DATA: &str = "/opt/demi/data/backend";
 
 /// What setup reached, kept while a run has not finished: a `current`
 /// without it is a server that is set up.
@@ -193,6 +193,8 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     };
     let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
     runtime.block_on(fetch::fetch(layout, &source, &version, &CancellationToken::new()))?;
+    step("Fetching the gVisor runtime it pins");
+    gvisor::of_release(layout, &version)?;
 
     step("Checking that this machine can run Cloud");
     std::fs::create_dir_all(&options.cloud_data)?;
@@ -230,6 +232,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
             std::fs::remove_dir_all(layout.release(&unpacked))?;
         }
     }
+    gvisor::prune(layout, &[&version])?;
     std::fs::remove_file(marker(layout))?;
     println!(
         "\nDemi {version} is set up at https://{0}.\n\
@@ -455,13 +458,14 @@ fn write_installation(layout: &Layout, settings: &Settings) -> Result<(), Box<dy
             "--groups",
             "demi-cloud",
             "--home-dir",
-            "/var/lib/demi",
+            BACKEND_DATA,
+            "--no-create-home",
             "--shell",
             "/usr/sbin/nologin",
             "demi",
         ]))?;
     }
-    checked(Command::new("install").args(["-d", "-o", "root", "-g", "root", "-m", "0755", "/var/lib/demi"]))?;
+    checked(Command::new("install").args(["-d", "-o", "root", "-g", "root", "-m", "0755", "/opt/demi/data"]))?;
     checked(Command::new("install").args(["-d", "-o", "demi", "-g", "demi", "-m", "0700", BACKEND_DATA]))?;
     let cloud = settings.manager_data()?;
     checked(Command::new("install").args(["-d", "-o", "root", "-g", "root", "-m", "0700"]).arg(&cloud))?;

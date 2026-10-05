@@ -4,9 +4,9 @@
 # setup): it points /opt/demi/current at the release, as a server's layout
 # does (`upgrades.md` § One release on a server), and installs the release's
 # own unit, which runs the manager /opt/demi/current names with the
-# deployment's configuration file and the release's pinned runsc. The
-# release, the configuration file and the state directory on its own Linux
-# filesystem must exist already; the installer reads the state directory
+# deployment's configuration file. The release, the configuration file, the
+# state directory on its own Linux filesystem and the pinned gVisor version,
+# which `demi-server runtime` fetches, must exist already; the installer reads the state directory
 # from the file and writes no setting.
 #
 # With --root DIR the link and the unit are written beneath DIR for review,
@@ -16,7 +16,7 @@ set -euo pipefail
 user=""
 release=""
 root=/
-config=/etc/demi/demi.env
+config=/opt/demi/config/demi.env
 usage() {
   echo 'usage: install-managed-hosts.sh --user USER --release DIR [--root DIR]' >&2
   exit 2
@@ -48,7 +48,6 @@ fi
 manager="$release/bin/demi-machine-manager"
 [ -x "$manager" ] || { echo "the release has no manager: $manager" >&2; exit 2; }
 [ -f "$release/image/manifest.json" ] || { echo "the release has no Cloud image: $release/image" >&2; exit 2; }
-[ -x "$release/runtime/runsc" ] || { echo "the release has no runsc: assemble it with --runtime" >&2; exit 2; }
 source_unit="$release/systemd/demi-machine-manager.service"
 [ -f "$source_unit" ] || { echo "the release has no unit: $source_unit" >&2; exit 2; }
 id "$user" >/dev/null
@@ -57,7 +56,7 @@ settings="${root%/}$config"
 # The state directory the manager will use: its setting in the file, or its
 # default.
 data=$(sed -n 's/^DEMI_MANAGED_DATA=//p' "$settings" | tail -n 1)
-data=${data:-/var/lib/demi-machine-manager}
+data=${data:-/opt/demi/data/cloud}
 [[ "$data" = /* ]] || { echo "DEMI_MANAGED_DATA must be absolute: $data" >&2; exit 2; }
 [ -d "$data" ] || { echo "prepare a Linux state directory first: $data" >&2; exit 2; }
 filesystem=$(findmnt -n -o FSTYPE -T "$data")
