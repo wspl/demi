@@ -26,26 +26,47 @@ export class GalleryPanel implements PanelBackend {
   private readonly retired = new Set<string>()
   /** Told of a tab its user created or removed, once the change is answered, as a kind's plugin is. */
   told: ((told: Told) => void) | null = null
-  /** Each change, the plugin's included, as the page's summary carries the panel's revision. */
-  changed: (() => void) | null = null
+  /** Each change, the plugin's included, with the panel's revision, as the page's summary carries it. */
+  changed: ((revision: number) => void) | null = null
 
   async read(): Promise<PanelRead> {
     await beat()
     return { revision: this.revision, tabs: this.tabs.map((tab) => ({ ...tab })) }
   }
 
-  /** A page's change: the kind's plugin hears of a tab its user created or removed. */
-  async send(change: PanelChange): Promise<{ revision: number }> {
+  /**
+   * A page's changes, as one change of the panel: the kind's plugin hears
+   * of each tab its user created or removed.
+   */
+  async send(changes: readonly PanelChange[]): Promise<{ revision: number }> {
     await beat()
-    const told = this.apply(change)
-    if (told) {
-      queueMicrotask(() => this.told?.(told))
+    const before = this.revision
+    const told = changes.flatMap((change) => this.change(change) ?? [])
+    if (this.revision > before) {
+      // The request counts as one change, however many it made.
+      this.revision = before + 1
+      const revision = this.revision
+      queueMicrotask(() => this.changed?.(revision))
+    }
+    for (const each of told) {
+      queueMicrotask(() => this.told?.(each))
     }
     return { revision: this.revision }
   }
 
-  /** Applies `change`, as the page's or the plugin's; answers what it did to a tab. */
+  /** Applies the plugin's `change`; answers what it did to a tab. */
   apply(change: PanelChange): Told | null {
+    const before = this.revision
+    const told = this.change(change)
+    if (this.revision > before) {
+      const revision = this.revision
+      queueMicrotask(() => this.changed?.(revision))
+    }
+    return told
+  }
+
+  /** Applies `change`, counting it in the revision when it changes the tabs; answers what it did to a tab. */
+  private change(change: PanelChange): Told | null {
     if (change.type === 'create' && (this.retired.has(change.tab.id) || this.tab(change.tab.id))) {
       return null
     }
@@ -56,7 +77,6 @@ export class GalleryPanel implements PanelBackend {
     }
     this.tabs = next
     this.revision += 1
-    queueMicrotask(() => this.changed?.())
     if (change.type === 'create') {
       return { change: 'created', tab: change.tab }
     }

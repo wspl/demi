@@ -107,10 +107,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     () => product.snapshot?.conversations,
     (summaries) => {
       for (const summary of summaries ?? []) {
-        const tabs = panels.get(summary.id)
-        if (tabs?.read && summary.panelRevision > tabs.revision) {
-          void tabs.refresh()
-        }
+        panels.get(summary.id)?.noticed(summary.panelRevision)
       }
     },
   )
@@ -169,9 +166,8 @@ export const useWorkPanel = defineStore('work-panel', () => {
   function closeTabs(conversationId: string, ids: string[]): void {
     const state = stateFor(conversationId)
     state.history = removeTabs(state.panel, ids).history
-    for (const id of ids) {
-      tabsOf(conversationId).change({ type: 'remove', id })
-    }
+    // One request, as Close Others is one change of the panel.
+    tabsOf(conversationId).change(...ids.map((id) => ({ type: 'remove' as const, id })))
   }
 
   /** A pinned tab's data, as its kind replaces it. */

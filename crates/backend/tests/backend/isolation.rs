@@ -171,13 +171,8 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
         (Method::GET, format!("/api/conversations/{c}/panel"), None),
         (
             Method::POST,
-            format!("/api/conversations/{c}/panel/tabs"),
-            Some(json!({ "id": "p", "kind": "page", "data": {} })),
-        ),
-        (
-            Method::DELETE,
-            format!("/api/conversations/{c}/panel/tabs/p"),
-            None,
+            format!("/api/conversations/{c}/panel/changes"),
+            Some(json!({ "changes": [{ "op": "create", "id": "p", "kind": "page", "data": {} }] })),
         ),
         (Method::GET, format!("/api/conversations/{c}/draft"), None),
         (

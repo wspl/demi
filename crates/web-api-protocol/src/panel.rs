@@ -1,6 +1,6 @@
 //! A conversation's work panel (`web-api.md` § Work panel state): its tabs,
-//! which the backend keeps and changes one operation at a time, each change
-//! counted by the panel's revision. The backend checks their shape and
+//! which the backend keeps and changes a request of changes at a time, each
+//! request counted by the panel's revision. The backend checks their shape and
 //! bounds and never interprets a tab's `kind` or `data`.
 
 use demi_shared_types::MAX_SAFE_INTEGER;
@@ -52,8 +52,7 @@ pub struct PanelTab {
     pub data: Map<String, Value>,
 }
 
-/// `POST /conversations/:id/panel/tabs`: a new tab at `index`, after the
-/// others without one.
+/// A new tab at `index`, after the others without one.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct CreatePanelTab {
@@ -68,22 +67,13 @@ pub struct CreatePanelTab {
     pub index: Option<usize>,
 }
 
-/// `PATCH /conversations/:id/panel/tabs/:tab`: the fields of the tab's
-/// `data` to set, a null one to remove.
+/// `POST /conversations/:id/panel/changes`: changes applied in order, all
+/// or none, as one change of the panel.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
-pub struct UpdatePanelTab {
-    #[garde(skip)]
-    pub data: Map<String, Value>,
-}
-
-/// `POST /conversations/:id/panel/tabs/:tab/move`: the tab's new place
-/// among the others.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct MovePanelTab {
-    #[garde(range(max = PANEL_TABS_MAX))]
-    pub index: usize,
+pub struct PanelChanges {
+    #[garde(length(min = 1), dive)]
+    pub changes: Vec<PanelChange>,
 }
 
 /// What every change of the panel answers: its revision once the change is
@@ -96,18 +86,30 @@ pub struct PanelRevision {
 }
 
 /// One change of a panel, from the page or from the kind's plugin.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(tag = "op", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PanelChange {
-    Create(CreatePanelTab),
+    /// Creates the tab.
+    Create(#[garde(dive)] CreatePanelTab),
+    /// Sets each field of `data` in the tab's `data`, removing those that
+    /// are null, and leaves the other fields.
     Update {
+        #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]
         id: String,
+        #[garde(skip)]
         data: Map<String, Value>,
     },
+    /// Removes the tab.
+    #[serde(rename = "delete")]
     Remove {
+        #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]
         id: String,
     },
+    /// Moves the tab to `index` among the others.
     Move {
+        #[garde(length(min = 1, max = PANEL_TAB_ID_MAX))]
         id: String,
+        #[garde(range(max = PANEL_TABS_MAX))]
         index: usize,
     },
 }
@@ -146,6 +148,15 @@ pub enum Applied {
     TooLarge,
 }
 
+/// Why a request of changes was refused, whole.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refused {
+    /// A create past the most tabs or the most data.
+    Full,
+    /// An update past the most data.
+    TooLarge,
+}
+
 /// Why a change was not applied, before its size is known.
 enum Unapplied {
     Nothing,
@@ -153,6 +164,24 @@ enum Unapplied {
 }
 
 impl PanelDocument {
+    /// Applies `changes` in order, all or none: each that has nothing to do
+    /// is passed over, and one that does not fit leaves the document as it
+    /// was and answers why.
+    pub fn apply_all(&mut self, changes: Vec<PanelChange>) -> Result<Vec<PanelEffect>, Refused> {
+        let mut next = self.clone();
+        let mut effects = Vec::new();
+        for change in changes {
+            match next.apply(change) {
+                Applied::Effect(effect) => effects.push(effect),
+                Applied::Nothing => {}
+                Applied::Full => return Err(Refused::Full),
+                Applied::TooLarge => return Err(Refused::TooLarge),
+            }
+        }
+        *self = next;
+        Ok(effects)
+    }
+
     /// Applies `change`, or leaves the document as it was when the change
     /// has nothing to do or does not fit.
     pub fn apply(&mut self, change: PanelChange) -> Applied {
