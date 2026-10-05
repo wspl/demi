@@ -18,6 +18,8 @@ let channels: ReturnType<typeof playChannels>
 let answers: Array<() => Response>
 /** How many reads reached the backend, read reactively. */
 const reads = shallowRef(0)
+/** The backend's answer to a decision. */
+let decide: () => Response
 
 beforeEach(() => {
   pinia = createPinia()
@@ -25,7 +27,11 @@ beforeEach(() => {
   channels = playChannels()
   answers = []
   reads.value = 0
+  decide = () => new Response(null, { status: 204 })
   globalThis.fetch = (async (input) => {
+    if (String(input).startsWith(`${PATH}/requests/`)) {
+      return decide()
+    }
     if (String(input) !== PATH) {
       throw new Error(`Unexpected request: ${String(input)}`)
     }
@@ -87,4 +93,24 @@ test('after the backend started again, the page reads the requests though the ne
   channels.last().connect(at('run-2', 1, 0))
   await until(() => permissions.stateFor(CONVERSATION).requests.length).toBe(0)
   expect(reads.value).toBe(2)
+})
+
+test('a decision shows at once and is not read back; a refused one gives the request back', async () => {
+  const product = useProduct()
+  product.start()
+  channels.last().connect(at('run-1', 5, 2))
+  const permissions = usePermissions()
+  answers.push(answer(5, 2))
+  permissions.follow(CONVERSATION)
+  const state = permissions.stateFor(CONVERSATION)
+  await until(() => state.requests.length).toBe(2)
+
+  await permissions.decide(CONVERSATION, 'pr-0', 'deny')
+  expect(state.requests.map((request) => request.id)).toEqual(['pr-1'])
+  expect(reads.value).toBe(1)
+
+  decide = () => Response.json({ code: 'internal_error', message: 'Not decided' }, { status: 500 })
+  await permissions.decide(CONVERSATION, 'pr-1', 'deny')
+  expect(state.requests.map((request) => request.id)).toEqual(['pr-1'])
+  expect(reads.value).toBe(1)
 })

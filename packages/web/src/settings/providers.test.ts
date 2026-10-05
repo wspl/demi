@@ -13,6 +13,8 @@ let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
 let state: ProductState
 let writes: number
+/** Each read of the model catalog, by its path. */
+let catalogReads: string[]
 let write: (body: Record<string, unknown>) => Promise<Response>
 let probe: (body: string, signal: AbortSignal | null | undefined) => Promise<Response>
 
@@ -43,9 +45,11 @@ beforeEach(async () => {
     }
     return Response.json({})
   }
+  catalogReads = []
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) {
+      catalogReads.push(path)
       return Response.json({ providers: [] })
     }
     if (path === '/api/providers/catalog') {
@@ -284,4 +288,14 @@ test('a failed save is a toast; the input stays and the next change resends it',
   expect(
     settings.providers.find((entry) => entry.id === 'configured')?.name,
   ).toBe('Retained name')
+})
+
+test('a saved change is not read back: the catalog follows the channel\'s entry, read once', async () => {
+  const settings = useProviderSettings()
+  await useProduct().loadModels()
+  catalogReads = []
+  settings.change(settings.providers.find((entry) => entry.id === 'configured')!, { name: 'Renamed' })
+  await idle()
+  expect(settings.providers.find((entry) => entry.id === 'configured')?.name).toBe('Renamed')
+  expect(catalogReads).toEqual(['/api/models'])
 })

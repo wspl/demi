@@ -296,8 +296,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     signal.throwIfAborted()
     provider.apiKey = ''
     resources.hideProvider(saved.provider.id, provider.enabled)
-    void product.reloadModels()
-    // The new entry's page opens once the channel brings it.
+    // The new entry's page opens once the channel brings it; the catalog
+    // follows the channel's providers (`web-application.md` § Requests for
+    // one action).
     await product.until((state) => state.providers.some((entry) => entry.id === saved.provider.id), signal)
     select(saved.provider.id)
     drafts.value = drafts.value.filter((draft) => draft.id !== provider.id)
@@ -314,9 +315,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       ...jsonBody(body),
     })
     signal.throwIfAborted()
+    // The entry shows as the channel brings it, and the catalog follows the
+    // channel's providers; nothing is read back.
     delete testResults.value[provider.id]
-    await product.reloadModels()
-    signal.throwIfAborted()
   }
 
   function change(
@@ -398,7 +399,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         signal,
       })
       signal.throwIfAborted()
-      await product.reloadModels()
     })
   }
 
@@ -626,7 +626,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           },
         )
         signal.throwIfAborted()
-        await product.reloadModels()
       },
     )
   }
@@ -798,7 +797,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           ),
         },
       )
-      await product.reloadModels()
       controller.signal.throwIfAborted()
       current.phase = {
         kind: 'done',

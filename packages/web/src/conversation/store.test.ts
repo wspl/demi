@@ -655,6 +655,38 @@ test('the first send creates the conversation with its settings and hosts in one
   }
 })
 
+test('an attach and a rename show the hosts their answers list, and a detach the one it removed, with no read', async () => {
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  const host = (name: string) => ({ deviceId: 'laptop', name, cwd: null, online: true, attachedAt: '2026-09-09T00:00:00.000Z' })
+  const originalFetch = globalThis.fetch
+  const sent: string[] = []
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    const method = init?.method ?? 'GET'
+    sent.push(`${method} ${path}`)
+    if (path === `/api/conversations/${FIRST}/hosts` && method === 'POST') return Response.json({ hosts: [host('laptop')] }, { status: 201 })
+    if (path === `/api/conversations/${FIRST}/hosts/laptop` && method === 'PATCH') return Response.json({ hosts: [host('build')] })
+    if (path === `/api/conversations/${FIRST}/hosts/laptop` && method === 'DELETE') return new Response(null, { status: 204 })
+    return originalFetch(input, init)
+  }) as typeof fetch
+  try {
+    await store.attachHost(first, 'laptop')
+    expect(first.attachedHosts.map((attached) => attached.name)).toEqual(['laptop'])
+    await store.renameHost(first, 'laptop', 'build')
+    expect(first.attachedHosts.map((attached) => attached.name)).toEqual(['build'])
+    await store.detachHost(first, 'laptop')
+    expect(first.attachedHosts).toEqual([])
+    expect(sent).toEqual([
+      `POST /api/conversations/${FIRST}/hosts`,
+      `PATCH /api/conversations/${FIRST}/hosts/laptop`,
+      `DELETE /api/conversations/${FIRST}/hosts/laptop`,
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('a draft keeps its files; the conversation itself is created on first send', async () => {
   const store = useConversations()
   store.create()
