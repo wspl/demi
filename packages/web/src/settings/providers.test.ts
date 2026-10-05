@@ -299,3 +299,14 @@ test('a saved change is not read back: the catalog follows the channel\'s entry,
   expect(settings.providers.find((entry) => entry.id === 'configured')?.name).toBe('Renamed')
   expect(catalogReads).toEqual(['/api/models'])
 })
+
+test('an API key change, which no view shows, still loads the catalog once the channel brings the providers', async () => {
+  const settings = useProviderSettings()
+  await useProduct().loadModels()
+  catalogReads = []
+  write = async () => Response.json({})
+  settings.change(settings.providers.find((entry) => entry.id === 'configured')!, { apiKey: 'sk-new-test-key' })
+  await idle()
+  await new Promise<void>((resolve) => setImmediate(resolve))
+  expect(catalogReads).toEqual(['/api/models'])
+})
