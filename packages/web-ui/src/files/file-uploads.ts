@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import { createId } from '@demicodes/utils'
-import { joinPath, parentPath, relativePath } from './paths'
-import { FileBrowserError, type FileBrowserSource } from './types'
+import { baseName, joinPath, parentPath, relativePath } from './paths'
+import { FileBrowserError, type FileBrowserEntry, type FileBrowserSource } from './types'
 
 /**
  * What a drop or a pick hands over: a file, or a folder with the folders and
@@ -59,7 +59,11 @@ export function clashPlacement(answer: ClashAnswer, isDirectory: boolean, takenB
   return !isDirectory && !takenByDirectory ? 'overwrite' : 'replace'
 }
 
-/** One thing an upload asks of its source, in the order it asks. */
+/**
+ * One thing an upload asks of its source: what it replaces deleted first,
+ * then its files written, whose writes make the folders above them, and the
+ * folders no file makes, the empty ones.
+ */
 export type UploadStep =
   | { kind: 'remove'; path: string; done: boolean }
   | { kind: 'directory'; path: string; done: boolean }
@@ -89,19 +93,30 @@ export type FileUploadState =
 const RATE_WINDOW_MS = 3000
 const RATE_MIN_SPAN_MS = 500
 
+/** How many steps run at once, across every upload of a source (`web-application.md` § Requests for one action). */
+export const UPLOADS_AT_ONCE = 4
+
 /** One file or folder sent into a directory of a source. */
 export interface FileUpload {
   id: string
   kind: UploadItem['kind']
   /** Where it goes, by absolute path: the file, or the folder. */
   path: string
-  /** What it takes, in order; a retry goes on with those not done. */
+  /** What it takes; a retry goes on with those not done. */
   steps: UploadStep[]
   state: FileUploadState
 }
 
-/** What an upload asks of: its files written, its folders made, what it replaces deleted. */
+/** What an upload asks of: its files written, its empty folders made, what it replaces deleted. */
 export type UploadSource = Pick<FileBrowserSource, 'upload' | 'createDirectory' | 'remove'>
+
+/**
+ * What an upload changed in a directory, as its answers tell it: an entry
+ * that is there now, a file landed or a folder made, or a path deleted.
+ */
+export type UploadChange =
+  | { kind: 'added'; directory: string; entry: FileBrowserEntry }
+  | { kind: 'removed'; path: string }
 
 export function uploadFiles(upload: FileUpload): UploadFileStep[] {
   return upload.steps.filter((step): step is UploadFileStep => step.kind === 'file')
@@ -113,18 +128,34 @@ export function uploadSize(upload: FileUpload): number {
 }
 
 /**
- * A source's uploads, in the order they were asked for. One is sent at a
- * time and the rest wait, so a large file does not share the link with the
- * others; a folder sends its files one by one. A file of a folder that fails
- * is noted and the folder goes on; a folder that cannot be made, or what it
- * replaces deleted, stops it. A finished upload stays listed until it is
- * dismissed or cleared; a cancelled one goes at once. A tree hears each
- * directory an upload changes, to list it again.
+ * An upload under way: what stops it, the steps it has running with the
+ * bytes each has sent, and the steps that failed with why.
+ */
+interface Run {
+  controller: AbortController
+  running: Map<UploadStep, number>
+  failed: Map<UploadStep, string>
+  /** A step other than a file's failed: nothing more starts. */
+  stopped: boolean
+  pace: (sent: number) => number | null
+}
+
+/**
+ * A source's uploads, in the order they were asked for. Up to
+ * `UPLOADS_AT_ONCE` steps run at once, taken in that order: a large file
+ * does not hold the ones behind it, and a folder's files go several at a
+ * time. An upload that replaces something deletes it before anything else
+ * of it starts. A file of a folder that fails is noted and the folder goes
+ * on; a folder that cannot be made, or what it replaces deleted, stops it.
+ * A finished upload stays listed until it is dismissed or cleared; a
+ * cancelled one goes at once. A tree hears what each answer changed, so it
+ * shows the new entries without listing the directory again.
  */
 export class FileUploads {
   readonly items: FileUpload[] = reactive([])
-  #running: { id: string; controller: AbortController } | null = null
-  readonly #changed = new Set<(directory: string) => void>()
+  readonly #runs = new Map<string, Run>()
+  #active = 0
+  readonly #changed = new Set<(change: UploadChange) => void>()
 
   constructor(private readonly source: UploadSource) {}
 
@@ -140,13 +171,12 @@ export class FileUploads {
         state: { phase: 'waiting' },
       })
     }
-    this.#next()
+    this.#pump()
   }
 
   /** Stops an upload and drops it from the list; what it has done stays done. */
   cancel(id: string): void {
-    if (this.#running?.id === id)
-      this.#running.controller.abort()
+    this.#runs.get(id)?.controller.abort()
     this.#remove(id)
   }
 
@@ -158,7 +188,7 @@ export class FileUploads {
     const [item] = this.items.splice(index, 1)
     item!.state = { phase: 'waiting' }
     this.items.push(item!)
-    this.#next()
+    this.#pump()
   }
 
   /** Drops a finished upload from the list. */
@@ -177,10 +207,11 @@ export class FileUploads {
   }
 
   /**
-   * Calls `listener` with each directory an upload changes: a file landed in
-   * it, a folder made or deleted there. The returned function stops it.
+   * Calls `listener` with each change an upload's answers make: a file
+   * landed or a folder made, with the folders above it the upload made, and
+   * a path deleted. The returned function stops it.
    */
-  onChanged(listener: (directory: string) => void): () => void {
+  onChanged(listener: (change: UploadChange) => void): () => void {
     this.#changed.add(listener)
     return () => this.#changed.delete(listener)
   }
@@ -191,58 +222,120 @@ export class FileUploads {
       this.items.splice(index, 1)
   }
 
-  /** Starts the first waiting upload, unless one is on its way. */
-  #next(): void {
-    const upload = this.items.find((entry) => entry.state.phase === 'waiting')
-    if (this.#running || !upload)
-      return
-    const controller = new AbortController()
-    this.#running = { id: upload.id, controller }
-    void this.#run(upload, controller.signal).then((failures) => {
-      // A cancelled upload has left the list already.
-      if (controller.signal.aborted)
+  /** Starts the steps next in line while fewer than `UPLOADS_AT_ONCE` run. */
+  #pump(): void {
+    while (this.#active < UPLOADS_AT_ONCE) {
+      const next = this.#nextStep()
+      if (!next)
         return
-      upload.state = failures.length === 0 ? { phase: 'done' } : { phase: 'failed', failures }
+      this.#start(next.upload, next.step)
+    }
+  }
+
+  /** The first step not done and not running of the first upload under way that can start one. */
+  #nextStep(): { upload: FileUpload; step: UploadStep } | null {
+    for (const upload of this.items) {
+      if (upload.state.phase !== 'waiting' && upload.state.phase !== 'uploading')
+        continue
+      const run = this.#runs.get(upload.id)
+      if (run?.stopped)
+        continue
+      const running = run?.running ?? new Map<UploadStep, number>()
+      // What the upload replaces goes before anything else of it starts.
+      const removal = upload.steps.find((step) => step.kind === 'remove' && !step.done)
+      if (removal) {
+        if (running.size === 0)
+          return { upload, step: removal }
+        continue
+      }
+      const step = upload.steps.find((candidate) => !candidate.done && !running.has(candidate) && !run?.failed.has(candidate))
+      if (step)
+        return { upload, step }
+    }
+    return null
+  }
+
+  #start(upload: FileUpload, step: UploadStep): void {
+    let run = this.#runs.get(upload.id)
+    if (!run) {
+      run = {
+        controller: new AbortController(),
+        running: new Map(),
+        failed: new Map(),
+        stopped: false,
+        pace: recentPace(landedBytes(upload)),
+      }
+      this.#runs.set(upload.id, run)
+      upload.state = { phase: 'uploading', sent: landedBytes(upload), rate: null }
+    }
+    const current = run
+    const { signal } = current.controller
+    current.running.set(step, 0)
+    this.#active += 1
+    void this.#take(step, signal, (sent) => {
+      if (signal.aborted)
+        return
+      current.running.set(step, sent)
+      report(upload, current)
+    }).then(() => {
+      step.done = true
+      current.running.delete(step)
+      report(upload, current)
+      this.#announce(upload, step)
+    }, (error: unknown) => {
+      // A cancelled upload says nothing more; it has left the list.
+      if (signal.aborted)
+        return
+      current.failed.set(step, failureMessage(error))
+      if (step.kind !== 'file')
+        current.stopped = true
     }).finally(() => {
-      this.#running = null
-      this.#next()
+      current.running.delete(step)
+      this.#active -= 1
+      if (!signal.aborted)
+        this.#settle(upload, current)
+      else if (current.running.size === 0)
+        this.#runs.delete(upload.id)
+      this.#pump()
     })
   }
 
-  /**
-   * Takes the upload's steps not done yet, in order, and answers the
-   * failures: a file's is noted and the next step goes on; any other stops
-   * the upload.
-   */
-  async #run(upload: FileUpload, signal: AbortSignal): Promise<UploadFailure[]> {
-    const failures: UploadFailure[] = []
-    let landed = uploadFiles(upload).reduce((sum, step) => sum + (step.done ? step.file.size : 0), 0)
-    const pace = recentPace(landed)
-    upload.state = { phase: 'uploading', sent: landed, rate: null }
-    for (const step of upload.steps) {
-      if (step.done)
-        continue
-      try {
-        await this.#take(step, signal, (sent) => {
-          if (!signal.aborted)
-            upload.state = { phase: 'uploading', sent: landed + sent, rate: pace(landed + sent) }
-        })
-      } catch (error) {
-        // A cancelled upload says nothing more; it has left the list.
-        if (signal.aborted)
-          return failures
-        failures.push({ path: relativePath(upload.path, step.path), message: failureMessage(error) })
-        if (step.kind === 'file')
-          continue
-        break
-      }
-      step.done = true
+  /** Ends an upload that has nothing more to run: done, or failed with what failed. */
+  #settle(upload: FileUpload, run: Run): void {
+    if (run.running.size > 0)
+      return
+    const more = !run.stopped && upload.steps.some((step) => !step.done && !run.failed.has(step))
+    if (more)
+      return
+    this.#runs.delete(upload.id)
+    const failures = upload.steps.flatMap((step) => {
+      const message = run.failed.get(step)
+      return message === undefined ? [] : [{ path: relativePath(upload.path, step.path), message }]
+    })
+    upload.state = failures.length === 0 ? { phase: 'done' } : { phase: 'failed', failures }
+  }
+
+  /** Tells the listeners what a step's answer changed. */
+  #announce(upload: FileUpload, step: UploadStep): void {
+    const changes: UploadChange[] = []
+    if (step.kind === 'remove') {
+      changes.push({ kind: 'removed', path: step.path })
+    } else {
+      // The folders between the upload's own place and the step's, which
+      // the step's write made when they were missing.
+      const inUpload = (at: string) => upload.kind === 'folder' && (at === upload.path || at.startsWith(`${upload.path}/`))
+      const folders: string[] = []
+      for (let at = step.kind === 'file' ? parentPath(step.path) : step.path; inUpload(at); at = parentPath(at))
+        folders.unshift(at)
+      for (const folder of folders)
+        changes.push({ kind: 'added', directory: parentPath(folder), entry: { name: baseName(folder), isDirectory: true } })
       if (step.kind === 'file')
-        landed += step.file.size
-      for (const listener of this.#changed)
-        listener(parentPath(step.path))
+        changes.push({ kind: 'added', directory: parentPath(step.path), entry: { name: baseName(step.path), isDirectory: false, size: step.file.size } })
     }
-    return failures
+    for (const change of changes) {
+      for (const listener of this.#changed)
+        listener(change)
+    }
   }
 
   async #take(step: UploadStep, signal: AbortSignal, progress: (sent: number) => void): Promise<void> {
@@ -265,9 +358,21 @@ export class FileUploads {
   }
 }
 
+/** How far an upload on its way is: its files landed and what its running ones have sent. */
+function report(upload: FileUpload, run: Run): void {
+  const sent = landedBytes(upload) + [...run.running.values()].reduce((sum, bytes) => sum + bytes, 0)
+  upload.state = { phase: 'uploading', sent, rate: run.pace(sent) }
+}
+
+/** The bytes of an upload's files that have landed. */
+function landedBytes(upload: FileUpload): number {
+  return uploadFiles(upload).reduce((sum, step) => sum + (step.done ? step.file.size : 0), 0)
+}
+
 /**
  * The steps an item takes into `path`: what is there deleted first when it
- * replaces it; a folder made, then the folders inside it, then its files.
+ * replaces it; then its files, whose writes make the folders above them, and
+ * the folders that hold no file, which only a folder's own step makes.
  */
 function stepsFor(path: string, item: UploadItem, placement: UploadPlacement): UploadStep[] {
   const steps: UploadStep[] = []
@@ -278,11 +383,16 @@ function stepsFor(path: string, item: UploadItem, placement: UploadPlacement): U
     steps.push({ kind: 'file', path, file: item.file, replace, done: false })
     return steps
   }
-  steps.push({ kind: 'directory', path, done: false })
-  for (const directory of item.directories)
-    steps.push({ kind: 'directory', path: joinPath(path, directory), done: false })
   for (const entry of item.files)
     steps.push({ kind: 'file', path: joinPath(path, entry.path), file: entry.file, replace, done: false })
+  // A folder another one or a file is in is made on the way to it.
+  const inside = (folder: string, other: string) => other.startsWith(`${folder}/`)
+  const holders = [...item.directories, ...item.files.map((entry) => entry.path)]
+  const empty = item.directories.filter((folder) => !holders.some((other) => inside(folder, other)))
+  for (const folder of empty)
+    steps.push({ kind: 'directory', path: joinPath(path, folder), done: false })
+  if (holders.length === 0)
+    steps.push({ kind: 'directory', path, done: false })
   return steps
 }
 

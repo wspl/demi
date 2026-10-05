@@ -14,11 +14,11 @@ import { baseName } from './paths'
 
 /**
  * A source's uploads, and nothing while there are none; its host sets its
- * height, and the rows scroll inside it. The one on its way comes first, then
+ * height, and the rows scroll inside it. Those on their way come first, then
  * those waiting, the failed ones, and the completed ones last, each group in
  * the order it was asked for. A folder is one row for everything in it.
  *
- * A row is two lines, the name and one line of facts, and the one on its way
+ * A row is two lines, the name and one line of facts, and one on its way
  * adds a bar between them: how much has gone and how fast, and of a folder
  * how many of its files; a waiting one its size, a completed one a check, a
  * failed one a cross and why, or of a folder how many of its files failed. A

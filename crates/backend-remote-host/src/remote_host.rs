@@ -15,7 +15,7 @@ use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
     HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, JobCaller, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnRequest,
-    WholeOutput, WriteOptions,
+    WhenExists, WholeOutput, WriteOptions,
 };
 use demi_runner_protocol::wire::{
     self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, STDIN_CHUNK_BYTES, WireBytes,
@@ -213,24 +213,34 @@ impl RemoteHost {
 
     /// Writes the file from `input`, a pipe from [`RemoteHost::write_pipe`]:
     /// the runner puts the file in place once it read the pipe to its end,
-    /// and then replies. A pipe that fails leaves the file as it was.
+    /// and then replies with the name it has. A pipe that fails leaves the
+    /// file as it was; a path taken that the write may not have refuses it
+    /// before the pipe is read.
     pub async fn write_from(
         &self,
         path: &str,
         input: &Pipe,
         options: WriteOptions,
-    ) -> Result<(), HostError> {
+    ) -> Result<String, HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
-        link.call(Expected::Fs("writeFile"), |id| Inbound::FsWriteFile {
-            id,
-            path: path.into(),
-            cwd: self.cwd(),
-            create_parents: options.create_parents.then_some(true),
-            input: input.wire_ref(),
-        })
-        .await
-        .map(|_| ())
+        let written = link
+            .call(Expected::Fs("writeFile"), |id| Inbound::FsWriteFile {
+                id,
+                path: path.into(),
+                cwd: self.cwd(),
+                exists: match options.exists {
+                    WhenExists::Replace => wire::WriteExists::Replace,
+                    WhenExists::Refuse => wire::WriteExists::Refuse,
+                    WhenExists::Rename => wire::WriteExists::Rename,
+                },
+                input: input.wire_ref(),
+            })
+            .await?;
+        match written {
+            Answer::Fs(FsResult::WriteFile(name)) => Ok(name),
+            _ => Err(mismatch()),
+        }
     }
 
     /// Reads several files with one request (`runner.md` § Host
@@ -549,7 +559,7 @@ impl RemoteHost {
         path: &str,
         contents: FileContents,
         options: WriteOptions,
-    ) -> Result<(), HostError> {
+    ) -> Result<String, HostError> {
         let input = self.write_pipe()?;
         let mut writer = input.writer().map_err(pipe_error)?;
         // What stopped the upload when its source failed: that failure, not
@@ -583,7 +593,7 @@ impl RemoteHost {
         };
         let ((), written) = tokio::join!(upload, self.write_from(path, &input, options));
         match written {
-            Ok(()) => Ok(()),
+            Ok(name) => Ok(name),
             Err(error) => {
                 input.fail(&error.message);
                 Err(source_failure.into_inner().unwrap_or(error))
@@ -961,7 +971,7 @@ impl HostFs for RemoteHost {
         path: &'a str,
         contents: FileContents,
         options: WriteOptions,
-    ) -> LocalBoxFuture<'a, Result<(), HostError>> {
+    ) -> LocalBoxFuture<'a, Result<String, HostError>> {
         Box::pin(self.write_contents(path, contents, options))
     }
 

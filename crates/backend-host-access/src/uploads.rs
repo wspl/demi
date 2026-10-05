@@ -87,9 +87,7 @@ async fn write_attachment(
         number += 1;
     }
     let path = format!("{directory}/{name}");
-    let options = WriteOptions {
-        create_parents: true,
-    };
+    let options = WriteOptions::default();
     host.fs()
         .write_file(&path, FileContents::Bytes(bytes), options)
         .await?;

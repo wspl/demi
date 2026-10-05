@@ -25,7 +25,8 @@ pub struct FsOk {
 #[derive(Debug, Clone, PartialEq)]
 pub enum FsResult {
     ReadFile,
-    WriteFile,
+    /// The name of the file written: its path's, or the free one it took.
+    WriteFile(String),
     Look(Vec<Looked>),
     ReadFiles(Vec<FileRead>),
     Exists(bool),
@@ -49,7 +50,7 @@ impl FsResult {
     pub fn op(&self) -> &'static str {
         match self {
             Self::ReadFile => "readFile",
-            Self::WriteFile => "writeFile",
+            Self::WriteFile(_) => "writeFile",
             Self::Look(_) => "look",
             Self::ReadFiles(_) => "readFiles",
             Self::Exists(_) => "exists",
@@ -109,11 +110,10 @@ impl Serialize for FsOk {
                 reply.serialize_field("result", stat)?;
             }
             FsResult::Readdir(entries) => reply.serialize_field("result", entries)?,
-            FsResult::Readlink(path) | FsResult::Realpath(path) => {
-                reply.serialize_field("result", path)?;
+            FsResult::WriteFile(name) | FsResult::Readlink(name) | FsResult::Realpath(name) => {
+                reply.serialize_field("result", name)?;
             }
             FsResult::ReadFile
-            | FsResult::WriteFile
             | FsResult::Mkdir
             | FsResult::Rm
             | FsResult::Cp
@@ -168,7 +168,7 @@ impl ReplyResult for FsResult {
     fn read<'de, A: MapAccess<'de>>(op: &str, map: &mut A) -> Result<Self, A::Error> {
         Ok(match op {
             "readFile" => none(map, Self::ReadFile)?,
-            "writeFile" => none(map, Self::WriteFile)?,
+            "writeFile" => Self::WriteFile(map.next_value()?),
             "look" => Self::Look(map.next_value()?),
             "readFiles" => Self::ReadFiles(map.next_value()?),
             "exists" => Self::Exists(map.next_value()?),

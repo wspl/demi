@@ -15,6 +15,7 @@ use axum::body::Body;
 use axum::http::StatusCode;
 use bytes::Bytes;
 use demi_backend_remote_host::PipeReader;
+use demi_host_interface::HostError;
 use demi_web_api_protocol::error::ErrorCode;
 use futures_util::StreamExt as _;
 
@@ -78,6 +79,8 @@ pub(super) enum UploadEnd {
     /// The Host took nothing for the limit: nothing moved on the connection,
     /// which is closed.
     HostStalled,
+    /// The Host's write failed, such as for what the path holds.
+    WriteFailed(HostError),
     Refused(ApiError),
 }
 
@@ -147,7 +150,7 @@ pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
     };
     match outcome {
         Ok(Ok(())) => UploadEnd::Written,
-        Ok(Err(error)) => UploadEnd::Refused(ApiError::host_operation(error)),
+        Ok(Err(error)) => UploadEnd::WriteFailed(error),
         // The shard's owner ended without an outcome only when the transfer
         // was ended.
         Err(_) => ended(),

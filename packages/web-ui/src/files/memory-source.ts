@@ -117,14 +117,35 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
     return node
   }
 
+  /** The directory at `path`, made down from the root with each one that is missing. */
+  function makeDirectories(path: string): MemoryDirectory {
+    let node: MemoryDirectory = root
+    let at = '/'
+    for (const segment of normalizePath(path).split('/').filter(Boolean)) {
+      at = joinPath(at, segment)
+      const child: MemoryNode | undefined = node.children[segment]
+      if (child?.kind === 'file')
+        throw new FileBrowserError('other', `${at} is a file.`)
+      if (child) {
+        node = child
+        continue
+      }
+      if (node.failure?.kind === 'permission')
+        throw new FileBrowserError('permission', node.failure.message)
+      const made: MemoryDirectory = { kind: 'directory', children: {}, modifiedAt: new Date().toISOString() }
+      node.children[segment] = made
+      node = made
+    }
+    return node
+  }
+
   /** Uploads at `rate` bytes a second, each landing as a file of its size. */
   function uploadAt(rate: number): NonNullable<FileBrowserSource['upload']> {
     return async (path, file, { replace, signal, progress }) => {
       if (options.offline)
         throw new FileBrowserError('offline')
-      const parent = lookup(parentPath(path))
-      if (!parent || parent.kind !== 'directory')
-        throw new FileBrowserError('not-found', `No such directory: ${parentPath(path)}`)
+      // The write makes the folders above it, as a Host's does.
+      const parent = makeDirectories(parentPath(path))
       // A directory that cannot be listed cannot be written to either.
       if (parent.failure)
         throw new FileBrowserError(parent.failure.kind, parent.failure.message)
@@ -201,24 +222,7 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
       await wait(signal)
       if (options.offline)
         throw new FileBrowserError('offline')
-      // Down from the root, making each directory that is missing.
-      let node: MemoryDirectory = root
-      let at = '/'
-      for (const segment of normalizePath(path).split('/').filter(Boolean)) {
-        at = joinPath(at, segment)
-        const child: MemoryNode | undefined = node.children[segment]
-        if (child?.kind === 'file')
-          throw new FileBrowserError('other', `${at} is a file.`)
-        if (child) {
-          node = child
-          continue
-        }
-        if (node.failure?.kind === 'permission')
-          throw new FileBrowserError('permission', node.failure.message)
-        const made: MemoryDirectory = { kind: 'directory', children: {}, modifiedAt: new Date().toISOString() }
-        node.children[segment] = made
-        node = made
-      }
+      makeDirectories(path)
     },
     async remove(path, signal) {
       await wait(signal)

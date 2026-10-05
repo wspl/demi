@@ -80,12 +80,12 @@ export interface FileBrowserSource {
   /** The files' bytes for previews and Download; absent when the source serves none. */
   contents?: FileContents
   /**
-   * Writes `file` to `path` whole, its bytes streamed as they go: `progress`
-   * hears how many have gone, and aborting `signal` stops the upload and
-   * leaves `path` as it was. A `path` already taken rejects with a
-   * `FileBrowserError` of kind `exists` unless `replace`; a directory there
-   * is never replaced. Absent when the source cannot write; the tree then
-   * offers no Upload.
+   * Writes `file` to `path` whole, its bytes streamed as they go, making the
+   * directories above it that are missing: `progress` hears how many have
+   * gone, and aborting `signal` stops the upload and leaves `path` as it
+   * was. A `path` already taken rejects with a `FileBrowserError` of kind
+   * `exists` unless `replace`; a directory there is never replaced. Absent
+   * when the source cannot write; the tree then offers no Upload.
    */
   upload?(path: string, file: File, options: FileUploadOptions): Promise<void>
   /**

@@ -633,9 +633,7 @@ async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
         .write_file(
             &format!("{home}/copy/large.bin"),
             FileContents::Bytes(large.clone().into()),
-            WriteOptions {
-                create_parents: true,
-            },
+            WriteOptions::default(),
         )
         .await
         .unwrap();
@@ -694,16 +692,20 @@ async fn file_contents_travel_whole_or_in_ranges_and_never_in_a_message() {
         names
     };
     let before = entries();
-    let absent = host
+    // A file where a directory above the path should be stops the write,
+    // which names the cause as the system does.
+    std::fs::write(format!("{home}/plain"), "plain").unwrap();
+    let under_file = host
         .fs()
         .write_file(
-            &format!("{home}/absent/file"),
+            &format!("{home}/plain/file"),
             FileContents::Bytes(pattern(10).into()),
             WriteOptions::default(),
         )
-        .await
-        .unwrap_err();
-    assert_eq!(absent.code(), Some("ENOENT"));
+        .await;
+    assert!(under_file.is_err());
+    assert_eq!(std::fs::read_to_string(format!("{home}/plain")).unwrap(), "plain");
+    std::fs::remove_file(format!("{home}/plain")).unwrap();
     std::fs::create_dir(format!("{home}/target")).unwrap();
     std::fs::write(format!("{home}/target/kept"), "kept").unwrap();
     let over_directory = host

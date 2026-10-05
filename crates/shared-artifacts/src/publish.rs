@@ -76,6 +76,38 @@ impl Staged {
     pub async fn publish(self) -> Result<(), Error> {
         finish(self.file, self.temporary, &self.path, self.publication).await
     }
+
+    /// Makes the staged bytes the file at the first of `candidates` where
+    /// nothing is, and answers that path; nothing is replaced. Each
+    /// candidate must be beside the staged path, in its directory.
+    pub async fn publish_first_free(
+        mut self,
+        candidates: impl Iterator<Item = PathBuf> + Send + 'static,
+    ) -> Result<PathBuf, Error> {
+        self.file.flush().await?;
+        if self.publication.durable {
+            self.file.sync_all().await?;
+        }
+        drop(self.file);
+        let mut temporary = self.temporary;
+        tokio::task::spawn_blocking(move || {
+            for candidate in candidates {
+                match temporary.persist_noclobber(&candidate) {
+                    Ok(()) => return Ok(candidate),
+                    Err(error) if error.error.kind() == std::io::ErrorKind::AlreadyExists => {
+                        temporary = error.path;
+                    }
+                    Err(error) => return Err(Error::Io(error.error)),
+                }
+            }
+            Err(Error::Io(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                "every name is taken",
+            )))
+        })
+        .await
+        .map_err(std::io::Error::other)?
+    }
 }
 
 /// Publishes what `input` yields at `path`. Once `cancel` fires, nothing is

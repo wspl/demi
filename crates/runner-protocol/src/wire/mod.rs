@@ -16,7 +16,7 @@ pub use messages::{
     HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine, LookPath,
     Looked, MAX_INSTALLED, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef, RunnerInfo,
     RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind, StreamArtifactOwner,
-    VolumeName,
+    VolumeName, WriteExists,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 

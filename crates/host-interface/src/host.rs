@@ -176,10 +176,25 @@ pub struct DirEntry {
     pub modified: Timestamp,
 }
 
+/// How a file is written. A write makes the directories above its path
+/// that are missing.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct WriteOptions {
-    /// Create the directories the file's path names that do not exist yet.
-    pub create_parents: bool,
+    pub exists: WhenExists,
+}
+
+/// What a write does when its path is taken. A directory there is never
+/// written over: the write fails with `EISDIR`, unless it takes another
+/// name.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum WhenExists {
+    /// Replace the file.
+    #[default]
+    Replace,
+    /// Fail with `EEXIST`.
+    Refuse,
+    /// Take the first free name of the form `name-2.ext`, `name-3.ext`.
+    Rename,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -216,15 +231,16 @@ pub trait HostFs {
         range: ByteRange,
     ) -> LocalBoxFuture<'a, Result<ByteStream, HostError>>;
 
-    /// Replaces the file whole. A write that fails, a stream that fails, or
-    /// dropping the future leaves the file as it was; the stream's own error
-    /// is the one returned.
+    /// Writes the file whole and answers the name it has: its path's, or
+    /// the free one the write took. A write that fails, a stream that
+    /// fails, or dropping the future leaves the file as it was; the stream's
+    /// own error is the one returned.
     fn write_file<'a>(
         &'a self,
         path: &'a str,
         contents: FileContents,
         options: WriteOptions,
-    ) -> LocalBoxFuture<'a, Result<(), HostError>>;
+    ) -> LocalBoxFuture<'a, Result<String, HostError>>;
 
     fn exists<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<bool, HostError>>;
 
