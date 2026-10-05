@@ -1400,16 +1400,22 @@ presentation of changed files are shown in the gallery, not here.
 ### Tool descriptions
 
 Every tool's input accepts an optional `description`: a short title, shown to
-the user, for the concrete state or result the step makes visible, confirms or
-advances. It names what the user will see, not how the tool works.
+the user, for what the step does, as a command in the imperative: `Install
+Chrome for Testing`, `Start the browser with a blank tab`, `Run the type
+checker`. The model writes it before the step runs, so it never states a
+result: a title such as `Chrome for Testing installed` would claim success
+while the download still runs, and still claim it after the step failed. The
+block shows whether the step runs, ended or failed beside the title. The title
+names the work the user cares about, not how the tool works.
 
 1. A non-empty `description` is the preferred title of the tool block.
 2. Without it, the renderer uses the tool's own fallback title.
 3. `description` affects display only. It changes neither the shell's
    behavior, the tool result, nor what the model receives on replay.
-4. A `description` does not describe waiting, pausing or tool mechanics, is
-   not a generic action or a bare noun, and does not hold scripts, output,
-   protocol state, step numbers, tool names, ids, internal labels or reasons.
+4. A `description` does not state a result or a state reached, does not
+   describe waiting, pausing or tool mechanics, is not a generic action or a
+   bare noun, and does not hold scripts, output, protocol state, step numbers,
+   tool names, ids, internal labels or reasons.
 
 ## Frame protocol
 
