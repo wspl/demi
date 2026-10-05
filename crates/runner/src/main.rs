@@ -7,6 +7,7 @@ mod host_log;
 mod management;
 mod registration;
 mod state;
+mod update;
 
 use demi_command_protocol::{LocalInvocation, host_target};
 use demi_runner_host::volumes::ManagedVolume;
@@ -20,7 +21,7 @@ use demi_runner_protocol::{
     wire::{self, RunnerPlatform},
 };
 use demi_runner_shell::ShellRuntime;
-use registration::Options;
+use registration::{Ending, Options};
 use state::RunnerState;
 use std::{
     collections::BTreeMap,
@@ -205,7 +206,7 @@ struct Installation {
     #[arg(long = "home", env = "DEMI_HOME", hide = true)]
     home: Option<PathBuf>,
     /// This runner's release, which `status` compares with the active one.
-    #[arg(long, env = "DEMI_RELEASE_ID", hide = true)]
+    #[arg(long, env = demi_runner_protocol::release::RELEASE_ENV, hide = true)]
     release: Option<String>,
 }
 
@@ -255,6 +256,13 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
                 .ok_or_else(|| io::Error::other("pass --backend <url> on first start"))?
                 .backend_url
         }
+    };
+    let executable = std::env::current_exe()?;
+    // A managed guest's runner comes with its image, never from an
+    // installer (`runner.md` § Runner updates).
+    let installed = match &boot {
+        Some(_) => None,
+        None => update::Installed::of(&directory, installation.release.as_deref(), &executable),
     };
     let identity = identity(home.to_string_lossy().into_owned())?;
     let runner = wire::RunnerInfo {
@@ -316,7 +324,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         }),
         directory,
         jobs,
-        executable: std::env::current_exe()?,
+        executable,
         cwd: std::env::current_dir()?,
         env,
         runner,
@@ -336,6 +344,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             vec![]
         },
         shell: Arc::new(shell),
+        installed,
     };
     let stop = CancellationToken::new();
     let running = registration::run(options, stop.clone());
@@ -351,14 +360,18 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         },
     };
     // Past this point the log holds what went wrong, and the console hears it.
-    let code = match outcome {
-        Ok(()) => 0,
+    let (code, successor) = match outcome {
+        Ok(Ending::Stopped) => (0, None),
+        Ok(Ending::Replaced(successor)) => (0, Some(successor)),
         Err(error) => {
             tracing::error!("{error}");
-            1
+            (1, None)
         }
     };
     log.close().await;
+    if let Some(successor) = successor {
+        successor.start()?;
+    }
     Ok(code)
 }
 

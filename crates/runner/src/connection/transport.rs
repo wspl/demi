@@ -7,7 +7,9 @@
 
 use std::{io, time::Duration};
 
+use demi_command_protocol::host_target;
 use demi_runner_protocol::{
+    release::{RELEASE_HEADER, RunnerUpdate, TARGET_HEADER},
     values::BackendUrl,
     wire::{self, Frame, Inbound},
 };
@@ -20,7 +22,9 @@ use tokio::{
 use tokio_tungstenite::{
     WebSocketStream,
     tungstenite::{
-        Message,
+        Error, Message,
+        client::IntoClientRequest,
+        http::{HeaderValue, StatusCode},
         protocol::{CloseFrame, WebSocketConfig, frame::coding::CloseCode},
     },
 };
@@ -60,19 +64,51 @@ pub fn socket_url(backend: &BackendUrl) -> io::Result<url::Url> {
     Ok(url)
 }
 
+/// What asking for the socket gave: the socket, or the release the backend
+/// requires first (`runner.md` § Runner updates).
+pub enum Connected {
+    Open(Transport),
+    Update(RunnerUpdate),
+}
+
 impl Transport {
-    pub async fn connect(backend: &BackendUrl, cancel: CancellationToken) -> io::Result<Self> {
+    /// Opens the backend's socket for a runner of `release`, which the
+    /// backend checks before it opens it.
+    pub async fn connect(
+        backend: &BackendUrl,
+        release: &str,
+        cancel: CancellationToken,
+    ) -> io::Result<Connected> {
         let url = socket_url(backend)?;
+        let mut request = url
+            .as_str()
+            .into_client_request()
+            .map_err(io::Error::other)?;
+        let headers = request.headers_mut();
+        headers.insert(
+            RELEASE_HEADER,
+            HeaderValue::from_str(release).map_err(io::Error::other)?,
+        );
+        headers.insert(TARGET_HEADER, HeaderValue::from_static(host_target()));
         let config = WebSocketConfig::default()
             .max_message_size(Some(wire::MAX_MESSAGE_BYTES))
             .max_frame_size(Some(wire::MAX_MESSAGE_BYTES));
-        let (socket, _) = tokio::select! {
+        let connected = tokio::select! {
             _ = cancel.cancelled() => return Err(io::Error::new(io::ErrorKind::Interrupted, "connection cancelled")),
-            result = tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async_with_config(url.as_str(), Some(config), true)) => {
-                result.map_err(io::Error::other)?.map_err(io::Error::other)?
+            result = tokio::time::timeout(HANDSHAKE_TIMEOUT, tokio_tungstenite::connect_async_with_config(request, Some(config), true)) => {
+                result.map_err(io::Error::other)?
             }
         };
-        Ok(Self::from_socket(socket, cancel))
+        match connected {
+            Ok((socket, _)) => Ok(Connected::Open(Self::from_socket(socket, cancel))),
+            Err(Error::Http(response)) if response.status() == StatusCode::CONFLICT => {
+                let body = response.body().as_deref().unwrap_or_default();
+                let update = RunnerUpdate::decode(body)
+                    .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+                Ok(Connected::Update(update))
+            }
+            Err(error) => Err(io::Error::other(error)),
+        }
     }
 
     pub fn from_socket<S>(socket: WebSocketStream<S>, cancel: CancellationToken) -> Self

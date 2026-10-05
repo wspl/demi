@@ -11,8 +11,8 @@
 use axum::body::Body;
 use axum::extract::ws::WebSocketUpgrade;
 use axum::extract::{Path, State};
-use axum::http::StatusCode;
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_extra::headers::Authorization;
@@ -20,18 +20,60 @@ use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_remote_host::PipeRefusal;
+use demi_runner_protocol::release::{RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, UpdateExecutable};
 use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
 
 use super::AppState;
+use super::error::ApiError;
+use super::install::current_runner_release;
 use super::runner_socket::accept;
 
 /// `WS /api/runner`: the socket carries MessagePack frames of at most the
-/// wire's limit; a larger one closes it.
-pub(super) async fn socket(State(state): State<AppState>, upgrade: WebSocketUpgrade) -> Response {
-    upgrade
+/// wire's limit; a larger one closes it. A backend with runner releases
+/// opens it only for a runner of its current release, and answers any other
+/// with 409 and the release to update to (`runner.md` § Runner updates).
+pub(super) async fn socket(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    upgrade: WebSocketUpgrade,
+) -> Result<Response, ApiError> {
+    if let Some(update) = runner_update(&state, &headers).await? {
+        let answer = (
+            StatusCode::CONFLICT,
+            [(CONTENT_TYPE, "application/json")],
+            serde_json::to_vec(&update).map_err(|error| ApiError::internal_message(error.to_string()))?,
+        );
+        return Ok(answer.into_response());
+    }
+    Ok(upgrade
         .max_message_size(MAX_MESSAGE_BYTES)
         .max_frame_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| accept(state.services, state.shards, socket))
+        .on_upgrade(move |socket| accept(state.services, state.shards, socket)))
+}
+
+/// The update a runner must make before its socket opens: none from a
+/// backend without runner releases or for a runner of the current release.
+async fn runner_update(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Option<RunnerUpdate>, ApiError> {
+    let Some(current) = current_runner_release(&state.site).await? else {
+        return Ok(None);
+    };
+    let named = |name: &str| headers.get(name).and_then(|value| value.to_str().ok());
+    if named(RELEASE_HEADER) == Some(current.release.as_str()) {
+        return Ok(None);
+    }
+    let executable = named(TARGET_HEADER)
+        .and_then(|target| current.targets.get(target))
+        .map(|artifact| UpdateExecutable {
+            sha256: artifact.sha256.clone(),
+            size: artifact.size,
+        });
+    Ok(Some(RunnerUpdate {
+        release: current.release,
+        executable,
+    }))
 }
 
 /// `PUT /api/pipes/:id`: the source's bytes, forwarded as the sink takes

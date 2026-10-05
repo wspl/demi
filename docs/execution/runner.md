@@ -123,16 +123,15 @@ A paired device's runner that receives an executable updates itself:
    `/runner-artifacts/<release>/<target>/<file>` on its backend, checks its
    size and SHA-256 against the answer, and puts it in place in
    `releases/<release>/` through a staging directory, as the installers do.
-3. It ends what it still runs, as a drain does: its local clients and its
-   command services. It runs no job, since it holds no connection.
-4. It records the new release in its installation state, releases its
-   locks, and starts the new release as the installation's launcher would.
-   On Linux and macOS it executes the launcher in its own process. On
-   Windows it starts the new executable with its own arguments and
-   environment but the new release, and exits; the successor waits for the
-   installation lock, which the predecessor releases as it exits.
-5. The new runner connects, and removes every release directory of its
-   installation except its own and the one it replaced.
+3. It records the new release in its installation state, `release-id`,
+   which the installation's launcher reads, and removes every release
+   directory of its installation except the new one and its own.
+4. It ends what it still runs, as a drain does: its local endpoint and its
+   command services; it runs no job, since it holds no connection. Then it
+   lets its locks go.
+5. It starts the new executable with its own arguments and environment but
+   the new release: on Linux and macOS in its own process, on Windows beside
+   it, and then it exits. The new runner connects.
 
 An update that fails, such as a download that breaks off or an executable
 whose SHA-256 differs, leaves the runner on its release. It writes the
