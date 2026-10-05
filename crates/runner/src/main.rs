@@ -436,7 +436,8 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
                     projects.join(", ")
                 );
             }
-            removal::remove(&installation_directory)?;
+            let removed = removal::remove(&installation_directory)?;
+            eprintln!("demi-runner: {}", removed.told(&installation_directory));
             Ok(0)
         }
         Err(_) => Ok(1),
@@ -463,8 +464,8 @@ fn uninstalled(directory: &Path, revocation: &Revocation) -> io::Result<u8> {
             );
         }
     }
-    removal::remove(directory)?;
-    println!("Removed the runner of {}", directory.display());
+    let removed = removal::remove(directory)?;
+    println!("{}", removed.told(directory));
     Ok(0)
 }
 
