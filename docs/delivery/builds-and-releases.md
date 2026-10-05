@@ -415,13 +415,13 @@ cargo xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.
 - Repeated `--target` options name the targets of the runner and the command
   packages; without them it requires all six, as packaging does.
 - `--server <triple>` puts that Linux target's backend, machine manager and
-  `demi-server` in `bin/`, the pinned runsc distribution of that
-  architecture in `runtime/`, and the units in `systemd/`. It takes the
-  distribution from where `crates/machine-manager/runtime/release.json` pins
-  it, upstream's for amd64 and the `runsc-<arm64Version>` release for arm64
-  ([Linux requirements](../cloud/setup.md#linux-requirements)), and checks it
-  against the pinned sum. Without it the root has none of the three: a
-  developer's backend runs from the Cargo target directory.
+  `demi-server` in `bin/` and the services' units in `systemd/`, and
+  `--runtime <directory>`, which it requires, copies the pinned runsc
+  distribution of that architecture into `runtime/`: the directory
+  `crates/machine-manager/scripts/fetch-runsc.sh` fetched, checked against
+  the pin and unpacked ([gVisor runtime](#gvisor-runtime)). Without them the
+  root has none of the three: a developer's backend runs from the Cargo
+  target directory.
 - `--web <directory>` copies the built web app into `web/`. Without it the
   root has no `web/`, and the backend serves no web app, as in development,
   where Vite serves it.

@@ -69,8 +69,7 @@ struct Cli {
         value_parser = absolute
     )]
     data: PathBuf,
-    /// The pinned runsc executable [default: where install-runsc.sh installs
-    /// it, /opt/gvisor/<pinned version>/runsc].
+    /// The pinned runsc executable [default: the release's runtime/runsc].
     #[arg(long, env = "DEMI_MANAGED_RUNSC", value_name = "DEMI_MANAGED_RUNSC", value_parser = absolute)]
     runsc: Option<PathBuf>,
     /// The backend's public URL: the only backend a sandbox's runner may
@@ -235,7 +234,7 @@ impl Config {
             Some(release) => release,
             None => release_of_executable()?,
         };
-        let runsc = cli.runsc.unwrap_or_else(installed_runsc);
+        let runsc = cli.runsc.unwrap_or_else(|| release.join("runtime").join("runsc"));
         let dns = if cli.dns.is_empty() {
             host_resolvers()?
         } else {
@@ -315,13 +314,6 @@ fn release_of_executable() -> Result<PathBuf, ConfigError> {
                 "the executable lies in no directory of a release",
             ))
         })
-}
-
-/// Where `install-runsc.sh` installs the pinned runsc.
-fn installed_runsc() -> PathBuf {
-    let version = crate::sandbox::runsc::RuntimeRelease::pinned().version();
-    let directory = version.strip_prefix("release-").unwrap_or(&version);
-    Path::new("/opt/gvisor").join(directory).join("runsc")
 }
 
 /// The resolvers the host itself forwards to, from the first of
@@ -561,7 +553,7 @@ mod tests {
     }
 
     #[test]
-    fn the_socket_and_the_runsc_default_to_where_the_backend_and_the_installer_put_them() {
+    fn the_socket_and_the_runsc_default_to_the_backends_and_the_releases() {
         let command = Cli::command();
         let mut args = vec![OsString::from("demi-machine-manager"), "--recover".into()];
         for (name, value) in REQUIRED
@@ -578,11 +570,7 @@ mod tests {
         let recovering = Config::parse(args, Vec::new()).expect("valid configuration");
         assert_eq!(recovering.mode, Mode::Recover);
         assert_eq!(recovering.socket, PathBuf::from(SOCKET));
-        assert!(
-            recovering.runsc.starts_with("/opt/gvisor/") && recovering.runsc.ends_with("runsc"),
-            "{}",
-            recovering.runsc.display()
-        );
+        assert_eq!(recovering.runsc, PathBuf::from("/opt/demi/0.1.3/runtime/runsc"));
         assert!(parse(&["--recover", "--recover-namespace"], &[]).is_err());
     }
 
@@ -598,9 +586,10 @@ mod tests {
         assert!(usable_resolvers("nameserver 127.0.0.53\noptions edns0\n").is_empty());
     }
 
-    /// The installer's unit and settings (`scripts/install-managed-hosts.sh`),
-    /// written beneath a staging root: systemd accepts the unit, and the
-    /// settings configure this manager.
+    /// The release's unit, which the installer
+    /// (`scripts/install-managed-hosts.sh`) puts beneath a staging root with
+    /// the link to the release: systemd accepts the unit, and the settings
+    /// configure this manager.
     #[cfg(target_os = "linux")]
     #[test]
     #[ignore = "needs root: run the Linux suite with --ignored as root"]
@@ -637,9 +626,15 @@ mod tests {
         std::fs::create_dir_all(release.join("bin")).unwrap();
         std::fs::create_dir_all(release.join("image")).unwrap();
         std::fs::write(release.join("image/manifest.json"), "{}").unwrap();
-        let manager = release.join("bin/demi-machine-manager");
-        std::fs::write(&manager, "#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::create_dir_all(release.join("runtime")).unwrap();
+        std::fs::create_dir_all(release.join("systemd")).unwrap();
+        for executable in ["bin/demi-machine-manager", "runtime/runsc"] {
+            let path = release.join(executable);
+            std::fs::write(&path, "#!/bin/sh\n").unwrap();
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        let shipped = include_str!("../systemd/demi-machine-manager.service");
+        std::fs::write(release.join("systemd/demi-machine-manager.service"), shipped).unwrap();
         // The deployment's configuration file, which the backend reads too.
         let root = directory.path().join("root");
         let settings = root.join("etc/demi/demi.env");
@@ -677,7 +672,9 @@ mod tests {
 
         let unit_path = root.join("etc/systemd/system/demi-machine-manager.service");
         let unit = std::fs::read_to_string(&unit_path).unwrap();
-        let manager = manager.display();
+        assert_eq!(unit, shipped);
+        assert_eq!(std::fs::read_link(root.join("opt/demi/current")).unwrap(), release);
+        let manager = "/opt/demi/current/bin/demi-machine-manager";
         for directive in [
             "Type=notify".to_owned(),
             "KillMode=mixed".to_owned(),
@@ -695,6 +692,13 @@ mod tests {
                 "{directive} is missing:\n{unit}"
             );
         }
+        // systemd checks the unit as a server runs it, with /opt/demi/current
+        // at the release, here on a tmpfs of this test's own mount namespace.
+        let opt = Path::new("/opt");
+        std::fs::create_dir_all(opt).unwrap();
+        mount::tmpfs(&off, opt, "mode=0755").unwrap();
+        std::fs::create_dir(opt.join("demi")).unwrap();
+        std::os::unix::fs::symlink(&release, opt.join("demi/current")).unwrap();
         let verified = Command::new("systemd-analyze")
             .arg("verify")
             .arg(&unit_path)
@@ -739,6 +743,7 @@ mod tests {
         );
         assert_eq!(config.slots, 16);
         assert_eq!(config.limits, None);
+        mount::unmount(&off, opt).unwrap();
         mount::unmount(&off, &data).unwrap();
     }
 }

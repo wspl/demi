@@ -58,8 +58,8 @@ manager="$repository/target/debug/demi-machine-manager"
   echo "no manager at $manager: build the selection first" >&2
   exit 2
 }
-runsc=${runsc:-$(bash "$here/install-runsc.sh" --path)}
-[ -x "$runsc" ] || { echo "no runsc at $runsc: install it with install-runsc.sh" >&2; exit 2; }
+runsc=${runsc:-$release/runtime/runsc}
+[ -x "$runsc" ] || { echo "no runsc at $runsc: assemble the release with --runtime" >&2; exit 2; }
 # The Clouds reach the backend on the machine's address toward them.
 address=${address:-$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')}
 [ -n "$address" ] || { echo 'no IPv4 address toward the Clouds: pass --address' >&2; exit 2; }
