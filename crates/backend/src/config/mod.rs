@@ -37,6 +37,9 @@ use self::secret::InstanceSecret;
 #[derive(clap::Parser)]
 #[command(name = "demi-backend", version, about = "The Demi product server")]
 pub struct Config {
+    /// Validate the configuration as a start would, then exit
+    #[arg(long)]
+    pub check_config: bool,
     /// The server release root [default: the directory above the one that
     /// holds this executable]
     #[arg(long, env = "DEMI_RELEASE", value_name = "DEMI_RELEASE")]

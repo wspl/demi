@@ -72,6 +72,11 @@ async fn run(config: Config) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    // An upgrade checks the next release's view of the configuration before
+    // it stops anything (`upgrades.md` § Prepare).
+    if config.check_config {
+        return ExitCode::SUCCESS;
+    }
     settings.native = match publish(&settings, &release, &mut stop).await {
         Ok(native) => native,
         Err(error) => {
@@ -93,6 +98,11 @@ async fn run(config: Config) -> ExitCode {
         mode = %config.mode,
         "demi-backend is listening"
     );
+    // Readiness for systemd's Type=notify, which an upgrade waits for;
+    // without a notify socket, as in development, this does nothing.
+    if let Err(error) = sd_notify::notify(&[sd_notify::NotifyState::Ready]) {
+        tracing::warn!("systemd was not told that the backend is ready: {error}");
+    }
     stop.requested().await;
     match backend.close().await {
         Ok(()) => ExitCode::SUCCESS,
