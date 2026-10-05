@@ -21,7 +21,10 @@ slots=16
 manager=""
 server=""
 release=""
-data=/mnt/lima-demi-cloud-data/state
+# The data disk, which Lima mounts at /mnt/lima-<name>.
+disk=demi-cloud
+mount_point=/mnt/lima-$disk
+data=$mount_point/state
 data_size=100GiB
 dns=""
 root=""
@@ -60,8 +63,8 @@ case "$(limactl list --format '{{.Status}}' "$instance" 2>/dev/null)" in
   Stopped) limactl start "$instance" ;;
   *)
     # grep reads the whole list, so limactl never writes into a closed pipe.
-    if ! limactl disk ls --json | jq -r .name | grep -x demi-cloud-data >/dev/null; then
-      limactl disk create demi-cloud-data --size "$data_size"
+    if ! limactl disk ls --json | jq -r .name | grep -x "$disk" >/dev/null; then
+      limactl disk create "$disk" --size "$data_size"
     fi
     limactl start --name "$instance" "$here/lima/demi-machine-manager.yaml"
     ;;
@@ -101,9 +104,18 @@ if [ -n "$root" ]; then
 fi
 # An existing instance needs a prepared Linux directory supplied through --data.
 # Never reinterpret or reformat its older deployment's storage.
-if [ "$data" = /mnt/lima-demi-cloud-data/state ]; then
-  limactl shell "$instance" -- findmnt /mnt/lima-demi-cloud-data >/dev/null
+if [ "$data" = "$mount_point/state" ]; then
+  limactl shell "$instance" -- findmnt "$mount_point" >/dev/null
   limactl shell "$instance" -- sudo mkdir -p "$data"
+  # At boot multi-user.target starts the manager before Lima mounts the disk,
+  # which it does in cloud-init's final stage; the manager would make its
+  # state directory on the root filesystem beneath the mount point. So the
+  # unit starts only on a mounted disk, and the VM's provisioning starts it
+  # after the mount (demi-machine-manager.yaml).
+  drop_in=/etc/systemd/system/demi-machine-manager.service.d
+  limactl shell "$instance" -- sudo install -d "$drop_in"
+  printf '%s\n' '[Unit]' "ConditionPathIsMountPoint=$mount_point" |
+    limactl shell "$instance" -- sudo tee "$drop_in/lima-data-disk.conf" >/dev/null
 fi
 limactl shell "$instance" -- sudo bash "$here/scripts/install-managed-hosts.sh" \
   --user "$guest_user" --release "$release"

@@ -7,15 +7,28 @@ disk: 40GiB
 base: template:ubuntu-26.04
 mounts:
   - location: "~"
-# A new named disk. Lima formats only a blank disk and preserves existing data.
+# A new named disk. Lima formats only a blank disk and preserves existing data:
+# on each boot it looks the disk up by the label lima-<name>, so the name
+# stays within 11 characters; ext4 cuts a label to 16, and with a longer name
+# Lima finds no disk and formats it again on every boot.
 additionalDisks:
-  - name: "demi-cloud-data"
+  - name: "demi-cloud"
     format: true
     fsType: ext4
 portForwards:
   - guestSocket: "/run/user/{{.UID}}/demi-machine-manager.sock"
     hostSocket: "{{.Dir}}/sock/demi-machine-manager.sock"
 provision:
+  # Lima mounts the data disk in cloud-init's final stage, after
+  # multi-user.target, and runs these scripts on every boot after that. The
+  # manager's unit waits for the mount (lima-machines.sh) and starts here.
+  - mode: system
+    script: |
+      #!/bin/bash
+      set -euo pipefail
+      if systemctl is-enabled --quiet demi-machine-manager.service; then
+        systemctl start --no-block demi-machine-manager.service
+      fi
   - mode: system
     script: |
       #!/bin/bash
@@ -28,5 +41,5 @@ probes:
     script: |
       #!/bin/bash
       set -euo pipefail
-      findmnt /mnt/lima-demi-cloud-data
+      findmnt /mnt/lima-demi-cloud
       test -f /sys/fs/cgroup/cgroup.controllers
