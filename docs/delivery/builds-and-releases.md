@@ -168,12 +168,16 @@ The workspace's `Cargo.toml` holds the two profiles, and nothing else sets
 compiler options: no `RUSTFLAGS`, no per-machine configuration.
 
 The release profile makes the executables small, because every paired device
-downloads each one and every Cloud image carries them: fat link-time
-optimization (`lto = "fat"`), one code-generation unit per crate
-(`codegen-units = 1`), optimization for size (`opt-level = "s"`) and stripped
-symbols (`strip = true`). Together these make the runner and the command programs
-about 40% smaller than thin link-time optimization at `opt-level = 3`, and a
-release build takes about half as long again. `opt-level = "z"` would save a
+downloads each one and every Cloud image carries them, without making a
+release wait on one processor core: thin link-time optimization
+(`lto = "thin"`) with Cargo's default code-generation units, optimization for
+size (`opt-level = "s"`) and stripped symbols (`strip = true`). Fat
+link-time optimization with one code-generation unit made the runner about a
+fifth smaller (24.1 MB against 30.9 MB for x86_64 Linux, 7.9 MB against
+8.7 MB compressed), but its final link runs on one core: it took about five
+of a release's eleven minutes with every dependency cached, where thin takes
+about a sixth of that, its optimization spread over the units. The two run
+the runner's work at about the same speed. `opt-level = "z"` would save a
 quarter more, but it also gives up the speed optimizations that `"s"` keeps,
 and the runner's utilities run searches and sorts in process. Panics unwind in
 every profile: the runner contains a utility's panic to its job
