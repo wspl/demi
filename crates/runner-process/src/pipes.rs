@@ -1,15 +1,24 @@
 //! The pipe endpoints that carry file contents and output to the backend's
 //! pipe routes, and the report of a pipe's outcome (`runner.md` § Pipes and
-//! output).
+//! output). A content pipe from the runner is a `PUT` body; a stream pipe,
+//! whose bytes must arrive as they are written, goes over a WebSocket at the
+//! same path, since a TLS edge in front of the backend may hold a request's
+//! body until it ends (`runner.md` § Host operations).
 
 use bytes::Bytes;
 use demi_runner_protocol::{
     values::{BackendUrl, DeviceToken},
     wire,
 };
-use futures_util::{Stream, StreamExt, stream::BoxStream};
+use futures_util::{SinkExt, Stream, StreamExt, stream::BoxStream};
 use std::{io, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, watch};
+use tokio_tungstenite::tungstenite::{
+    self, Message,
+    client::IntoClientRequest,
+    http::{HeaderValue, header::AUTHORIZATION},
+    protocol::{CloseFrame, WebSocketConfig, frame::coding::CloseCode},
+};
 use tokio_util::sync::CancellationToken;
 
 /// How long a pipe's connection may take to open.
@@ -22,6 +31,9 @@ const ANSWER_BYTES: usize = 16 * 1024;
 pub struct PipeClient {
     http: reqwest::Client,
     origin: reqwest::Url,
+    /// How long a connection may take to open, a stream pipe's WebSocket
+    /// handshake included.
+    connect_timeout: Duration,
     /// The registration's device token, which a claim can change.
     token: watch::Receiver<Option<DeviceToken>>,
 }
@@ -63,6 +75,7 @@ impl PipeClient {
         Ok(Self {
             http,
             origin,
+            connect_timeout,
             token,
         })
     }
@@ -130,7 +143,115 @@ impl PipeClient {
         }
     }
 
+    /// Sends `body` as a stream pipe: each chunk in binary messages as it
+    /// comes, its end as the close frame, and its failure as a close frame
+    /// with the error. The backend's close frame ends the pipe early: a
+    /// normal one when its sink stopped taking bytes, another when the pipe
+    /// failed. Once the body ended, the backend's close answers the runner's.
+    pub async fn stream<S>(&self, path: &str, body: S, cancel: &CancellationToken) -> io::Result<()>
+    where
+        S: Stream<Item = io::Result<Bytes>> + Send + 'static,
+    {
+        let mut url = self.url(path)?;
+        let scheme = if url.scheme() == "https" { "wss" } else { "ws" };
+        url.set_scheme(scheme)
+            .map_err(|_| io::Error::other("invalid WebSocket scheme"))?;
+        let mut request = url.as_str().into_client_request().map_err(io::Error::other)?;
+        let authorization = HeaderValue::from_str(&format!("Bearer {}", self.token()?.expose()))
+            .map_err(io::Error::other)?;
+        request.headers_mut().insert(AUTHORIZATION, authorization);
+        let config = WebSocketConfig::default()
+            .max_message_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES))
+            .max_frame_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES));
+        // Out of open files, the connection waits for one (`runner.md` § Load).
+        let connecting = demi_command_sdk::descriptors::retry(cancel, || async {
+            tokio_tungstenite::connect_async_with_config(request.clone(), Some(config), true)
+                .await
+                .map_err(socket_error)
+        });
+        let (socket, _) = tokio::select! {
+            _ = cancel.cancelled() => return Err(cancelled()),
+            connected = tokio::time::timeout(self.connect_timeout, connecting) => connected
+                .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "stream pipe did not open"))??,
+        };
+        let (mut sender, mut receiver) = socket.split();
+        let sending = async {
+            tokio::pin!(body);
+            while let Some(chunk) = body.next().await {
+                let bytes = match chunk {
+                    Ok(bytes) => bytes,
+                    Err(error) => {
+                        let reason = error.to_string();
+                        let reason = &reason[..reason.floor_char_boundary(wire::STREAM_PIPE_REASON_BYTES)];
+                        let frame = CloseFrame {
+                            code: CloseCode::Error,
+                            reason: reason.into(),
+                        };
+                        // The pipe fails either way; a close that does not
+                        // go out fails it as a lost connection.
+                        let _closed = sender.send(Message::Close(Some(frame))).await;
+                        return Err(error);
+                    }
+                };
+                for start in (0..bytes.len()).step_by(wire::STREAM_PIPE_MESSAGE_BYTES) {
+                    let end = (start + wire::STREAM_PIPE_MESSAGE_BYTES).min(bytes.len());
+                    sender
+                        .send(Message::Binary(bytes.slice(start..end)))
+                        .await
+                        .map_err(socket_error)?;
+                }
+            }
+            let frame = CloseFrame {
+                code: CloseCode::Normal,
+                reason: "".into(),
+            };
+            sender
+                .send(Message::Close(Some(frame)))
+                .await
+                .map_err(socket_error)
+        };
+        // The backend's close frame, which says how the pipe ended.
+        let closed = async {
+            while let Some(message) = receiver.next().await {
+                if let Message::Close(frame) = message.map_err(socket_error)? {
+                    return match frame {
+                        None => Ok(()),
+                        Some(frame) if frame.code == CloseCode::Normal => Ok(()),
+                        Some(frame) => Err(io::Error::other(format!(
+                            "pipe failed ({}): {}",
+                            u16::from(frame.code),
+                            frame.reason
+                        ))),
+                    };
+                }
+            }
+            Err(io::Error::new(
+                io::ErrorKind::ConnectionAborted,
+                "stream pipe closed without a close frame",
+            ))
+        };
+        tokio::pin!(closed);
+        tokio::select! {
+            _ = cancel.cancelled() => Err(cancelled()),
+            outcome = &mut closed => outcome,
+            sent = sending => {
+                sent?;
+                tokio::select! {
+                    _ = cancel.cancelled() => Err(cancelled()),
+                    outcome = closed => outcome,
+                }
+            }
+        }
+    }
+
     fn request(&self, method: reqwest::Method, path: &str) -> io::Result<reqwest::RequestBuilder> {
+        let url = self.url(path)?;
+        let token = self.token()?;
+        Ok(self.http.request(method, url).bearer_auth(token.expose()))
+    }
+
+    /// The backend's URL of the pipe at `path`, which must stay on its origin.
+    fn url(&self, path: &str) -> io::Result<reqwest::Url> {
         if !path.starts_with('/') || path.starts_with("//") || path.contains('\\') {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -144,13 +265,36 @@ impl PipeClient {
                 "pipe URL changed backend origin",
             ));
         }
-        let token = self.token.borrow().clone().ok_or_else(|| {
+        Ok(url)
+    }
+
+    /// The registration's device token, which every pipe bears.
+    fn token(&self) -> io::Result<DeviceToken> {
+        self.token.borrow().clone().ok_or_else(|| {
             io::Error::new(
                 io::ErrorKind::PermissionDenied,
                 "runner has no device token",
             )
-        })?;
-        Ok(self.http.request(method, url).bearer_auth(token.expose()))
+        })
+    }
+}
+
+/// A stream pipe's WebSocket failure as an IO error: the system's own when
+/// there is one, so running out of open files shows as such, and a refused
+/// handshake with the backend's status and words.
+fn socket_error(error: tungstenite::Error) -> io::Error {
+    match error {
+        tungstenite::Error::Io(error) => error,
+        tungstenite::Error::Http(response) => {
+            let body = response.body().as_deref().unwrap_or_default();
+            let body = &body[..body.len().min(ANSWER_BYTES)];
+            io::Error::other(format!(
+                "pipe refused ({}): {}",
+                response.status(),
+                String::from_utf8_lossy(body)
+            ))
+        }
+        error => io::Error::other(error),
     }
 }
 

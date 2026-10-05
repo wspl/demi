@@ -16,6 +16,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 
 use crate::cloud::{idle_after, the_cloud};
+use crate::holding_edge::HoldingEdge;
 use crate::support::{Harness, PATIENCE, Paired, Session, TestBackend, answer, pattern};
 
 pub(crate) const CONVERSATION: &str = "5d4c3b2a-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -29,10 +30,17 @@ pub(crate) type Socket =
 /// device.
 pub(crate) async fn conversation(harness: &Harness) -> (TestBackend, Session, Paired) {
     let (backend, master) = harness.start_set_up().await;
+    let laptop = backend.pair(&master, "laptop").await;
+    work_in(&backend, &master, &laptop).await;
+    (backend, master, laptop)
+}
+
+/// Creates the master's conversation, working in the home of `laptop`.
+async fn work_in(backend: &TestBackend, master: &Session, laptop: &Paired) {
     let created = backend
         .post(
             "/api/conversations",
-            Some(&master),
+            Some(master),
             json!({ "id": CONVERSATION }),
         )
         .await;
@@ -42,13 +50,12 @@ pub(crate) async fn conversation(harness: &Harness) -> (TestBackend, Session, Pa
         "{}",
         String::from_utf8_lossy(&created.body)
     );
-    let laptop = backend.pair(&master, "laptop").await;
     let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
     let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
     let moved = backend
         .patch(
             &format!("/api/conversations/{CONVERSATION}"),
-            &master,
+            master,
             target,
         )
         .await;
@@ -58,7 +65,6 @@ pub(crate) async fn conversation(harness: &Harness) -> (TestBackend, Session, Pa
         "{}",
         String::from_utf8_lossy(&moved.body)
     );
-    (backend, master, laptop)
 }
 
 fn path(conversation: &str, name: &str) -> String {
@@ -353,5 +359,59 @@ async fn an_open_stream_keeps_the_cloud_it_watches_awake_until_it_closes() {
         "the Cloud stopped {:?} after the stream closed",
         stopped.saturating_duration_since(closed)
     );
+    backend.close().await;
+}
+
+/// A user stream behind an edge that holds each request's body until it
+/// ends, as Cloudflare's does (`runner.md` § Host operations): the Host's
+/// bytes reach the page as they are written, while the stream stays open,
+/// since the runner sends a stream pipe over a WebSocket; its close frame
+/// ends the stream as completed, and a connection lost without one fails it,
+/// while the runner stays online.
+// About a second: a real device installs the fixture package behind the
+// edge, and three streams open on it.
+#[tokio::test]
+async fn behind_an_edge_that_holds_request_bodies_a_streams_bytes_arrive_as_written() {
+    let harness = Harness::new().with_native_fixture();
+    let (backend, master) = harness.start_set_up().await;
+    let edge = HoldingEdge::start(backend.address()).await;
+    let laptop = backend.pair_through(&master, "laptop", &edge.url).await;
+    work_in(&backend, &master, &laptop).await;
+
+    // The echo answers while the page holds the stream open: its answer is
+    // not held until the stream's end.
+    let mut echo = socket(&backend, &master, CONVERSATION, "echo").await;
+    echo.send(Message::Binary(b"ping".to_vec().into()))
+        .await
+        .unwrap();
+    let echoed = tokio::time::timeout(PATIENCE, echo.next())
+        .await
+        .expect("the echo arrives while the stream is open");
+    match echoed {
+        Some(Ok(Message::Binary(bytes))) => assert_eq!(&bytes[..], b"ping"),
+        other => panic!("the echo ended early: {other:?}"),
+    }
+
+    // A connection lost without a close frame fails the stream; the
+    // runner's own connection stays.
+    edge.cut_pipe_sockets();
+    let (_, code, reason) = received(&mut echo).await;
+    assert_eq!((code, reason.as_str()), (1011, "host_unreachable"));
+    assert!(backend.online(&master, laptop.id()).await);
+
+    // The runner's close frame ends a stream that completes.
+    let edge = HoldingEdge::start(backend.address()).await;
+    let laptop = backend.pair_through(&master, "desktop", &edge.url).await;
+    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let target = json!({ "target": { "kind": "device", "deviceId": laptop.id(), "path": home } });
+    let moved = backend
+        .patch(&format!("/api/conversations/{CONVERSATION}"), &master, target)
+        .await;
+    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    let (bytes, code, reason) =
+        received(&mut socket(&backend, &master, CONVERSATION, "where").await).await;
+    assert_eq!((code, reason.as_str()), (1000, "completed"));
+    let reported: Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(reported["context"]["conversation"], json!(CONVERSATION));
     backend.close().await;
 }

@@ -219,7 +219,7 @@ impl ServiceStreams {
                 uploaded.recv().await.map(|item| (item, uploaded))
             });
             let ((result, stderr), upload) =
-                tokio::join!(exchange, pipes.put(&output.url, body, &stream));
+                tokio::join!(exchange, pipes.stream(&output.url, body, &stream));
             let (done, input_result) = match result {
                 Ok(completion) => {
                     if let Some(error) = &completion.error {

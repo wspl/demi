@@ -43,6 +43,12 @@ pub const JOB_LIVE_INTERVAL: Duration = Duration::from_millis(250);
 /// How often a job nobody follows sends how long a stream grew beyond its
 /// first [`JOB_VIEW_BYTES`] and its newest [`JOB_VIEW_BYTES`], at most.
 pub const JOB_GROWTH_INTERVAL: Duration = Duration::from_secs(2);
+/// The most bytes of one binary message of a stream pipe's WebSocket
+/// (`runner.md` § Host operations): the runner splits larger writes.
+pub const STREAM_PIPE_MESSAGE_BYTES: usize = 64 * 1024;
+/// The most bytes of the reason a stream pipe's close frame carries, the
+/// most a WebSocket close frame holds.
+pub const STREAM_PIPE_REASON_BYTES: usize = 123;
 /// The most bytes of one live stdin frame.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 /// The most lines one `log_read` returns.
