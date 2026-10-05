@@ -565,7 +565,9 @@ The backend keeps the draft, its revision, and the version a save replaced
   one click or to dismiss. Restore exchanges it with the draft, so the text
   it displaces is offered in its place and nothing is lost.
 - **Clears the draft on send.** A sent message leaves the composer at once and
-  shows as the pending submission, but the saved draft stays until the
+  shows in the transcript under the Requesting row
+  ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)), but the saved draft
+  stays until the
   backend accepts the message; until then the emptied composer is the page's
   unsaved change. The page then saves an empty draft, based on the revision
   the message was built on, so a change another page made meanwhile becomes
