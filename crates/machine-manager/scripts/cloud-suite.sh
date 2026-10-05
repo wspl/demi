@@ -88,10 +88,20 @@ address=${address:-$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1
 [ -n "$address" ] || { echo 'no IPv4 address toward the Clouds: pass --address' >&2; exit 2; }
 dns=${dns:-$(awk '$1 == "nameserver" && $2 ~ /^[0-9.]+$/ && $2 !~ /^127\./ { print $2; exit }' /etc/resolv.conf)}
 [ -n "$dns" ] || { echo 'no resolver for the Clouds: pass --dns' >&2; exit 2; }
-# The firewall table is the manager's: another manager's would be replaced.
-if nft list table inet demi_cloud > /dev/null 2>&1; then
-  echo 'a machine manager runs here already (nftables table inet demi_cloud)' >&2
+# A running manager's command line; pgrep -x compares only the first 15
+# characters of a process's name.
+manager_pattern='^[^ ]*demi-machine-manager( |$)'
+# The firewall table is the manager's: a running manager's would be replaced.
+if pgrep -f "$manager_pattern" > /dev/null; then
+  echo 'a machine manager runs here already: stop it for the run' >&2
   exit 2
+fi
+# A stopped manager leaves its table, which it makes again when it starts.
+# It goes before the state before the run is recorded, so the run's cleanup
+# leaves none and the comparison expects none.
+if nft list table inet demi_cloud > /dev/null 2>&1; then
+  echo 'cloud-suite: deleting the table inet demi_cloud a stopped manager left' >&2
+  nft delete table inet demi_cloud
 fi
 port=""
 for candidate in $(shuf -i 20000-60999 -n 50); do
@@ -115,8 +125,7 @@ snapshot() {
   local into=$1
   mkdir -p "$into"
   pgrep -a -f '^runsc' | sort > "$into/runsc-processes" || true
-  # pgrep -x compares only the first 15 characters of a process's name.
-  pgrep -a -f '^[^ ]*demi-machine-manager( |$)' | sort > "$into/managers" || true
+  pgrep -a -f "$manager_pattern" | sort > "$into/managers" || true
   awk '{ print $4, $5, $9, $10 }' /proc/self/mountinfo | sort > "$into/mounts"
   for backing in /sys/block/loop*/loop/backing_file; do
     # Without an attached loop device the pattern matches nothing.
