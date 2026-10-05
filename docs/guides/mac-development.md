@@ -61,8 +61,8 @@ profile as a Linux execution host. `--release` names the manager's root in
 the VM, the one whose `image/` the image build wrote. The script copies the
 manager built for the VM's architecture into that root's `bin/`, renaming it
 into place so that a running manager keeps its own file, puts the manager's
-unit in its `systemd/` and, when the root has none, the pinned runsc in its
-`runtime/`, as a server release carries them, writes the VM's
+unit in its `systemd/`, as a server release carries it, has `demi-server
+runtime` fetch the pinned gVisor into `/opt/demi/gvisor/`, writes the VM's
 configuration file with the public URL, the socket and the state directory,
 and installs the service from the root through `/opt/demi/current`.
 

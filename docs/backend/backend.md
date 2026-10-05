@@ -514,7 +514,7 @@ without the close frame, and connects again as it does after any close
 ## Configuration
 
 The backend and the machine manager of a deployment read one configuration,
-the environment file `/etc/demi/demi.env` that both services load, or the
+the environment file `/opt/demi/config/demi.env` that both services load, or the
 same settings as command-line flags. Each parses its settings with clap into
 one typed configuration, validates all of it before anything starts, and
 names the variable in an error. The prefix `DEMI_MANAGED_` belongs to the

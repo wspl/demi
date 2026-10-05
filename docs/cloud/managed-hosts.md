@@ -720,9 +720,14 @@ and [Chrome's signal handler](https://github.com/chromium/chromium/blob/main/san
 Runtime upgrades require the same acceptance matrix, but do not change user
 storage format.
 
-The runtime profile fixes `--platform=systrap`, `--network=sandbox`, and
-`--allow-suid=true`, and adds `--ignore-cgroups` with the
-[resource limits](#resource-limits) off. OCI `noNewPrivileges` is false so sudo
+The runtime profile fixes `--platform=systrap`, `--network=sandbox`,
+`--allow-suid=true` and `--sidecar-usage-policy=STRICT`, and adds
+`--ignore-cgroups` with the [resource limits](#resource-limits) off. The
+strict policy makes `runsc` fail when a sidecar program it starts from
+`gvisor-bin/` is missing, where it would otherwise download one or fall
+back to a deprecated embedded copy: a Cloud runs only the programs
+`demi-server` fetched and checked
+([gVisor runtime](../delivery/builds-and-releases.md#gvisor-runtime)). OCI `noNewPrivileges` is false so sudo
 can work. The OCI
 bounding set is `CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `FSETID`, `KILL`, `SETGID`,
 `SETUID`, `SETPCAP`, `NET_BIND_SERVICE`, `SYS_CHROOT`, and `SETFCAP` (all with
