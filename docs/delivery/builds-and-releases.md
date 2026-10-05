@@ -421,13 +421,13 @@ job builds only the targets of its own platform
 | Build Linux arm64 | `ubuntu-26.04-arm` | `aarch64-unknown-linux-musl`: the same |
 | Build Windows x86_64 | `windows-2025` | `x86_64-pc-windows-msvc`: the runner and the command programs |
 | Build Windows arm64 | `windows-11-arm` | `aarch64-pc-windows-msvc`: the same |
-| Web | `ubuntu-26.04` | `bun run web:build` |
+| Web | `ubuntu-26.04` | `bun run build`: the published packages, then the web app that imports them |
 | Server release | `ubuntu-26.04` | After every build job: a root for each Linux target, each with all six targets in `runners/` and `commands/` |
 | Image amd64, Image arm64 | `ubuntu-26.04`, `ubuntu-26.04-arm` | The Cloud image of the root of the runner's architecture, into its `image/` |
 | Publish | `ubuntu-26.04` | The release assets below, with their SHA-256 sums |
 
 Each step is a command of the repository that a developer runs too, a
-`cargo xtask` command, `bun run web:build` or the image build script; only
+`cargo xtask` command, `bun run build` or the image build script; only
 `cargo xtask server-release --publish` differs, naming the command packages
 with the workspace version itself. So the
 workflow only orders them and carries files between jobs, as workflow
