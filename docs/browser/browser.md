@@ -395,7 +395,10 @@ the user test how real sites and applications behave for real visitors:
   the locale environment on Linux, including inherited overrides). Chrome itself tells pages only the
   first language, as it does for any user. They do not change while the
   environment lives.
-- The Cloud guest ships fonts for Chinese, Japanese and Korean.
+- Chinese, Japanese and Korean text and color emoji need their fonts, which
+  the Cloud base does not carry: they are installed with Chrome's libraries,
+  on a Cloud as on any Linux Host, and the browser names the packages when
+  they are missing ([Browser distribution](#browser-distribution)).
 
 What cannot change without a GPU remains: on Cloud, WebGL reports its software
 renderer.
