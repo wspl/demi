@@ -24,7 +24,8 @@ pub struct FsOk {
 /// carry none.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FsResult {
-    ReadFile,
+    /// The file's metadata when it was opened; its bytes follow in the pipe.
+    ReadFile(FileStat),
     /// The name of the file written: its path's, or the free one it took.
     WriteFile(String),
     Look(Vec<Looked>),
@@ -51,7 +52,7 @@ impl FsResult {
     /// The operation's name on the wire.
     pub fn op(&self) -> &'static str {
         match self {
-            Self::ReadFile => "readFile",
+            Self::ReadFile(_) => "readFile",
             Self::WriteFile(_) => "writeFile",
             Self::Look(_) => "look",
             Self::ReadFiles(_) => "readFiles",
@@ -110,15 +111,14 @@ impl Serialize for FsOk {
             FsResult::Look(looked) => reply.serialize_field("result", looked)?,
             FsResult::ReadFiles(read) => reply.serialize_field("result", read)?,
             FsResult::Exists(exists) => reply.serialize_field("result", exists)?,
-            FsResult::Stat(stat) | FsResult::Lstat(stat) => {
+            FsResult::ReadFile(stat) | FsResult::Stat(stat) | FsResult::Lstat(stat) => {
                 reply.serialize_field("result", stat)?;
             }
             FsResult::Readdir(entries) => reply.serialize_field("result", entries)?,
             FsResult::WriteFile(name) | FsResult::Readlink(name) | FsResult::Realpath(name) => {
                 reply.serialize_field("result", name)?;
             }
-            FsResult::ReadFile
-            | FsResult::WriteDirectory
+            FsResult::WriteDirectory
             | FsResult::RemoveAll
             | FsResult::Mkdir
             | FsResult::Rm
@@ -173,7 +173,7 @@ impl ReplyResult for FsResult {
 
     fn read<'de, A: MapAccess<'de>>(op: &str, map: &mut A) -> Result<Self, A::Error> {
         Ok(match op {
-            "readFile" => none(map, Self::ReadFile)?,
+            "readFile" => Self::ReadFile(map.next_value()?),
             "writeFile" => Self::WriteFile(map.next_value()?),
             "look" => Self::Look(map.next_value()?),
             "readFiles" => Self::ReadFiles(map.next_value()?),

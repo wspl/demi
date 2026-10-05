@@ -15,7 +15,7 @@ use std::rc::Rc;
 use bytes::Bytes;
 use demi_backend_remote_host::{PipeReader, PipeWriter};
 use demi_host_interface::{
-    ByteRange, FileKind, FileStat, HostError, HostFs, WhenExists, WriteOptions,
+    ByteRange, FileStat, HostError, WhenExists, WriteOptions,
 };
 use demi_web_api_protocol::ids::ConversationId;
 use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
@@ -93,10 +93,25 @@ impl dyn HostShard + '_ {
         };
         let admitted = self.admit_host(&record.id, None, waits).await?;
         let host = &admitted.host.host;
-        let stat = waits.wait(HostFs::stat(host, &request.path)).await??;
-        if stat.kind != FileKind::File {
-            return Ok(Download::NotAFile);
-        }
+        // The read answers the file's metadata with its first bytes, so it
+        // is the one request (`runner.md` § Host operations): it asks for
+        // the part the request names, read to the file's end when that
+        // comes first. A HEAD reads nothing.
+        let header = request.range.as_deref();
+        let asked = if request.head {
+            None
+        } else {
+            RangeAnswer::of(header, u64::MAX).range()
+        };
+        let read = asked.unwrap_or(ByteRange {
+            offset: 0,
+            length: Some(0),
+        });
+        let (stat, mut body) = match waits.wait(host.read_pipe(&request.path, read)).await? {
+            Ok(opened) => opened,
+            Err(error) if error.code() == Some("EISDIR") => return Ok(Download::NotAFile),
+            Err(error) => return Err(error.into()),
+        };
         let version = file_version(&stat);
         if request
             .version
@@ -108,12 +123,16 @@ impl dyn HostShard + '_ {
         if not_modified(request.if_none_match.as_deref(), &version) {
             return Ok(Download::NotModified { version });
         }
-        let part = RangeAnswer::of(request.range.as_deref(), stat.size);
+        let part = RangeAnswer::of(header, stat.size);
         let range = match part.range() {
             Some(range) if !request.head && range.length != Some(0) => range,
             _ => return Ok(Download::Head { stat, part }),
         };
-        let body = waits.wait(host.read_pipe(&request.path, range)).await??;
+        // A part counted from the end, which the size decides, is read once
+        // the size is known.
+        if asked.map(|asked| asked.offset) != Some(range.offset) {
+            body = waits.wait(host.read_pipe(&request.path, range)).await??.1;
+        }
         // The bytes move at the edge; the shard only holds the admission.
         let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
         Ok(Download::Stream {
