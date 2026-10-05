@@ -43,11 +43,16 @@
 - Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
 - zsh does not split an unquoted variable into words; pass argument lists as arrays, or run scripts with bash.
 
+# Delegation
+
+- The main agent is the one mind that holds the whole context: it does all design, planning and decision work itself, and writes every design document and every document change itself. A subagent never makes a significant decision and never writes documentation.
+- A subagent only executes: it writes code to a design the main agent settled, runs tests, or checks a result, and reports what it found. Research a subagent does is input to the main agent's decision, not the decision.
+
 # Parallel Development Mode
 
 Only when the user says to enter parallel development mode:
 
-- Hand each independent work item to a background subagent and stay free to talk with the user. Items that change the same files run one after another.
+- Hand each independent implementation, test or acceptance item to a background subagent and stay free to talk with the user. Items that change the same files run one after another.
 - Each subagent works in its own worktree under `../demi-worktrees/`, clones the warm `target/` with `cp -c` (APFS copy-on-write; skip `target/debug/incremental`), commits on its own branch and never pushes.
 - The lead reviews each result, merges it into the branch of the user's own checkout, tests and pushes from there, then removes the worktree. After each merge it rebuilds and restarts the development backend and web front end from the checkout (`bun run dev`, `bun run web:dev`), so the user sees the new code at once.
 
