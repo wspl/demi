@@ -644,9 +644,9 @@ mod tests {
         std::fs::create_dir_all(release.join("image")).unwrap();
         std::fs::write(release.join("image/manifest.json"), "{}").unwrap();
         std::fs::create_dir_all(release.join("systemd")).unwrap();
-        let manager = release.join("bin/demi-machine-manager");
-        std::fs::write(&manager, "#!/bin/sh\n").unwrap();
-        std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let program = release.join("bin/demi-machine-manager");
+        std::fs::write(&program, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
         let shipped = include_str!("../systemd/demi-machine-manager.service");
         std::fs::write(release.join("systemd/demi-machine-manager.service"), shipped).unwrap();
         // The deployment's configuration file, which the backend reads too.
