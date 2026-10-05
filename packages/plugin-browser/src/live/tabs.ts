@@ -10,12 +10,11 @@
 import { useDocumentVisibility } from '@vueuse/core'
 import { computed, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 import { z } from 'zod'
-import type { BrowserTab } from '../generated/plugin'
+import type { BrowserTab, NeededBrowser } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { viewerPlatform } from './input'
 import { picturesSupported } from './pictures'
-import type { HostInstall } from '@demicodes/plugin-sdk'
-import type { OpenUserStream } from '@demicodes/plugin-sdk'
+import type { HostArtifact, HostInstall, OpenUserStream, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession } from './session'
 
 /** What a new tab shows before the user goes anywhere. */
@@ -35,7 +34,12 @@ export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 
 export interface BrowserTabList {
   tabs: BrowserTab[]
+  /** The browser a tab needs on the Host, as its installed artifacts name it. */
+  browser: NeededBrowser
 }
+
+/** Why the strip cannot make a browser tab: the Host lacks the browser, which only the agent installs. */
+export const NO_BROWSER: SentenceText = 'No browser on this Host. Ask the agent to run demi browser install.'
 
 /** A request the backend or the conversation browser refused, with the answer's own code and message. */
 export class BrowserTabsError extends Error {
@@ -70,6 +74,8 @@ export interface BrowserTabsApi {
   stream: OpenUserStream
   /** What the Host installs before the browser can start, read reactively. */
   installs(): readonly HostInstall[]
+  /** What the Host holds of the browser's package, read reactively. */
+  installed(): readonly HostArtifact[]
 }
 
 /** Answers that will not change by asking again. */
@@ -102,6 +108,12 @@ export class BrowserTabsController {
   readonly list: ComputedRef<BrowserTabList | null>
   /** Why the last list could not be read, until one is. */
   readonly listError: ComputedRef<BrowserTabsError | null>
+  /**
+   * Why a new browser tab cannot be made: the Host lacks the browser the
+   * list names (`live-view.md` § A browser tab in the panel). Null while it
+   * has it, and until the first list says which browser that is.
+   */
+  readonly unavailable: ComputedRef<SentenceText | null>
   readonly session: ShallowRef<LiveSession | null> = shallowRef(null)
   /**
    * Whether this web browser can show the pictures, asked once. One that
@@ -127,6 +139,16 @@ export class BrowserTabsController {
     this.visibility = options.visibility ?? pageVisibility
     this.list = computed(() => api.tabs.value.value)
     this.listError = computed(() => api.tabs.error.value)
+    this.unavailable = computed(() => {
+      const needed = this.list.value?.browser
+      if (!needed) {
+        return null
+      }
+      const held = api
+        .installed()
+        .some((artifact) => artifact.name === needed.name && artifact.version === needed.version)
+      return held ? null : NO_BROWSER
+    })
     // The watchers stop with the panel session's effect scope.
     watch(this.visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
     watch(this.listError, (error) => {

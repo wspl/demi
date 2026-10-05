@@ -4,6 +4,7 @@ import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
 import { effectScope, ref, shallowRef } from 'vue'
 import {
+  NO_BROWSER,
   BrowserTabsController,
   type BrowserTabList,
   type BrowserTabsApi,
@@ -27,6 +28,7 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {})
       history: async () => {},
       stream: () => ({ send: () => {}, close: () => {} }),
       installs: () => [],
+      installed: () => [],
       ...api,
     },
     () => {},
@@ -62,6 +64,23 @@ function framed(message: LiveModuleMessage): Uint8Array {
 }
 
 const VIEWPORT = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
+
+test('a new tab waits for the Host to hold the browser the tab list names', () => {
+  const chrome = { name: 'Chrome for Testing', version: '153.0.8010.36' }
+  const installed = shallowRef([{ package: 'demi.browser', name: 'program', version: '0.1.3' }])
+  const { controller, list, end } = harness({ installed: () => installed.value })
+  // Until the first list names the browser, nothing says it is missing.
+  expect(controller.unavailable.value).toBeNull()
+  list.value = { tabs: [], browser: chrome }
+  expect(controller.unavailable.value).toBe(NO_BROWSER)
+  // Another version of the line is not the one this Demi pins.
+  installed.value = [...installed.value, { package: 'demi.browser', name: chrome.name, version: '152.0.7900.12' }]
+  expect(controller.unavailable.value).toBe(NO_BROWSER)
+  // The agent's `demi browser install` reports the pinned one.
+  installed.value = [...installed.value, { package: 'demi.browser', ...chrome }]
+  expect(controller.unavailable.value).toBeNull()
+  end()
+})
 
 test('a hidden page closes its view, and shown again watches the shown tab on a new view', async () => {
   const visibility = ref<DocumentVisibilityState>('visible')

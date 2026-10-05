@@ -1,21 +1,20 @@
 //! The pinned Chrome for Testing release (`browser.md` § Browser
-//! distribution): its version, and its executable, which the runner
-//! installs when the program asks for it over its artifacts stream
-//! (`native-runtime.md` § The artifacts stream). Nothing here downloads
-//! Chrome or looks for it.
+//! distribution): `install` asks the runner to install it from its official
+//! URL over the artifacts stream (`native-runtime.md` § The artifacts
+//! stream), and every other command starts it only from an installation the
+//! runner already holds. Nothing here downloads Chrome itself.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use demi_command_package_browser_protocol::release::BrowserRelease;
+use demi_command_package_browser_protocol::browser::InstallResult;
+use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease, ReleasePlatform};
 use demi_command_protocol::{ArtifactForm, ArtifactInstall, host_target};
 use demi_command_sdk::Artifacts;
 use tokio::sync::watch;
 
 use crate::driver::operation::{BrowserError, Result};
-
-/// The artifact line of the pinned release.
-pub const NAME: &str = "Chrome for Testing";
+use crate::driver::requirements;
 
 /// The Chrome a service starts, through the runner that installs it.
 /// Cloning shares the one source.
@@ -38,31 +37,53 @@ impl Chrome {
         self.artifacts.send_replace(Some(artifacts));
     }
 
-    /// The pinned release's executable for this Host, which the runner
-    /// installs for `invocation` when it has none.
-    pub async fn executable(&self, invocation: &str) -> Result<PathBuf> {
+    /// Installs the pinned release for `invocation` from its official URL,
+    /// unless the Host has it, and names what the Host still lacks for it.
+    pub async fn install(&self, invocation: &str) -> Result<InstallResult> {
         let release = release()?;
-        let platform = release.platform(host_target()).ok_or_else(|| {
-            BrowserError::Installation(format!(
-                "{} is unavailable on {}",
-                release.title(),
-                host_target()
-            ))
-        })?;
+        let platform = platform(&release)?;
         let install = ArtifactInstall {
             invocation: invocation.to_owned(),
-            name: NAME.to_owned(),
+            name: ARTIFACT.to_owned(),
             version: release.version.clone(),
             sha256: platform.sha256.clone(),
             size: platform.size,
             form: ArtifactForm::Archive {
                 entry: platform.executable.clone(),
             },
+            url: Some(platform.url.clone()),
         };
-        self.source()?
-            .install(install)
+        let path = self.source()?.install(install).await.map_err(|error| {
+            BrowserError::Installation(format!("{} could not be installed: {error}", release.title()))
+        })?;
+        let missing = requirements::missing()?;
+        Ok(InstallResult {
+            browser: release.title(),
+            path: path.to_string_lossy().into_owned(),
+            missing_libraries: missing.libraries,
+            missing_fonts: missing.fonts,
+        })
+    }
+
+    /// The pinned release's executable, when the Host has it installed.
+    pub async fn executable(&self) -> Result<PathBuf> {
+        let release = release()?;
+        let platform = platform(&release)?;
+        let installed = self
+            .source()?
+            .installed(ARTIFACT)
             .await
-            .map_err(|error| BrowserError::Installation(error.to_string()))
+            .map_err(|error| BrowserError::Installation(error.to_string()))?;
+        installed
+            .into_iter()
+            .find(|installed| installed.sha256 == platform.sha256)
+            .map(|installed| PathBuf::from(installed.path))
+            .ok_or_else(|| {
+                BrowserError::Installation(format!(
+                    "{} is not installed on this Host: run `demi browser install`",
+                    release.title()
+                ))
+            })
     }
 
     /// Where Chrome's executables live, its helpers' included, for finding
@@ -76,7 +97,7 @@ impl Chrome {
             return Vec::new();
         };
         let artifacts = artifacts.clone().expect("the wait ends with a source");
-        match artifacts.installed(NAME).await {
+        match artifacts.installed(ARTIFACT).await {
             Ok(installed) => installed
                 .iter()
                 .map(|installed| installation_of(Path::new(&installed.path)))
@@ -112,6 +133,17 @@ pub(crate) fn installation_of(executable: &Path) -> PathBuf {
 /// The pinned Chrome for Testing release.
 fn release() -> Result<BrowserRelease> {
     BrowserRelease::pinned().map_err(|error| BrowserError::Configuration(error.to_string()))
+}
+
+/// The release's archive for this Host.
+fn platform(release: &BrowserRelease) -> Result<&ReleasePlatform> {
+    release.platform(host_target()).ok_or_else(|| {
+        BrowserError::Installation(format!(
+            "{} is unavailable on {}",
+            release.title(),
+            host_target()
+        ))
+    })
 }
 
 /// The pinned release's version, such as `153.0.8010.36`.

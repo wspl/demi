@@ -99,7 +99,7 @@ test("a refusal rejects with the plugin's own reason", async () => {
   await expect(refused).rejects.toMatchObject({ reason: 'expose_not_found', message: 'No expose k7x2' })
 })
 
-test("a conversation's installs are its primary Host's installs of the plugin's packages", () => {
+test("a conversation's installs and what it holds are its primary Host's, of the plugin's packages", () => {
   const laptop = 'b5c6d7e8-0000-4000-8000-000000000001'
   const chrome = {
     package: 'demi.browser',
@@ -129,6 +129,10 @@ test("a conversation's installs are its primary Host's installs of the plugin's 
       online: true,
       home: '/home/ada',
       installs: [chrome, file],
+      installed: [
+        { package: 'demi.browser', name: 'program', version: '0.1.3' },
+        { package: 'demi.file', name: 'program', version: '0.1.0' },
+      ],
     }],
     conversations: [
       conversationSummary(CONVERSATION, 'Work', { target: { kind: 'device', deviceId: laptop, path: '/home/ada/work' } }),
@@ -138,6 +142,10 @@ test("a conversation's installs are its primary Host's installs of the plugin's 
   }))
   const browser = page('browser').plugin
   expect(browser.conversation(CONVERSATION).installs.value).toEqual([chrome])
+  expect(browser.conversation(CONVERSATION).installed.value).toEqual([
+    { package: 'demi.browser', name: 'program', version: '0.1.3' },
+  ])
   // A conversation the page does not know has no Host to install on.
   expect(browser.conversation('unknown').installs.value).toEqual([])
+  expect(browser.conversation('unknown').installed.value).toEqual([])
 })

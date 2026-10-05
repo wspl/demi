@@ -67,6 +67,9 @@ pub struct Registered {
     /// The installs the services' starts make, which each connection
     /// reports (`native-runtime.md` § Installation progress).
     pub installs: InstallsReceiver,
+    /// What the artifact cache holds, which each connection reports
+    /// (`native-runtime.md` § Installed artifacts).
+    pub cached: watch::Receiver<Vec<wire::HostArtifact>>,
     pub dispatcher: Arc<Dispatcher>,
     /// Where the current connection publishes its live contexts.
     pub index: watch::Sender<Arc<ContextIndex>>,
@@ -120,6 +123,8 @@ struct Owner<'r> {
     package_installs: InstallsReceiver,
     /// Whether this connection reported package installs yet.
     installs_reported: bool,
+    /// What the artifact cache holds.
+    cached: watch::Receiver<Vec<wire::HostArtifact>>,
 }
 
 /// Serves one connection until it ends, then ends everything it owns.
@@ -173,6 +178,7 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
         handle,
         package_installs: registered.installs.clone(),
         installs_reported: false,
+        cached: registered.cached.clone(),
     };
     let result = owner.run(&mut transport, &mut requests).await;
     // Requests still queued get no answer; their askers see the end.
@@ -230,6 +236,9 @@ impl Owner<'_> {
                 true = self.package_installs.changed(), if management.phase() == Phase::Online => {
                     self.report_installs().await?;
                 }
+                Ok(()) = self.cached.changed(), if management.phase() == Phase::Online => {
+                    self.report_installed().await?;
+                }
                 message = transport.input.recv() => match message {
                     Some(message) => {
                         if let Some(end) = self.route(message).await? {
@@ -252,6 +261,14 @@ impl Owner<'_> {
         self.installs_reported = true;
         let frame =
             wire::encode(&wire::Outbound::Installs { installs }).map_err(io::Error::other)?;
+        self.send(frame).await
+    }
+
+    /// Reports what the artifact cache holds.
+    async fn report_installed(&mut self) -> io::Result<()> {
+        let artifacts = self.cached.borrow_and_update().clone();
+        let frame =
+            wire::encode(&wire::Outbound::Installed { artifacts }).map_err(io::Error::other)?;
         self.send(frame).await
     }
 
@@ -347,6 +364,7 @@ impl Owner<'_> {
                 tracing::warn!("online");
                 // What a previous connection reported ended with it.
                 self.report_installs().await?;
+                self.report_installed().await?;
             }
             Inbound::ClaimPending { claim_token } if management.phase() != Phase::Online => {
                 management.set_phase(Phase::ClaimPending);
@@ -361,6 +379,8 @@ impl Owner<'_> {
                 self.work
                     .spawn(async move { Work::Paired(state.write_token(&device_token).await) });
                 management.set_phase(Phase::Online);
+                // A Host paired again may hold artifacts from before.
+                self.report_installed().await?;
             }
             Inbound::HelloError { code, reason } => {
                 tracing::warn!("registration refused ({code}): {reason}");

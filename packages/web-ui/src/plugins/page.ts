@@ -15,7 +15,7 @@ import {
 } from 'vue'
 import { z } from 'zod'
 import type { PanelTabKind } from '../agent/panel-kinds/kind'
-import type { HostInstall } from '../devices/installs'
+import type { HostArtifact, HostInstall } from '../devices/installs'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { FileBrowserSource } from '../files/types'
 import { reportError } from '../infra/errors'
@@ -110,6 +110,8 @@ export interface PageHost {
   stream(name: string, conversation: string): OpenUserStream
   /** The installs of `plugin`'s packages on `conversation`'s primary Host, read reactively. */
   installs(plugin: string, conversation: string): readonly HostInstall[]
+  /** What `conversation`'s primary Host holds of `plugin`'s packages, read reactively. */
+  installed(plugin: string, conversation: string): readonly HostArtifact[]
   files(conversation: string): ConversationFileService
   intents: IntentService
   /** The panel tabs of one conversation. */
@@ -143,6 +145,8 @@ export interface ConversationPlugin {
   stream(name: string): OpenUserStream
   /** The installs of the plugin's packages on the conversation's primary Host, which a first call may wait for. */
   readonly installs: ComputedRef<readonly HostInstall[]>
+  /** What the conversation's primary Host holds of the plugin's packages, kept while it is offline. */
+  readonly installed: ComputedRef<readonly HostArtifact[]>
 }
 
 /** The page's own plugin. */
@@ -201,8 +205,17 @@ export interface PanelKind<Data, Session = undefined> {
    * user would.
    */
   content: Component
-  /** The kind is offered on the strip's new-tab control; `data` is a new tab's. */
-  create?: { label: TitleText; icon: Component; data(): Data }
+  /**
+   * The kind is offered on the strip's new-tab control; `data` is a new
+   * tab's. While `unavailable` gives a reason, read reactively, the control
+   * is disabled and says it.
+   */
+  create?: {
+    label: TitleText
+    icon: Component
+    data(): Data
+    unavailable?(tab: KindTab<Session>): SentenceText | null
+  }
   /**
    * The kind has one tab in every conversation's panel, ahead of the user's
    * tabs, which is never created, closed or saved; its data starts here and
@@ -374,6 +387,7 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
       validatedCall(host, plugin, method, params, result, conversation, options),
     stream: (name) => host.stream(name, conversation),
     installs: computed(() => host.installs(plugin, conversation)),
+    installed: computed(() => host.installed(plugin, conversation)),
   }
 }
 
@@ -512,7 +526,7 @@ function bindKind(
     title: (data) => kind.title(data, tab),
     mark: kind.mark,
     content,
-    create: kind.create,
+    create: kind.create && bindCreate(kind.create, tab),
     pinned: kind.pinned,
     picked: picked && ((data) => picked(data)),
     badge: badge
@@ -524,6 +538,20 @@ function bindKind(
           },
         })
       : undefined,
+  }
+}
+
+/** `create` as the panel offers it for one conversation: its reason bound to the conversation's tab. */
+function bindCreate(
+  create: NonNullable<PanelKind<unknown, PanelSession | undefined>['create']>,
+  tab: KindTab<PanelSession | undefined>,
+): NonNullable<PanelTabKind['create']> {
+  const { unavailable } = create
+  return {
+    label: create.label,
+    icon: create.icon,
+    data: () => create.data(),
+    unavailable: unavailable && (() => unavailable(tab)),
   }
 }
 

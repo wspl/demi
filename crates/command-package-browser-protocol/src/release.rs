@@ -1,15 +1,19 @@
 //! The pinned Chrome for Testing release (`browser.md` § Browser
 //! distribution). Nothing resolves a moving channel: a release names each
-//! platform's archive by URL, size and digest, and packaging makes it the
-//! `chrome` resource of `demi.browser`'s releases.
+//! platform's archive by URL, size and digest, which `demi browser install`
+//! downloads from its official URL. Beside it, the record of what Chrome
+//! needs on Linux that Demi does not install
+//! (`builds-and-releases.md` § Chrome for Testing).
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use demi_shared_types::DecodeError;
 
-/// The resource of `demi.browser` that the pinned release is, whose entry
-/// is Chrome's executable (`native-runtime.md` § Bind an exact package).
-pub const RESOURCE: &str = "chrome";
+/// The artifact line the pinned release is installed as on a Host, which
+/// its installed artifacts name (`native-runtime.md` § Installed
+/// artifacts).
+pub const ARTIFACT: &str = "Chrome for Testing";
 
 /// One Chrome version and its archive for each platform.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -34,10 +38,10 @@ impl BrowserRelease {
         Self::parse(include_str!("release/chrome.json"))
     }
 
-    /// The resource's title for the user, such as `Chrome for Testing
+    /// The release's title for the user, such as `Chrome for Testing
     /// 153.0.8010.36`.
     pub fn title(&self) -> String {
-        format!("Chrome for Testing {}", self.version)
+        format!("{ARTIFACT} {}", self.version)
     }
 
     /// The archive for `target`, when the release has one.
@@ -64,4 +68,47 @@ pub struct ReleasePlatform {
     /// The executable's path inside the archive.
     #[garde(length(min = 1))]
     pub executable: String,
+}
+
+/// What Chrome needs on Linux that Demi does not install: the shared
+/// libraries it loads that a minimal Ubuntu lacks, and the fonts pages need
+/// to show their text, each with the Ubuntu package that provides it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LinuxRequirements {
+    #[garde(dive)]
+    pub libraries: Vec<LinuxLibrary>,
+    #[garde(dive)]
+    pub fonts: Vec<LinuxFont>,
+}
+
+impl LinuxRequirements {
+    /// The record this build of Demi carries, `release/linux.json` beside
+    /// this module.
+    pub fn pinned() -> Result<Self, DecodeError> {
+        demi_shared_types::decode_slice(include_bytes!("release/linux.json"))
+    }
+}
+
+/// A shared library by its soname, such as `libnss3.so`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LinuxLibrary {
+    #[garde(length(min = 1))]
+    pub name: String,
+    #[garde(length(min = 1))]
+    pub package: String,
+}
+
+/// A font a page needs for `purpose`, such as `color emoji`, found by the
+/// name of its file.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct LinuxFont {
+    #[garde(length(min = 1))]
+    pub purpose: String,
+    #[garde(length(min = 1))]
+    pub file: String,
+    #[garde(length(min = 1))]
+    pub package: String,
 }

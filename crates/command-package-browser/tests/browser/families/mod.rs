@@ -220,14 +220,32 @@ impl BrowserFixture {
     }
 }
 
-/// The answer a runner gives the browser's request for Chrome: the pinned
-/// Chrome for Testing that `DEMI_TEST_CHROME` names. No test downloads
-/// Chrome.
+/// The answer a runner that has installed the pinned Chrome for Testing
+/// gives the browser's requests: the copy `DEMI_TEST_CHROME` names. No test
+/// downloads Chrome.
 pub fn answer_chrome(
-    _: demi_command_protocol::ArtifactAsk,
+    ask: demi_command_protocol::ArtifactAsk,
 ) -> Result<demi_command_protocol::ArtifactReply, String> {
     let chrome = std::env::var("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME");
-    Ok(demi_command_protocol::ArtifactReply::Path(chrome))
+    Ok(match ask {
+        demi_command_protocol::ArtifactAsk::Install(_) => {
+            demi_command_protocol::ArtifactReply::Path(chrome)
+        }
+        demi_command_protocol::ArtifactAsk::Installed(_) => {
+            let pinned = demi_command_package_browser_protocol::release::BrowserRelease::pinned()
+                .expect("the pinned release");
+            let platform = pinned
+                .platform(demi_command_protocol::host_target())
+                .expect("the pinned release has this machine's target");
+            demi_command_protocol::ArtifactReply::Installed(vec![
+                demi_command_protocol::InstalledArtifact {
+                    version: pinned.version.clone(),
+                    sha256: platform.sha256.clone(),
+                    path: chrome,
+                },
+            ])
+        }
+    })
 }
 
 /// The service, whose requests for Chrome [`answer_chrome`] answers.

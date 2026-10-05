@@ -162,12 +162,11 @@ async fn releases(commands: &FilePath) -> Result<Vec<Release>, PublicationError>
     Ok(releases)
 }
 
-/// A verified release: its descriptor, its executables by target with
-/// their compressed copies, and its resources' archives.
+/// A verified release: its descriptor, and its executables by target with
+/// their compressed copies.
 struct Verified {
     descriptor: PackageDescriptor,
     executables: Vec<(PathBuf, PackageArtifact)>,
-    archives: Vec<(PathBuf, PackageArtifact)>,
 }
 
 /// The published catalog: the releases' descriptors, and the size of each
@@ -175,13 +174,6 @@ struct Verified {
 struct Published {
     packages: Vec<PackageDescriptor>,
     artifacts: HashMap<String, u64>,
-}
-
-/// One object to store: an executable's compressed copy, stored in the
-/// content coding, or a resource's archive, stored as it is.
-enum Upload {
-    Encoded(PathBuf, PackageArtifact),
-    Plain(PathBuf, PackageArtifact),
 }
 
 /// Publishes `releases` to `store`, verifying every release before any
@@ -192,33 +184,22 @@ async fn publish(
     cancel: &CancellationToken,
 ) -> Result<Published, PublicationError> {
     let verified = verify_all(releases, cancel).await?;
-    // Each artifact once, however many releases carry it.
-    let mut uploads: HashMap<String, Upload> = HashMap::new();
+    // Each executable once, however many releases carry it, stored as its
+    // compressed copy in the content coding.
+    let mut uploads: HashMap<String, (PathBuf, PackageArtifact)> = HashMap::new();
     for release in &verified {
         for (path, artifact) in &release.executables {
             uploads
                 .entry(artifact.sha256.clone())
-                .or_insert_with(|| Upload::Encoded(compressed(path), artifact.clone()));
-        }
-        for (path, artifact) in &release.archives {
-            uploads
-                .entry(artifact.sha256.clone())
-                .or_insert_with(|| Upload::Plain(path.clone(), artifact.clone()));
+                .or_insert_with(|| (compressed(path), artifact.clone()));
         }
     }
     let artifacts: HashMap<String, u64> = uploads
         .iter()
-        .map(|(sha256, upload)| {
-            let (Upload::Encoded(_, artifact) | Upload::Plain(_, artifact)) = upload;
-            (sha256.clone(), artifact.size)
-        })
+        .map(|(sha256, (_, artifact))| (sha256.clone(), artifact.size))
         .collect();
     futures_util::stream::iter(uploads.into_values().map(Ok))
-        .try_for_each_concurrent(UPLOADS, |upload| async move {
-            let (path, artifact, encoded) = match upload {
-                Upload::Encoded(path, artifact) => (path, artifact, true),
-                Upload::Plain(path, artifact) => (path, artifact, false),
-            };
+        .try_for_each_concurrent(UPLOADS, |(path, artifact)| async move {
             let key = blob(&artifact.sha256)?;
             if in_place(store, &key, &artifact, cancel).await? {
                 return Ok(());
@@ -237,20 +218,15 @@ async fn publish(
                 sha256: artifact.sha256.clone(),
             };
             // What is stored is what was verified, whatever changed the file
-            // since: an archive's bytes, or what a compressed copy decodes to.
+            // since: what the compressed copy decodes to.
             let checked = bytes.clone();
             tokio::task::spawn_blocking(move || {
-                if encoded {
-                    demi_shared_artifacts::check_encoded_blocking(&checked, &expected)
-                } else {
-                    let mut verifier = demi_shared_artifacts::Verifier::new(&expected);
-                    verifier.update(&checked).and_then(|()| verifier.finish())
-                }
+                demi_shared_artifacts::check_encoded_blocking(&checked, &expected)
             })
             .await
             .map_err(|error| refused(error.to_string()))?
             .map_err(|error| refused(error.to_string()))?;
-            let coding = encoded.then_some(demi_shared_artifacts::CONTENT_CODING);
+            let coding = Some(demi_shared_artifacts::CONTENT_CODING);
             put_immutable(store, &key, bytes, &artifact, coding, cancel).await
         })
         .await?;
@@ -365,31 +341,9 @@ async fn verify(
         }
         executables.push((path, expected.clone()));
     }
-    // A resource may lack targets the release carries: its archive of each
-    // one it has is checked.
-    let mut archives = Vec::new();
-    for (name, resource) in &descriptor.resources {
-        for (target, archive) in &resource.targets {
-            let path = release.directory.join("resources").join(&archive.sha256);
-            let expected = archive.archive();
-            let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
-                .await
-                .map_err(|error| match error {
-                    demi_shared_artifacts::Error::Cancelled => PublicationError::Cancelled,
-                    error => refused(format!("{name} for {target}: {error}")),
-                })?;
-            if found.size != expected.size || found.sha256 != expected.sha256 {
-                return Err(refused(format!(
-                    "{name} for {target}: the archive does not match the descriptor"
-                )));
-            }
-            archives.push((path, expected));
-        }
-    }
     Ok(Verified {
         descriptor,
         executables,
-        archives,
     })
 }
 

@@ -19,6 +19,7 @@ function device(id: string, kind: DeviceDto['kind'], installs: DeviceDto['instal
     online: true,
     home: '/home/ada',
     installs,
+    installed: [],
   }
 }
 
