@@ -32,6 +32,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       error: status.error ?? status.operation?.error ?? null,
       volumes: status.volumes,
       limits: status.limits,
+      newerImage: status.newerImage,
       installs: cloudInstalls(product.snapshot),
     }
   })
