@@ -81,6 +81,7 @@ import {
   editingShellTool,
   fileChangeCases,
   fullPageTool,
+  longScriptShellTool,
   missingImageTool,
   notStoredVideoTool,
   recordingTool,
@@ -521,6 +522,7 @@ const functionalExpanded = ref(true)
 const functionalTool = ref(false)
 const functionalShellExpanded = ref(true)
 const functionalShellLive = ref(true)
+const functionalShellScript = ref(true)
 /** Calls whose results carry media, as the transcript shows them. */
 const toolMediaSpecimens = [
   { variant: 'shell · image', block: screenshotTool },
@@ -1270,7 +1272,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="FunctionalBlock"
-        note="Thinking, shell (collapsed and expanded), loading, and error. While a shell call runs, its command's output shows under it as it comes, a line every frame here; once the call returned, the call keeps the view its result stored."
+        note="Thinking, shell (collapsed and expanded), loading, and error. A shell call shows its command and output in one box: the command stays at the top, whole, and only the output under it scrolls once it fills the box. A script taller than half the box scrolls on its own. While a shell call runs, its command's output shows under it as it comes, a line every frame here, and the box follows the newest line; scroll up to read, and it stays where you are until you scroll back to the end. Once the call returned, the call keeps the view its result stored."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1349,6 +1351,17 @@ onBeforeUnmount(() => {
                 v-model:open="functionalShellLive"
                 :block="runningShellTool"
                 :input="parseToolInput(runningShellTool.input)"
+                :is-streaming="false"
+              />
+            </GallerySpecimen>
+            <GallerySpecimen
+              variant="shell · long script"
+              wide
+            >
+              <ToolShellBlock
+                v-model:open="functionalShellScript"
+                :block="longScriptShellTool"
+                :input="parseToolInput(longScriptShellTool.input)"
                 :is-streaming="false"
               />
             </GallerySpecimen>
