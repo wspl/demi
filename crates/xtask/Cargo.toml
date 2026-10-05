@@ -36,18 +36,32 @@ tokio.workspace = true
 tokio-util.workspace = true
 zstd = { version = "0.13", default-features = false }
 
+[features]
+default = ["developer"]
+# `xtask contracts` and `xtask dev`, which only a developer runs. The release
+# workflow builds xtask without them, and so without the backend they compile
+# (`builds-and-releases.md` § Release workflow).
+developer = [
+  "dep:demi-backend",
+  "dep:demi-conversation-socket-protocol",
+  "dep:demi-plugin-interface",
+  "dep:demi-web-api-protocol",
+  "dep:axum",
+  "dep:process-wrap",
+]
+
 # What `xtask contracts` and `xtask dev` need, which exist only on Unix: the
 # backend builds only where it runs. The plugins the backend registers, whose
 # manifests the page packages' types and the plugin page registry are
 # generated from; the echo endpoint `xtask dev` serves; the process groups it
 # starts its programs in.
 [target.'cfg(unix)'.dependencies]
-demi-backend = { path = "../backend" }
-demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
-demi-plugin-interface = { path = "../plugin-interface" }
-demi-web-api-protocol = { path = "../web-api-protocol" }
-axum = "0.8"
-process-wrap.workspace = true
+demi-backend = { path = "../backend", optional = true }
+demi-conversation-socket-protocol = { path = "../conversation-socket-protocol", optional = true }
+demi-plugin-interface = { path = "../plugin-interface", optional = true }
+demi-web-api-protocol = { path = "../web-api-protocol", optional = true }
+axum = { version = "0.8", optional = true }
+process-wrap = { workspace = true, optional = true }
 
 [dev-dependencies]
 demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
