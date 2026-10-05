@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Runs the Cloud suite (scenarios.md § Cloud suite) on a Linux machine without
-# an installed machine manager, as root, against a manager of its own: the one
-# the workspace built, with its resource limits off, in a stand-in execution
-# host. The stand-in is the init of a throwaway PID and mount namespace with
-# its own /run and an empty, read-only cgroup root, so nothing in it can create
-# a cgroup and the machine's cgroup hierarchies stay untouched; it shares the
-# machine's network namespace, so the Clouds reach the backend.
+# Runs the Cloud suite (scenarios.md § Cloud suite) on a Linux machine, as
+# root, against a manager of its own, never an installed one, with its
+# resource limits off, in a stand-in execution host. The stand-in is the init
+# of a throwaway PID and mount namespace with its own /run and an empty,
+# read-only cgroup root, so nothing in it can create a cgroup and the
+# machine's cgroup hierarchies stay untouched; it shares the machine's network
+# namespace, so the Clouds reach the backend.
 #
 # After the run, also after a failure or an interruption, the script stops the
 # manager, which saves every Cloud, ends the stand-in, deletes the manager's
@@ -13,27 +13,37 @@
 # then compares what a run can leave behind with its state before the run, and
 # fails when anything remains.
 #
-# Build the Cargo selection first, so the manager is in target/debug:
+# By default the manager and demi-server come from the workspace's build and
+# the suite runs with cargo test; build the Cargo selection first, so they
+# are in target/debug:
 #   cargo build --workspace --all-targets --features demi-runner/test-fixtures
+#
+# --programs names a directory of programs built for this machine elsewhere,
+# as a Mac builds them for its Lima VM (mac-development.md § Machine manager
+# in Lima): demi-machine-manager, demi-server, and the backend's scenario
+# test executable under the name backend-scenarios, which the script runs
+# in place of cargo test, with the same arguments.
 #
 # --release names the server release root whose image/ the manager imports
 # and whose commands/, the command packages the image embeds, the backend
 # publishes.
 #
 # Usage: sudo bash crates/machine-manager/scripts/cloud-suite.sh --release DIR
-#          --work DIR [--runsc PATH] [--dns ADDRESSES]
+#          --work DIR [--programs DIR] [--runsc PATH] [--dns ADDRESSES]
 #          [--address ADDRESS] [-- TEST-ARGUMENTS...]
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 repository="$(cd "$here/../../.." && pwd)"
 release=""
 work=""
+programs=""
 runsc=""
 dns=""
 address=""
 usage() {
-  echo 'usage: cloud-suite.sh --release DIR --work DIR [--runsc PATH]' >&2
-  echo '         [--dns ADDRESSES] [--address ADDRESS] [-- TEST-ARGUMENTS...]' >&2
+  echo 'usage: cloud-suite.sh --release DIR --work DIR [--programs DIR]' >&2
+  echo '         [--runsc PATH] [--dns ADDRESSES] [--address ADDRESS]' >&2
+  echo '         [-- TEST-ARGUMENTS...]' >&2
   exit 2
 }
 while [ "$#" -gt 0 ]; do
@@ -42,6 +52,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --release) release=$2 ;;
     --work) work=$2 ;;
+    --programs) programs=$2 ;;
     --runsc) runsc=$2 ;;
     --dns) dns=$2 ;;
     --address) address=$2 ;;
@@ -53,13 +64,24 @@ done
 [ "$(id -u)" = 0 ] || { echo 'run as root' >&2; exit 2; }
 [ -f "$release/image/manifest.json" ] || { echo "no Cloud image release at $release/image" >&2; exit 2; }
 [ -d "$release/commands" ] || { echo "no command packages at $release/commands" >&2; exit 2; }
-manager="$repository/target/debug/demi-machine-manager"
-[ -x "$manager" ] || {
-  echo "no manager at $manager: build the selection first" >&2
-  exit 2
-}
-# The gVisor version the workspace pins, which demi-server fetches.
-runsc=${runsc:-$("$repository/target/debug/demi-server" runtime)/runsc}
+# The suite's programs, and the command that runs the suite, which takes the
+# suite's arguments last.
+if [ -n "$programs" ]; then
+  programs="$(cd "$programs" && pwd)"
+  needed=(demi-machine-manager demi-server backend-scenarios)
+  suite_command=("$programs/backend-scenarios")
+else
+  programs="$repository/target/debug"
+  needed=(demi-machine-manager demi-server)
+  suite_command=(cargo test --workspace --features demi-runner/test-fixtures --test backend --)
+fi
+for name in "${needed[@]}"; do
+  [ -x "$programs/$name" ] || { echo "no executable at $programs/$name: build the programs first" >&2; exit 2; }
+done
+manager="$programs/demi-machine-manager"
+server="$programs/demi-server"
+# The gVisor version the suite's demi-server pins, which it fetches.
+runsc=${runsc:-$("$server" runtime)/runsc}
 [ -x "$runsc" ] || { echo "no runsc at $runsc" >&2; exit 2; }
 # The Clouds reach the backend on the machine's address toward them.
 address=${address:-$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')}
@@ -245,13 +267,13 @@ echo "cloud-suite: the manager is ready; the backend URL is $url" >&2
 
 set +e
 (
-  cd "$repository"
+  # cargo test runs a test executable in its package's directory.
+  cd "$repository/crates/backend"
   DEMI_TEST_MACHINES_SOCKET="$socket" \
     DEMI_TEST_CLOUD_URL="$url" \
     DEMI_TEST_MACHINES_DATA="$state" \
     DEMI_TEST_CLOUD_RELEASE="$release" \
-    cargo test --workspace --features demi-runner/test-fixtures --test backend \
-    -- --include-ignored real_cloud --test-threads=1 --nocapture "$@"
+    "${suite_command[@]}" --include-ignored real_cloud --test-threads=1 --nocapture "$@"
 ) 2>&1 | tee "$work/suite.log"
 suite=${PIPESTATUS[0]}
 set -e

@@ -1,9 +1,9 @@
 //! The Cloud suite (`scenarios.md` § Cloud suite; `managed-hosts.md`
 //! § Verification): the backend against a real machine manager, its
 //! gVisor/systrap sandboxes and the shipped Cloud image, with a scripted
-//! model. An ordinary run ignores every test here; the suite's command runs
-//! them as root on the manager's host, with the variables that say where the
-//! manager, its state and the image's command releases are.
+//! model. An ordinary run ignores every test here; `cloud-suite.sh` runs
+//! them as root against a manager of its own, with the variables that say
+//! where the manager, its state and the image's command releases are.
 //!
 //! The tests reach the Cloud as a conversation does: the model's shell jobs,
 //! the conversation's file and browser routes, and the Cloud's status and
@@ -13,7 +13,8 @@
 //! measure they print, apart from their assertions.
 //!
 //! Each test takes tens of seconds: a Cloud boots in seconds, and a stop, a
-//! wake and a reset each save or boot it once more.
+//! wake and a reset each save or boot it once more. The checkpoint's test
+//! takes minutes, as long as installing Chrome takes.
 
 use std::collections::BTreeMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
@@ -377,6 +378,17 @@ async fn run_watched(driven: &mut Driven<'_>, id: &str, script: &str, watch: u64
 /// Runs `script` as the model's shell job `id` to its end.
 async fn run(driven: &mut Driven<'_>, id: &str, script: &str) -> String {
     run_watched(driven, id, script, WATCH_MS).await
+}
+
+/// Runs `script`, a download that may take minutes, as the model's shell job
+/// `id`, watched for at most `watch` ms, and answers what the model read.
+/// The conversation's socket may stay silent while the job runs, so it waits
+/// as long as the watch and then as long as any other step.
+async fn run_download(driven: &mut Driven<'_>, id: &str, script: &str, watch: u64) -> String {
+    driven.socket.patience = Duration::from_millis(watch) + PATIENCE;
+    let output = run_watched(driven, id, script, watch).await;
+    driven.socket.patience = PATIENCE;
+    output
 }
 
 /// The capacity of the ext4 filesystem in `image`, as its superblock
@@ -814,6 +826,15 @@ async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_it
     backend.close().await;
 }
 
+/// How long the model watches an apt-get install from the Cloud's Ubuntu
+/// mirror, the shell tool's longest watch: a slow mirror takes minutes.
+const APT_WATCH_MS: u64 = 600_000;
+
+/// How long the model watches `demi browser install`, which downloads
+/// Chrome for Testing from its official URL, the shell tool's longest
+/// watch: through a slow proxy it took 221 s.
+const CHROME_DOWNLOAD_WATCH_MS: u64 = 600_000;
+
 /// What the tests' scripts use beyond the base, which holds neither Python
 /// nor `ip` (`images.md` § Root filesystem contents): a test installs them
 /// with apt, as an agent would, from the Cloud's Ubuntu mirror.
@@ -825,9 +846,51 @@ const TOOLS: &str = "sudo -n apt-get update -qq > /dev/null && \
 /// long apt took.
 async fn install_tools(test: &str, driven: &mut Driven<'_>) {
     let started = Instant::now();
-    let installed = run(driven, "tools", TOOLS).await;
+    let installed = run_download(driven, "tools", TOOLS, APT_WATCH_MS).await;
     assert!(installed.contains("tools-installed"), "{installed}");
     measured(test, "installing Python and ip with apt", started.elapsed());
+}
+
+/// Installs Chrome on the Cloud of `driven`'s conversation as an agent
+/// would (`browser.md` § Installation): `demi browser install`, then the
+/// apt command its output ends with, which installs the libraries and fonts
+/// the Cloud lacks, from the package lists [`install_tools`] updated. Prints
+/// how long each step took.
+async fn install_chrome(test: &str, driven: &mut Driven<'_>) {
+    let started = Instant::now();
+    let installed = run_download(
+        driven,
+        "chrome",
+        "demi browser install",
+        CHROME_DOWNLOAD_WATCH_MS,
+    )
+    .await;
+    assert!(installed.contains("exitCode: 0"), "{installed}");
+    assert!(
+        installed.contains("Installed Chrome for Testing"),
+        "{installed}"
+    );
+    measured(
+        test,
+        "installing Chrome with demi browser install",
+        started.elapsed(),
+    );
+    // A Host that has every library and font gets no command.
+    let Some(command) = installed
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("sudo apt-get install "))
+    else {
+        return;
+    };
+    let started = Instant::now();
+    let added = run_download(driven, "chrome-packages", command, APT_WATCH_MS).await;
+    assert!(added.contains("exitCode: 0"), "{added}");
+    measured(
+        test,
+        "installing Chrome's libraries and fonts with apt",
+        started.elapsed(),
+    );
 }
 
 /// Maps a file of its own, writes a line through the mapping without
@@ -842,9 +905,10 @@ print("mapped", flush=True)
 time.sleep(600)
 "#;
 
-// Tens of seconds: the Cloud boots, apt installs Python in it, Chrome starts
-// in it, the checkpoint copies both images, and one conversation's idle window
-// passes.
+// Minutes: the Cloud boots, apt installs Python in it, the agent installs
+// Chrome from its official URL and apt its libraries and fonts, which takes
+// as long as the network does, Chrome starts in it, the checkpoint copies
+// both images, and one conversation's idle window passes.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
 async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wrote_and_keeps_every_process_until_the_idle_conversations_release()
@@ -864,6 +928,7 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
         .await;
     let session = format!("/home/demi/sessions/{FIRST}");
     install_tools(TEST, &mut first).await;
+    install_chrome(TEST, &mut first).await;
 
     let written = run(
         &mut first,

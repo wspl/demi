@@ -7,7 +7,9 @@
 # configuration file, and runs the host install script there. --public-url
 # is the backend's URL at the Mac's address on its network, which the Cloud
 # guests reach through Lima and the Mac's own runner reaches too; Lima's
-# gateway address (host.lima.internal) exists only inside the VM.
+# gateway address (host.lima.internal) exists only inside the VM. --dns
+# names the resolvers the Clouds use in place of the VM's own, for a Mac
+# whose proxy answers name lookups with addresses the Clouds may not reach.
 #
 # With --root DIR the configuration file and the unit are written beneath DIR
 # inside the VM for review; the manager still goes into the release.
@@ -21,10 +23,12 @@ server=""
 release=""
 data=/mnt/lima-demi-cloud-data/state
 data_size=100GiB
+dns=""
 root=""
 usage() {
   echo 'usage: lima-machines.sh --manager PATH --server PATH --release DIR --public-url URL' >&2
-  echo '         [--data DIR] [--data-size SIZE] [--slots COUNT] [--root DIR]' >&2
+  echo '         [--dns ADDRESSES] [--data DIR] [--data-size SIZE] [--slots COUNT]' >&2
+  echo '         [--root DIR]' >&2
   exit 2
 }
 while [ "$#" -gt 0 ]; do
@@ -36,6 +40,7 @@ while [ "$#" -gt 0 ]; do
     --data) data=$2 ;;
     --data-size) data_size=$2 ;;
     --public-url) public_url=$2 ;;
+    --dns) dns=$2 ;;
     --slots) slots=$2 ;;
     --root) root=$2 ;;
     *) echo "unknown argument: $1" >&2; usage ;;
@@ -61,14 +66,19 @@ esac
 guest_user=$(limactl shell "$instance" -- id -un)
 uid=$(limactl shell "$instance" -- id -u)
 prefix=${root%/}
-# The VM's configuration file: the Clouds use the VM's own resolver, the
-# manager's default.
+# The VM's configuration file. Without --dns the Clouds use the VM's own
+# resolver, the manager's default.
+settings=(
+  "DEMI_BACKEND_PUBLIC_URL=$public_url"
+  "DEMI_MACHINE_MANAGER_SOCKET=/run/user/$uid/demi-machine-manager.sock"
+  "DEMI_MANAGED_DATA=$data"
+  "DEMI_MANAGED_SLOTS=$slots"
+)
+if [ -n "$dns" ]; then
+  settings+=("DEMI_MANAGED_DNS=$dns")
+fi
 limactl shell "$instance" -- sudo install -d "$prefix/opt/demi/config"
-printf '%s\n' \
-  "DEMI_BACKEND_PUBLIC_URL=$public_url" \
-  "DEMI_MACHINE_MANAGER_SOCKET=/run/user/$uid/demi-machine-manager.sock" \
-  "DEMI_MANAGED_DATA=$data" \
-  "DEMI_MANAGED_SLOTS=$slots" |
+printf '%s\n' "${settings[@]}" |
   limactl shell "$instance" -- sudo tee "$prefix/opt/demi/config/demi.env" >/dev/null
 # Each program is renamed into place, so a running one keeps its own file.
 for program in "$manager" "$server"; do
