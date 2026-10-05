@@ -9,7 +9,8 @@ use std::{
 use demi_shared_artifacts::{
     Archive, ArchiveInstall, CONTENT_CODING, Client, Digest, Effort, Error, InstallLock, Mode,
     Permissions, Publication, ReleaseFile, ReleaseRecord, Staged, Verifier, client_allowing_http,
-    copy, digest, download, download_measured, encode_blocking, install_archive, installed,
+    check_encoded_blocking, copy, digest, download, download_measured, encode_blocking,
+    install_archive, installed,
     publish, publish_bytes, publish_directory, publish_release, receipt, recorded,
     testing::{Answer, Server, zip},
     zip_holds,
@@ -688,4 +689,14 @@ async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() 
     assert!(zip_holds(&file, "app/bin/tool").await.unwrap());
     assert!(!zip_holds(&file, "app/bin").await.unwrap());
     assert!(!zip_holds(&file, "app/bin/other").await.unwrap());
+}
+
+#[test]
+fn an_encoded_copy_checks_against_the_bytes_it_stands_for_only() {
+    let bytes = BODY.repeat(100);
+    let encoded = encode_blocking(&bytes, Effort::Fast).unwrap();
+    check_encoded_blocking(&encoded, &declared(&bytes)).unwrap();
+    let other = encode_blocking(b"other bytes", Effort::Fast).unwrap();
+    assert!(check_encoded_blocking(&other, &declared(&bytes)).is_err());
+    assert!(check_encoded_blocking(b"not zstd", &declared(&bytes)).is_err());
 }

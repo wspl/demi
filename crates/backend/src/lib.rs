@@ -7,6 +7,6 @@ mod config;
 pub mod families;
 pub mod plugins;
 
-pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError};
+pub use backend::{Backend, ShutdownError, ShutdownErrors, StartError, publish_commands};
 pub use config::secret::{InstanceSecret, SecretError};
-pub use config::{BackendConfig, Config, ConfigError};
+pub use config::{BackendConfig, Config, ConfigError, StorageKind};

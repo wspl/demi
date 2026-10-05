@@ -62,8 +62,9 @@ struct Environment {
     url: url::Url,
     /// The manager's state directory, which the suite only reads.
     data: PathBuf,
-    /// The native configuration of the command releases the image embeds.
-    native: PathBuf,
+    /// The server release root whose image the manager imported: the
+    /// backend publishes its `commands/`, the releases the image embeds.
+    release: PathBuf,
 }
 
 impl Environment {
@@ -79,7 +80,7 @@ impl Environment {
                 .parse()
                 .expect("DEMI_TEST_CLOUD_URL is a URL"),
             data: variable("DEMI_TEST_MACHINES_DATA").into(),
-            native: variable("DEMI_TEST_CLOUD_NATIVE").into(),
+            release: variable("DEMI_TEST_CLOUD_RELEASE").into(),
         }
     }
 
@@ -107,7 +108,7 @@ impl Environment {
     fn harness(&self) -> Harness {
         let mut harness = Harness::new();
         harness.machines = Some(self.socket.clone());
-        harness.native = Some(self.native.clone());
+        harness.commands = Some(self.release.join("commands"));
         harness.public_url = Some(self.url.clone());
         harness.lifecycle = idle_after(Duration::from_secs(2));
         harness.cloud.sweep = Duration::from_millis(200);

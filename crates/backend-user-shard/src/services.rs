@@ -347,7 +347,10 @@ impl Services {
         lifecycle: LifecycleTuning,
     ) -> Arc<Self> {
         let clock: Arc<dyn Clock> = Arc::new(demi_shared_types::SystemClock);
-        let objects = demi_backend_blobs::store::open(data, None).await.unwrap();
+        let objects = demi_backend_blobs::store::open(data, &demi_backend_blobs::store::Storage::Local)
+            .await
+            .unwrap()
+            .store;
         let storage = Storage::open(data, clock.clone(), objects).await.unwrap();
         let keys = ServiceKeys {
             vault: VaultKey::new(rand::random()),
