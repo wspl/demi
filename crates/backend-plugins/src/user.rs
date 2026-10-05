@@ -714,13 +714,14 @@ impl UserPlugins {
 
     /// A page's changes of the conversation's work panel, all or none: each
     /// tab they create is of a kind a plugin the user has on declares.
-    /// Answers the panel's revision once the changes are in it, and tells
-    /// the kind's plugin of each tab the user created or removed.
+    /// Answers the panel's revision once the changes are in it and whether
+    /// they changed it, and tells the kind's plugin of each tab the user
+    /// created or removed.
     pub async fn change_panel(
         &self,
         conversation: ConversationId,
         changes: Vec<PanelChange>,
-    ) -> Result<u64, PanelError> {
+    ) -> Result<(u64, bool), PanelError> {
         let enabled = self.enabled().await?;
         for change in &changes {
             if let PanelChange::Create(create) = change {
@@ -735,10 +736,11 @@ impl UserPlugins {
             }
         }
         let (revision, effects) = self.0.apply_panel(&conversation, changes).await?;
+        let changed = !effects.is_empty();
         for effect in effects {
             self.0.tell_owner(conversation.clone(), effect, &enabled);
         }
-        Ok(revision)
+        Ok((revision, changed))
     }
 
     async fn state_of(
