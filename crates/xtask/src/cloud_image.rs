@@ -5,44 +5,37 @@
 //! Into the Ubuntu tree the script made, it installs, from a server release
 //! and its files, the runner and its `demi` alias that the runner release
 //! names, each command package's executable under its content-addressed
-//! path, each checked against its release's record, and the pinned uv.
-//! It reads the package inventory from the tree's dpkg database without
-//! running a program of the image, writes the root archive with GNU tar,
-//! checks the manifest the way the machine manager decodes it, publishes the
-//! release directory through `artifact`'s release publication and prints the
-//! base version.
+//! path, each checked against its release's record. It reads the package
+//! inventory from the tree's dpkg database without running a program of the
+//! image, writes the root archive with GNU tar, checks the manifest the way
+//! the machine manager decodes it, publishes the release directory through
+//! `artifact`'s release publication and prints the base version.
 
 use std::collections::BTreeMap;
-use std::io::{Read as _, Write as _};
+use std::io::Write as _;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use demi_command_protocol::{PackageArtifact, PackageDescriptor};
 use demi_machine_manager_protocol::image::{
     Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError,
-    Os, RUNNER_PATH, RootfsArchive, RootfsFile, StandaloneTool,
+    Os, RUNNER_PATH, RootfsArchive, RootfsFile,
 };
 use demi_runner_protocol::image::ARTIFACTS_PATH;
 use demi_runner_protocol::release::{RUNNER, RunnerRelease, compressed_file, release_file};
 use demi_shared_artifacts::{
     Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
 };
-use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::native::{DESCRIPTOR, MANIFEST};
 
-/// The uv release every image installs, pinned in the repository. `xtask`
-/// carries the pin it was built with.
-const UV: &str = include_str!("../../../cloud-guest-image/rootfs/uv.json");
 /// The image release's record.
 const IMAGE_MANIFEST: &str = "manifest.json";
 /// The name the runner also answers to, beside it in `/opt/demi/bin`.
 const RUNNER_ALIAS: &str = "demi";
 /// Where the runner and its alias are linked from, on every `PATH`.
 const LINKS_PATH: &str = "/usr/bin";
-/// Where the image's standalone tools are installed.
-const TOOLS_PATH: &str = "/usr/local/bin";
 /// What the build reads of the tree: its dpkg database and its os-release
 /// file.
 const DPKG_STATUS: &str = "/var/lib/dpkg/status";
@@ -78,8 +71,6 @@ pub struct Options {
 pub enum Error {
     #[error("a Cloud image is packaged on a Linux builder of its architecture")]
     NotLinux,
-    #[error("the pinned {name} release is invalid: {reason}")]
-    Pin { name: &'static str, reason: String },
     #[error("{}: {source}", path.display())]
     File {
         path: PathBuf,
@@ -94,8 +85,6 @@ pub enum Error {
     },
     #[error("the command package {0} is released twice")]
     Twice(String),
-    #[error("the uv archive {url} {reason}")]
-    Uv { url: String, reason: String },
     #[error("dpkg lists {package} as \"{status}\": its installation did not finish")]
     Unfinished { package: String, status: String },
     #[error("tar failed: {0}")]
@@ -114,81 +103,20 @@ pub fn run(command: Command) -> Result<(), Error> {
     let architecture = Architecture::host()
         .filter(|_| cfg!(target_os = "linux"))
         .ok_or(Error::NotLinux)?;
-    let pins = Pins::pinned()?;
     let base = crate::interruptible(|cancel| async move {
-        let client = demi_shared_artifacts::client()?;
-        package(&options, architecture, &pins, &client, &cancel).await
+        package(&options, architecture, &cancel).await
     })??;
     println!("{base}");
     Ok(())
 }
 
-/// What an image downloads, as the repository pins it.
-struct Pins {
-    uv: UvRelease,
-}
-
-impl Pins {
-    fn pinned() -> Result<Self, Error> {
-        let uv = UvRelease::parse(UV).map_err(|reason| Error::Pin { name: "uv", reason })?;
-        Ok(Self { uv })
-    }
-}
-
-/// The pinned uv release (`cloud-guest-image/rootfs/uv.json`): its
-/// version and the archive for each image architecture.
-#[derive(Debug, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-struct UvRelease {
-    #[garde(length(min = 1))]
-    version: String,
-    #[garde(dive)]
-    amd64: UvArchive,
-    #[garde(dive)]
-    arm64: UvArchive,
-}
-
-/// One architecture's uv archive, a gzip-compressed tar file: where it is
-/// downloaded from, its size and SHA-256, and the paths of its executables,
-/// each installed in `/usr/local/bin` under its file name.
-#[derive(Debug, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-struct UvArchive {
-    #[garde(url)]
-    url: String,
-    #[garde(range(min = 1))]
-    size: u64,
-    #[garde(custom(demi_command_protocol::digest))]
-    sha256: String,
-    #[garde(length(min = 1), inner(length(min = 1)))]
-    executables: Vec<String>,
-}
-
-impl UvRelease {
-    fn parse(json: &str) -> Result<Self, String> {
-        let release: Self = serde_json::from_str(json).map_err(|error| error.to_string())?;
-        garde::Validate::validate(&release)
-            .map_err(|report| report.to_string().trim_end().to_owned())?;
-        Ok(release)
-    }
-
-    fn archive(&self, architecture: Architecture) -> &UvArchive {
-        match architecture {
-            Architecture::Amd64 => &self.amd64,
-            Architecture::Arm64 => &self.arm64,
-        }
-    }
-}
-
 /// Completes the image of the tree at `options.root` for `architecture`,
 /// publishes it at `options.output` and returns its base version. The tree
 /// and the release records are read before anything is installed, so a bad
-/// input fails before the downloads.
+/// input fails before the tree changes.
 async fn package(
     options: &Options,
     architecture: Architecture,
-    pins: &Pins,
-    client: &demi_shared_artifacts::Client,
     cancel: &CancellationToken,
 ) -> Result<String, Error> {
     let root = std::path::absolute(&options.root)?;
@@ -218,8 +146,6 @@ async fn package(
         let path = install_package(&root, &files, executable, descriptor, artifact, target).await?;
         executables.insert(path, artifact.clone());
     }
-    let (uv, uv_tool) = install_uv(&root, &pins.uv, architecture, client, cancel).await?;
-    executables.extend(uv);
     executables.insert(
         INIT_PATH.to_owned(),
         measure(&in_tree(&root, INIT_PATH), cancel).await?,
@@ -262,7 +188,6 @@ async fn package(
             .map(|(_, descriptor, _)| descriptor)
             .collect(),
         runner,
-        tools: vec![uv_tool],
     };
     let bytes = crate::record(&manifest).map_err(ManifestError::from)?;
     // The manifest is checked the way the manager decodes it.
@@ -476,101 +401,6 @@ async fn symlink(_: &std::ffi::OsStr, _: &Path) -> Result<(), Error> {
     Err(Error::NotLinux)
 }
 
-/// Downloads the pinned uv archive of `architecture` and installs its
-/// executables in `/usr/local/bin`; returns their paths in the image with
-/// their sizes and SHA-256s, and the tool's entry.
-async fn install_uv(
-    root: &Path,
-    release: &UvRelease,
-    architecture: Architecture,
-    client: &demi_shared_artifacts::Client,
-    cancel: &CancellationToken,
-) -> Result<(Vec<(String, PackageArtifact)>, StandaloneTool), Error> {
-    let archive = release.archive(architecture);
-    let expected = Digest {
-        size: archive.size,
-        sha256: archive.sha256.clone(),
-    };
-    let downloads = tempfile::tempdir()?;
-    let downloaded = downloads.path().join("uv.tar.gz");
-    let mut file = tokio::fs::File::create(&downloaded).await?;
-    demi_shared_artifacts::download(client, &archive.url, &expected, &mut file, cancel).await?;
-    drop(file);
-    let tools = in_tree(root, TOOLS_PATH);
-    let unpacking = {
-        let url = archive.url.clone();
-        let executables = archive.executables.clone();
-        let tools = tools.clone();
-        tokio::task::spawn_blocking(move || unpack(&url, &downloaded, &executables, &tools))
-    };
-    let names = unpacking.await.map_err(std::io::Error::other)??;
-    let mut installed = Vec::new();
-    for name in names {
-        installed.push((
-            format!("{TOOLS_PATH}/{name}"),
-            measure(&tools.join(&name), cancel).await?,
-        ));
-    }
-    let tool = StandaloneTool {
-        name: "uv".to_owned(),
-        version: release.version.clone(),
-        sha256: archive.sha256.clone(),
-    };
-    eprintln!("Cloud image: uv {}", release.version);
-    Ok((installed, tool))
-}
-
-/// Installs the regular files at `paths` in the gzip-compressed tar archive
-/// at `archive`, downloaded from `url`, as executables in `directory`, each
-/// under its file name, and returns those names.
-fn unpack(
-    url: &str,
-    archive: &Path,
-    paths: &[String],
-    directory: &Path,
-) -> Result<Vec<String>, Error> {
-    let fails = |reason: String| Error::Uv {
-        url: url.to_owned(),
-        reason,
-    };
-    let file = std::fs::File::open(archive)?;
-    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
-    let mut found: Vec<&String> = Vec::new();
-    let mut names = Vec::new();
-    for entry in archive.entries()? {
-        let mut entry = entry?;
-        let path = entry.path()?.into_owned();
-        let Some(named) = paths.iter().find(|named| Path::new(named) == path) else {
-            continue;
-        };
-        if !entry.header().entry_type().is_file() {
-            return Err(fails(format!(
-                "holds {named} as something other than a file"
-            )));
-        }
-        let name = path
-            .file_name()
-            .and_then(|name| name.to_str())
-            .ok_or_else(|| fails(format!("names {named} without a file name")))?
-            .to_owned();
-        let mut bytes = Vec::new();
-        entry.read_to_end(&mut bytes)?;
-        let publication = Publication {
-            mode: Mode::CreateNew,
-            permissions: Permissions::Executable,
-            durable: false,
-        };
-        demi_shared_artifacts::publish_bytes_blocking(&directory.join(&name), &bytes, publication)
-            .map_err(at(&directory.join(&name)))?;
-        found.push(named);
-        names.push(name);
-    }
-    if let Some(missing) = paths.iter().find(|named| !found.contains(named)) {
-        return Err(fails(format!("holds no {missing}")));
-    }
-    Ok(names)
-}
-
 /// The size and SHA-256 of the file at `path` in the tree, which must be a
 /// regular file rather than a link, which could lead out of the tree.
 async fn measure(path: &Path, cancel: &CancellationToken) -> Result<PackageArtifact, Error> {
@@ -763,18 +593,13 @@ fn invalid(path: &Path, reason: impl ToString) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use demi_shared_artifacts::testing::{Answer, Server};
+    use std::io::Read as _;
 
     use super::*;
 
     /// The tests build an arm64 image, as for an arm64 execution host.
     const ARCHITECTURE: Architecture = Architecture::Arm64;
     const TARGET: &str = "aarch64-unknown-linux-musl";
-    /// uv's executables in its archive.
-    const UV_EXECUTABLES: [&str; 2] = [
-        "uv-aarch64-unknown-linux-gnu/uv",
-        "uv-aarch64-unknown-linux-gnu/uvx",
-    ];
 
     /// A dpkg database as a build leaves it: two installed packages, and one
     /// removed with its configuration kept, which is not installed.
@@ -817,20 +642,6 @@ Version: 0.19.0-3
         }
     }
 
-    /// A gzip-compressed tar archive of `entries`, each a path and its bytes.
-    fn gzip_tar(entries: &[(&str, &[u8])]) -> Vec<u8> {
-        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-        let mut builder = tar::Builder::new(encoder);
-        for (path, bytes) in entries {
-            let mut header = tar::Header::new_gnu();
-            header.set_size(bytes.len() as u64);
-            header.set_mode(0o755);
-            header.set_cksum();
-            builder.append_data(&mut header, path, *bytes).unwrap();
-        }
-        builder.into_inner().unwrap().finish().unwrap()
-    }
-
     /// The command package `name` of the server release at `release`,
     /// whose descriptor records `recorded` as its executable, and whose
     /// compressed copy among `files` decodes to `bytes`.
@@ -862,14 +673,11 @@ Version: 0.19.0-3
 
     /// A build's inputs: a tree as rootfs/build.sh leaves it with the dpkg
     /// database `database`, a server release with a runner release and two
-    /// command packages, its files, and the pinned archives on a fixture
-    /// server. The demi-browser file decodes to `browser`, whatever its
-    /// descriptor records.
+    /// command packages, and its files. The demi-browser file decodes to
+    /// `browser`, whatever its descriptor records.
     struct Fixture {
         _directory: tempfile::TempDir,
-        _server: Server,
         options: Options,
-        pins: Pins,
         runner: RunnerRelease,
         releases: Vec<PackageDescriptor>,
     }
@@ -885,7 +693,6 @@ Version: 0.19.0-3
                 b"NAME=\"Ubuntu\"\nVERSION_ID=\"26.04\"\nID=ubuntu\n",
             );
             write(&root.join("var/lib/dpkg/status"), database.as_bytes());
-            std::fs::create_dir_all(root.join("usr/local/bin")).unwrap();
             let release = path.join("release");
             let files = path.join("files");
             let runners = release.join("runners");
@@ -920,22 +727,6 @@ Version: 0.19.0-3
                 )
                 .await,
             ];
-            let uv = gzip_tar(&[(UV_EXECUTABLES[0], b"uv"), (UV_EXECUTABLES[1], b"uvx")]);
-            let uv_artifact = measured(&uv).await;
-            let server = Server::start([("/uv.tar.gz".to_owned(), Answer::ok(uv))]).await;
-            let uv_archive = || UvArchive {
-                url: server.url("/uv.tar.gz"),
-                size: uv_artifact.size,
-                sha256: uv_artifact.sha256.clone(),
-                executables: UV_EXECUTABLES.map(String::from).to_vec(),
-            };
-            let pins = Pins {
-                uv: UvRelease {
-                    version: "0.12.13".to_owned(),
-                    amd64: uv_archive(),
-                    arm64: uv_archive(),
-                },
-            };
             let options = Options {
                 root,
                 release,
@@ -944,9 +735,7 @@ Version: 0.19.0-3
             };
             Self {
                 _directory: directory,
-                _server: server,
                 options,
-                pins,
                 runner,
                 releases,
             }
@@ -978,20 +767,11 @@ Version: 0.19.0-3
 
     #[tokio::test]
     async fn an_image_embeds_its_verified_inputs_and_publishes_a_manifest_the_manager_imports() {
-        // The repository's pins are what a real build downloads.
-        Pins::pinned().unwrap();
         let fixture = Fixture::new(DATABASE, b"browser").await;
-        let client = demi_shared_artifacts::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
-        let base = package(
-            &fixture.options,
-            ARCHITECTURE,
-            &fixture.pins,
-            &client,
-            &cancel,
-        )
-        .await
-        .unwrap();
+        let base = package(&fixture.options, ARCHITECTURE, &cancel)
+            .await
+            .unwrap();
         let output = &fixture.options.output;
         let mut published: Vec<String> = std::fs::read_dir(output)
             .unwrap()
@@ -1015,20 +795,6 @@ Version: 0.19.0-3
         );
         assert_eq!(manifest.runner, fixture.runner);
         assert_eq!(manifest.releases, fixture.releases);
-        let uv = &fixture.pins.uv.arm64;
-        let tools = [("uv", "0.12.13", uv.sha256.as_str())];
-        let recorded: Vec<(&str, &str, &str)> = manifest
-            .tools
-            .iter()
-            .map(|tool| {
-                (
-                    tool.name.as_str(),
-                    tool.version.as_str(),
-                    tool.sha256.as_str(),
-                )
-            })
-            .collect();
-        assert_eq!(recorded, tools);
         let browser = measured(b"browser").await;
         let claude = measured(b"claude").await;
         let executables = BTreeMap::from([
@@ -1042,8 +808,6 @@ Version: 0.19.0-3
             ),
             (RUNNER_PATH.to_owned(), measured(b"runner").await),
             (INIT_PATH.to_owned(), measured(b"tini").await),
-            (format!("{TOOLS_PATH}/uv"), measured(b"uv").await),
-            (format!("{TOOLS_PATH}/uvx"), measured(b"uvx").await),
         ]);
         assert_eq!(manifest.executables, executables);
         let archive = output.join(RootfsFile::TarZst.name());
@@ -1090,18 +854,10 @@ Version: 0.19.0-3
     #[tokio::test]
     async fn an_artifact_unlike_its_release_or_an_unfinished_package_fails_the_image_and_publishes_nothing()
      {
-        let client = demi_shared_artifacts::client_allowing_http().unwrap();
         let cancel = CancellationToken::new();
         // demi-browser's file is not the executable its descriptor records.
         let corrupt = Fixture::new(DATABASE, b"BROWSER").await;
-        let refused = package(
-            &corrupt.options,
-            ARCHITECTURE,
-            &corrupt.pins,
-            &client,
-            &cancel,
-        )
-        .await;
+        let refused = package(&corrupt.options, ARCHITECTURE, &cancel).await;
         assert!(
             matches!(&refused, Err(Error::File { path, source: demi_shared_artifacts::Error::Digest }) if path.ends_with(compressed_file("demi-browser", TARGET))),
             "{refused:?}"
@@ -1113,14 +869,7 @@ Version: 0.19.0-3
             "Status: install ok half-configured\nArchitecture",
         );
         let unfinished = Fixture::new(&database, b"browser").await;
-        let refused = package(
-            &unfinished.options,
-            ARCHITECTURE,
-            &unfinished.pins,
-            &client,
-            &cancel,
-        )
-        .await;
+        let refused = package(&unfinished.options, ARCHITECTURE, &cancel).await;
         assert!(
             matches!(&refused, Err(Error::Unfinished { package, .. }) if package == "tini"),
             "{refused:?}"

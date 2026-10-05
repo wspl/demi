@@ -814,6 +814,22 @@ async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_it
     backend.close().await;
 }
 
+/// What the tests' scripts use beyond the base, which holds neither Python
+/// nor `ip` (`images.md` § Root filesystem contents): a test installs them
+/// with apt, as an agent would, from the Cloud's Ubuntu mirror.
+const TOOLS: &str = "sudo -n apt-get update -qq > /dev/null && \
+    sudo -n env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+    python3 iproute2 > /dev/null && echo tools-installed";
+
+/// Installs [`TOOLS`] on the Cloud of `driven`'s conversation, and prints how
+/// long apt took.
+async fn install_tools(test: &str, driven: &mut Driven<'_>) {
+    let started = Instant::now();
+    let installed = run(driven, "tools", TOOLS).await;
+    assert!(installed.contains("tools-installed"), "{installed}");
+    measured(test, "installing Python and ip with apt", started.elapsed());
+}
+
 /// Maps a file of its own, writes a line through the mapping without
 /// flushing it, says so, and keeps the mapping while it waits.
 const MAPPER: &str = r#"import mmap, os, sys, time
@@ -826,8 +842,9 @@ print("mapped", flush=True)
 time.sleep(600)
 "#;
 
-// Tens of seconds: the Cloud boots, Chrome starts in it, the checkpoint copies
-// both images, and one conversation's idle window passes.
+// Tens of seconds: the Cloud boots, apt installs Python in it, Chrome starts
+// in it, the checkpoint copies both images, and one conversation's idle window
+// passes.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
 async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wrote_and_keeps_every_process_until_the_idle_conversations_release()
@@ -846,6 +863,7 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
         .enter(Purpose::Demand)
         .await;
     let session = format!("/home/demi/sessions/{FIRST}");
+    install_tools(TEST, &mut first).await;
 
     let written = run(
         &mut first,
@@ -1008,8 +1026,8 @@ for line in sys.stdin:
         print(name, "refused")
 "#;
 
-// Tens of seconds: two Clouds boot, and each refused connection waits for its
-// three-second timeout.
+// Tens of seconds: two Clouds boot, apt installs Python and ip in each, and
+// each refused connection waits for its three-second timeout.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
 async fn two_users_clouds_run_at_once_and_reach_the_backend_but_nothing_else_private() {
@@ -1034,6 +1052,8 @@ async fn two_users_clouds_run_at_once_and_reach_the_backend_but_nothing_else_pri
         .await
         .enter(Purpose::Demand)
         .await;
+    install_tools(TEST, &mut first).await;
+    install_tools(TEST, &mut second).await;
 
     // A service in the second user's Cloud, which the model stops watching
     // once it printed its address.
