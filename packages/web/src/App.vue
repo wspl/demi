@@ -171,7 +171,7 @@ useAppShortcuts(
     <AsyncRegion state="loading" label="Loading Demi…" />
   </div>
   <SidebarLayout
-    v-else-if="route.path !== '/login'"
+    v-else-if="session.signedIn"
     v-model:open="resources.sidebarOpen"
     v-model:width="sidebarWidth"
     v-model:aside-share="asideShare"
