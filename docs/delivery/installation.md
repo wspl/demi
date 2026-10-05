@@ -72,7 +72,7 @@ needs another adds it to `/etc/demi/demi.env` and restarts the services.
 Demi does not terminate TLS ([Public URL and listening address](../backend/backend.md#public-url-and-listening-address)),
 and the installer sets up none either: the operator provides what serves the
 domain over HTTPS and forwards to the backend, and tells the installer where
-the backend listens. Both shapes of that page are one parameter:
+the backend listens. The two usual arrangements differ only in that address:
 
 - Behind a reverse proxy on the same machine, such as Caddy or nginx, or a
   tunnel, such as Cloudflare Tunnel: `--listen 127.0.0.1:<port>`.
