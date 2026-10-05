@@ -896,19 +896,23 @@ impl HostFs for RemoteHost {
                 })
                 .await?;
             match listing {
-                FsResult::Readdir(entries) => Ok(entries
+                FsResult::Readdir(entries) => entries
                     .into_iter()
-                    .map(|entry| DirEntry {
-                        kind: kind(
-                            entry.is_file,
-                            entry.is_directory,
-                            entry.is_symbolic_link,
-                            None,
-                            None,
-                        ),
-                        name: entry.name,
+                    .map(|entry| {
+                        Ok(DirEntry {
+                            kind: kind(
+                                entry.is_file,
+                                entry.is_directory,
+                                entry.is_symbolic_link,
+                                None,
+                                None,
+                            ),
+                            size: entry.size,
+                            modified: timestamp(entry.mtime)?,
+                            name: entry.name,
+                        })
                     })
-                    .collect()),
+                    .collect(),
                 _ => Err(mismatch()),
             }
         })
@@ -1277,9 +1281,14 @@ fn file_stat(stat: wire::FileStat) -> Result<FileStat, HostError> {
         ),
         mode: stat.mode,
         size: stat.size,
-        modified: Timestamp::from_millisecond(stat.mtime.0)
-            .map_err(|error| protocol(&error.to_string()))?,
+        modified: timestamp(stat.mtime)?,
     })
+}
+
+/// A time on the wire as a timestamp; one out of its range is the runner's
+/// error.
+fn timestamp(time: wire::Timestamp) -> Result<Timestamp, HostError> {
+    Timestamp::from_millisecond(time.0).map_err(|error| protocol(&error.to_string()))
 }
 
 fn kind(
