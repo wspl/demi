@@ -158,8 +158,8 @@ test('a new conversation\'s panel reads and sends nothing until its first send c
   expect(route.reads).toBeGreaterThan(0)
   expect(route.sent).toEqual([{
     method: 'POST',
-    path: `/api/conversations/${id}/panel/tabs`,
-    body: { id: tab, kind: 'page', data: { url: 'https://example.test/' } },
+    path: `/api/conversations/${id}/panel/changes`,
+    body: { changes: [{ op: 'create', id: tab, kind: 'page', data: { url: 'https://example.test/' } }] },
   }])
 })
 

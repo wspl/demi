@@ -80,7 +80,7 @@ export function useGalleryWork(
     }
     void (change === 'created' ? plugin.bind(tab.id) : plugin.removed(tab))
   }
-  backend.changed = () => void tabs.refresh()
+  backend.changed = (revision) => tabs.noticed(revision)
   tabs.start()
 
   const history = ref<readonly string[]>(selection === null ? [] : [selection])
@@ -115,9 +115,8 @@ export function useGalleryWork(
   /** Closed tabs go at once; the panel shows what was selected before a closed one. */
   function closeTabs(ids: string[]) {
     history.value = removeTabs(panel.value, ids).history
-    for (const id of ids) {
-      tabs.change({ type: 'remove', id })
-    }
+    // One request, as Close Others is one change of the panel.
+    tabs.change(...ids.map((id) => ({ type: 'remove' as const, id })))
   }
   function openIn(request: IntentRequest) {
     const opened = openIntent(pinned.value, shown, enabled, request)

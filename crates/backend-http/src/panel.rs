@@ -1,6 +1,6 @@
 //! The work panel's routes (`web-api.md` § Work panel state): the read of a
-//! conversation's tabs, and the four changes, which the user's shard applies
-//! one at a time and answers with the panel's revision. An archived
+//! conversation's tabs, and a request of changes, which the user's shard
+//! applies whole or not at all and answers with the panel's revision. An archived
 //! conversation reads its tabs and refuses every change.
 
 use std::sync::Arc;
@@ -11,9 +11,7 @@ use axum::http::StatusCode;
 use demi_backend_plugins::PanelError;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use demi_web_api_protocol::panel::{
-    CreatePanelTab, MovePanelTab, PanelChange, PanelRevision, UpdatePanelTab, WorkPanel,
-};
+use demi_web_api_protocol::panel::{PanelChanges, PanelRevision, WorkPanel};
 
 use super::AppState;
 use super::body::JsonBody;
@@ -32,58 +30,25 @@ pub(super) async fn read(
     Ok(Json(services.control.panel(record.id).await?))
 }
 
-/// `POST /conversations/:id/panel/tabs`.
-pub(super) async fn create(
+/// `POST /conversations/:id/panel/changes { changes }`: applied in order,
+/// all or none, as one change of the panel.
+pub(super) async fn change(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-    body: Result<JsonBody<CreatePanelTab>, ApiError>,
+    body: Result<JsonBody<PanelChanges>, ApiError>,
 ) -> Result<Json<PanelRevision>, ApiError> {
     let conversation = changeable(&state, &user.id, &id).await?;
-    let JsonBody(create) = body?;
-    change(&state, &user.id, conversation, PanelChange::Create(create)).await
-}
-
-/// `PATCH /conversations/:id/panel/tabs/:tab`.
-pub(super) async fn update(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path((id, tab)): Path<(String, String)>,
-    body: Result<JsonBody<UpdatePanelTab>, ApiError>,
-) -> Result<Json<PanelRevision>, ApiError> {
-    let conversation = changeable(&state, &user.id, &id).await?;
-    let JsonBody(UpdatePanelTab { data }) = body?;
-    let change_of = PanelChange::Update { id: tab, data };
-    change(&state, &user.id, conversation, change_of).await
-}
-
-/// `DELETE /conversations/:id/panel/tabs/:tab`.
-pub(super) async fn remove(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path((id, tab)): Path<(String, String)>,
-) -> Result<Json<PanelRevision>, ApiError> {
-    let conversation = changeable(&state, &user.id, &id).await?;
-    change(
-        &state,
-        &user.id,
-        conversation,
-        PanelChange::Remove { id: tab },
-    )
-    .await
-}
-
-/// `POST /conversations/:id/panel/tabs/:tab/move`.
-pub(super) async fn move_tab(
-    State(state): State<AppState>,
-    AuthUser(user): AuthUser,
-    Path((id, tab)): Path<(String, String)>,
-    body: Result<JsonBody<MovePanelTab>, ApiError>,
-) -> Result<Json<PanelRevision>, ApiError> {
-    let conversation = changeable(&state, &user.id, &id).await?;
-    let JsonBody(MovePanelTab { index }) = body?;
-    let change_of = PanelChange::Move { id: tab, index };
-    change(&state, &user.id, conversation, change_of).await
+    let JsonBody(PanelChanges { changes }) = body?;
+    let revision = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move {
+            shard.plugins().change_panel(conversation, changes).await
+        })
+        .await?
+        .map_err(refused)?;
+    Ok(Json(PanelRevision { revision }))
 }
 
 /// The caller's conversation `id`, which takes a change: whose
@@ -95,23 +60,6 @@ async fn changeable(state: &AppState, user: &UserId, id: &str) -> Result<Convers
         return Err(archived());
     }
     Ok(record.id)
-}
-
-async fn change(
-    state: &AppState,
-    user: &UserId,
-    conversation: ConversationId,
-    change: PanelChange,
-) -> Result<Json<PanelRevision>, ApiError> {
-    let revision = state
-        .shards
-        .of(user)
-        .call(
-            move |shard, _| async move { shard.plugins().change_panel(conversation, change).await },
-        )
-        .await?
-        .map_err(refused)?;
-    Ok(Json(PanelRevision { revision }))
 }
 
 fn archived() -> ApiError {

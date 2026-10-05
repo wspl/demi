@@ -257,18 +257,18 @@ impl Shared {
     async fn apply_panel(
         &self,
         conversation: &ConversationId,
-        change: PanelChange,
-    ) -> Result<(u64, Option<PanelEffect>), PanelError> {
+        changes: Vec<PanelChange>,
+    ) -> Result<(u64, Vec<PanelEffect>), PanelError> {
         match self
             .control
-            .change_panel(conversation.clone(), change)
+            .change_panel(conversation.clone(), changes)
             .await?
         {
-            PanelOutcome::Changed { revision, effect } => {
+            PanelOutcome::Changed { revision, effects } => {
                 self.marks.mark(Part::Conversation(conversation.clone()));
-                Ok((revision, Some(effect)))
+                Ok((revision, effects))
             }
-            PanelOutcome::Unchanged { revision } => Ok((revision, None)),
+            PanelOutcome::Unchanged { revision } => Ok((revision, Vec::new())),
             PanelOutcome::Full => Err(PanelError::Full),
             PanelOutcome::TooLarge => Err(PanelError::TooLarge),
             PanelOutcome::Archived => Err(PanelError::Archived),
@@ -712,29 +712,31 @@ impl UserPlugins {
         self.0.control.panel(conversation).await
     }
 
-    /// A page's change of the conversation's work panel: a tab it creates
-    /// is of a kind a plugin the user has on declares. Answers the panel's
-    /// revision once the change is in it, and tells the kind's plugin of a
-    /// tab the user created or removed.
+    /// A page's changes of the conversation's work panel, all or none: each
+    /// tab they create is of a kind a plugin the user has on declares.
+    /// Answers the panel's revision once the changes are in it, and tells
+    /// the kind's plugin of each tab the user created or removed.
     pub async fn change_panel(
         &self,
         conversation: ConversationId,
-        change: PanelChange,
+        changes: Vec<PanelChange>,
     ) -> Result<u64, PanelError> {
         let enabled = self.enabled().await?;
-        if let PanelChange::Create(create) = &change {
-            let owned = self
-                .0
-                .registry
-                .kind_owner(&create.kind)
-                .is_some_and(|owner| enabled[owner]);
-            if !owned {
-                return Err(PanelError::UnknownKind(create.kind.clone()));
+        for change in &changes {
+            if let PanelChange::Create(create) = change {
+                let owned = self
+                    .0
+                    .registry
+                    .kind_owner(&create.kind)
+                    .is_some_and(|owner| enabled[owner]);
+                if !owned {
+                    return Err(PanelError::UnknownKind(create.kind.clone()));
+                }
             }
         }
-        let (revision, effect) = self.0.apply_panel(&conversation, change).await?;
-        if let Some(effect) = effect {
-            self.0.tell_owner(conversation, effect, &enabled);
+        let (revision, effects) = self.0.apply_panel(&conversation, changes).await?;
+        for effect in effects {
+            self.0.tell_owner(conversation.clone(), effect, &enabled);
         }
         Ok(revision)
     }
@@ -1024,7 +1026,7 @@ impl RequestPort {
         let conversation = self.conversation()?;
         let (revision, _) = self
             .shared
-            .apply_panel(conversation, change)
+            .apply_panel(conversation, vec![change])
             .await
             .map_err(|error| error.refusal())?;
         Ok(PortAnswer::PanelRevision { revision })
