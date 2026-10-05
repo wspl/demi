@@ -243,6 +243,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         }
         Action::Uninstall { installation } => {
             let directory = directory(&installation, None)?;
+            // Checked before anything writes there: opening the state would
+            // make the directory and its lock.
+            removal::installation(&directory)?;
             let state = RunnerState::open(directory.clone()).await?;
             match state.try_lock()? {
                 // The active runner asks its backend to revoke the device,

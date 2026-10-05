@@ -283,3 +283,33 @@ async fn uninstall_without_an_active_runner_asks_the_backend_itself() {
     .await
     .unwrap();
 }
+
+/// `uninstall` removes a directory only when it holds an installation: one
+/// that a mistaken `DEMI_HOME` names, holding something else, stays as it
+/// was, and `uninstall` says why.
+#[tokio::test]
+async fn uninstall_leaves_a_directory_without_an_installation_as_it_was() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let directory = tempfile::tempdir().unwrap();
+        std::fs::write(directory.path().join("notes.txt"), "mine").unwrap();
+        let refused = tokio::process::Command::new(runner_binary())
+            .arg("uninstall")
+            .arg("--home")
+            .arg(directory.path())
+            .env_remove("DEMI_HOME")
+            .env_remove("DEMI_RELEASE_ID")
+            .output()
+            .await
+            .unwrap();
+        let said = String::from_utf8_lossy(&refused.stderr);
+        assert_eq!(refused.status.code(), Some(1), "{said}");
+        assert!(said.contains("holds no runner installation"), "{said}");
+        let entries: Vec<_> = std::fs::read_dir(directory.path())
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(entries, ["notes.txt"]);
+    })
+    .await
+    .unwrap();
+}

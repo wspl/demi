@@ -43,11 +43,29 @@ fn powershell(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "''"))
 }
 
+/// Refuses `directory` unless it holds an installation: the state files an
+/// installer writes there (`backend-url` and `release-id`), or the
+/// configuration a runner writes as it starts (`runner.json`). A directory
+/// without them, such as a home directory a mistaken `DEMI_HOME` names, is
+/// never removed.
+pub fn installation(directory: &Path) -> io::Result<()> {
+    let installed =
+        directory.join("backend-url").is_file() && directory.join("release-id").is_file();
+    if installed || directory.join("runner.json").is_file() {
+        return Ok(());
+    }
+    Err(io::Error::other(format!(
+        "{} holds no runner installation, so nothing was removed",
+        directory.display()
+    )))
+}
+
 /// Removes the installation's directory, which nothing of this runner uses
 /// any more. A running program's file can be deleted on Unix, so the
 /// directory goes at once.
 #[cfg(unix)]
 pub fn remove(directory: &Path) -> io::Result<()> {
+    installation(directory)?;
     std::fs::remove_dir_all(directory)
 }
 
@@ -58,6 +76,7 @@ pub fn remove(directory: &Path) -> io::Result<()> {
 #[cfg(windows)]
 pub fn remove(directory: &Path) -> io::Result<()> {
     use std::os::windows::process::CommandExt as _;
+    installation(directory)?;
     // A process of its own: no console, and no part in this one's Ctrl+C.
     const DETACHED_PROCESS: u32 = 0x0000_0008;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
