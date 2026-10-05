@@ -72,7 +72,8 @@ pub struct CloudVolumes {
 /// `GET /cloud`, and the `cloud` of the product state: the device, its
 /// lifecycle state, its latest reset, why its last boot, save or reset
 /// failed, the capacities of its filesystems once its first boot made them,
-/// and the most they may grow to. Reading it never wakes the Cloud.
+/// the most they may grow to, and whether a reset would move its system to a
+/// newer image. Reading it never wakes the Cloud.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudStatus {
@@ -90,6 +91,10 @@ pub struct CloudStatus {
     #[schemars(with = "Nullable<CloudVolumes>")]
     pub volumes: Option<CloudVolumes>,
     pub limits: CloudVolumes,
+    /// The server runs another Cloud image than the one the Cloud's system
+    /// is on, which a reset moves it to (`managed-hosts.md` § Demi's
+    /// programs in a Cloud).
+    pub newer_image: bool,
 }
 
 /// `POST /cloud/reset`: the operation the page names the reset by; a retry

@@ -41,6 +41,9 @@ const cloud = ref<CloudState>(
     error: null,
     volumes: { systemBytes: 6 * 1024 ** 3, homeBytes: 20 * 1024 ** 3 },
     limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 64 * 1024 ** 3 },
+    // The server was upgraded since this Cloud's last reset; a reset moves
+    // its system to the new image.
+    newerImage: true,
     installs: [],
   }
 )
@@ -89,6 +92,7 @@ async function resetCloud(operationId: string) {
     await new Promise(resolve => setTimeout(resolve, 500))
   }
   cloud.value.state = 'running'
+  cloud.value.newerImage = false
 }
 
 const s = computed(() => props.state)
