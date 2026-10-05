@@ -17,8 +17,9 @@ use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, st
 
 use super::StoreError;
 
-/// How many blobs a session reads at once: on S3 each read is a round trip.
-const READS_AT_ONCE: usize = 8;
+/// How many blobs are read at once: on S3 each read is a round trip, and
+/// more at once only queue there.
+pub const READS_AT_ONCE: usize = 8;
 
 /// The conversation owner's blob namespace, as a session reaches it through
 /// its store.
