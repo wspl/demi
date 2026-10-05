@@ -351,7 +351,7 @@ const resetPhases: {
                 :source-for="sourceFor"
                 :places-for="placesFor"
                 @close="close"
-                @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name}` : `Create the Project at ${draft.path}`)"
+                @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Create the Project at ${draft.path} and Open a New Conversation in It`)"
                 @choose="(choice) => (projectLastHosts[index] = choice)"
                 @connect-device="productWould('Connect New Device')"
                 @retry="productWould('Load the Devices Again')"

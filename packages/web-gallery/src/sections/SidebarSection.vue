@@ -127,6 +127,7 @@ function create(projectId: string | null): void {
   activeId.value = id
 }
 
+/** Adds a project and opens a new conversation in it, as the product's New Project does. */
 function addProject(): void {
   const id = `p-new-${nextId++}`
   projects.value = [
@@ -140,6 +141,7 @@ function addProject(): void {
       path: `/Users/zan/Projects/project-${nextId}`
     }
   ]
+  create(id)
 }
 
 function patch(
