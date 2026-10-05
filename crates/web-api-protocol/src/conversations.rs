@@ -55,12 +55,98 @@ pub enum ConversationTarget {
     },
 }
 
-/// `POST /conversations`: the id the web app chose for a new conversation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(deny_unknown_fields)]
+/// `POST /conversations`: the id the web app chose for a new conversation,
+/// and what it starts with, so creating it is one request: the fields
+/// [`ConversationPatch`] takes except `archived`, and the devices to attach.
+/// They apply as part of the creation, and one that is refused refuses it.
+#[derive(
+    Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate,
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateConversation {
     #[garde(skip)]
     pub id: ConversationId,
+    /// Its title, as a rename gives it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Trimmed")]
+    #[garde(length(chars, min = 1, max = TITLE_MAX))]
+    pub title: Option<Trimmed>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub pinned: Option<bool>,
+    /// Its model, as a switch names it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ModelChoice")]
+    #[garde(dive)]
+    pub model: Option<ModelChoice>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(length(chars, min = 1))]
+    pub thinking_effort: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(length(chars, min = 1))]
+    pub service_tier_id: Option<Option<String>>,
+    /// Where its work runs; the Cloud when absent.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ConversationTarget")]
+    #[garde(dive)]
+    pub target: Option<ConversationTarget>,
+    /// The devices to attach, as `POST /conversations/:id/hosts` attaches
+    /// each.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub hosts: Vec<NewHost>,
+}
+
+/// A device a new conversation attaches: one of the user's, under `name`,
+/// or the device's own name when it names none.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NewHost {
+    #[garde(skip)]
+    pub device_id: DeviceId,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Trimmed")]
+    #[garde(length(chars, min = 1, max = crate::hosts::HOST_NAME_MAX))]
+    pub name: Option<Trimmed>,
+}
+
+/// What `POST /conversations` answers: the conversation as the list shows
+/// it, and its attached hosts as `GET /conversations/:id/hosts` lists them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CreatedConversation {
+    pub conversation: ConversationSummary,
+    pub hosts: Vec<crate::hosts::AttachedHost>,
 }
 
 /// A conversation as the web app lists it: its record, with the directory
@@ -190,12 +276,6 @@ pub enum ConversationStatus {
     Stopped,
     Completed,
     Idle,
-}
-
-/// `{ conversation }`: the answer of a create.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct ConversationAnswer {
-    pub conversation: ConversationSummary,
 }
 
 /// `GET /conversations`: the caller's conversations in sidebar order,

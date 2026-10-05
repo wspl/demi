@@ -31,7 +31,7 @@ import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
   batchAnswerSchema,
-  conversationAnswerSchema,
+  createdConversationSchema,
   conversationUpdateSchema,
   transcriptSchema,
   type AttachHost,
@@ -724,6 +724,8 @@ export const useConversations = defineStore('conversations', () => {
 
   /** Reads the first load started for the conversation its address names, before the channel's first state. */
   const earlyReads = new Map<string, OpeningReads>()
+  /** Conversations whose record this page just created, which their opening does not read back. */
+  const madeHere = new Set<string>()
 
   function openingReads(id: string, signal: AbortSignal): OpeningReads {
     const path = `/conversations/${encodeURIComponent(id)}`
@@ -770,37 +772,17 @@ export const useConversations = defineStore('conversations', () => {
         conversation.load = 'ready'
         return
       }
-      const reads = earlyReads.get(conversation.id) ?? openingReads(conversation.id, signal)
-      earlyReads.delete(conversation.id)
       // Share global model discovery, but render history before it completes.
       // Model load errors belong to the composer, not transcript restoration.
       const modelsLoaded = product.loadModels().catch(() => {})
-      // Taken after this web browser's own copy; a submission it confirms
-      // clears the draft after it, so the transcript waits for it.
-      const draftRead = draftRestored.then(() => draftSync.read(conversation, reads.draft))
-      const hostsRead = reads.hosts.then((answer) => {
-        signal.throwIfAborted()
-        conversation.attachedHosts = answer.hosts
-      })
-      hostsRead.catch(() => {})
-      const [transcript] = await Promise.all([reads.transcript, draftRead])
-      signal.throwIfAborted()
-      conversation.blocks = transcript.blocks
-      conversation.failures = transcript.failures ?? {}
-      reconcileSubmission(conversation)
-      conversation.terminals = transcriptTerminals(transcript.blocks)
-      conversation.subagents = transcript.subagents.map(({ subagent, blocks, failures }) => ({
-        id: subagent.subagentId,
-        name: subagent.description,
-        phase: subagent.phase,
-        startedAt: subagent.startedAt,
-        endedAt: subagent.endedAt ?? undefined,
-        blocks,
-        failures: failures ?? {},
-      }))
-      updateLiveStatus(conversation)
-      conversation.load = 'ready'
-      await hostsRead
+      if (madeHere.delete(conversation.id)) {
+        // Its record is what the page created: no transcript yet, the hosts
+        // its answer listed, and the composer's draft.
+        await draftRestored
+        conversation.load = 'ready'
+      } else {
+        await readOpening(conversation, signal, draftRestored)
+      }
       await modelsLoaded
       signal.throwIfAborted()
       const pick = composerModel(
@@ -837,6 +819,46 @@ export const useConversations = defineStore('conversations', () => {
       }
       throw error
     }
+  }
+
+  /**
+   * Reads what the page shows of a conversation it opens, all at once: its
+   * transcript, which shows without waiting for its hosts, its hosts and
+   * its draft.
+   */
+  async function readOpening(
+    conversation: Conversation,
+    signal: AbortSignal,
+    draftRestored: Promise<void>,
+  ): Promise<void> {
+    const reads = earlyReads.get(conversation.id) ?? openingReads(conversation.id, signal)
+    earlyReads.delete(conversation.id)
+    // Taken after this web browser's own copy; a submission it confirms
+    // clears the draft after it, so the transcript waits for it.
+    const draftRead = draftRestored.then(() => draftSync.read(conversation, reads.draft))
+    const hostsRead = reads.hosts.then((answer) => {
+      signal.throwIfAborted()
+      conversation.attachedHosts = answer.hosts
+    })
+    hostsRead.catch(() => {})
+    const [transcript] = await Promise.all([reads.transcript, draftRead])
+    signal.throwIfAborted()
+    conversation.blocks = transcript.blocks
+    conversation.failures = transcript.failures ?? {}
+    reconcileSubmission(conversation)
+    conversation.terminals = transcriptTerminals(transcript.blocks)
+    conversation.subagents = transcript.subagents.map(({ subagent, blocks, failures }) => ({
+      id: subagent.subagentId,
+      name: subagent.description,
+      phase: subagent.phase,
+      startedAt: subagent.startedAt,
+      endedAt: subagent.endedAt ?? undefined,
+      blocks,
+      failures: failures ?? {},
+    }))
+    updateLiveStatus(conversation)
+    conversation.load = 'ready'
+    await hostsRead
   }
 
   async function runtimeFor(
@@ -1083,6 +1105,13 @@ export const useConversations = defineStore('conversations', () => {
     return record.id
   }
 
+  /**
+   * Creates the conversation's record with one request that carries its
+   * settings and its hosts (`web-api.md` § Conversation creation and Fork):
+   * for a part its model no longer offers, the model's first effort and the
+   * vendor's default tier. The page shows what the answer says; a record
+   * this request made is opened without reading it back.
+   */
   async function persistConversation(
     conversation: Conversation,
   ): Promise<void> {
@@ -1091,61 +1120,33 @@ export const useConversations = defineStore('conversations', () => {
     }
     const signal = lifetime.signal
     const sentAt = product.sent()
-    const response = await apiRequest('/conversations', {
-      method: 'POST',
-      signal,
-      ...jsonBody({ id: conversation.id } satisfies CreateConversation),
-    })
-    const result = await readResponse(response, conversationAnswerSchema)
-    signal.throwIfAborted()
-    product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
-    // The first send writes the conversation's model settings to its record:
-    // for a part its model no longer offers, the model's first effort and the
-    // vendor's default tier.
     const shown = shownSettings(conversation)
     const listed = lookupSelectedModel(resources.modelsFor(), shown.providerId, shown.modelId)
     const settings = listed ? offeredSettings(shown, listed.model) : null
-    if (
-      !(await patch(result.conversation.id, {
-        title: conversation.title,
-        target: conversation.target,
-        pinned: conversation.pinned,
-        ...(settings ? settingsPatch(settings) : {}),
-      }))
-    ) {
-      throw new Error(
-        'Could not configure the conversation. Try sending again.',
-      )
+    const request: CreateConversation = {
+      id: conversation.id,
+      title: conversation.title,
+      pinned: conversation.pinned,
+      target: conversation.target,
+      ...(settings ? settingsPatch(settings) : {}),
+      hosts: conversation.attachedHosts.map(({ deviceId, name }) => ({ deviceId, name })),
     }
-    for (const host of conversation.attachedHosts) {
-      await apiRequest(
-        `/conversations/${encodeURIComponent(conversation.id)}/hosts`,
-        {
-          method: 'POST',
-          signal,
-          ...jsonBody({ deviceId: host.deviceId } satisfies AttachHost),
-        },
-      )
-      await apiRequest(
-        `/conversations/${encodeURIComponent(
-          conversation.id,
-        )}/hosts/${encodeURIComponent(host.deviceId)}`,
-        {
-          method: 'PATCH',
-          signal,
-          ...jsonBody({ name: host.name } satisfies RenameHost),
-        },
-      )
-    }
+    const response = await apiRequest('/conversations', {
+      method: 'POST',
+      signal,
+      ...jsonBody(request),
+    })
+    const result = await readResponse(response, createdConversationSchema)
     signal.throwIfAborted()
+    product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
     conversation.persistence = 'synced'
+    Object.assign(conversation, metadata(result.conversation))
+    followRecordModel(conversation, result.conversation)
+    conversation.attachedHosts = result.hosts
     cache.delete(conversation.id)
-    const stored = product.snapshot?.conversations.find(
-      (item) => item.id === conversation.id,
-    )
-    if (stored) {
-      Object.assign(conversation, metadata(stored))
-      followRecordModel(conversation, stored)
+    // A retry that found the record an earlier attempt made reads it.
+    if (response.status === 201) {
+      madeHere.add(conversation.id)
     }
   }
 
@@ -1531,6 +1532,7 @@ export const useConversations = defineStore('conversations', () => {
     pendingChanges.value = []
     cache.clear()
     earlyReads.clear()
+    madeHere.clear()
     draftSync.stop()
     lifetime.abort()
     lifetime = new AbortController()
