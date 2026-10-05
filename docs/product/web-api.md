@@ -161,7 +161,9 @@ still target it; an id the caller does not have answers 404
 
 Device revocation applies to user-paired devices, not the managed Cloud device.
 It returns 409 `device_in_use` while workspaces point at that device. Successful
-revocation closes its connection and removes its conversation attachments.
+revocation tells a connected runner to remove itself
+([Installation, pairing and removal](../execution/runner.md#installation-pairing-and-removal)),
+closes its connection and removes its conversation attachments.
 Pairing accepts a live code and returns the claimed device; expired/unknown codes
 return 404 and excessive attempts 429. The installation routes contain no
 credential and do not grant device access. The install command the page shows

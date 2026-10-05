@@ -146,6 +146,55 @@ the backend ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-progra
 A 409 for it means the backend and the manager run different releases; the
 runner exits with an error that names both, and the Cloud's boot fails.
 
+## Installation, pairing and removal
+
+A person adds their laptop from Add Device: they paste the install command
+into a terminal, and the terminal shows a pairing code, such as `7KQ2-M9XD`.
+They enter it in the dialog, and the terminal answers that the laptop is
+paired as `ZandeMacBook-Pro.local`, with the command that removes the runner
+again. Then the installer exits, and the runner keeps running in the
+background.
+
+The installers the backend serves, `install.sh` for Linux and macOS and
+`install.ps1` for Windows, put the runner of the backend's runner release
+into the installation's directory, `~/.demi/instances/<backend>/` unless
+`DEMI_HOME` names another, and start it in the background. They then stay
+in the foreground until pairing ends:
+
+- While the runner waits to be paired, the installer shows its pairing code,
+  and a new code when the runner receives one, since a code expires. The
+  runner writes each code only to its own output, its log, which the
+  installation's directory holds private to its owner; the Host log never
+  holds one ([Host log](#host-log)).
+- Once the runner is paired, or when it was paired already, the installer
+  shows the device's name and the removal command, `<installation>/run
+  uninstall` (on Windows, `& '<installation>\run.ps1' uninstall`), and exits.
+
+The runner writes the same lines to its log, so a person who closed the
+terminal early finds them there; closing it does not stop the runner.
+
+`run uninstall` removes the runner of one backend from the device:
+
+1. It asks the backend, when it can reach it, to revoke the device, so the
+   device leaves the user's list as it leaves the computer. A backend it
+   cannot reach keeps listing the device, offline, until the user revokes it.
+2. It drains the runner: no new work, and the running jobs end first.
+3. It removes the installation's directory, with the device token, the
+   releases, the log and the artifact cache when the cache is the
+   installation's own; a cache that `DEMI_ARTIFACTS` names, which runners of
+   several backends may share, stays. Other backends' installations on the
+   device are not touched. On Windows, where a running program's file cannot
+   be deleted, a process the runner starts as it exits removes the directory.
+
+Revoking a device in Settings removes its runner too. The backend sends the
+connected runner `revoked` before it closes the connection, and the runner
+removes itself as `run uninstall` does, without asking the backend again; its
+jobs end with the connection, as revocation ends them. A runner that was
+offline learns of the revocation only as a refusal of its device token at its
+next connection, which a backend that lost its data would also give, so it
+does not remove itself then: it stops, and writes to its log that the device
+is no longer paired with the backend, with the removal command.
+
 ## Host operations
 
 Filesystem and raw process requests do not require a shell job. The runner
