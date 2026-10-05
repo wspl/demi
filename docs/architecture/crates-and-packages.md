@@ -1284,6 +1284,24 @@ demi-backend (executable: configuration, composition)
   alternative runtime modes. Workload credentials use `runner-protocol`'s
   `ManagedBoot`.
 
+#### `server` (`demi-server`)
+
+- **Owns:** a server's installation of Demi ([Upgrades](../delivery/upgrades.md)):
+  the layout under `/opt/demi` with the `current` link, fetching a release
+  and checking it against its `SHA256SUMS`, the move between releases with
+  its journal, the copy of the databases a release migrates and its
+  restore, the services' units in place, and the handover of each move to
+  the `demi-server` of the release it goes to.
+- **Process boundary:** `systemctl` and `journalctl`, which control and
+  report the two services; the next release's own programs, for their
+  configuration check and the image's import.
+- **Public boundary:** the `demi-server` executable; the crate has no
+  library. It reads the databases' schema versions through
+  `backend-database` and the manager's state format from
+  `machine-manager-protocol`, never their contents.
+- **Must not:** edit the configuration; touch a data directory beyond its
+  `snapshots/` and a restore; start anything but Demi's two services.
+
 #### `runner` (`demi-runner`)
 
 - **Owns:** the execution host's program: registration and the backend
@@ -1607,6 +1625,7 @@ backend-user-shard -> agent-server, conversation-socket-protocol, agent-session,
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
 backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
+server -> backend-database, machine-manager-protocol, shared-artifacts
 runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
