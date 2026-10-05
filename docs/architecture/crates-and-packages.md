@@ -367,8 +367,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 - **Owns:** what every program's command line shares: a variable under the
   program's prefix that none of its settings reads stops startup, naming it,
-  so a misspelt setting is never ignored. The backend refuses an unknown
-  `DEMI_*` variable and the machine manager an unknown `DEMI_MANAGED_*` one.
+  so a misspelt setting is never ignored. The machine manager refuses an
+  unknown `DEMI_MANAGED_*` variable, and the backend an unknown `DEMI_*`
+  variable outside that prefix, so that both read one configuration file
+  ([Backend configuration](../backend/backend.md#configuration)).
 - **Public boundary:** `unknown_variable`, over the program's clap command.
 - **Must not:** parse a program's settings, which its clap command does.
 
@@ -963,7 +965,8 @@ demi-backend (executable: configuration, composition)
   a conversation's file gate (`FileGate`, `FileLease`), the rpc relay's
   routing of a job's calls, the command context a job carries, the file
   listings and text the product reads from a Host, native artifact
-  publication and the development store, and the backend's public address
+  publication into the object store and the local store's artifact route,
+  and the backend's public address
   that runners reach (`PublicUrl`)
   ([Runner](../execution/runner.md),
   [Native runtime](../execution/native-runtime.md#backend-deployment-configuration)).
@@ -1217,7 +1220,7 @@ demi-backend (executable: configuration, composition)
   Cloud's and the idle clock's times and limits and the retention pass's
   schedule (`CloudTuning`, `LifecycleTuning`), the command packages their commands bind to
   (`NativeCatalog`, which the executable and the scenarios make with
-  `publish_native` from a `DEMI_NATIVE_CONFIG` file) and the plugins. A test imports each of these from the library that owns it
+  `publish_native` from a server release's `commands/`) and the plugins. A test imports each of these from the library that owns it
   (`backend-providers`, `backend-user-shard`, `backend-cloud`, `backend-runners`),
   never through the executable. Its `testing` feature adds `Backend::hold_commits`, which
   holds the commits of the conversations' checkpoints (`CommitHold`) for the

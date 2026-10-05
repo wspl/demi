@@ -59,7 +59,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
 | Attached hosts | `GET /conversations/:id/hosts`, `POST .../hosts { deviceId }`, `PATCH .../hosts/:deviceId { name }`, `DELETE .../hosts/:deviceId` |
 | Runner transport | `WS /runner`; device-authenticated `PUT/GET /pipes/:id` for source/sink streams |
-| Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file`, and a development store's command executables, `GET /native-artifacts/:sha256` ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)) (root paths, outside `/api`) |
+| Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file`, and, with a local object store, the command artifacts, `GET /native-artifacts/:sha256` ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)) (root paths, outside `/api`) |
 
 ### Authentication
 
@@ -1296,8 +1296,9 @@ meanwhile, and on its Refresh control. It never polls while idle.
 
 ## Serving the web app build
 
-With `DEMI_WEB_DIRECTORY` set, the backend serves that built web app directory
-alongside the API and conversation sockets. The directory's `build.json`,
+When its [server release](../delivery/builds-and-releases.md#server-release)
+has a `web/`, the backend serves that built web app directory alongside the
+API and conversation sockets. The directory's `build.json`,
 `{ "build": "<id>" }`, which `vite build` writes, names the build; the
 backend reads it as it starts, refuses to start without it, and sends it in
 every snapshot as `webBuild`

@@ -1,10 +1,17 @@
 # Builds and releases
 
 The backend, the machine manager, the runner, and the command programs are
-Rust executables built from one Cargo workspace. A developer builds all of them
-on their own machine: the cross tools installed there compile every target, and
-`cargo xtask` runs the builds, packages the releases, pins the Chrome for
-Testing release, and assembles the Cloud image.
+Rust executables built from one Cargo workspace. `cargo xtask` runs the
+builds, packages the releases, assembles a server release, pins the Chrome
+for Testing release, and assembles the Cloud image. The same commands run in
+two places:
+
+- **On a developer's machine.** The cross tools installed there compile the
+  targets of the Hosts in use, whatever the machine's own platform.
+- **In the release workflow.** A published release is built on GitHub's
+  hosted runners, each platform's targets on a runner of that platform
+  ([Release workflow](#release-workflow)).
+
 [Crates and packages](../architecture/crates-and-packages.md#crates) lists the
 crates; this document covers the executables, their targets, and their
 releases.
@@ -22,30 +29,43 @@ cargo xtask native build     compiles each executable for its targets
         v
 cargo xtask native package   one release directory per executable
         |
-        +-- runner release ---------> backend: installers, runner downloads
-        +-- command packages -------> backend: object storage, or its own route in development
-        +-- Linux runner, packages -> cargo xtask cloud-image package: Cloud image
-        +-- backend ----------------> a Linux server
-        +-- machine manager --------> the Cloud host's service
+        v
+cargo xtask server-release   one server release root for a Linux target:
+        |                    the backend, the manager, the web app, the runner
+        |                    release and the command packages
+        +-- runners/, commands/ --> cloud-guest-image build: the root's image/
+        +-- the whole root -------> a Linux server: the backend publishes the
+                                    command packages into its object store
 ```
 
 ## Executables and targets
 
-The workspace builds for six targets, each with one cross tool:
+The workspace builds for six targets. A target of the building machine's own
+platform builds with that platform's toolchain; a target of another platform
+builds with a cross tool:
 
-| Platform | Target triples | Cross tool |
-| --- | --- | --- |
-| macOS | `aarch64-apple-darwin`, `x86_64-apple-darwin` | cargo-zigbuild with an Apple SDK |
-| Linux | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | cargo-zigbuild |
-| Windows | `aarch64-pc-windows-msvc`, `x86_64-pc-windows-msvc` | cargo-xwin with LLVM and the Microsoft SDK |
+| Platform | Target triples | On its own platform | From another platform |
+| --- | --- | --- | --- |
+| macOS | `aarch64-apple-darwin`, `x86_64-apple-darwin` | Apple's compiler and linker with the pinned SDK, both architectures on one Mac | cargo-zigbuild with the pinned Apple SDK |
+| Linux | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | cargo-zigbuild | cargo-zigbuild |
+| Windows | `aarch64-pc-windows-msvc`, `x86_64-pc-windows-msvc` | MSVC with the pinned toolset and SDK | cargo-xwin with LLVM and the Microsoft SDK |
+
+Linux keeps cargo-zigbuild on Linux itself. Zig there is only the C compiler
+and linker of the static musl build: the C library of rustls's provider,
+`aws-lc-sys`, does not build reliably with the `musl-gcc` wrapper that Linux
+distributions ship, and Zig carries its own musl. The release workflow builds
+each Linux target on a runner of its own architecture, so nothing in a
+release is built for an architecture other than the one that compiles it,
+except `x86_64-apple-darwin`, which Apple's toolchain builds on an arm64 Mac
+as it does for every Mac application.
 
 Each executable is built for the targets where it runs:
 
 | Executable | Targets | Reason |
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
-| `demi-file`, `demi-browser`, `demi-claude-code` | All six | A published command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
-| `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`, `aarch64-apple-darwin`, `x86_64-apple-darwin` | Servers run Linux; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
+| `demi-file`, `demi-browser`, `demi-claude-code` | All six | A released command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
+| `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`; `aarch64-apple-darwin`, `x86_64-apple-darwin` in development only | Servers run Linux, and a release carries the Linux targets; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
 | `demi-machine-manager` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
 
 Linux executables link musl statically, so one file runs on any distribution
@@ -53,10 +73,11 @@ and inside the Cloud guest, whatever C library the host has. Windows
 executables link the C runtime statically, so they need no separately installed
 runtime.
 
-`xtask` itself is not released. It runs on the developer's machine. The Linux
-builder of the Cloud image runs a Linux musl build of it, which the developer's
-machine cross-compiles beside the native builds, for an arm64 builder with
-([guest image build](../../cloud-guest-image/README.md)):
+`xtask` itself is not released. It runs on the developer's machine and on the
+release workflow's runners, each of which builds it for itself. A developer's
+Linux builder of the Cloud image runs a Linux musl build of it, which the
+developer's machine cross-compiles beside the native builds, for an arm64
+builder with ([guest image build](../../cloud-guest-image/README.md)):
 
 ```sh
 cargo zigbuild --release --locked -p xtask \
@@ -92,10 +113,12 @@ a separate command, `xtask contracts`, which the frontend's scripts run through
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
 
 Cross builds use cargo-zigbuild with Zig for the Apple and Linux targets, and
-cargo-xwin with LLVM for the Windows targets. With these tools one machine,
-Linux or macOS, builds every target; no target needs a build machine of its own
-platform. `scripts/native/Dockerfile` pins their versions. Install the same
-versions on the build machine; on macOS:
+cargo-xwin with LLVM for the Windows targets. With these tools a developer's
+machine, Linux or macOS, builds every target a change needs; no target needs a
+build machine of its own platform. `scripts/native/Dockerfile` pins their
+versions, and the release workflow installs the same Zig and cargo-zigbuild
+on its Linux runners. Install the same versions on the build machine; on
+macOS:
 
 ```sh
 brew install zig@<zig version> llvm lld
@@ -117,14 +140,22 @@ a copy of the dependencies of its own ([Validation](#validation)); after a
 build of the whole workspace, `target/debug/xtask` runs the same commands
 without that copy, as `bun run contracts` does.
 
-`cargo xtask` pins the remaining inputs: the Apple SDK version, the Windows SDK
-and C runtime versions that cargo-xwin downloads, and the minimum macOS
-version. The Apple targets need an Apple SDK directory, passed with `--sdk` or
+`cargo xtask` pins the remaining inputs: the Apple SDK version (macOS 26.5),
+the Windows SDK and C runtime versions, and the minimum macOS version (13.0).
+The Apple targets need an Apple SDK directory, passed with `--sdk` or
 `SDKROOT`; `cargo xtask` checks its SDK metadata against the pin before
-building. `aws-lc-sys`, the C library of rustls's provider, compiles with cargo-xwin's
-`clang` on Windows, so the build explicitly selects the MSVC driver dialect and
-release optimization to match cargo-xwin's SDK flags, and uses the crate's
-prebuilt NASM objects for its x86-64 assembly instead of a NASM install.
+building. The pinned SDK is the one the Command Line Tools and Xcode 26.6
+install, so a developer's Mac and the release workflow's macOS runner build
+against the same SDK; a runner image whose SDK differs fails the check rather
+than building against another one. On Windows the build checks the MSVC
+toolset and Windows SDK that the runner's Visual Studio selects against the
+same pins that cargo-xwin downloads from another platform. `aws-lc-sys`, the C
+library of rustls's provider, compiles with cargo-xwin's `clang` from another
+platform, so that build explicitly selects the MSVC driver dialect and release
+optimization to match cargo-xwin's SDK flags; on Windows arm64 it compiles
+with the `clang-cl` that the Visual Studio installation carries, as the crate
+requires there. Both use the crate's prebuilt NASM objects for its x86-64
+assembly instead of a NASM install.
 
 ## Build profiles
 
@@ -162,12 +193,14 @@ has grown large, delete it by hand: a full build of the one selection
 
 ## Cross builds
 
-Build on the machine itself, with its own cross tools; the build container
-below is only for a machine that lacks them:
+A developer builds on their own machine, with its own toolchain and cross
+tools; the build container below is only for a machine that lacks them. The
+release workflow runs the same command on each platform's runner, naming that
+platform's targets ([Release workflow](#release-workflow)).
 
 ```sh
 cargo xtask native build \
-  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk
+  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk
 ```
 
 Without `--package` or `--target` options, `cargo xtask native build` builds
@@ -186,7 +219,7 @@ to try a change on one machine is wasted time:
 
 ```sh
 cargo xtask native build \
-  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX<version>.sdk \
+  --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 ```
 
@@ -205,7 +238,7 @@ directory, so prefer the machine's own tools. The container's target path is
 ```sh
 docker build -t demi-native-tools -f scripts/native/Dockerfile .
 cargo xtask native build \
-  --container demi-native-tools --sdk /path/to/MacOSX<version>.sdk
+  --container demi-native-tools --sdk /path/to/MacOSX26.5.sdk
 ```
 
 ## Packaging
@@ -233,12 +266,20 @@ Each executable has its own kind of release:
 
 - **Command packages.** Each command program is released on its own. Its
   release directory holds `descriptor.json` and one subdirectory per target
-  with the executable. The descriptor's id and operations are the ones the
+  with the executable and its zstd-compressed copy, which the backend
+  publishes as it is
+  ([Publish artifacts before enabling commands](../execution/native-runtime.md#publish-artifacts-before-enabling-commands)).
+  Packaging keeps each compressed copy in `.cache/compressed/<sha256>`, named
+  by the executable's SHA-256, and reuses it for the same executable, so
+  packaging an unchanged program again compresses nothing. The descriptor's id
+  and operations are the ones the
   package's contract crate declares (`command-package-file-protocol` for `demi-file`,
   `command-package-browser-protocol` for `demi-browser`, `command-package-claude-code-protocol` for
   `demi-claude-code`), the operation list the program routes by, so a release
   cannot advertise an operation the program does not serve; its version is
-  the workspace version. A package that needs resources gets them from the
+  the workspace version in the release workflow and a development version
+  everywhere else ([Rust executables](package-versioning.md#rust-executables)).
+  A package that needs resources gets them from the
   record its contract crate keeps: `demi-browser`'s release carries the
   pinned Chrome for Testing archive of each packaged target that has one,
   as `resources/<sha256>`, and its descriptor names it as the resource
@@ -284,30 +325,137 @@ place with the same record and bytes is the one being published, so packaging
 the same build again succeeds. A failed publication removes its temporary
 files and leaves the top-level pointer as it was.
 
-A release of fewer than all targets is a development release, for a backend
-on the developer's own machine; publication to object storage refuses it, and
-the backend's development store loads it
+A release carries the targets it was packaged with. The release workflow
+packages all six; a developer packages the targets of the Hosts in use. The
+backend loads either kind the same way, whatever its object store
 ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)).
-A published version is immutable: publishing different artifacts needs a new
-workspace version, or, for a development release, removing its directory
+A packaged version is immutable: packaging different artifacts needs a new
+workspace version, or, for a developer's release, removing its directory
 before packaging it again.
 
-The backend loads the deployed command package releases and supplies the
-selected descriptors and artifact locations to runners; publishing writes no
-release catalog into application source. A deployment names the command
-releases and their object store in `DEMI_NATIVE_CONFIG` and the runner release
-directory in `DEMI_RUNNER_RELEASE_DIR`
+The backend loads the command package releases of its
+[server release](#server-release) and supplies the selected descriptors and
+artifact locations to runners; publishing writes no release catalog into
+application source. Before it accepts requests, the backend publishes the
+command artifacts into its object store, and runners download them from there
 ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
-The backend publishes command artifacts to object storage before it accepts
-requests, and runners download them from storage through signed HTTPS URLs. A
-backend on the developer's own machine loads development releases into its
-development store instead and serves their executables itself
-([Development backend](../backend/backend.md#development-backend)).
 
 The Cloud image embeds a Linux runner release and the command package releases.
 `cargo xtask cloud-image package` assembles the image on a Linux builder of the
 image's architecture: [Cloud images](../cloud/images.md) defines the image, and
 the [guest image build](../../cloud-guest-image/README.md) gives the steps.
+
+### Server release
+
+A server release is one directory per version and Linux target, its root, in
+which the backend and the machine manager find everything they serve, publish
+or run. For example, a server that runs 0.1.3 on x86_64 holds:
+
+```text
+/opt/demi/0.1.3/
+  bin/demi-backend              the target's backend
+  bin/demi-machine-manager      the target's machine manager
+  web/                          the built web app, with its build.json
+  runners/                      the runner release
+  commands/demi-file/           one command package release per directory
+  commands/demi-browser/
+  commands/demi-claude-code/
+  image/                        the Cloud image release of the target's architecture
+```
+
+The backend serves `web/`, installs runners from `runners/`, and publishes
+every package under `commands/`; the machine manager imports `image/`
+([Backend configuration](../backend/backend.md#configuration),
+[Cloud setup](../cloud/setup.md#configuration)). The image is built from the
+same root's `runners/` and `commands/`, so the command artifacts it embeds are
+the ones the backend's catalog selects, and a Cloud starts them from the image
+instead of downloading them
+([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
+
+`cargo xtask server-release` assembles a root from the executables
+`cargo xtask native build` wrote, packaging them as the packaging above does:
+
+```sh
+cargo xtask server-release --output /opt/demi/0.1.3 \
+  --server x86_64-unknown-linux-musl --web packages/web/dist
+```
+
+- Repeated `--target` options name the targets of `runners/` and
+  `commands/`; without them it requires all six, as packaging does.
+- `--server <triple>` puts that Linux target's backend and machine manager in
+  `bin/`. Without it the root has no `bin/`: a developer's backend runs from
+  the Cargo target directory.
+- `--web <directory>` copies the built web app into `web/`. Without it the
+  root has no `web/`, and the backend serves no web app, as in development,
+  where Vite serves it.
+- The image build adds `image/` afterwards
+  ([guest image build](../../cloud-guest-image/README.md)). A root without it
+  serves a backend whose machine manager runs elsewhere.
+
+`--output` names a new directory: a root is assembled once and never changed
+in place.
+
+## Release workflow
+
+`.github/workflows/release.yml` builds a release and publishes it as a GitHub
+release. It runs on GitHub's standard hosted runners, which cost nothing for a
+public repository, and on no machine of a developer's. Two events start it,
+and nothing else does; an ordinary push builds no release:
+
+- **A version tag.** Pushing `v0.1.3` releases 0.1.3. The tag must name the
+  workspace version in `Cargo.toml`, or the workflow fails before it builds
+  anything; it never changes the version. The npm packages' tags name their
+  package ([Version selection](package-versioning.md#version-selection)), so
+  the two never collide.
+- **A manual start.** It builds the workspace version into a draft release,
+  and refuses a version that already has a release.
+
+Each job runs on the newest standard runner of its platform, and each build
+job builds only the targets of its own platform
+([Executables and targets](#executables-and-targets)):
+
+| Job | Runner | What it does |
+| --- | --- | --- |
+| Build macOS | `macos-26` | `aarch64-apple-darwin` and `x86_64-apple-darwin`: the runner and the command programs |
+| Build Linux x86_64 | `ubuntu-26.04` | `x86_64-unknown-linux-musl`: the runner, the command programs, the backend and the machine manager |
+| Build Linux arm64 | `ubuntu-26.04-arm` | `aarch64-unknown-linux-musl`: the same |
+| Build Windows x86_64 | `windows-2025` | `x86_64-pc-windows-msvc`: the runner and the command programs |
+| Build Windows arm64 | `windows-11-arm` | `aarch64-pc-windows-msvc`: the same |
+| Web | `ubuntu-26.04` | `bun run web:build` |
+| Server release | `ubuntu-26.04` | After every build job: a root for each Linux target, each with all six targets in `runners/` and `commands/` |
+| Image amd64, Image arm64 | `ubuntu-26.04`, `ubuntu-26.04-arm` | The Cloud image of the root of the runner's architecture, into its `image/` |
+| Publish | `ubuntu-26.04` | The release assets below, with their SHA-256 sums |
+
+Each step is a command of the repository that a developer runs too, a
+`cargo xtask` command, `bun run web:build` or the image build script; only
+`cargo xtask server-release --publish` differs, naming the command packages
+with the workspace version itself. So the
+workflow only orders them and carries files between jobs, as workflow
+artifacts kept for one day: the server release job gathers every build job's
+executables into one Cargo target directory before it assembles the roots.
+
+A release has five assets:
+
+| Asset | Contents |
+| --- | --- |
+| `demi-<version>-server-linux-amd64.tar.zst` | The x86_64 root without `image/` |
+| `demi-<version>-server-linux-arm64.tar.zst` | The arm64 root without `image/` |
+| `demi-<version>-image-linux-amd64.tar` | `image/` of the x86_64 root |
+| `demi-<version>-image-linux-arm64.tar` | `image/` of the arm64 root |
+| `SHA256SUMS` | The SHA-256 of each asset above |
+
+Unpacking a server archive and the image archive of the same architecture
+into one directory gives that architecture's root. The image's root
+filesystem is already compressed, so its archive only collects its two files.
+Every asset stays below GitHub's limit of 2 GiB per file; an image's root
+filesystem is about 700 MiB. A paired device does not download from the
+release: it installs its runner from its backend's `runners/`.
+
+The macOS and Windows executables are not signed or notarized, and a release
+never will be. Apple's linker gives each macOS executable the ad-hoc signature
+that arm64 requires. The installers download executables with `curl` or
+PowerShell rather than a browser, so the downloads carry no mark that would
+make the system ask before running them.
 
 ## Chrome for Testing
 
@@ -334,9 +482,9 @@ against the record.
 
 [Testing](testing.md) says what a test must be; this section says how the tests run.
 
-There is no hosted CI. Developers run the checks on their machines, and
-release acceptance runs the shared Rust suite on each platform that ships a
-feature.
+The [release workflow](#release-workflow) builds and publishes; it runs no
+check. Developers run the checks on their machines, and release acceptance
+runs the shared Rust suite on each platform that ships a feature.
 
 Every Rust command but the Chrome suite's selects the same thing: the whole
 workspace with the runner's `test-fixtures` feature, which turns on the
@@ -353,7 +501,7 @@ its own copy of every shared dependency.
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored real_browser` | The browser suite's scenario through the backend and a paired device's runner ([Browser suite](scenarios.md#browser-suite)), as an ordinary user with the same executable |
 | `DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored claude_code` | The Claude Code suite, with the executable of the vendor's CLI and the CA of the suite's local distribution |
 | `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `command-package-browser-chrome`; it first builds the programs the tests start, with the same selection |
-| `sudo bash crates/machine-manager/scripts/cloud-suite.sh --image <release> --native <configuration> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
+| `sudo bash crates/machine-manager/scripts/cloud-suite.sh --release <root> --work <directory>` | The Cloud suite on Linux, as root, against a machine manager with its resource limits off that the script starts in a stand-in execution host; against an installed manager, the suite's variables and its `cargo test` command instead ([Cloud suite](scenarios.md#cloud-suite)) |
 
 A test that starts another program, such as a runner or `demi-file`,
 starts the one Cargo built into the target directory the test runs from

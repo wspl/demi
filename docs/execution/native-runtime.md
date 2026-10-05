@@ -239,11 +239,13 @@ one that repeats an id still in flight, is refused. When the job exits or the
 stream ends, its outstanding requests are cancelled and get no answer. The
 backend validates the location before sending it.
 
-The location is an HTTP or HTTPS URL without credentials. For a package's
-artifact with object storage, the backend signs an HTTPS GET URL valid for
-five minutes, so private storage needs no change to its bucket policy; the
-runner downloads directly from storage, and credentials remain in the
-backend. A development store answers with a URL on the backend itself
+The location is an HTTP or HTTPS URL without credentials. A package's
+artifact lies in the deployment's object store
+([The object store](../backend/storage.md#the-object-store)). With an S3
+store, the backend signs an HTTPS GET URL valid for five minutes, so private
+storage needs no change to its bucket policy; the runner downloads directly
+from storage, and credentials remain in the backend. With a local store, the
+location is the backend's own `/native-artifacts/<sha256>` on its public URL
 ([Backend deployment configuration](#backend-deployment-configuration)). An
 attached artifact's location is the one attached. The scheme cannot change
 what runs: the runner checks the download against the size and SHA-256 it
@@ -908,24 +910,24 @@ encountering a platform-specific gap in that version.
 
 Command packages and runner releases cover the six targets of
 [Executables and targets](../delivery/builds-and-releases.md#executables-and-targets),
-which one machine cross-compiles. Building for a target does not show that the
+which the [release workflow](../delivery/builds-and-releases.md#release-workflow)
+builds. Building for a target does not show that the
 build runs there: release validation runs the same protocol and command
 conformance cases on a native artifact of every target, never under emulation,
 and the build guide's [Validation](../delivery/builds-and-releases.md#validation)
 lists the other checks, among them that a Linux executable is self-contained.
 
-Completeness is a rule of publication, not of the descriptor. A descriptor and
-a runner manifest name the targets they carry. Release packaging writes all six
-unless told otherwise, and the backend artifact module refuses to publish a
-release that lacks one to object storage. A development release, which a
-developer hands to a backend on their own machine, carries only the targets of
-the Hosts in use: on an x86_64 Linux machine that also hosts its own Cloud,
-that is `x86_64-unknown-linux-musl` alone. Only the development
-store loads a command package release of fewer targets
-([Backend deployment configuration](#backend-deployment-configuration)). A Host
-whose target a release lacks fails the command with a catalog mismatch, and its
-runner cannot be installed from that release; nothing falls back to another
-target.
+Completeness is a rule of the published release, not of the descriptor or the
+store. A descriptor and a runner manifest name the targets they carry. Release
+packaging writes all six unless told otherwise, and the release workflow
+publishes only that. A developer's release carries only the targets of the
+Hosts in use: on an x86_64 Linux machine that also hosts its own Cloud, that
+is `x86_64-unknown-linux-musl` alone. The backend publishes and serves a
+release of any nonempty set of targets in the same way, whatever its object
+store ([Backend deployment configuration](#backend-deployment-configuration)).
+A Host whose target a release lacks fails the command with a catalog
+mismatch, and its runner cannot be installed from that release; nothing falls
+back to another target.
 
 The [build guide](../delivery/builds-and-releases.md) defines commands and
 toolchain setup. Managed guest images consume the Linux runner. Their image
@@ -934,11 +936,13 @@ lifecycle and execution-surface verification follow the
 
 ### Publish artifacts before enabling commands
 
-The backend's artifact module owns S3 publication; S3 is the only
-object-storage protocol it supports for native artifacts. It uses the same
-object-storage library as the backend's blobs, which provides
-the conditional writes, SHA-256 checksums, and presigned URLs publication
-needs. Before the backend accepts requests, the module completes these steps:
+The backend's artifact module publishes the command packages into the
+deployment's one object store, local or S3, the store that holds the users'
+blobs ([The object store](../backend/storage.md#the-object-store)), and it
+publishes in the same way into either. The store's library provides the
+conditional writes and SHA-256 checksums publication needs, and, for S3, the
+presigned URLs. Before the backend accepts requests, the module completes
+these steps:
 
 1. Validate every release's descriptor, sizes, and hashes.
 2. Upload missing content-addressed blobs. Bound upload concurrency and suppress
@@ -951,21 +955,26 @@ objects. Interrupted publication can leave unreferenced blobs, but it cannot
 expose a partial release or overwrite an existing version's meaning. Multipart
 ETags must not be treated as SHA-256 checksums.
 
-Under the configured prefix, an executable or a resource's archive is
-`blobs/<sha256>`, a descriptor's
-canonical JSON is `descriptors/<digest>.json`, and the package/version mapping
-is `packages/<id>/<version>.json`, with the version percent-encoded as a URI
-component. A runner downloads an executable from a GET URL signed for five
-minutes, as it does a resource's archive.
+Under the store's `native/` keys
+([The object store](../backend/storage.md#the-object-store)), an executable
+or a resource's archive is `native/blobs/<sha256>`, a descriptor's canonical
+JSON is `native/descriptors/<digest>.json`, and the package/version mapping
+is `native/packages/<id>/<version>.json`, with the version percent-encoded as
+a URI component.
 
 An executable's object holds the executable compressed with zstd and carries
 `Content-Encoding: zstd`; descriptors and mappings are stored as they are.
-HTTP's own content coding is the mechanism: object storage serves the stored
+HTTP's own content coding is the mechanism: the store serves the stored
 bytes with the coding they were stored with, and the runner's HTTP client
 decodes them ([Install artifacts](#install-artifacts)),
 so no descriptor, manifest or cache entry knows about compression. zstd rather
 than gzip because it matters here: the release runner compresses to about 28%
-of its size with zstd and to 41% with gzip. A resource's archive is stored as
+of its size with zstd and to 41% with gzip. Packaging compresses each
+executable, at zstd's slowest ordinary level, and the release carries the
+compressed copy beside the executable
+([Packaging](../delivery/builds-and-releases.md#packaging)). Publication stores
+that copy after checking that it decodes to the executable's size and SHA-256,
+so no backend start compresses anything. A resource's archive is stored as
 it is, without a content coding: it is compressed already.
 
 Every object carries `sha256` and `size` metadata, which describe what the
@@ -974,99 +983,57 @@ executable, not of the compressed bytes; for any other object, a resource's
 archive among them, of its stored bytes. An object already in place counts as the one being published when both
 values match, and as a conflict otherwise. The compressed bytes of one
 executable may differ between zstd versions without changing what the object
-is, and an executable already in place is not compressed again, so a start
-that publishes nothing new compresses nothing.
-
-A development store runs step 1 on the targets each release carries, skips
-steps 2 and 3, and serves the artifacts from the backend itself
-([Backend deployment configuration](#backend-deployment-configuration)).
+is.
 
 ### Backend deployment configuration
 
-`DEMI_NATIVE_CONFIG` names a JSON file read by the backend artifact module.
-Each release directory contains `descriptor.json`, one executable under each
-target triple, named by `executable`, a basename without an extension, and
-each resource archive the descriptor names as `resources/<sha256>`. Windows
-filenames end in `.exe`. Relative directories resolve against the configuration
-file's directory. An explicit empty `releases` list means no command packages:
-the backend publishes nothing and starts with an empty catalog, so
-conversations offer no `demi file` or `demi browser` commands. A missing
-`DEMI_NATIVE_CONFIG` is an error, since only the explicit empty list means
-none.
+The backend publishes every command package release in the `commands/`
+directory of its [server release](../delivery/builds-and-releases.md#server-release),
+one release per directory. Each holds `descriptor.json`, one executable under
+each target triple, named by the descriptor's executable, a basename without
+an extension, and each resource archive the descriptor names as
+`resources/<sha256>`. Windows filenames end in `.exe`. An empty `commands/`
+means no command packages: the backend publishes nothing and starts with an
+empty catalog, so conversations offer no `demi file` or `demi browser`
+commands. A root without `commands/` is an error, since only the empty
+directory means none.
 
-`store` says where runners download the artifacts from. With
-`"provider": "s3"`, the backend publishes every release to that bucket before
-it accepts requests, and each release must carry all six targets. `prefix`, the
-key prefix of the published objects, defaults to `native` and is one or more
-`/`-separated segments of letters, digits, `_` and `-`.
+The deployment's object store says where runners download the artifacts
+from ([The object store](../backend/storage.md#the-object-store)). A runner
+receives the location when it asks for an artifact
+([Where an artifact comes from](#where-an-artifact-comes-from)):
 
-```json
-{
-  "prefix": "native",
-  "releases": [
-    { "directory": "./demi-file", "executable": "demi-file" },
-    { "directory": "./demi-browser", "executable": "demi-browser" }
-  ],
-  "store": {
-    "provider": "s3",
-    "bucket": "demi-native",
-    "region": "us-east-1"
-  }
-}
-```
+- With an S3 store, a GET URL signed for five minutes.
+- With a local store, `GET /native-artifacts/<sha256>` on the backend's
+  public URL. For example, a backend at `https://demi.example.com` answers a
+  Cloud guest's request for the `x86_64-unknown-linux-musl` executable of
+  `demi.file` with `https://demi.example.com/native-artifacts/<sha256>`. The
+  backend serves the object from its data directory with the content coding
+  it was stored with, without credentials and without expiry, like the runner
+  installers' downloads; any digest the store does not hold answers 404
+  `not_found`.
 
-S3 verifies SHA-256 upload checksums. The `store` block also accepts an
-optional HTTPS `endpoint` and `forcePathStyle`, and credentials come from the
-same sources as the backend's other object storage
-([The object store](../backend/storage.md#the-object-store)). An S3-compatible
-service must support the conditional writes, SHA-256 checksums, metadata, and
-presigned GET requests required by publication.
+Downloads from a local store need no credentials because they reveal nothing
+a user owns and cannot change what runs. The objects are the released
+programs and the Chrome for Testing archives, which the release publishes
+anyway, and each URL names a digest, which the runner checks the download
+against; the digest reached it over its authenticated connection to the
+backend.
 
-With `"provider": "local"`, a development store, the backend runs on a
-developer's own machine and serves the executables itself. For example, a
-backend at `http://10.0.0.5:3271` that loaded a development release of
-`demi.file` answers the Cloud guest's request for the
-`x86_64-unknown-linux-musl` executable with
-`http://10.0.0.5:3271/native-artifacts/<sha256>`, and the guest's runner
-downloads and verifies it from there, as the paired machine's runner does its
-own.
-The development store:
-
-- Verifies each release's descriptor and the artifacts of the targets it
-  carries at startup, and uploads nothing. A release may carry fewer than the
-  six targets, but at least one.
-- Serves each artifact of a loaded release at
-  `GET /native-artifacts/<sha256>` on `DEMI_BACKEND_PUBLIC_URL`, without
-  credentials, like the runner installers' downloads: an executable with
-  `Content-Encoding: zstd` as object storage serves it, a resource's archive
-  as it is. It compresses each
-  executable once, when a runner first asks for it, and at a fast level,
-  since it compresses again at every backend start and a development
-  release is often a debug build of over 100 MB; publication to object
-  storage compresses once, at zstd's slowest ordinary level. Any other
-  digest answers 404 `not_found`.
-- Answers a runner's location request with that URL, which has the scheme of
-  the public URL and no expiry.
-- Takes no other setting, and no `prefix`.
-
-```json
-{
-  "releases": [
-    { "directory": "demi-file", "executable": "demi-file" },
-    { "directory": "demi-browser", "executable": "demi-browser" },
-    { "directory": "demi-claude-code", "executable": "demi-claude-code" }
-  ],
-  "store": { "provider": "local" }
-}
-```
-
-[Development backend](../backend/backend.md#development-backend) gives the
-whole launch. The backend builds its package catalog and artifact resolver
-from this file at startup. A job that `demi host shell` starts on another Host
+The backend builds its package catalog and artifact resolver from
+`commands/` at startup. A job that `demi host shell` starts on another Host
 receives the calling session's catalog. The backend's scenarios load the
-programs the workspace built as development releases of their Host's target,
-through the development store; tests without a backend resolve an artifact to
-a local file instead.
+programs the workspace built as a release of their Host's target, which the
+scenario backend publishes into the local store of its temporary data
+directory; tests without a backend resolve an artifact to a local file
+instead.
+
+A command program a developer rebuilds without a new workspace version is
+still a release of its own: packaging outside the release workflow names it
+with a version that carries a digest of its artifacts
+([Rust executables](../delivery/package-versioning.md#rust-executables)), so
+a backend whose data directory outlives the rebuild publishes it beside the
+earlier one instead of conflicting with it.
 
 ## Acceptance
 
