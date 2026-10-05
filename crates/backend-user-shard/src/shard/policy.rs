@@ -15,6 +15,7 @@ use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
 use bytes::Bytes;
 use demi_shared_types::{BlobRef, Sequence};
+use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 
@@ -108,6 +109,31 @@ impl LinkPolicy for ShardPolicy {
                 tracing::warn!(device = %device, %volume, bytes, "volume growth refused: {error}");
             }
             grown
+        })
+    }
+
+    /// Revokes the device at its runner's request, as the user's
+    /// revocation does: only a paired device, and only while no workspace
+    /// points at it.
+    fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
+        let shard = self.shard();
+        let device = self.device.clone();
+        Box::pin(async move {
+            let shard = shard?;
+            let record = shard
+                .services()
+                .control
+                .device(device.clone())
+                .await
+                .map_err(|error| error.to_string())?
+                .ok_or_else(|| "the device is gone".to_owned())?;
+            if record.kind != DeviceKind::User {
+                return Err("only a paired device is revoked".into());
+            }
+            match shard.revoke_device(device).await {
+                Ok(revoked) => revoked.map_err(|in_use| in_use.to_string()),
+                Err(error) => Err(error.to_string()),
+            }
         })
     }
 
