@@ -160,15 +160,17 @@ distribution's own package manager:
 | Distribution | Package manager | bsdtar's package |
 | --- | --- | --- |
 | Ubuntu 22.04 and later, Debian 12 and later | apt | `libarchive-tools` |
+| Fedora, RHEL 10 and its rebuilds Rocky Linux and AlmaLinux | dnf | `bsdtar` |
 | Arch Linux | pacman | `libarchive` |
 
 e2fsprogs and nftables have those names everywhere. On another distribution
 `setup` names the three tools and stops; an operator who installed
 them runs it again with `--no-packages`, and the Cloud check of step 4
-decides whether the machine can run Demi. The RHEL family, Fedora among it,
-and openSUSE are not offered: their security modules' effect on gVisor is
-unknown. Each distribution offered needs Linux 5.14 or later, systemd and
-cgroup v2, which their current releases have.
+decides whether the machine can run Demi. SELinux in enforcing mode, as the
+dnf distributions run it, lets gVisor run with no change of policy: the Cloud
+check passed on Fedora 44, Rocky Linux 10.2 and AlmaLinux 10.2 so. openSUSE
+is not offered. Each distribution offered needs Linux 5.14 or later, systemd
+and cgroup v2, which their current releases have.
 
 ## Acceptance
 
