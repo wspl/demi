@@ -30,6 +30,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
       error: null,
       volumes: null,
       limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 },
+      newerImage: false,
     },
     subagents: { enabled: true, profiles: [] },
     plugins: [{ id: 'expose', name: 'Expose', description: 'Exposes a Host port.', enabled: true, packages: [] }],

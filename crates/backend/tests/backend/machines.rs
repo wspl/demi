@@ -51,6 +51,10 @@ pub struct Script {
     /// The artifact cache each Cloud runner that starts from now on uses,
     /// as `DEMI_ARTIFACTS`; none keeps its own in its state.
     pub artifacts: Option<String>,
+    /// The configured base, as after the server's upgrade; [`BASE`] unless
+    /// set. A new Cloud and a reset take it; a Cloud made earlier keeps its
+    /// own.
+    pub base: Option<String>,
 }
 
 /// A device's storage and its sandbox.
@@ -350,7 +354,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             }
             json(serde_json::Value::Null)
         }
-        MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(BASE)),
+        MachineCall::CurrentBaseVersion(_) => json(serde_json::json!(configured_base(shared))),
         MachineCall::ImageState(params) => {
             let image = shared
                 .lock()
@@ -397,9 +401,10 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                     }
                     (None, None) => SpawnEnv::Inherit,
                 };
+                let base = state.script.base.clone().unwrap_or_else(|| BASE.into());
                 let guest = state.guests.entry(device.clone()).or_insert_with(|| Guest {
                     runner: None,
-                    image: image(1, None, VOLUME_BYTES, VOLUME_BYTES),
+                    image: image(1, &base, None, VOLUME_BYTES, VOLUME_BYTES),
                     generations: 1,
                 });
                 (silent, env, guest.runner.take())
@@ -498,6 +503,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                 guest.generations += 1;
                 guest.image = image(
                     guest.generations,
+                    &params.base_version,
                     Some(params.operation_id),
                     guest.image.system_bytes.get(),
                     guest.image.home_bytes.get(),
@@ -527,10 +533,21 @@ async fn stop_runner(shared: &Shared, device: &str) {
     }
 }
 
-fn image(generation: u64, reset: Option<String>, system: u64, home: u64) -> MachineImageState {
+/// The base the scripted manager is configured with.
+fn configured_base(shared: &Shared) -> String {
+    shared.lock().script.base.clone().unwrap_or_else(|| BASE.into())
+}
+
+fn image(
+    generation: u64,
+    base: &str,
+    reset: Option<String>,
+    system: u64,
+    home: u64,
+) -> MachineImageState {
     MachineImageState {
         generation: GenerationId::parse(format!("gen-{generation}")).unwrap(),
-        base_version: BaseVersion::parse(BASE).unwrap(),
+        base_version: BaseVersion::parse(base).unwrap(),
         reset_id: reset,
         system_bytes: system.try_into().unwrap(),
         home_bytes: home.try_into().unwrap(),
