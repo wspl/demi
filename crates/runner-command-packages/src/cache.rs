@@ -506,6 +506,7 @@ impl ArtifactCache {
                 if tenth(written) > before {
                     progress(ArtifactProgress::Download {
                         done: written.min(artifact.size),
+                        total: artifact.size,
                     });
                 }
             });
