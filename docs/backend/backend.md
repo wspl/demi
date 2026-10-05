@@ -435,7 +435,8 @@ At startup the backend:
    ([Native runtime](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)).
    An interrupt or termination signal during publication stops the start.
 4. Loads the instance secret and opens the control database; a new database
-   receives its schema.
+   receives its schema, and one of an earlier release is migrated
+   ([Schemas and migrations](storage.md#schemas-and-migrations)).
 5. Starts the shared services, among them the plugin host, which checks
    every plugin's manifest against the others and the native catalog; a
    manifest that breaks a rule stops the start and the error names the plugin
@@ -451,12 +452,18 @@ At startup the backend:
    ([Conversation Fork](../agent/conversation-fork.md#backend-creation-and-retries)).
    Each saved yield wakeup is armed again: its conversation's shard restores
    the tree when the wakeup is due
-   ([Yield wakeups](../agent/runtime.md#yield-wakeups)).
+   ([Yield wakeups](../agent/runtime.md#yield-wakeups)). The first request
+   to the machine manager checks that both speak one wire version, so a
+   manager of another release stops the start here
+   ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
 7. Opens its listener, and starts the daily retention pass, whose first pass
    runs at once ([The retention pass](storage.md#the-retention-pass)).
+8. Reports readiness to systemd, whose unit waits for it without a timeout,
+   since a migration can take minutes
+   ([One release on a server](../delivery/upgrades.md#one-release-on-a-server)).
 
 The backend watches for SIGINT and SIGTERM from its first step. A signal that
-comes before step 4 stops the start; one that comes during steps 4 to 7 is
+comes before step 4 stops the start; one that comes during steps 4 to 8 is
 kept: the start finishes, and shutdown follows at once.
 
 Shutdown closes the listener first, so that no new work starts and no runner
@@ -518,11 +525,14 @@ settings reads, such as a misspelt `DEMI_BACKEND_LISTENN`, rather than leaving
 the setting at its default. The settings the manager shares with the backend
 are the backend's names, so the backend's check covers them, and one file
 serves both programs without either ignoring a misspelling. `demi-backend
---help` lists the flags.
+--help` lists the flags. `--check-config` validates the configuration as a
+start would and exits, which an [upgrade](../delivery/upgrades.md#prepare)
+runs with the next release before it stops anything; the machine manager has
+the same flag.
 
 | Variable | Meaning | Defined in |
 |---|---|---|
-| `DEMI_RELEASE` | The [server release](../delivery/builds-and-releases.md#server-release) root. The backend serves its `web/` when it has one, installs runners from its `runners/` (without it, the installer routes answer 503), and publishes its `commands/`. Default: the directory above the one that holds the running executable, so `/opt/demi/0.1.3/bin/demi-backend` uses `/opt/demi/0.1.3`. The machine manager reads it too. | [Builds and releases](../delivery/builds-and-releases.md#server-release) |
+| `DEMI_RELEASE` | The [server release](../delivery/builds-and-releases.md#server-release) root. The backend serves its `web/` when it has one, installs runners from its `runners/` (without it, the installer routes answer 503), and publishes its `commands/`. Default: the directory above the one that holds the running executable, its real path with every symbolic link resolved, so `/opt/demi/current/bin/demi-backend` uses `/opt/demi/releases/0.2.0` while `current` points there. A server leaves it out, so that the backend and the machine manager run the release of their own executables ([One release on a server](../delivery/upgrades.md#one-release-on-a-server)). The machine manager reads it too. | [Builds and releases](../delivery/builds-and-releases.md#server-release) |
 | `DEMI_BACKEND_DATA` | The data directory. Default `~/.demi/backend`. | [Storage](storage.md#ownership-and-layout) |
 | `DEMI_BACKEND_LISTEN` | The address and port the backend listens on, as `<address>:<port>`. Default `0.0.0.0:3271`. | [Public URL and listening address](#public-url-and-listening-address) |
 | `DEMI_BACKEND_PUBLIC_URL` | The URL at which browsers, runners and Cloud guests reach the backend: installers embed it, the page's install command fetches them from it, expose URLs take their scheme and port from it, and a local store's downloads are on it. Required. The machine manager reads it too, as the one endpoint its Clouds may reach on the host or a private address. | [Public URL and listening address](#public-url-and-listening-address) |

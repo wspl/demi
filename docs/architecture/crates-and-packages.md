@@ -270,6 +270,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - a server release's record (`ServerRelease`, the root's `release.json`),
     which says where the release's files are, and the name of each file
     (`release_file`, `compressed_file`);
+  - the release check before a runner's socket opens: its two headers and
+    the body of the backend's 409 answer, the one part of the connection
+    that every release keeps
+    ([Runner updates](../execution/runner.md#runner-updates));
   - `Signal`, and the platform a runner reports in its hello
     (`RunnerPlatform`);
   - the protocol constants: `VERSION`, `MAX_MESSAGE_BYTES`, `JOB_VIEW_BYTES`,
@@ -300,9 +304,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   `decode_response`, `encode_line`, `MAX_LINE_BYTES`); machine image state
   (`MachineImageState`, `RuntimeState`, `Volume`) and the names of stored
   images (`DeviceId`, `GenerationId`, `BaseVersion`: one path component
-  each); and the Cloud image manifest (`image::CloudImageManifest`), which
-  embeds `runner-protocol`'s runner release and `command-sdk`'s package
-  descriptors.
+  each); the wire version that `hello` checks and the format of the
+  manager's state directory; and the Cloud image manifest
+  (`image::CloudImageManifest`), which embeds `runner-protocol`'s runner
+  release and `command-sdk`'s package descriptors.
 - **Public boundary:** the items above. The backend's machine-manager client
   and the manager link it; `xtask` writes the image manifest with it. Behavior:
   [Managed Cloud hosts](../cloud/managed-hosts.md).
@@ -1262,10 +1267,10 @@ demi-backend (executable: configuration, composition)
   `runsc` and their OCI bundles, private mounts and loop devices, network
   namespaces and the firewall table, cgroups, transient boot files, the
   machine-image store (paired generations, working recovery, pinned bases,
-  publication and collection) and the socket server. The crate also holds the
-  host install script, the Lima configuration and the pinned `runsc` build
-  inputs; they implement [Cloud setup](../cloud/setup.md) and
-  [Develop on a Mac with Lima](../guides/mac-development.md), not another
+  publication and collection, migration of its records) and the socket
+  server, and its unit. The crate also holds the Lima configuration and the
+  pinned `runsc` build inputs; they implement [Cloud setup](../cloud/setup.md)
+  and [Develop on a Mac with Lima](../guides/mac-development.md), not another
   lifecycle.
 - **Process boundary:** `runsc`, `mke2fs`, `e2fsck`, `resize2fs`, `bsdtar` and
   `nft` are its only external programs, an intentional infrastructure

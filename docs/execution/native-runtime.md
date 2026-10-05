@@ -1093,7 +1093,8 @@ installer's download,
 `GET /runner-artifacts/<release>/<target>/<file>`, answers from the object
 store, sourcing the executable first when the store lacks it, and streams it
 from S3 as from the data directory, since an installer knows only the
-backend.
+backend. A paired device's runner downloads its updates from the same route
+([Runner updates](runner.md#runner-updates)).
 
 ## Acceptance
 

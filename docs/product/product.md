@@ -545,6 +545,13 @@ grow to ([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capaci
 while the capacities are unknown, as before the Cloud's first start, it shows
 only the limits.
 
+When the server has moved to a release with a newer Cloud image than the one
+the Cloud's system is on, Settings says so beside Reset environment: "A newer
+system image is available. Reset the environment to use it." The Cloud keeps
+working on its image meanwhile, with the new release's Demi programs
+([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)),
+and the user resets when losing the system's changes suits them.
+
 The confirmation explains that reset stops all of the user's Cloud work, replaces
 system packages and settings, and preserves home files. Acceptance starts an
 operation; the confirmation follows its progress and offers retry of the same

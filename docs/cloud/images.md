@@ -111,21 +111,34 @@ Artifact downloads follow no redirect, and uv's GitHub release URLs redirect
 to short-lived storage URLs, so the pin names the same files on Astral's
 release host, `releases.astral.sh`, which serves them directly.
 
-The image supplies `demi` UID/GID 1000, passwordless sudo, a minimal init
-(`tini`), and `/usr/bin/demi-runner`, with the `demi` command alias expected by
-the native runtime. It makes the runner's two directories on the system layer,
-private to `demi`: `/var/lib/demi` for the job directories and `/var/log/demi`
-for the Host log ([Images](managed-hosts.md#images)). Each embedded command
-package's executable lies at its content-addressed path,
-`/opt/demi/artifacts/<sha256>/<executable>`, the one file in the directory its
-SHA-256 names. The runner
-starts command services from these copies instead of downloading the
-artifacts, after checking each against the backend's pinned descriptor
-([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
-Their identities must therefore match the backend's selected releases: the
-runner downloads a selected artifact that the image does not hold, on the
-first command after every wake and reset. Rebuilding the runner alone does not
-refresh command binaries.
+The image supplies `demi` UID/GID 1000, passwordless sudo and a minimal init
+(`tini`). Everything of Demi's own lies under `/opt/demi`, which the machine
+manager replaces with the configured image's at every boot, whatever image a
+Cloud is pinned to
+([Demi's programs in a Cloud](managed-hosts.md#demis-programs-in-a-cloud)):
+
+- `/opt/demi/bin/demi-runner`, and `/opt/demi/bin/demi`, the command alias
+  the native runtime expects. `/usr/bin/demi-runner` and `/usr/bin/demi` are
+  symbolic links to them.
+- Each embedded command package's executable, at its content-addressed path
+  `/opt/demi/artifacts/<sha256>/<executable>`, the one file in the directory
+  its SHA-256 names. The runner starts command services from these copies
+  instead of downloading the artifacts, after checking each against the
+  backend's pinned descriptor
+  ([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
+
+The image also makes the runner's two directories on the system layer,
+private to `demi`: `/var/lib/demi` for the job directories and
+`/var/log/demi` for the Host log ([Images](managed-hosts.md#images)). The
+embedded artifacts' identities must match the backend's selected releases:
+the runner downloads a selected artifact that the image does not hold, on the
+first command after every wake and reset. Since the image and the backend
+come from one server release, they match.
+
+What the manager relies on in a base, the `demi` user, init, the runner's
+directories and `/opt/demi` as the place of Demi's programs, is the base's
+format, which the manifest's `formatVersion` names. A release that changes
+any of it changes the format.
 
 The image contains mount points for `/home`, `/run`, `/tmp`, `/dev`, `/proc`,
 and `/dev/shm`. It does not mount them or configure routes at runtime. Service
@@ -149,7 +162,12 @@ sudo; extraction must preserve them. They execute only inside gVisor.
 Build into a staging directory, verify every embedded artifact against its
 release descriptor, create the archive and manifest, and publish the directory
 atomically. The manager imports its configured release once, at startup, before
-it serves requests; a failed import stops startup with its diagnostic. It
+it serves requests; a failed import stops startup with its diagnostic. An
+[upgrade](../delivery/upgrades.md#prepare) imports the next release's image
+earlier, with `demi-machine-manager import <release root>` beside the running
+manager, so the start finds it imported: a base is an immutable directory named
+by its `baseVersion` and published atomically, and a running manager reads no
+base it was not configured with. Import
 rejects unknown schemas, mismatched hashes or sizes, missing executable
 entries, and an architecture that differs from its Linux host. A base already
 imported under the same `baseVersion` must hold the same manifest bytes.
@@ -169,9 +187,11 @@ content on the host during import.
 
 The base directory is writable only during staging, then exposed read-only as
 OverlayFS's lower layer. Ordinary wake uses the base named by the stored
-generation; changing the configured release does not rewrite that reference.
+generation; changing the configured release does not rewrite that reference,
+and only `/opt/demi` comes from the configured base
+([Demi's programs in a Cloud](managed-hosts.md#demis-programs-in-a-cloud)).
 Collection and reset pinning follow
-[generation storage](managed-hosts.md#save-a-generation).
+[Base retention](managed-hosts.md#base-retention).
 
 ## Acceptance and local refresh
 
@@ -183,10 +203,10 @@ commands and the conversation browser through the real managed runner
 connection.
 
 When a runner or embedded command package changes, build the Cloud target,
-rebuild the image, restart the local manager, and reset local Cloud to that base
-before acceptance. Check the running runner's executable hash and command
-package identity after initial start and again after hibernate/wake. After the
-reset and after the wake, the first native command starts its service from the
+rebuild the image and restart the local manager with it; the Cloud's next wake
+runs the new programs, with no reset. Check the running runner's executable
+hash and command package identity after that wake and again after
+hibernate/wake and after a reset. After each, the first native command starts its service from the
 image's embedded executable, without a download. Do not hash PID 1
 as a proxy for the runner: PID 1 is init. Exercise the paired device in the same
 checkpoint.
