@@ -114,6 +114,7 @@ mod service {
         }
         core.network.prepare().await?;
         let base = base::import(&core.tools, &core.config.image, &core.store.bases()).await?;
+        base::retain(&core.config.images(), &core.config.working(), &base).await?;
         namespace.pin().await?;
         preflight::probe_storage(&core).await?;
         let socket_path = core.config.socket.clone();
