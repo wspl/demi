@@ -182,9 +182,14 @@ terminal early finds them there; closing it does not stop the runner.
    until the user revokes it.
 2. It drains the runner: no new work, and the running jobs end first.
 3. It removes the installation's directory, only when the directory holds an
-   installation, the state files an installer or a runner writes there: a
-   directory that holds none, such as a home directory a mistaken `DEMI_HOME`
-   names, is never removed, and `uninstall` says why. It removes the
+   installation, the state files an installer or a runner writes there, and
+   is neither the user's home directory, nor a directory that contains it,
+   nor the root of a filesystem: a runner that ran with a mistaken
+   `DEMI_HOME`, such as the home directory, has written its state there, and
+   still never removes it. In such a directory `uninstall` removes only the
+   files the runner wrote, its state files, `releases/`, `log/` and its own
+   artifact cache, and says what it left. A directory that holds no
+   installation is never touched, and `uninstall` says why. It removes the
    directory with the device token, the
    releases, the log and the artifact cache when the cache is the
    installation's own; a cache that `DEMI_ARTIFACTS` names, which runners of
