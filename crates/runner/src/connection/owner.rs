@@ -14,9 +14,9 @@ use std::{
     time::Duration,
 };
 
-use bytes::Bytes;
 use demi_runner_command_packages::ServiceHandle;
 use demi_runner_host::{
+    files,
     host::HostServer,
     volumes::{ManagedVolume, Volumes},
 };
@@ -513,15 +513,18 @@ impl Owner<'_> {
             Inbound::JobMediaRead {
                 id,
                 job_id,
-                number,
+                numbers,
                 output,
             } => {
-                let path = self.directories.medium(&job_id, number);
+                let paths = numbers
+                    .into_iter()
+                    .map(|number| self.directories.medium(&job_id, number))
+                    .collect();
                 let pipes = self.registered.pipes.clone();
                 let control = self.handle.control.clone();
                 let closed = self.handle.closed().clone();
                 self.work.spawn(async move {
-                    read_medium(path, id, output, pipes, control, closed).await;
+                    read_media(paths, id, output, pipes, control, closed).await;
                     Work::Done
                 });
             }
@@ -742,32 +745,39 @@ impl Owner<'_> {
     }
 }
 
-/// Answers a `job_media_read` and streams the medium the job keeps at
-/// `path` into its pipe; a medium the job does not keep, or a job whose
-/// directory is gone, answers that nothing flows.
-async fn read_medium(
-    path: Option<std::path::PathBuf>,
+/// Answers a `job_media_read` and streams the media the job keeps at
+/// `paths` into its pipe, each after its length; a medium the job does not
+/// keep, or a job whose directory is gone, answers that it is not read.
+async fn read_media(
+    paths: Vec<Option<std::path::PathBuf>>,
     id: String,
     pipe: wire::PipeRef,
     pipes: PipeClient,
     control: mpsc::Sender<wire::Frame>,
     closed: CancellationToken,
 ) {
-    let bytes = match path {
-        Some(path) => tokio::fs::read(path).await.map_err(|error| match error.kind() {
-            io::ErrorKind::NotFound => {
-                io::Error::new(io::ErrorKind::NotFound, "the job keeps no such medium")
-            }
-            _ => error,
-        }),
-        None => Err(io::Error::new(
-            io::ErrorKind::NotFound,
-            "the job keeps no media: it is unknown or released",
-        )),
-    };
+    let targets = paths
+        .into_iter()
+        .map(|path| {
+            path.ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "the job keeps no media: it is unknown or released",
+                )
+            })
+        })
+        .collect();
+    let mut opened = files::open_files(targets, None, &closed).await;
+    for medium in &mut opened {
+        if let Err(error) = medium
+            && error.kind() == io::ErrorKind::NotFound
+        {
+            *error = io::Error::new(io::ErrorKind::NotFound, "the job keeps no such medium");
+        }
+    }
     let reply = wire::encode(&wire::Outbound::JobMediaRead {
         id,
-        error: bytes.as_ref().err().map(ToString::to_string),
+        media: files::file_reads(&opened),
     });
     match reply {
         Ok(reply) => {
@@ -778,13 +788,7 @@ async fn read_medium(
         }
         Err(error) => tracing::warn!("job media read reply encoding failed: {error}"),
     }
-    let result = match bytes {
-        Ok(bytes) => {
-            let body = futures_util::stream::once(async move { Ok(Bytes::from(bytes)) });
-            pipes.put(&pipe.url, body, &closed).await
-        }
-        Err(error) => Err(error),
-    };
+    let result = pipes.put(&pipe.url, files::framed(opened), &closed).await;
     report_pipe(&control, pipe.id, result, &closed).await;
 }
 

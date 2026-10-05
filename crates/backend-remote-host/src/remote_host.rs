@@ -233,6 +233,32 @@ impl RemoteHost {
         .map(|_| ())
     }
 
+    /// Reads several files with one request (`runner.md` § Host
+    /// operations): each file's bytes, or why it was not read, in the
+    /// order of `paths`. A file over `limit` bytes is not read.
+    pub async fn read_files(
+        &self,
+        paths: &[String],
+        limit: u64,
+    ) -> Result<Vec<Result<Bytes, HostError>>, HostError> {
+        let link = self.link()?;
+        let _lease = self.admit()?;
+        let (answer, reader) = answered(&link, Expected::Fs("readFiles"), |id, output| {
+            Inbound::FsReadFiles {
+                id,
+                paths: paths.to_vec(),
+                cwd: self.cwd(),
+                limit,
+                output,
+            }
+        })
+        .await?;
+        let Answer::Fs(FsResult::ReadFiles(reads)) = answer else {
+            return Err(mismatch());
+        };
+        split_reads(reader, reads, paths.len(), limit).await
+    }
+
     /// Looks at several paths with one request (`runner.md` § Host
     /// operations): each answers what is there, in the order of `paths`.
     /// A path the Host could not read answers so; a failure that is not
@@ -707,24 +733,31 @@ impl RemoteJob {
         self.media.borrow().clone()
     }
 
-    /// The bytes of medium `number` the job keeps (`runner.md` § Pipes and
-    /// output): while the job runs, and after it ended until its release.
-    pub async fn read_medium(&self, number: u32) -> Result<Bytes, HostError> {
+    /// The bytes of the media `numbers` the job keeps, with one request
+    /// (`runner.md` § Pipes and output): while the job runs, and after it
+    /// ended until its release. Each answers its bytes or why it was not
+    /// read, in the order of `numbers`.
+    pub async fn read_media(
+        &self,
+        numbers: &[u32],
+    ) -> Result<Vec<Result<Bytes, HostError>>, HostError> {
         let link = self
             .link
             .as_ref()
             .ok_or_else(|| HostError::offline("the job's runner is not connected"))?;
-        let reader = filled(link, Expected::JobMediaRead, |id, output| {
+        let (answer, reader) = answered(link, Expected::JobMediaRead, |id, output| {
             Inbound::JobMediaRead {
                 id,
                 job_id: self.id.clone(),
-                number,
+                numbers: numbers.to_vec(),
                 output,
             }
         })
         .await?;
-        let limit = usize::try_from(MAX_MEDIUM_BYTES).expect("16 MiB fits");
-        collect(reader, limit).await
+        let Answer::Read(reads) = answer else {
+            return Err(protocol("the runner answered another request"));
+        };
+        split_reads(reader, reads, numbers.len(), MAX_MEDIUM_BYTES).await
     }
 
     /// Tells the runner that the backend has what it needs of the ended job,
@@ -1345,6 +1378,52 @@ async fn answered(
             Err(error)
         }
     }
+}
+
+/// Each file of a read of several: its bytes, which the pipe carries after
+/// their length (`wire::FileRead`), or why the runner did not read it. The
+/// answer names `count` files, each read one of at most `limit` bytes.
+async fn split_reads(
+    reader: PipeReader,
+    reads: Vec<wire::FileRead>,
+    count: usize,
+    limit: u64,
+) -> Result<Vec<Result<Bytes, HostError>>, HostError> {
+    if reads.len() != count {
+        return Err(protocol("the runner answered another number of files"));
+    }
+    let read = reads
+        .iter()
+        .filter(|read| matches!(read, wire::FileRead::Read))
+        .count();
+    let length = std::mem::size_of::<u64>();
+    let bound = usize::try_from(limit)
+        .unwrap_or(usize::MAX)
+        .saturating_add(length)
+        .saturating_mul(read);
+    let mut bytes = collect(reader, bound).await?;
+    let files = reads
+        .into_iter()
+        .map(|read| match read {
+            wire::FileRead::Read => {
+                if bytes.len() < length {
+                    return Err(protocol("a file of the read is missing its length"));
+                }
+                let header = bytes.split_to(length);
+                let size = u64::from_be_bytes(header[..].try_into().expect("eight bytes"));
+                let size = usize::try_from(size)
+                    .ok()
+                    .filter(|size| *size <= bytes.len())
+                    .ok_or_else(|| protocol("a file of the read is shorter than its length"))?;
+                Ok(Ok(bytes.split_to(size)))
+            }
+            wire::FileRead::Failed { code, message } => Ok(Err(HostError::failed(code, message))),
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    if !bytes.is_empty() {
+        return Err(protocol("the read sent more than its files"));
+    }
+    Ok(files)
 }
 
 /// Reads a pipe to its end, which comes within `limit` bytes.
