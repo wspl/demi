@@ -19,6 +19,8 @@ export interface CloudState {
   volumes: CloudVolumes | null
   /** The most each filesystem may grow to. */
   limits: CloudVolumes
+  /** The server runs a newer Cloud image than the Cloud's system is on, which a reset moves it to. */
+  newerImage: boolean
   /** What the Cloud's runner installs now. */
   installs: readonly HostInstall[]
 }

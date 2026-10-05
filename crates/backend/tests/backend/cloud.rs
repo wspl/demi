@@ -599,6 +599,13 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
         .await
         .device
         .expect("the Cloud was made");
+    // The server moved to a newer image since the Cloud was made, which a
+    // reset moves its system to.
+    assert!(!status(&backend, &master).await.newer_image);
+    harness
+        .manager
+        .script(|script| script.base = Some("test-base-2".into()));
+    assert!(status(&backend, &master).await.newer_image);
 
     let (one, two, three) = tokio::join!(
         reset(&backend, &master, RESET),
@@ -617,6 +624,7 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
     .await;
     assert_eq!(ready.state, CloudState::Running);
     assert_eq!(ready.device, Some(before));
+    assert!(!ready.newer_image);
 
     // Home stays; the model hears of the reset before its next request.
     let next = work
@@ -647,7 +655,7 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
         harness
             .manager
             .calls()
-            .contains(&format!("reset:{device}:{RESET}:test-base"))
+            .contains(&format!("reset:{device}:{RESET}:test-base-2"))
     );
 
     // Another reset while one runs is refused.

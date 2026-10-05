@@ -159,6 +159,7 @@ async fn the_snapshot_is_the_users_product_state() {
                     system_bytes: 16 << 30,
                     home_bytes: 32 << 30,
                 },
+                newer_image: false,
             },
             // A new user has subagents on and no profile.
             subagents: SubagentSettings {

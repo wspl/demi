@@ -36,6 +36,7 @@ beforeEach(async () => {
       error: null,
       volumes: null,
       limits: { systemBytes: 0, homeBytes: 0 },
+      newerImage: false,
     },
     publicUrl: 'http://192.168.5.2:3271/',
   })

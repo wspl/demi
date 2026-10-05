@@ -44,6 +44,7 @@ test("a conversation shows everything its Host installs and only its provider's 
       error: null,
       volumes: null,
       limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 },
+      newerImage: false,
     },
   })
   // On the laptop with Claude Code: the laptop's install, and the Cloud's CLI but not its Chrome.

@@ -79,6 +79,11 @@ function reset() {
         >Reset Environment</Button
       >
     </SettingsRow>
+    <SettingsRow
+      v-if="cloud.newerImage"
+      label="A newer system image is available"
+      description="Reset the environment to use it. Your home files stay; system packages you installed go."
+    />
     <SettingsRow label="Storage" :description="storage" />
     <CloudResetDialog
       :is-open="open"
