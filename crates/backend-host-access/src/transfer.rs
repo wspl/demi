@@ -14,7 +14,9 @@ use std::rc::Rc;
 
 use bytes::Bytes;
 use demi_backend_remote_host::{PipeReader, PipeWriter};
-use demi_host_interface::{ByteRange, FileKind, FileStat, HostError, HostFs, WriteOptions};
+use demi_host_interface::{
+    ByteRange, FileKind, FileStat, HostError, HostFs, WhenExists, WriteOptions,
+};
 use demi_web_api_protocol::ids::ConversationId;
 use http::header::{ACCEPT_RANGES, CONTENT_LENGTH, CONTENT_RANGE};
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -58,20 +60,14 @@ pub enum Download {
     },
 }
 
-/// What an upload answers before its bytes move.
-pub enum Upload {
-    /// A directory is at the path.
-    IsDirectory,
-    /// A file is at the path, and the upload did not ask to replace it.
-    Exists,
-    Open(OpenUpload),
-}
-
 /// An upload's write: the Host takes the bytes the edge writes and puts the
 /// file in place once they end, whole or not at all.
 pub struct OpenUpload {
     pub writer: PipeWriter,
-    /// The write's outcome, once the Host put the file in place or failed.
+    /// The write's outcome, once the Host put the file in place or failed:
+    /// `EISDIR` for a directory at the path, and `EEXIST` for a file there
+    /// the upload did not ask to replace, which the Host answers before the
+    /// bytes move.
     pub written: oneshot::Receiver<Result<(), HostError>>,
     pub lease: Lease,
 }
@@ -130,14 +126,16 @@ impl dyn HostShard + '_ {
 
     /// Admits an upload of one file to the conversation's primary Host: a
     /// directory at the path is never written over, and a file only when
-    /// `replace` asks.
+    /// `replace` asks. The write itself checks, so no request precedes it
+    /// (`runner.md` § Host operations), and it makes the directories above
+    /// the path that are missing.
     pub async fn open_upload(
         &self,
         id: &ConversationId,
         path: String,
         replace: bool,
         cancel: &CancellationToken,
-    ) -> Result<Upload, HostAccessError> {
+    ) -> Result<OpenUpload, HostAccessError> {
         let record = self.owned_conversation(id).await?;
         let slot = self.conversations().slot(&record.id);
         // As for a download: no await between the check and the
@@ -149,34 +147,29 @@ impl dyn HostShard + '_ {
         };
         let admitted = self.admit_host(&record.id, None, waits).await?;
         let host = admitted.host.host.clone();
-        let taken = match waits.wait(HostFs::stat(&host, &path)).await? {
-            Ok(stat) => Some(stat),
-            Err(error) if error.code() == Some("ENOENT") => None,
-            Err(error) => return Err(error.into()),
-        };
-        match taken {
-            Some(stat) if stat.kind == FileKind::Directory => return Ok(Upload::IsDirectory),
-            Some(_) if !replace => return Ok(Upload::Exists),
-            _ => {}
-        }
         let pipe = host.write_pipe()?;
         let writer = pipe.writer().expect("a pipe just made has its source free");
         let (done, written) = oneshot::channel();
         let input = pipe.clone();
+        let options = WriteOptions {
+            exists: if replace {
+                WhenExists::Replace
+            } else {
+                WhenExists::Refuse
+            },
+        };
         let write = async move {
-            let outcome = host
-                .write_from(&path, &input, WriteOptions::default())
-                .await;
+            let outcome = host.write_from(&path, &input, options).await;
             // An edge that went away reads no outcome.
-            let _ = done.send(outcome);
+            let _ = done.send(outcome.map(|_| ()));
         };
         let stop = move || pipe.fail("the upload ended before its last byte");
         let lease = self.lease_transfer(admitted, open, write, stop);
-        Ok(Upload::Open(OpenUpload {
+        Ok(OpenUpload {
             writer,
             written,
             lease,
-        }))
+        })
     }
 
     /// Hands the edge a lease on an admitted transfer. The shard's owner

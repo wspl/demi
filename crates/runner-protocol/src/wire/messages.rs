@@ -357,7 +357,9 @@ pub enum Inbound {
         length: Option<u64>,
         output: PipeRef,
     },
-    /// Fill the file from `input`.
+    /// Fill the file from `input`, making the directories above it that are
+    /// missing; `exists` says what to do when the path is taken. The answer
+    /// names the file it wrote.
     #[serde(rename = "fs_writeFile")]
     FsWriteFile {
         id: String,
@@ -368,12 +370,7 @@ pub enum Inbound {
             with = "unwrap_or_skip"
         )]
         cwd: Option<String>,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        create_parents: Option<bool>,
+        exists: WriteExists,
         input: PipeRef,
     },
     /// Reads several files at once (`runner.md` § Host operations): the
@@ -1159,6 +1156,20 @@ pub struct DirEntry {
     pub is_symbolic_link: bool,
     pub size: u64,
     pub mtime: Timestamp,
+}
+
+/// What a write does when its path is taken (`runner.md` § Host
+/// operations). A directory at the path is never written over: the write
+/// fails with `EISDIR`, unless it takes another name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WriteExists {
+    /// Replace the file.
+    Replace,
+    /// Fail with `EEXIST`.
+    Refuse,
+    /// Take the first free name of the form `name-2.ext`, `name-3.ext`.
+    Rename,
 }
 
 /// Whether one file of a read of several was read. The read pipe carries

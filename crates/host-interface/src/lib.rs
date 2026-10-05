@@ -41,7 +41,7 @@ pub use host::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
     HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
-    SpawnErrorKind, SpawnRequest, WriteOptions,
+    SpawnErrorKind, SpawnRequest, WhenExists, WriteOptions,
 };
 pub use media::{CommandMedium, MediumKept, StoredMedium};
 pub use output::{

@@ -187,9 +187,7 @@ impl dyn HostShard + '_ {
                 })?;
             let path = format!("{partial}/{}", file.path);
             let contents = FileContents::Bytes(bytes);
-            let options = WriteOptions {
-                create_parents: true,
-            };
+            let options = WriteOptions::default();
             HostFs::write_file(host, &path, contents, options).await?;
             let mode = if file.executable { 0o555 } else { 0o444 };
             HostFs::chmod(host, &path, mode).await?;

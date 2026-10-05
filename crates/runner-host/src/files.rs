@@ -192,7 +192,7 @@ impl FileTransfers {
             id,
             path,
             cwd,
-            create_parents,
+            exists,
             input,
         } = message
         else {
@@ -206,16 +206,7 @@ impl FileTransfers {
         let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             let result = match target {
-                Ok(target) => {
-                    write_from_pipe(
-                        &pipes,
-                        &input.url,
-                        &target,
-                        create_parents == Some(true),
-                        &transfer,
-                    )
-                    .await
-                }
+                Ok(target) => write_from_pipe(&pipes, &input.url, &target, exists, &transfer).await,
                 Err(error) => Err(error),
             };
             let reported = result
@@ -224,9 +215,9 @@ impl FileTransfers {
                 .map_err(|error| io::Error::new(error.kind(), error.to_string()));
             report_pipe(&reply, input.id, reported, &shutdown).await;
             let message = match result {
-                Ok(()) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                Ok(name) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                     id,
-                    result: wire::FsResult::WriteFile,
+                    result: wire::FsResult::WriteFile(name),
                 })),
                 Err(error) => fs_error(id, &error),
             };
@@ -504,27 +495,40 @@ fn chunks(
     tokio_util::io::ReaderStream::with_capacity(file, CHUNK_BYTES)
 }
 
-/// Streams the pipe into a file staged beside `target` and publishes it there
-/// when the pipe ends cleanly; any failure removes the staged file and leaves
-/// `target` as it was.
+/// Streams the pipe into a file staged beside `target`, making the
+/// directories above it that are missing, and publishes it there when the
+/// pipe ends cleanly, as `exists` says when the path is taken; any failure
+/// removes the staged file and leaves `target` as it was. Answers the name
+/// of the file written.
 async fn write_from_pipe(
     pipes: &PipeClient,
     url: &str,
     target: &Path,
-    create_parents: bool,
+    exists: wire::WriteExists,
     cancel: &CancellationToken,
-) -> io::Result<()> {
-    let parent = target.parent().ok_or_else(|| {
-        io::Error::new(
+) -> io::Result<String> {
+    let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+        return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "a file needs a parent directory",
-        )
-    })?;
-    if create_parents {
-        fs::create_dir_all(parent).await?;
+            "a file needs a parent directory and a name",
+        ));
+    };
+    let name = name.to_string_lossy().into_owned();
+    fs::create_dir_all(parent).await?;
+    // What is there now refuses the write before its bytes move; the
+    // publication checks again.
+    match fs::symlink_metadata(target).await {
+        Ok(taken) if taken.is_dir() && exists != wire::WriteExists::Rename => {
+            return Err(is_directory(target));
+        }
+        Ok(_) if exists == wire::WriteExists::Refuse => return Err(file_exists(target)),
+        _ => {}
     }
     let publication = Publication {
-        mode: Mode::Replace,
+        mode: match exists {
+            wire::WriteExists::Replace => Mode::Replace,
+            wire::WriteExists::Refuse | wire::WriteExists::Rename => Mode::CreateNew,
+        },
         permissions: Permissions::Default,
         durable: false,
     };
@@ -537,7 +541,68 @@ async fn write_from_pipe(
     while let Some(chunk) = body.next().await {
         staged.file().write_all(&chunk?).await?;
     }
-    staged.publish().await.map_err(io_error)
+    match exists {
+        wire::WriteExists::Replace => {
+            staged.publish().await.map_err(io_error)?;
+            Ok(name)
+        }
+        wire::WriteExists::Refuse => match staged.publish().await.map_err(io_error) {
+            Ok(()) => Ok(name),
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+                let directory = fs::symlink_metadata(target)
+                    .await
+                    .is_ok_and(|taken| taken.is_dir());
+                Err(if directory {
+                    is_directory(target)
+                } else {
+                    file_exists(target)
+                })
+            }
+            Err(error) => Err(error),
+        },
+        wire::WriteExists::Rename => {
+            let directory = parent.to_owned();
+            let candidates = std::iter::once(name.clone())
+                .chain((2..).map(move |number| numbered(&name, number)))
+                .map(move |name| directory.join(name));
+            let written = staged
+                .publish_first_free(candidates)
+                .await
+                .map_err(io_error)?;
+            Ok(written
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_default())
+        }
+    }
+}
+
+/// `file_name` with `number` before its extension: `notes-2.txt`, and
+/// `.env-2` for a name that is all extension.
+fn numbered(file_name: &str, number: u32) -> String {
+    let name = Path::new(file_name);
+    match (name.file_stem(), name.extension()) {
+        (Some(stem), Some(extension)) => format!(
+            "{}-{number}.{}",
+            stem.to_string_lossy(),
+            extension.to_string_lossy()
+        ),
+        _ => format!("{file_name}-{number}"),
+    }
+}
+
+fn is_directory(target: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::IsADirectory,
+        format!("{} is a directory", target.display()),
+    )
+}
+
+fn file_exists(target: &Path) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::AlreadyExists,
+        format!("{} exists", target.display()),
+    )
 }
 
 fn fs_error(id: String, error: &io::Error) -> Result<wire::Frame, wire::WireError> {
