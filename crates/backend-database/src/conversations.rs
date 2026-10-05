@@ -349,12 +349,23 @@ fn read_cold<T>(
     if version == 0 {
         return Ok(None);
     }
-    if version != schema::CONVERSATION.version() {
-        return Err(StorageError::OtherSchema {
+    match schema::CONVERSATION.current(version) {
+        Some(true) => work(&transaction).map(Some),
+        // A database of an earlier release's schema, not opened since the
+        // upgrade: it is migrated as an open would, then read.
+        Some(false) => {
+            drop(transaction);
+            drop(connection);
+            let mut writer = Connection::open(path)?;
+            sqlite::configure(&mut writer)?;
+            schema::CONVERSATION.apply(&mut writer, path)?;
+            drop(writer);
+            read_cold(path, work)
+        }
+        None => Err(StorageError::OtherSchema {
             path: path.to_owned(),
-        });
+        }),
     }
-    work(&transaction).map(Some)
 }
 
 #[cfg(test)]
