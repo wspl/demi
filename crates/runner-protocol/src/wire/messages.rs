@@ -373,6 +373,30 @@ pub enum Inbound {
         exists: WriteExists,
         input: PipeRef,
     },
+    /// Writes the directory `path` whole (`runner.md` § Host operations):
+    /// `files` lists its files, each by its path inside it, with `/`
+    /// between the parts, and its mode, and `input` carries their contents
+    /// in that order, each after its length as [`FileRead`] describes. The
+    /// runner writes them into a temporary directory beside `path`, gives
+    /// every directory in it `directory_mode`, and renames it into place;
+    /// a directory at `path` already is complete, and is kept.
+    #[serde(rename = "fs_writeDirectory")]
+    FsWriteDirectory {
+        id: String,
+        path: String,
+        #[garde(length(min = 1))]
+        files: Vec<DirectoryFile>,
+        directory_mode: u32,
+        input: PipeRef,
+    },
+    /// Removes each of `paths` with everything in it, a read-only directory
+    /// made writable first; a path that is not there is removed already.
+    #[serde(rename = "fs_removeAll")]
+    FsRemoveAll {
+        id: String,
+        #[garde(length(min = 1))]
+        paths: Vec<String>,
+    },
     /// Reads several files at once (`runner.md` § Host operations): the
     /// answer says of each whether it is read, and `output` carries the
     /// read ones' contents, each after its length, in the request's order.
@@ -608,6 +632,8 @@ impl Inbound {
             | Self::FsWriteFile { id, .. }
             | Self::FsLook { id, .. }
             | Self::FsReadFiles { id, .. }
+            | Self::FsWriteDirectory { id, .. }
+            | Self::FsRemoveAll { id, .. }
             | Self::FsExists { id, .. }
             | Self::FsStat { id, .. }
             | Self::FsLstat { id, .. }
@@ -1156,6 +1182,15 @@ pub struct DirEntry {
     pub is_symbolic_link: bool,
     pub size: u64,
     pub mtime: Timestamp,
+}
+
+/// One file of a directory an `fs_writeDirectory` writes: its path inside
+/// the directory and its mode.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DirectoryFile {
+    pub path: String,
+    pub mode: u32,
 }
 
 /// What a write does when its path is taken (`runner.md` § Host

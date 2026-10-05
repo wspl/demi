@@ -54,6 +54,9 @@ impl HostServer {
             Inbound::FsReadFiles { .. } => {
                 return self.files.read_files(message, &self.default_cwd);
             }
+            Inbound::FsWriteDirectory { .. } => {
+                return self.files.write_directory(message, &self.default_cwd);
+            }
             _ => {}
         }
         if message.fs_request_id().is_none() {
