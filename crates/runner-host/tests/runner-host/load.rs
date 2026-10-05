@@ -3,12 +3,12 @@
 
 use demi_runner_host::host::HostServer;
 use demi_runner_process::pipes::PipeClient;
-use demi_runner_protocol::wire::Inbound;
+use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use std::{collections::BTreeMap, path::PathBuf, process::Command, time::Duration};
 use tokio::sync::mpsc;
 
-fn reply(bytes: Vec<u8>) -> serde_json::Value {
-    rmp_serde::from_slice(&bytes).unwrap()
+fn reply(frame: wire::Frame) -> Outbound {
+    wire::decode(&frame.into_bytes()).unwrap()
 }
 
 /// Filesystem requests past the runner's concurrency wait; none answer EBUSY.
@@ -36,9 +36,9 @@ async fn filesystem_requests_wait_instead_of_failing() {
         }
         let mut failures = BTreeMap::<String, usize>::new();
         for _ in 0..500 {
-            let value = reply(replies.recv().await.unwrap().into_bytes());
-            if value["type"] != "fs_ok" {
-                *failures.entry(value.to_string()).or_default() += 1;
+            let message = reply(replies.recv().await.unwrap());
+            if !matches!(message, Outbound::FsOk(_)) {
+                *failures.entry(format!("{message:?}")).or_default() += 1;
             }
         }
         assert!(failures.is_empty(), "{failures:?}");
@@ -87,9 +87,9 @@ async fn working_tree_requests_wait_instead_of_failing() {
         }
         let mut failures = Vec::new();
         for _ in 0..repositories.len() {
-            let value = reply(replies.recv().await.unwrap().into_bytes());
-            if value["type"] != "git_ok" {
-                failures.push(value.to_string());
+            let message = reply(replies.recv().await.unwrap());
+            if !matches!(message, Outbound::GitOk(_)) {
+                failures.push(format!("{message:?}"));
             }
         }
         assert!(failures.is_empty(), "{failures:?}");

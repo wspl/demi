@@ -164,11 +164,16 @@ pub enum FileKind {
     Other,
 }
 
-/// One entry of a directory.
+/// One entry of a directory, with its own metadata as `lstat` reports it:
+/// a symbolic link's size and modification time are the link's. A listing
+/// carries them so that it is one request to the Host (`runner.md` § Host
+/// operations).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirEntry {
     pub name: String,
     pub kind: FileKind,
+    pub size: u64,
+    pub modified: Timestamp,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

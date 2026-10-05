@@ -75,12 +75,23 @@ async fn call(
             let mut entries = Vec::new();
             while let Some(entry) = directory.next_entry().await? {
                 check_cancelled(cancel)?;
-                let kind = entry.file_type().await?;
+                // The entry's own metadata, as `lstat` reads it, so the
+                // listing answers in one reply (`runner.md` § Host
+                // operations).
+                let metadata = match entry.metadata().await {
+                    Ok(metadata) => metadata,
+                    // Removed since the directory named it: no longer listed.
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                    Err(error) => return Err(error),
+                };
+                let kind = metadata.file_type();
                 entries.push(wire::DirEntry {
                     name: entry.file_name().to_string_lossy().into_owned(),
                     is_file: kind.is_file(),
                     is_directory: kind.is_dir(),
                     is_symbolic_link: kind.is_symlink(),
+                    size: metadata.len(),
+                    mtime: modified(&metadata)?,
                 });
             }
             FsResult::Readdir(entries)
@@ -335,18 +346,23 @@ fn copy_entry<'a>(
     })
 }
 
-fn stat(metadata: std::fs::Metadata) -> io::Result<wire::FileStat> {
-    let mtime = match metadata.modified()?.duration_since(UNIX_EPOCH) {
+/// When the file was last modified, in milliseconds from the Unix epoch.
+fn modified(metadata: &std::fs::Metadata) -> io::Result<Timestamp> {
+    let milliseconds = match metadata.modified()?.duration_since(UNIX_EPOCH) {
         Ok(duration) => i64::try_from(duration.as_millis()).map_err(io::Error::other)?,
         Err(error) => -i64::try_from(error.duration().as_millis()).map_err(io::Error::other)?,
     };
+    Ok(Timestamp(milliseconds))
+}
+
+fn stat(metadata: std::fs::Metadata) -> io::Result<wire::FileStat> {
     let mut result = wire::FileStat {
         is_file: metadata.is_file(),
         is_directory: metadata.is_dir(),
         is_symbolic_link: metadata.is_symlink(),
         mode: 0,
         size: metadata.len(),
-        mtime: Timestamp(mtime),
+        mtime: modified(&metadata)?,
         uid: None,
         gid: None,
         ino: None,
