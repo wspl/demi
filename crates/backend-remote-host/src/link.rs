@@ -23,7 +23,7 @@ use demi_host_interface::{
     RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
 };
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
+    self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
     VolumeName,
 };
 use demi_shared_gates::{GateLease, SerialGate};
@@ -227,6 +227,8 @@ pub(crate) enum Answer {
     Fs(FsResult),
     Git(GitResult),
     Log { lines: Vec<LogLine>, next: u64 },
+    /// Which files of a read of several were read.
+    Read(Vec<FileRead>),
     Done,
 }
 
@@ -657,10 +659,9 @@ impl Link {
                 None => self.answer(&id, Expected::JobRead, Answer::Done),
                 Some(error) => self.refuse(&id, HostError::failed(None, error)),
             },
-            Outbound::JobMediaRead { id, error } => match error {
-                None => self.answer(&id, Expected::JobMediaRead, Answer::Done),
-                Some(error) => self.refuse(&id, HostError::failed(None, error)),
-            },
+            Outbound::JobMediaRead { id, media } => {
+                self.answer(&id, Expected::JobMediaRead, Answer::Read(media));
+            }
             Outbound::JobMedium {
                 job_id,
                 number,

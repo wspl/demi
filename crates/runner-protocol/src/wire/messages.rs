@@ -185,13 +185,14 @@ pub enum Inbound {
         job_id: String,
         output: PipeRef,
     },
-    /// Streams medium `number` the job keeps into `output`; the runner
-    /// answers with `job_media_read` (`runner.md` § Pipes and output).
+    /// Streams the media `numbers` the job keeps into `output`, each after
+    /// its length as [`FileRead`] describes; the runner answers with
+    /// `job_media_read` (`runner.md` § Pipes and output).
     JobMediaRead {
         id: String,
         job_id: String,
-        #[garde(range(min = 1))]
-        number: u32,
+        #[garde(length(min = 1), inner(range(min = 1)))]
+        numbers: Vec<u32>,
         output: PipeRef,
     },
     /// The backend has read what it needs of an ended job: its directory
@@ -374,6 +375,24 @@ pub enum Inbound {
         )]
         create_parents: Option<bool>,
         input: PipeRef,
+    },
+    /// Reads several files at once (`runner.md` § Host operations): the
+    /// answer says of each whether it is read, and `output` carries the
+    /// read ones' contents, each after its length, in the request's order.
+    /// A file over `limit` bytes is not read.
+    #[serde(rename = "fs_readFiles")]
+    FsReadFiles {
+        id: String,
+        #[garde(length(min = 1))]
+        paths: Vec<String>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        cwd: Option<String>,
+        limit: u64,
+        output: PipeRef,
     },
     /// Looks at several paths at once (`runner.md` § Host operations):
     /// each answers whether it exists, its kind, a directory's entries, or a
@@ -591,6 +610,7 @@ impl Inbound {
             Self::FsReadFile { id, .. }
             | Self::FsWriteFile { id, .. }
             | Self::FsLook { id, .. }
+            | Self::FsReadFiles { id, .. }
             | Self::FsExists { id, .. }
             | Self::FsStat { id, .. }
             | Self::FsLstat { id, .. }
@@ -804,16 +824,12 @@ pub enum Outbound {
         #[garde(custom(digest))]
         sha256: String,
     },
-    /// The answer to `job_media_read`: the medium flows through the pipe;
-    /// an error says why it does not.
+    /// The answer to `job_media_read`: the media read flow through the
+    /// pipe; each that is not says why.
     JobMediaRead {
         id: String,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        error: Option<String>,
+        /// Each medium the request named, in its order.
+        media: Vec<FileRead>,
     },
     /// The answer to `job_read`: the kept output flows through the pipe; an
     /// error says why none does.
@@ -1143,6 +1159,31 @@ pub struct DirEntry {
     pub is_symbolic_link: bool,
     pub size: u64,
     pub mtime: Timestamp,
+}
+
+/// Whether one file of a read of several was read. The read pipe carries
+/// each read file as its length, eight bytes in big-endian order, then that
+/// many bytes; a file not read has nothing in the pipe.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum FileRead {
+    Read,
+    /// Why it was not read: `code` names the cause as an fs error does,
+    /// `too_large` for a file over the request's limit.
+    Failed {
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        code: Option<String>,
+        message: String,
+    },
 }
 
 /// One path an `fs_look` names, and the most bytes of a file there to read.

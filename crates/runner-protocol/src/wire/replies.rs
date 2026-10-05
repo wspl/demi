@@ -11,7 +11,7 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::{DirEntry, FileStat, GitChanges, Looked};
+use super::{DirEntry, FileRead, FileStat, GitChanges, Looked};
 
 /// A successful fs call's reply.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +27,7 @@ pub enum FsResult {
     ReadFile,
     WriteFile,
     Look(Vec<Looked>),
+    ReadFiles(Vec<FileRead>),
     Exists(bool),
     Stat(FileStat),
     Lstat(FileStat),
@@ -50,6 +51,7 @@ impl FsResult {
             Self::ReadFile => "readFile",
             Self::WriteFile => "writeFile",
             Self::Look(_) => "look",
+            Self::ReadFiles(_) => "readFiles",
             Self::Exists(_) => "exists",
             Self::Stat(_) => "stat",
             Self::Lstat(_) => "lstat",
@@ -101,6 +103,7 @@ impl Serialize for FsOk {
         reply.serialize_field("op", self.result.op())?;
         match &self.result {
             FsResult::Look(looked) => reply.serialize_field("result", looked)?,
+            FsResult::ReadFiles(read) => reply.serialize_field("result", read)?,
             FsResult::Exists(exists) => reply.serialize_field("result", exists)?,
             FsResult::Stat(stat) | FsResult::Lstat(stat) => {
                 reply.serialize_field("result", stat)?;
@@ -167,6 +170,7 @@ impl ReplyResult for FsResult {
             "readFile" => none(map, Self::ReadFile)?,
             "writeFile" => none(map, Self::WriteFile)?,
             "look" => Self::Look(map.next_value()?),
+            "readFiles" => Self::ReadFiles(map.next_value()?),
             "exists" => Self::Exists(map.next_value()?),
             "stat" => Self::Stat(map.next_value()?),
             "lstat" => Self::Lstat(map.next_value()?),
