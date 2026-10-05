@@ -24,7 +24,7 @@ export const NAV: {
   label: TitleText
 }[] = [
   { path: '/overview', label: 'Overview' },
-  { path: '/signin', label: 'Sign In' },
+  { path: '/signin', label: 'Sign In & Setup' },
   { path: '/surfaces', label: 'Surfaces' },
   { path: '/primitives', label: 'Primitives' },
   { path: '/control-layout', label: 'Control Layout' },

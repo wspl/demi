@@ -8,6 +8,14 @@ import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsRow from './SettingsRow.vue'
+import {
+  PASSWORD_HINT,
+  PASSWORD_MIN_LENGTH,
+  PASSWORD_TOO_SHORT,
+  PASSWORDS_DIFFER,
+  differs,
+  isTooShort,
+} from '../auth/password'
 
 /**
  * Changing the account's password: the current one proves it is you, the new one is
@@ -32,8 +40,6 @@ const emit = defineEmits<{
   close: []
   submit: [current: string, next: string]
 }>()
-
-const MIN_LENGTH = 8
 
 export interface ChangePasswordDialogDraft {
   current: string
@@ -73,12 +79,8 @@ watch(
   },
 )
 
-const tooShort = computed(
-  () => next.value.length > 0 && next.value.length < MIN_LENGTH,
-)
-const mismatch = computed(
-  () => confirm.value.length > 0 && confirm.value !== next.value,
-)
+const tooShort = computed(() => isTooShort(next.value))
+const mismatch = computed(() => differs(next.value, confirm.value))
 const unchanged = computed(
   () => next.value.length > 0 && next.value === current.value,
 )
@@ -87,7 +89,7 @@ const canSubmit = computed(
     props.phase.kind === 'form' &&
     !props.phase.busy &&
     current.value.length > 0 &&
-    next.value.length >= MIN_LENGTH &&
+    next.value.length >= PASSWORD_MIN_LENGTH &&
     confirm.value === next.value &&
     !unchanged.value,
 )
@@ -135,7 +137,7 @@ function submit() {
           </SettingsRow>
           <SettingsRow
             label="New password"
-            :description="`At least ${MIN_LENGTH} characters.`"
+            :description="PASSWORD_HINT"
           >
             <TextInput
               v-model="next"
@@ -158,13 +160,13 @@ function submit() {
         <InlineError v-if="phase.error" :message="phase.error" />
         <InlineError
           v-else-if="tooShort"
-          :message="`A password has at least ${MIN_LENGTH} characters.`"
+          :message="PASSWORD_TOO_SHORT"
         />
         <InlineError
           v-else-if="unchanged"
           message="That is your current password."
         />
-        <InlineError v-else-if="mismatch" message="The two passwords differ." />
+        <InlineError v-else-if="mismatch" :message="PASSWORDS_DIFFER" />
       </template>
 
       <div v-else class="flex items-center gap-2 py-2 text-chrome text-fg">

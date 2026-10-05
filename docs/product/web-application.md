@@ -417,11 +417,27 @@ the page shows "Demi Is Restarting" over the whole app and connects again
 
 ## Authentication
 
-The page holds one session state: checking, signed out, or signed in with an
-account. Startup checks `GET /api/auth/me` before the initial route mounts, and
-the account in its answer is validated before it enters the state. Later route
-changes use the current state, so opening a local conversation does not wait
-for an authentication request. Without a session, the page goes to `/login`.
+The page holds one session state: checking, setup needed, signed out, or
+signed in with an account. Startup checks `GET /api/auth/me` before the
+initial route mounts, and the account in its answer is validated before it
+enters the state. Without a session, startup asks `GET /api/setup` whether
+the instance still needs its master account. Later route changes use the
+current state, so opening a local conversation does not wait for an
+authentication request. Each state has its pages: setup needed only
+`/setup`, signed out only `/login`, and signed in the product, which sends
+`/login` and `/setup` to the chat.
+
+On an instance without accounts, the first visitor creates the master account
+on the setup page: email, password and its confirmation, the password of the
+length every password has ([Account API](web-api.md#account-api)).
+`POST /api/setup` creates it and signs it in, and the page opens the chat.
+Another visitor who set the instance up first makes the request answer 404
+`already_set_up`; the page then says the instance is set up and offers only
+signing in. Until the master account exists, anyone who reaches the instance
+can create it, so an operator creates it right after installing
+([Installation](../delivery/installation.md)). A `GET /api/setup` that fails
+leaves the visitor on the sign-in page, whose own request then reports the
+failure.
 
 The session is the backend's HttpOnly cookie
 ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)),
@@ -429,9 +445,11 @@ which accompanies every same-origin request; JavaScript never receives a
 session token. Passwords stay in the form and its request and are cleared
 after login.
 
-The sign-in form is a `web-ui` component that owns its busy and error states.
-`web` supplies its request handler; the gallery shows the same component in
-fixture phases and never calls the backend. `POST /api/auth/login` sends the
+The sign-in and setup forms are `web-ui` components on one shared page
+layout, and each owns its busy and error states; the setup form also checks
+the password's length and its confirmation as they are typed.
+`web` supplies their request handlers; the gallery shows the same components
+in fixture phases and never calls the backend. `POST /api/auth/login` sends the
 email and password. Backend errors, rate limiting included, appear on the
 form. Unmounting the form aborts its pending request, and a late answer cannot
 change the session state. The login request times out after 60 seconds, as
