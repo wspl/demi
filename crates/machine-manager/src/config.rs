@@ -39,6 +39,14 @@ struct Cli {
     /// Recover inside a saved mount namespace; only the manager starts this.
     #[arg(long, hide = true)]
     recover_namespace: bool,
+    /// Validate the configuration as a start would, then exit.
+    #[arg(long, conflicts_with_all = ["recover", "recover_namespace", "import"])]
+    check_config: bool,
+    /// Import the release's Cloud image into the state directory beside a
+    /// running manager, then exit, as an upgrade does before it stops the
+    /// running one.
+    #[arg(long, conflicts_with_all = ["recover", "recover_namespace"])]
+    import: bool,
     /// The server release root, whose image/ holds the Cloud image [default:
     /// the directory above the one that holds this executable].
     #[arg(long, env = "DEMI_RELEASE", value_name = "DEMI_RELEASE", value_parser = absolute)]
@@ -128,6 +136,10 @@ pub enum Mode {
     Recover,
     /// The same inside a saved mount namespace, as the manager's own child.
     RecoverNamespace,
+    /// Validate the configuration, then exit.
+    CheckConfig,
+    /// Import the configured release's image, then exit.
+    Import,
 }
 
 /// The validated configuration.
@@ -212,6 +224,10 @@ impl Config {
             Mode::Recover
         } else if cli.recover_namespace {
             Mode::RecoverNamespace
+        } else if cli.check_config {
+            Mode::CheckConfig
+        } else if cli.import {
+            Mode::Import
         } else {
             Mode::Serve
         };

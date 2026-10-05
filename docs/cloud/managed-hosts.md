@@ -206,7 +206,7 @@ Before it serves a request, the manager:
 5. Stops and saves every device left behind: it removes staging directories,
    fences each recorded sandbox, and publishes each working pair. Then it
    migrates its records when they are in an earlier release's format: the
-   state directory records its format, and a release that changes a record
+   state directory records its format in `format`, and a release that changes a record
    brings the migration from every earlier format, as the backend's databases
    do ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
    A state directory of a newer format stops the start.
