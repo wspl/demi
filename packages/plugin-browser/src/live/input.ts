@@ -23,18 +23,6 @@ export function modifiers(event: ModifierState): number {
     | (event.metaKey ? META : 0) | (event.shiftKey ? SHIFT : 0)
 }
 
-/** The platform whose shortcuts the viewer's keys carry. */
-export function viewerPlatform(agent: { platform?: string; userAgent: string }): 'mac' | 'windows' | 'linux' | 'other' {
-  const name = `${agent.platform ?? ''} ${agent.userAgent}`
-  if (/mac/i.test(name)) {
-    return 'mac'
-  }
-  if (/win/i.test(name)) {
-    return 'windows'
-  }
-  return /linux|android|cros/i.test(name) ? 'linux' : 'other'
-}
-
 type PointerButton = 'none' | 'left' | 'middle' | 'right'
 const BUTTONS: readonly PointerButton[] = ['left', 'middle', 'right']
 

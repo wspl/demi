@@ -7,12 +7,12 @@
  * the plugin's work on the backend; the session never opens, closes or adds
  * a tab.
  */
+import { clientPlatform } from '@demicodes/utils'
 import { useDocumentVisibility } from '@vueuse/core'
 import { computed, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 import { z } from 'zod'
 import type { BrowserTab, NeededBrowser } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
-import { viewerPlatform } from './input'
 import { picturesSupported } from './pictures'
 import type { HostArtifact, HostInstall, OpenUserStream, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession } from './session'
@@ -263,7 +263,7 @@ export class BrowserTabsController {
     }
     const session = new LiveSession({
       open: this.api.stream,
-      platform: viewerPlatform(navigator),
+      platform: clientPlatform(navigator),
       onClipboard: (text) => viewerClipboard.receive(text),
       onTabs: (tabs) => this.viewTabs(tabs),
       defect: this.defect,

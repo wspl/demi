@@ -1,3 +1,4 @@
+import type { ClientPlatform } from '@demicodes/utils'
 import type { SegmentedOption } from '../ui/Segmented.vue'
 
 export type DeviceSystem = 'linux' | 'macos' | 'windows'
@@ -13,6 +14,17 @@ export const deviceSystems: readonly SegmentedOption<DeviceSystem>[] = [
   { value: 'macos', label: 'macOS' },
   { value: 'windows', label: 'Windows' },
 ]
+
+/**
+ * The system a device added from this browser most likely runs: the
+ * browser's own, since a person usually adds the computer they are using.
+ */
+export function deviceSystemOf(platform: ClientPlatform): DeviceSystem {
+  if (platform === 'mac') {
+    return 'macos'
+  }
+  return platform === 'windows' ? 'windows' : 'linux'
+}
 
 /**
  * The installers of the backend whose public URL is `publicUrl`, the URL its

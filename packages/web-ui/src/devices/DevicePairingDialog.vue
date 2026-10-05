@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { clientPlatform } from '@demicodes/utils'
 import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { PairingPhase } from './pairing'
@@ -13,6 +14,7 @@ import SettingsRow from '../settings/SettingsRow.vue'
 import Segmented from '../ui/Segmented.vue'
 import {
   deviceInstallCommand,
+  deviceSystemOf,
   deviceSystems,
   type DeviceInstallation,
   type DeviceSystem,
@@ -32,7 +34,7 @@ const emit = defineEmits<{
   submit: [code: string]
 }>()
 const code = ref('')
-const system = ref<DeviceSystem>('linux')
+const system = ref<DeviceSystem>(deviceSystemOf(clientPlatform(navigator)))
 const command = computed(() =>
   deviceInstallCommand(props.installation, system.value),
 )
