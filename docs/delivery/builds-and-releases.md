@@ -69,6 +69,7 @@ Each executable is built for the targets where it runs:
 | `demi-file`, `demi-browser`, `demi-claude-code` | All six | A released command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
 | `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`; `aarch64-apple-darwin`, `x86_64-apple-darwin` in development only | Servers run Linux, and a release carries the Linux targets; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
 | `demi-machine-manager` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
+| `demi-server` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | It installs, upgrades and rolls back a server, which runs Linux ([Upgrades](upgrades.md)) |
 
 Linux executables link musl statically, so one file runs on any distribution
 and inside the Cloud guest, whatever C library the host has. Windows
@@ -352,12 +353,17 @@ the [guest image build](../../cloud-guest-image/README.md) gives the steps.
 A server release is one directory per version and Linux target, its root, in
 which the backend and the machine manager find everything they serve, publish
 or run, and the release's files beside it: each program the backend serves
-to runners, one file per program and target. For example, 0.1.3 for x86_64:
+to runners, one file per program and target. A server keeps it under
+`/opt/demi/releases/` ([One release on a server](upgrades.md#one-release-on-a-server)).
+For example, 0.1.3 for x86_64:
 
 ```text
-/opt/demi/0.1.3/
+/opt/demi/releases/0.1.3/
   bin/demi-backend              the target's backend
   bin/demi-machine-manager      the target's machine manager
+  bin/demi-server               the server's installer and upgrader
+  runtime/                      the pinned runsc distribution of the target's architecture
+  systemd/                      the units of the backend and the machine manager
   web/                          the built web app, with its build.json
   runners/                      the runner release's manifests
   commands/demi-file/           one command package release per directory, its descriptor
@@ -394,7 +400,7 @@ Cloud starts them from the image instead of downloading them
 `cargo xtask native build` wrote, packaging them as the packaging above does:
 
 ```sh
-cargo xtask server-release --output /opt/demi/0.1.3 --files /opt/demi/0.1.3-files \
+cargo xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.1.3-files \
   --server x86_64-unknown-linux-musl --web packages/web/dist
 ```
 
@@ -408,9 +414,14 @@ cargo xtask server-release --output /opt/demi/0.1.3 --files /opt/demi/0.1.3-file
   directory.
 - Repeated `--target` options name the targets of the runner and the command
   packages; without them it requires all six, as packaging does.
-- `--server <triple>` puts that Linux target's backend and machine manager in
-  `bin/`. Without it the root has no `bin/`: a developer's backend runs from
-  the Cargo target directory.
+- `--server <triple>` puts that Linux target's backend, machine manager and
+  `demi-server` in `bin/`, the pinned runsc distribution of that
+  architecture in `runtime/`, and the units in `systemd/`. It takes the
+  distribution from where `crates/machine-manager/runtime/release.json` pins
+  it, upstream's for amd64 and the runtime release for arm64
+  ([Linux requirements](../cloud/setup.md#linux-requirements)), and checks it
+  against the pinned sum. Without it the root has none of the three: a
+  developer's backend runs from the Cargo target directory.
 - `--web <directory>` copies the built web app into `web/`. Without it the
   root has no `web/`, and the backend serves no web app, as in development,
   where Vite serves it.
@@ -442,7 +453,7 @@ so that no runner compiles two targets or two groups one after the other:
 | Jobs | Runner | What each builds |
 | --- | --- | --- |
 | Programs, per target | `macos-26` for both Apple targets, `ubuntu-26.04`, `ubuntu-26.04-arm`, `windows-2025`, `windows-11-arm` | The runner, in one job, and the three command programs, in another, for that target |
-| Server, per Linux target | `ubuntu-26.04`, `ubuntu-26.04-arm` | The backend and the machine manager |
+| Server, per Linux target | `ubuntu-26.04`, `ubuntu-26.04-arm` | The backend, the machine manager and `demi-server` |
 | Web | `ubuntu-26.04` | `bun run build`: the published packages, then the web app that imports them |
 
 The jobs after them each start once their inputs exist:
@@ -481,7 +492,7 @@ A release has these assets:
 
 | Asset | Contents |
 | --- | --- |
-| `demi-<version>-server-linux-amd64.tar.zst`, `demi-<version>-server-linux-arm64.tar.zst` | The root of each architecture, without `image/` |
+| `demi-<version>-server-linux-amd64.tar.zst`, `demi-<version>-server-linux-arm64.tar.zst` | The root of each architecture, without `image/`; runsc makes it about 60 MiB larger |
 | `demi-<version>-image-linux-amd64.tar`, `demi-<version>-image-linux-arm64.tar` | `image/` of each architecture |
 | `demi-runner-<target>`, `.exe` on Windows | The release's files: each target's runner executable, six files |
 | `<executable>-<target>.zst` | The release's files: each target's compressed copy of each command program, eighteen files |
@@ -489,6 +500,9 @@ A release has these assets:
 
 Unpacking a server archive and the image archive of the same architecture
 into one directory gives that architecture's root as a server runs it. The
+asset names and the format of `SHA256SUMS` never change: a server's
+`demi-server` of an earlier release finds the next release by them
+([What crosses releases](upgrades.md#what-crosses-releases)). The
 image's root filesystem is already compressed, so its archive only collects
 its two files. Every asset stays below GitHub's limit of 2 GiB per file; an
 image's root filesystem is about 700 MiB, and a server archive holds only the
@@ -532,6 +546,20 @@ a Host lacks ([Installation](../browser/browser.md#installation)). The list is
 kept by hand: adopting a new version checks it on an Ubuntu Host of each
 architecture by installing Chrome on a minimal system, adding what the list
 names, and starting it.
+
+## gVisor runtime
+
+Each Demi release carries the runsc distribution that
+`crates/machine-manager/runtime/release.json` pins, in each server root's
+`runtime/` ([Linux requirements](../cloud/setup.md#linux-requirements)). The
+amd64 distribution is upstream's release, which the manifest pins by its
+SHA-512. The arm64 distribution carries Demi's patch, so it is built from
+the pinned source once per pin, not in every release:
+`.github/workflows/runtime.yml`, started by hand, runs
+`crates/machine-manager/scripts/build-runsc-arm64.sh` and the regression
+probe on `ubuntu-26.04-arm` and publishes the distribution as the GitHub
+release `runtime-<arm64Version>`. The change that adopts a new pin records
+that archive's SHA-256 in the manifest beside the version.
 
 ## Validation
 
@@ -629,7 +657,8 @@ It never calls a model.
 The Cloud runs the Linux target that matches its execution host. Build and
 package that target together with the paired-device target used for acceptance.
 The [Cloud image contract](../cloud/images.md#acceptance-and-local-refresh) owns
-embedding, manager restart, local reset, and checking the identities of the
-running artifacts; rebuilding a native release alone does not refresh a pinned
-Cloud. A change to the machine manager itself is built for its host's Linux
-target and installed with the service ([Cloud setup](../cloud/setup.md)).
+embedding, manager restart, and checking the identities of the running
+artifacts; rebuilding a native release alone does not refresh a Cloud, whose
+runner and embedded programs come from the image the manager is configured
+with. A change to the machine manager itself is built for its host's Linux
+target and reaches the host in a release ([Upgrades](upgrades.md)).
