@@ -30,12 +30,14 @@ cargo xtask native build     compiles each executable for its targets
 cargo xtask native package   one release directory per executable
         |
         v
-cargo xtask server-release   one server release root for a Linux target:
-        |                    the backend, the manager, the web app, the runner
-        |                    release and the command packages
-        +-- runners/, commands/ --> cloud-guest-image build: the root's image/
-        +-- the whole root -------> a Linux server: the backend publishes the
-                                    command packages into its object store
+cargo xtask server-release   one server release for a Linux target: the
+        |                    backend, the manager, the web app and the
+        |                    packages' manifests, and the release's files,
+        |                    each program for each target
+        +-- the release and its files --> cloud-guest-image build: image/
+        +-- the release ----------------> a Linux server, whose backend takes
+                                          each program from the files when a
+                                          Host first needs it
 ```
 
 ## Executables and targets
@@ -74,7 +76,9 @@ executables link the C runtime statically, so they need no separately installed
 runtime.
 
 `xtask` itself is not released. It runs on the developer's machine and on the
-release workflow's runners, each of which builds it for itself. A developer's
+release workflow's runners, where each build job builds it and the later Linux
+jobs reuse what a build job of their architecture built
+([Release workflow](#release-workflow)). A developer's
 Linux builder of the Cloud image runs a Linux musl build of it, which the
 developer's machine cross-compiles beside the native builds, for an arm64
 builder with ([guest image build](../../cloud-guest-image/README.md)):
@@ -268,7 +272,7 @@ Each executable has its own kind of release:
   release directory holds `descriptor.json` and one subdirectory per target
   with the executable and its zstd-compressed copy, which the backend
   publishes as it is
-  ([Publish artifacts before enabling commands](../execution/native-runtime.md#publish-artifacts-before-enabling-commands)).
+  ([Publish packages, then source artifacts on demand](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)).
   Packaging keeps each compressed copy in `.cache/compressed/<sha256>`, named
   by the executable's SHA-256, and reuses it for the same executable, so
   packaging an unchanged program again compresses nothing. The descriptor's id
@@ -279,13 +283,9 @@ Each executable has its own kind of release:
   cannot advertise an operation the program does not serve; its version is
   the workspace version in the release workflow and a development version
   everywhere else ([Rust executables](package-versioning.md#rust-executables)).
-  A package that needs resources gets them from the
-  record its contract crate keeps: `demi-browser`'s release carries the
-  pinned Chrome for Testing archive of each packaged target that has one,
-  as `resources/<sha256>`, and its descriptor names it as the resource
-  `chrome`. Packaging downloads each archive it lacks into
-  `.cache/resources/<sha256>`, checks it against the record, and copies it
-  from there, so packaging again downloads nothing.
+  A release carries only the program: software the program installs, such
+  as `demi-browser`'s Chrome for Testing, is the program's own
+  ([Browser distribution](../browser/browser.md#browser-distribution)).
   [Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)
   defines the descriptor.
 - **Runner.** A runner release is a directory named by the hash of its
@@ -349,39 +349,61 @@ the [guest image build](../../cloud-guest-image/README.md) gives the steps.
 
 A server release is one directory per version and Linux target, its root, in
 which the backend and the machine manager find everything they serve, publish
-or run. For example, a server that runs 0.1.3 on x86_64 holds:
+or run, and the release's files beside it: each program the backend serves
+to runners, one file per program and target. For example, 0.1.3 for x86_64:
 
 ```text
 /opt/demi/0.1.3/
   bin/demi-backend              the target's backend
   bin/demi-machine-manager      the target's machine manager
   web/                          the built web app, with its build.json
-  runners/                      the runner release
-  commands/demi-file/           one command package release per directory
+  runners/                      the runner release's manifests
+  commands/demi-file/           one command package release per directory, its descriptor
   commands/demi-browser/
   commands/demi-claude-code/
+  release.json                  where the release's files are
   image/                        the Cloud image release of the target's architecture
+
+the release's files:
+  demi-runner-x86_64-unknown-linux-musl       a runner executable, per target
+  demi-runner-x86_64-pc-windows-msvc.exe
+  demi-file-x86_64-unknown-linux-musl.zst     a command program's compressed copy,
+  demi-file-x86_64-pc-windows-msvc.exe.zst    per program and target
+  ...
 ```
+
+`release.json` names where the files are: for a published release, the
+GitHub release that offers them; for a developer's, the directory they lie
+in ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
+The backend takes each program from there the first time a Host needs it
+([Publish packages, then source artifacts on demand](../execution/native-runtime.md#publish-packages-then-source-artifacts-on-demand)),
+so a server downloads the Windows programs only when a Windows laptop pairs.
 
 The backend serves `web/`, installs runners from `runners/`, and publishes
 every package under `commands/`; the machine manager imports `image/`
 ([Backend configuration](../backend/backend.md#configuration),
 [Cloud setup](../cloud/setup.md#configuration)). The image is built from the
-same root's `runners/` and `commands/`, so the command artifacts it embeds are
-the ones the backend's catalog selects, and a Cloud starts them from the image
-instead of downloading them
+same release, its Linux target's programs from the release's files, so the
+command artifacts it embeds are the ones the backend's catalog selects, and a
+Cloud starts them from the image instead of downloading them
 ([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
 
-`cargo xtask server-release` assembles a root from the executables
+`cargo xtask server-release` assembles a release from the executables
 `cargo xtask native build` wrote, packaging them as the packaging above does:
 
 ```sh
-cargo xtask server-release --output /opt/demi/0.1.3 \
+cargo xtask server-release --output /opt/demi/0.1.3 --files /opt/demi/0.1.3-files \
   --server x86_64-unknown-linux-musl --web packages/web/dist
 ```
 
-- Repeated `--target` options name the targets of `runners/` and
-  `commands/`; without them it requires all six, as packaging does.
+- `--output` names the root and `--files` the directory of the release's
+  files, both new directories: a release is assembled once and never changed
+  in place.
+- `--downloads <url>` writes that URL into `release.json`, where the files
+  will be published; without it, `release.json` names the `--files`
+  directory.
+- Repeated `--target` options name the targets of the runner and the command
+  packages; without them it requires all six, as packaging does.
 - `--server <triple>` puts that Linux target's backend and machine manager in
   `bin/`. Without it the root has no `bin/`: a developer's backend runs from
   the Cargo target directory.
@@ -391,9 +413,6 @@ cargo xtask server-release --output /opt/demi/0.1.3 \
 - The image build adds `image/` afterwards
   ([guest image build](../../cloud-guest-image/README.md)). A root without it
   serves a backend whose machine manager runs elsewhere.
-
-`--output` names a new directory: a root is assembled once and never changed
-in place.
 
 ## Release workflow
 
@@ -410,46 +429,68 @@ and nothing else does; an ordinary push builds no release:
 - **A manual start.** It builds the workspace version into a draft release,
   and refuses a version that already has a release.
 
-Each job runs on the newest standard runner of its platform, and each build
-job builds only the targets of its own platform
-([Executables and targets](#executables-and-targets)):
+The workflow runs as much at once as its jobs allow: a job waits only for the
+files it uses. Each build job builds only the targets of its own platform
+([Executables and targets](#executables-and-targets)), on the newest
+standard runner of that platform, and builds one target's group of programs,
+so that no runner compiles two targets or two groups one after the other:
 
-| Job | Runner | What it does |
+| Jobs | Runner | What each builds |
 | --- | --- | --- |
-| Build macOS | `macos-26` | `aarch64-apple-darwin` and `x86_64-apple-darwin`: the runner and the command programs |
-| Build Linux x86_64 | `ubuntu-26.04` | `x86_64-unknown-linux-musl`: the runner, the command programs, the backend and the machine manager |
-| Build Linux arm64 | `ubuntu-26.04-arm` | `aarch64-unknown-linux-musl`: the same |
-| Build Windows x86_64 | `windows-2025` | `x86_64-pc-windows-msvc`: the runner and the command programs |
-| Build Windows arm64 | `windows-11-arm` | `aarch64-pc-windows-msvc`: the same |
+| Programs, per target | `macos-26` for both Apple targets, `ubuntu-26.04`, `ubuntu-26.04-arm`, `windows-2025`, `windows-11-arm` | The runner, in one job, and the three command programs, in another, for that target |
+| Server, per Linux target | `ubuntu-26.04`, `ubuntu-26.04-arm` | The backend and the machine manager |
 | Web | `ubuntu-26.04` | `bun run build`: the published packages, then the web app that imports them |
-| Server release | `ubuntu-26.04` | After every build job: a root for each Linux target, each with all six targets in `runners/` and `commands/` |
-| Image amd64, Image arm64 | `ubuntu-26.04`, `ubuntu-26.04-arm` | The Cloud image of the root of the runner's architecture, into its `image/` |
-| Publish | `ubuntu-26.04` | The release assets below, with their SHA-256 sums |
+
+The jobs after them each start once their inputs exist:
+
+```text
+programs (12 jobs) ─┬─▶ server release ──▶ image amd64 ─┬─▶ publish
+server (2 jobs) ────┤        │                          │
+web ────────────────┘        └───────────▶ image arm64 ─┘
+```
+
+- **Server release** (`ubuntu-26.04`): assembles the release of each Linux
+  target, whose `release.json` names this release's GitHub location, and the
+  release's files, which every target's release shares.
+- **Image amd64, image arm64** (`ubuntu-26.04`, `ubuntu-26.04-arm`): builds the
+  Cloud image of its architecture from that release and its files
+  ([guest image build](../../cloud-guest-image/README.md)).
+- **Publish** (`ubuntu-26.04`): uploads the assets below with their SHA-256
+  sums.
+
+No job compiles what another already compiled. A job of command programs
+also packages them for its target, which compresses them; the server release
+job reuses those compressed copies instead of compressing every target's
+programs itself. The Linux runner jobs keep the `xtask` they built for
+running `cargo xtask native build`, and the server release and image jobs of
+the same architecture run that `xtask` instead of compiling their own. The
+`xtask` a CI job builds leaves out the commands that only a developer runs,
+`xtask contracts` and `xtask dev`, and with them the backend they compile.
 
 Each step is a command of the repository that a developer runs too, a
 `cargo xtask` command, `bun run build` or the image build script; only
 `cargo xtask server-release --publish` differs, naming the command packages
-with the workspace version itself. So the
-workflow only orders them and carries files between jobs, as workflow
-artifacts kept for one day: the server release job gathers every build job's
-executables into one Cargo target directory before it assembles the roots.
+with the workspace version itself. So the workflow only orders them and
+carries files between jobs, as workflow artifacts kept for one day.
 
-A release has five assets:
+A release has these assets:
 
 | Asset | Contents |
 | --- | --- |
-| `demi-<version>-server-linux-amd64.tar.zst` | The x86_64 root without `image/` |
-| `demi-<version>-server-linux-arm64.tar.zst` | The arm64 root without `image/` |
-| `demi-<version>-image-linux-amd64.tar` | `image/` of the x86_64 root |
-| `demi-<version>-image-linux-arm64.tar` | `image/` of the arm64 root |
+| `demi-<version>-server-linux-amd64.tar.zst`, `demi-<version>-server-linux-arm64.tar.zst` | The root of each architecture, without `image/` |
+| `demi-<version>-image-linux-amd64.tar`, `demi-<version>-image-linux-arm64.tar` | `image/` of each architecture |
+| `demi-runner-<target>`, `.exe` on Windows | The release's files: each target's runner executable, six files |
+| `<executable>-<target>.zst` | The release's files: each target's compressed copy of each command program, eighteen files |
 | `SHA256SUMS` | The SHA-256 of each asset above |
 
 Unpacking a server archive and the image archive of the same architecture
-into one directory gives that architecture's root. The image's root
-filesystem is already compressed, so its archive only collects its two files.
-Every asset stays below GitHub's limit of 2 GiB per file; an image's root
-filesystem is about 700 MiB. A paired device does not download from the
-release: it installs its runner from its backend's `runners/`.
+into one directory gives that architecture's root as a server runs it. The
+image's root filesystem is already compressed, so its archive only collects
+its two files. Every asset stays below GitHub's limit of 2 GiB per file; an
+image's root filesystem is about 700 MiB, and a server archive holds only the
+backend, the manager, the web app and the manifests. A paired device does
+not download from the release: it installs its runner from its backend,
+which takes it from the release the first time.
 
 The macOS and Windows executables are not signed or notarized, and a release
 never will be. Apple's linker gives each macOS executable the ad-hoc signature
@@ -459,7 +500,8 @@ make the system ask before running them.
 
 ## Chrome for Testing
 
-Each Demi release pins one Chrome for Testing version
+Each Demi release pins one Chrome for Testing version, which `demi-browser`
+installs when the agent runs `demi browser install`
 ([Browser distribution](../browser/browser.md#browser-distribution)).
 `cargo xtask browser-release` pins the version it is given:
 
@@ -471,12 +513,21 @@ It reads that version's official download metadata and, for each platform
 Demi supports, downloads the `chrome` archive from Chrome for Testing's
 download host through the artifact library, measures its size and SHA-256, and
 checks that it holds the executable the record names. It then writes the
-release record, `crates/command-package-browser-protocol/src/release/chrome.json`, from which
-packaging writes the `chrome` resource of `demi-browser`'s releases; commit it
-with the change that adopts the version. Chrome for Testing publishes no
-Windows arm64 build, so the record carries five of the six targets. The
-downloads are not kept: packaging downloads each archive again and checks it
-against the record.
+release record, `crates/command-package-browser-protocol/src/release/chrome.json`,
+which the program compiles in; commit it with the change that adopts the
+version. Chrome for Testing publishes no Windows arm64 build, so the record
+carries five of the six targets. The downloads are not kept: nothing in a
+release carries Chrome.
+
+Beside it, `crates/command-package-browser-protocol/src/release/linux.json` lists
+what Chrome needs on Linux that Demi does not install: each shared library
+Chrome loads that Ubuntu does not ship by default, with the Ubuntu package
+that provides it, and the font packages that let pages show emoji and
+Chinese, Japanese and Korean text. `demi browser install` names from it what
+a Host lacks ([Installation](../browser/browser.md#installation)). The list is
+kept by hand: adopting a new version checks it on an Ubuntu Host of each
+architecture by installing Chrome on a minimal system, adding what the list
+names, and starting it.
 
 ## Validation
 

@@ -314,21 +314,49 @@ Keep an old installation while any environment still uses it, then reclaim it
 through the installer lifecycle. Fixed versions require a maintained update
 process; they are not a promise to keep an old browser indefinitely.
 
-Each Demi release pins one Chrome for Testing version. Its release record
-contains official archive URLs, exact sizes and SHA-256 digests for supported
-platforms. Chrome is a resource of the `demi.browser` command package
-([Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)):
-packaging puts the pinned archive of each target into the package's release.
-When a conversation's browser first starts on a Host, the program asks the
-runner for that archive, named by the record it compiles in, and the runner
-installs it like any artifact and shows its progress to the user
+The browser belongs to `demi browser` alone: nothing else in Demi carries,
+serves or preinstalls it. Each Demi release pins one Chrome for Testing
+version in the `demi.browser` package's record: for each platform it
+supports, the official archive's URL, size and SHA-256, and the file in the
+archive the program starts. The agent installs that version on a Host with
+`demi browser install` ([Installation](#installation)) on Windows, macOS and
+Linux alike, as on a paired device or a Cloud. The program asks the runner to
+install the archive from its official URL, and the runner downloads, verifies
+and unpacks it into its artifact cache like any artifact, and shows the
+user its progress
 ([Install artifacts](../execution/native-runtime.md#install-artifacts)).
+
+Every other command finds the installation without downloading anything: the
+program asks the runner which installations of the line it holds, and starts
+Chrome only from the path of the pinned version. A Host without it fails the
+command at once, telling the agent what to run:
+
+```text
+$ demi browser open https://example.com
+Chrome for Testing 153.0.8010.36 is not installed on this Host: run `demi browser install`
+```
+
 The installation is shared by every conversation and every service of the
-runner. A Cloud image preinstalls the same verified archive at its
-content-addressed path, with its Linux system libraries. The program starts
-Chrome only from the path the runner answers; it never downloads or looks for
-Chrome. An unsupported platform fails
-the installation explicitly rather than using a different browser.
+runner. On Linux, Chrome needs system libraries and fonts that Demi does not
+install, on a Cloud or anywhere else: whoever runs the Host installs them, on
+a Cloud the agent with `sudo apt-get install`. Demi tells them what to
+install. The package's record lists, for the pinned version, the shared
+libraries Chrome loads, the Ubuntu package that provides each, and the font
+packages that let pages show emoji and Chinese, Japanese and Korean text.
+After it installs Chrome, `install` checks which of those libraries the Host
+lacks and which of those fonts it has no font of, and ends its output with
+what to install and the command that installs it
+([Installation](#installation)). A library still missing later makes Chrome
+fail to start, and the command reports Chrome's own message, which names the
+library. The program never downloads Chrome or looks for any other Chrome,
+and an unsupported platform fails the installation explicitly rather than
+using a different browser.
+
+Demi keeps one version: a release that pins a newer Chrome for Testing makes
+the agent install it again, and the runner's cache then removes the older
+one, as it does for every artifact line
+([The cache](../execution/native-runtime.md#the-cache)). There is no command to
+remove the browser.
 
 ### Native driver
 
@@ -1013,6 +1041,7 @@ shows only the declared arguments.
 | Debugging | `cdp targets/send/events/detach` |
 | Content and assets | `content read/fetch`, `assets list/export` |
 | Capability discovery | `capabilities`, `webmcp list/call` |
+| Installation | `install` |
 
 The `$` below is a prompt, not part of command input. Omitted long content is
 illustrative; actual truncation follows the explicit contract. Tab IDs and node
@@ -1021,6 +1050,31 @@ references appear as they are, such as `t1` and `e3`
 timeout, output-file, and JSON rules above. The text below is each command's
 default output; an action names the element its input targeted, or where the
 input went when it named none.
+
+### Installation
+
+`install` installs the pinned Chrome for Testing on the Host, from its
+official URL ([Browser distribution](#browser-distribution)). It shows the
+download and the unpacking while they run, and prints where the browser is.
+Run again, it finds the installation and prints the same. On Linux it then
+names what the Host still lacks, from the package's record, and how to
+install it; it installs none of it:
+
+```text
+$ demi browser install
+Installed Chrome for Testing 153.0.8010.36 at /home/demi/.demi/artifacts/<sha256>/chrome-linux64/chrome
+Chrome needs system libraries this Host lacks: libnss3.so, libgbm.so.1, libasound.so.2
+Recommended fonts are missing: color emoji; Chinese, Japanese and Korean text
+On Ubuntu, install them with:
+  sudo apt-get install -y libnss3 libgbm1 libasound2t64 fonts-noto-color-emoji fonts-noto-cjk
+```
+
+On a Host that has everything, the first line is the whole output. The
+package names are Ubuntu's, the distribution of the Cloud image; on another
+distribution the libraries' names tell the user what to look for.
+
+On a platform the pinned version has no archive for, it fails: `Chrome for
+Testing 153.0.8010.36 is unavailable on aarch64-pc-windows-msvc`.
 
 ### Tabs and navigation
 
@@ -2014,8 +2068,7 @@ for the browser:
   observation, actions and assets (`page`), CDP handling and WebMCP (`cdp`)
   and the live view (`live`), the modules of `command-package-browser-chrome`.
 - `shared-artifacts`: the verified download and installation of the pinned Chrome for
-  Testing release, used by `command-package-browser-chrome` and by Cloud
-  image packaging.
+  Testing release, which the runner performs for `demi browser install`.
 - `command-protocol` and `command-sdk`: the generic invocation and
   conversation protocol and its SDK, not page or cookie semantics.
 - `web-ui`: the [live view](live-view.md#responsibilities), with the
