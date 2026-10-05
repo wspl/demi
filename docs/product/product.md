@@ -211,9 +211,16 @@ user stopped. A compaction's divider does not end a turn either: behind it,
 an unfinished turn keeps its Resume or Continue
 ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)).
 
-While a turn waits for the provider, the transcript's tail row says
-**Requesting**, with how long it has waited. The word says whose the wait is:
-a slow model must never read as something broken in Demi. Recovery shows the
+From the moment the user sends a message until the answer begins, the
+transcript's tail row says **Requesting**, with how long it has waited since
+the send. The message shows at once as it will stay, and delivering it to
+Demi is part of the same wait: there is no separate sending state, since
+which part of the system holds the message is no concern of the person
+waiting, and a row that changed its word when Demi confirmed the message
+would show two names for one wait. The word says what the wait is for, an
+answer: a slow model must never read as something broken in Demi. Only a
+delivery that fails replaces the row, with the message marked as not
+delivered and a Retry, which resends it and shows Requesting again. Recovery shows the
 same row from the moment the control is used; there is no separate resuming
 state. The row says Requesting, and nothing else, for as long as the provider
 is being asked; what the conversation's Hosts install meanwhile shows below
