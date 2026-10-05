@@ -51,6 +51,10 @@ pub enum Inbound {
         code: HelloErrorCode,
         reason: String,
     },
+    /// The user revoked the device: the runner removes itself from it, and
+    /// the backend closes the connection (`runner.md` § Installation,
+    /// pairing and removal).
+    Revoked {},
     Ping {},
     /// Flush writable filesystems before the guest is stopped; `sync_done`
     /// answers.
@@ -899,7 +903,6 @@ pub enum HelloErrorCode {
     UnsupportedProtocol,
     UnknownDevice,
     AlreadyConnected,
-    Revoked,
     Internal,
 }
 
