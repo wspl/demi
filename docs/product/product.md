@@ -227,9 +227,7 @@ delivery that fails replaces the row, with the message marked as not
 delivered and a Retry, which resends it and shows Requesting again. Recovery shows the
 same row from the moment the control is used; there is no separate resuming
 state. The row says Requesting, and nothing else, for as long as the provider
-is being asked; what the conversation's Hosts install meanwhile shows below
-the row, not in it
-([Installation progress](../execution/native-runtime.md#installation-progress)): while the agent retries a failed request on its own (a rate
+is being asked, a CLI installing on the Cloud for it included: while the agent retries a failed request on its own (a rate
 limit or an overload, within the retry policy of
 [Failures and recovery](../agent/failures-and-recovery.md)) the row and
 its clock stay as they are. Each attempt is a request, and a row that changed
