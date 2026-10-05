@@ -16,6 +16,8 @@ const SILENCE_MS = 75_000
 /** The first wait before a socket connects again; each later one doubles, up to the longest. */
 const FIRST_WAIT_MS = 1_000
 const LONGEST_WAIT_MS = 30_000
+/** The shortest wait while the backend restarts; each is up to twice as long. */
+const RESTART_WAIT_MS = 1_000
 
 /** The page's open sockets, each by the check of its silence that the page's return makes. */
 const watched = new Set<() => void>()
@@ -107,6 +109,11 @@ export interface ReconnectWait {
  * connects at once for a reason of its own or lets the socket go.
  */
 export function waitToReconnect(failures: number, connect: () => void): ReconnectWait {
+  return wait(reconnectWait(failures), connect)
+}
+
+/** Calls `connect` once, after `ms` or at the page's return. */
+function wait(ms: number, connect: () => void): ReconnectWait {
   const cancel = () => {
     clearTimeout(timer)
     waiting.delete(now)
@@ -115,9 +122,19 @@ export function waitToReconnect(failures: number, connect: () => void): Reconnec
     cancel()
     connect()
   }
-  const timer = setTimeout(now, reconnectWait(failures))
+  const timer = setTimeout(now, ms)
   waiting.add(now)
   return { cancel }
+}
+
+/**
+ * Calls `connect` once while the backend restarts, which it said as it
+ * closed the socket: after one to two seconds, at a random point, so that the
+ * pages of all users do not return at once; or at the page's return if that
+ * comes first (`web-application.md` § A page of another build).
+ */
+export function waitWhileRestarting(connect: () => void): ReconnectWait {
+  return wait(RESTART_WAIT_MS * (1 + Math.random()), connect)
 }
 
 /**

@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
@@ -17,6 +17,8 @@ import {
 
 /** The close code of a channel whose session ended (`web-api.md` § Page synchronization). */
 const SESSION_ENDED = 4002
+/** The close of a channel whose backend shuts down, and will be back (`web-api.md` § Page synchronization). */
+const BACKEND_CLOSING = 1001
 
 /** A message that carries one part of the product state, as a write's answer can. */
 export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' }>
@@ -133,6 +135,12 @@ export const useProduct = defineStore('product', () => {
     ? 'ready' : modelError.value?.key === catalogKey.value ? 'failed' : 'loading')
   const activeConversationId = ref<string | null>(null)
   /**
+   * The backend closed the channel because it shuts down, and has not
+   * brought a snapshot since: the page shows the restart screen
+   * (`web-application.md` § A page of another build).
+   */
+  const restarting = ref(false)
+  /**
    * The backend serves another build of the web app than this page's, so a
    * reload loads it (`web-application.md` § A page of another build).
    */
@@ -185,16 +193,20 @@ export const useProduct = defineStore('product', () => {
     scheduleRetry()
   }
 
-  /** Connects again after the wait for this many failures, or at the page's return. */
+  /**
+   * Connects again after the wait while the backend restarts, or else after
+   * the wait for this many failures, or at the page's return.
+   */
   function scheduleRetry(): void {
     if (!controller) {
       return
     }
     clearRetry()
-    retry = waitToReconnect(failures, () => {
+    const again = () => {
       retry = null
       connect()
-    })
+    }
+    retry = restarting.value ? waitWhileRestarting(again) : waitToReconnect(failures, again)
   }
 
   function connect(): void {
@@ -239,6 +251,9 @@ export const useProduct = defineStore('product', () => {
         notifySessionEnded()
         return
       }
+      if (close.code === BACKEND_CLOSING) {
+        restarting.value = true
+      }
       if (!snapshot.value) {
         load.value = 'failed'
       }
@@ -260,6 +275,7 @@ export const useProduct = defineStore('product', () => {
     if (event.type === 'snapshot') {
       snapshotAt = received
       failures = 0
+      restarting.value = false
       snapshot.value = event.state
       load.value = 'ready'
       // Model discovery never holds the page; it records its own failure.
@@ -449,6 +465,7 @@ export const useProduct = defineStore('product', () => {
     clearRetry()
     dropChannel()?.close()
     failures = 0
+    restarting.value = false
     received = 0
     snapshotAt = 0
     partAt.clear()
@@ -464,6 +481,7 @@ export const useProduct = defineStore('product', () => {
   return {
     snapshot,
     load,
+    restarting,
     outdated,
     catalog,
     vendors,
