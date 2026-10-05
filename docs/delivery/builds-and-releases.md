@@ -418,7 +418,7 @@ cargo xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.
   `demi-server` in `bin/`, the pinned runsc distribution of that
   architecture in `runtime/`, and the units in `systemd/`. It takes the
   distribution from where `crates/machine-manager/runtime/release.json` pins
-  it, upstream's for amd64 and the runtime release for arm64
+  it, upstream's for amd64 and the `runsc-<arm64Version>` release for arm64
   ([Linux requirements](../cloud/setup.md#linux-requirements)), and checks it
   against the pinned sum. Without it the root has none of the three: a
   developer's backend runs from the Cargo target directory.
@@ -555,11 +555,14 @@ Each Demi release carries the runsc distribution that
 amd64 distribution is upstream's release, which the manifest pins by its
 SHA-512. The arm64 distribution carries Demi's patch, so it is built from
 the pinned source once per pin, not in every release:
-`.github/workflows/runtime.yml`, started by hand, runs
+`.github/workflows/runtime.yml`, which pushing the tag `runsc-<arm64Version>`
+starts, runs
 `crates/machine-manager/scripts/build-runsc-arm64.sh` and the regression
 probe on `ubuntu-26.04-arm` and publishes the distribution as the GitHub
-release `runtime-<arm64Version>`. The change that adopts a new pin records
-that archive's SHA-256 in the manifest beside the version.
+release of that tag. The change that adopts a new pin records that
+archive's SHA-512 in the manifest beside the version.
+`crates/machine-manager/scripts/fetch-runsc.sh` fetches either
+architecture's pinned distribution, checks it and unpacks it.
 
 ## Validation
 

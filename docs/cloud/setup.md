@@ -37,7 +37,7 @@ release, checked against the SHA-512 that the runtime release manifest,
 `crates/machine-manager/runtime/release.json`, pins. On arm64 it is built
 from the same pinned source with the shipped seccomp ABI fix and the
 native/systrap regression probe, once per pin, and published as a release of
-its own whose SHA-256 the manifest pins too; build dependencies and inputs
+its own whose SHA-512 the manifest pins too ([gVisor runtime](../delivery/builds-and-releases.md#gvisor-runtime)); build dependencies and inputs
 are in `crates/machine-manager/runtime/README.md`. Startup requires the
 executable to report exactly the pinned version.
 
@@ -46,8 +46,7 @@ The manager is a Linux executable, released for amd64 and arm64
 runs `mke2fs`, `e2fsck`, and `resize2fs` from e2fsprogs, `bsdtar` from
 libarchive-tools, and `nft` from nftables;
 [Linux control](managed-hosts.md#linux-control) explains why the manager runs
-each one as a program. The install scripts also need `jq` to read the pinned
-runtime release.
+each one as a program.
 Docker and containerd are not required. The manager runs as a privileged system
 service in a private mount namespace. Only its dedicated backend/forwarding
 group may connect to the manager socket; group membership grants control of
