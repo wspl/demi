@@ -160,20 +160,19 @@ distribution's own package manager:
 | Distribution | Package manager | bsdtar's package |
 | --- | --- | --- |
 | Ubuntu 22.04 and later, Debian 12 and later | apt | `libarchive-tools` |
-| Fedora, RHEL 9 and later, Rocky Linux, AlmaLinux | dnf | `bsdtar` |
-| openSUSE Leap and Tumbleweed | zypper | `bsdtar` |
 | Arch Linux | pacman | `libarchive` |
 
 e2fsprogs and nftables have those names everywhere. On another distribution
 `setup` names the three tools and stops; an operator who installed
-them runs it again with `--no-packages`. Each of these needs Linux 5.14 or
-later, systemd and cgroup v2, which their current releases have; the Cloud
-check of step 4 is what decides.
+them runs it again with `--no-packages`, and the Cloud check of step 4
+decides whether the machine can run Demi. The RHEL family, Fedora among it,
+and openSUSE are not offered: their security modules' effect on gVisor is
+unknown. Each distribution offered needs Linux 5.14 or later, systemd and
+cgroup v2, which their current releases have.
 
 ## Acceptance
 
-`install.sh` and `setup` run end to end on a fresh machine of each package
-manager, behind a reverse proxy the test sets up, and the server serves the
+`install.sh` and `setup` run end to end on a fresh Ubuntu machine, behind a reverse proxy the test sets up, and the server serves the
 setup page at its domain with a valid certificate; on Ubuntu also with `s3`.
 A second `setup` of a finished server is refused, one that stopped before
 the proxy was ready continues, and the server then moves with `demi-server
