@@ -329,17 +329,23 @@ pub(super) async fn changed_file(
     QueryParams(TreeFileQuery { path }): QueryParams<TreeFileQuery>,
 ) -> Result<Json<ChangeSides>, ApiError> {
     let sides = on_host(&state, &user.id, &id, None, async move |host| {
-        let original = match host.host.git_show(&host.root, path.as_str()).await {
+        // The two sides do not wait for each other (`runner.md` § Host
+        // operations).
+        let working = format!("{}/{}", host.root, path.as_str());
+        let (committed, working) = tokio::join!(
+            host.host.git_show(&host.root, path.as_str()),
+            read_text_file(&host.host, &working),
+        );
+        let original = match committed {
             Ok(bytes) => text_of(bytes)?,
             Err(error) if error.code() == Some("ENOENT") => String::new(),
             Err(error) => return Err(ApiError::working_tree(error)),
         };
-        let modified =
-            match read_text_file(&host.host, &format!("{}/{}", host.root, path.as_str())).await {
-                Ok(text) => text,
-                Err(TextError::Host(error)) if error.code() == Some("ENOENT") => String::new(),
-                Err(error) => return Err(error.into()),
-            };
+        let modified = match working {
+            Ok(text) => text,
+            Err(TextError::Host(error)) if error.code() == Some("ENOENT") => String::new(),
+            Err(error) => return Err(error.into()),
+        };
         Ok(ChangeSides { original, modified })
     })
     .await?;

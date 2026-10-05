@@ -391,7 +391,7 @@ fn modified(metadata: &std::fs::Metadata) -> io::Result<Timestamp> {
     Ok(Timestamp(milliseconds))
 }
 
-fn stat(metadata: std::fs::Metadata) -> io::Result<wire::FileStat> {
+pub(crate) fn stat(metadata: std::fs::Metadata) -> io::Result<wire::FileStat> {
     let mut result = wire::FileStat {
         is_file: metadata.is_file(),
         is_directory: metadata.is_dir(),

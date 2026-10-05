@@ -250,8 +250,10 @@ impl ArtifactResolver for Local {
     }
 }
 
+/// A runner message as JSON: decoded as the backend decodes it, so a
+/// MessagePack timestamp, such as a read's file time, reads as its number.
 fn reply(bytes: Vec<u8>) -> serde_json::Value {
-    rmp_serde::from_slice(&bytes).unwrap()
+    serde_json::to_value(wire::decode::<wire::Outbound>(&bytes).unwrap()).unwrap()
 }
 
 /// The next reply whose `key` is `value`; replies for other requests, such as
