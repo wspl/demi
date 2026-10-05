@@ -1,39 +1,86 @@
 //! The schemas of the control database and of each conversation's database
-//! (`storage.md`): one SQL text each, applied to a new database in a
-//! transaction, whose digest is the version a database records. Times are
-//! integer milliseconds since the Unix epoch; a closed set is text a CHECK
-//! limits; JSON columns are text their reader decodes and validates; sealed
-//! values are BLOBs.
+//! (`storage.md` § Schemas and migrations): one SQL text each, applied to a
+//! new database in a transaction, whose digest is the version a database
+//! records, and the history of the schemas formal releases shipped before
+//! it, each with the migration to the next. Times are integer milliseconds
+//! since the Unix epoch; a closed set is text a CHECK limits; JSON columns are
+//! text their reader decodes and validates; sealed values are BLOBs.
 
 use std::path::Path;
 
-use rusqlite::{Connection, TransactionBehavior};
+use rusqlite::{Connection, Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
 use super::StorageError;
 
-/// A database's schema: its SQL, whose digest names it.
-pub(crate) struct Schema(&'static str);
+/// A database's schema: its SQL, whose digest names it, and the schemas
+/// that formal releases shipped before it, oldest first.
+pub(crate) struct Schema {
+    sql: &'static str,
+    history: &'static [Shipped],
+}
 
-pub(crate) const CONTROL: Schema = Schema(CONTROL_V1);
+/// A schema a formal release shipped, and the migration from it to the
+/// schema after it in the history, or to the current one after the last.
+pub(crate) struct Shipped {
+    sql: &'static str,
+    migration: Migration,
+}
 
-pub(crate) const CONVERSATION: Schema = Schema(CONVERSATION_V1);
+/// What turns a database of one schema into one of the next.
+#[cfg_attr(
+    not(test),
+    expect(dead_code, reason = "the histories are empty until the first formal release")
+)]
+pub(crate) enum Migration {
+    Sql(&'static str),
+    /// A change SQL cannot express, such as re-encoding a stored value.
+    Code(fn(&Transaction<'_>) -> rusqlite::Result<()>),
+}
+
+/// The control database's; its history starts with the first formal
+/// release.
+pub(crate) const CONTROL: Schema = Schema {
+    sql: CONTROL_V1,
+    history: &[],
+};
+
+/// Each conversation's database's; its history starts with the first formal
+/// release.
+pub(crate) const CONVERSATION: Schema = Schema {
+    sql: CONVERSATION_V1,
+    history: &[],
+};
+
+/// The version a database of the schema `sql` records in `user_version`:
+/// the first 31 bits of its SHA-256, never 0, which SQLite gives a database
+/// that records none. Any edit of the SQL is another version.
+fn version_of(sql: &str) -> i32 {
+    let digest = Sha256::digest(sql.as_bytes());
+    let bits = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) >> 1;
+    let version = i32::try_from(bits).expect("31 bits fit");
+    version.max(1)
+}
 
 impl Schema {
-    /// The version a database of this schema records in `user_version`:
-    /// the first 31 bits of its SQL's SHA-256, never 0, which SQLite gives a
-    /// database that records none. Any edit of the SQL is another version.
     pub(crate) fn version(&self) -> i32 {
-        let digest = Sha256::digest(self.0.as_bytes());
-        let bits = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) >> 1;
-        let version = i32::try_from(bits).expect("31 bits fit");
-        version.max(1)
+        version_of(self.sql)
     }
 
-    /// Gives a new database at `path` this schema, and accepts one that
-    /// records its version. A database that records another version, or
-    /// holds tables and records none, was made by another build of Demi: it
-    /// is refused, never changed (`storage.md` § Schemas).
+    /// The migrations that bring a database of `recorded`'s schema to this
+    /// one, in order; none for a version the history does not hold.
+    fn migrations(&self, recorded: i32) -> Option<&'static [Shipped]> {
+        let from = self
+            .history
+            .iter()
+            .position(|shipped| version_of(shipped.sql) == recorded)?;
+        Some(&self.history[from..])
+    }
+
+    /// Gives a new database at `path` this schema, migrates one of a schema
+    /// in the history, and accepts one that records this schema's version,
+    /// each in one transaction. Any other database was made by a newer
+    /// release or another build of Demi: it is refused, never changed.
     pub(crate) fn apply(
         &self,
         connection: &mut Connection,
@@ -50,15 +97,38 @@ impl Schema {
             [],
             |row| row.get(0),
         )?;
-        if recorded != 0 || tables > 0 {
-            return Err(StorageError::OtherSchema {
-                path: path.to_owned(),
-            });
+        if recorded == 0 && tables == 0 {
+            transaction.execute_batch(self.sql)?;
+        } else {
+            let migrations = self
+                .migrations(recorded)
+                .ok_or_else(|| StorageError::OtherSchema {
+                    path: path.to_owned(),
+                })?;
+            for shipped in migrations {
+                let migrated = match shipped.migration {
+                    Migration::Sql(sql) => transaction.execute_batch(sql),
+                    Migration::Code(migrate) => migrate(&transaction),
+                };
+                migrated.map_err(|source| StorageError::Migration {
+                    path: path.to_owned(),
+                    from: version_of(shipped.sql),
+                    source,
+                })?;
+            }
         }
-        transaction.execute_batch(self.0)?;
         transaction.pragma_update(None, "user_version", self.version())?;
         transaction.commit()?;
         Ok(())
+    }
+
+    /// Whether a database that records `recorded` opens as it is, or must be
+    /// migrated by `apply` first; `None` for one this build cannot open.
+    pub(crate) fn current(&self, recorded: i32) -> Option<bool> {
+        if recorded == self.version() {
+            return Some(true);
+        }
+        self.migrations(recorded).map(|_| false)
     }
 }
 
@@ -480,3 +550,155 @@ CREATE TABLE command_outputs (
 ) STRICT;
 CREATE INDEX command_outputs_expiry ON command_outputs (ended_at) WHERE blob IS NOT NULL;
 ";
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The tables, columns, indexes and foreign keys of a database, as
+    /// SQLite reports them, whatever SQL made them.
+    fn shape(connection: &Connection) -> Vec<String> {
+        let mut shape = Vec::new();
+        let mut tables = connection
+            .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name")
+            .unwrap();
+        let names: Vec<String> = tables
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        for table in names {
+            for pragma in ["table_xinfo", "index_list", "foreign_key_list"] {
+                let mut rows = connection
+                    .prepare(&format!("SELECT * FROM pragma_{pragma}(?1)"))
+                    .unwrap();
+                let width = rows.column_count();
+                let mut found: Vec<String> = rows
+                    .query_map([&table], |row| {
+                        let values: Vec<String> = (0..width)
+                            .map(|column| format!("{:?}", row.get_ref(column).unwrap()))
+                            .collect();
+                        Ok(format!("{table} {pragma} {}", values.join(" ")))
+                    })
+                    .unwrap()
+                    .map(Result::unwrap)
+                    .collect();
+                found.sort();
+                shape.extend(found);
+            }
+        }
+        let mut indexes = connection
+            .prepare("SELECT name, tbl_name FROM sqlite_schema WHERE type = 'index' AND sql IS NOT NULL ORDER BY name")
+            .unwrap();
+        let indexes: Vec<(String, String)> = indexes
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        for (index, table) in indexes {
+            let mut columns = connection
+                .prepare("SELECT seqno, name FROM pragma_index_info(?1) ORDER BY seqno")
+                .unwrap();
+            let columns: Vec<String> = columns
+                .query_map([&index], |row| row.get(1))
+                .unwrap()
+                .map(Result::unwrap)
+                .collect();
+            shape.push(format!("{table} index {index} {}", columns.join(",")));
+        }
+        shape
+    }
+
+    /// A database file that holds nothing yet.
+    fn empty() -> (tempfile::TempDir, std::path::PathBuf, Connection) {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("database.sqlite");
+        let connection = Connection::open(&path).unwrap();
+        (directory, path, connection)
+    }
+
+    /// A database as a release of the schema `sql` made it.
+    fn database(sql: &str) -> (tempfile::TempDir, std::path::PathBuf, Connection) {
+        let (directory, path, connection) = empty();
+        connection.execute_batch(sql).unwrap();
+        connection
+            .pragma_update(None, "user_version", version_of(sql))
+            .unwrap();
+        (directory, path, connection)
+    }
+
+    const SHIPPED: &str = "CREATE TABLE notes (id TEXT PRIMARY KEY) STRICT;";
+    const CURRENT: &str =
+        "CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT NOT NULL DEFAULT '') STRICT;";
+
+    /// A database of a shipped schema becomes one of the current schema
+    /// with its rows; one whose migration fails stays as it was; one of a
+    /// schema the history does not hold is refused.
+    #[test]
+    fn a_shipped_schema_migrates_a_failed_migration_changes_nothing_and_another_is_refused() {
+        let schema = Schema {
+            sql: CURRENT,
+            history: &[Shipped {
+                sql: SHIPPED,
+                migration: Migration::Sql("ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT '';"),
+            }],
+        };
+        let (_directory, path, mut connection) = database(SHIPPED);
+        connection.execute("INSERT INTO notes (id) VALUES ('a')", []).unwrap();
+        assert_eq!(schema.current(version_of(SHIPPED)), Some(false));
+        schema.apply(&mut connection, &path).unwrap();
+        let version: i32 = connection
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, version_of(CURRENT));
+        let title: String = connection
+            .query_row("SELECT title FROM notes WHERE id = 'a'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(title, "");
+        let (_fresh_directory, fresh_path, mut fresh) = empty();
+        schema.apply(&mut fresh, &fresh_path).unwrap();
+        assert_eq!(shape(&connection), shape(&fresh));
+
+        let failing = Schema {
+            sql: CURRENT,
+            history: &[Shipped {
+                sql: SHIPPED,
+                migration: Migration::Code(|transaction| {
+                    transaction.execute_batch("ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT '';")?;
+                    transaction.execute_batch("INSERT INTO missing VALUES (1);")
+                }),
+            }],
+        };
+        let (_failing_directory, failing_path, mut failed) = database(SHIPPED);
+        let refused = failing.apply(&mut failed, &failing_path);
+        assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
+        let version: i32 = failed
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, version_of(SHIPPED));
+        let columns: i64 = failed
+            .query_row("SELECT count(*) FROM pragma_table_info('notes')", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(columns, 1);
+
+        let (_other_directory, other_path, mut other) = database("CREATE TABLE other (id TEXT) STRICT;");
+        let refused = schema.apply(&mut other, &other_path);
+        assert!(matches!(refused, Err(StorageError::OtherSchema { .. })), "{refused:?}");
+        assert_eq!(schema.current(version_of("CREATE TABLE other (id TEXT) STRICT;")), None);
+    }
+
+    /// Every schema a formal release shipped migrates to the current one:
+    /// the same tables, columns, indexes and foreign keys as a new database.
+    #[test]
+    fn each_shipped_schema_migrates_to_the_current_one() {
+        for schema in [CONTROL, CONVERSATION] {
+            let (_fresh_directory, fresh_path, mut fresh) = empty();
+            schema.apply(&mut fresh, &fresh_path).unwrap();
+            for shipped in schema.history {
+                let (_directory, path, mut migrated) = database(shipped.sql);
+                schema.apply(&mut migrated, &path).unwrap();
+                assert_eq!(shape(&migrated), shape(&fresh));
+            }
+        }
+    }
+}
