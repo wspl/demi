@@ -3,7 +3,6 @@
 //! registry that keeps each one resident while something holds a lease on it.
 
 pub mod cache;
-mod installs;
 mod invocations;
 mod process;
 mod registry;
@@ -16,9 +15,6 @@ use demi_command_protocol::{ArtifactLocation, PackageArtifact, ServiceSequence};
 use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
-#[cfg(feature = "testing")]
-pub use installs::Installs;
-pub use installs::InstallsReceiver;
 pub use invocations::Invoking;
 #[cfg(feature = "testing")]
 pub use registry::Decision;

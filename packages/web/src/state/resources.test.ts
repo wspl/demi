@@ -44,7 +44,6 @@ test("a device project's row follows its device online and offline; a Cloud proj
     lastSeenAt: null,
     online: true,
     home: null,
-    installs: [],
     installed: [],
   }
   const cloud = { ...device, id: 'cloud', name: 'Cloud', kind: 'managed' as const }

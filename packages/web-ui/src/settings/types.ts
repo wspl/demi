@@ -1,7 +1,6 @@
 /** Presentation models for the settings surfaces. Hosts map their own state onto these. */
 import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
 import type { Component } from 'vue'
-import type { HostInstall } from '../devices/installs'
 import type { ModelSettings } from '../agent/model-selection'
 import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
@@ -47,8 +46,6 @@ export interface SettingsDevice {
   online: boolean
   /** When the host last connected; shown while it is offline. */
   seen?: string
-  /** What its runner installs now. */
-  installs: readonly HostInstall[]
 }
 
 /** A plugin as the Plugins page lists it. */
@@ -149,8 +146,6 @@ export interface SettingsProviderCli {
   install: { state: 'installing' } | { state: 'installed' } | { state: 'failed'; message: string } | null
   /** The machines that could be asked now, and what each has; null when one did not answer. */
   machines: Array<{ id: string; name: string; versions: string[] | null }>
-  /** What the user's Cloud installs of the CLI now, an update included. */
-  installs: readonly HostInstall[]
 }
 
 /**

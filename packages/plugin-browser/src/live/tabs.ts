@@ -14,7 +14,7 @@ import { z } from 'zod'
 import type { BrowserTab, NeededBrowser } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from './pictures'
-import type { HostArtifact, HostInstall, OpenUserStream, SentenceText } from '@demicodes/plugin-sdk'
+import type { HostArtifact, OpenUserStream, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession } from './session'
 
 /** What a new tab shows before the user goes anywhere. */
@@ -72,8 +72,6 @@ export interface BrowserTabsApi {
   navigate(tab: string, url: string): Promise<void>
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void>
   stream: OpenUserStream
-  /** What the Host installs before the browser can start, read reactively. */
-  installs(): readonly HostInstall[]
   /** What the Host holds of the browser's package, read reactively. */
   installed(): readonly HostArtifact[]
 }

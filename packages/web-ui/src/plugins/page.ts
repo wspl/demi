@@ -15,7 +15,7 @@ import {
 } from 'vue'
 import { z } from 'zod'
 import type { PanelTabKind } from '../agent/panel-kinds/kind'
-import type { HostArtifact, HostInstall } from '../devices/installs'
+import type { HostArtifact } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { FileBrowserSource } from '../files/types'
 import { reportError } from '../infra/errors'
@@ -108,8 +108,6 @@ export interface PageHost {
   ): Promise<unknown>
   /** The user stream `name` of `conversation`'s primary Host. */
   stream(name: string, conversation: string): OpenUserStream
-  /** The installs of `plugin`'s packages on `conversation`'s primary Host, read reactively. */
-  installs(plugin: string, conversation: string): readonly HostInstall[]
   /** What `conversation`'s primary Host holds of `plugin`'s packages, read reactively. */
   installed(plugin: string, conversation: string): readonly HostArtifact[]
   files(conversation: string): ConversationFileService
@@ -143,8 +141,6 @@ export interface ConversationPlugin {
   /** Calls a method of the conversation scope. */
   call<T>(method: string, params: object, result: z.ZodType<T>, options?: PluginCallOptions): Promise<T>
   stream(name: string): OpenUserStream
-  /** The installs of the plugin's packages on the conversation's primary Host, which a first call may wait for. */
-  readonly installs: ComputedRef<readonly HostInstall[]>
   /** What the conversation's primary Host holds of the plugin's packages, kept while it is offline. */
   readonly installed: ComputedRef<readonly HostArtifact[]>
 }
@@ -386,7 +382,6 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
     call: (method, params, result, options) =>
       validatedCall(host, plugin, method, params, result, conversation, options),
     stream: (name) => host.stream(name, conversation),
-    installs: computed(() => host.installs(plugin, conversation)),
     installed: computed(() => host.installed(plugin, conversation)),
   }
 }

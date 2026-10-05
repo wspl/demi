@@ -37,7 +37,6 @@ function productDevice(device: DeviceDto): Device {
     home: device.home,
     seen: device.lastSeenAt ?? undefined,
     platform: FILE_BROWSER_PLATFORMS[device.platform],
-    installs: device.installs,
   }
 }
 

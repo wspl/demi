@@ -1,15 +1,13 @@
 //! The verified artifact cache (`native-runtime.md` § Install artifacts,
 //! § The cache): a miss downloads and verifies, a hit asks nobody, nothing
-//! partial or mismatched is ever published, a download is an install the
-//! runner reports until it ends (§ Installation progress), and a newer
-//! version of a line replaces the older ones no running service holds.
+//! partial or mismatched is ever published, and a newer version of a line
+//! replaces the older ones no running service holds.
 
 use demi_command_protocol::{ArtifactForm, PackageArtifact};
 use demi_runner_command_packages::{
-    ArtifactResolver, ArtifactSource, Installs, RuntimeError,
+    ArtifactResolver, ArtifactSource, RuntimeError,
     cache::{ArtifactCache, Wanted},
 };
-use demi_runner_protocol::wire::{Install, InstallPhase};
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
 use std::{
@@ -63,8 +61,8 @@ fn file<'a>(name: &'a str, version: &'a str, bytes: &[u8]) -> Wanted<'a> {
     }
 }
 
-async fn cache(root: &Path, installs: Installs) -> ArtifactCache {
-    ArtifactCache::new(root.join("cache"), None, installs)
+async fn cache(root: &Path) -> ArtifactCache {
+    ArtifactCache::new(root.join("cache"), None)
         .await
         .unwrap()
 }
@@ -79,7 +77,7 @@ async fn a_cached_file_is_reused_without_asking_and_one_of_another_size_fails() 
     let bytes = b"native executable fixture";
     tokio::fs::write(&source, bytes).await.unwrap();
     let resolver = Resolver::at(source);
-    let cache = cache(root.path(), Installs::default()).await;
+    let cache = cache(root.path()).await;
     let cancel = CancellationToken::new();
     let wanted = file("program", "1.0.0", bytes);
     let path = cache.install(&wanted, &resolver, &cancel).await.unwrap();
@@ -116,7 +114,7 @@ async fn a_mismatched_or_cancelled_install_leaves_nothing_behind() {
     let source = root.path().join("source");
     tokio::fs::write(&source, b"too much data").await.unwrap();
     let resolver = Resolver::at(source);
-    let cache = cache(root.path(), Installs::default()).await;
+    let cache = cache(root.path()).await;
     let mismatched = cache
         .install(
             &file("program", "1.0.0", b"small"),
@@ -150,10 +148,9 @@ async fn a_mismatched_or_cancelled_install_leaves_nothing_behind() {
 }
 
 /// An archive is unpacked into the cache, which a second install takes
-/// unread, and its download is an install the runner reports, with its name
-/// and version, until it ends.
+/// unread.
 #[tokio::test]
-async fn an_archive_is_unpacked_once_and_reported_while_it_downloads() {
+async fn an_archive_is_unpacked_once() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("chrome.zip");
     let bytes = demi_shared_artifacts::testing::zip(&[
@@ -161,14 +158,8 @@ async fn an_archive_is_unpacked_once_and_reported_while_it_downloads() {
         ("chrome-linux64/LICENSE", b"license"),
     ]);
     tokio::fs::write(&source, &bytes).await.unwrap();
-    let (release, released) = tokio::sync::oneshot::channel::<()>();
-    let resolver = Gated {
-        resolver: Resolver::at(source),
-        gate: tokio::sync::Mutex::new(Some(released)),
-    };
-    let installs = Installs::default();
-    let mut reported = installs.subscribe();
-    let cache = cache(root.path(), installs).await;
+    let resolver = Resolver::at(source);
+    let cache = cache(root.path()).await;
     let form = ArtifactForm::Archive {
         entry: "chrome-linux64/chrome".to_owned(),
     };
@@ -180,27 +171,7 @@ async fn an_archive_is_unpacked_once_and_reported_while_it_downloads() {
         form: &form,
     };
     let cancel = CancellationToken::new();
-    let installing = cache.install(&wanted, &resolver, &cancel);
-    let watching = async {
-        // The download waits for its location: it is an install already.
-        while reported.current().is_empty() {
-            assert!(reported.changed().await);
-        }
-        assert_eq!(
-            reported.current(),
-            [Install {
-                package: "demi.browser".to_owned(),
-                name: "Chrome for Testing".to_owned(),
-                version: "153.0.8010.36".to_owned(),
-                phase: InstallPhase::Download,
-                done: 0,
-                total: wanted.artifact.size,
-            }]
-        );
-        release.send(()).unwrap();
-    };
-    let (entry, ()) = tokio::join!(installing, watching);
-    let entry = entry.unwrap();
+    let entry = cache.install(&wanted, &resolver, &cancel).await.unwrap();
     assert_eq!(
         entry,
         root.path()
@@ -209,12 +180,11 @@ async fn an_archive_is_unpacked_once_and_reported_while_it_downloads() {
             .join("chrome-linux64/chrome")
     );
     assert_eq!(tokio::fs::read(&entry).await.unwrap(), b"chrome");
-    assert_eq!(reported.current(), []);
     assert_eq!(
         cache.install(&wanted, &resolver, &cancel).await.unwrap(),
         entry
     );
-    assert_eq!(resolver.resolver.calls.load(Ordering::SeqCst), 1);
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
 }
 
 /// Installing a newer version of a line removes the older one, unless a
@@ -223,7 +193,7 @@ async fn an_archive_is_unpacked_once_and_reported_while_it_downloads() {
 #[tokio::test]
 async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
     let root = tempfile::tempdir().unwrap();
-    let cache = cache(root.path(), Installs::default()).await;
+    let cache = cache(root.path()).await;
     let cancel = CancellationToken::new();
     let mut paths = Vec::new();
     for (version, bytes) in [("1", b"cli one".as_slice()), ("2", b"cli two")] {
@@ -274,25 +244,4 @@ async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
         .await
         .unwrap();
     assert!(!paths[1].exists(), "version 2 goes once nothing holds it");
-}
-
-/// A resolver that answers once its gate opens.
-struct Gated {
-    resolver: Resolver,
-    gate: tokio::sync::Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
-}
-
-impl ArtifactResolver for Gated {
-    fn resolve<'a>(
-        &'a self,
-        artifact: &'a PackageArtifact,
-        cancel: &'a CancellationToken,
-    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
-        Box::pin(async move {
-            if let Some(gate) = self.gate.lock().await.take() {
-                gate.await.unwrap();
-            }
-            self.resolver.resolve(artifact, cancel).await
-        })
-    }
 }

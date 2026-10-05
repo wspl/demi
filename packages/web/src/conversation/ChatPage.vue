@@ -10,8 +10,6 @@ import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import PluginHeaderTools from '@demicodes/web-ui/plugins/PluginHeaderTools.vue'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
-import { executionFor } from '../targets/execution'
-import { cliPackageOf, conversationInstalls } from '../state/installs'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
@@ -32,15 +30,6 @@ const router = useRouter()
 const conversation = computed(() =>
   store.items.find((c) => c.id === route.params.id),
 )
-/** What the conversation's Hosts install now: its Host, and the Cloud for its provider's CLI. */
-const installs = computed(() => {
-  const current = conversation.value
-  if (!current) {
-    return []
-  }
-  const cliPackage = cliPackageOf(product.catalog, current.model.providerId)
-  return conversationInstalls(product.snapshot, executionFor(current).deviceId, cliPackage)
-})
 const pageKind = computed(() =>
   !route.params.id && store.listStatus === 'ready'
     ? 'none'
@@ -147,7 +136,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     v-if="pageKind === 'session' && conversation"
     :conversation="conversation"
     :has-provider="hasProvider"
-    :installs="installs"
     :fork="fork"
     :select-edit="selectEdit"
     :files="files"

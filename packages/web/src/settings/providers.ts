@@ -23,7 +23,6 @@ import {
   type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
-import { cliInstalls } from '../state/installs'
 import {
   loginAnswerSchema,
   loginStartedSchema,
@@ -77,18 +76,15 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
     >
   >({})
-  /**
-   * Each process provider's CLI, as last read (`claude-code.md` § What the
-   * user sees); its installs come from the product state instead.
-   */
-  const clis = ref<Record<string, Omit<SettingsProviderCli, 'installs'>>>({})
+  /** Each process provider's CLI, as last read (`claude-code.md` § What the user sees). */
+  const clis = ref<Record<string, SettingsProviderCli>>({})
   let lifetime = new AbortController()
   const writes = new SerialQueue()
   const providers = computed(() => {
     const configured = resources.providers.map((provider) => ({
       ...provider,
       ...testResults.value[provider.id],
-      ...(provider.cliPackage === null ? {} : { cli: cliView(provider.id, provider.cliPackage) }),
+      ...(provider.cliPackage === null ? {} : { cli: clis.value[provider.id] ?? null }),
       ...edits.value[provider.id],
       ...(manualDrafts.value[provider.id]
         ? {
@@ -525,15 +521,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         }
       }, 2_000)
     }
-  }
-
-  /** The CLI of entry `id` as last read, with what the Cloud installs of `cliPackage` now. */
-  function cliView(id: string, cliPackage: string): SettingsProviderCli | null {
-    const reading = clis.value[id]
-    if (!reading) {
-      return null
-    }
-    return { ...reading, installs: cliInstalls(product.snapshot, cliPackage) }
   }
 
   /** Loads the CLI of a provider the page is showing; its failure is not the page's. */

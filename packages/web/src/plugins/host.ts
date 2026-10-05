@@ -6,7 +6,7 @@ import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import { conversationFiles } from '../conversation/files'
 import { useWorkPanel } from '../conversation/work'
 import { useProduct } from '../state/product'
-import { packageInstalled, packageInstalls } from '../state/installs'
+import { packageInstalled } from '../state/installed'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
 import { callFailure } from './errors'
@@ -17,8 +17,8 @@ import { conversationStates } from './states'
  * plugin's user state from the product state the sync channel keeps, which
  * drops a plugin the user turned off; its conversation states by revision;
  * its calls over the plugin call routes (`web-api.md` § Plugin calls); its
- * user streams; the installs of its packages on a conversation's primary Host,
- * and what that Host holds of them, from that device's in the product state;
+ * user streams; what a conversation's primary Host holds of its packages,
+ * from that device's in the product state;
  * and the shell's own services: the conversations' files, intents and panels,
  * and the settings dialog.
  */
@@ -59,10 +59,6 @@ export function productPageHost(): PageHost {
       const url = new URL(apiUrl(path), window.location.href)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
       return userStreamAt(url.toString())
-    },
-    installs(plugin, conversation) {
-      const host = primaryHost(plugin, conversation)
-      return host ? packageInstalls(product.snapshot, host.deviceId, host.packages) : []
     },
     installed(plugin, conversation) {
       const host = primaryHost(plugin, conversation)

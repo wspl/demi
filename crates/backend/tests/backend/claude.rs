@@ -19,7 +19,7 @@ use std::time::Duration;
 
 use demi_command_protocol::{ArtifactForm, PackageArtifact};
 use demi_runner_command_packages::cache::{ArtifactCache, Wanted};
-use demi_runner_command_packages::{ArtifactResolver, ArtifactSource, Installs, RuntimeError};
+use demi_runner_command_packages::{ArtifactResolver, ArtifactSource, RuntimeError};
 use tokio_util::sync::CancellationToken;
 
 use demi_provider_common::testing::{MockResponse, MockVendor};
@@ -81,7 +81,7 @@ fn manifest(version: &str) -> MockResponse {
 async fn install_by_hand(cache: &std::path::Path, version: &str) -> String {
     let source = tempfile::NamedTempFile::new().unwrap();
     std::fs::write(source.path(), SCRIPTED_CLI).unwrap();
-    let cache = ArtifactCache::new(cache.to_owned(), None, Installs::default())
+    let cache = ArtifactCache::new(cache.to_owned(), None)
         .await
         .unwrap();
     let wanted = Wanted {
