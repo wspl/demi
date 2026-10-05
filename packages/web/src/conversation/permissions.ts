@@ -36,7 +36,8 @@ function category(answer: PermissionCategory): PermissionRequestView['category']
  * `permissionsRevision` is newer than the revision it holds, a count of
  * another run of the backend included (`web-api.md` § Revisions counted in
  * memory); an answer older than the one it holds is dropped, since a read
- * and the summary can arrive in either order. A decision shows at once;
+ * and the summary can arrive in either order. A decision shows at once and
+ * is not read back; one refused goes back to the requests as they were, and
  * another page's decision reaches this one through the summary.
  */
 export const usePermissions = defineStore('permissions', () => {
@@ -105,15 +106,20 @@ export const usePermissions = defineStore('permissions', () => {
   ): Promise<void> {
     const state = stateFor(conversationId)
     state.deciding = true
+    const before = { held: state.held, requests: state.requests }
     state.requests = afterDecision(state.requests, requestId, decision)
     try {
       await decidePermission(conversationId, requestId, decision)
     } catch (error) {
       // Another page decided it first: the summary brings its outcome.
-      if (!(error instanceof ApiError && error.code === 'permission_request_not_found')) {
-        reportError('Could Not Answer the Request', error, { userVisible: true })
+      if (error instanceof ApiError && error.code === 'permission_request_not_found') {
+        return
       }
-      await read(conversationId)
+      reportError('Could Not Answer the Request', error, { userVisible: true })
+      // The request is as it was, unless a newer read came meanwhile.
+      if (state.held === before.held) {
+        state.requests = before.requests
+      }
     } finally {
       state.deciding = false
     }
