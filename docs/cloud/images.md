@@ -65,7 +65,9 @@ stages:
    that `cloud-guest-image/rootfs/ubuntu.json` pins, checked against the
    SHA-256 pinned there for the builder's architecture. Inside a chroot, it
    brings the tree's packages up to date, installs the listed packages and
-   `tini`, creates the `demi` user and its sudo rule, applies the file
+   `tini`, removes the container image's own user `ubuntu`, which holds the
+   UID and GID 1000 that are `demi`'s, creates the `demi` user and its sudo
+   rule, applies the file
    overlay, and removes package caches, runtime state, and machine identity.
    These steps drive a package manager inside the tree, so a shell script
    runs them.
@@ -89,10 +91,11 @@ cross tools, as it does the runner
 release workflow, one the runner builds for itself.
 The image has the architecture that build runs on. On a Linux builder, the
 `xtask` that the workspace's one Cargo selection builds into `target/debug`
-also works: it trusts the platform's certificate authorities beside its own
-and follows `HTTPS_PROXY`, so it downloads through a proxy that re-signs TLS.
-The [build instructions](../../cloud-guest-image/README.md) give the
-options for a builder behind such a proxy.
+also works; it downloads nothing, since the release's files are local. The
+script's downloads, the container image and the packages, go through the
+builder's HTTPS proxy, and the
+[build instructions](../../cloud-guest-image/README.md) give the options for
+a proxy that re-signs TLS.
 
 ## Root filesystem contents
 
@@ -114,8 +117,8 @@ libraries and fonts are the agent's to install with Chrome, as on any Linux
 Host ([Browser distribution](../browser/browser.md#browser-distribution)).
 The locale is `C.UTF-8`, the one the container image carries. The manifest
 records the resolved package versions rather than a second version list in
-documentation; with Demi's programs, the base is about 250 MB unpacked and
-60 to 70 MB compressed.
+documentation; with Demi's programs, the base is about 260 MB unpacked and
+80 MB compressed.
 
 The container image is checked against a digest pinned in the repository: a
 digest fetched beside the archive would prove only that the download arrived
