@@ -28,7 +28,8 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
-# The test support: a runner's backend end over HTTP and a WebSocket.
+# A stream pipe's WebSocket (`edge`), and the test support's backend end of
+# a runner over HTTP and a WebSocket.
 axum = { version = "0.8", features = ["ws"], optional = true }
 sha2 = { version = "0.10", optional = true }
 tempfile = { version = "3", optional = true }
@@ -44,6 +45,9 @@ schemars.workspace = true
 tokio = { workspace = true, features = ["test-util"] }
 
 [features]
+# The relay of a stream pipe's WebSocket, which the backend's pipe route and
+# the test fixture's edge accept.
+edge = ["dep:axum"]
 # A real runner for one device (`RunnerFixture`) and an in-process fake
 # runner (`TestLink`).
-testing = ["dep:axum", "dep:sha2", "dep:tempfile", "dep:rustix", "demi-command-protocol/testing", "demi-host-interface/testing"]
+testing = ["edge", "dep:sha2", "dep:tempfile", "dep:rustix", "demi-command-protocol/testing", "demi-host-interface/testing"]
