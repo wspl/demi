@@ -35,9 +35,10 @@ must pass the Origin and Host headers unchanged and allow WebSocket upgrades.
   - A reverse proxy on this machine (Caddy, nginx) or a tunnel (such as
     Cloudflare Tunnel, for a machine without a public address):
       --listen 127.0.0.1:3271
-  - Cloudflare's proxy, which reaches the machine from outside, on a port
-    Cloudflare forwards HTTP to:
-      --listen 0.0.0.0:8080
+  - Cloudflare's proxy, with the SSL/TLS mode Flexible, which reaches the
+    machine from outside over HTTP on port 80 (another port needs an Origin
+    Rule in Cloudflare):
+      --listen 0.0.0.0:80
 
 The machine must be able to run Cloud: setup checks it with the release's
 machine manager and refuses one that cannot. The first visitor of the domain
@@ -45,7 +46,7 @@ afterwards creates the master account.
 
 Examples:
   demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
-  demi-server setup --domain demi.example.com --mode shared --listen 0.0.0.0:8080 \\
+  demi-server setup --domain demi.example.com --mode shared --listen 0.0.0.0:80 \\
     --expose-domain expose-example.com
   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... demi-server setup \\
     --domain demi.example.com --mode isolated --listen 127.0.0.1:3271 \\
@@ -222,6 +223,13 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
 
     step(&format!("Checking https://{} from outside", choices.domain));
     runtime.block_on(check_outside(&choices, options.expose_domain.as_deref()))?;
+    // A run that continued on a newer release leaves the earlier one, which
+    // never ran: a server just set up has no release to return to.
+    for unpacked in layout.versions()? {
+        if unpacked != version {
+            std::fs::remove_dir_all(layout.release(&unpacked))?;
+        }
+    }
     std::fs::remove_file(marker(layout))?;
     println!(
         "\nDemi {version} is set up at https://{0}.\n\
