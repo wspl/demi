@@ -7,16 +7,14 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
-use bytes::Bytes;
-use demi_backend_remote_host::{Link, RemoteHost, WeakLink};
+use demi_backend_remote_host::{Link, Look, LookAt, RemoteHost, WeakLink};
 use demi_host_interface::{
-    ByteRange, FileContents, FileKind, HostError, HostErrorKind, HostFs, MkdirOptions, RmOptions,
+    FileContents, FileKind, HostError, HostErrorKind, HostFs, MkdirOptions, RmOptions,
     WriteOptions,
 };
 use demi_plugin_interface::{EntryKind, HostDirectory, HostEntry, HostFile, HostRead, PluginId};
 use demi_shared_types::B64Bytes;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
-use futures_util::TryStreamExt;
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
@@ -80,16 +78,12 @@ impl dyn HostShard + '_ {
         cancel: &CancellationToken,
     ) -> Result<Vec<HostFile>, ReadFilesError> {
         let access = self.admit_stream(id, Attention::Looks, cancel).await?;
-        let mut files = Vec::with_capacity(reads.len());
-        for read in reads {
-            let waits = Waits {
-                cancel,
-                ended: Some(&access.open.ended),
-            };
-            let found = waits.wait(look(&access.host.host, read)).await?;
-            files.push(found.map_err(HostAccessError::Host)?);
-        }
-        Ok(files)
+        let waits = Waits {
+            cancel,
+            ended: Some(&access.open.ended),
+        };
+        let found = waits.wait(look(&access.host.host, reads)).await?;
+        Ok(found.map_err(HostAccessError::Host)?)
     }
 
     /// Brings `host`, admitted on `device` for a job, to the user's
@@ -217,17 +211,24 @@ impl dyn HostShard + '_ {
     }
 }
 
-/// What `read` finds on `host`: a host failure that is not about the path
-/// fails the whole read.
-async fn look(host: &RemoteHost, read: &HostRead) -> Result<HostFile, HostError> {
-    let stat = match HostFs::stat(host, &read.path).await {
-        Ok(stat) => stat,
-        Err(error) if missing(&error) => return Ok(HostFile::Missing),
-        Err(error) => return unreadable(error),
-    };
-    match stat.kind {
-        FileKind::Directory => match HostFs::read_dir(host, &read.path).await {
-            Ok(entries) => Ok(HostFile::Directory {
+/// What each of `reads` finds on `host`, with one request to the Host
+/// (`runner.md` § Host operations): a failure on the Host about a path
+/// answers for the path; any other, such as the connection's end, fails
+/// the read.
+async fn look(host: &RemoteHost, reads: &[HostRead]) -> Result<Vec<HostFile>, HostError> {
+    let paths: Vec<LookAt> = reads
+        .iter()
+        .map(|read| LookAt {
+            path: read.path.clone(),
+            limit: read.limit,
+        })
+        .collect();
+    let found = host.look(&paths).await?;
+    Ok(found
+        .into_iter()
+        .map(|look| match look {
+            Look::Missing => HostFile::Missing,
+            Look::Directory(entries) => HostFile::Directory {
                 entries: entries
                     .into_iter()
                     .map(|entry| HostEntry {
@@ -235,37 +236,17 @@ async fn look(host: &RemoteHost, read: &HostRead) -> Result<HostFile, HostError>
                         kind: entry_kind(entry.kind),
                     })
                     .collect(),
-            }),
-            Err(error) => unreadable(error),
-        },
-        FileKind::File => {
-            let range = ByteRange {
-                offset: 0,
-                length: Some(read.limit),
-            };
-            let stream = match HostFs::read_stream(host, &read.path, range).await {
-                Ok(stream) => stream,
-                Err(error) => return unreadable(error),
-            };
-            let chunks: Vec<Bytes> = stream.try_collect().await?;
-            Ok(HostFile::File {
-                bytes: B64Bytes::new(chunks.concat()),
-                size: stat.size,
-            })
-        }
-        _ => Ok(HostFile::Other),
-    }
-}
-
-/// A failure on the Host about the path answers for the path; any other
-/// failure, such as the connection's end, fails the read.
-fn unreadable(error: HostError) -> Result<HostFile, HostError> {
-    match error.kind {
-        HostErrorKind::Failed { .. } => Ok(HostFile::Unreadable {
-            message: error.message,
-        }),
-        _ => Err(error),
-    }
+            },
+            Look::File { bytes, size } => HostFile::File {
+                bytes: B64Bytes::new(bytes),
+                size,
+            },
+            Look::Other => HostFile::Other,
+            Look::Unreadable(error) => HostFile::Unreadable {
+                message: error.message,
+            },
+        })
+        .collect())
 }
 
 fn entry_kind(kind: FileKind) -> EntryKind {
@@ -330,4 +311,84 @@ fn revision_of(sets: &DirectorySets) -> String {
         revision.push('\n');
     }
     revision
+}
+
+#[cfg(test)]
+mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture, answered_requests};
+    use tokio::sync::mpsc;
+
+    use super::*;
+
+    // About a tenth of a second: a real runner process looks at the paths.
+    #[tokio::test(flavor = "local")]
+    async fn a_read_of_several_paths_is_one_request_to_the_host_and_answers_each() {
+        let (tap, mut replies) = mpsc::channel(1 << 10);
+        let fixture = RunnerFixture::start(FixtureOptions {
+            tap: Some(tap),
+            ..FixtureOptions::default()
+        })
+        .await;
+        let skills = fixture.home_dir().join("skills");
+        std::fs::create_dir_all(skills.join("review")).unwrap();
+        std::fs::write(skills.join("review/SKILL.md"), "---\nname: review\n").unwrap();
+        std::os::unix::fs::symlink("review", skills.join("linked")).unwrap();
+        std::fs::write(skills.join("plain"), "not a directory").unwrap();
+        let locked = skills.join("locked");
+        std::fs::create_dir(&locked).unwrap();
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
+        answered_requests(&mut replies);
+
+        let home = fixture.home();
+        let read = |path: &str, limit: u64| HostRead {
+            path: format!("{home}/skills/{path}"),
+            limit,
+        };
+        let reads = [
+            read("review", 0),
+            read("review/SKILL.md", 8),
+            read("linked/SKILL.md", 1024),
+            read("missing", 0),
+            read("plain/SKILL.md", 0),
+            read("locked", 0),
+        ];
+        let found = look(&fixture.host(), &reads).await.unwrap();
+
+        assert_eq!(answered_requests(&mut replies), 1, "one request reads them all");
+        assert_eq!(
+            found[0],
+            HostFile::Directory {
+                entries: vec![HostEntry {
+                    name: "SKILL.md".into(),
+                    kind: EntryKind::File,
+                }],
+            }
+        );
+        // A file's first bytes, up to each read's limit, with its size.
+        assert_eq!(
+            found[1],
+            HostFile::File {
+                bytes: B64Bytes::from(b"---\nname".to_vec()),
+                size: 17,
+            }
+        );
+        assert_eq!(
+            found[2],
+            HostFile::File {
+                bytes: B64Bytes::from(b"---\nname: review\n".to_vec()),
+                size: 17,
+            }
+        );
+        assert_eq!(found[3], HostFile::Missing);
+        assert_eq!(found[4], HostFile::Missing);
+        assert!(
+            matches!(&found[5], HostFile::Unreadable { message } if message.contains("ermission")),
+            "{:?}",
+            found[5]
+        );
+        std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        fixture.stop().await;
+    }
 }

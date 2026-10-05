@@ -295,23 +295,28 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         Box::pin(async move { text })
     }
 
-    /// Asks each source in turn with its own blocks. A source that fails
-    /// adds nothing: it is asked again before the next request.
+    /// Asks every source at once, each with its own blocks, and takes
+    /// their answers in the sources' order: a source that reads a Host does
+    /// not make the others wait. A source that fails adds nothing: it is
+    /// asked again before the next request.
     fn context<'a>(
         &'a self,
         seen: &'a [SeenContext<'a>],
         turn: &'a TurnId,
     ) -> LocalBoxFuture<'a, Vec<NewContext>> {
         Box::pin(async move {
-            let mut news = Vec::new();
-            for source in self.context.iter() {
+            let asked = self.context.iter().map(|source| async move {
                 let name = source.name();
                 let own: Vec<&str> = seen
                     .iter()
                     .filter(|seen| seen.source == name)
                     .map(|seen| seen.text)
                     .collect();
-                match source.context(self.node_context(), turn, &own).await {
+                (name, source.context(self.node_context(), turn, &own).await)
+            });
+            let mut news = Vec::new();
+            for (name, answer) in futures_util::future::join_all(asked).await {
+                match answer {
                     Ok(Some(text)) => news.push(NewContext {
                         source: name.to_owned(),
                         text,
