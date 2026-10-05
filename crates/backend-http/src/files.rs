@@ -34,7 +34,7 @@ use super::query::QueryParams;
 use super::transfer::{TRANSFER_IDLE, UploadEnd, copy_upload, paced_body};
 use demi_backend_host_access::access::{ConversationHost, HostAccessError, Refusal};
 use demi_backend_host_access::transfer::{
-    Download, DownloadRequest, RangeAnswer, Upload, file_version,
+    Download, DownloadRequest, RangeAnswer, file_version,
 };
 
 pub(super) async fn list(
@@ -259,7 +259,7 @@ pub(super) async fn upload(
 ) -> Result<StatusCode, ApiError> {
     let conversation = conversation_id(&id)?;
     let path = path.as_str().to_owned();
-    let upload = state
+    let open = state
         .shards
         .of(&user.id)
         .call(move |shard, cancel| async move {
@@ -269,23 +269,6 @@ pub(super) async fn upload(
                 .await
         })
         .await??;
-    let open = match upload {
-        Upload::IsDirectory => {
-            return Err(ApiError::new(
-                StatusCode::CONFLICT,
-                ErrorCode::IsDirectory,
-                "A directory is at this path",
-            ));
-        }
-        Upload::Exists => {
-            return Err(ApiError::new(
-                StatusCode::CONFLICT,
-                ErrorCode::FileExists,
-                "A file is already at this path",
-            ));
-        }
-        Upload::Open(open) => open,
-    };
     match copy_upload(body, open).await {
         UploadEnd::Written => Ok(StatusCode::NO_CONTENT),
         UploadEnd::HostStalled => {
@@ -297,6 +280,20 @@ pub(super) async fn upload(
                 "The Host took nothing for too long",
             ))
         }
+        // What the path holds refuses the write as the Host writes it.
+        UploadEnd::WriteFailed(error) => Err(match error.code() {
+            Some("EISDIR") => ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::IsDirectory,
+                "A directory is at this path",
+            ),
+            Some("EEXIST") => ApiError::new(
+                StatusCode::CONFLICT,
+                ErrorCode::FileExists,
+                "A file is already at this path",
+            ),
+            _ => ApiError::host_operation(error),
+        }),
         UploadEnd::Refused(error) => Err(error),
     }
 }
