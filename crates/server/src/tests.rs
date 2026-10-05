@@ -292,3 +292,52 @@ async fn a_release_is_fetched_whole_only_when_its_assets_match_their_sums() {
     assert!(release.join("image/manifest.json").exists());
     assert_eq!(layout.versions().unwrap(), [version]);
 }
+
+/// `setup`'s options as a command line gives them.
+fn setup_options(args: &[&str]) -> crate::setup::Options {
+    #[derive(clap::Parser)]
+    struct Command {
+        #[command(flatten)]
+        options: crate::setup::Options,
+    }
+    let mut line = vec!["setup"];
+    line.extend(args);
+    <Command as clap::Parser>::parse_from(line).options
+}
+
+#[test]
+fn setup_without_its_choices_and_without_asking_answers_with_the_guide_and_changes_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let layout = Layout::new(root.path().to_owned());
+    let services = Simulated {
+        layout: &layout,
+        failing: Vec::new(),
+        calls: RefCell::default(),
+    };
+    let outcome = crate::setup::run(&layout, &services, setup_options(&["--domain", "demi.example.com", "--no-input"]));
+    assert!(matches!(outcome, Ok(crate::setup::Outcome::Guide)));
+    assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 0);
+    assert!(services.calls.borrow().is_empty());
+}
+
+#[test]
+fn setup_refuses_a_server_that_is_set_up_and_an_address_for_a_domain() {
+    let server = Server::new();
+    let services = server.services(&[]);
+    let refused = crate::setup::run(
+        &server.layout,
+        &services,
+        setup_options(&["--domain", "demi.example.com", "--mode", "isolated", "--listen", "127.0.0.1:3271", "--no-input"]),
+    );
+    assert!(refused.unwrap_err().to_string().contains("demi-server upgrade"));
+
+    let root = tempfile::tempdir().unwrap();
+    let layout = Layout::new(root.path().to_owned());
+    let refused = crate::setup::run(
+        &layout,
+        &services,
+        setup_options(&["--domain", "203.0.113.7", "--mode", "isolated", "--listen", "127.0.0.1:3271", "--no-input"]),
+    );
+    assert!(refused.unwrap_err().to_string().contains("no domain"));
+    assert!(services.calls.borrow().is_empty());
+}
