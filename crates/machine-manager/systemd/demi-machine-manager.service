@@ -23,7 +23,7 @@ Restart=on-failure
 RestartSec=3
 RuntimeDirectory=demi-cloud
 RuntimeDirectoryMode=0750
-EnvironmentFile=/etc/demi/demi.env
+EnvironmentFile=/opt/demi/config/demi.env
 ExecStart=/opt/demi/current/bin/demi-machine-manager
 ExecStopPost=/opt/demi/current/bin/demi-machine-manager --recover
 

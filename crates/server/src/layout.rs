@@ -8,6 +8,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use demi_machine_manager_protocol::runtime::GVISOR_PATH;
 use semver::Version;
 
 /// The services, in the order they start; they stop in the reverse order.
@@ -45,9 +46,14 @@ impl Layout {
         self.at("/opt/demi/current")
     }
 
+    /// The gVisor versions the releases' managers pin, one directory each.
+    pub fn gvisor(&self) -> PathBuf {
+        self.at(GVISOR_PATH)
+    }
+
     /// The installation's configuration, which both services load.
     pub fn config(&self) -> PathBuf {
-        self.at("/etc/demi/demi.env")
+        self.at("/opt/demi/config/demi.env")
     }
 
     /// Where systemd reads the services' units.
@@ -55,9 +61,10 @@ impl Layout {
         self.at("/etc/systemd/system")
     }
 
-    /// `demi-server`'s own state: its lock and an upgrade's journal.
+    /// `demi-server`'s own state: its lock, an upgrade's journal and a
+    /// setup's marker.
     pub fn state(&self) -> PathBuf {
-        self.at("/var/lib/demi/server")
+        self.at("/opt/demi/server")
     }
 
     pub fn journal(&self) -> PathBuf {

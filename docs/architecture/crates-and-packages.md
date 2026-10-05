@@ -305,9 +305,11 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   (`MachineImageState`, `RuntimeState`, `Volume`) and the names of stored
   images (`DeviceId`, `GenerationId`, `BaseVersion`: one path component
   each); the wire version the manager's `hello` names and the format of the
-  manager's state directory; and the Cloud image manifest
+  manager's state directory; the Cloud image manifest
   (`image::CloudImageManifest`), which embeds `runner-protocol`'s runner
-  release and `command-sdk`'s package descriptors.
+  release and `command-sdk`'s package descriptors; and the pinned gVisor
+  runtime (`runtime::RuntimeRelease`), its programs and its directory on a
+  server, which the manager requires and `demi-server` fetches.
 - **Public boundary:** the items above. The backend's machine-manager client
   and the manager link it; `xtask` writes the image manifest with it. Behavior:
   [Managed Cloud hosts](../cloud/managed-hosts.md).
@@ -1288,7 +1290,8 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** a server's installation of Demi ([Upgrades](../delivery/upgrades.md)):
   the layout under `/opt/demi` with the `current` link, fetching a release
-  and checking it against its `SHA256SUMS`, the move between releases with
+  and checking it against its `SHA256SUMS`, fetching the gVisor version its
+  release pins, the move between releases with
   its journal, the copy of the databases a release migrates and its
   restore, the services' units in place, and the handover of each move to
   the `demi-server` of the release it goes to.
