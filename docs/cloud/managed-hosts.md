@@ -105,6 +105,14 @@ message. A `death` event goes to every connection when a device's sandbox exits
 without being asked to stop. The `machine-manager-protocol` crate defines every
 message, and both the manager and the backend link it.
 
+The backend and the manager of a deployment run one release
+([Upgrades](../delivery/upgrades.md)), so the wire accepts one version. The
+first request on a connection is `hello`, which carries the wire version the
+crate defines; a manager of another version answers with an error that names
+its own, and closes the connection. The backend then fails the request that
+opened the connection, its start's `reconcile` among them, with an error
+that names both versions and says to start both services from one release.
+
 - A line holds one message of at most 1 MiB; the largest real message is a few
   kilobytes.
 - A line that is longer, is not valid UTF-8 JSON, names an unknown operation, or
@@ -124,6 +132,7 @@ socket.
 
 | Operation | Meaning |
 | --- | --- |
+| `hello` | Check that both ends speak the same wire version. |
 | `current_base_version`, `image_state` | Read the configured base and a device's committed generation. |
 | `runtime_state` | Read whether the manager runs a sandbox for the device, after the device's earlier operations. |
 | `reconcile` | Stop and save every device, recover incomplete operations, and install the network policy again. |
@@ -196,9 +205,16 @@ Before it serves a request, the manager:
    CPU, memory, and PID controllers and enables them for the sandboxes. With
    the limits off, it skips this step and touches no cgroup.
 5. Stops and saves every device left behind: it removes staging directories,
-   fences each recorded sandbox, and publishes each working pair.
-6. Installs the network policy and imports the configured base
-   ([Cloud images](images.md#import-and-publication)).
+   fences each recorded sandbox, and publishes each working pair. Then it
+   migrates its records when they are in an earlier release's format: the
+   state directory records its format, and a release that changes a record
+   brings the migration from every earlier format, as the backend's databases
+   do ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
+   A state directory of a newer format stops the start.
+6. Installs the network policy, imports the configured base
+   ([Cloud images](images.md#import-and-publication)) unless an
+   [upgrade](../delivery/upgrades.md#prepare) imported it already, and
+   collects the bases nothing needs any more ([Base retention](#base-retention)).
 7. Pins its own mount namespace, checks with a small probe image that storage
    can be mounted, frozen, and copied, and opens its socket.
 8. Reports readiness to systemd
@@ -286,7 +302,9 @@ lives in the backend's data directory.
 
 ```text
 <state directory>/
++-- format                             the format of the records below
 +-- images/
+|   +-- configured.json                the configured base and the one before it
 |   +-- bases/<baseVersion>/           an imported base: manifest.json, rootfs/
 |   +-- <deviceId>/
 |       +-- current.json               names the committed generation
@@ -342,7 +360,8 @@ manager sets a mode only when it creates the directory or file; it never
 changes an existing root directory's mode, which the user may have set.
 
 Deploying a base makes it available for new devices and resets; ordinary wake
-never silently upgrades an existing base. A base identifies its architecture
+never silently upgrades an existing base. Only Demi's own programs follow the
+configured base at every boot ([Demi's programs in a Cloud](#demis-programs-in-a-cloud)). A base identifies its architecture
 and complete build manifest. CPU architectures are not interchangeable: moving
 persisted system/home state between architectures is outside this contract.
 The runner's installation state and conversation browser processes are
@@ -350,10 +369,41 @@ temporary, and a job's output lasts only until its conversation's release.
 Durable results must be written outside runtime mounts and the runner's
 directories.
 
+### Demi's programs in a Cloud
+
+A Cloud's system stays on the base it is pinned to, but Demi's own programs
+follow the server's release. At every boot, the manager bind-mounts the
+configured base's `/opt/demi` read-only over the pinned base's own, in the
+OCI bundle it generates. That directory holds the runner, its `demi` alias
+and the embedded command programs
+([Root filesystem contents](images.md#root-filesystem-contents)).
+
+For example, a user's Cloud was created on 0.1.0's base and has packages the
+user installed. The server is upgraded to 0.2.0, whose image the manager
+imports. At the Cloud's next wake its root is still 0.1.0's base under the
+user's system layer, with the user's packages, while `/opt/demi`, and so the
+runner that connects to the 0.2.0 backend, is 0.2.0's. Nothing of the user's
+system changed, and the runner speaks the backend's wire.
+
+The runner and the command programs are static executables, so they run on
+any base. What they and the manager need of a base is its format
+([Root filesystem contents](images.md#root-filesystem-contents)); the manager
+boots every base whose `formatVersion` it supports, which is every format of
+a formal release unless a release ends the support for one. A release that
+does resets each Cloud on such a base to the configured base at its next
+wake, keeping its home, and the reset's notice says why
+([System reset](#system-reset)).
+
+Cloud settings tells the user when the Cloud's base is not the configured one:
+the backend compares the Cloud's `image_state` with `current_base_version`
+([Cloud settings](../product/product.md#cloud-settings)). A reset moves the
+system to the configured base.
+
 ### Container initialization
 
 The OCI process is a shipped minimal init (`tini`) running as `demi`, UID/GID
-1000, which starts the runner and reaps orphaned descendants. The manager
+1000, which starts the runner, `/opt/demi/bin/demi-runner`, and reaps orphaned
+descendants. The manager
 supplies mounts, network configuration, and, with its
 [resource limits](#resource-limits) on, the cgroup limits before start. The
 runner is an ordinary process; it does not mount a root filesystem, configure
@@ -449,14 +499,27 @@ older generation directories after durable publication. Removing a directory
 removes only its links: an image that a newer generation also links, such as
 the home a reset carried forward, keeps its data. Staging data is removable
 only after reconciliation establishes that no pending operation needs it;
-failed working data is never garbage. Base directories are retained
-automatically. An operator may remove an unreferenced base only with backend
-and manager stopped, after checking the configured image, committed
-generations, working records, and backend reset intents. This keeps a base
-selected by a durable reset available even before the backend has dispatched
-that reset to the manager. Snapshot sharing does not make retained generations
-free; capacity monitoring includes bases, staging, working files, and retained
-generations.
+failed working data is never garbage. Snapshot sharing does not make
+retained generations free; capacity monitoring includes bases, staging,
+working files, and retained generations.
+
+#### Base retention
+
+Each upgrade imports a new base, about 2 GiB extracted, so the manager
+removes the bases nothing needs. As it starts, after it imports the
+configured base, it keeps:
+
+- the configured base, and the base configured before it, which
+  `images/configured.json` records;
+- every base that a committed generation or a working pair names.
+
+and removes every other base directory. The base configured before is kept
+because a reset that the backend recorded before an upgrade selected it, and
+may not have reached the manager yet: the backend completes such a reset's
+disk step when it next starts ([System reset](#system-reset)), so after one
+backend start under the new release no recorded reset names an older base.
+A removal deletes only the base's directory; a Cloud pinned to it is named
+by a generation and keeps it.
 
 Cross-host storage and execution fencing are a
 [scaled-deployment requirement](../backend/backend.md#deployment-and-user-ownership).
