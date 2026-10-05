@@ -23,8 +23,7 @@ produces:
 
 The manifest uses `formatVersion: 1`, `os: linux`, and
 `architecture: amd64 | arm64`. It records the exact Ubuntu release, package
-inventory, standalone-tool versions and hashes, and runner/native release
-descriptors. Its `rootfs` entry names the archive and its byte size and SHA-256.
+inventory, and runner/native release descriptors. Its `rootfs` entry names the archive and its byte size and SHA-256.
 Its runner release must name the embedded runner executable, and each command
 package release must have its artifact for the image's target embedded under
 that artifact's content-addressed path. The SHA-256 of the exact manifest file
@@ -61,15 +60,19 @@ complete image on another architecture.
 A build runs as root on a Linux builder of the target architecture, in two
 stages:
 
-1. `cloud-guest-image/rootfs/build.sh` creates the Ubuntu tree with
-   debootstrap. Inside a chroot, it installs the listed packages and `tini`,
-   creates the `demi` user and its sudo rule, applies the file overlay, and
-   removes package caches, runtime state, and machine identity. These steps
-   drive a package manager inside the tree, so a shell script runs them.
+1. `cloud-guest-image/rootfs/build.sh` creates the Ubuntu tree from
+   Ubuntu's official container root filesystem, the archive of the serial
+   that `cloud-guest-image/rootfs/ubuntu.json` pins, checked against the
+   SHA-256 pinned there for the builder's architecture. Inside a chroot, it
+   brings the tree's packages up to date, installs the listed packages and
+   `tini`, creates the `demi` user and its sudo rule, applies the file
+   overlay, and removes package caches, runtime state, and machine identity.
+   These steps drive a package manager inside the tree, so a shell script
+   runs them.
 2. The packaging command, `cargo xtask cloud-image package`, completes the
    release. It installs the runner and its `demi` alias from the verified
-   runner release, the command packages' executables from their verified
-   releases, and uv. It reads the package inventory from the tree's dpkg database without
+   runner release and the command packages' executables from their verified
+   releases. It reads the package inventory from the tree's dpkg database without
    running a program of the image: the packages dpkg records as installed,
    with their versions. A package whose installation did not finish fails the
    build; one removed with only its configuration left is not installed. The
@@ -93,23 +96,36 @@ options for a builder behind such a proxy.
 
 ## Root filesystem contents
 
-The base is the Ubuntu release that the build script pins, and the manifest
-records it. Its system package inventory has one source:
-[packages.txt](../../cloud-guest-image/rootfs/packages.txt). The build also
-installs standalone `uv` and the shipped native executables. It records
-resolved versions and hashes rather than maintaining a second version list in
-documentation. Nothing in it is there for the browser: Chrome's system
+The base holds what Demi needs in every Cloud and what nearly every task
+needs, and nothing else; every Cloud shares it, and every megabyte in it is
+downloaded and stored on each server. It starts from Ubuntu's official
+container image, which is minimized: its dpkg configuration leaves out man
+pages and translations, for the packages installed later too. On it the
+build installs only what
+[packages.txt](../../cloud-guest-image/rootfs/packages.txt) lists: `sudo`, for
+the agent to install the rest; `ca-certificates`, for HTTPS; and `git`, which
+nearly every task uses. The shell, its commands, and the tools Demi's own
+commands use are Demi's executables, not the image's. Compilers, language
+runtimes such as Node.js and Python, and tools such as `gh` are installed on
+demand, by the agent or the user: with `apt` into the system layer, which a
+system reset empties, or with a version manager into the home, which every
+reset keeps. Nothing is there for the browser either: Chrome's system
 libraries and fonts are the agent's to install with Chrome, as on any Linux
 Host ([Browser distribution](../browser/browser.md#browser-distribution)).
+The locale is `C.UTF-8`, the one the container image carries. The manifest
+records the resolved package versions rather than a second version list in
+documentation; with Demi's programs, the base is about 250 MB unpacked and
+60 to 70 MB compressed.
 
-uv is checked
-against a digest pinned in the repository: a digest fetched from the same
-release as uv would prove only that the download arrived intact, not that it is
-the file that was reviewed. `cloud-guest-image/rootfs/uv.json` pins its
-version and, for each architecture, the archive's URL, size, and SHA-256.
-Artifact downloads follow no redirect, and uv's GitHub release URLs redirect
-to short-lived storage URLs, so the pin names the same files on Astral's
-release host, `releases.astral.sh`, which serves them directly.
+The container image is checked against a digest pinned in the repository: a
+digest fetched beside the archive would prove only that the download arrived
+intact, not that it is the file that was reviewed.
+`cloud-guest-image/rootfs/ubuntu.json` pins the serial and, for each
+architecture, the archive's URL on `partner-images.canonical.com`, its size,
+and its SHA-256. The build brings the packages up to date from the archive's
+mirrors, so an image carries the security updates published by its build,
+whatever the serial's age; a pin moves to a newer serial when Canonical
+removes the old one, and for a newer Ubuntu release.
 
 The image supplies `demi` UID/GID 1000, passwordless sudo and a minimal init
 (`tini`). Everything of Demi's own lies under `/opt/demi`, which the machine
@@ -198,7 +214,7 @@ Collection and reset pinning follow
 
 Verify the full image on each supported architecture with the shipped runsc
 profile: init reaps orphans, jobs use UID 1000, sudo works, package installation
-and standalone tools work, and Chrome, once the agent has installed it and
+works, and Chrome, once the agent has installed it and
 its libraries, retains its sandbox. Test shell/native
 commands and the conversation browser through the real managed runner
 connection.
