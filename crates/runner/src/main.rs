@@ -22,6 +22,7 @@ use demi_runner_protocol::{
     wire::{self, RunnerPlatform},
 };
 use demi_runner_shell::ShellRuntime;
+use management::Revocation;
 use registration::{Ending, Options};
 use state::RunnerState;
 use std::{
@@ -248,11 +249,14 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
                 // drains and ends; then its installation goes.
                 None => {
                     let action = management::Action::Uninstall;
-                    let code = manage(state, action, None, tokio::io::sink()).await?;
+                    let mut answer = Vec::new();
+                    let code = manage(state, action, None, &mut answer).await?;
                     if code != 0 {
                         return Ok(code);
                     }
-                    return uninstalled(&directory);
+                    let revocation = serde_json::from_slice(&answer)
+                        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+                    return uninstalled(&directory, &revocation);
                 }
                 // No runner is active: this process runs one that asks the
                 // backend, then removes the installation.
@@ -406,26 +410,56 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         tracing::error!("{error}");
     }
     log.close().await;
-    // Whatever the backend answered, or when it could not be reached, the
-    // installation goes.
-    if removing {
-        return uninstalled(&installation_directory);
-    }
     match outcome {
-        Ok(Ending::Stopped) => {}
-        Ok(Ending::Replaced(successor)) => successor.start()?,
-        Ok(Ending::Removed) => {
-            eprintln!("demi-runner: this device was revoked; removing this runner");
-            removal::remove(&installation_directory)?;
+        // Whatever the backend answered, or when it could not be reached,
+        // the installation goes.
+        Ok(Ending::Uninstalled(revocation)) if removing => {
+            uninstalled(&installation_directory, &revocation)
         }
-        Err(_) => return Ok(1),
+        Err(_) if removing => uninstalled(&installation_directory, &Revocation::Unreached),
+        // An interrupted `uninstall` removes nothing.
+        Ok(Ending::Stopped) if removing => Ok(130),
+        // The `uninstall` that asked removes the installation.
+        Ok(Ending::Stopped | Ending::Uninstalled(_)) => Ok(0),
+        Ok(Ending::Replaced(successor)) => {
+            successor.start()?;
+            Ok(0)
+        }
+        Ok(Ending::Removed(projects)) => {
+            eprintln!("demi-runner: this device was revoked; removing this runner");
+            if !projects.is_empty() {
+                eprintln!(
+                    "demi-runner: its projects went with it, their files stay: {}",
+                    projects.join(", ")
+                );
+            }
+            removal::remove(&installation_directory)?;
+            Ok(0)
+        }
+        Err(_) => Ok(1),
     }
-    Ok(0)
 }
 
-/// Removes the installation in `directory` once its runner ended, and says
-/// so.
-fn uninstalled(directory: &Path) -> io::Result<u8> {
+/// Says what came of the revocation, then removes the installation in
+/// `directory` once its runner ended.
+fn uninstalled(directory: &Path, revocation: &Revocation) -> io::Result<u8> {
+    match revocation {
+        Revocation::Revoked { projects } if projects.is_empty() => {
+            println!("The backend removed this device.");
+        }
+        Revocation::Revoked { projects } => {
+            println!(
+                "The backend removed this device and its projects, whose files stay: {}",
+                projects.join(", ")
+            );
+        }
+        Revocation::Unpaired => {}
+        Revocation::Unreached => {
+            println!(
+                "The backend could not be reached; it lists this device until you revoke it in Settings."
+            );
+        }
+    }
     removal::remove(directory)?;
     println!("Removed the runner of {}", directory.display());
     Ok(0)

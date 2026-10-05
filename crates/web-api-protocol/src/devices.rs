@@ -8,7 +8,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::ids::DeviceId;
+use crate::ids::{DeviceId, WorkspaceId};
 
 /// How a device came to be: `user` for one its user paired, `managed` for
 /// the user's Cloud.
@@ -65,6 +65,14 @@ pub struct Claim {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ClaimedDevice {
     pub device: DeviceDto,
+}
+
+/// `{ removed }`: the answer of a revocation, the ids of the workspaces
+/// that went with the device (`web-api.md` § Workspaces, devices, and
+/// attached hosts).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RevokedDevice {
+    pub removed: Vec<WorkspaceId>,
 }
 
 /// One line of a Host's log (`runner.md` § Host log).

@@ -697,6 +697,14 @@ function galleryDevices(): SettingsDevice[] {
   ]
 }
 
+/** The projects on the paired devices, which a revoked device takes with it. */
+function galleryDeviceProjects(): { deviceId: string; name: string }[] {
+  return [
+    { deviceId: 'mac', name: 'demi' },
+    { deviceId: 'mac', name: 'notes' },
+  ]
+}
+
 export function createSettingsState() {
   return reactive({
     quotaRefreshCache: createQuotaRefreshCache(),
@@ -818,6 +826,7 @@ export function createSettingsState() {
       },
     ] satisfies SettingsArchivedConversation[],
     devices: galleryDevices(),
+    deviceProjects: galleryDeviceProjects(),
     keys: [
       { id: 'new', action: 'New conversation', keys: '⌘⇧O' },
       { id: 'send', action: 'Send message', keys: '⏎' },

@@ -8,7 +8,7 @@ use crate::connection::{self, Connected, End, Registered, Transport};
 use crate::update::{Installed, Successor};
 use crate::{
     host_log::HostLogReader,
-    management::{Endpoint, Management, Phase},
+    management::{Endpoint, Management, Phase, Revocation},
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
 use demi_runner_command_packages::ServiceRegistry;
@@ -72,10 +72,14 @@ pub enum Ending {
     /// successor starts once this registration has let everything go
     /// (`runner.md` § Runner updates).
     Replaced(Successor),
-    /// The backend revoked the device: the installation goes once this
-    /// registration has let everything go (`runner.md` § Installation,
-    /// pairing and removal).
-    Removed,
+    /// The backend revoked the device, with the projects of these names:
+    /// the installation goes once this registration has let everything go
+    /// (`runner.md` § Installation, pairing and removal).
+    Removed(Vec<String>),
+    /// The runner was asked to remove itself, and asked its backend to
+    /// revoke the device: the `uninstall` that asked removes the
+    /// installation.
+    Uninstalled(Revocation),
 }
 
 pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending> {
@@ -178,9 +182,22 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         outcome = reconnect(&registered, installed.as_ref()) => outcome,
         never = revocation_window(&registered) => match never {},
     };
-    if registered.management.draining.is_cancelled() && !registered.management.stop.is_cancelled() {
+    let management = &registered.management;
+    // A drain, and a removal's answer to its `uninstall`, end before the
+    // local endpoint does.
+    if (management.draining.is_cancelled() || management.removing.is_cancelled())
+        && !management.stop.is_cancelled()
+    {
         server.wait_idle().await;
     }
+    let outcome = match outcome {
+        Ok(Ending::Stopped) if management.removing.is_cancelled() && !management.stop.is_cancelled() => {
+            Ok(Ending::Uninstalled(
+                management.revocation().unwrap_or(Revocation::Unreached),
+            ))
+        }
+        outcome => outcome,
+    };
     registry.close().await;
     let closed = server.close().await;
     tracing::info!("runner stopped");
@@ -238,8 +255,10 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
             Ok(End::Stopped) => return Ok(Ending::Stopped),
             // An `uninstall` asked for the revocation, and removes the
             // installation once this runner has ended.
-            Ok(End::Revoked) if management.removing.is_cancelled() => return Ok(Ending::Stopped),
-            Ok(End::Revoked) => return Ok(Ending::Removed),
+            Ok(End::Revoked(_)) if management.removing.is_cancelled() => {
+                return Ok(Ending::Stopped);
+            }
+            Ok(End::Revoked(projects)) => return Ok(Ending::Removed(projects)),
             Ok(End::Disconnected) => {
                 tracing::warn!("backend connection lost");
                 failure = None;
@@ -277,13 +296,11 @@ async fn revocation_window(registered: &Registered) -> Infallible {
     management.removing.cancelled().await;
     // A runner that was never paired has no device to revoke.
     if registered.token.borrow().is_some() {
-        tokio::select! {
-            // The backend refused, and the connection began the drain.
-            _ = management.draining.cancelled() => {}
-            _ = tokio::time::sleep(REVOCATION_WAIT) => {
-                tracing::warn!("the backend could not be asked to revoke this device; it lists the device until the user revokes it");
-            }
-        }
+        tokio::time::sleep(REVOCATION_WAIT).await;
+        tracing::warn!("the backend could not be asked to revoke this device; it lists the device until the user revokes it");
+        management.settle(Revocation::Unreached);
+    } else {
+        management.settle(Revocation::Unpaired);
     }
     management.draining.cancel();
     std::future::pending().await

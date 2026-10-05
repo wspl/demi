@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
@@ -13,6 +14,7 @@ import type { SettingsDevice } from './types'
 import type { DeviceInstallation } from '../devices/installation'
 import type { OverlayStore } from '../overlay/overlayStore'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
+import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
 const props = defineProps<{
@@ -22,6 +24,8 @@ const props = defineProps<{
   resetPending?: boolean
   resetError?: string | null
   devices: SettingsDevice[]
+  /** The user's projects, each on a device; a revoked device's go with it. */
+  projects?: readonly { deviceId: string; name: string }[]
   overlayStore: OverlayStore
   /** Null until the host knows where its backend serves the installers. */
   installation: DeviceInstallation | null
@@ -35,6 +39,27 @@ const emit = defineEmits<{
 const { isOpen, phase, open, close, submit } = useDevicePairing(
   (code, signal) => props.claimDevice(code, signal),
 )
+/**
+ * The device whose revocation the confirmation asks about; it stays while the
+ * confirmation closes, so the closing dialog keeps its text.
+ */
+const confirming = ref<SettingsDevice | null>(null)
+const confirmOpen = ref(false)
+const confirmingProjects = computed(() =>
+  (props.projects ?? [])
+    .filter((project) => project.deviceId === confirming.value?.id)
+    .map((project) => project.name),
+)
+function confirmRevoke(device: SettingsDevice) {
+  confirming.value = device
+  confirmOpen.value = true
+}
+function revoke() {
+  confirmOpen.value = false
+  if (confirming.value) {
+    emit('revoke', confirming.value.id)
+  }
+}
 </script>
 
 <template>
@@ -87,7 +112,7 @@ const { isOpen, phase, open, close, submit } = useDevicePairing(
             <Button
               size="sm"
               :loading="pendingIds?.includes(device.id)"
-              @click="emit('revoke', device.id)"
+              @click="confirmRevoke(device)"
               >Revoke</Button
             >
           </SettingsRow>
@@ -100,6 +125,14 @@ const { isOpen, phase, open, close, submit } = useDevicePairing(
         </div>
       </AsyncRegion>
     </SettingsGroup>
+    <DeviceRevokeDialog
+      :is-open="confirmOpen"
+      :overlay-store="overlayStore"
+      :device="confirming?.name ?? ''"
+      :projects="confirmingProjects"
+      @close="confirmOpen = false"
+      @revoke="revoke"
+    />
     <DevicePairingDialog
       v-if="installation"
       :is-open="isOpen"
