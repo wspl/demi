@@ -176,10 +176,15 @@ terminal early finds them there; closing it does not stop the runner.
 `run uninstall` removes the runner of one backend from the device:
 
 1. It asks the backend, when it can reach it, to revoke the device, so the
-   device leaves the user's list as it leaves the computer. A backend it
-   cannot reach keeps listing the device, offline, until the user revokes it.
+   device leaves the user's list as it leaves the computer; nothing refuses
+   a revocation. A backend it cannot reach keeps listing the device, offline,
+   until the user revokes it.
 2. It drains the runner: no new work, and the running jobs end first.
-3. It removes the installation's directory, with the device token, the
+3. It removes the installation's directory, only when the directory holds an
+   installation, the state files an installer or a runner writes there: a
+   directory that holds none, such as a home directory a mistaken `DEMI_HOME`
+   names, is never removed, and `uninstall` says why. It removes the
+   directory with the device token, the
    releases, the log and the artifact cache when the cache is the
    installation's own; a cache that `DEMI_ARTIFACTS` names, which runners of
    several backends may share, stays. Other backends' installations on the

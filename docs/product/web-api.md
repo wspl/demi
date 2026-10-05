@@ -166,9 +166,12 @@ files. Deletion answers 204, and 409 `workspace_in_use` while conversations
 still target it; an id the caller does not have answers 404
 `workspace_not_found`.
 
-Device revocation applies to user-paired devices, not the managed Cloud device.
-It returns 409 `device_in_use` while workspaces point at that device. Successful
-revocation tells a connected runner to remove itself
+Device revocation applies to user-paired devices, not the managed Cloud device,
+and nothing refuses it: projects and conversations that point at the device
+stay, as a conversation that targets a device directly always did. They keep
+their history and show their device as removed; a conversation there cannot
+run until the user moves it or deletes its project. Revocation tells a
+connected runner to remove itself
 ([Installation, pairing and removal](../execution/runner.md#installation-pairing-and-removal)),
 closes its connection and removes its conversation attachments.
 Pairing accepts a live code and returns the claimed device; expired/unknown codes
