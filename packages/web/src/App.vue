@@ -4,12 +4,13 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { showOutdated } from '@demicodes/web-ui/infra/outdated'
+import { reloadFor } from '@demicodes/web-ui/infra/build-reload'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
+import RestartScreen from '@demicodes/web-ui/ui/RestartScreen.vue'
 import ImageViewer from '@demicodes/web-ui/files/ImageViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideImageViewer } from '@demicodes/web-ui/files/image-viewer'
@@ -30,16 +31,22 @@ import { useProduct } from './state/product'
 provideBlobUrl(blobUrl)
 const product = useProduct()
 providePageHost(productPageHost())
-// A page of another build than the backend serves asks once to be reloaded.
+// A page of another build than the backend serves loads that build, once
+// per build; one that still gets another says so (`web-application.md`
+// § A page of another build).
+const updateFailed = ref(false)
 watch(
-  () => product.outdated,
-  (outdated, was) => {
-    if (outdated && !was) {
-      showOutdated(() => window.location.reload())
+  () => product.outdated ? product.snapshot?.webBuild ?? null : null,
+  (served) => {
+    if (served !== null && !reloadFor(served, reload)) {
+      updateFailed.value = true
     }
   },
   { immediate: true },
 )
+function reload(): void {
+  window.location.reload()
+}
 const imageViewer = provideImageViewer()
 const session = useSession()
 const conversations = useConversations()
@@ -227,5 +234,10 @@ useAppShortcuts(
     <RouterView />
   </div>
   <ToastHost />
+  <RestartScreen
+    v-if="product.restarting || product.outdated"
+    :failed="updateFailed"
+    @reload="reload"
+  />
   <ImageViewer :viewer="imageViewer" />
 </template>
