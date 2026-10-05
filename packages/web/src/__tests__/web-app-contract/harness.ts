@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import type { Subprocess, WebSocketOptions } from 'bun'
@@ -167,9 +167,14 @@ async function launchBackend(root: string, socket: string): Promise<Backend> {
   const data = join(root, 'backend')
   const port = freePort()
   const origin = `http://127.0.0.1:${port}`
-  // A server release with no command package to publish.
+  // A server release with no command package to publish, whose record names
+  // an empty directory as its files (`native-runtime.md` § Backend
+  // deployment configuration).
   const release = join(root, 'release')
+  const files = join(root, 'files')
   await mkdir(join(release, 'commands'), { recursive: true })
+  await mkdir(files)
+  await writeFile(join(release, 'release.json'), JSON.stringify({ files }))
   const lines: string[] = []
   const child = Bun.spawn([testProgram('demi-backend')], {
     env: {

@@ -162,7 +162,7 @@ test('a closed channel connects again after a second, then twice as long each ti
     // a second again.
     channels.last().send({ type: 'snapshot', state: productState() })
     const count = channels.opened.length
-    channels.last().end(1001, 'backend_closing')
+    channels.last().end(1006)
     jest.advanceTimersByTime(999)
     expect(channels.opened.length).toBe(count)
     jest.advanceTimersByTime(1)
@@ -170,6 +170,40 @@ test('a closed channel connects again after a second, then twice as long each ti
   } finally {
     random.mockRestore()
   }
+})
+
+test('a backend that shuts down shows the restart screen, tried every one to two seconds until a snapshot comes', () => {
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(1)
+  try {
+    const product = started()
+    expect(product.restarting).toBe(false)
+    channels.last().end(1001, 'backend_closing')
+    expect(product.restarting).toBe(true)
+    // Connections that end while the backend is away keep the screen and
+    // the short wait: none doubles.
+    for (let refused = 0; refused < 4; refused += 1) {
+      const count = channels.opened.length
+      jest.advanceTimersByTime(1_999)
+      expect(channels.opened.length).toBe(count)
+      jest.advanceTimersByTime(1)
+      expect(channels.opened.length).toBe(count + 1)
+      channels.last().open()
+      channels.last().end(1006)
+      expect(product.restarting).toBe(true)
+    }
+    jest.advanceTimersByTime(2_000)
+    channels.last().connect(productState())
+    expect(product.restarting).toBe(false)
+  } finally {
+    random.mockRestore()
+  }
+})
+
+test('a channel lost without the backend saying so shows no restart screen', () => {
+  const product = started()
+  channels.last().end(1006)
+  expect(product.restarting).toBe(false)
 })
 
 test('each wait is shortened by a random part, so the pages of all users do not return at once', () => {
