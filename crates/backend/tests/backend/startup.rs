@@ -76,7 +76,7 @@ fn the_machine_managers_settings_pass_the_backends_check() {
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(!output.status.success(), "{stderr}");
     assert!(!stderr.contains("DEMI_MANAGED_SLOTS"), "{stderr}");
-    assert!(stderr.contains("/nonexistent/release/commands"), "{stderr}");
+    assert!(stderr.contains("/nonexistent/release/release.json"), "{stderr}");
 }
 
 #[test]

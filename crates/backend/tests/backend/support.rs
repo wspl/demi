@@ -30,6 +30,7 @@ use demi_command_package_browser_protocol::{
 };
 use demi_command_protocol::testing::built_program;
 use demi_command_protocol::{PackageDescriptor, host_target};
+use demi_runner_protocol::release::{SERVER_RELEASE, ServerRelease, compressed_file};
 use demi_plugin_interface::{
     Manifest, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply, Request, Stream,
 };
@@ -75,16 +76,17 @@ pub const SESSION_COOKIE: &str = "demi_session";
 const RELEASES: &str = concat!(env!("CARGO_TARGET_TMPDIR"), "/backend-releases");
 
 /// A command package the workspace built: its descriptor for this machine's
-/// target and its program, and the `commands/` directory of a server release
-/// that holds its release, from which every backend publishes it into its
-/// own object store (`native-runtime.md` § Backend deployment
+/// target and its program, and a server release that holds it, whose
+/// descriptor every backend publishes into its own object store and whose
+/// files hold the program's compressed copy, which a backend stores when a
+/// runner first needs it (`native-runtime.md` § Backend deployment
 /// configuration). Each test process computes the digest and writes the
 /// release once: both read the whole program, most of a second for
 /// `demi-browser`.
 pub struct Built {
     pub descriptor: PackageDescriptor,
     pub program: PathBuf,
-    commands: OnceLock<PathBuf>,
+    release: OnceLock<PathBuf>,
 }
 
 impl Built {
@@ -93,49 +95,55 @@ impl Built {
         Self {
             descriptor,
             program,
-            commands: OnceLock::new(),
+            release: OnceLock::new(),
         }
     }
 
-    /// The `commands/` directory that holds this package's release for this
+    /// The root of the server release that holds this package for this
     /// machine's target: the conversations bind to its package, and every
     /// runner, a paired device's or the Cloud's, downloads its program from
     /// the backend.
-    fn commands(&self) -> &std::path::Path {
-        self.commands.get_or_init(|| self.write_release())
+    fn release(&self) -> &std::path::Path {
+        self.release.get_or_init(|| self.write_release())
     }
 
-    /// Writes the release, which links the program the workspace built
-    /// rather than copying it, beside the program's compressed copy, and
-    /// answers the `commands/` directory that holds it. Each file is
-    /// replaced whole, so a backend of another test process that reads it
-    /// meanwhile reads it whole.
+    /// Writes the release's root, which holds the package's descriptor and
+    /// names its files, and the files, which hold the program's compressed
+    /// copy, and answers the root. Each file is replaced whole, so a backend
+    /// of another test process that reads it meanwhile reads it whole.
     fn write_release(&self) -> PathBuf {
         let executable = self.program.file_name().unwrap().to_str().unwrap();
-        let commands = PathBuf::from(RELEASES).join(format!("commands-{executable}"));
-        let release = commands.join(executable);
-        let target = release.join(host_target());
-        std::fs::create_dir_all(&target).unwrap();
-        let link = target.join(executable);
-        let staged = target.join(format!(".{executable}.{}", std::process::id()));
-        // A link a killed process of the same id left staged goes; usually
-        // there is none to remove.
-        let _ = std::fs::remove_file(&staged);
-        std::os::unix::fs::symlink(&self.program, &staged).unwrap();
-        std::fs::rename(&staged, &link).unwrap();
+        let root = PathBuf::from(RELEASES).join(format!("release-{executable}"));
+        let files = PathBuf::from(RELEASES).join(format!("files-{executable}"));
+        let package = root.join("commands").join(executable);
+        std::fs::create_dir_all(&package).unwrap();
+        std::fs::create_dir_all(&files).unwrap();
         // A test's copy is made fast: the backend checks only that it
         // decodes to the program.
         let bytes = std::fs::read(&self.program).unwrap();
         let encoded =
             demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Fast)
                 .unwrap();
-        replace(&target.join(format!("{executable}.zst")), &encoded);
+        replace(&files.join(compressed_file(executable, host_target())), &encoded);
         replace(
-            &release.join("descriptor.json"),
+            &package.join("descriptor.json"),
             &serde_json::to_vec(&self.descriptor).unwrap(),
         );
-        commands
+        write_server_release(&root, &files);
+        root
     }
+}
+
+/// Writes `root`'s `release.json`, which names `files` as where the
+/// release's files are.
+pub fn write_server_release(root: &std::path::Path, files: &std::path::Path) {
+    let record = ServerRelease {
+        files: files.to_str().unwrap().to_owned(),
+    };
+    replace(
+        &root.join(SERVER_RELEASE),
+        &serde_json::to_vec(&record).unwrap(),
+    );
 }
 
 /// Writes `bytes` to `path` whole: to a file of this process's beside it,
@@ -181,7 +189,7 @@ static CLAUDE: LazyLock<Built> = LazyLock::new(|| {
 pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
     descriptor: NativeFixture::load().descriptor,
     program: native_fixture_binary(),
-    commands: OnceLock::new(),
+    release: OnceLock::new(),
 });
 
 /// Captures verification mail, or refuses it while `failing` is set.
@@ -243,10 +251,10 @@ pub struct Harness {
     /// A real machine manager's socket, which the backends use instead of
     /// the scripted manager's (`scenarios.md` § Cloud suite).
     pub machines: Option<PathBuf>,
-    /// A server release's `commands/` whose releases the backends publish
-    /// (`native-runtime.md` § Backend deployment configuration), instead of
-    /// a package the workspace built.
-    pub commands: Option<PathBuf>,
+    /// The root of a server release whose command packages the backends
+    /// publish (`native-runtime.md` § Backend deployment configuration),
+    /// instead of a package the workspace built.
+    pub server_release: Option<PathBuf>,
     expose_domain: Option<ExposeDomain>,
     pub exposes: ExposeTuning,
     /// Counts what reaches the object store of every backend this harness
@@ -299,7 +307,7 @@ impl Harness {
             cloud: CloudTuning::default(),
             manager: ScriptedManager::start(),
             machines: None,
-            commands: None,
+            server_release: None,
             expose_domain: None,
             exposes: ExposeTuning::default(),
             objects: None,
@@ -370,9 +378,11 @@ impl Harness {
         self
     }
 
-    /// The runner releases the installer routes serve.
-    pub fn with_runner_releases(mut self, directory: PathBuf) -> Self {
-        self.runner_releases = Some(directory);
+    /// The server release at `root`, whose `runners/` the installer routes
+    /// serve and whose files hold the runner executables.
+    pub fn with_runner_releases(mut self, root: PathBuf) -> Self {
+        self.runner_releases = Some(root.join("runners"));
+        self.server_release = Some(root);
         self
     }
 
@@ -502,15 +512,15 @@ impl Harness {
         config.public_url = self.public_url.clone();
         config.object_counts = self.objects.clone();
         assert!(
-            self.release.is_none() || self.commands.is_none(),
-            "a harness loads a workspace package or a server release's commands, not both"
+            self.release.is_none() || self.server_release.is_none(),
+            "a harness loads a workspace package or a server release, not both"
         );
-        let commands = match (self.release, &self.commands) {
-            (Some(built), _) => Some(built.commands()),
-            (None, commands) => commands.as_deref(),
+        let release = match (self.release, &self.server_release) {
+            (Some(built), _) => Some(built.release()),
+            (None, release) => release.as_deref(),
         };
-        if let Some(commands) = commands {
-            config.native = publish_commands(&config, commands, &CancellationToken::new())
+        if let Some(release) = release {
+            config.native = publish_commands(&config, release, &CancellationToken::new())
                 .await
                 .unwrap();
         }

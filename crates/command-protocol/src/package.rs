@@ -89,7 +89,7 @@ impl PackageDescriptor {
 /// A URL the runner downloads an artifact from, valid until `expires_at`
 /// (milliseconds since the Unix epoch) when set. It is an HTTP or HTTPS URL
 /// without credentials: object storage answers with a signed HTTPS URL, and a
-/// development store with a URL on the backend itself. The scheme cannot
+/// local store with a URL on the backend itself. The scheme cannot
 /// change what runs, because the runner checks the download against the size
 /// and SHA-256 its pinned descriptor declares (`native-runtime.md` § Install
 /// the selected package).

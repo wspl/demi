@@ -396,9 +396,11 @@ cargo xtask server-release --output /opt/demi/0.1.3 --files /opt/demi/0.1.3-file
   --server x86_64-unknown-linux-musl --web packages/web/dist
 ```
 
-- `--output` names the root and `--files` the directory of the release's
-  files, both new directories: a release is assembled once and never changed
-  in place.
+- `--output` names the root, a new directory: a root is assembled once and
+  never changed in place. `--files` names the directory of the release's
+  files, which may already hold this build's files, as when the build's
+  other Linux root was assembled into it; a file of the same name there must
+  hold the same bytes, or the assembly fails.
 - `--downloads <url>` writes that URL into `release.json`, where the files
   will be published; without it, `release.json` names the `--files`
   directory.
