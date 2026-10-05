@@ -51,6 +51,9 @@ impl HostServer {
             Inbound::FsReadFile { .. } => return self.files.read(message, &self.default_cwd),
             Inbound::FsWriteFile { .. } => return self.files.write(message, &self.default_cwd),
             Inbound::FsLook { .. } => return self.files.look(message, &self.default_cwd),
+            Inbound::FsReadFiles { .. } => {
+                return self.files.read_files(message, &self.default_cwd);
+            }
             _ => {}
         }
         if message.fs_request_id().is_none() {

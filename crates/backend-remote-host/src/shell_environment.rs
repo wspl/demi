@@ -534,22 +534,33 @@ impl RemoteShellEnvironment {
         ended: EndedJob<'_>,
     ) {
         let EndedJob { job, end, streams } = ended;
-        if !end.files.is_empty() {
+        // The reads the completion needs go out together (`runner.md`
+        // § Host operations): the edits' copies, the kept output and the
+        // media.
+        let retained = async {
+            if end.files.is_empty() {
+                return None;
+            }
             let files = match &self.0.options.keeper {
                 Some(keeper) => keeper.retain(command, &end.files).await,
                 None => end.files.iter().map(unkept).collect(),
             };
-            record.borrow_mut().set_files(EditedFiles {
+            Some(EditedFiles {
                 files,
                 truncated: end.files_truncated,
-            });
-        }
-        if let Some(cwd) = end.cwd
+            })
+        };
+        if let Some(cwd) = end.cwd.clone()
             && let Some(shell) = self.0.state.borrow_mut().shells.get_mut(shell)
         {
             shell.cwd = cwd;
         }
         let mut received = running.received.take();
+        let set_files = |files: Option<EditedFiles>| {
+            if let Some(files) = files {
+                record.borrow_mut().set_files(files);
+            }
+        };
         let exit_code = match &end.status {
             // A job the runner could not run names why; any other kind is
             // bash's own.
@@ -559,6 +570,7 @@ impl RemoteShellEnvironment {
                     _ => format!("bash: {}", error.kind),
                 };
                 let page = push_reason(&mut received, &reason);
+                set_files(retained.await);
                 let settlement = Settlement {
                     ending: Ending::Exited(127),
                     output: WholeOutput::new(received, None),
@@ -581,6 +593,7 @@ impl RemoteShellEnvironment {
                     page.push_str(&missing.line());
                     page.push('\n');
                 }
+                set_files(retained.await);
                 // The media went with the connection too.
                 let media = job
                     .media()
@@ -611,39 +624,45 @@ impl RemoteShellEnvironment {
         // What the end adds to the pages' view: the whole output when the
         // view lacks some of it, which shows its end anew; otherwise only a
         // line that stands for a binary stdout.
-        let (output, mut page, read) = if unreceived == 0 {
-            (WholeOutput::new(received, None), String::new(), false)
-        } else {
-            match job.read_output().await {
-                Ok(output) => (output, String::new(), true),
-                Err(error) => {
-                    tracing::warn!(%command, "could not read the command's kept output: {error}");
-                    // The output ends with each stream's newest bytes the
-                    // runner sent, past what lies between them and the start.
-                    let newest = Received::newest_bytes(&streams);
-                    let kept: u64 = newest
-                        .iter()
-                        .map(|(left_out, _, bytes)| left_out + bytes.len() as u64)
-                        .sum();
-                    if !newest.is_empty() {
-                        let left_out = newest.iter().map(|(left_out, ..)| left_out).sum();
-                        received.push(OutputRecord::LeftOut(left_out));
-                        received.extend(
-                            newest
-                                .into_iter()
-                                .map(|(_, stream, bytes)| OutputRecord::Output(stream, bytes)),
-                        );
-                    }
-                    let missing = Some(Missing {
-                        bytes: unreceived.saturating_sub(kept),
-                        reason: format!("not read from the Host: {}", error.message),
-                    })
-                    .filter(|missing| missing.bytes > 0);
-                    let page = missing
-                        .as_ref()
-                        .map_or_else(String::new, |missing| format!("{}\n", missing.line()));
-                    (WholeOutput::new(received, missing), page, false)
+        let kept_output = async {
+            if unreceived == 0 {
+                None
+            } else {
+                Some(job.read_output().await)
+            }
+        };
+        let (files, kept_output, media) = tokio::join!(retained, kept_output, self.media(job));
+        set_files(files);
+        let (output, mut page, read) = match kept_output {
+            None => (WholeOutput::new(received, None), String::new(), false),
+            Some(Ok(output)) => (output, String::new(), true),
+            Some(Err(error)) => {
+                tracing::warn!(%command, "could not read the command's kept output: {error}");
+                // The output ends with each stream's newest bytes the
+                // runner sent, past what lies between them and the start.
+                let newest = Received::newest_bytes(&streams);
+                let kept: u64 = newest
+                    .iter()
+                    .map(|(left_out, _, bytes)| left_out + bytes.len() as u64)
+                    .sum();
+                if !newest.is_empty() {
+                    let left_out = newest.iter().map(|(left_out, ..)| left_out).sum();
+                    received.push(OutputRecord::LeftOut(left_out));
+                    received.extend(
+                        newest
+                            .into_iter()
+                            .map(|(_, stream, bytes)| OutputRecord::Output(stream, bytes)),
+                    );
                 }
+                let missing = Some(Missing {
+                    bytes: unreceived.saturating_sub(kept),
+                    reason: format!("not read from the Host: {}", error.message),
+                })
+                .filter(|missing| missing.bytes > 0);
+                let page = missing
+                    .as_ref()
+                    .map_or_else(String::new, |missing| format!("{}\n", missing.line()));
+                (WholeOutput::new(received, missing), page, false)
             }
         };
         let binary = output.binary_stdout(lengths.stdout_bytes, self.0.options.binary_limit);
@@ -665,7 +684,6 @@ impl RemoteShellEnvironment {
             record.grew(StreamKind::Stdout, lengths.stdout_bytes);
             record.grew(StreamKind::Stderr, lengths.stderr_bytes);
         }
-        let media = self.media(job).await;
         let settlement = Settlement {
             ending,
             output,
@@ -678,28 +696,47 @@ impl RemoteShellEnvironment {
 
     /// The media the job's commands returned (`runtime.md` § Where media
     /// are kept), each with its bytes: from the conversation owner's
-    /// namespace when it holds them, otherwise read from the Host; or why
-    /// the backend does not have them.
+    /// namespace when it holds them, otherwise read from the Host, all with
+    /// one request; or why the backend does not have them.
     async fn media(&self, job: &RemoteJob) -> Vec<CommandMedium> {
-        let mut media = Vec::new();
-        for medium in job.media() {
-            let bytes = self.medium_bytes(job, &medium).await;
-            media.push(command_medium(medium, bytes));
+        let announced = job.media();
+        let mut held = Vec::with_capacity(announced.len());
+        for medium in &announced {
+            held.push(match &self.0.options.keeper {
+                Some(keeper) => keeper.stored_blob(&medium.sha256).await,
+                None => None,
+            });
         }
-        media
-    }
-
-    async fn medium_bytes(&self, job: &RemoteJob, medium: &JobMedium) -> Result<Bytes, String> {
-        if let Some(keeper) = &self.0.options.keeper
-            && let Some(bytes) = keeper.stored_blob(&medium.sha256).await
-        {
-            return Ok(bytes);
+        let unheld: Vec<u32> = announced
+            .iter()
+            .zip(&held)
+            .filter(|(_, held)| held.is_none())
+            .map(|(medium, _)| medium.number)
+            .collect();
+        let mut read = if unheld.is_empty() {
+            Vec::new()
+        } else {
+            match job.read_media(&unheld).await {
+                Ok(read) => read,
+                Err(error) => unheld.iter().map(|_| Err(error.clone())).collect(),
+            }
         }
-        match job.read_medium(medium.number).await {
-            Ok(bytes) if BlobRef::of(&bytes) == medium.sha256 => Ok(bytes),
-            Ok(_) => Err("not read from the Host: its bytes are not the ones the runner announced".into()),
-            Err(error) => Err(format!("not read from the Host: {}", error.message)),
-        }
+        .into_iter();
+        announced
+            .into_iter()
+            .zip(held)
+            .map(|(medium, held)| {
+                let bytes = match held {
+                    Some(bytes) => Ok(bytes),
+                    None => match read.next().expect("one answer per medium read") {
+                        Ok(bytes) if BlobRef::of(&bytes) == medium.sha256 => Ok(bytes),
+                        Ok(_) => Err("not read from the Host: its bytes are not the ones the runner announced".into()),
+                        Err(error) => Err(format!("not read from the Host: {}", error.message)),
+                    },
+                };
+                command_medium(medium, bytes)
+            })
+            .collect()
     }
 
     /// Ends the command with its whole output: the keeper stores it, the
@@ -871,7 +908,8 @@ impl ShellEnvironment for RemoteShellEnvironment {
                     returned: returned.len(),
                 });
             }
-            Ok(job.read_medium(number).await?)
+            let mut read = job.read_media(&[number]).await?;
+            Ok(read.pop().expect("one answer per medium read")?)
         })
     }
 

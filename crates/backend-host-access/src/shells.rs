@@ -7,6 +7,7 @@
 //! conversation and the node, and while the environment lives the node's
 //! commands answer its jobs' rpc calls.
 
+use std::collections::{BTreeSet, HashMap};
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
 
@@ -23,9 +24,9 @@ use demi_backend_runners::command_context::command_context;
 use demi_backend_runners::files::text_of;
 use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
-use demi_command_protocol::CommandCaller;
+use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
-    CommandMedium, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostFs, HostKey,
+    CommandMedium, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, HostKey,
     MediumKept, PageView, ShellEnvironment, ShellError, StoredMedium, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
@@ -275,38 +276,51 @@ impl Keeper {
             .map_err(|error| error.to_string())
     }
 
-    /// Stores an edit segment's two sides as blobs: the Host's copy before
-    /// it, empty for a segment that created the file, and its copy after
-    /// it. Both must be text the change view can show.
-    async fn store_copies(
-        &self,
-        original: Option<&str>,
-        modified: &str,
-    ) -> Result<EditCopies, String> {
-        let before = match original {
-            Some(path) => self.text_copy(path).await?,
-            None => String::new(),
-        };
-        let after = self.text_copy(modified).await?;
-        let put = async |text: String| {
-            self.blobs
-                .put(Bytes::from(text))
-                .await
-                .map_err(|error| error.to_string())
-        };
-        Ok(EditCopies {
-            original: put(before).await?,
-            modified: put(after).await?,
-        })
-    }
-
-    /// The Host's copy at `path`, when it is text within the edit limits;
-    /// the runner already keeps no other.
-    async fn text_copy(&self, path: &str) -> Result<String, String> {
-        let bytes = HostFs::read_file(&*self.host, path)
+    /// Stores `text` as a blob.
+    async fn put_text(&self, text: String) -> Result<BlobRef, String> {
+        self.blobs
+            .put(Bytes::from(text))
             .await
-            .map_err(|error| error.to_string())?;
-        text_of(bytes).map_err(|refusal| refusal.to_string())
+            .map_err(|error| error.to_string())
+    }
+}
+
+/// The Host's copies the edit segments of `files` name, each read once with
+/// one request (`edit-tracking.md` § Edit copies): each copy's text, when it
+/// is text within the edit limits, or why it is not stored. The runner
+/// keeps no copy that is not.
+async fn read_copies(
+    host: &RemoteHost,
+    files: &[JobFileChange],
+) -> HashMap<String, Result<String, String>> {
+    let paths: Vec<String> = files
+        .iter()
+        .flat_map(|file| &file.edits)
+        .filter(|segment| segment.modified.is_some())
+        .flat_map(|segment| [segment.original.clone(), segment.modified.clone()])
+        .flatten()
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .collect();
+    if paths.is_empty() {
+        return HashMap::new();
+    }
+    let limit = u64::try_from(EDIT_FILE_BYTES).expect("the edit limit fits u64");
+    match host.read_files(&paths, limit).await {
+        Ok(read) => paths
+            .into_iter()
+            .zip(read)
+            .map(|(path, bytes)| {
+                let text = bytes
+                    .map_err(|error| error.to_string())
+                    .and_then(|bytes| text_of(bytes).map_err(|refusal| refusal.to_string()));
+                (path, text)
+            })
+            .collect(),
+        Err(error) => paths
+            .into_iter()
+            .map(|path| (path, Err(error.to_string())))
+            .collect(),
     }
 }
 
@@ -348,25 +362,51 @@ impl CommandKeeper for Keeper {
         files: &'a [JobFileChange],
     ) -> LocalBoxFuture<'a, Vec<EditedFile>> {
         Box::pin(async move {
+            // Each copy is stored once, however many segments name it; an
+            // empty one stands before a segment that created its file.
+            let mut stored: HashMap<Option<String>, Result<BlobRef, String>> = HashMap::new();
+            for (path, text) in read_copies(&self.host, files).await {
+                let blob = match text {
+                    Ok(text) => self.put_text(text).await,
+                    Err(error) => Err(error),
+                };
+                stored.insert(Some(path), blob);
+            }
+            let created = files
+                .iter()
+                .flat_map(|file| &file.edits)
+                .any(|segment| segment.original.is_none() && segment.modified.is_some());
+            if created {
+                stored.insert(None, self.put_text(String::new()).await);
+            }
             let mut retained = Vec::with_capacity(files.len());
             for file in files {
-                let mut copies = Vec::with_capacity(file.edits.len());
-                for segment in &file.edits {
-                    let Some(modified) = &segment.modified else {
-                        copies.push(None);
-                        continue;
-                    };
-                    let stored = self
-                        .store_copies(segment.original.as_deref(), modified)
-                        .await;
-                    if let Err(error) = &stored {
-                        // The file's record stays in the list without this
-                        // segment's copies.
-                        tracing::warn!(conversation = %self.conversation, %command, path = %file.path, "an edit's copies were not stored: {error}");
-                    }
-                    copies.push(stored.ok());
-                }
-                retained.push(edited_file(file, |segment| copies[segment].take()));
+                let copies: Vec<Option<EditCopies>> = file
+                    .edits
+                    .iter()
+                    .map(|segment| {
+                        let modified = segment.modified.clone()?;
+                        let blob = |path: Option<String>| {
+                            stored
+                                .get(&path)
+                                .cloned()
+                                .expect("every copy a segment names was read")
+                        };
+                        let copies = blob(segment.original.clone()).and_then(|original| {
+                            Ok(EditCopies {
+                                original,
+                                modified: blob(Some(modified))?,
+                            })
+                        });
+                        if let Err(error) = &copies {
+                            // The file's record stays in the list without this
+                            // segment's copies.
+                            tracing::warn!(conversation = %self.conversation, %command, path = %file.path, "an edit's copies were not stored: {error}");
+                        }
+                        copies.ok()
+                    })
+                    .collect();
+                retained.push(edited_file(file, |segment| copies[segment].clone()));
             }
             retained
         })
@@ -498,5 +538,81 @@ impl ShellEnvironment for Registered {
 
     fn owns_command(&self, command: &CommandId) -> bool {
         self.environment.owns_command(command)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture, answered_requests};
+    use demi_command_protocol::{EditCopies as CopyPaths, EditKind};
+    use tokio::sync::mpsc;
+
+    use super::*;
+
+    // About a tenth of a second: a real runner process reads the copies.
+    #[tokio::test(flavor = "local")]
+    async fn a_commands_edit_copies_are_read_with_one_request() {
+        let (tap, mut replies) = mpsc::channel(1 << 10);
+        let fixture = RunnerFixture::start(FixtureOptions {
+            tap: Some(tap),
+            ..FixtureOptions::default()
+        })
+        .await;
+        let copies = fixture.home_dir().join("copies");
+        std::fs::create_dir(&copies).unwrap();
+        std::fs::write(copies.join("1"), "one\n").unwrap();
+        std::fs::write(copies.join("2"), "two\n").unwrap();
+        std::fs::write(copies.join("3"), "three\n").unwrap();
+        std::fs::write(copies.join("binary"), b"\x00\xff").unwrap();
+        answered_requests(&mut replies);
+        let path = |name: &str| Some(format!("{}/copies/{name}", fixture.home()));
+        let segment = |original: Option<String>, modified: Option<String>| CopyPaths {
+            original,
+            modified,
+        };
+        // Two edits of one file share the copy between them; a created file
+        // has no copy before its first; a binary copy is not text.
+        let files = [
+            JobFileChange {
+                path: "notes.txt".into(),
+                kind: EditKind::Modified,
+                edits: vec![
+                    segment(path("1"), path("2")),
+                    segment(path("2"), path("3")),
+                ],
+                added: 2,
+                removed: 1,
+            },
+            JobFileChange {
+                path: "new.txt".into(),
+                kind: EditKind::Added,
+                edits: vec![segment(None, path("3")), segment(path("binary"), path("gone"))],
+                added: 1,
+                removed: 0,
+            },
+        ];
+
+        let read = read_copies(&fixture.host(), &files).await;
+
+        assert_eq!(answered_requests(&mut replies), 1, "one request reads every copy");
+        let mut texts: Vec<_> = read
+            .into_iter()
+            .map(|(path, text)| {
+                let name = path.rsplit('/').next().unwrap().to_owned();
+                (name, text.map_err(|_| ()))
+            })
+            .collect();
+        texts.sort();
+        assert_eq!(
+            texts,
+            [
+                ("1".to_owned(), Ok("one\n".to_owned())),
+                ("2".to_owned(), Ok("two\n".to_owned())),
+                ("3".to_owned(), Ok("three\n".to_owned())),
+                ("binary".to_owned(), Err(())),
+                ("gone".to_owned(), Err(())),
+            ]
+        );
+        fixture.stop().await;
     }
 }

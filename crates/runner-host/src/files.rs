@@ -99,6 +99,41 @@ impl FileTransfers {
         Ok(())
     }
 
+    /// `fs_readFiles`: every file opened, answered at once, then their
+    /// contents into the output pipe, each after its length.
+    pub fn read_files(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsReadFiles {
+            id,
+            paths,
+            cwd,
+            limit,
+            output,
+        } = message
+        else {
+            return Err(io::Error::other("not a read of several files"));
+        };
+        self.admit()?;
+        let base = cwd.map_or_else(|| default_cwd.to_owned(), PathBuf::from);
+        let targets = paths.iter().map(|path| resolve(&base, path)).collect();
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        let shutdown = self.cancel.clone();
+        self.transfers.spawn(async move {
+            let opened = open_files(targets, Some(limit), &transfer).await;
+            let answer = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                id,
+                result: wire::FsResult::ReadFiles(file_reads(&opened)),
+            }));
+            if !send(&reply, answer, &shutdown).await {
+                return;
+            }
+            let result = pipes.put(&output.url, framed(opened), &transfer).await;
+            report_pipe(&reply, output.id, result, &shutdown).await;
+        });
+        Ok(())
+    }
+
     /// `fs_look`: what each path is, answered at once, then the files' first
     /// bytes into the output pipe, one file after another.
     pub fn look(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
@@ -302,6 +337,111 @@ async fn open_range(
     }
     file.seek(SeekFrom::Start(offset)).await?;
     Ok(file.take(length.unwrap_or(u64::MAX)))
+}
+
+/// A file of a read of several, open, and the size it had then.
+pub struct OpenFile {
+    file: fs::File,
+    size: u64,
+}
+
+/// Opens each of `targets` for a read of several files: a regular file of
+/// at most `limit` bytes, when there is a limit.
+pub async fn open_files(
+    targets: Vec<io::Result<PathBuf>>,
+    limit: Option<u64>,
+    cancel: &CancellationToken,
+) -> Vec<io::Result<OpenFile>> {
+    let mut opened = Vec::with_capacity(targets.len());
+    for target in targets {
+        opened.push(open_file(target, limit, cancel).await);
+    }
+    opened
+}
+
+async fn open_file(
+    target: io::Result<PathBuf>,
+    limit: Option<u64>,
+    cancel: &CancellationToken,
+) -> io::Result<OpenFile> {
+    let target = target?;
+    // Out of open files, the read waits for one (`runner.md` § Load).
+    let file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
+    let metadata = file.metadata().await?;
+    if !metadata.is_file() {
+        return Err(io::Error::new(
+            io::ErrorKind::IsADirectory,
+            "not a regular file",
+        ));
+    }
+    if limit.is_some_and(|limit| metadata.len() > limit) {
+        return Err(io::Error::new(
+            io::ErrorKind::FileTooLarge,
+            format!("the file is over {} bytes", limit.unwrap_or_default()),
+        ));
+    }
+    Ok(OpenFile {
+        file,
+        size: metadata.len(),
+    })
+}
+
+/// The answer of a read of several files: which were opened, and why each
+/// other was not.
+pub fn file_reads(opened: &[io::Result<OpenFile>]) -> Vec<wire::FileRead> {
+    opened
+        .iter()
+        .map(|file| match file {
+            Ok(_) => wire::FileRead::Read,
+            Err(error) => wire::FileRead::Failed {
+                code: match error.kind() {
+                    io::ErrorKind::FileTooLarge => Some("too_large".into()),
+                    _ => error_code(error).map(String::from),
+                },
+                message: error.to_string(),
+            },
+        })
+        .collect()
+}
+
+/// The pipe body of a read of several files: each opened file's length,
+/// eight bytes in big-endian order, then its bytes (`wire::FileRead`). A
+/// file that got shorter since it was opened fails the body.
+pub fn framed(
+    opened: Vec<io::Result<OpenFile>>,
+) -> impl futures_util::Stream<Item = io::Result<Bytes>> + Send + 'static {
+    futures_util::stream::iter(opened.into_iter().flatten()).flat_map(|OpenFile { file, size }| {
+        let length = futures_util::stream::once(async move {
+            Ok(Bytes::copy_from_slice(&size.to_be_bytes()))
+        });
+        length.chain(exactly(file, size))
+    })
+}
+
+/// The first `size` bytes of `file`, which must have them.
+fn exactly(
+    file: fs::File,
+    size: u64,
+) -> impl futures_util::Stream<Item = io::Result<Bytes>> + Send + 'static {
+    let chunks = chunks(file.take(size));
+    futures_util::stream::unfold(Some((chunks, 0)), move |state| async move {
+        let (mut chunks, read) = state?;
+        match chunks.next().await {
+            Some(Ok(chunk)) => {
+                let read = read + chunk.len() as u64;
+                Some((Ok(chunk), Some((chunks, read))))
+            }
+            Some(Err(error)) => Some((Err(error), None)),
+            None if read < size => Some((
+                Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "the file got shorter while it was read",
+                )),
+                None,
+            )),
+            None => None,
+        }
+    })
 }
 
 /// What is at `path`, a symbolic link followed. A file's first `limit`
