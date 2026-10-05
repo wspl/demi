@@ -58,8 +58,10 @@ where
 /// The longest window a shell tool watches, and the longest yield.
 const MAX_DELAY_MS: u32 = 600_000;
 
-/// What a call's `description` asks of the model.
-const DESCRIPTION: &str = "Concise title for the concrete user-visible state or result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.";
+/// What a call's `description` asks of the model: the title the user sees,
+/// which the model writes before the step runs (`runtime.md` § Tool
+/// descriptions).
+pub(super) const DESCRIPTION: &str = "Short title of what this step does, as a command in the imperative, such as \"Install Chrome for Testing\", \"Start the browser with a blank tab\" or \"Run the type checker\". It is written before the step runs, so never state a result or a state reached (not \"Chrome for Testing installed\"). Do not describe waiting, pausing or tool mechanics; no generic action or bare noun; no scripts, output, protocol state, step numbers, tool names, ids, internal labels or reasons.";
 
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -284,7 +286,7 @@ mod tests {
         );
         let exec: ShellExecInput = parse(
             "shell_exec",
-            json!({"script": "ls", "timeoutMs": 600_000, "description": "Files"}),
+            json!({"script": "ls", "timeoutMs": 600_000, "description": "List the files"}),
         )
         .unwrap();
         assert_eq!(

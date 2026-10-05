@@ -181,7 +181,7 @@ impl Model {
                 self.phase = Phase::Reading;
                 vec![self.call(
                     "shell_write",
-                    json!({"commandId": self.reader, "stdin": "Alice\n", "description": "Name given"}),
+                    json!({"commandId": self.reader, "stdin": "Alice\n", "description": "Answer with the name"}),
                 )]
             }
             Phase::Reading => {
