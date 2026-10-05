@@ -9,6 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::rust::unwrap_or_skip;
 
+use crate::release::{LinuxFont, LinuxLibrary};
+
 use super::{
     AssetKind, BrowserFailure, BrowserNode, BrowserTab, BrowserTarget, BrowserTreeNode,
     BrowserViewport, ClipboardFormat, ClipboardMime, ContentFormat, Dialog, DialogOutcome,
@@ -160,7 +162,7 @@ input!(@struct
 );
 
 impl BrowserInput for OpenInput {
-    /// A cold start installs and launches Chrome before the page loads.
+    /// A cold start launches Chrome before the page loads.
     const DEFAULT_TIMEOUT_MS: u64 = MAX_TIMEOUT_MS;
 
     fn timeout_ms(&self) -> Option<u64> {
@@ -1296,6 +1298,35 @@ pub struct AssetsExportResult {
     pub files: Vec<ExportedAsset>,
 }
 
+input!(@struct
+    /// `install`: installs the pinned Chrome for Testing on the Host.
+    InstallInput {}
+);
+
+impl BrowserInput for InstallInput {
+    /// The download of the browser's archive.
+    const DEFAULT_TIMEOUT_MS: u64 = MAX_TIMEOUT_MS;
+
+    fn timeout_ms(&self) -> Option<u64> {
+        self.timeout
+    }
+}
+
+/// What `install` answers: the installed browser, and on Linux what the
+/// Host still lacks for it, which `install` names but does not install.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct InstallResult {
+    /// The release's title, such as `Chrome for Testing 153.0.8010.36`.
+    pub browser: String,
+    /// The executable's path.
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_libraries: Vec<LinuxLibrary>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub missing_fonts: Vec<LinuxFont>,
+}
+
 input! {
     tab
     /// `capabilities`: lists what the page supports, such as WebMCP.
@@ -1479,6 +1510,7 @@ operations! {
     "capabilities" => Capabilities(CapabilitiesInput),
     "webmcp.list" => WebmcpList(WebmcpListInput),
     "webmcp.call" => WebmcpCall(WebmcpCallInput),
+    "install" => Install(InstallInput),
 }
 
 impl BrowserOperation {

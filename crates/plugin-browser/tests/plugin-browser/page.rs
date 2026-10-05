@@ -6,6 +6,7 @@
 use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
+use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_plugin_browser::Browser;
 use demi_plugin_interface::{
     CallKind, Plugin, PluginError, PluginFactory, PortRefusal, Reply, Request,
@@ -134,7 +135,13 @@ async fn a_stopped_host_lists_no_tabs_and_a_tab_the_browser_lacks_is_refused_to_
         _ => Err(tab_not_found()),
     }));
 
-    assert_eq!(tabs(&plugin, &demi).await, Ok(json!({ "tabs": [] })));
+    // The state names the pinned browser, which the page looks for among
+    // the Host's installed artifacts, even while the Host is stopped.
+    let pinned = BrowserRelease::pinned().unwrap();
+    assert_eq!(
+        tabs(&plugin, &demi).await,
+        Ok(json!({ "tabs": [], "browser": { "name": ARTIFACT, "version": pinned.version } }))
+    );
     assert_eq!(
         call(&plugin, &demi, "sync", json!({})).await,
         Ok(Value::Null)

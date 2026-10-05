@@ -37,46 +37,10 @@ pub struct PackageArtifact {
     pub size: u64,
 }
 
-/// One target's archive of a resource: its SHA-256 and size, and its
-/// entry, the file the program uses, as a relative path inside the
-/// archive with `/` between its components.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct ResourceArtifact {
-    #[garde(custom(digest))]
-    pub sha256: String,
-    #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
-    pub size: u64,
-    #[garde(custom(archive_entry))]
-    pub entry: String,
-}
-
-impl ResourceArtifact {
-    /// The archive as an artifact: what a runner downloads and checks.
-    pub fn archive(&self) -> PackageArtifact {
-        PackageArtifact {
-            sha256: self.sha256.clone(),
-            size: self.size,
-        }
-    }
-}
-
-/// What a command program needs on the Host beside its executable, such as
-/// `demi.browser`'s Chrome (`native-runtime.md` § Bind an exact package):
-/// its title for the user and the archive of each target that has one.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct PackageResource {
-    #[garde(length(min = 1, max = 200))]
-    pub title: String,
-    #[garde(custom(resource_targets))]
-    pub targets: BTreeMap<String, ResourceArtifact>,
-}
-
-/// A command package release: its identity, the operations it serves,
-/// the artifact of each target it carries and the resources its program
-/// needs. Publication requires every target; a development release may
-/// carry fewer.
+/// A command package release: its identity, the operations it serves and
+/// the executable of each target it carries. Software the program installs
+/// itself, such as Chrome for Testing, is the program's own and not the
+/// release's (`native-runtime.md` § Bind an exact package).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackageDescriptor {
@@ -90,9 +54,6 @@ pub struct PackageDescriptor {
     pub operations: Vec<String>,
     #[garde(custom(target_artifacts))]
     pub targets: BTreeMap<String, PackageArtifact>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    #[garde(custom(named_resources))]
-    pub resources: BTreeMap<String, PackageResource>,
 }
 
 impl PackageDescriptor {
@@ -108,21 +69,12 @@ impl PackageDescriptor {
         canonical_digest(self)
     }
 
-    /// The artifact of `target` whose SHA-256 is `sha256`: the executable,
-    /// or a resource's archive.
+    /// The executable of `target`, when its SHA-256 is `sha256`.
     pub fn carries(&self, target: &str, sha256: &str) -> Option<PackageArtifact> {
-        let executable = self
-            .targets
+        self.targets
             .get(target)
             .filter(|artifact| artifact.sha256 == sha256)
-            .cloned();
-        executable.or_else(|| {
-            self.resources
-                .values()
-                .filter_map(|resource| resource.targets.get(target))
-                .find(|archive| archive.sha256 == sha256)
-                .map(ResourceArtifact::archive)
-        })
+            .cloned()
     }
 
     /// Whether a service's catalog is the one this descriptor declares: the
@@ -190,7 +142,7 @@ impl ServiceInfo {
     }
 }
 
-fn download_url(value: &str, _: &()) -> garde::Result {
+pub(crate) fn download_url(value: &str, _: &()) -> garde::Result {
     let url = url::Url::parse(value).map_err(|error| garde::Error::new(error.to_string()))?;
     let web = matches!(url.scheme(), "http" | "https");
     if !web || !url.username().is_empty() || url.password().is_some() {
@@ -285,37 +237,6 @@ fn unique(operations: &[String], _: &()) -> garde::Result {
         ))),
         None => Ok(()),
     }
-}
-
-/// A garde rule: each resource has a name of 1 to 64 lowercase letters,
-/// digits and hyphens that starts with a letter, and is valid.
-fn named_resources(resources: &BTreeMap<String, PackageResource>, _: &()) -> garde::Result {
-    for (name, resource) in resources {
-        let named = (1..=64).contains(&name.len())
-            && name.starts_with(|first: char| first.is_ascii_lowercase())
-            && name
-                .bytes()
-                .all(|byte| matches!(byte, b'a'..=b'z' | b'0'..=b'9' | b'-'));
-        if !named {
-            return Err(garde::Error::new(format!("{name} is no resource name")));
-        }
-        garde::Validate::validate(resource)
-            .map_err(|report| garde::Error::new(format!("{name}: {report}")))?;
-    }
-    Ok(())
-}
-
-/// A garde rule: a resource has an archive for at least one known target.
-fn resource_targets(targets: &BTreeMap<String, ResourceArtifact>, _: &()) -> garde::Result {
-    if targets.is_empty() {
-        return Err(garde::Error::new("a resource has an archive for a target"));
-    }
-    for (name, archive) in targets {
-        target(name, &())?;
-        garde::Validate::validate(archive)
-            .map_err(|report| garde::Error::new(format!("{name}: {report}")))?;
-    }
-    Ok(())
 }
 
 /// A garde rule: an entry is a relative path of normal components.

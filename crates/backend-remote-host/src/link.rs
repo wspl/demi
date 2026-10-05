@@ -23,7 +23,8 @@ use demi_host_interface::{
     RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
 };
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, FsResult, GitResult, Inbound, Install, LogLine, Outbound, VolumeName,
+    self, ArtifactOwner, FsResult, GitResult, HostArtifact, Inbound, Install, LogLine, Outbound,
+    VolumeName,
 };
 use demi_shared_gates::{GateLease, SerialGate};
 use demi_shared_types::{BlobRef, StreamKind};
@@ -173,6 +174,9 @@ pub(crate) struct Inner {
     liveness: Cell<Liveness>,
     /// The installs the runner last reported.
     installs: watch::Sender<Vec<Install>>,
+    /// What the runner last reported its artifact cache holds; none until
+    /// it reports.
+    installed: watch::Sender<Option<Vec<HostArtifact>>>,
 }
 
 #[derive(Default)]
@@ -434,6 +438,7 @@ impl Link {
             disconnect: RefCell::new(None),
             liveness: Cell::new(Liveness::Idle),
             installs: watch::Sender::new(Vec::new()),
+            installed: watch::Sender::new(None),
         }));
         let driver = LinkDriver {
             link: link.clone(),
@@ -467,6 +472,13 @@ impl Link {
     /// Each list of installs the runner reports from now on.
     pub fn watch_installs(&self) -> watch::Receiver<Vec<Install>> {
         self.0.installs.subscribe()
+    }
+
+    /// What the runner reports its artifact cache holds, from now on
+    /// (`native-runtime.md` § Installed artifacts): none until its first
+    /// report.
+    pub fn watch_installed(&self) -> watch::Receiver<Option<Vec<HostArtifact>>> {
+        self.0.installed.subscribe()
     }
 
     pub fn is_closed(&self) -> bool {
@@ -685,6 +697,9 @@ impl Link {
             Outbound::Hello { .. } => {}
             Outbound::Installs { installs } => {
                 self.0.installs.send_replace(installs);
+            }
+            Outbound::Installed { artifacts } => {
+                self.0.installed.send_replace(Some(artifacts));
             }
             Outbound::Pong { jobs } => {
                 self.0.state.borrow_mut().pong_jobs = jobs;

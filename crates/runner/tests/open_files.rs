@@ -569,7 +569,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                     size: bytes.len() as u64,
                 },
             )]),
-            resources: Default::default(),
         };
         let started = services.handle();
         starved("native service start", Freed::Some, async move {

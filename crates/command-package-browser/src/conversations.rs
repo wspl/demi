@@ -86,12 +86,10 @@ struct ConversationBrowser {
     commands: TaskTracker,
 }
 
-/// What starts a conversation's browser: the starting caller's locale, and
-/// the invocation the runner installs Chrome for when it has none.
+/// What starts a conversation's browser: the starting caller's locale.
 #[derive(Clone)]
 pub(crate) struct Starting {
     pub(crate) locale: CommandLocale,
-    pub(crate) invocation: String,
 }
 
 enum Request {
@@ -443,7 +441,8 @@ impl Owner {
     }
 
     /// Starts the conversation's Chrome in the starting caller's locale,
-    /// installed for the starting invocation when the Host has none.
+    /// from the installation the Host holds (`browser.md` § Browser
+    /// distribution).
     fn start(&mut self, starting: Starting) -> watch::Receiver<Readiness> {
         let stop = CancellationToken::new();
         let (publish, ready) = watch::channel(None);
@@ -454,7 +453,7 @@ impl Owner {
             let publisher = publish.clone();
             let retire = owner_stop.clone();
             let result = async {
-                let executable = chrome.executable(&starting.invocation).await?;
+                let executable = chrome.executable().await?;
                 with_browser(
                     LaunchOptions::pinned(executable, starting.locale)?,
                     numbers,
@@ -650,6 +649,8 @@ pub(crate) struct Conversations {
     /// Where the conversations' tab numbers come from, once the service has
     /// its numbers source.
     numbers: watch::Sender<Option<Numbers>>,
+    /// The Host's Chrome, which `install` installs for every conversation.
+    chrome: Chrome,
 }
 
 /// The conversations' owner: it maps each conversation to its browser. It
@@ -719,11 +720,12 @@ impl Conversations {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let tasks = TaskTracker::new();
         let (numbers, source) = watch::channel(None);
-        tasks.spawn(serve(receiver, tasks.clone(), chrome, source));
+        tasks.spawn(serve(receiver, tasks.clone(), chrome.clone(), source));
         Self {
             requests,
             tasks,
             numbers,
+            chrome,
         }
     }
 
@@ -919,13 +921,17 @@ impl Conversations {
         cancellation: &CancellationToken,
         deadline: tokio::time::Instant,
     ) -> Result<CommandOutput> {
+        if matches!(command, BrowserOperation::Install(_)) {
+            // The Host's browser, not the conversation's: nothing starts.
+            let installed = self.chrome.install(&context.request.invocation_id).await?;
+            return Ok(CommandOutput::Json(output::value(installed)?));
+        }
         let starts = matches!(
             command,
             BrowserOperation::Open(_) | BrowserOperation::ContentFetch(_)
         );
         let starting = starts.then(|| Starting {
             locale: context.request.context.locale.clone(),
-            invocation: context.request.invocation_id.clone(),
         });
         let environment = browser.environment(starting.as_ref(), cancellation).await?;
         let Some(environment) = environment else {

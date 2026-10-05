@@ -6,7 +6,7 @@ import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import { conversationFiles } from '../conversation/files'
 import { useWorkPanel } from '../conversation/work'
 import { useProduct } from '../state/product'
-import { packageInstalls } from '../state/installs'
+import { packageInstalled, packageInstalls } from '../state/installs'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
 import { callFailure } from './errors'
@@ -18,14 +18,25 @@ import { conversationStates } from './states'
  * drops a plugin the user turned off; its conversation states by revision;
  * its calls over the plugin call routes (`web-api.md` § Plugin calls); its
  * user streams; the installs of its packages on a conversation's primary Host,
- * from that device's in the product state; and the shell's own services:
- * the conversations' files, intents and panels, and the settings dialog.
+ * and what that Host holds of them, from that device's in the product state;
+ * and the shell's own services: the conversations' files, intents and panels,
+ * and the settings dialog.
  */
 export function productPageHost(): PageHost {
   const product = useProduct()
   const work = useWorkPanel()
   const resources = useResources()
   const states = conversationStates(() => product.snapshot)
+  /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
+  function primaryHost(plugin: string, conversation: string) {
+    const state = product.snapshot
+    const summary = state?.conversations.find((entry) => entry.id === conversation)
+    if (!state || !summary) {
+      return null
+    }
+    const packages = state.plugins.find((entry) => entry.id === plugin)?.packages ?? []
+    return { deviceId: executionFor(summary).deviceId, packages }
+  }
   return {
     userState: (plugin) => product.snapshot?.pluginStates[plugin],
     followState: states.follow,
@@ -50,13 +61,12 @@ export function productPageHost(): PageHost {
       return userStreamAt(url.toString())
     },
     installs(plugin, conversation) {
-      const state = product.snapshot
-      const summary = state?.conversations.find((entry) => entry.id === conversation)
-      if (!state || !summary) {
-        return []
-      }
-      const packages = state.plugins.find((entry) => entry.id === plugin)?.packages ?? []
-      return packageInstalls(state, executionFor(summary).deviceId, packages)
+      const host = primaryHost(plugin, conversation)
+      return host ? packageInstalls(product.snapshot, host.deviceId, host.packages) : []
+    },
+    installed(plugin, conversation) {
+      const host = primaryHost(plugin, conversation)
+      return host ? packageInstalled(product.snapshot, host.deviceId, host.packages) : []
     },
     files: conversationFiles,
     intents: {

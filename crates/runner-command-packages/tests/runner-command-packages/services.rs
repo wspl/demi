@@ -3,7 +3,8 @@
 //! say what it holds; a failed release retires it; a service that fails
 //! reports its exit status and the end of its standard error. A service
 //! starts from the Host image's copy of its executable when that copy
-//! matches (§ Preinstalled artifacts).
+//! matches (§ Preinstalled artifacts). A program's install from its own
+//! source asks the backend nothing (§ The artifacts stream).
 
 use demi_command_protocol::{
     CommandCaller, CommandContext, CommandLocale, Invocation, PackageArtifact, PackageDescriptor,
@@ -76,7 +77,6 @@ async fn fixture(root: &Path, variant: usize) -> (PackageDescriptor, PathBuf) {
                 size: bytes.len() as u64,
             },
         )]),
-        resources: Default::default(),
     };
     (descriptor, path)
 }
@@ -101,36 +101,9 @@ async fn registry(root: &Path) -> ServiceRegistry {
 
 /// Runs `operation` for `conversation` and returns its completion's exit code.
 async fn call(resident: &Resident, operation: &str, conversation: &str) -> u8 {
-    let (mut input, mut output) = resident
-        .client()
-        .invoke(&Invocation {
-            context: CommandContext {
-                conversation: conversation.into(),
-                caller: CommandCaller::agent(1),
-                locale: CommandLocale {
-                    time_zone: "UTC".into(),
-                    languages: vec!["en-US".into()],
-                },
-            },
-            operation: operation.into(),
-            invocation_id: format!("{operation}-{conversation}"),
-            args: serde_json::json!({}),
-            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
-            env: BTreeMap::new(),
-            edits: None,
-            json: None,
-            stdout: None,
-        })
-        .await
-        .unwrap();
-    input.end().unwrap();
-    let mut exit = None;
-    while let Some(record) = output.next().await.unwrap() {
-        if let Record::Completion(completion) = record {
-            exit = Some(completion.exit_code);
-        }
-    }
-    exit.expect("a completion")
+    let id = format!("{operation}-{conversation}");
+    let (exit, _) = invoke(resident, operation, conversation, &id, serde_json::json!({})).await;
+    exit
 }
 
 /// Waits until the service behind `resident` has stopped.
@@ -699,4 +672,108 @@ impl tracing::field::Visit for LineVisitor {
             name => write!(self.others, " {name}={value:?}"),
         };
     }
+}
+
+/// `demi browser install` on a Host: the program names the official URL of
+/// what it installs, and the runner downloads it from there, checks it
+/// against the size and SHA-256 the program pinned, and asks the backend
+/// nothing. A download that does not match leaves nothing installed.
+#[tokio::test]
+async fn an_install_from_the_program_s_own_source_asks_the_backend_nothing() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        let (descriptor, path) = fixture(root.path(), 0).await;
+        let bytes = b"official bytes".to_vec();
+        let server = demi_shared_artifacts::testing::Server::start([
+            (
+                "/official".to_owned(),
+                demi_shared_artifacts::testing::Answer::ok(bytes.clone()),
+            ),
+            (
+                "/tampered".to_owned(),
+                demi_shared_artifacts::testing::Answer::ok(b"tampered bytes".to_vec()),
+            ),
+        ])
+        .await;
+        let registry = registry(root.path()).await;
+        let services = registry.handle();
+        let resolver = local(path);
+        // A job's lease keeps the service while its commands run.
+        let _lease = services.lease(digest(&descriptor)).await;
+        let resident = acquire(&services, &descriptor, resolver.clone()).await;
+        let install = |id: &'static str, url: String| {
+            let services = services.clone();
+            let resident = &resident;
+            let resolver = resolver.clone();
+            let descriptor = &descriptor;
+            let args = serde_json::json!({
+                "url": url,
+                "sha256": format!("{:x}", Sha256::digest(&bytes)),
+                "size": bytes.len(),
+            });
+            async move {
+                let _invoking = services.invoking(id, &descriptor.id, resolver);
+                invoke(resident, "install", "conversation", id, args).await
+            }
+        };
+
+        let (exit, _) = install("tampered", server.url("/tampered")).await;
+        assert_ne!(exit, 0);
+        let (exit, stdout) = install("official", server.url("/official")).await;
+        assert_eq!(exit, 0, "{stdout}");
+        assert_eq!(tokio::fs::read(&stdout).await.unwrap(), bytes);
+        // Only the service's executable came from the backend.
+        assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
+        assert_eq!(server.requests(), 2);
+        registry.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// Runs `operation` for `conversation` as the invocation `id` with `args`,
+/// and returns its completion's exit code and its standard output.
+async fn invoke(
+    resident: &Resident,
+    operation: &str,
+    conversation: &str,
+    id: &str,
+    args: serde_json::Value,
+) -> (u8, String) {
+    let (mut input, mut output) = resident
+        .client()
+        .invoke(&Invocation {
+            context: CommandContext {
+                conversation: conversation.into(),
+                caller: CommandCaller::agent(1),
+                locale: CommandLocale {
+                    time_zone: "UTC".into(),
+                    languages: vec!["en-US".into()],
+                },
+            },
+            operation: operation.into(),
+            invocation_id: id.into(),
+            args,
+            cwd: std::env::temp_dir().to_string_lossy().into_owned(),
+            env: BTreeMap::new(),
+            edits: None,
+            json: None,
+            stdout: None,
+        })
+        .await
+        .unwrap();
+    input.end().unwrap();
+    let mut exit = None;
+    let mut stdout = Vec::new();
+    while let Some(record) = output.next().await.unwrap() {
+        match record {
+            Record::Completion(completion) => exit = Some(completion.exit_code),
+            Record::Stdout(bytes) => stdout.extend_from_slice(&bytes),
+            _ => {}
+        }
+    }
+    (
+        exit.expect("a completion"),
+        String::from_utf8(stdout).unwrap(),
+    )
 }

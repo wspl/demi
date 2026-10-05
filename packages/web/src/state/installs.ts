@@ -1,4 +1,10 @@
-import { hostInstalls, type HostInstall, type InstallScope } from '@demicodes/web-ui/devices/installs'
+import {
+  hostInstalled,
+  hostInstalls,
+  type HostArtifact,
+  type HostInstall,
+  type InstallScope,
+} from '@demicodes/web-ui/devices/installs'
 import type { CatalogProvider, ProductState } from '../api/generated/web-api'
 
 /*
@@ -48,6 +54,15 @@ export function packageInstalls(
   packages: readonly string[],
 ): HostInstall[] {
   return hostId === null ? [] : hostInstalls(state?.devices ?? [], [{ host: hostId, packages }])
+}
+
+/** What `hostId` holds of `packages`, a plugin's (`native-runtime.md` § Installed artifacts). */
+export function packageInstalled(
+  state: ProductState | null,
+  hostId: string | null,
+  packages: readonly string[],
+): HostArtifact[] {
+  return hostId === null ? [] : hostInstalled(state?.devices ?? [], hostId, packages)
 }
 
 /** Everything the Cloud's runner installs now. */
