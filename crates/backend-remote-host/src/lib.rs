@@ -36,7 +36,7 @@ pub use pipes::{
     PipeSink, PipeWriter, Pipes,
 };
 pub use remote_host::{
-    Admission, AttachedArtifact, DeviceLink, JobStart, LogPage, RemoteHost, RemoteJob,
+    Admission, AttachedArtifact, DeviceLink, JobStart, LogPage, Look, LookAt, RemoteHost, RemoteJob,
     ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, host_identity,
 };
 pub use shell_environment::{

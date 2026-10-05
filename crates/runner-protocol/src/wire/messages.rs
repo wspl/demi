@@ -375,6 +375,28 @@ pub enum Inbound {
         create_parents: Option<bool>,
         input: PipeRef,
     },
+    /// Looks at several paths at once (`runner.md` § Host operations):
+    /// each answers whether it exists, its kind, a directory's entries, or a
+    /// file's size with its first bytes, up to the path's `limit`, which go
+    /// into `output` one file after another in the request's order. Without
+    /// `output`, no file's bytes are read.
+    FsLook {
+        id: String,
+        #[garde(length(min = 1))]
+        paths: Vec<LookPath>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        cwd: Option<String>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        output: Option<PipeRef>,
+    },
     FsExists {
         id: String,
         path: String,
@@ -568,6 +590,7 @@ impl Inbound {
         match self {
             Self::FsReadFile { id, .. }
             | Self::FsWriteFile { id, .. }
+            | Self::FsLook { id, .. }
             | Self::FsExists { id, .. }
             | Self::FsStat { id, .. }
             | Self::FsLstat { id, .. }
@@ -1120,6 +1143,50 @@ pub struct DirEntry {
     pub is_symbolic_link: bool,
     pub size: u64,
     pub mtime: Timestamp,
+}
+
+/// One path an `fs_look` names, and the most bytes of a file there to read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LookPath {
+    pub path: String,
+    pub limit: u64,
+}
+
+/// What an `fs_look` found at one path. A symbolic link at the path is
+/// followed; a directory's entries name a link as a link.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum Looked {
+    /// Nothing is there, or a file stands where a directory of the path
+    /// should be.
+    Missing,
+    Directory {
+        entries: Vec<DirEntry>,
+    },
+    /// A file of `size` bytes, whose first `read` bytes are the next in the
+    /// look's output.
+    File {
+        size: u64,
+        read: u64,
+    },
+    /// Neither a file nor a directory.
+    Other,
+    /// The runner could not read it, such as for want of permission.
+    Unreadable {
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        code: Option<String>,
+        message: String,
+    },
 }
 
 /// A working tree's changes, as `git status` lists them. The web app

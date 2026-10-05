@@ -233,6 +233,82 @@ impl RemoteHost {
         .map(|_| ())
     }
 
+    /// Looks at several paths with one request (`runner.md` § Host
+    /// operations): each answers what is there, in the order of `paths`.
+    /// A path the Host could not read answers so; a failure that is not
+    /// about one path fails the look.
+    pub async fn look(&self, paths: &[LookAt]) -> Result<Vec<Look>, HostError> {
+        let link = self.link()?;
+        let _lease = self.admit()?;
+        let wire_paths: Vec<wire::LookPath> = paths
+            .iter()
+            .map(|wanted| wire::LookPath {
+                path: wanted.path.clone(),
+                limit: wanted.limit,
+            })
+            .collect();
+        let bound: u64 = paths.iter().map(|wanted| wanted.limit).sum();
+        // A pipe only when some file's bytes are wanted.
+        let (answer, bytes) = if bound > 0 {
+            let (answer, reader) = answered(&link, Expected::Fs("look"), |id, output| {
+                Inbound::FsLook {
+                    id,
+                    paths: wire_paths,
+                    cwd: self.cwd(),
+                    output: Some(output),
+                }
+            })
+            .await?;
+            let limit = usize::try_from(bound).unwrap_or(usize::MAX);
+            (answer, collect(reader, limit).await?)
+        } else {
+            let answer = link
+                .call(Expected::Fs("look"), |id| Inbound::FsLook {
+                    id,
+                    paths: wire_paths,
+                    cwd: self.cwd(),
+                    output: None,
+                })
+                .await?;
+            (answer, Bytes::new())
+        };
+        let Answer::Fs(FsResult::Look(looked)) = answer else {
+            return Err(mismatch());
+        };
+        if looked.len() != paths.len() {
+            return Err(protocol("the runner answered another number of paths"));
+        }
+        let mut offset: usize = 0;
+        looked
+            .into_iter()
+            .map(|looked| {
+                Ok(match looked {
+                    wire::Looked::Missing => Look::Missing,
+                    wire::Looked::Directory { entries } => Look::Directory(
+                        entries
+                            .into_iter()
+                            .map(dir_entry)
+                            .collect::<Result<_, _>>()?,
+                    ),
+                    wire::Looked::File { size, read } => {
+                        let end = usize::try_from(read)
+                            .ok()
+                            .and_then(|read| offset.checked_add(read))
+                            .filter(|end| *end <= bytes.len())
+                            .ok_or_else(|| protocol("the look's bytes are shorter than its answer"))?;
+                        let file = bytes.slice(offset..end);
+                        offset = end;
+                        Look::File { bytes: file, size }
+                    }
+                    wire::Looked::Other => Look::Other,
+                    wire::Looked::Unreadable { code, message } => {
+                        Look::Unreadable(HostError::failed(code, message))
+                    }
+                })
+            })
+            .collect()
+    }
+
     /// The uncommitted changes under `root` (`runner.md` § Working tree).
     pub async fn git_changes(&self, root: &str) -> Result<GitChanges, HostError> {
         let link = self.link()?;
@@ -488,6 +564,27 @@ impl RemoteHost {
             }
         }
     }
+}
+
+/// One path a look names, and the most bytes of a file there to read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LookAt {
+    pub path: String,
+    pub limit: u64,
+}
+
+/// What a look found at one path. A symbolic link at the path is followed;
+/// a directory's entries name a link as a link.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Look {
+    Missing,
+    Directory(Vec<DirEntry>),
+    /// A file's first bytes, at most the look's limit, and its size.
+    File { bytes: Bytes, size: u64 },
+    /// Neither a file nor a directory.
+    Other,
+    /// The Host could not read it.
+    Unreadable(HostError),
 }
 
 /// A job to start.
@@ -896,23 +993,7 @@ impl HostFs for RemoteHost {
                 })
                 .await?;
             match listing {
-                FsResult::Readdir(entries) => entries
-                    .into_iter()
-                    .map(|entry| {
-                        Ok(DirEntry {
-                            kind: kind(
-                                entry.is_file,
-                                entry.is_directory,
-                                entry.is_symbolic_link,
-                                None,
-                                None,
-                            ),
-                            size: entry.size,
-                            modified: timestamp(entry.mtime)?,
-                            name: entry.name,
-                        })
-                    })
-                    .collect(),
+                FsResult::Readdir(entries) => entries.into_iter().map(dir_entry).collect(),
                 _ => Err(mismatch()),
             }
         })
@@ -1243,11 +1324,22 @@ async fn filled(
     expected: Expected,
     message: impl FnOnce(String, PipeRef) -> Inbound,
 ) -> Result<PipeReader, HostError> {
+    answered(link, expected, message)
+        .await
+        .map(|(_, reader)| reader)
+}
+
+/// [`filled`], with the runner's answer.
+async fn answered(
+    link: &Link,
+    expected: Expected,
+    message: impl FnOnce(String, PipeRef) -> Inbound,
+) -> Result<(Answer, PipeReader), HostError> {
     let pipe = link.pipes().from_device(link.device());
     let reader = pipe.reader().map_err(pipe_error)?;
     let output = pipe.wire_ref();
     match link.call(expected, |id| message(id, output)).await {
-        Ok(_) => Ok(reader),
+        Ok(answer) => Ok((answer, reader)),
         Err(error) => {
             pipe.fail(&error.message);
             Err(error)
@@ -1268,6 +1360,21 @@ async fn collect(mut reader: PipeReader, limit: usize) -> Result<Bytes, HostErro
         bytes.extend_from_slice(&chunk);
     }
     Ok(bytes.freeze())
+}
+
+fn dir_entry(entry: wire::DirEntry) -> Result<DirEntry, HostError> {
+    Ok(DirEntry {
+        kind: kind(
+            entry.is_file,
+            entry.is_directory,
+            entry.is_symbolic_link,
+            None,
+            None,
+        ),
+        size: entry.size,
+        modified: timestamp(entry.mtime)?,
+        name: entry.name,
+    })
 }
 
 fn file_stat(stat: wire::FileStat) -> Result<FileStat, HostError> {

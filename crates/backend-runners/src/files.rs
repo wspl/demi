@@ -75,8 +75,7 @@ pub async fn browse_directory(
 mod tests {
     use std::time::{Duration, UNIX_EPOCH};
 
-    use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture};
-    use demi_runner_protocol::wire::Outbound;
+    use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture, answered_requests};
     use tokio::sync::mpsc;
 
     use super::*;
@@ -111,19 +110,17 @@ mod tests {
         // A link's own size is its target's name, nine bytes, not the four
         // the target holds.
         std::os::unix::fs::symlink("notes.txt", directory.join("link")).unwrap();
-        while replies.try_recv().is_ok() {}
+        answered_requests(&mut replies);
 
         let host = fixture.host();
         let path = format!("{}/listed", fixture.home());
         let entries = browse_directory(&host, &path).await.unwrap();
 
-        let mut requests = 0;
-        while let Ok(message) = replies.try_recv() {
-            if matches!(message, Outbound::FsOk(_) | Outbound::FsError { .. }) {
-                requests += 1;
-            }
-        }
-        assert_eq!(requests, 1, "one request lists the directory");
+        assert_eq!(
+            answered_requests(&mut replies),
+            1,
+            "one request lists the directory"
+        );
         let mut listed: Vec<_> = entries
             .iter()
             .map(|entry| {

@@ -2,7 +2,12 @@
 //! node of a tree from its own script, a server over an in-memory tree
 //! store, and frame builders.
 
-use std::{cell::RefCell, collections::VecDeque, rc::Rc, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    collections::VecDeque,
+    rc::Rc,
+    sync::Arc,
+};
 
 use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
@@ -42,6 +47,35 @@ pub struct TestProduct {
     pub context: RefCell<Option<String>>,
     /// The context texts each request's source was given.
     pub seen: RefCell<Vec<Vec<String>>>,
+    /// A plugin's source, asked after the execution context, when the
+    /// scenario has one.
+    pub plugin: Option<Rc<PluginSource>>,
+    /// For each request, whether the plugin had been asked by the time the
+    /// execution context, which takes a moment, answered.
+    pub plugin_asked_meanwhile: RefCell<Vec<bool>>,
+}
+
+/// A plugin's context source: it answers its text once per node.
+pub struct PluginSource {
+    pub text: String,
+    pub asked: Cell<bool>,
+}
+
+impl ContextSource for PluginSource {
+    fn name(&self) -> &str {
+        "plugin"
+    }
+
+    fn context<'a>(
+        &'a self,
+        _node: NodeContext<'a>,
+        _turn: &'a TurnId,
+        seen: &'a [&'a str],
+    ) -> LocalBoxFuture<'a, Result<Option<String>, String>> {
+        self.asked.set(true);
+        let news = (!seen.contains(&self.text.as_str())).then(|| self.text.clone());
+        Box::pin(async move { Ok(news) })
+    }
 }
 
 impl Default for TestProduct {
@@ -53,6 +87,8 @@ impl Default for TestProduct {
             }),
             context: RefCell::default(),
             seen: RefCell::default(),
+            plugin: None,
+            plugin_asked_meanwhile: RefCell::default(),
         }
     }
 }
@@ -84,7 +120,16 @@ impl ContextSource for TestProduct {
             .push(seen.iter().map(|text| (*text).to_owned()).collect());
         let current = self.context.borrow().clone();
         let news = current.filter(|current| !seen.contains(&current.as_str()));
-        Box::pin(async move { Ok(news) })
+        Box::pin(async move {
+            if let Some(plugin) = &self.plugin {
+                // The execution context reads a Host, which takes a moment.
+                tokio::task::yield_now().await;
+                self.plugin_asked_meanwhile
+                    .borrow_mut()
+                    .push(plugin.asked.get());
+            }
+            Ok(news)
+        })
     }
 }
 
@@ -424,10 +469,20 @@ impl Fixture {
         store: Rc<MemoryTreeStore>,
         config: ServerConfig,
     ) -> Self {
+        Self::with_product(script, TestProduct::default(), store, config)
+    }
+
+    /// As [`with`](Self::with), with `product`.
+    pub fn with_product(
+        script: &ScriptedRuntime,
+        product: TestProduct,
+        store: Rc<MemoryTreeStore>,
+        config: ServerConfig,
+    ) -> Self {
         let resolver = Rc::new(ScriptedProviders::default());
         resolver.provide("stub", script);
         let clock = Arc::new(FixedClock(start()));
-        Self::build(resolver, TestProduct::default(), store, config, clock)
+        Self::build(resolver, product, store, config, clock)
     }
 
     /// A server of the provider `stub` answering from `model`, with
@@ -471,6 +526,10 @@ impl Fixture {
         clock: Arc<dyn Clock>,
     ) -> Self {
         let product = Rc::new(product);
+        let mut context = vec![product.clone() as Rc<dyn ContextSource>];
+        if let Some(plugin) = &product.plugin {
+            context.push(plugin.clone());
+        }
         let stores = {
             let store = store.clone();
             Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>)
@@ -483,7 +542,7 @@ impl Fixture {
             subagents: product.clone(),
             instructions: Rc::from("system prompt"),
             hosts: product.clone(),
-            context: Rc::new([product.clone() as Rc<dyn ContextSource>]),
+            context: context.into(),
             providers: resolver.clone(),
             shells: Rc::new(NoShells),
             stores,
