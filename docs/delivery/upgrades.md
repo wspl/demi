@@ -17,7 +17,9 @@ backend and the machine manager, copies the databases that 0.2.0 will
 migrate, points the server at 0.2.0 and starts both services again. The
 interruption lasts as long as a restart, plus the copy. Afterwards:
 
-- Open pages show "Demi Was Updated" and reload into the new web app.
+- Open pages show "Demi Is Restarting" while the backend is away, then load
+  the new web app by themselves
+  ([A page of another build](../product/web-application.md#a-page-of-another-build)).
 - A turn that was running ends with the shutdown's error record, and its
   conversation offers **Resume**
   ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
@@ -94,7 +96,7 @@ one `current` points to:
 
 | Part | How it reaches the new release | When |
 | --- | --- | --- |
-| Backend and web app | The backend restarts from `current`; a page of the old build offers a reload ([A page of another build](../product/web-application.md#a-page-of-another-build)) | During the upgrade |
+| Backend and web app | The backend restarts from `current`; an open page shows the restart screen meanwhile and then loads the new build ([A page of another build](../product/web-application.md#a-page-of-another-build)) | During the upgrade |
 | Machine manager and `runsc` | The manager restarts from `current`; the release root carries the pinned `runsc` of its architecture in `runtime/` ([Server release](builds-and-releases.md#server-release)) | During the upgrade |
 | Cloud image | The manager imports the release's `image/` before the services stop ([Prepare](#prepare)) | During the upgrade |
 | A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)) | The Cloud's next wake |
@@ -288,8 +290,8 @@ An upgrade is accepted on a real Linux server of each architecture, from the
 previous formal release to the new one, with a paired device of another
 platform and a Cloud with a package the user installed:
 
-- During the interruption the services are stopped, and afterwards the page
-  offers its reload, the conversation that ran a turn offers Resume, the
+- During the interruption the page shows the restart screen, and afterwards
+  it runs the new build without anyone reloading it, the conversation that ran a turn offers Resume, the
   paired device is online with the new runner without anyone touching it, and
   the Cloud runs the new runner and still has the user's package.
 - An upgrade whose backend fails to start, and one killed between the
