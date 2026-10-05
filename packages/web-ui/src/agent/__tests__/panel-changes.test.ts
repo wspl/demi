@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
-import { PanelTabs, dataChanges, type PanelAnswer, type PanelChange, type PanelRead } from '../panel-changes'
+import { PanelTabs, closePanelTabs, dataChanges, type PanelAnswer, type PanelChange, type PanelRead } from '../panel-changes'
 import type { PanelTab } from '../panel-tabs'
 
 const page = (id: string, url = `https://${id}.test/`): PanelTab => ({ id, kind: 'page', data: { url } })
@@ -188,6 +188,17 @@ test('nothing is sent before the panel starts, as for a conversation that has no
   world.tabs.start()
   await settled()
   expect(ops(world.sent)).toEqual([['create']])
+})
+
+test('closing tabs is one request, and the selection goes back to the tab chosen before a closed one', async () => {
+  const world = backend({ revision: 1, tabs: [page('a'), page('b'), page('c')] })
+  world.tabs.start()
+  await settled()
+  const selection = { history: ['a', 'c', 'b'] as readonly string[] }
+  closePanelTabs(selection, world.tabs, ['b', 'c'])
+  expect(ops(world.sent)).toEqual([['remove', 'remove']])
+  expect(selection.history).toEqual(['a'])
+  expect(ids(world.tabs)).toEqual(['a'])
 })
 
 test('an update names what changed and each field that went as null', () => {

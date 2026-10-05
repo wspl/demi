@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
-import { PanelTabs, dataChanges } from '@demicodes/web-ui/agent/panel-changes'
-import { openIntent, removeTabs, shownSelection, type PanelState, type PinnedTabs } from '@demicodes/web-ui/agent/panel-tabs'
+import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
+import { openIntent, shownSelection, type PanelState, type PinnedTabs } from '@demicodes/web-ui/agent/panel-tabs'
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import type { CallEditSelection } from '@demicodes/web-ui/files/changes'
 import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
@@ -33,10 +33,6 @@ export function galleryFiles(workspace: ReturnType<typeof createGalleryWorkspace
 
 /** The conversation every gallery panel shows. */
 const CONVERSATION = 'gallery'
-
-function isData(data: unknown): data is Record<string, unknown> {
-  return data !== null && typeof data === 'object' && !Array.isArray(data)
-}
 
 /**
  * One work panel the way the product's work store holds it
@@ -100,23 +96,22 @@ export function useGalleryWork(
     return id
   }
   function update(id: string, data: unknown) {
-    const current = tabs.tabs.value.find((tab) => tab.id === id)
-    if (!current || !isData(data)) {
-      return
-    }
-    const fields = dataChanges(current.data, data)
-    if (Object.keys(fields).length > 0) {
-      tabs.change({ type: 'update', id, data: fields })
-    }
+    updatePanelTab(tabs, id, data)
   }
   function updatePinned(kind: string, data: unknown) {
     pinned.value = { ...pinned.value, [kind]: data }
   }
   /** Closed tabs go at once; the panel shows what was selected before a closed one. */
   function closeTabs(ids: string[]) {
-    history.value = removeTabs(panel.value, ids).history
-    // One request, as Close Others is one change of the panel.
-    tabs.change(...ids.map((id) => ({ type: 'remove' as const, id })))
+    const selection = {
+      get history() {
+        return history.value
+      },
+      set history(next: readonly string[]) {
+        history.value = next
+      },
+    }
+    closePanelTabs(selection, tabs, ids)
   }
   function openIn(request: IntentRequest) {
     const opened = openIntent(pinned.value, shown, enabled, request)
