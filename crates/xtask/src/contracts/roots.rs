@@ -123,7 +123,7 @@ pub fn web() -> Vec<Root> {
         sends::<cloud::CloudReset>(),
         receives::<cloud::CloudResetAnswer>(),
         sends::<conversations::CreateConversation>(),
-        receives::<conversations::ConversationAnswer>(),
+        receives::<conversations::CreatedConversation>(),
         receives::<conversations::Conversations>(),
         sends::<conversations::ReadRequest>(),
         receives::<conversations::Transcript>(),

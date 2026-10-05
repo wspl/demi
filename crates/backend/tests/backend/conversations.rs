@@ -31,7 +31,7 @@ use demi_shared_types::{
     RuntimeState, SessionPhase, Timestamp, TokenUsage, TurnId,
 };
 use demi_web_api_protocol::conversations::{
-    BatchAnswer, BatchResult, ConversationAnswer, ConversationStatus, ConversationSummary,
+    BatchAnswer, BatchResult, ConversationStatus, ConversationSummary, CreatedConversation,
     ConversationUpdate, Conversations, FieldResult, ModelSettings, PatchField, Transcript,
 };
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
@@ -442,7 +442,7 @@ pub(crate) async fn create(
         "{}",
         String::from_utf8_lossy(&created.body)
     );
-    created.json::<ConversationAnswer>().conversation
+    created.json::<CreatedConversation>().conversation
 }
 
 /// Chooses the model `model` of the entry `provider` for the conversation
@@ -606,7 +606,7 @@ async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_liste
             )
             .await;
         assert_eq!(again.status, StatusCode::OK);
-        assert_eq!(again.json::<ConversationAnswer>().conversation, created);
+        assert_eq!(again.json::<CreatedConversation>().conversation, created);
     }
     let second = create(&backend, &master, SECOND).await;
     let listed: Vec<String> = summaries(&backend, &master)
@@ -661,7 +661,7 @@ async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_liste
     );
     for body in [
         json!({ "id": "conversation-1" }),
-        json!({ "id": FIRST, "title": "x" }),
+        json!({ "id": FIRST, "archived": true }),
         json!({}),
     ] {
         let refused = backend
@@ -673,6 +673,99 @@ async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_liste
             "{body}"
         );
     }
+    backend.close().await;
+}
+
+// About a second here: two runners pair.
+#[tokio::test]
+async fn a_conversation_starts_with_its_settings_and_hosts_from_one_request_and_a_refused_part_creates_nothing()
+ {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let body = json!({
+        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "baseUrl": vendor.url("/v1"), "models": [leveled("m", Some("priority"))]
+    });
+    let provider = entry(&backend, &master, body).await;
+    let laptop = backend.pair(&master, "laptop").await;
+    let ci = backend.pair(&master, "ci").await;
+    let on_laptop = json!({ "kind": "device", "deviceId": laptop.id(), "path": "/work" });
+    let model = json!({ "providerId": provider, "modelId": "m" });
+    let start = json!({
+        "id": FIRST, "title": "Plans", "pinned": true, "target": on_laptop, "model": model,
+        "thinkingEffort": "high", "hosts": [{ "deviceId": ci.id(), "name": "build" }]
+    });
+
+    let created = backend
+        .post("/api/conversations", Some(&master), start.clone())
+        .await;
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
+    let created = created.json::<CreatedConversation>();
+    let conversation = &created.conversation;
+    assert_eq!(
+        (conversation.title.as_str(), conversation.pinned),
+        ("Plans", true)
+    );
+    assert_eq!(serde_json::to_value(&conversation.target).unwrap(), on_laptop);
+    assert_eq!(
+        conversation.model,
+        Some(ModelSettings {
+            provider_id: provider.as_str().try_into().unwrap(),
+            model_id: "m".into(),
+            thinking_effort: Some("high".into()),
+            service_tier_id: None,
+        })
+    );
+    let hosts: Vec<(&str, &str)> = created
+        .hosts
+        .iter()
+        .map(|host| (host.device_id.as_str(), host.name.as_str()))
+        .collect();
+    assert_eq!(hosts, [(ci.id(), "build")]);
+    assert_eq!(summary(&backend, &master, FIRST).await, created.conversation);
+
+    // A retry finds it as it is and applies nothing.
+    let mut again = start.clone();
+    again["title"] = json!("Other plans");
+    let retried = backend
+        .post("/api/conversations", Some(&master), again)
+        .await;
+    assert_eq!(retried.status, StatusCode::OK);
+    assert_eq!(retried.json::<CreatedConversation>(), created);
+
+    // A part that is refused refuses the creation, and nothing is made.
+    let refused = |change: Value| {
+        let mut body = start.clone();
+        body["id"] = json!(SECOND);
+        for (field, value) in change.as_object().unwrap() {
+            body[field] = value.clone();
+        }
+        let backend = &backend;
+        let master = &master;
+        async move { backend.post("/api/conversations", Some(master), body).await }
+    };
+    let primary = refused(json!({ "hosts": [{ "deviceId": laptop.id() }] })).await;
+    assert_eq!(
+        primary.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::HostIsPrimary)
+    );
+    let unlisted = refused(json!({ "model": { "providerId": provider, "modelId": "x" } })).await;
+    assert_eq!(
+        unlisted.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::ModelNotFound)
+    );
+    let ids: Vec<String> = summaries(&backend, &master)
+        .await
+        .into_iter()
+        .map(|summary| summary.id.as_str().to_owned())
+        .collect();
+    assert_eq!(ids, [FIRST]);
     backend.close().await;
 }
 

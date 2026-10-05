@@ -112,7 +112,7 @@ async fn change(
 }
 
 /// The conversation's attached hosts, each with its device's connection.
-async fn hosts(
+pub(super) async fn hosts(
     state: &AppState,
     user: &UserId,
     id: ConversationId,
@@ -146,7 +146,7 @@ fn conversation_id(id: &str) -> Result<ConversationId, ApiError> {
     ConversationId::try_from(id).map_err(|_| refused(ChangeRefusal::NotFound))
 }
 
-fn refused(refusal: ChangeRefusal) -> ApiError {
+pub(super) fn refused(refusal: ChangeRefusal) -> ApiError {
     match refusal {
         ChangeRefusal::Storage(error) => error.into(),
         refusal => {

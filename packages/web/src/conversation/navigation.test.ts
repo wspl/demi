@@ -84,7 +84,18 @@ test('creating a project opens a new conversation draft in it, which only the fi
 
   conversation.draft = 'First message'
   await conversations.send(conversation)
+  // The record starts in the project, with the rest of what the draft holds.
   expect(requests.filter((request) => request.path === '/api/conversations')).toEqual([
-    { method: 'POST', path: '/api/conversations', body: { id: conversation.id } },
+    {
+      method: 'POST',
+      path: '/api/conversations',
+      body: {
+        id: conversation.id,
+        title: conversation.title,
+        pinned: false,
+        target: { kind: 'workspace', workspaceId: PROJECT.id },
+        hosts: [],
+      },
+    },
   ])
 })

@@ -185,6 +185,31 @@ pub enum ChangeOutcome {
     NameTaken,
 }
 
+/// What a new conversation starts with (`web-api.md` § Conversation
+/// creation and Fork); by default the Cloud, the placeholder title, no
+/// model and no hosts.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConversationStart {
+    /// The user's title; the placeholder when none.
+    pub title: Option<String>,
+    pub pinned: bool,
+    pub target: ConversationTarget,
+    pub model: Option<ModelSelection>,
+    pub hosts: Vec<AttachedHostRecord>,
+}
+
+impl Default for ConversationStart {
+    fn default() -> Self {
+        Self {
+            title: None,
+            pinned: false,
+            target: ConversationTarget::Cloud { path: None },
+            model: None,
+            hosts: Vec::new(),
+        }
+    }
+}
+
 /// What asking for a conversation of an id found.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Creation {
@@ -246,13 +271,15 @@ impl TargetColumns {
 
 impl ControlService {
     /// The owner's conversation of `id`, which is created when no
-    /// conversation has the id: on the Cloud, with the placeholder title,
-    /// first in the owner's sidebar. A retry of the owner's finds the one it
-    /// created, in the spelling it was created with.
+    /// conversation has the id: first in the owner's sidebar, as `start`
+    /// says, with its hosts attached, all in one step. A retry of the
+    /// owner's finds the one it created, in the spelling it was created
+    /// with, and applies nothing of `start`.
     pub async fn create_conversation(
         &self,
         owner: UserId,
         id: ConversationId,
+        start: ConversationStart,
     ) -> Result<Creation, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -267,18 +294,28 @@ impl ControlService {
             if reserved {
                 return Ok(Creation::Unavailable);
             }
+            let (title, origin) = match start.title.as_deref() {
+                Some(title) if title != PLACEHOLDER_TITLE => (title, TitleOrigin::User),
+                _ => (PLACEHOLDER_TITLE, TitleOrigin::Placeholder),
+            };
             let inserted = insert_conversation(
                 &transaction,
                 &NewConversation {
                     id: &id,
                     owner: &owner,
-                    title: PLACEHOLDER_TITLE,
-                    origin: TitleOrigin::Placeholder,
-                    target: &ConversationTarget::Cloud { path: None },
-                    model: None,
+                    title,
+                    origin,
+                    pinned: start.pinned,
+                    target: &start.target,
+                    model: start.model.as_ref(),
                     at: now,
                 },
             )?;
+            if inserted == 1 {
+                for host in &start.hosts {
+                    insert_attached_host(&transaction, &id, host, now)?;
+                }
+            }
             let record =
                 conversation_by_id(&transaction, &id)?.ok_or_else(|| StorageError::Corrupt {
                     table: "conversations",
@@ -657,15 +694,15 @@ pub struct NewConversation<'a> {
     pub owner: &'a UserId,
     pub title: &'a str,
     pub origin: TitleOrigin,
+    pub pinned: bool,
     pub target: &'a ConversationTarget,
     pub model: Option<&'a ModelSelection>,
     /// When it was created, and last active.
     pub at: Timestamp,
 }
 
-/// Inserts `new` first in its owner's sidebar, unarchived and unpinned,
-/// unless a conversation has its id in any spelling; answers the rows it
-/// inserted.
+/// Inserts `new` first in its owner's sidebar, unarchived, unless a
+/// conversation has its id in any spelling; answers the rows it inserted.
 pub fn insert_conversation(
     connection: &Connection,
     new: &NewConversation<'_>,
@@ -675,7 +712,7 @@ pub fn insert_conversation(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
            read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
            model, user_messages, titled_messages, created_at, updated_at, live_at)
-         VALUES (?1, ?2, ?3, ?4, 0, 0,
+         VALUES (?1, ?2, ?3, ?4, 0, ?11,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
            0, ?5, ?6, ?7, ?8, 0, ?9, 0, 0, ?10, ?10, ?10)
          ON CONFLICT (id) DO NOTHING",
@@ -689,7 +726,8 @@ pub fn insert_conversation(
             target.path,
             target.workspace,
             new.model.map(to_json),
-            new.at.as_millisecond()
+            new.at.as_millisecond(),
+            new.pinned
         ],
     )?;
     Ok(inserted)
@@ -1064,7 +1102,7 @@ mod tests {
         let master = testing::master(&control).await.id;
         let first = created(
             control
-                .create_conversation(master.clone(), conversation(1))
+                .create_conversation(master.clone(), conversation(1), ConversationStart::default())
                 .await
                 .unwrap(),
         );
@@ -1084,7 +1122,7 @@ mod tests {
         );
         let second = created(
             control
-                .create_conversation(master.clone(), conversation(2))
+                .create_conversation(master.clone(), conversation(2), ConversationStart::default())
                 .await
                 .unwrap(),
         );
@@ -1098,7 +1136,7 @@ mod tests {
         );
         assert_eq!(
             control
-                .create_conversation(master.clone(), upper)
+                .create_conversation(master.clone(), upper, ConversationStart::default())
                 .await
                 .unwrap(),
             Creation::Existing(first.clone())
@@ -1177,7 +1215,7 @@ mod tests {
         let master = testing::master(&control).await.id;
         for number in 1..=4 {
             control
-                .create_conversation(master.clone(), conversation(number))
+                .create_conversation(master.clone(), conversation(number), ConversationStart::default())
                 .await
                 .unwrap();
         }
@@ -1227,7 +1265,7 @@ mod tests {
         let master = testing::master(&control).await.id;
         let id = created(
             control
-                .create_conversation(master.clone(), conversation(1))
+                .create_conversation(master.clone(), conversation(1), ConversationStart::default())
                 .await
                 .unwrap(),
         )
@@ -1291,7 +1329,7 @@ mod tests {
         let master = testing::master(&control).await.id;
         let id = created(
             control
-                .create_conversation(master.clone(), conversation(1))
+                .create_conversation(master.clone(), conversation(1), ConversationStart::default())
                 .await
                 .unwrap(),
         )
