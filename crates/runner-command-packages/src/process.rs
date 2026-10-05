@@ -181,7 +181,7 @@ impl ResidentService {
 /// A stream that broke is logged: the service's draws then fail.
 async fn answer_numbers(service: &str, stream: RequestStream, numbers: Arc<dyn NumberSource>) {
     let answered = stream
-        .answer::<NumbersAsk, _>(|request| {
+        .answer::<NumbersAsk, _>(|request, _reporter| {
             numbers.reserve(request.conversation, request.sequence, request.count)
         })
         .await;
@@ -195,11 +195,13 @@ async fn answer_numbers(service: &str, stream: RequestStream, numbers: Arc<dyn N
 /// A stream that broke is logged: the service's requests then fail.
 async fn answer_artifacts(service: &str, stream: RequestStream, artifacts: Arc<ServiceArtifacts>) {
     let answered = stream
-        .answer::<ArtifactsAsk, _>(|request| {
+        .answer::<ArtifactsAsk, _>(|request, reporter| {
             let artifacts = artifacts.clone();
             async move {
                 let ask = request.ask().map_err(|error| error.to_string())?;
-                artifacts.answer(ask).await
+                artifacts
+                    .answer(ask, &|progress| reporter.report(progress))
+                    .await
             }
         })
         .await;

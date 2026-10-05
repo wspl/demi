@@ -76,7 +76,7 @@ pub async fn answer_numbers(
     Ok(tokio::spawn(async move {
         let counters = std::sync::Mutex::new(Counters::default());
         stream
-            .answer::<NumbersAsk, _>(|request| {
+            .answer::<NumbersAsk, _>(|request, _reporter| {
                 let first = counters
                     .lock()
                     .expect("the counters are never poisoned")
@@ -118,7 +118,7 @@ pub async fn answer_artifacts(
     let stream = client.artifacts().await?;
     Ok(tokio::spawn(async move {
         stream
-            .answer::<ArtifactsAsk, _>(|request| {
+            .answer::<ArtifactsAsk, _>(|request, _reporter| {
                 let reply = request
                     .ask()
                     .map_err(|error| error.to_string())

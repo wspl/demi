@@ -675,9 +675,10 @@ impl tracing::field::Visit for LineVisitor {
 }
 
 /// `demi browser install` on a Host: the program names the official URL of
-/// what it installs, and the runner downloads it from there, checks it
-/// against the size and SHA-256 the program pinned, and asks the backend
-/// nothing. A download that does not match leaves nothing installed.
+/// what it installs, and the runner downloads it from there, reporting the
+/// download to the program before it answers, checks it against the size and
+/// SHA-256 the program pinned, and asks the backend nothing. A download that
+/// does not match leaves nothing installed.
 #[tokio::test]
 async fn an_install_from_the_program_s_own_source_asks_the_backend_nothing() {
     tokio::time::timeout(Duration::from_secs(60), async {
@@ -721,7 +722,10 @@ async fn an_install_from_the_program_s_own_source_asks_the_backend_nothing() {
         assert_ne!(exit, 0);
         let (exit, stdout) = install("official", server.url("/official")).await;
         assert_eq!(exit, 0, "{stdout}");
-        assert_eq!(tokio::fs::read(&stdout).await.unwrap(), bytes);
+        let (reported, path) = stdout.rsplit_once('\n').expect("a report, then the path");
+        // The body arrives in one piece here: all ten tenths at once.
+        assert_eq!(reported, bytes.len().to_string());
+        assert_eq!(tokio::fs::read(path).await.unwrap(), bytes);
         // Only the service's executable came from the backend.
         assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
         assert_eq!(server.requests(), 2);

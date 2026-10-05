@@ -20,7 +20,7 @@ mod stream;
 pub use stdio::serve_stdio;
 
 pub use artifacts::{ArtifactPending, Artifacts, ArtifactsAsk};
-pub use asking::{Asked, Pending, RequestStream};
+pub use asking::{Answered, Asked, Pending, Reporter, RequestStream};
 pub use client::{Client, CommandInput, CommandOutput};
 pub use exchange::{Exchange, ExchangeError, InputSource, OutputSink};
 pub use launch::{COMMAND_SERVICE, Launch};

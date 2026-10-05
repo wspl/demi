@@ -18,7 +18,7 @@ use tokio_util::{
 };
 
 use demi_command_package_browser_chrome::driver::{
-    installation::Chrome,
+    installation::{self, Chrome},
     numbers::TabNumbers,
     operation::{BrowserError, Result},
     output,
@@ -30,15 +30,16 @@ use demi_command_package_browser_chrome::tabs::{
 };
 use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
-    CommandLocale, Completion, ConversationRequest, ConversationStatus, MAX_MEDIUM_BYTES,
+    ArtifactProgress, CommandLocale, Completion, ConversationRequest, ConversationStatus,
+    MAX_MEDIUM_BYTES,
     StdoutTarget,
 };
 use demi_command_sdk::{ConversationContext, InvocationContext, Numbers, ServiceError};
 
 use crate::protocol::{
     self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,
-    CloseResult, ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, OpenResult,
-    ScreenshotResult, TabsResult,
+    CloseResult, ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, InstallResult,
+    OpenResult, ScreenshotResult, TabsResult,
 };
 
 /// Requests waiting for an owner; a full queue holds back their senders.
@@ -553,6 +554,21 @@ impl Owner {
     }
 }
 
+/// Prints `progress`'s line in the output of `install`'s invocation, unless
+/// it answers in JSON, whose output is the one document.
+async fn print_progress(context: &InvocationContext, progress: ArtifactProgress) -> Result<()> {
+    if context.request.json == Some(true) {
+        return Ok(());
+    }
+    let line = installation::progress_line(progress)?;
+    // An output that takes nothing more is an invocation that ended.
+    context
+        .output
+        .stdout(Bytes::from(line))
+        .await
+        .map_err(|_| BrowserError::Cancelled)
+}
+
 /// What the tab's page offers, of every command family (`browser.md` §
 /// Capabilities and WebMCP): the page's own families and the CDP ones, which
 /// only the program has together.
@@ -913,6 +929,28 @@ impl Conversations {
         }
     }
 
+    /// Installs the pinned Chrome for `context`'s invocation, which prints
+    /// a line in its own output as each tenth of the download arrives and
+    /// as the archive is unpacked, unless it answers in JSON
+    /// (`browser.md` § Installation).
+    async fn install(&self, context: &mut InvocationContext) -> Result<InstallResult> {
+        let (progress, mut reports) = demi_command_sdk::Artifacts::progress();
+        let installing = self.chrome.install(&context.request.invocation_id, progress);
+        tokio::pin!(installing);
+        let installed = loop {
+            tokio::select! {
+                biased;
+                Some(report) = reports.recv() => print_progress(context, report).await?,
+                installed = &mut installing => break installed,
+            }
+        };
+        // What the runner reported before it answered.
+        while let Ok(report) = reports.try_recv() {
+            print_progress(context, report).await?;
+        }
+        installed
+    }
+
     async fn execute(
         &self,
         browser: &ConversationBrowser,
@@ -923,7 +961,7 @@ impl Conversations {
     ) -> Result<CommandOutput> {
         if matches!(command, BrowserOperation::Install(_)) {
             // The Host's browser, not the conversation's: nothing starts.
-            let installed = self.chrome.install(&context.request.invocation_id).await?;
+            let installed = self.install(context).await?;
             return Ok(CommandOutput::Json(output::value(installed)?));
         }
         let starts = matches!(
