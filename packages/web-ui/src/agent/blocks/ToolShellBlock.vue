@@ -55,6 +55,7 @@ watch(
     :tone="block.status === 'error' ? 'danger' : undefined"
     :error-text="errorText"
     :stick-bottom="block.status === 'executing' || isStreaming"
+    framed
   >
     <template #icon>
       <SquareTerminal :size="ICON_PX.in28" />
@@ -64,17 +65,16 @@ watch(
       <span class="min-w-0 truncate" :class="loading ? 'thinking-shimmer' : ''">{{ title }}</span>
     </template>
 
-    <template #body>
-      <div
-        class="mx-3 my-1 space-y-1 rounded-md border border-line-subtle bg-surface-base px-3 py-2"
-      >
-        <div class="flex font-mono text-xs leading-5 text-fg-subtle">
-          <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span
-            class="min-w-0 select-all whitespace-pre-wrap break-words"
-          >{{ command }}</span>
-        </div>
-        <AnsiText v-if="terminalOutputText" :content="terminalOutputText" />
+    <template #pinned>
+      <div class="flex px-3 font-mono text-xs leading-5 text-fg-subtle">
+        <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span
+          class="min-w-0 select-all whitespace-pre-wrap break-words"
+        >{{ command }}</span>
       </div>
+    </template>
+
+    <template v-if="terminalOutputText" #body>
+      <AnsiText class="px-3" :content="terminalOutputText" />
     </template>
   </FunctionalBlock>
   <ToolMedia :output="block.output" :title="title" />

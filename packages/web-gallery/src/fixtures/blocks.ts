@@ -185,13 +185,57 @@ export const runningShellTool = toolCall({
   toolName: 'shell_exec',
   status: 'executing',
   input: JSON.stringify({
-    script: 'bun test packages/web/src/auth.test.ts',
+    // Long enough to wrap over several lines: the command stays whole above
+    // the output, which scrolls under it.
+    script: [
+      'DEMI_LOG=auth=debug,cookie=debug,session=info bun test --watch --timeout 20000 --rerun-each 1 --bail 5 packages/web/src/auth.test.ts packages/web/src/cookie.test.ts packages/web/src/session.test.ts \\',
+      '  2>&1 | tee target/auth-watch.log',
+    ].join('\n'),
     description: 'Run the login test',
   }),
   view: shellView({
     commandId: 'cmd-run',
     status: 'running',
     chunks: [{ stream: 'stdout', text: 'bun test v1.2\n' }],
+  }),
+})
+
+/**
+ * A script longer than the command's own bound, with output longer than the
+ * box: the script scrolls on its own above, the output below it.
+ */
+export const longScriptShellTool = toolCall({
+  id: 'tool-shell-script',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({
+    script: [
+      "python3 - <<'EOF'",
+      'import json, pathlib',
+      'root = pathlib.Path("packages/web/src")',
+      'hits = []',
+      'for path in sorted(root.rglob("*.ts")):',
+      '    for number, line in enumerate(path.read_text().splitlines(), 1):',
+      '        if "sid" in line:',
+      '            hits.append({"path": str(path), "line": number})',
+      'for hit in hits:',
+      '    print(f"{hit[\'path\']}:{hit[\'line\']}")',
+      'print(json.dumps({"files": len({h[\'path\'] for h in hits}), "hits": len(hits)}))',
+      'EOF',
+    ].join('\n'),
+    description: 'List every place the old cookie name is read',
+  }),
+  view: shellView({
+    commandId: 'cmd-script',
+    chunks: [
+      {
+        stream: 'stdout',
+        text: Array.from(
+          { length: 40 },
+          (_, index) => `packages/web/src/${['auth', 'cookie', 'session', 'login'][index % 4]}.ts:${index * 3 + 7}\n`,
+        ).join('') + '{"files": 4, "hits": 40}\n',
+      },
+    ],
   }),
 })
 
