@@ -11,6 +11,7 @@ mod layout;
 mod moving;
 mod services;
 mod settings;
+mod setup;
 #[cfg(test)]
 mod tests;
 
@@ -40,6 +41,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Action {
+    /// Sets this Linux machine up as a Demi server.
+    #[command(long_about = setup::GUIDE)]
+    Setup(setup::Options),
     /// Moves the server to a newer release: the newest published one, or
     /// the one named.
     Upgrade {
@@ -72,14 +76,8 @@ fn main() -> ExitCode {
     let layout = Layout::new(cli.root.clone());
     let result = match cli.command {
         Action::Status => status(&layout),
-        command => {
-            let on_server = cli.root == std::path::Path::new("/");
-            if on_server && !rustix::process::geteuid().is_root() {
-                eprintln!("demi-server: run as root");
-                return ExitCode::FAILURE;
-            }
-            locked(&layout, |layout| act(layout, command))
-        }
+        Action::Setup(options) => setup(&layout, options),
+        command => require_root(&layout).and_then(|()| locked(&layout, |layout| act(layout, command))),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -100,6 +98,12 @@ fn locked(
     layout: &Layout,
     work: impl FnOnce(&Layout) -> Result<(), Box<dyn std::error::Error>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    let _lock = lock(layout)?;
+    work(layout)
+}
+
+/// The lock that keeps one `demi-server` at a time, held until dropped.
+fn lock(layout: &Layout) -> Result<std::fs::File, Box<dyn std::error::Error>> {
     std::fs::create_dir_all(layout.state())?;
     let lock = std::fs::File::options()
         .create(true)
@@ -109,7 +113,30 @@ fn locked(
     if let Err(std::fs::TryLockError::WouldBlock) = lock.try_lock() {
         return Err("another demi-server is running".into());
     }
-    work(layout)
+    Ok(lock)
+}
+
+/// Requires root on a server; a test's layout under another root runs as
+/// anyone.
+fn require_root(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
+    if layout.root() == std::path::Path::new("/") && !rustix::process::geteuid().is_root() {
+        return Err("run as root".into());
+    }
+    Ok(())
+}
+
+fn setup(layout: &Layout, options: setup::Options) -> Result<(), Box<dyn std::error::Error>> {
+    match setup::run(layout, &Systemd, options)? {
+        setup::Outcome::SetUp => Ok(()),
+        setup::Outcome::Guide => {
+            let mut command = <Cli as clap::CommandFactory>::command();
+            let setup = command
+                .find_subcommand_mut("setup")
+                .expect("setup is a subcommand");
+            println!("{}", setup.render_long_help());
+            Ok(())
+        }
+    }
 }
 
 fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error>> {
@@ -135,6 +162,7 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
             Ok(())
         }
         Action::Status => status(layout),
+        Action::Setup(_) => unreachable!("setup runs on its own"),
     }
 }
 

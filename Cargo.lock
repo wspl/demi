@@ -2715,6 +2715,9 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "url",
+ "uuid",
+ "which",
  "zstd 0.13.3",
 ]
 

@@ -218,7 +218,9 @@ jobs:
               --files files --downloads "$downloads" --server "$target" --runtime "$runtime" \
               --web "$RUNNER_TEMP/web" --artifacts native-target --compressed compressed
             tar --zstd -cf "dist/demi-$VERSION-server-linux-$arch.tar.zst" -C "$root" .
+            cp "native-target/$target/release/demi-server" "dist/demi-server-$target"
           done
+          sed "s/@VERSION@/$VERSION/" crates/server/install.sh > dist/install.sh
       - uses: actions/upload-artifact@v7
         with:
           name: server
