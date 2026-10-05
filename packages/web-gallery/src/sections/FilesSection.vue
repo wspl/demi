@@ -5,6 +5,10 @@ import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
 import FileBrowserAddressBar from '@demicodes/web-ui/files/FileBrowserAddressBar.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
+import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
+import { useDevicePairing, type PairingResult } from '@demicodes/web-ui/devices/pairing'
+import { delay } from '@demicodes/utils'
+import { demoDeviceInstallation } from '../fixtures/device-installation'
 import type { WorkspaceDraft, WorkspaceHostChoice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
@@ -79,15 +83,28 @@ const { view } = useGalleryView()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
 const workspaceDevices = ref(pairedHosts.map(({ id, label, online }) => ({ id, name: label, online })))
-/** Add Device stands in for the pairing flow: a new online device joins the list. */
-function connectWorkspaceDevice() {
-  workspaceDevices.value.push(
-    {
-      id: `device-${Date.now()}`,
-      name: `host-${workspaceDevices.value.length + 1}`,
-      online: true
-    }
-  )
+/**
+ * Add Device pairs as the product does, with any code: the claim answers with a
+ * new online device, and the list shows it a moment later, as the page's
+ * synchronization brings it; the menu then selects it.
+ */
+const workspacePairing = useDevicePairing(claimWorkspaceDevice)
+/** Ends the list's late update when the section goes away. */
+const workspaceSync = new AbortController()
+onBeforeUnmount(() => workspaceSync.abort())
+async function claimWorkspaceDevice(_code: string, signal?: AbortSignal): Promise<PairingResult> {
+  await delay(900, signal)
+  signal?.throwIfAborted()
+  const device = {
+    id: `device-${Date.now()}`,
+    name: `host-${workspaceDevices.value.length + 1}`,
+    online: true
+  }
+  void delay(600, workspaceSync.signal).then(() => {
+    if (!workspaceSync.signal.aborted)
+      workspaceDevices.value.push(device)
+  })
+  return { ok: true, device: { id: device.id, name: device.name } }
 }
 const workspaceProjects = ref<WorkspaceProject[]>([
   {
@@ -651,7 +668,7 @@ onMounted(() => {
 
       <GallerySection
         title="New Project"
-        note="The working-environment dialog on its form: the Cloud or a device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one (Add Device after the menu stands in for pairing) and a directory; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
+        note="The working-environment dialog on its form: the Cloud or a device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one and a directory; Add Device after the menu pairs a simulated device with any code, and the menu selects it once the list shows it, a moment after pairing succeeds; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
       >
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <WorkspaceDialog
@@ -665,8 +682,19 @@ onMounted(() => {
             :places-for="placesFor"
             @create="createWorkspace"
             @choose="workspaceLastHost = $event"
-            @connect-device="connectWorkspaceDevice"
+            @connect-device="workspacePairing.open"
             @close="close"
+          />
+          <DevicePairingDialog
+            :is-open="workspacePairing.isOpen.value"
+            stack
+            :overlay-store="appOverlayStore"
+            :installation="demoDeviceInstallation"
+            :phase="workspacePairing.phase.value"
+            @close="workspacePairing.close"
+            @next="workspacePairing.phase.value = { kind: 'code' }"
+            @back="workspacePairing.phase.value = { kind: 'setup' }"
+            @submit="workspacePairing.submit"
           />
         </GalleryDialogFrame>
         <p class="select-none text-[12px] text-fg-subtle">

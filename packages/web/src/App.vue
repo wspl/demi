@@ -64,14 +64,15 @@ const folded = computed({
     resources.local.foldedProjects = value
   },
 })
-// Connect New Device, from the host menu or elsewhere, pairs right here rather than in settings.
+// Connect New Device, from the host menu or elsewhere, pairs right here rather than in settings;
+// started beside a device menu, it hands that menu the device it pairs.
 const pairing = useDevicePairing(claimDevice)
 const installation = useDeviceInstallation()
 watch(
-  () => resources.pairingOpen,
-  (wanted) => {
-    if (wanted) {
-      pairing.open()
+  () => resources.pairingRequest,
+  (request) => {
+    if (request) {
+      pairing.open(request.onPaired)
     } else {
       pairing.close()
     }
@@ -223,7 +224,7 @@ useAppShortcuts(
         :overlay-store="appOverlayStore"
         :installation="installation"
         :phase="pairing.phase.value"
-        @close="resources.pairingOpen = false"
+        @close="resources.pairingRequest = null"
         @next="pairing.phase.value = { kind: 'code' }"
         @back="pairing.phase.value = { kind: 'setup' }"
         @submit="pairing.submit"

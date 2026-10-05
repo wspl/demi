@@ -18,8 +18,10 @@ import TruncatedText from '../ui/TruncatedText.vue'
 import InlineError from '../ui/InlineError.vue'
 import FileBrowser from '../files/FileBrowser.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
+import type { PairingDevice } from '../devices/pairing'
 import {
   openingChoice,
+  usePairedSelection,
   type WorkspaceDevice,
   type WorkspaceDraft,
   type WorkspaceHostChoice,
@@ -57,8 +59,11 @@ const emit = defineEmits<{
   create: [draft: WorkspaceDraft]
   /** The user chose a kind or a device: the choice the next opening starts on. */
   choose: [choice: WorkspaceHostChoice]
-  /** The Add Device button beside the device menu: the host starts pairing. */
-  connectDevice: []
+  /**
+   * The Add Device button beside the device menu: the host starts pairing and
+   * hands `onPaired` the device it pairs, which the menu then selects.
+   */
+  connectDevice: [onPaired: (device: PairingDevice) => void]
 }>()
 
 type Kind = 'cloud' | 'device'
@@ -175,6 +180,8 @@ function chooseDevice(id: string): void {
   deviceId.value = id
   choose()
 }
+// A device paired from Add Device is chosen here once the list shows it.
+const paired = usePairedSelection(() => props.devices, chooseDevice)
 function selectDevice(id: string, close: () => void): void {
   chooseDevice(id)
   close()
@@ -302,7 +309,7 @@ function selectDevice(id: string, close: () => void): void {
                   <Button
                     class="shrink-0"
                     :disabled="pending"
-                    @click="emit('connectDevice')"
+                    @click="emit('connectDevice', paired)"
                   >
                     <Plus :size="14" />
                     Add Device

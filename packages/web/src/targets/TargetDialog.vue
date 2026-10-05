@@ -66,6 +66,6 @@ async function create(draft: WorkspaceDraft) {
     @close="close"
     @create="create"
     @choose="(choice) => preferences.update({ lastProjectHost: choice }, true)"
-    @connect-device="resources.pairingOpen = true"
+    @connect-device="resources.openPairing"
   />
 </template>

@@ -1,4 +1,4 @@
-import { onBeforeUnmount, ref } from 'vue'
+import { onScopeDispose, ref } from 'vue'
 
 export type PairingDevice = {
   id: string
@@ -44,6 +44,8 @@ export function useDevicePairing(
     controller = null
   }
   let generation = 0
+  /** Hears of the device this opening pairs: the device menu it was started beside, if any. */
+  let onPaired: ((device: PairingDevice) => void) | null = null
   function reset(next: PairingPhase = { kind: 'setup' }) {
     cancelRequest()
     generation++
@@ -52,11 +54,14 @@ export function useDevicePairing(
   function close() {
     cancelRequest()
     generation++
+    onPaired = null
     isOpen.value = false
   }
-  function open() {
+  /** Opens on its first step; `paired` hears of the device once the claim succeeds. */
+  function open(paired?: (device: PairingDevice) => void) {
     cancelRequest()
     generation++
+    onPaired = paired ?? null
     phase.value = { kind: 'setup' }
     isOpen.value = true
   }
@@ -79,17 +84,21 @@ export function useDevicePairing(
     if (request !== generation) {
       return
     }
-    phase.value = result.ok
-      ? {
-          kind: 'done',
-          device: result.device,
-        }
-      : {
-          kind: 'code',
-          error: pairingErrors[result.code],
-        }
+    if (!result.ok) {
+      phase.value = {
+        kind: 'code',
+        error: pairingErrors[result.code],
+      }
+      return
+    }
+    phase.value = {
+      kind: 'done',
+      device: result.device,
+    }
+    onPaired?.(result.device)
   }
-  onBeforeUnmount(close)
+  // Disposed with the component that opened it, or with any effect scope.
+  onScopeDispose(close)
   return {
     isOpen,
     phase,
