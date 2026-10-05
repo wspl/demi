@@ -1,5 +1,5 @@
 import { computed, shallowRef, type ComputedRef } from 'vue'
-import type { PanelTab } from './panel-tabs'
+import { removeTabs, type PanelTab } from './panel-tabs'
 
 /**
  * One change of the work panel's tabs (`web-api.md` § Work panel state). An
@@ -242,5 +242,37 @@ export class PanelTabs {
     } finally {
       this.sending = false
     }
+  }
+}
+
+/** A panel's selection history, the tab or kind it selected last at its end, which closing tabs changes. */
+export interface PanelHistory {
+  history: readonly string[]
+}
+
+/**
+ * Closes the tabs `ids` as one change of the panel, one request, as Close
+ * Others is (`web-application.md` § Requests for one action); the panel
+ * shows what was selected before a closed one.
+ */
+export function closePanelTabs(selection: PanelHistory, tabs: PanelTabs, ids: readonly string[]): void {
+  selection.history = removeTabs({ history: selection.history, tabs: tabs.tabs.value }, ids).history
+  tabs.change(...ids.map((id) => ({ type: 'remove' as const, id })))
+}
+
+/** Whether `data` is an object a kind's tab keeps as its `data`. */
+function isData(data: unknown): data is Record<string, unknown> {
+  return data !== null && typeof data === 'object' && !Array.isArray(data)
+}
+
+/** The tab's next `data`, from its kind: only what changed is sent; a tab gone, or data that is no object, sends nothing. */
+export function updatePanelTab(tabs: PanelTabs, id: string, data: unknown): void {
+  const current = tabs.tabs.value.find((tab) => tab.id === id)
+  if (!current || !isData(data)) {
+    return
+  }
+  const fields = dataChanges(current.data, data)
+  if (Object.keys(fields).length > 0) {
+    tabs.change({ type: 'update', id, data: fields })
   }
 }

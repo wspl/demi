@@ -2,11 +2,10 @@ import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
   openIntent,
-  removeTabs,
   type PanelState,
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
-import { PanelTabs, dataChanges } from '@demicodes/web-ui/agent/panel-changes'
+import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import { intentKind } from '@demicodes/web-ui/plugins/page'
 import type { IntentName, IntentRequest } from '@demicodes/web-ui/plugins/intents'
@@ -33,11 +32,6 @@ export interface WorkState {
   /** The history and the tabs, as the panel shows them. */
   readonly panel: PanelState
   changes: WorkingTreeSource
-}
-
-/** Whether `data` is an object a kind's tab keeps as its `data`. */
-function isData(data: unknown): data is Record<string, unknown> {
-  return data !== null && typeof data === 'object' && !Array.isArray(data)
 }
 
 /**
@@ -151,23 +145,12 @@ export const useWorkPanel = defineStore('work-panel', () => {
 
   /** The tab's next `data`, from its kind: only what changed is sent. */
   function update(conversationId: string, id: string, data: unknown): void {
-    const tabs = tabsOf(conversationId)
-    const current = tabs.tabs.value.find((tab) => tab.id === id)
-    if (!current || !isData(data)) {
-      return
-    }
-    const fields = dataChanges(current.data, data)
-    if (Object.keys(fields).length > 0) {
-      tabs.change({ type: 'update', id, data: fields })
-    }
+    updatePanelTab(tabsOf(conversationId), id, data)
   }
 
   /** Closes the tabs `ids`; the panel shows what was selected before a closed one. */
   function closeTabs(conversationId: string, ids: string[]): void {
-    const state = stateFor(conversationId)
-    state.history = removeTabs(state.panel, ids).history
-    // One request, as Close Others is one change of the panel.
-    tabsOf(conversationId).change(...ids.map((id) => ({ type: 'remove' as const, id })))
+    closePanelTabs(stateFor(conversationId), tabsOf(conversationId), ids)
   }
 
   /** A pinned tab's data, as its kind replaces it. */
