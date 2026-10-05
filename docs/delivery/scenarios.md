@@ -320,7 +320,7 @@ Against a manager installed on the host:
 DEMI_TEST_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
 DEMI_TEST_CLOUD_URL=http://<address>:<port> \
 DEMI_TEST_MACHINES_DATA=/opt/demi/data/cloud \
-DEMI_TEST_CLOUD_NATIVE=<native configuration> \
+DEMI_TEST_CLOUD_RELEASE=<server release root> \
   cargo test --workspace --features demi-runner/test-fixtures --test backend \
   -- --include-ignored real_cloud --test-threads=1 --nocapture
 ```
