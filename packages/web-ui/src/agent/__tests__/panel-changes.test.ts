@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { deferred } from '@demicodes/utils'
-import { PanelTabs, dataChanges, type PanelChange, type PanelRead } from '../panel-changes'
+import { PanelTabs, dataChanges, type PanelAnswer, type PanelChange, type PanelRead } from '../panel-changes'
 import type { PanelTab } from '../panel-tabs'
 
 const page = (id: string, url = `https://${id}.test/`): PanelTab => ({ id, kind: 'page', data: { url } })
@@ -13,7 +13,7 @@ function backend(first: PanelRead) {
   let panel = first
   let reads = 0
   const sent: PanelChange[][] = []
-  const answers: ReturnType<typeof deferred<{ revision: number }>>[] = []
+  const answers: ReturnType<typeof deferred<PanelAnswer>>[] = []
   const refused: unknown[] = []
   const tabs = new PanelTabs(
     {
@@ -23,7 +23,7 @@ function backend(first: PanelRead) {
       },
       send: (changes) => {
         sent.push([...changes])
-        const answer = deferred<{ revision: number }>()
+        const answer = deferred<PanelAnswer>()
         answers.push(answer)
         return answer.promise
       },
@@ -38,9 +38,9 @@ function backend(first: PanelRead) {
     reads: () => reads,
     /** The backend's panel from now on. */
     set: (next: PanelRead) => void (panel = next),
-    /** Answers the oldest request still waiting. */
-    answer: async (revision: number) => {
-      answers.shift()!.resolve({ revision })
+    /** Answers the oldest request still waiting: changed, unless the test says not. */
+    answer: async (revision: number, changed = true) => {
+      answers.shift()!.resolve({ revision, changed })
       await settled()
     },
     refuse: async (error: Error) => {
@@ -103,6 +103,19 @@ test('an answer that shows another change came in between is followed by a read'
   expect(ids(world.tabs)).toEqual(['a', 'x', 'b'])
 })
 
+test('a request that changed nothing while another change landed reads the panel, though its answer is one past the panel held', async () => {
+  const world = backend({ revision: 1, tabs: [page('a'), page('b')] })
+  world.tabs.start()
+  await settled()
+  const read = world.reads()
+  world.tabs.change({ type: 'update', id: 'b', data: { title: 'B' } })
+  // Another page removed the tab first: the update had nothing to do.
+  world.set({ revision: 2, tabs: [page('a')] })
+  await world.answer(2, false)
+  expect(world.reads()).toBe(read + 1)
+  expect(ids(world.tabs)).toEqual(['a'])
+})
+
 test('a summary that names the revision of a request on its way reads nothing; one past every answer reads the panel', async () => {
   const world = backend({ revision: 1, tabs: [page('a')] })
   world.tabs.start()
@@ -152,7 +165,7 @@ test('a request the backend refuses leaves, the panel shows as the backend has i
   expect(world.refused).toEqual([new Error('panel_full')])
   // The move of a tab the panel never got does nothing, and is still sent in its turn.
   expect(ids(world.tabs)).toEqual(['a'])
-  await world.answer(1)
+  await world.answer(1, false)
   expect(ids(world.tabs)).toEqual(['a'])
 })
 
@@ -162,7 +175,7 @@ test('a tab created again with an id the panel had shows until the answer says n
   await settled()
   world.tabs.change({ type: 'create', tab: page('old') })
   expect(ids(world.tabs)).toEqual(['old'])
-  await world.answer(4)
+  await world.answer(4, false)
   expect(ids(world.tabs)).toEqual([])
 })
 

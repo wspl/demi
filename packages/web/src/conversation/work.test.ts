@@ -117,7 +117,7 @@ function stubPanelRoutes(stored: { revision: number; tabs: PanelTab[] }) {
     }
     route.sent.push({ method, path, body: init?.body ? JSON.parse(String(init.body)) : null })
     route.stored = { ...route.stored, revision: route.stored.revision + 1 }
-    return Response.json({ revision: route.stored.revision })
+    return Response.json({ revision: route.stored.revision, changed: true })
   }) as typeof fetch
   return route
 }

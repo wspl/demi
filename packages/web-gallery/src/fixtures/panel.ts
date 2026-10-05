@@ -5,7 +5,7 @@
  * the way the product's do, a beat late, over the gallery's own browser.
  */
 import { browserTabDataSchema, type BrowserTabData } from '@demicodes/plugin-browser/live/tabs'
-import { applyPanelChange, type PanelBackend, type PanelChange, type PanelRead } from '@demicodes/web-ui/agent/panel-changes'
+import { applyPanelChange, type PanelAnswer, type PanelBackend, type PanelChange, type PanelRead } from '@demicodes/web-ui/agent/panel-changes'
 import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { GalleryBrowser } from './live-browser'
 
@@ -38,7 +38,7 @@ export class GalleryPanel implements PanelBackend {
    * A page's changes, as one change of the panel: the kind's plugin hears
    * of each tab its user created or removed.
    */
-  async send(changes: readonly PanelChange[]): Promise<{ revision: number }> {
+  async send(changes: readonly PanelChange[]): Promise<PanelAnswer> {
     await beat()
     const before = this.revision
     const told = changes.flatMap((change) => this.change(change) ?? [])
@@ -51,7 +51,7 @@ export class GalleryPanel implements PanelBackend {
     for (const each of told) {
       queueMicrotask(() => this.told?.(each))
     }
-    return { revision: this.revision }
+    return { revision: this.revision, changed: this.revision > before }
   }
 
   /** Applies the plugin's `change`; answers what it did to a tab. */

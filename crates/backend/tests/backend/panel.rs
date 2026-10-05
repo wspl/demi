@@ -115,9 +115,10 @@ async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
     assert_eq!(panel.read().await, json!({ "revision": 0, "tabs": [] }));
     assert_eq!(panel.summary_revision().await, 0);
 
+    let created = panel.create(page("p1", "https://a.test/")).await;
     assert_eq!(
-        revision(&panel.create(page("p1", "https://a.test/")).await),
-        1
+        created.json::<Value>(),
+        json!({ "revision": 1, "changed": true })
     );
     assert_eq!(
         panel.read().await,
@@ -125,9 +126,10 @@ async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
     );
     assert_eq!(panel.summary_revision().await, 1);
     // Creating it again, as a page whose answer was lost does, creates nothing.
+    let again = panel.create(page("p1", "https://other.test/")).await;
     assert_eq!(
-        revision(&panel.create(page("p1", "https://other.test/")).await),
-        1
+        again.json::<Value>(),
+        json!({ "revision": 1, "changed": false })
     );
     let first =
         json!({ "id": "p2", "kind": "page", "data": { "url": "https://b.test/" }, "index": 0 });

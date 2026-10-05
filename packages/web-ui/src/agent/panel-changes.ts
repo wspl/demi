@@ -17,14 +17,21 @@ export interface PanelRead {
   tabs: PanelTab[]
 }
 
+/** What a request of changes answers: the panel's revision once they are in it, and whether they changed it. */
+export interface PanelAnswer {
+  revision: number
+  changed: boolean
+}
+
 /** Where the panel's tabs are kept: the backend's routes, or a fixture's. */
 export interface PanelBackend {
   read(): Promise<PanelRead>
   /**
    * Applies the changes in order, all or none, as one change of the panel,
-   * and answers the panel's revision once they are in it.
+   * and answers the panel's revision once they are in it and whether they
+   * changed it.
    */
-  send(changes: readonly PanelChange[]): Promise<{ revision: number }>
+  send(changes: readonly PanelChange[]): Promise<PanelAnswer>
 }
 
 /** `tabs` after `change`, as the backend applies it; a change with nothing to do leaves them. */
@@ -97,10 +104,11 @@ interface Pending {
  * panel): the panel it last read, with its own changes that are not in it yet
  * applied on top. A change shows at once; the changes made while none is on
  * its way go together, in order, as one request, so Close Others is one
- * request (`web-application.md` § Requests for one action). An answer one
- * revision past the panel the page holds is the panel with the request in
- * it; the panel is read only when an answer, or the summary, names a
- * revision past it, which says another change came in between. A change leaves once a panel at least as new as its
+ * request (`web-application.md` § Requests for one action). An answer that
+ * changed the panel one revision past the one the page holds is the panel
+ * with the request in it; the panel is read only when an answer, or the
+ * summary, names a revision past the one the page then holds, which says
+ * another change came in between (`web-api.md` § Work panel state). A change leaves once a panel at least as new as its
  * answer is held, so a panel read after a removal never brings the tab back.
  * A request the backend refuses leaves at once, and the panel shows as the
  * backend has it.
@@ -205,7 +213,7 @@ export class PanelTabs {
         for (const entry of batch) {
           entry.sent = true
         }
-        let answer: { revision: number }
+        let answer: PanelAnswer
         try {
           answer = await this.backend.send(batch.map((entry) => entry.change))
         } catch (error) {
@@ -218,7 +226,7 @@ export class PanelTabs {
         }
         this.known = Math.max(this.known, answer.revision)
         const held = this.confirmed.value
-        if (held !== null && answer.revision === held.revision + 1) {
+        if (held !== null && answer.changed && answer.revision === held.revision + 1) {
           // The request alone made this revision: the panel is the one held with it.
           this.confirmed.value = {
             revision: answer.revision,

@@ -76,13 +76,16 @@ pub struct PanelChanges {
     pub changes: Vec<PanelChange>,
 }
 
-/// What every change of the panel answers: its revision once the change is
-/// in it.
+/// What a request of changes answers: the panel's revision once the
+/// changes are in it, and whether the request changed the panel, which a
+/// revision alone cannot tell when another change came in between.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
-pub struct PanelRevision {
+pub struct PanelAnswer {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
+    #[garde(skip)]
+    pub changed: bool,
 }
 
 /// One change of a panel, from the page or from the kind's plugin.

@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 use demi_backend_plugins::PanelError;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use demi_web_api_protocol::panel::{PanelChanges, PanelRevision, WorkPanel};
+use demi_web_api_protocol::panel::{PanelAnswer, PanelChanges, WorkPanel};
 
 use super::AppState;
 use super::body::JsonBody;
@@ -37,10 +37,10 @@ pub(super) async fn change(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     body: Result<JsonBody<PanelChanges>, ApiError>,
-) -> Result<Json<PanelRevision>, ApiError> {
+) -> Result<Json<PanelAnswer>, ApiError> {
     let conversation = changeable(&state, &user.id, &id).await?;
     let JsonBody(PanelChanges { changes }) = body?;
-    let revision = state
+    let (revision, changed) = state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
@@ -48,7 +48,7 @@ pub(super) async fn change(
         })
         .await?
         .map_err(refused)?;
-    Ok(Json(PanelRevision { revision }))
+    Ok(Json(PanelAnswer { revision, changed }))
 }
 
 /// The caller's conversation `id`, which takes a change: whose
