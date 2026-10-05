@@ -2,12 +2,13 @@
 //! product's instructions, the rules of the standard tools, and the help of
 //! the node's commands, rendered once when the node is assembled.
 
+use crate::input::DESCRIPTION;
+
 /// The rules of the standard tools and of the commands' help, which every
 /// node's system prompt carries.
 const TOOL_RULES: &[&str] = &[
     "Shell session rules:",
     "- Use shell_exec for commands. timeoutMs is required and is only an observation window, not a kill deadline; at timeoutMs the command keeps running and a commandId is returned while the turn continues.",
-    "- Tool description: concise title for the concrete user-visible state/result to make visible or confirm. Do not describe waiting, pausing, tool mechanics, generic actions, object labels, steps, tool names, ids, internals, or reasons.",
     "- shell_exec returns status, commandId and the output so far; while the command runs, also shellId, runningMs and idleMs. Track commandId for all follow-up control.",
     "- If status is running, the command keeps running and the turn continues. Either call shell_status again to check, or call yield to end this turn and be woken later to check with commandId. shell_exec and shell_status never end the turn or schedule a wakeup on their own; only yield does.",
     "- Use shell_status for polling. It is non-blocking and shows the output since your last look. Past the first 8 KiB of a running command's stream, a line counts the bytes left out and that stream's newest lines follow.",
@@ -34,7 +35,10 @@ pub fn system_prompt(instructions: &str, commands: &str) -> String {
         "Prefer registered commands for agent-specific state and audited workflows. Use normal system commands for ordinary shell work."
             .to_owned(),
     );
-    sections.push(TOOL_RULES.join("\n"));
+    sections.push(format!(
+        "{}\n- Tool description: {DESCRIPTION}",
+        TOOL_RULES.join("\n")
+    ));
     sections.push(
         "Files the user attaches arrive as <attachment> tags that name their path on the Host; read them there with ordinary commands."
             .to_owned(),

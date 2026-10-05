@@ -642,7 +642,7 @@ export const statusTool = toolCall({
   input: JSON.stringify(
     {
       commandId: 'cmd_1',
-      description: 'Check long-running command'
+      description: 'Check the dev server'
     }
   ),
 })
@@ -665,7 +665,7 @@ export const errorTool = toolCall({
   id: 'tool-error',
   toolName: 'shell_exec',
   status: 'error',
-  input: JSON.stringify({ script: 'false', description: 'Broken command' }),
+  input: JSON.stringify({ script: 'false', description: 'Remove the stale lock file' }),
   output: [{ type: 'text', text: 'exit 1\npermission denied: /tmp/locked\n' }],
 })
 

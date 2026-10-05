@@ -350,7 +350,7 @@ test('a scripted tool call runs on the real runner, and its result appears in th
   vendor.reply({
     type: 'tool_use',
     name: 'shell_exec',
-    input: { script: 'printf contract > probe.txt && cat probe.txt', description: 'Probe file written', timeoutMs: 30_000 },
+    input: { script: 'printf contract > probe.txt && cat probe.txt', description: 'Write the probe file', timeoutMs: 30_000 },
   })
   vendor.reply({ type: 'text', text: 'The probe says contract.' })
   const client = await connect(id)
@@ -588,7 +588,7 @@ test('the page answers a running command\'s prompt, and the command\'s output re
   vendor.reply({
     type: 'tool_use',
     name: 'shell_exec',
-    input: { script: 'echo "name?"; read line; echo "got $line"', description: 'Line read', timeoutMs: 30_000 },
+    input: { script: 'echo "name?"; read line; echo "got $line"', description: 'Ask for a name', timeoutMs: 30_000 },
   })
   vendor.reply({ type: 'text', text: 'The command read the line.' })
   const client = await openConversation(id)
