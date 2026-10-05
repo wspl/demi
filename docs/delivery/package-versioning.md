@@ -54,9 +54,23 @@ other two kinds of release use it differently:
 
 - A command package's descriptor records it as the package version. A published
   version is immutable, so a release with different artifacts needs a new
-  workspace version.
+  workspace version. Only the release workflow names a package with the
+  workspace version itself, through `cargo xtask server-release --publish`
+  ([Release workflow](builds-and-releases.md#release-workflow)). Any other
+  packaging gives it a development version, the workspace version with build
+  metadata naming its artifacts: `0.1.3+dev.<digest>`, where the digest is
+  the first 12 hexadecimal digits of the SHA-256 over the package's targets
+  and their executables' SHA-256s. Packaging the same programs again gives
+  the same version; a rebuilt program gives a new one, which a store that
+  already holds the earlier build publishes beside it.
 - A runner release is named by the hash of its contents rather than by the
   version.
+
+A published release of the executables is tagged `v<workspace version>`,
+such as `v0.1.3`, and the tag starts the
+[release workflow](builds-and-releases.md#release-workflow), which refuses a
+tag that differs from the workspace version. The npm package tags name their
+package, so the two never collide.
 
 The workspace version and the npm group version change independently: a
 release of one does not bump the other.
