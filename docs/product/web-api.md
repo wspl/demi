@@ -662,9 +662,8 @@ Each provider carries its models, `sourceFetchedAt`, `stale` and `warnings`,
 its authentication and runtime health, the `availability` the backend derives
 from that health, and `cliPackage`: the command package that installs the
 CLI its requests start on the user's Cloud, such as `demi.claude-code`, or
-null when its requests are HTTP. The page shows that package's installs
-([Installation progress](../execution/native-runtime.md#installation-progress)).
-The entries of the product state carry the same `cliPackage`. `availability` is
+null when its requests are HTTP; the page knows by it that the provider
+needs the Cloud. The entries of the product state carry the same `cliPackage`. `availability` is
 `{ type: "unavailable", reason: "authentication", message }` while the
 credential is missing or refused, `{ type: "unavailable", reason: "runtime",
 message }` with the runtime's message while the provider cannot run, and
@@ -965,7 +964,7 @@ later one is the current value of one part of it that changed:
 | `preferences` | `preferences` | A preferences patch |
 | `user` | `user` | The nickname or the email address changes |
 | `workspaces` | `workspaces`, in the user's order | A workspace is created, renamed, moved or deleted |
-| `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, its runner's installs or installed artifacts change, or the Cloud's device is made |
+| `devices` | `devices`, the paired ones and the Cloud's | A device is paired or revoked, its runner connects or disconnects, its runner's installed artifacts change, or the Cloud's device is made |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off |
@@ -976,13 +975,7 @@ later one is the current value of one part of it that changed:
 The product state holds the current user, the instance mode, preferences, the
 provider entries of the user's scope, workspaces, devices (the paired ones and
 the user's Cloud device, which the file and working-tree routes address
-alike, each with `installs`, the command packages its runner is installing
-now, as the runner last reported them, each as `{ package, name, version,
-phase, done, total }`, where `name` and `version` are the artifact's, such as
-`Chrome for Testing` and `153.0.8010.36`, `phase` is `download` or `unpack`,
-and `done` and `total` count bytes
-([Installation progress](../execution/native-runtime.md#installation-progress)),
-and `installed`, the artifacts its runner's cache holds, as the runner last
+alike, each with `installed`, the artifacts its runner's cache holds, as the runner last
 reported them and kept while it is away, each as `{ package, name, version }`
 ([Installed artifacts](../execution/native-runtime.md#installed-artifacts))),
 the summaries of the active and then the
