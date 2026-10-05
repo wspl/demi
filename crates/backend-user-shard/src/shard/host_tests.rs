@@ -55,7 +55,7 @@ mod host_commands {
         let id = ConversationId::try_from(ID).unwrap();
         assert!(matches!(
             control
-                .create_conversation(owner.clone(), id.clone())
+                .create_conversation(owner.clone(), id.clone(), demi_backend_database::conversation_index::ConversationStart::default())
                 .await
                 .unwrap(),
             Creation::Created(_)
@@ -204,7 +204,7 @@ mod shells {
         let id = ConversationId::try_from(ID).unwrap();
         assert!(matches!(
             control
-                .create_conversation(owner.clone(), id.clone())
+                .create_conversation(owner.clone(), id.clone(), demi_backend_database::conversation_index::ConversationStart::default())
                 .await
                 .unwrap(),
             Creation::Created(_)
@@ -296,7 +296,7 @@ mod remote_files {
             ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01").unwrap();
         assert!(matches!(
             control
-                .create_conversation(owner.clone(), conversation.clone())
+                .create_conversation(owner.clone(), conversation.clone(), demi_backend_database::conversation_index::ConversationStart::default())
                 .await
                 .unwrap(),
             Creation::Created(_)

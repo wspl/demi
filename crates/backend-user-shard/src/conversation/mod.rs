@@ -10,6 +10,7 @@ mod announcement;
 pub mod claude_cli;
 mod cloud_workspace;
 mod connection_test;
+mod creation;
 mod failure_facts;
 mod fork;
 pub(crate) mod product;

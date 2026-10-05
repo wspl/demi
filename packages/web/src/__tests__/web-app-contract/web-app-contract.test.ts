@@ -18,7 +18,7 @@ import { ApiError, apiRequest, jsonBody, readResponse } from '../../api/client'
 import { changeReplacedDraft, loadDraft, saveDraft } from '../../api/drafts'
 import {
   claimedDeviceSchema,
-  conversationAnswerSchema,
+  createdConversationSchema,
   conversationUpdateSchema,
   devicesSchema,
   modelCatalogSchema,
@@ -113,13 +113,15 @@ function scriptedModel(): Promise<ModelSelection> {
 /** A new conversation under the id the page chose, set to the scripted model as the page's first send sets it. */
 async function createConversation(model?: ModelSelection): Promise<string> {
   const id = crypto.randomUUID()
-  await readResponse(
-    await apiRequest('/conversations', { method: 'POST', ...jsonBody({ id } satisfies CreateConversation) }),
-    conversationAnswerSchema,
-  )
-  if (model) {
-    await patchConversation(id, { model: { providerId: model.providerId, modelId: model.model.id } })
+  const request: CreateConversation = {
+    id,
+    ...(model ? { model: { providerId: model.providerId, modelId: model.model.id } } : {}),
   }
+  const created = await readResponse(
+    await apiRequest('/conversations', { method: 'POST', ...jsonBody(request) }),
+    createdConversationSchema,
+  )
+  expect(created.conversation.model?.modelId ?? null).toBe(model?.model.id ?? null)
   return id
 }
 

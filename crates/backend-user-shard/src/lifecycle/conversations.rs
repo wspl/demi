@@ -212,7 +212,7 @@ mod tests {
         let id = ConversationId::try_from(ID).unwrap();
         assert!(matches!(
             control
-                .create_conversation(owner.clone(), id)
+                .create_conversation(owner.clone(), id, demi_backend_database::conversation_index::ConversationStart::default())
                 .await
                 .unwrap(),
             Creation::Created(_)

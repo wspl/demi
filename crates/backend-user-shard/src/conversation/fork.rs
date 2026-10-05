@@ -307,7 +307,7 @@ mod tests {
         let master = testing::master(&control).await.id;
         let source = conversation("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b");
         control
-            .create_conversation(master.clone(), source.clone())
+            .create_conversation(master.clone(), source.clone(), demi_backend_database::conversation_index::ConversationStart::default())
             .await
             .unwrap();
         let mut devices = Vec::new();

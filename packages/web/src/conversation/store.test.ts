@@ -194,11 +194,15 @@ beforeEach(async () => {
           { status: 503 },
         )
       }
-      const created = records.find((item) => item.id === body.id) ?? record(body.id)
-      if (!records.includes(created)) {
+      const existing = records.find((item) => item.id === body.id)
+      const created = existing ?? { ...record(body.id), title: body.title ?? 'New conversation', pinned: body.pinned ?? false }
+      if (!existing) {
         records.unshift(created)
       }
-      return Response.json({ conversation: created }, { status: 201 })
+      const hosts = (body.hosts ?? []).map((host: { deviceId: string; name: string }) => ({
+        ...host, cwd: null, online: true, attachedAt: '2026-09-09T00:00:00.000Z',
+      }))
+      return Response.json({ conversation: created, hosts }, { status: existing ? 200 : 201 })
     }
     if (path === '/api/conversations/batch') {
       const items = body.items as {
@@ -567,9 +571,9 @@ test('first send failure preserves the conversation and retries its UUID and mes
   expect(store.items[0]?.id).toBe(conversation.id)
   await store.send(conversation)
   expect(conversation.pendingSend?.id).toBe(messageId)
-  expect(requests.filter((request) => request.path === '/api/conversations').map((request) => request.body)).toEqual([
-    { id: conversation.id },
-    { id: conversation.id },
+  expect(requests.filter((request) => request.path === '/api/conversations').map((request) => (request.body as { id: string }).id)).toEqual([
+    conversation.id,
+    conversation.id,
   ])
 })
 
@@ -607,6 +611,44 @@ test('the first send keeps the new conversation shown while its record opens', a
     expect(shown).toEqual([])
   } finally {
     stop()
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('the first send creates the conversation with its settings and hosts in one request and reads nothing of it back', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  conversation.attachedHosts = [{ deviceId: 'laptop', name: 'build', cwd: null, online: true }]
+  useProduct().snapshot!.providers.push(stubProvider)
+  const originalFetch = globalThis.fetch
+  const readBack: string[] = []
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path.startsWith(`/api/conversations/${id}`)) readBack.push(`${init?.method ?? 'GET'} ${path}`)
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  try {
+    await useProduct().loadModels(true)
+    await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
+    conversation.draft = 'First message'
+    await store.send(conversation)
+    expect(submit).toHaveBeenCalledTimes(1)
+    const created = requests.filter((request) => request.path === '/api/conversations')
+    expect(created.map((request) => request.body)).toEqual([{
+      id, title: conversation.title, pinned: false, target: { kind: 'cloud' },
+      model: { providerId: 'stub', modelId: 'stub' }, serviceTierId: null,
+      hosts: [{ deviceId: 'laptop', name: 'build' }],
+    }])
+    expect(readBack).toEqual([])
+    expect(conversation.attachedHosts.map((host) => host.name)).toEqual(['build'])
+  } finally {
     submit.mockRestore()
     connect.mockRestore()
     globalThis.fetch = originalFetch

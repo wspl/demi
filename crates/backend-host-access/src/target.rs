@@ -5,7 +5,7 @@
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{ConversationRecord, ExecutionTarget};
 use demi_web_api_protocol::conversations::ConversationTarget;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 
 use crate::HostShard;
 
@@ -24,14 +24,25 @@ impl dyn HostShard + '_ {
         &self,
         record: &ConversationRecord,
     ) -> Result<ExecutionTarget, StorageError> {
+        self.resolve(&record.id, &record.owner, &record.target).await
+    }
+
+    /// `target`, the selection of `owner`'s conversation `id`, as its device
+    /// and directory.
+    pub async fn resolve(
+        &self,
+        id: &ConversationId,
+        owner: &UserId,
+        target: &ConversationTarget,
+    ) -> Result<ExecutionTarget, StorageError> {
         let control = self.control();
-        match &record.target {
+        match target {
             ConversationTarget::Workspace { workspace_id } => {
                 // A workspace stays while conversations target it.
                 let workspace = control
                     .workspace(workspace_id.clone())
                     .await?
-                    .filter(|workspace| workspace.user == record.owner)
+                    .filter(|workspace| workspace.user == *owner)
                     .ok_or_else(|| StorageError::Corrupt {
                         table: "conversations",
                         column: "target_workspace_id",
@@ -49,7 +60,7 @@ impl dyn HostShard + '_ {
             }),
             ConversationTarget::Cloud { path } => {
                 let device = control
-                    .managed_device(record.owner.clone())
+                    .managed_device(owner.clone())
                     .await?
                     .map(|device| device.id);
                 let path = match path {
@@ -58,7 +69,7 @@ impl dyn HostShard + '_ {
                         let home = device
                             .as_ref()
                             .and_then(|device| self.devices().home(device));
-                        cloud_session_directory(&record.id, home.as_deref())
+                        cloud_session_directory(id, home.as_deref())
                     }
                 };
                 Ok(ExecutionTarget::Cloud {

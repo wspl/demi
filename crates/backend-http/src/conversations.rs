@@ -17,7 +17,7 @@ use demi_backend_database::conversation_index::{ConversationRecord, Creation};
 use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::{
-    BatchAnswer, BatchResult, ConversationAnswer, ConversationBatch, ConversationPatch,
+    BatchAnswer, BatchResult, ConversationBatch, ConversationPatch, CreatedConversation,
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
     ForkAnswer, ForkRequest, ReadRequest, SubagentHistory, Transcript,
 };
@@ -28,6 +28,7 @@ use super::AppState;
 use super::body::{JsonBody, page_socket};
 use super::error::ApiError;
 use super::gate::AuthUser;
+use super::hosts;
 use super::query::QueryParams;
 use demi_backend_user_shard::conversation::titles::TitleRefusal;
 use demi_backend_user_shard::conversation::{ForkRefusal, failure_facts};
@@ -73,26 +74,25 @@ pub(super) async fn list(
     Ok(Json(Conversations { conversations }))
 }
 
-/// `POST /conversations { id }`: a new conversation on the Cloud, 201; the
-/// caller's conversation of that id again, 200; 409 `id_unavailable` when
-/// another user's conversation holds the id or a Fork reserved it.
+/// `POST /conversations { id, ... }`: a new conversation with what the
+/// request names, 201; the caller's conversation of that id again, applying
+/// nothing, 200; 409 `id_unavailable` when another user's conversation
+/// holds the id or a Fork reserved it. A part of the request that is refused
+/// answers its own status and code, and nothing is created. Both answer the
+/// conversation and its attached hosts.
 pub(super) async fn create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    JsonBody(CreateConversation { id }): JsonBody<CreateConversation>,
-) -> Result<(StatusCode, Json<ConversationAnswer>), ApiError> {
+    JsonBody(request): JsonBody<CreateConversation>,
+) -> Result<(StatusCode, Json<CreatedConversation>), ApiError> {
     let creation = state
-        .services
-        .control
-        .create_conversation(user.id.clone(), id)
-        .await?;
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.create_conversation(request).await })
+        .await?
+        .map_err(hosts::refused)?;
     let (status, record) = match creation {
-        Creation::Created(record) => {
-            let sync = &state.services.sync;
-            sync.mark(&user.id, Part::Conversation(record.id.clone()));
-            sync.mark(&user.id, Part::ConversationOrder);
-            (StatusCode::CREATED, record)
-        }
+        Creation::Created(record) => (StatusCode::CREATED, record),
         Creation::Existing(record) => (StatusCode::OK, record),
         Creation::Unavailable => {
             return Err(ApiError::new(
@@ -102,12 +102,14 @@ pub(super) async fn create(
             ));
         }
     };
+    let id = record.id.clone();
     let conversation = state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move { shard.conversation_summary(record).await })
         .await??;
-    Ok((status, Json(ConversationAnswer { conversation })))
+    let hosts = hosts::hosts(&state, &user.id, id).await?.hosts;
+    Ok((status, Json(CreatedConversation { conversation, hosts })))
 }
 
 /// `GET /conversations/:id/transcript`: the history as the conversation's

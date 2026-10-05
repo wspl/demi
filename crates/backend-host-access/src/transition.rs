@@ -17,7 +17,7 @@ use demi_shared_gates::Reservation;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 
 use crate::HostShard;
 use crate::transfer::TransfersClosed;
@@ -143,21 +143,21 @@ impl dyn HostShard + '_ {
     /// device they paired.
     pub async fn check_destination(
         &self,
-        record: &ConversationRecord,
+        owner: &UserId,
         to: &ConversationTarget,
     ) -> Result<(), ChangeRefusal> {
         let control = self.control();
         match to {
             ConversationTarget::Workspace { workspace_id } => {
                 let workspace = control.workspace(workspace_id.clone()).await?;
-                if !workspace.is_some_and(|workspace| workspace.user == record.owner) {
+                if !workspace.is_some_and(|workspace| workspace.user == *owner) {
                     return Err(ChangeRefusal::WorkspaceNotFound);
                 }
             }
             ConversationTarget::Device { device_id, .. } => {
                 let device = control.device(device_id.clone()).await?;
                 let paired = device.is_some_and(|device| {
-                    device.user == record.owner && device.kind == DeviceKind::User
+                    device.user == *owner && device.kind == DeviceKind::User
                 });
                 if !paired {
                     return Err(ChangeRefusal::DeviceNotFound);

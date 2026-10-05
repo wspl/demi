@@ -79,7 +79,7 @@ impl Shard {
         match &change {
             // The conversation's own target is no change.
             ConversationChange::Target(to) if record.target == *to => return Ok(()),
-            ConversationChange::Target(to) => host.check_destination(&record, to).await?,
+            ConversationChange::Target(to) => host.check_destination(&record.owner, to).await?,
             _ => {}
         }
         let change = match change {
@@ -289,7 +289,7 @@ mod tests {
         let id = ConversationId::try_from(ID).unwrap();
         assert!(matches!(
             control
-                .create_conversation(owner.clone(), id.clone())
+                .create_conversation(owner.clone(), id.clone(), demi_backend_database::conversation_index::ConversationStart::default())
                 .await
                 .unwrap(),
             Creation::Created(_)
@@ -424,7 +424,7 @@ mod tests {
         let id = ConversationId::try_from(ID).unwrap();
         assert!(matches!(
             control
-                .create_conversation(owner.clone(), id.clone())
+                .create_conversation(owner.clone(), id.clone(), demi_backend_database::conversation_index::ConversationStart::default())
                 .await
                 .unwrap(),
             Creation::Created(_)

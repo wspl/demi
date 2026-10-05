@@ -152,6 +152,7 @@ impl ControlService {
                     owner: &operation.owner,
                     title: &metadata.title,
                     origin: TitleOrigin::User,
+                    pinned: false,
                     target: &metadata.target,
                     model: metadata.model.as_ref(),
                     at: metadata.created_at,
