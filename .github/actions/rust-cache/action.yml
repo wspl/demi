@@ -1,0 +1,32 @@
+# Restores the job's compiled Rust dependencies and saves them when the job
+# ends (docs/delivery/builds-and-releases.md § Release workflow). Each job
+# keeps its own entry, since each builds other targets or programs; a release
+# changes Cargo.lock, so an entry is restored from the job's previous release
+# and only what changed compiles again. The workspace's own crates are not
+# kept: every release changes their version, so none would be reused.
+name: Rust cache
+description: Restores and saves the job's compiled Rust dependencies.
+inputs:
+  key:
+    description: What tells this job's entry from the other jobs of its matrix.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - uses: Swatinem/rust-cache@v2
+      with:
+        key: ${{ inputs.key }}
+        # The workspace is named by crates/, where its members lie, rather
+        # than the repository root: rust-cache keeps only the packages whose
+        # manifest lies outside the workspace directory, and the vendored
+        # crates in vendor/, path dependencies that compile for minutes, lie
+        # outside crates/ but inside the root. rust-cache has no setting to
+        # keep them otherwise. Cargo finds the workspace from crates/ by its
+        # parent's Cargo.toml. The targets are xtask's own build and the
+        # native build's.
+        workspaces: |
+          crates -> ../target
+          crates -> ../.cache/native-target
+        # A build that fails keeps what it compiled for the next run.
+        cache-on-failure: true

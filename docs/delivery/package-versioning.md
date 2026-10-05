@@ -67,10 +67,9 @@ other two kinds of release use it differently:
   version.
 
 A published release of the executables is tagged `v<workspace version>`,
-such as `v0.1.3`, and the tag starts the
-[release workflow](builds-and-releases.md#release-workflow), which refuses a
-tag that differs from the workspace version. The npm package tags name their
-package, so the two never collide.
+such as `v0.1.3`: the [release workflow](builds-and-releases.md#release-workflow),
+started on a branch, creates the tag when it publishes the workspace version.
+The npm package tags name their package, so the two never collide.
 
 The workspace version and the npm group version change independently: a
 release of one does not bump the other.

@@ -428,16 +428,21 @@ cargo xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.
 
 `.github/workflows/release.yml` builds a release and publishes it as a GitHub
 release. It runs on GitHub's standard hosted runners, which cost nothing for a
-public repository, and on no machine of a developer's. Two events start it,
+public repository, and on no machine of a developer's. One event starts it,
 and nothing else does; an ordinary push builds no release:
 
-- **A version tag.** Pushing `v0.1.3` releases 0.1.3. The tag must name the
-  workspace version in `Cargo.toml`, or the workflow fails before it builds
-  anything; it never changes the version. The npm packages' tags name their
-  package ([Version selection](package-versioning.md#version-selection)), so
-  the two never collide.
-- **A manual start.** It builds the workspace version into a draft release,
-  and refuses a version that already has a release.
+- **A manual start on a branch**, `gh workflow run release.yml --ref
+  <branch>`, releases the workspace version in `Cargo.toml` of that branch's
+  newest commit. It refuses a version that already has a release, and it
+  never changes the version. Publishing creates the tag `v<version>` on the
+  commit it built; the npm packages' tags name their package
+  ([Version selection](package-versioning.md#version-selection)), so the two
+  never collide.
+
+A release starts on a branch, never by pushing its tag, because a run reads
+only the caches of its own branch and the default branch: a run started by a
+tag could not read what the previous release's run cached under its tag
+(see below).
 
 The workflow runs as much at once as its jobs allow: a job waits only for the
 files it uses. Each build job builds only the targets of its own platform
@@ -476,6 +481,20 @@ running `cargo xtask native build`, and the server release and image jobs of
 the same architecture run that `xtask` instead of compiling their own. The
 `xtask` a CI job builds leaves out the commands that only a developer runs,
 `xtask contracts` and `xtask dev`, and with them the backend they compile.
+
+Nor does a job compile again what its run of the previous release compiled.
+Every job that compiles Rust, each build job and the web app's, keeps its
+compiled dependencies in the GitHub Actions cache, one entry per job, and
+starts from its entry of the previous release
+(`.github/actions/rust-cache`): a release changes `Cargo.lock`, and only the
+dependencies that changed compile again. The workspace's own crates are left
+out, since every release changes their version and none would be reused; the
+vendored crates in `vendor/`, which are path dependencies, are kept. A job
+that fails keeps what it compiled too. The repository's cache holds up to
+50 GB, paid beyond the free 10 GB, and keeps an entry for 90 days after its
+last use, so an entry survives the time between releases. The image job
+compiles nothing; its package downloads take half a minute and are not
+cached.
 
 Each step is a command of the repository that a developer runs too, a
 `cargo xtask` command, `bun run build` or the image build script; only
