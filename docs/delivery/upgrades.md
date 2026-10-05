@@ -289,7 +289,8 @@ does ([`shared-artifacts`](../architecture/crates-and-packages.md#shared-artifac
 It changes nothing outside the layout above: it never edits the
 configuration, never touches a data directory except for its `snapshots/`
 and a restore, and asks systemd to start and stop only Demi's two services.
-Installing a server, the first time, is the installer's.
+Installing a server, the first time, is its `install`
+([Installation](installation.md)).
 
 ## Acceptance
 

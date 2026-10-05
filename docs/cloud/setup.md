@@ -161,6 +161,10 @@ separately and point the manager at it. Capacity planning includes working
 images, retained generations, and image imports, not just the user-visible
 quotas.
 
+A server is installed with `demi-server install`, which checks these
+requirements with the release's own manager and refuses a machine that
+fails them ([Installation](../delivery/installation.md)).
+
 The manager's systemd unit is part of the server release, in its
 `systemd/`, and `demi-server` copies it into place whenever the server moves
 to a release ([One release on a server](../delivery/upgrades.md#one-release-on-a-server)).

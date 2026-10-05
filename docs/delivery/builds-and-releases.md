@@ -363,7 +363,8 @@ For example, 0.1.3 for x86_64:
   bin/demi-machine-manager      the target's machine manager
   bin/demi-server               the server's installer and upgrader
   runtime/                      the pinned runsc distribution of the target's architecture
-  systemd/                      the units of the backend and the machine manager
+  caddy/                        the pinned static Caddy of the target's architecture
+  systemd/                      the units of the backend, the machine manager and Caddy
   web/                          the built web app, with its build.json
   runners/                      the runner release's manifests
   commands/demi-file/           one command package release per directory, its descriptor
@@ -496,6 +497,7 @@ A release has these assets:
 | `demi-<version>-image-linux-amd64.tar`, `demi-<version>-image-linux-arm64.tar` | `image/` of each architecture |
 | `demi-runner-<target>`, `.exe` on Windows | The release's files: each target's runner executable, six files |
 | `<executable>-<target>.zst` | The release's files: each target's compressed copy of each command program, eighteen files |
+| `install.sh`, `demi-server-x86_64-unknown-linux-musl`, `demi-server-aarch64-unknown-linux-musl` | The installer's bootstrap and the program it runs ([Installation](installation.md#the-bootstrap)) |
 | `SHA256SUMS` | The SHA-256 of each asset above |
 
 Unpacking a server archive and the image archive of the same architecture
