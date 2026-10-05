@@ -687,7 +687,10 @@ Each crate implements the provider contract for one vendor family.
     calls behind `LinkPolicy`;
   - `RemoteHost`, a `Host` over a runner connection whose file contents travel
     through pipes, with job, working-tree, network, log and service facets;
-  - pipe records (`Pipes`) and their `Send` ends;
+  - pipe records (`Pipes`) and their `Send` ends, and, behind its `edge`
+    feature, the device end of a stream pipe, `accept_stream_pipe`, which
+    the edge's `GET /api/pipes/:id` route and the testing fixture's edge
+    both use ([Host operations](../execution/runner.md#host-operations));
   - `RemoteShellEnvironment`, the production `ShellEnvironment` over real
     runner jobs, and its factory: at a job's end it reads what the backend
     does not hold of the command's output and its edit copies, hands them to
