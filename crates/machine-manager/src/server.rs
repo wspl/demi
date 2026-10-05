@@ -390,14 +390,23 @@ mod tests {
             }
         }
 
+        /// A connection whose hello has been read: every connection's first
+        /// line names the wire's version.
         async fn connect(&self) -> Client {
             let path = self.directory.path().join("sock/machines.sock");
             let stream = UnixStream::connect(path).await.expect("connect");
             let (read, write) = stream.into_split();
-            Client {
+            let mut client = Client {
                 lines: BufReader::new(read).lines(),
                 write,
-            }
+            };
+            assert_eq!(
+                client.receive().await,
+                Some(MachineResponse::Hello {
+                    version: WIRE_VERSION
+                })
+            );
+            client
         }
 
         /// Stops the server and waits for the requests it left running.
