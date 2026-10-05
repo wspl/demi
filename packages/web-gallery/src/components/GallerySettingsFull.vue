@@ -203,8 +203,10 @@ function restoreArchived(id: string) {
   s.value.archived = s.value.archived.filter((entry) => entry.id !== id)
 }
 
+/** A revoked device leaves the list, and its projects go with it, as the product's do. */
 function revokeDevice(id: string) {
   s.value.devices = s.value.devices.filter((d) => d.id !== id)
+  s.value.deviceProjects = s.value.deviceProjects.filter((project) => project.deviceId !== id)
 }
 
 async function claimDevice(_code: string) {
@@ -324,6 +326,7 @@ function resetShortcuts() {
     :reset-error="reset.status === 'failed' ? reset.message : null"
     @reset-cloud="resetCloud"
     :devices="s.devices"
+    :projects="s.deviceProjects"
     :overlay-store="appOverlayStore"
     :installation="demoDeviceInstallation"
     :claim-device="claimDevice"

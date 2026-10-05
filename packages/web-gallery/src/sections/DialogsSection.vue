@@ -9,6 +9,7 @@ import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import AddSkillSourceDialog from '@demicodes/plugin-skills/AddSkillSourceDialog.vue'
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
+import DeviceRevokeDialog from '@demicodes/web-ui/devices/DeviceRevokeDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import type { DeviceInstallation } from '@demicodes/web-ui/devices/installation'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
@@ -50,6 +51,10 @@ const emailPhases: { variant: string; phase: ChangeEmailPhase }[] = [
   { variant: 'verify', phase: { kind: 'verify', email: 'zan@demi.codes' } },
   { variant: 'verify · code resent', phase: { kind: 'verify', email: 'zan@demi.codes', resent: true } },
   { variant: 'done', phase: { kind: 'done', email: 'zan@demi.codes' } },
+]
+const revokeConfirmations: { variant: string; device: string; projects: string[] }[] = [
+  { variant: 'with projects', device: 'zan-mbp', projects: ['demi', 'notes'] },
+  { variant: 'without projects', device: 'build-01', projects: [] },
 ]
 const passwordPhases: { variant: string; phase: ChangePasswordPhase }[] = [
   { variant: 'form', phase: { kind: 'form' } },
@@ -329,6 +334,25 @@ const resetPhases: {
                 @next="pairingShown[index] = { kind: 'code' }"
                 @back="pairingShown[index] = { kind: 'setup' }"
                 @submit="(code) => productWould(`Pair the Device with Code ${code}`)"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+    </template>
+
+    <template v-if="view === 'devices'">
+      <GallerySection title="Revoke Device" note="Asked before a device is revoked. The projects on it go with it, named here; their files and conversations stay. A device without projects is asked about plainly.">
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen v-for="item in revokeConfirmations" :key="item.variant" wide :variant="item.variant">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <DeviceRevokeDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                :device="item.device"
+                :projects="item.projects"
+                @close="close"
+                @revoke="finish(close, `Revoke the Device ${item.device}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>

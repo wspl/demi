@@ -49,7 +49,7 @@ use tokio_util::sync::CancellationToken;
 use super::Transport;
 use crate::{
     host_log::{self, HostLogReader},
-    management::{Management, Phase},
+    management::{Management, Phase, Revocation},
     state::{RunnerConfig, RunnerState},
 };
 
@@ -58,8 +58,9 @@ pub enum End {
     Stopped,
     Disconnected,
     Rejected,
-    /// The backend revoked the device.
-    Revoked,
+    /// The backend revoked the device; the projects of these names went
+    /// with it.
+    Revoked(Vec<String>),
 }
 
 /// What each connection takes from its registration.
@@ -431,12 +432,11 @@ impl Owner<'_> {
                 management.set_phase(Phase::Rejected);
                 return Ok(Some(End::Rejected));
             }
-            Inbound::Revoked {} if management.phase() == Phase::Online => {
-                return Ok(Some(End::Revoked));
-            }
-            Inbound::RevokeRefused { reason } if management.phase() == Phase::Online => {
-                tracing::warn!("the backend keeps this device: {reason}");
-                management.draining.cancel();
+            Inbound::Revoked { projects } if management.phase() == Phase::Online => {
+                management.settle(Revocation::Revoked {
+                    projects: projects.clone(),
+                });
+                return Ok(Some(End::Revoked(projects)));
             }
             Inbound::Ping {} => {
                 let pong = wire::encode(&wire::Outbound::Pong {

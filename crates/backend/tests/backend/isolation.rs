@@ -332,26 +332,13 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
         .await;
     assert_eq!(still.status, StatusCode::NOT_FOUND);
 
-    // A revoke waits for the workspace to go, then the runner is refused
-    // for good and the attachment goes with the device.
-    let in_use = backend
+    // A revoke takes the workspace and the attachment with the device, and
+    // the runner removes itself.
+    let revoked = backend
         .delete(&format!("/api/devices/{device}"), &alice)
         .await;
-    assert_eq!(in_use.status, StatusCode::CONFLICT);
-    assert_eq!(
-        backend
-            .delete(&format!("/api/workspaces/{workspace}"), &alice)
-            .await
-            .status,
-        StatusCode::NO_CONTENT
-    );
-    assert_eq!(
-        backend
-            .delete(&format!("/api/devices/{device}"), &alice)
-            .await
-            .status,
-        StatusCode::NO_CONTENT
-    );
+    assert_eq!(revoked.status, StatusCode::OK);
+    assert_eq!(revoked.json::<Value>(), json!({ "removed": [workspace] }));
     let hosts: Value = backend
         .get(&format!("/api/conversations/{c}/hosts"), Some(&alice))
         .await

@@ -39,6 +39,21 @@ pub enum Action {
     Uninstall,
 }
 
+/// What came of asking the backend to revoke the device, which `uninstall`
+/// reports (`runner.md` § Installation, pairing and removal).
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(tag = "outcome", rename_all = "snake_case", deny_unknown_fields)]
+pub enum Revocation {
+    /// The backend revoked the device, and the projects of these names went
+    /// with it; their files stay.
+    Revoked { projects: Vec<String> },
+    /// The runner was never paired, so there was no device to revoke.
+    Unpaired,
+    /// The backend could not be asked in time: it lists the device until the
+    /// user revokes it.
+    Unreached,
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
@@ -65,6 +80,8 @@ pub struct Management {
     /// Asked to remove itself: the runner asks its backend to revoke the
     /// device, and drains once it answered or a bounded time passed.
     pub removing: CancellationToken,
+    /// What came of the revocation once removing; none before.
+    revocation: watch::Sender<Option<Revocation>>,
     pub draining: CancellationToken,
     pub stop: CancellationToken,
 }
@@ -79,6 +96,7 @@ impl Management {
                 jobs: 0,
             }),
             removing: CancellationToken::new(),
+            revocation: watch::Sender::new(None),
             draining: CancellationToken::new(),
             stop,
         })
@@ -106,6 +124,22 @@ impl Management {
         self.snapshot.send_modify(|snapshot| snapshot.jobs = jobs);
     }
 
+    /// Records what came of the revocation; only the first outcome counts.
+    pub fn settle(&self, revocation: Revocation) {
+        self.revocation.send_if_modified(|current| {
+            let first = current.is_none();
+            if first {
+                *current = Some(revocation);
+            }
+            first
+        });
+    }
+
+    /// What came of the revocation, once it settled.
+    pub fn revocation(&self) -> Option<Revocation> {
+        self.revocation.borrow().clone()
+    }
+
     pub fn status(&self) -> Status {
         let snapshot = *self.snapshot.borrow();
         Status {
@@ -118,8 +152,10 @@ impl Management {
 }
 
 impl Management {
-    /// Answers one management request: its secret checked, the drain begun
-    /// when it asks for one, and the status written on its standard output.
+    /// Answers one management request: its secret checked, the drain or the
+    /// removal begun when it asks for one, and the status written on its
+    /// standard output; a removal writes what came of the revocation once it
+    /// settled instead.
     async fn answer(
         &self,
         context: InvocationContext<LocalInvocation>,
@@ -128,15 +164,25 @@ impl Management {
         if !self.authorize(&request) {
             return Err(ServiceError::failed(InvalidSecret));
         }
-        match request.action {
-            Action::Status => {}
-            Action::Drain => self.draining.cancel(),
-            Action::Uninstall => self.removing.cancel(),
-        }
-        context
-            .output
-            .stdout(serde_json::to_vec(&self.status())?.into())
-            .await?;
+        let answer = match request.action {
+            Action::Status => serde_json::to_vec(&self.status())?,
+            Action::Drain => {
+                self.draining.cancel();
+                serde_json::to_vec(&self.status())?
+            }
+            Action::Uninstall => {
+                self.removing.cancel();
+                let mut settled = self.revocation.subscribe();
+                // The management keeps the sender while it answers.
+                let revocation = settled
+                    .wait_for(Option::is_some)
+                    .await
+                    .map_err(ServiceError::failed)?
+                    .clone();
+                serde_json::to_vec(&revocation)?
+            }
+        };
+        context.output.stdout(answer.into()).await?;
         Ok(completed(0))
     }
 }

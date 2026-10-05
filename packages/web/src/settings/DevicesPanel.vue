@@ -17,6 +17,7 @@ const { revoke, resetCloud } = settings
 <template>
   <SettingsDevices
     :devices="resources.devices"
+    :projects="resources.projects"
     :load="product.load"
     :pending-ids="revoking"
     @retry="product.reconnect"

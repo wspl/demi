@@ -54,11 +54,10 @@ pub enum Inbound {
     /// The user revoked the device, or the backend did at the runner's
     /// `revoke`: the runner removes itself from it, and the backend closes
     /// the connection (`runner.md` § Installation, pairing and removal).
-    Revoked {},
-    /// The backend keeps the device the runner asked it to revoke, for
-    /// `reason`.
-    RevokeRefused {
-        reason: String,
+    /// `projects` names the projects that went with the device, whose files
+    /// stay.
+    Revoked {
+        projects: Vec<String>,
     },
     Ping {},
     /// Flush writable filesystems before the guest is stopped; `sync_done`
@@ -636,7 +635,7 @@ pub enum Outbound {
         target: String,
     },
     /// Asks the backend to revoke this device, as `run uninstall` does;
-    /// `revoked` or `revoke_refused` answers.
+    /// `revoked` answers, as nothing refuses a revocation.
     Revoke {},
     Hello {
         protocol: u32,

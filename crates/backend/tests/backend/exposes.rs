@@ -447,7 +447,7 @@ async fn open_connections_end_with_their_expose_and_an_offline_device_keeps_its_
     let revoked = backend
         .delete(&format!("/api/devices/{}", laptop.id()), &master)
         .await;
-    assert_eq!(revoked.status, StatusCode::NO_CONTENT);
+    assert_eq!(revoked.status, StatusCode::OK);
     held.ended().await;
     assert_eq!(fixture.next().await, Seen::Released);
     assert!(list(&backend, &master).await.is_empty());

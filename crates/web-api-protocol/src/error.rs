@@ -111,8 +111,6 @@ pub enum ErrorCode {
     /// The caller owns no device of that id, or not one the route takes,
     /// such as the Cloud for revocation.
     DeviceNotFound,
-    /// Workspaces still point at the device, which therefore stays.
-    DeviceInUse,
     /// The device's runner is not connected.
     DeviceOffline,
     /// The Host's log could not be read.

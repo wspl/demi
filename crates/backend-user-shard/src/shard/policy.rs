@@ -113,8 +113,7 @@ impl LinkPolicy for ShardPolicy {
     }
 
     /// Revokes the device at its runner's request, as the user's
-    /// revocation does: only a paired device, and only while no workspace
-    /// points at it.
+    /// revocation does: only a paired device.
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
         let shard = self.shard();
         let device = self.device.clone();
@@ -130,10 +129,11 @@ impl LinkPolicy for ShardPolicy {
             if record.kind != DeviceKind::User {
                 return Err("only a paired device is revoked".into());
             }
-            match shard.revoke_device(device).await {
-                Ok(revoked) => revoked.map_err(|in_use| in_use.to_string()),
-                Err(error) => Err(error.to_string()),
-            }
+            shard
+                .revoke_device(device)
+                .await
+                .map(drop)
+                .map_err(|error| error.to_string())
         })
     }
 
