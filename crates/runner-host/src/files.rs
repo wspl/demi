@@ -24,7 +24,7 @@ use demi_command_sdk::paths::resolve;
 
 use demi_runner_process::{
     pipes::{PipeClient, report_pipe},
-    private_files::io_error,
+    private_files::{chmod, io_error},
 };
 use demi_runner_protocol::wire::{self, Inbound};
 
@@ -130,6 +130,55 @@ impl FileTransfers {
             }
             let result = pipes.put(&output.url, framed(opened), &transfer).await;
             report_pipe(&reply, output.id, result, &shutdown).await;
+        });
+        Ok(())
+    }
+
+    /// `fs_writeDirectory`: the input pipe's files into a temporary
+    /// directory beside the destination, renamed into place once every one
+    /// is written.
+    pub fn write_directory(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsWriteDirectory {
+            id,
+            path,
+            files,
+            directory_mode,
+            input,
+        } = message
+        else {
+            return Err(io::Error::other("not a directory write"));
+        };
+        self.admit()?;
+        let target = resolve(default_cwd, &path);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        let shutdown = self.cancel.clone();
+        self.transfers.spawn(async move {
+            let result = match target {
+                Ok(target) => {
+                    let written = DirectoryWrite {
+                        target: &target,
+                        files: &files,
+                        directory_mode,
+                    };
+                    written.from_pipe(&pipes, &input.url, &transfer).await
+                }
+                Err(error) => Err(error),
+            };
+            let reported = result
+                .as_ref()
+                .map(|_| ())
+                .map_err(|error| io::Error::new(error.kind(), error.to_string()));
+            report_pipe(&reply, input.id, reported, &shutdown).await;
+            let message = match result {
+                Ok(()) => wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                    id,
+                    result: wire::FsResult::WriteDirectory,
+                })),
+                Err(error) => fs_error(id, &error),
+            };
+            send(&reply, message, &shutdown).await;
         });
         Ok(())
     }
@@ -575,6 +624,122 @@ async fn write_from_pipe(
                 .unwrap_or_default())
         }
     }
+}
+
+/// A directory an `fs_writeDirectory` writes.
+struct DirectoryWrite<'a> {
+    target: &'a Path,
+    files: &'a [wire::DirectoryFile],
+    directory_mode: u32,
+}
+
+impl DirectoryWrite<'_> {
+    /// Writes the directory from the pipe into `.<name>.partial` beside it,
+    /// which a write cut short leaves for the next one to remove, and
+    /// renames it into place.
+    async fn from_pipe(
+        &self,
+        pipes: &PipeClient,
+        url: &str,
+        cancel: &CancellationToken,
+    ) -> io::Result<()> {
+        let (Some(parent), Some(name)) = (self.target.parent(), self.target.file_name()) else {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "a directory needs a parent and a name",
+            ));
+        };
+        fs::create_dir_all(parent).await?;
+        let partial = parent.join(format!(".{}.partial", name.to_string_lossy()));
+        crate::fs::remove_all(&partial, cancel).await?;
+        fs::create_dir(&partial).await?;
+        let written = self.fill(&partial, pipes, url, cancel).await;
+        if let Err(error) = written {
+            // The next write removes what this one leaves.
+            if let Err(left) = crate::fs::remove_all(&partial, cancel).await {
+                tracing::debug!("a directory write left {}: {left}", partial.display());
+            }
+            return Err(error);
+        }
+        // Renamed while it is writable, which some systems ask of a
+        // directory that moves.
+        match fs::rename(&partial, self.target).await {
+            Ok(()) => {}
+            // A directory there is complete: another write put it in place.
+            Err(_) if fs::metadata(self.target).await.is_ok_and(|taken| taken.is_dir()) => {
+                crate::fs::remove_all(&partial, cancel).await?;
+                return Ok(());
+            }
+            Err(error) => return Err(error),
+        }
+        chmod(self.target, self.directory_mode).await
+    }
+
+    /// Writes each file of the listing from the pipe, each after its length,
+    /// and gives the directories inside `partial` their mode, deepest first.
+    async fn fill(
+        &self,
+        partial: &Path,
+        pipes: &PipeClient,
+        url: &str,
+        cancel: &CancellationToken,
+    ) -> io::Result<()> {
+        let body = pipes.get(url, cancel.clone()).await?;
+        let mut contents = tokio_util::io::StreamReader::new(body);
+        let mut directories = std::collections::BTreeSet::new();
+        for file in self.files {
+            let relative = inside(&file.path)?;
+            let destination = partial.join(&relative);
+            let mut above = relative.parent();
+            while let Some(directory) = above.filter(|directory| !directory.as_os_str().is_empty()) {
+                directories.insert(partial.join(directory));
+                above = directory.parent();
+            }
+            if let Some(directory) = destination.parent() {
+                fs::create_dir_all(directory).await?;
+            }
+            let mut length = [0; 8];
+            contents.read_exact(&mut length).await?;
+            let length = u64::from_be_bytes(length);
+            let mut written = fs::File::create(&destination).await?;
+            let copied = tokio::io::copy(&mut (&mut contents).take(length), &mut written).await?;
+            if copied < length {
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "the directory's contents ended inside a file",
+                ));
+            }
+            written.flush().await?;
+            drop(written);
+            chmod(&destination, file.mode).await?;
+        }
+        if contents.read(&mut [0]).await? > 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the directory's contents go on past its last file",
+            ));
+        }
+        // Deepest first, so each is still writable while its entries change.
+        for directory in directories.iter().rev() {
+            chmod(directory, self.directory_mode).await?;
+        }
+        Ok(())
+    }
+}
+
+/// A path inside a directory: relative, its parts plain names.
+fn inside(path: &str) -> io::Result<PathBuf> {
+    let relative = PathBuf::from(path);
+    let plain = relative
+        .components()
+        .all(|part| matches!(part, std::path::Component::Normal(_)));
+    if path.is_empty() || !plain {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!("{path} is not a path inside the directory"),
+        ));
+    }
+    Ok(relative)
 }
 
 /// `file_name` with `number` before its extension: `notes-2.txt`, and

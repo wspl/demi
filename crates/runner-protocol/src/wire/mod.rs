@@ -12,11 +12,11 @@ pub use kept::{
     encode_record,
 };
 pub use messages::{
-    ArtifactOwner, ChangeKind, DirEntry, FileRead, FileStat, GitChange, GitChanges, HelloErrorCode,
-    HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine, LookPath,
-    Looked, MAX_INSTALLED, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef, RunnerInfo,
-    RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind, StreamArtifactOwner,
-    VolumeName, WriteExists,
+    ArtifactOwner, ChangeKind, DirEntry, DirectoryFile, FileRead, FileStat, GitChange, GitChanges,
+    HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine,
+    LookPath, Looked, MAX_INSTALLED, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef,
+    RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
+    StreamArtifactOwner, VolumeName, WriteExists,
 };
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 

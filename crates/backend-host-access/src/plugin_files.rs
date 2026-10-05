@@ -7,11 +7,9 @@
 use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
-use demi_backend_remote_host::{Link, Look, LookAt, RemoteHost, WeakLink};
-use demi_host_interface::{
-    FileContents, FileKind, HostError, HostErrorKind, HostFs, MkdirOptions, RmOptions,
-    WriteOptions,
-};
+use demi_backend_blobs::blobs::UserBlobs;
+use demi_backend_remote_host::{DirectoryFile, Link, Look, LookAt, RemoteHost, WeakLink};
+use demi_host_interface::{FileKind, HostError, HostErrorKind};
 use demi_plugin_interface::{EntryKind, HostDirectory, HostEntry, HostFile, HostRead, PluginId};
 use demi_shared_types::B64Bytes;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -87,9 +85,10 @@ impl dyn HostShard + '_ {
     }
 
     /// Brings `host`, admitted on `device` for a job, to the user's
-    /// directory sets: once per runner connection and set, it lists each
-    /// plugin's directory on the Host, installs what is missing and
-    /// removes what the set no longer names. A failure fails the job.
+    /// directory sets: once per runner connection and set, it lists every
+    /// plugin's directory on the Host with one request, removes what the
+    /// sets no longer name with one more, and writes each directory that is
+    /// missing with one request each. A failure fails the job.
     pub(crate) async fn install_directories(
         &self,
         device: &DeviceId,
@@ -118,95 +117,107 @@ impl dyn HostShard + '_ {
                 "the Host reported no home directory for the plugins' files",
             )
         })?;
-        for (plugin, set) in &sets {
-            self.sync_plugin(&host.host, home, plugin, set).await?;
-        }
+        sync_directories(&host.host, home, &sets, &self.blobs()).await?;
         installs
             .synced
             .borrow_mut()
             .insert(device.clone(), (link.downgrade(), revision));
         Ok(())
     }
+}
 
-    /// Brings `plugin`'s directory on the Host to `set`.
-    async fn sync_plugin(
-        &self,
-        host: &RemoteHost,
-        home: &str,
-        plugin: &PluginId,
-        set: &[HostDirectory],
-    ) -> Result<(), HostError> {
-        let base = format!("{home}/.demi/plugins/{plugin}");
-        let present: Vec<String> = match HostFs::read_dir(host, &base).await {
-            Ok(entries) => entries.into_iter().map(|entry| entry.name).collect(),
-            Err(error) if missing(&error) => Vec::new(),
-            Err(error) => return Err(error),
+/// Brings the plugins' directories on `host` to `sets`: every plugin's
+/// directory listed with one request, what no set names removed with one,
+/// and each directory missing written with one, all at once.
+async fn sync_directories(
+    host: &RemoteHost,
+    home: &str,
+    sets: &DirectorySets,
+    blobs: &UserBlobs,
+) -> Result<(), HostError> {
+    let base = |plugin: &PluginId| format!("{home}/.demi/plugins/{plugin}");
+    let listed: Vec<LookAt> = sets
+        .iter()
+        .map(|(plugin, _)| LookAt {
+            path: base(plugin),
+            limit: 0,
+        })
+        .collect();
+    let found = if listed.is_empty() {
+        Vec::new()
+    } else {
+        host.look(&listed).await?
+    };
+    let mut removed = Vec::new();
+    let mut missing = Vec::new();
+    for ((plugin, set), look) in sets.iter().zip(found) {
+        let present: Vec<String> = match look {
+            Look::Directory(entries) => entries.into_iter().map(|entry| entry.name).collect(),
+            Look::Missing => Vec::new(),
+            Look::Unreadable(error) => return Err(error),
+            Look::File { .. } | Look::Other => {
+                return Err(HostError::failed(
+                    None,
+                    format!("{} is not a directory", base(plugin)),
+                ));
+            }
         };
         let wanted: Vec<(String, &HostDirectory)> = set
             .iter()
             .map(|directory| (directory.host_name(), directory))
             .collect();
         let names: BTreeSet<&str> = wanted.iter().map(|(name, _)| name.as_str()).collect();
-        for name in present.iter().filter(|name| !names.contains(name.as_str())) {
-            remove(host, &format!("{base}/{name}")).await?;
-        }
-        for (name, directory) in &wanted {
-            if !present.contains(name) {
-                self.install(host, &base, name, directory).await?;
-            }
-        }
-        Ok(())
+        removed.extend(
+            present
+                .iter()
+                .filter(|name| !names.contains(name.as_str()))
+                .map(|name| format!("{}/{name}", base(plugin))),
+        );
+        missing.extend(
+            wanted
+                .into_iter()
+                .filter(|(name, _)| !present.contains(name))
+                .map(|(name, directory)| (format!("{}/{name}", base(plugin)), directory)),
+        );
     }
+    if !removed.is_empty() {
+        host.remove_all(&removed).await?;
+    }
+    let installs = missing
+        .into_iter()
+        .map(|(path, directory)| async move { install(host, blobs, &path, directory).await });
+    futures_util::future::try_join_all(installs).await?;
+    Ok(())
+}
 
-    /// Writes `directory` into a temporary directory beside its final one,
-    /// makes what it holds read-only, keeping each file's executable bit,
-    /// renames it into place and makes it read-only too, so a directory
-    /// that exists is complete.
-    async fn install(
-        &self,
-        host: &RemoteHost,
-        base: &str,
-        name: &str,
-        directory: &HostDirectory,
-    ) -> Result<(), HostError> {
-        let partial = format!("{base}/.{name}.partial");
-        remove(host, &partial).await?;
-        HostFs::mkdir(host, &partial, MkdirOptions { recursive: true }).await?;
-        let blobs = self.blobs();
-        let mut directories = BTreeSet::new();
-        for file in &directory.files {
-            let bytes = blobs
-                .get(&file.blob)
-                .await
-                .map_err(|error| HostError::failed(None, error.to_string()))?
-                .ok_or_else(|| {
-                    HostError::failed(
-                        None,
-                        format!("the file {} of {name} is not stored", file.path),
-                    )
-                })?;
-            let path = format!("{partial}/{}", file.path);
-            let contents = FileContents::Bytes(bytes);
-            let options = WriteOptions::default();
-            HostFs::write_file(host, &path, contents, options).await?;
-            let mode = if file.executable { 0o555 } else { 0o444 };
-            HostFs::chmod(host, &path, mode).await?;
-            let mut parent = file.path.as_str();
-            while let Some((above, _)) = parent.rsplit_once('/') {
-                directories.insert(format!("{partial}/{above}"));
-                parent = above;
-            }
-        }
-        // Deepest first, so each is still writable while its entries change.
-        for path in directories.iter().rev() {
-            HostFs::chmod(host, path, 0o555).await?;
-        }
-        // Renamed while it is writable, which some systems ask of a
-        // directory that moves; complete either way.
-        let installed = format!("{base}/{name}");
-        HostFs::mv(host, &partial, &installed).await?;
-        HostFs::chmod(host, &installed, 0o555).await
+/// Writes `directory` at `path` with one request: its files read-only,
+/// each keeping its executable bit, and every directory in it read-only
+/// too, so a directory that exists is complete.
+async fn install(
+    host: &RemoteHost,
+    blobs: &UserBlobs,
+    path: &str,
+    directory: &HostDirectory,
+) -> Result<(), HostError> {
+    let mut files = Vec::with_capacity(directory.files.len());
+    for file in &directory.files {
+        let bytes = blobs
+            .get(&file.blob)
+            .await
+            .map_err(|error| HostError::failed(None, error.to_string()))?
+            .ok_or_else(|| {
+                HostError::failed(
+                    None,
+                    format!("the file {} of {path} is not stored", file.path),
+                )
+            })?;
+        files.push(DirectoryFile {
+            path: file.path.clone(),
+            mode: if file.executable { 0o555 } else { 0o444 },
+            bytes,
+        });
     }
+    host.write_directory(path, files, 0o555).await
 }
 
 /// What each of `reads` finds on `host`, with one request to the Host
@@ -256,44 +267,12 @@ fn entry_kind(kind: FileKind) -> EntryKind {
     }
 }
 
-/// Whether `error` says the path, or a directory on its way, does not
-/// exist.
-fn missing(error: &HostError) -> bool {
-    matches!(error.code(), Some("ENOENT" | "ENOTDIR"))
-}
-
 /// Whether `error` says the Host is not reachable now.
 fn not_running(error: &HostError) -> bool {
     matches!(
         error.kind,
         HostErrorKind::Offline | HostErrorKind::Unavailable
     )
-}
-
-/// Removes `path`, which an installation made read-only: each directory
-/// in it is made writable first, so its entries can go.
-async fn remove(host: &RemoteHost, path: &str) -> Result<(), HostError> {
-    let stat = match HostFs::lstat(host, path).await {
-        Ok(stat) => stat,
-        Err(error) if missing(&error) => return Ok(()),
-        Err(error) => return Err(error),
-    };
-    if stat.kind == FileKind::Directory {
-        let mut pending = vec![path.to_owned()];
-        while let Some(directory) = pending.pop() {
-            HostFs::chmod(host, &directory, 0o755).await?;
-            for entry in HostFs::read_dir(host, &directory).await? {
-                if entry.kind == FileKind::Directory {
-                    pending.push(format!("{directory}/{}", entry.name));
-                }
-            }
-        }
-    }
-    let options = RmOptions {
-        recursive: true,
-        force: true,
-    };
-    HostFs::rm(host, path, options).await
 }
 
 /// The revision of the user's sets, which a Host is brought to once per
@@ -387,6 +366,93 @@ mod tests {
             found[5]
         );
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o755)).unwrap();
+        fixture.stop().await;
+    }
+
+    // About a fifth of a second: a real runner process lists, removes and
+    // writes the directories.
+    #[tokio::test(flavor = "local")]
+    async fn plugin_directories_are_listed_removed_and_each_written_with_one_request() {
+        let (tap, mut replies) = mpsc::channel(1 << 10);
+        let fixture = RunnerFixture::start(FixtureOptions {
+            tap: Some(tap),
+            ..FixtureOptions::default()
+        })
+        .await;
+        std::fs::create_dir(fixture.home_dir().join("store")).unwrap();
+        let stores = demi_backend_blobs::blobs::BlobStores::new(
+            std::sync::Arc::new(
+                demi_backend_blobs::local::LocalObjects::new(&fixture.home_dir().join("store"))
+                    .unwrap(),
+            ),
+            std::sync::Arc::new(demi_shared_types::SystemClock),
+        );
+        let blobs = stores.for_user(&demi_web_api_protocol::ids::UserId::try_from("u1").unwrap());
+        let file = async |path: &str, text: &'static str, executable: bool| demi_plugin_interface::DirectoryFile {
+            path: path.into(),
+            executable,
+            blob: blobs.put(bytes::Bytes::from_static(text.as_bytes())).await.unwrap(),
+        };
+        let kept = HostDirectory {
+            name: "kept".into(),
+            files: vec![file("SKILL.md", "kept", false).await],
+        };
+        let review = HostDirectory {
+            name: "review".into(),
+            files: vec![
+                file("SKILL.md", "---\nname: review\n", false).await,
+                file("scripts/check.sh", "#!/bin/sh\necho ok\n", true).await,
+            ],
+        };
+        let plugins = fixture.home_dir().join(".demi/plugins");
+        let installed = plugins.join("skills").join(kept.host_name());
+        std::fs::create_dir_all(&installed).unwrap();
+        // A directory the sets no longer name, read-only as installed.
+        let stale = plugins.join("skills/stale-0123456789ab");
+        std::fs::create_dir_all(stale.join("deep")).unwrap();
+        std::fs::set_permissions(stale.join("deep"), std::fs::Permissions::from_mode(0o555)).unwrap();
+        std::fs::set_permissions(&stale, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let sets: DirectorySets = vec![
+            (PluginId::try_from("skills").unwrap(), vec![kept.clone(), review.clone()]),
+            (PluginId::try_from("browser").unwrap(), Vec::new()),
+        ];
+        answered_requests(&mut replies);
+
+        sync_directories(&fixture.host(), fixture.home(), &sets, &blobs)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            answered_requests(&mut replies),
+            3,
+            "one listing, one removal and one write"
+        );
+        assert!(!stale.exists());
+        let written = plugins.join("skills").join(review.host_name());
+        let mode = |path: &std::path::Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(std::fs::read_to_string(written.join("scripts/check.sh")).unwrap(), "#!/bin/sh\necho ok\n");
+        assert_eq!(std::fs::read_to_string(written.join("SKILL.md")).unwrap(), "---\nname: review\n");
+        assert_eq!(
+            [
+                mode(&written),
+                mode(&written.join("scripts")),
+                mode(&written.join("SKILL.md")),
+                mode(&written.join("scripts/check.sh")),
+            ],
+            [0o555, 0o555, 0o444, 0o555]
+        );
+        let mut names: Vec<_> = std::fs::read_dir(plugins.join("skills"))
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        let mut expected = vec![kept.host_name(), review.host_name()];
+        expected.sort();
+        assert_eq!(names, expected, "no temporary directory is left");
+        // Read-only as it is, the test's home goes with the fixture.
+        for directory in [written.join("scripts"), written] {
+            std::fs::set_permissions(directory, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
         fixture.stop().await;
     }
 }

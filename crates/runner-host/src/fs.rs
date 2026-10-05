@@ -99,6 +99,12 @@ async fn call(
             }
             FsResult::Rm
         }
+        FsRemoveAll { paths, .. } => {
+            for value in paths {
+                remove_all(&path(value, &None)?, cancel).await?;
+            }
+            FsResult::RemoveAll
+        }
         FsCp {
             path: value,
             cwd,
@@ -228,6 +234,31 @@ pub(crate) async fn list(
 /// Out of open files, reading a directory waits for one (`runner.md` § Load).
 async fn read_dir(path: &Path, cancel: &CancellationToken) -> io::Result<fs::ReadDir> {
     demi_command_sdk::descriptors::retry(cancel, || fs::read_dir(path)).await
+}
+
+/// Removes `path` with everything in it, each directory in it made
+/// writable first, so a read-only one's entries can go; nothing there is
+/// removed already.
+pub(crate) async fn remove_all(path: &Path, cancel: &CancellationToken) -> io::Result<()> {
+    let metadata = match fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    if metadata.is_dir() {
+        let mut pending = vec![path.to_owned()];
+        while let Some(directory) = pending.pop() {
+            check_cancelled(cancel)?;
+            chmod(&directory, 0o755).await?;
+            let mut entries = read_dir(&directory, cancel).await?;
+            while let Some(entry) = entries.next_entry().await? {
+                if entry.file_type().await?.is_dir() {
+                    pending.push(entry.path());
+                }
+            }
+        }
+    }
+    remove(path, true, cancel).await
 }
 
 async fn remove(path: &Path, recursive: bool, cancel: &CancellationToken) -> io::Result<()> {

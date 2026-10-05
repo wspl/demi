@@ -243,6 +243,66 @@ impl RemoteHost {
         }
     }
 
+    /// Writes the directory `path` whole with one request (`runner.md`
+    /// § Host operations): each of `files` by its path inside it, with its
+    /// mode and bytes, and every directory in it with `directory_mode`. The
+    /// runner puts it in place once every file is written; a directory at
+    /// `path` already is kept.
+    pub async fn write_directory(
+        &self,
+        path: &str,
+        files: Vec<DirectoryFile>,
+        directory_mode: u32,
+    ) -> Result<(), HostError> {
+        let link = self.link()?;
+        let _lease = self.admit()?;
+        let input = link.pipes().to_device(link.device());
+        let mut writer = input.writer().map_err(pipe_error)?;
+        let (listing, contents): (Vec<wire::DirectoryFile>, Vec<Bytes>) = files
+            .into_iter()
+            .map(|file| {
+                let listed = wire::DirectoryFile {
+                    path: file.path,
+                    mode: file.mode,
+                };
+                (listed, file.bytes)
+            })
+            .unzip();
+        let upload = async {
+            for bytes in contents {
+                let length = Bytes::copy_from_slice(&(bytes.len() as u64).to_be_bytes());
+                if writer.write(length).await.is_err() || writer.write(bytes).await.is_err() {
+                    return;
+                }
+            }
+            writer.end();
+        };
+        let written = link.call(Expected::Fs("writeDirectory"), |id| Inbound::FsWriteDirectory {
+            id,
+            path: path.into(),
+            files: listing,
+            directory_mode,
+            input: input.wire_ref(),
+        });
+        let ((), written) = tokio::join!(upload, written);
+        if let Err(error) = &written {
+            input.fail(&error.message);
+        }
+        written.map(|_| ())
+    }
+
+    /// Removes each of `paths` with everything in it, with one request; a
+    /// read-only directory is made writable first, and a path that is not
+    /// there is removed already.
+    pub async fn remove_all(&self, paths: &[String]) -> Result<(), HostError> {
+        self.fs("removeAll", |id, _| Inbound::FsRemoveAll {
+            id,
+            paths: paths.to_vec(),
+        })
+        .await
+        .map(|_| ())
+    }
+
     /// Reads several files with one request (`runner.md` § Host
     /// operations): each file's bytes, or why it was not read, in the
     /// order of `paths`. A file over `limit` bytes is not read.
@@ -600,6 +660,15 @@ impl RemoteHost {
             }
         }
     }
+}
+
+/// One file of a directory a write puts in place whole.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DirectoryFile {
+    /// Inside the directory, with `/` between its parts.
+    pub path: String,
+    pub mode: u32,
+    pub bytes: Bytes,
 }
 
 /// One path a look names, and the most bytes of a file there to read.
