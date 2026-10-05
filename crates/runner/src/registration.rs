@@ -24,7 +24,13 @@ use demi_runner_protocol::{
     values::{BackendUrl, DeviceToken},
     wire,
 };
-use std::{collections::BTreeMap, io, path::PathBuf, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeMap,
+    io,
+    path::PathBuf,
+    sync::{Arc, atomic::AtomicBool},
+    time::Duration,
+};
 use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
@@ -50,6 +56,9 @@ pub struct Options {
     /// The installation an installer made, which updates itself to its
     /// backend's runner release; none for a runner started otherwise.
     pub installed: Option<Installed>,
+    /// The command that removes this runner, which it tells its console once
+    /// paired; none for a managed guest's.
+    pub removal: Option<String>,
 }
 
 /// How a registration ended.
@@ -151,6 +160,8 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         cwd: options.cwd,
         env: options.env,
         volumes: options.volumes,
+        removal: options.removal,
+        announced: AtomicBool::new(false),
     };
     let outcome = reconnect(&registered, installed.as_ref()).await;
     if registered.management.draining.is_cancelled() && !registered.management.stop.is_cancelled() {

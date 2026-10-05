@@ -6,6 +6,7 @@ mod connection;
 mod host_log;
 mod management;
 mod registration;
+mod removal;
 mod state;
 mod update;
 
@@ -264,6 +265,10 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         Some(_) => None,
         None => update::Installed::of(&directory, installation.release.as_deref(), &executable),
     };
+    // A managed guest is never paired, so nobody removes its runner.
+    let removal = boot
+        .is_none()
+        .then(|| removal::command(&directory, installed.is_some(), &executable));
     let identity = identity(home.to_string_lossy().into_owned())?;
     let runner = wire::RunnerInfo {
         native_target: Some(host_target().into()),
@@ -345,6 +350,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         },
         shell: Arc::new(shell),
         installed,
+        removal,
     };
     let stop = CancellationToken::new();
     let running = registration::run(options, stop.clone());
