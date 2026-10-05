@@ -10,6 +10,9 @@ name: Release
 on:
   push:
     tags: ["v*"]
+    # Temporary: runs the workflow on this branch before it is on the
+    # default branch, which a manual start requires. Removed once it passes.
+    branches: [feat/demi-next]
   workflow_dispatch:
 
 permissions:
