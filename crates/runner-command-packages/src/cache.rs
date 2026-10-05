@@ -30,7 +30,6 @@ use tokio_util::sync::CancellationToken;
 
 use demi_runner_process::private_files::chmod;
 
-use crate::installs::{Installing, Installs};
 use crate::{ArtifactResolver, ArtifactSource, RuntimeError};
 
 /// What this process found when it checked the image's copy of each digest:
@@ -47,7 +46,6 @@ pub struct ArtifactCache {
     image: Option<PathBuf>,
     checked: Mutex<Checked>,
     http: reqwest::Client,
-    installs: Installs,
     holds: Holds,
     /// What the cache holds, which the connection reports to the backend
     /// (`native-runtime.md` § Installed artifacts).
@@ -120,13 +118,8 @@ impl Drop for Hold {
 
 impl ArtifactCache {
     /// A cache in `root` that takes the artifacts preinstalled in `image`,
-    /// when given, before it downloads one, and reports its downloads in
-    /// `installs`.
-    pub async fn new(
-        root: PathBuf,
-        image: Option<PathBuf>,
-        installs: Installs,
-    ) -> Result<Self, RuntimeError> {
+    /// when given, before it downloads one.
+    pub async fn new(root: PathBuf, image: Option<PathBuf>) -> Result<Self, RuntimeError> {
         tokio::fs::create_dir_all(&root).await?;
         chmod(&root, 0o700).await?;
         let cache = Self {
@@ -137,7 +130,6 @@ impl ArtifactCache {
             // authenticated connection, so a backend on plain HTTP may serve
             // its artifacts itself.
             http: demi_shared_artifacts::client_allowing_http()?,
-            installs,
             holds: Holds::default(),
             contents: watch::Sender::new(Vec::new()),
         };
@@ -253,9 +245,7 @@ impl ArtifactCache {
             {
                 return Ok(file);
             }
-            let installing = self.start(wanted);
-            self.download(wanted, &destination, resolver, &installing, cancel)
-                .await?;
+            self.download(wanted, &destination, resolver, cancel).await?;
             Ok(destination.clone())
         })
         .await
@@ -289,25 +279,13 @@ impl ArtifactCache {
                     ArchiveInstall::Installed(entry) => return Ok(entry),
                     ArchiveInstall::Unpack(unpacking) => unpacking,
                 };
-            let installing = self.start(wanted);
             let mut output = tokio::fs::File::create(unpacking.archive()).await?;
-            self.fetch(&wanted.artifact, &mut output, resolver, &installing, cancel)
+            self.fetch(&wanted.artifact, &mut output, resolver, cancel)
                 .await?;
             drop(output);
-            installing.unpacking();
             Ok(unpacking.finish(cancel).await?)
         })
         .await
-    }
-
-    /// Reports the download of `wanted` until the returned install drops.
-    fn start(&self, wanted: &Wanted<'_>) -> Installing {
-        self.installs.start(
-            wanted.package,
-            wanted.name,
-            wanted.version,
-            wanted.artifact.size,
-        )
     }
 
     /// Records `wanted`, installed at `path`, in its line, unless the cache
@@ -461,7 +439,6 @@ impl ArtifactCache {
         wanted: &Wanted<'_>,
         destination: &Path,
         resolver: &dyn ArtifactResolver,
-        installing: &Installing,
         cancel: &CancellationToken,
     ) -> Result<(), RuntimeError> {
         let mut staged = Staged::new(
@@ -473,14 +450,8 @@ impl ArtifactCache {
             },
         )
         .await?;
-        self.fetch(
-            &wanted.artifact,
-            staged.file(),
-            resolver,
-            installing,
-            cancel,
-        )
-        .await?;
+        self.fetch(&wanted.artifact, staged.file(), resolver, cancel)
+            .await?;
         match staged.publish().await {
             Err(demi_shared_artifacts::Error::Io(error))
                 if error.kind() == io::ErrorKind::AlreadyExists =>
@@ -493,28 +464,22 @@ impl ArtifactCache {
     }
 
     /// Writes the verified bytes of `artifact`, from where the backend says
-    /// it is, into `output`, reporting them to `installing`.
+    /// it is, into `output`.
     async fn fetch(
         &self,
         artifact: &PackageArtifact,
         output: &mut (impl AsyncWrite + Unpin),
         resolver: &dyn ArtifactResolver,
-        installing: &Installing,
         cancel: &CancellationToken,
     ) -> Result<(), RuntimeError> {
         let expected = digest_of(artifact);
         // A URL that expired on the way is asked for once more.
         let mut refreshed = false;
         loop {
-            let mut written = 0u64;
-            let mut output = tokio_util::io::InspectWriter::new(&mut *output, |bytes: &[u8]| {
-                written += bytes.len() as u64;
-                installing.downloaded(written);
-            });
             match resolver.resolve(artifact, cancel).await? {
                 ArtifactSource::Local(path) => {
                     let mut input = tokio::fs::File::open(path).await?;
-                    demi_shared_artifacts::copy(&mut input, &expected, &mut output, cancel).await?;
+                    demi_shared_artifacts::copy(&mut input, &expected, &mut *output, cancel).await?;
                 }
                 ArtifactSource::Url { url, expires_at } => {
                     let expired = || expires_at.is_some_and(|expires| expires <= SystemTime::now());
@@ -531,7 +496,7 @@ impl ArtifactCache {
                         &self.http,
                         &url,
                         &expected,
-                        &mut output,
+                        &mut *output,
                         cancel,
                     )
                     .await;

@@ -857,12 +857,6 @@ pub enum Outbound {
         id: String,
         message: String,
     },
-    /// Every command package install in progress on this runner, whenever
-    /// the list changes (`native-runtime.md` § Installation progress).
-    Installs {
-        #[garde(length(max = MAX_INSTALLS), dive)]
-        installs: Vec<Install>,
-    },
     /// Every artifact this runner's cache holds, once the connection is
     /// online and whenever an install or a retirement changes them
     /// (`native-runtime.md` § Installed artifacts).
@@ -890,51 +884,6 @@ pub struct HostArtifact {
     pub name: String,
     #[garde(length(min = 1, max = 100))]
     pub version: String,
-}
-
-/// The most installs one list carries: one per service starting at once.
-pub const MAX_INSTALLS: usize = 64;
-
-/// One artifact being installed for a command package: its line's name and
-/// its version, such as `Chrome for Testing` and `153.0.8010.36`, and how
-/// far it is, in bytes of its size.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct Install {
-    /// The package, such as `demi.browser`.
-    #[garde(length(min = 1, max = 200))]
-    pub package: String,
-    #[garde(length(min = 1, max = 100))]
-    pub name: String,
-    #[garde(length(min = 1, max = 100))]
-    pub version: String,
-    #[garde(skip)]
-    pub phase: InstallPhase,
-    #[garde(
-        range(max = demi_shared_types::MAX_SAFE_INTEGER),
-        custom(not_past_total(&self.total))
-    )]
-    pub done: u64,
-    #[garde(range(min = 1, max = demi_shared_types::MAX_SAFE_INTEGER))]
-    pub total: u64,
-}
-
-fn not_past_total(total: &u64) -> impl FnOnce(&u64, &()) -> garde::Result + '_ {
-    move |done, _| {
-        if done > total {
-            return Err(garde::Error::new("is past the total"));
-        }
-        Ok(())
-    }
-}
-
-/// Where an install is: downloading the artifact, or unpacking an
-/// archive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum InstallPhase {
-    Download,
-    Unpack,
 }
 
 /// Why a hello was refused. `already_connected` is the one outcome a runner

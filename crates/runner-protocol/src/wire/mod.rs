@@ -13,8 +13,8 @@ pub use kept::{
 };
 pub use messages::{
     ArtifactOwner, ChangeKind, DirEntry, FileStat, GitChange, GitChanges, HelloErrorCode,
-    HostArtifact, HostIdentity, Inbound, Install, InstallPhase, JobArtifactOwner, JobFileChange,
-    LogLine, MAX_INSTALLED, MAX_INSTALLS, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef, RunnerInfo,
+    HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange,
+    LogLine, MAX_INSTALLED, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef, RunnerInfo,
     RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind, StreamArtifactOwner,
     VolumeName,
 };

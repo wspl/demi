@@ -35,7 +35,6 @@ function host(parts: Partial<PageHost> = {}): PageHost {
     followState: unused,
     call: unused,
     stream: unused,
-    installs: unused,
     installed: unused,
     files: unused,
     intents: { open: unused, canOpen: unused },

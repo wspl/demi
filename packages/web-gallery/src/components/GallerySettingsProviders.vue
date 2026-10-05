@@ -25,7 +25,6 @@ import {
   type MockProvider,
   type SettingsState,
 } from '../fixtures/settings'
-import { CLAUDE_CLI_ARTIFACTS, playInstalls } from '../fixtures/installs'
 
 /**
  * The shared providers page over the mock state. Everything the page emits is
@@ -213,7 +212,9 @@ function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = f
   }
 }
 onScopeDispose(() => {
-  cliInstalls.abort()
+  for (const timer of cliInstalls) {
+    window.clearTimeout(timer)
+  }
   for (const accounts of Object.values(usageTimers.value)) {
     for (const request of Object.values(accounts)) {
       window.clearTimeout(request.timer)
@@ -235,32 +236,26 @@ function checkCli(p: SettingsProviderEntry) {
   }, 1200)
 }
 
-/** How long the Cloud takes to wake and read the release before its download starts. */
-const CLI_WAKE_MS = 600
-/** Ends the specimen's CLI installs when the page goes. */
-const cliInstalls = new AbortController()
+/** How long the Cloud takes to wake, read the release and install the CLI. */
+const CLI_INSTALL_MS = 3000
+/** The specimen's CLI installs under way, which end when the page goes. */
+const cliInstalls = new Set<number>()
 
-/** Installing on Cloud while the Cloud wakes, then the download as the runner reports it, then installed. */
+/** Installing on Cloud while the Cloud wakes and downloads, then installed. */
 function installCli(p: SettingsProviderEntry) {
   const cli = p.cli
   if (!cli || cli.install?.state === 'installing') {
     return
   }
   cli.install = { state: 'installing' }
-  const wake = window.setTimeout(() => {
-    void playInstalls(CLAUDE_CLI_ARTIFACTS, (list) => {
-      cli.installs = list
-    }, cliInstalls.signal).then(() => {
-      if (cliInstalls.signal.aborted) {
-        return
-      }
-      cli.install = { state: 'installed' }
-      if ('version' in cli.newest) {
-        cli.machines[0]!.versions = [cli.newest.version]
-      }
-    })
-  }, CLI_WAKE_MS)
-  cliInstalls.signal.addEventListener('abort', () => window.clearTimeout(wake), { once: true })
+  const timer = window.setTimeout(() => {
+    cliInstalls.delete(timer)
+    cli.install = { state: 'installed' }
+    if ('version' in cli.newest) {
+      cli.machines[0]!.versions = [cli.newest.version]
+    }
+  }, CLI_INSTALL_MS)
+  cliInstalls.add(timer)
 }
 
 function activateAccount(p: SettingsProviderEntry, id: string) {

@@ -17,8 +17,7 @@ import { encodeVideo } from '@demicodes/plugin-browser/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
 import { BrowserTabsError, type BrowserTabList } from '@demicodes/plugin-browser/live/tabs'
-import type { HostArtifact, HostInstall } from '@demicodes/web-ui/devices/installs'
-import { BROWSER_PROGRAM, CHROME_FOR_TESTING, playInstalls } from './installs'
+import type { HostArtifact } from '@demicodes/web-ui/devices/installed'
 
 const FPS = 10
 const encoder = new TextEncoder()
@@ -360,9 +359,7 @@ class GalleryBrowserView {
  * Host does, and a page it loads takes a while longer, so the page's loading
  * shows. It starts with the agent's and the user's tab unless a specimen
  * supplies its own list, such as an empty one for a panel whose strip starts
- * empty. With `install`, its first operation waits for a simulated install
- * of the browser's program, as on a Host that never ran the browser. Without
- * `chrome`, the Host lacks the browser, which only the agent installs, so the
+ * empty. Without `chrome`, the Host lacks the browser, which only the agent installs, so the
  * strip offers no new tab and says why.
  */
 export interface GalleryBrowser {
@@ -376,33 +373,21 @@ export interface GalleryBrowser {
   /** The tab closes on the device, as the agent's close or a browser that ended would close it. */
   closeOnDevice(tab: string): void
   stream: OpenUserStream
-  installs(): readonly HostInstall[]
   /** What the Host holds of the browser's package. */
   installed(): readonly HostArtifact[]
 }
 
 export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),
-  { install = false, chrome = true }: { install?: boolean; chrome?: boolean } = {},
+  { chrome = true }: { chrome?: boolean } = {},
 ): GalleryBrowser {
   const views = new Set<GalleryBrowserView>()
-  const installs = shallowRef<readonly HostInstall[]>([])
-  // The simulated install every operation waits for once; none without `install`.
-  let installed: Promise<void> | null = install ? null : Promise.resolve()
   // The next tab's number, as the conversation gives them: never one given before.
   let next = Math.max(0, ...tabs.map((tab) => Number(tab.id.slice(1)))) + 1
 
-  /** The browser's first install, which every operation waits for once. */
-  function installOnce(): Promise<void> {
-    installed ??= playInstalls([BROWSER_PROGRAM], (list) => {
-      installs.value = list
-    })
-    return installed
-  }
-
-  /** Answers after the install and a Host's moment; the timer ends by itself within 900 ms. */
+  /** Answers after a Host's moment; the timer ends by itself within 900 ms. */
   function later<T>(answer: () => T): Promise<T> {
-    return installOnce().then(() => new Promise((resolve, reject) => {
+    return new Promise((resolve, reject) => {
       setTimeout(() => {
         try {
           resolve(answer())
@@ -410,7 +395,7 @@ export function galleryBrowser(
           reject(error)
         }
       }, REQUEST_DELAY_MS)
-    }))
+    })
   }
 
   function info(tab: LiveTab): BrowserTab {
@@ -418,10 +403,10 @@ export function galleryBrowser(
   }
 
   /** The browser a tab needs, which the pinned Chrome for Testing is. */
-  const needed = { name: CHROME_FOR_TESTING.name, version: CHROME_FOR_TESTING.version }
+  const needed = { name: 'Chrome for Testing', version: '153.0.8010.36' }
   const held: readonly HostArtifact[] = [
-    { package: BROWSER_PROGRAM.package, name: BROWSER_PROGRAM.name, version: BROWSER_PROGRAM.version },
-    ...(chrome ? [{ package: CHROME_FOR_TESTING.package, ...needed }] : []),
+    { package: 'demi.browser', name: 'program', version: '0.1.3' },
+    ...(chrome ? [{ package: 'demi.browser', ...needed }] : []),
   ]
   const listed = shallowRef<BrowserTabList>({ tabs: tabs.map(info), browser: needed })
 
@@ -500,7 +485,6 @@ export function galleryBrowser(
     }),
     closeOnDevice: remove,
     stream,
-    installs: () => installs.value,
     installed: () => held,
   }
 }

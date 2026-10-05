@@ -23,7 +23,7 @@ use demi_host_interface::{
     RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
 };
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, FsResult, GitResult, HostArtifact, Inbound, Install, LogLine, Outbound,
+    self, ArtifactOwner, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
     VolumeName,
 };
 use demi_shared_gates::{GateLease, SerialGate};
@@ -172,8 +172,6 @@ pub(crate) struct Inner {
     /// Why the backend ends it; the driver returns with this.
     disconnect: RefCell<Option<String>>,
     liveness: Cell<Liveness>,
-    /// The installs the runner last reported.
-    installs: watch::Sender<Vec<Install>>,
     /// What the runner last reported its artifact cache holds; none until
     /// it reports.
     installed: watch::Sender<Option<Vec<HostArtifact>>>,
@@ -437,7 +435,6 @@ impl Link {
             end: RefCell::new(None),
             disconnect: RefCell::new(None),
             liveness: Cell::new(Liveness::Idle),
-            installs: watch::Sender::new(Vec::new()),
             installed: watch::Sender::new(None),
         }));
         let driver = LinkDriver {
@@ -463,17 +460,6 @@ impl Link {
 
     /// Whether the connection is closing or closed: nothing new starts on
     /// it.
-    /// The command package installs the runner last reported
-    /// (`native-runtime.md` § Installation progress).
-    pub fn installs(&self) -> Vec<Install> {
-        self.0.installs.borrow().clone()
-    }
-
-    /// Each list of installs the runner reports from now on.
-    pub fn watch_installs(&self) -> watch::Receiver<Vec<Install>> {
-        self.0.installs.subscribe()
-    }
-
     /// What the runner reports its artifact cache holds, from now on
     /// (`native-runtime.md` § Installed artifacts): none until its first
     /// report.
@@ -695,9 +681,6 @@ impl Link {
             },
             // A repeated hello on a bound connection says nothing new.
             Outbound::Hello { .. } => {}
-            Outbound::Installs { installs } => {
-                self.0.installs.send_replace(installs);
-            }
             Outbound::Installed { artifacts } => {
                 self.0.installed.send_replace(Some(artifacts));
             }

@@ -26,7 +26,7 @@ use demi_host_interface::{
     testing::{CountingNumbers, TestPages, test_command_context},
 };
 use demi_runner_protocol::wire::{
-    ArtifactOwner, FsOk, FsResult, Inbound, Install, InstallPhase, JOB_VIEW_BYTES,
+    ArtifactOwner, FsOk, FsResult, Inbound, JOB_VIEW_BYTES,
     JobArtifactOwner, JobFileChange, KeptRecord, Outbound, OutputLengths, OutputStream,
     STDIN_CHUNK_BYTES, Signal, VolumeName, WireBytes, encode_record,
 };
@@ -634,35 +634,6 @@ async fn an_artifact_request_needs_the_live_job_and_an_artifact_of_its_manifest(
         Some((None, Some("No matching live job or stream".into())))
     );
     assert_eq!(resolver.calls.get(), 1);
-}
-
-/// The installs a runner reports are the connection's until the next list
-/// (`native-runtime.md` § Installation progress); its owner's pages watch
-/// them, and a new connection starts with none.
-#[tokio::test(flavor = "local")]
-async fn a_runner_s_installs_are_its_connection_s_last_list() {
-    let device = device();
-    let link = device.connect(None);
-    let mut watched = link.link().watch_installs();
-    let install = Install {
-        package: "demi.browser".into(),
-        name: "Chrome for Testing".into(),
-        version: "153.0.8010.36".into(),
-        phase: InstallPhase::Download,
-        done: 40,
-        total: 196,
-    };
-    link.send(Outbound::Installs {
-        installs: vec![install.clone()],
-    })
-    .await;
-    watched.changed().await.unwrap();
-    assert_eq!(link.link().installs(), [install]);
-    link.send(Outbound::Installs { installs: vec![] }).await;
-    watched.changed().await.unwrap();
-    assert_eq!(link.link().installs(), []);
-    drop(link);
-    assert_eq!(device.connect(None).link().installs(), []);
 }
 
 #[tokio::test(flavor = "local")]

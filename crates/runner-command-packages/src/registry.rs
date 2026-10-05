@@ -38,7 +38,6 @@ const PROGRAM: &str = "program";
 use crate::{
     ArtifactResolver, NumberSource, RuntimeError,
     cache::{ArtifactCache, Wanted},
-    installs::{Installs, InstallsReceiver},
     invocations::{Invocations, Invoking, ServiceArtifacts},
     process::ResidentService,
 };
@@ -77,7 +76,6 @@ pub enum Decision {
 /// The registry's owner task and the handle to it.
 pub struct ServiceRegistry {
     handle: ServiceHandle,
-    installs: Installs,
     contents: watch::Receiver<Vec<HostArtifact>>,
     owner: tokio::task::JoinHandle<()>,
     #[cfg(feature = "testing")]
@@ -94,8 +92,7 @@ impl ServiceRegistry {
         cwd: PathBuf,
         env: BTreeMap<String, String>,
     ) -> Result<Self, RuntimeError> {
-        let installs = Installs::default();
-        let cache = Arc::new(ArtifactCache::new(cache, image, installs.clone()).await?);
+        let cache = Arc::new(ArtifactCache::new(cache, image).await?);
         let contents = cache.contents();
         let invocations = Invocations::default();
         let (requests, receiver) = mpsc::channel(REQUESTS);
@@ -121,7 +118,6 @@ impl ServiceRegistry {
                 requests,
                 invocations,
             },
-            installs,
             contents,
             owner: tokio::spawn(owner.run(receiver)),
             #[cfg(feature = "testing")]
@@ -131,12 +127,6 @@ impl ServiceRegistry {
 
     pub fn handle(&self) -> ServiceHandle {
         self.handle.clone()
-    }
-
-    /// The installs the services' starts make (`native-runtime.md`
-    /// § Installation progress).
-    pub fn installs(&self) -> InstallsReceiver {
-        self.installs.subscribe()
     }
 
     /// What the artifact cache holds, and each later list

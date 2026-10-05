@@ -216,10 +216,6 @@ impl Devices {
         DeviceDto {
             online: self.online(&device.id),
             home: self.home(&device.id),
-            installs: self
-                .link(&device.id)
-                .map(|link| link.installs())
-                .unwrap_or_default(),
             installed: device.installed,
             id: device.id,
             kind: device.kind,
@@ -315,16 +311,8 @@ impl Serving {
             (&mut outgoing)
                 .with(|frame: Vec<u8>| ready(Ok::<_, axum::Error>(Message::Binary(frame.into())))),
         );
-        // The owner's pages show the runner's installs as it reports them,
-        // and what its cache holds, which the device's record keeps; the
-        // watches end with the connection.
-        let mut installs = link.watch_installs();
-        let marks = seen.marks.clone();
-        let progress = async move {
-            while installs.changed().await.is_ok() {
-                marks.mark(Part::Devices);
-            }
-        };
+        // What the runner's cache holds, which the device's record keeps;
+        // the watch ends with the connection.
         let mut installed = link.watch_installed();
         let recorder = seen.clone();
         let held = {
@@ -336,15 +324,12 @@ impl Serving {
                         recorder.installed(device.clone(), artifacts).await;
                     }
                 }
+                std::future::pending::<()>().await
             }
-        };
-        let reported = async move {
-            tokio::join!(progress, held);
-            std::future::pending::<()>().await
         };
         let end = tokio::select! {
             end = served => end,
-            () = reported => unreachable!("the installs are watched until the connection ends"),
+            () = held => unreachable!("the installed artifacts are watched until the connection ends"),
         };
         match &end {
             LinkEnd::Refused(reason) => {

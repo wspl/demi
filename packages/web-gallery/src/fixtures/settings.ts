@@ -332,7 +332,6 @@ export function mockProviders(): MockProvider[] {
           { id: 'cloud', name: 'Cloud', versions: ['2.1.267'] },
           { id: 'laptop', name: 'MacBook Pro', versions: [] },
         ],
-        installs: [],
       },
       accounts: [
         {
@@ -684,17 +683,16 @@ export function mockProviders(): MockProvider[] {
   ]
 }
 
-/** The paired devices the devices page lists; each installs nothing until a specimen plays an install. */
+/** The paired devices the devices page lists. */
 function galleryDevices(): SettingsDevice[] {
   return [
-    { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now', installs: [] },
-    { id: 'build', name: 'build-01', online: false, seen: '3 days ago', installs: [] },
+    { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now' },
+    { id: 'build', name: 'build-01', online: false, seen: '3 days ago' },
     {
       id: 'lab',
       name: 'lab-workstation-with-a-long-hostname',
       online: true,
       seen: '2 minutes ago',
-      installs: [],
     },
   ]
 }

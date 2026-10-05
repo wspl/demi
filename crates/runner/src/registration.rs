@@ -138,7 +138,6 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         token,
         management,
         services: registry.handle(),
-        installs: registry.installs(),
         cached: registry.installed(),
         dispatcher,
         index,

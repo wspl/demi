@@ -50,7 +50,6 @@ export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
     navigate: (tab, url) => call('navigate', { tab, url } satisfies NavigateTab),
     history: (tab, action) => call('history', { tab, action } satisfies TabHistory),
     stream: plugin.stream('browser'),
-    installs: () => plugin.installs.value,
     installed: () => plugin.installed.value,
   }
 }

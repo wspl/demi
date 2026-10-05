@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { demoDeviceInstallation } from '../fixtures/device-installation'
-import { BROWSER_ARTIFACTS, playInstalls } from '../fixtures/installs'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -44,32 +43,8 @@ const cloud = ref<CloudState>(
     // The server was upgraded since this Cloud's last reset; a reset moves
     // its system to the new image.
     newerImage: true,
-    installs: [],
   }
 )
-// Each time the devices page shows, zan-mbp installs the browser, as when a
-// conversation there opens it for the first time; leaving the page ends it.
-let deviceInstall: AbortController | null = null
-watch(
-  () => props.tab === 'devices',
-  (shown) => {
-    deviceInstall?.abort()
-    deviceInstall = null
-    if (!shown) {
-      return
-    }
-    const playing = new AbortController()
-    deviceInstall = playing
-    void playInstalls(BROWSER_ARTIFACTS, (list) => {
-      const device = props.state.devices.find((entry) => entry.id === 'mac')
-      if (device) {
-        device.installs = list
-      }
-    }, playing.signal)
-  },
-  { immediate: true },
-)
-onBeforeUnmount(() => deviceInstall?.abort())
 // The request is pending until the server accepts it; every second request is refused, so the failed state has a page.
 const reset = ref<{ status: 'idle' | 'pending' } | { status: 'failed'; message: string }>({ status: 'idle' })
 let resetRequests = 0
@@ -240,7 +215,6 @@ async function claimDevice(_code: string) {
     name: `host-${n}`,
     online: true,
     seen: 'Now',
-    installs: [],
   }
   s.value.devices.push(device)
   return { ok: true as const, device }

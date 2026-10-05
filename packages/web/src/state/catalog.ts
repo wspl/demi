@@ -13,6 +13,14 @@ import type {
 } from '../api/generated/web-api'
 import type { LocalState } from './local'
 
+/**
+ * The package of the CLI that `providerId`'s requests start on the Cloud, by
+ * the catalog; null when its requests are HTTP or the catalog lacks it.
+ */
+export function cliPackageOf(catalog: readonly CatalogProvider[], providerId: string): string | null {
+  return catalog.find((provider) => provider.providerId === providerId)?.cliPackage ?? null
+}
+
 export interface ProductProvider extends SettingsProviderEntry {
   providerType: string
   /** The package of the CLI its requests start on the Cloud; null when they are HTTP. */

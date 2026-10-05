@@ -27,7 +27,6 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {})
       navigate: async () => {},
       history: async () => {},
       stream: () => ({ send: () => {}, close: () => {} }),
-      installs: () => [],
       installed: () => [],
       ...api,
     },

@@ -34,7 +34,7 @@ export type {
   UserStream,
   UserStreamHandlers,
 } from '@demicodes/web-ui/plugins/streams'
-export type { HostArtifact, HostInstall } from '@demicodes/web-ui/devices/installs'
+export type { HostArtifact } from '@demicodes/web-ui/devices/installed'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
 // The style a plugin's own prop of UI text declares (the gallery's Writing page).
@@ -79,7 +79,6 @@ export { default as Fold } from '@demicodes/web-ui/ui/Fold.vue'
 export { default as FileIcon } from '@demicodes/web-ui/files/FileIcon.vue'
 export { default as FileView } from '@demicodes/web-ui/files/FileView.vue'
 export { default as FoldChevron } from '@demicodes/web-ui/ui/FoldChevron.vue'
-export { default as HostInstalls } from '@demicodes/web-ui/devices/HostInstalls.vue'
 export { default as IconButton } from '@demicodes/web-ui/ui/IconButton.vue'
 export { default as IndeterminateSpinner } from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 export { default as Menu } from '@demicodes/web-ui/ui/Menu.vue'
