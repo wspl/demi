@@ -10,7 +10,6 @@ import { Popover } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
 import { usePage } from '@demicodes/plugin-sdk'
-import { HostInstalls } from '@demicodes/plugin-sdk'
 import type { LiveTab } from '../generated/plugin'
 import LiveView from './LiveView.vue'
 import { NEW_TAB_URL, asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
@@ -64,8 +63,6 @@ watch(bound, () => {
 })
 const live = computed(() => reported.value ?? (seen.value?.id === bound.value ? seen.value : null))
 const viewport = computed(() => live.value?.viewport ?? null)
-/** What the Host installs before the browser can start: a wait the page cannot know the end of. */
-const installs = computed(() => props.session.api.installs())
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
@@ -242,16 +239,11 @@ async function rebind(): Promise<void> {
         :session="view"
         :tab="live"
       />
-      <!-- What a tab shows before its picture: a blank page, as the browser's new tab is. A first use waits for
-           the Host to install the browser, which shows on it. -->
+      <!-- What a tab shows before its picture: a blank page, as the browser's new tab is. -->
       <div
         v-else
-        class="flex min-h-0 flex-1 flex-col items-center justify-center bg-white px-6"
-      >
-        <div v-if="installs.length > 0" class="w-full max-w-80">
-          <HostInstalls :installs="installs" />
-        </div>
-      </div>
+        class="min-h-0 flex-1 bg-white"
+      />
     </div>
     <Popover
       :overlay-store="overlays"
