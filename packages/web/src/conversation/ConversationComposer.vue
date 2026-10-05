@@ -156,9 +156,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       placeholder="Ask Demi…"
       :running="conversation.phase === 'running'"
       :compacting="conversation.phase === 'compacting'"
-      :disabled="
-        conversation.submission === 'sending' || !!conversation.pendingSend
-      "
+      :disabled="!!conversation.pendingSend"
       :can-configure="resources.canConfigure"
       :attachments="
         conversation.files.filter(

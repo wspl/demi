@@ -9,8 +9,8 @@ import { assistantFooterIds } from './assistant-footer'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
 import type { MessageListBlock } from './pending-steers'
 import { listTailBlocks } from './list-tail'
-import { activitySlotKind, type PendingAction } from './activity-slot'
-import { useActivityHandoff } from './useActivityHandoff'
+import type { PendingAction } from './activity-slot'
+import { useActivitySlot } from './useActivitySlot'
 import { useChromeEntrance } from './useChromeEntrance'
 import { chromeEntrance } from '../ui/chrome-enter'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -96,18 +96,19 @@ const tailBlocks = computed(() => listTailBlocks({
 }))
 // The summary size each compaction divider tells, by the id of the block that shows it.
 const summaryTokens = computed(() => compactionSummaryTokens(props.blocks))
-const slotKind = computed(() => activitySlotKind({
+const slotInput = computed(() => ({
   load: props.load ?? 'ready',
   phase: props.phase,
   pendingAction: props.pendingAction ?? null,
   transcriptBlocks: visibleBlocks.value,
   renderBlocks: [...transcriptBlocks.value, ...tailBlocks.value],
 }))
-const { heldId, slot } = useActivityHandoff(
-  () => transcriptBlocks.value.at(-1),
-  () => slotKind.value,
-  () => props.conversationId,
-)
+const { heldId, slot } = useActivitySlot({
+  input: () => slotInput.value,
+  pendingSubmission: () => props.pendingSubmission ?? null,
+  tail: () => transcriptBlocks.value.at(-1),
+  scope: () => props.conversationId,
+})
 // The block rolling into the tail row is not a list row yet.
 const visibleTranscriptBlocks = computed(() => {
   const blocks = transcriptBlocks.value
@@ -277,6 +278,7 @@ defineExpose({
           v-bind="chromeEntrance(true)"
           :kind="slot.kind"
           :incoming="slot.incoming"
+          :since="slot.since"
           :style="{ marginTop: renderBlocks.length ? `${BLOCK_GAP}px` : '0' }"
         />
         <!-- A turn may wait for its Hosts to install an artifact: what they install shows below the tail, not in it. -->

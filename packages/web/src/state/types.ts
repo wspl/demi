@@ -55,7 +55,6 @@ export interface Conversation extends SidebarConversation {
   files: ProductAttachment[]
   /** The files the message has, in the order of its capsules; the composer's document says so. */
   attachmentIds: string[]
-  submission: 'idle' | 'sending'
   pendingSend: SavedDraft['pendingSend']
   messageEdit: MessageEditState | null
   scroll: PersistedScrollState | null
