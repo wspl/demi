@@ -36,6 +36,27 @@ export function treeBlock(rows: readonly TreeRow[], path: string): { first: numb
   return { first, last }
 }
 
+/**
+ * Where a tree's viewport scrolls to bring a row into view, or null when it
+ * is in view already. Once a row reaches the top its ancestors pin above it,
+ * one slot per level under the caption (`captionPx`), so a row above the
+ * view, or under them, comes to rest in the slot just below them: the slot
+ * its own pinned copy takes. A row below the view comes up to its bottom edge.
+ */
+export function revealTreeRow(
+  view: { scrollTop: number; clientHeight: number },
+  row: { depth: number; top: number },
+  captionPx: number,
+): number | null {
+  const belowAncestors = row.top - captionPx - row.depth * TREE_ROW_PITCH_PX
+  const atBottom = row.top + TREE_ROW_PX - view.clientHeight
+  if (view.scrollTop > belowAncestors)
+    return belowAncestors
+  if (view.scrollTop < atBottom)
+    return atBottom
+  return null
+}
+
 /** What to pin: the directory rows, and how far up the stack rides as the deepest one leaves. */
 export interface StickyTreeStack {
   paths: string[]
