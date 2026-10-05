@@ -9,9 +9,10 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use demi_command_protocol::{ArtifactAsk, ArtifactReply, PackageArtifact};
+use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
-use crate::ArtifactResolver;
+use crate::{ArtifactResolver, ArtifactSource, RuntimeError};
 use crate::cache::{ArtifactCache, Hold, Wanted};
 
 /// The invocations running now, by id: the package each runs in, the
@@ -119,9 +120,14 @@ impl ServiceArtifacts {
                 // Held from the start, so an install of another version of
                 // the line meanwhile leaves it.
                 let hold = self.cache.holds().hold(&install.sha256);
+                let official = install.url.clone().map(Official);
+                let resolver: &dyn ArtifactResolver = match &official {
+                    Some(official) => official,
+                    None => invocation.resolver.as_ref(),
+                };
                 let path = self
                     .cache
-                    .install(&wanted, invocation.resolver.as_ref(), &invocation.ended)
+                    .install(&wanted, resolver, &invocation.ended)
                     .await
                     .map_err(|error| error.to_string())?;
                 self.held.lock().expect("the holds are intact").push(hold);
@@ -134,5 +140,24 @@ impl ServiceArtifacts {
                 .map(ArtifactReply::Installed)
                 .map_err(|error| error.to_string()),
         }
+    }
+}
+
+/// The official source a program names for software it installs itself
+/// (`native-runtime.md` § The artifacts stream): the runner downloads from it
+/// directly and asks the backend nothing.
+struct Official(String);
+
+impl ArtifactResolver for Official {
+    fn resolve<'a>(
+        &'a self,
+        _artifact: &'a PackageArtifact,
+        _cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        let source = ArtifactSource::Url {
+            url: self.0.clone(),
+            expires_at: None,
+        };
+        Box::pin(std::future::ready(Ok(source)))
     }
 }

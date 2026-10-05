@@ -75,6 +75,7 @@ pub async fn ensure(
         sha256: artifact.sha256.clone(),
         size: artifact.size,
         form: ArtifactForm::File,
+        url: None,
     };
     let path = artifacts.install(install).await?;
     Ok(Installed {

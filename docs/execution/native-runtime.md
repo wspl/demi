@@ -330,9 +330,12 @@ Service                        Runner                          Backend
     runner started in this service and that has not ended; `name`,
     `version`, `sha256`, `size`; `form`, `{ kind: "file" }` or
     `{ kind: "archive", entry }`; and, for software the program installs
-    from its official source, `url`, an HTTPS URL without credentials. The
-    runner answers `{id, path}`, the absolute path of the file or of the
-    archive's entry, once the artifact is installed.
+    from its official source, `url`, an HTTP or HTTPS URL without
+    credentials, which the runner downloads from instead of asking the
+    backend; the size and SHA-256 the program pinned decide what it keeps,
+    whatever the transport. The runner answers `{id, path}`, the absolute
+    path of the file or of the archive's entry, once the artifact is
+    installed.
   - `installed`: `name`. The runner answers `{id, installed}`: the artifacts
     of that line its cache and the image hold, each with its `version`,
     `sha256` and `path`, the cache's newest install first. It reads only the
@@ -398,8 +401,8 @@ so no page knows a package by name.
 
 Since installing is a step of an artifact's first use, or of the command
 that asks for it, the progress needs no separate start: a Host whose agent
-never installs the browser downloads no Chrome. An install leaves nothing in the transcript; its line goes when the
-list no longer has it.
+never installs the browser downloads no Chrome. An install leaves nothing in
+the transcript; its line goes when the list no longer has it.
 
 ### Installed artifacts
 

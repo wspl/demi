@@ -10,7 +10,7 @@ use demi_command_package_browser_protocol::{
     },
     capture::{CaptureEvent, FrameHeader},
     live::{FileHeader, LiveViewerMessage, VideoHeader},
-    release::BrowserRelease,
+    release::{BrowserRelease, LinuxRequirements},
 };
 use serde_json::{Value, json};
 
@@ -26,7 +26,7 @@ fn every_operation_decodes_its_smallest_input() {
     let smallest = |operation: &str| -> Value {
         match operation {
             "open" => json!({"url": "about:blank"}),
-            "tabs" => json!({}),
+            "tabs" | "install" => json!({}),
             "content.fetch" => json!({"url": ["https://example.test/"]}),
             "goto" => json!({"tab": TAB, "url": "about:blank"}),
             "probe" => json!({"tab": TAB, "xy": "1,2"}),
@@ -43,12 +43,12 @@ fn every_operation_decodes_its_smallest_input() {
             _ => json!({"tab": TAB}),
         }
     };
-    assert_eq!(OPERATIONS.len(), 47);
+    assert_eq!(OPERATIONS.len(), 48);
     for operation in OPERATIONS {
         let name = operation.strip_prefix("browser.").unwrap();
         let decoded = parse(name, smallest(name)).unwrap_or_else(|error| panic!("{name}: {error}"));
         assert_eq!(decoded.name(), name);
-        let expects_tab = !matches!(name, "open" | "tabs" | "content.fetch");
+        let expects_tab = !matches!(name, "open" | "tabs" | "content.fetch" | "install");
         assert_eq!(decoded.tab().is_some(), expects_tab, "{name}");
     }
     assert!(matches!(
@@ -194,7 +194,7 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         );
     }
     // Every listed name decodes, so the descriptor lists nothing unserved.
-    assert_eq!(Operation::names().count(), 47 + 1);
+    assert_eq!(Operation::names().count(), 48 + 1);
     for name in Operation::names() {
         assert!(
             !matches!(
@@ -384,6 +384,10 @@ fn release_records_are_checked() {
     record["platforms"][0]["sha256"] = json!("f".repeat(64));
     record["platforms"][0]["url"] = json!("not a url");
     assert!(BrowserRelease::parse(&record.to_string()).is_err());
+    // The hand-kept record of what Chrome needs on Linux, which only a
+    // Linux Host reads.
+    let requirements = LinuxRequirements::pinned().unwrap();
+    assert!(!requirements.libraries.is_empty() && !requirements.fonts.is_empty());
 }
 
 #[test]

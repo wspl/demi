@@ -5,25 +5,50 @@
 //! scenario whose runner runs a native command, on a paired device or on the
 //! Cloud, installs it from the backend. This file shows the store's own
 //! promises: a runner installs a package from the backend's route and runs
-//! it, and the route serves only what the backend loaded.
+//! it, and the route serves only what the backend loaded; the device then
+//! lists what its runner's cache holds, even while it is offline
+//! (§ Installed artifacts).
 
 use demi_command_protocol::host_target;
+use demi_runner_protocol::wire::HostArtifact;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use reqwest::header::{CACHE_CONTROL, CONTENT_ENCODING};
 
 use crate::streams::{self, CONVERSATION};
-use crate::support::{FIXTURE, Harness};
+use crate::support::{FIXTURE, Harness, eventually};
 
 #[tokio::test]
 async fn a_runner_installs_a_development_release_from_the_backend_which_serves_nothing_else() {
     let harness = Harness::new().with_native_fixture();
-    let (backend, master, _laptop) = streams::conversation(&harness).await;
+    let (backend, master, laptop) = streams::conversation(&harness).await;
     // The stream runs the fixture package's `echo`, whose program the
     // laptop's runner downloaded from the backend, over plain HTTP.
     let mut echo = streams::socket(&backend, &master, CONVERSATION, "echo").await;
     streams::answered(&mut echo).await;
     echo.close(None).await.unwrap();
+
+    // The laptop's runner reports the program its cache now holds, which
+    // the device keeps while the runner is away.
+    let program = HostArtifact {
+        package: FIXTURE.descriptor.id.clone(),
+        name: "program".into(),
+        version: FIXTURE.descriptor.version.clone(),
+    };
+    let device = laptop.id().to_owned();
+    let lists = |online: bool| {
+        let (backend, master, device, program) = (&backend, &master, &device, &program);
+        move || async move {
+            backend.devices(master).await.iter().any(|listed| {
+                listed.id.as_str() == device
+                    && listed.online == online
+                    && listed.installed.contains(program)
+            })
+        }
+    };
+    eventually("the laptop lists the program it installed", lists(true)).await;
+    drop(laptop);
+    eventually("the offline laptop still lists it", lists(false)).await;
 
     // The route serves the loaded executable whole, as an immutable file,
     // in the content coding a runner decodes.

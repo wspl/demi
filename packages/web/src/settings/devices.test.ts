@@ -26,6 +26,7 @@ beforeEach(async () => {
         online: true,
         home: null,
         installs: [],
+        installed: [],
       },
     ],
     cloud: {

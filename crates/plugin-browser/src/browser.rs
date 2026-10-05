@@ -76,6 +76,7 @@ operations! {
     "capabilities" => CapabilitiesInput, CapabilitiesResult, "Report the browser’s available observation and evaluation capabilities.";
     "webmcp.list" => WebmcpListInput, WebmcpListResult, "List tools registered by this page and their input schemas.";
     "webmcp.call" => WebmcpCallInput, WebmcpCallResult, "Call a registered page tool with JSON arguments from stdin.";
+    "install" => InstallInput, InstallResult, "Install the pinned Chrome for Testing on this Host, and name what Linux still lacks for it.";
 }
 
 /// The `browser` group. A dotted operation name's first part is a subgroup,
@@ -152,14 +153,14 @@ fn leaf<I: BrowserInput + schemars::JsonSchema, R: schemars::JsonSchema>(
 }
 
 /// The operands a command line gives in order: every operation but `open`,
-/// `tabs` and `content.fetch` acts on a tab, named first.
+/// `tabs`, `content.fetch` and `install` acts on a tab, named first.
 fn positionals(name: &str) -> &'static [&'static str] {
     match name {
         "open" => &["url"],
         "goto" => &["tab", "url"],
         "cdp.send" => &["tab", "method"],
         "webmcp.call" => &["tab", "tool"],
-        "tabs" | "content.fetch" => &[],
+        "tabs" | "content.fetch" | "install" => &[],
         _ => &["tab"],
     }
 }

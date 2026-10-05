@@ -13,8 +13,8 @@ pub use kept::{
 };
 pub use messages::{
     ArtifactOwner, ChangeKind, DirEntry, FileStat, GitChange, GitChanges, HelloErrorCode,
-    HostIdentity, Inbound, Install, InstallPhase, JobArtifactOwner, JobFileChange, LogLine,
-    MAX_INSTALLS, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef, RunnerInfo,
+    HostArtifact, HostIdentity, Inbound, Install, InstallPhase, JobArtifactOwner, JobFileChange,
+    LogLine, MAX_INSTALLED, MAX_INSTALLS, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef, RunnerInfo,
     RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind, StreamArtifactOwner,
     VolumeName,
 };
@@ -26,7 +26,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 24;
+pub const VERSION: u32 = 25;
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// How much of the start of each stream a job always sends, and how much of

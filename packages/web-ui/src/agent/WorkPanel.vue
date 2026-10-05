@@ -64,6 +64,11 @@ const shownPinned = computed(() => pinnedTabs.value.find((item) => item.kind.kin
 const shownTab = computed(() => tabs.value.find((item) => item.tab.id === selection.value) ?? null)
 /** The kinds the strip's new-tab control offers. */
 const creatable = computed(() => props.kinds.filter((kind) => kind.create))
+
+/** Why the strip cannot make a tab of `kind` now, or null when it can. */
+function unavailable(kind: PanelTabKind): string | null {
+  return kind.create?.unavailable?.() ?? null
+}
 const menuId = ref<string | null>(null)
 const menu = useContextMenuOwner(() => {
   menuId.value = null
@@ -125,10 +130,11 @@ function closeScope(scope: TabCloseScope): void {
         </TabItem>
         <!-- A plain plus says enough beside tabs of the one kind it makes; otherwise each kind shows its own icon. -->
         <template v-if="creatable.length > 0" #trailing>
+          <!-- One tip: why the kind cannot be made now, else what the control makes. -->
           <Tooltip
             v-for="kind in creatable"
             :key="kind.kind"
-            :content="kind.create!.label"
+            :content="unavailable(kind) ?? kind.create!.label"
             class="ml-1 shrink-0"
           >
             <IconButton
@@ -136,6 +142,7 @@ function closeScope(scope: TabCloseScope): void {
               size="sm"
               variant="ghost"
               :aria-label="kind.create!.label"
+              :disabled="unavailable(kind) !== null"
               @click="emit('addTab', kind.kind, kind.create!.data())"
             />
           </Tooltip>

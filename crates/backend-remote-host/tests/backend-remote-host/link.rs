@@ -16,7 +16,7 @@ use demi_backend_remote_host::{
 use demi_command_declarations::NativeOperation;
 use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, EditCopies, EditKind as FileEditKind, PackageArtifact,
-    PackageDescriptor, PackageResource, ResourceArtifact, ServiceSequence, host_target,
+    PackageDescriptor, ServiceSequence, host_target,
 };
 use demi_host_interface::{
     Call, CommandMedium, CommandSet, CommandState, ExecRequest, GroupBuilder, HostError, HostErrorKind,
@@ -548,20 +548,6 @@ fn native_catalog(resolver: Rc<Scripted>) -> (CommandCatalog, PackageDescriptor)
                 size: 1,
             },
         )]),
-        resources: BTreeMap::from([(
-            "chrome".to_owned(),
-            PackageResource {
-                title: "Chrome for Testing 153.0.8010.36".into(),
-                targets: BTreeMap::from([(
-                    host_target().to_owned(),
-                    ResourceArtifact {
-                        sha256: "b".repeat(64),
-                        size: 2,
-                        entry: "chrome-linux64/chrome".into(),
-                    },
-                )]),
-            },
-        )]),
     };
     (
         CommandCatalog::new(vec![descriptor.clone()], resolver).unwrap(),
@@ -641,20 +627,13 @@ async fn an_artifact_request_needs_the_live_job_and_an_artifact_of_its_manifest(
         Some((Some("https://artifacts.example.test/exact".into()), None))
     );
     assert_eq!(resolver.calls.get(), 1);
-    // A resource's archive belongs to the package as its executable does.
-    link.send(request("b".repeat(64))).await;
-    assert_eq!(
-        artifact_answer(&link.next().await),
-        Some((Some("https://artifacts.example.test/exact".into()), None))
-    );
-    assert_eq!(resolver.calls.get(), 2);
     link.send(job_exit(job.id(), Some(0), None)).await;
     link.send(request(sha256)).await;
     assert_eq!(
         artifact_answer(&link.next().await),
         Some((None, Some("No matching live job or stream".into())))
     );
-    assert_eq!(resolver.calls.get(), 2);
+    assert_eq!(resolver.calls.get(), 1);
 }
 
 /// The installs a runner reports are the connection's until the next list

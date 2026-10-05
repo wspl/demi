@@ -13,17 +13,25 @@ export interface SimulatedArtifact {
   archive?: boolean
 }
 
-/** What a Host installs before its first browser starts. */
-export const BROWSER_ARTIFACTS: readonly SimulatedArtifact[] = [
-  { package: 'demi.browser', name: 'program', version: '0.1.3', total: 41_943_040 },
-  {
-    package: 'demi.browser',
-    name: 'Chrome for Testing',
-    version: '153.0.8010.36',
-    total: 195_711_476,
-    archive: true,
-  },
-]
+/** The browser's program, which a Host installs before its first browser command runs. */
+export const BROWSER_PROGRAM: SimulatedArtifact = {
+  package: 'demi.browser',
+  name: 'program',
+  version: '0.1.3',
+  total: 41_943_040,
+}
+
+/** The pinned Chrome for Testing, which the agent installs with `demi browser install`. */
+export const CHROME_FOR_TESTING: SimulatedArtifact = {
+  package: 'demi.browser',
+  name: 'Chrome for Testing',
+  version: '153.0.8010.36',
+  total: 195_711_476,
+  archive: true,
+}
+
+/** What `demi browser install` installs on a Host that never ran the browser. */
+export const BROWSER_ARTIFACTS: readonly SimulatedArtifact[] = [BROWSER_PROGRAM, CHROME_FOR_TESTING]
 
 /** What the Cloud installs for a Claude Code request when it has no usable CLI. */
 export const CLAUDE_CLI_ARTIFACTS: readonly SimulatedArtifact[] = [

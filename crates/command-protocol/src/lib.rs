@@ -32,7 +32,7 @@ pub use media::{MAX_MEDIUM_BYTES, StdoutTarget, sniff_media_type};
 pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
-    PackageResource, ResourceArtifact, ServiceInfo, TARGETS, VERSION, canonical_digest, digest,
+    ServiceInfo, TARGETS, VERSION, canonical_digest, digest,
     host_target, is_digest, is_target, target, target_artifact, target_artifacts,
 };
 

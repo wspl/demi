@@ -20,7 +20,7 @@ use demi_backend_database::devices::DeviceRecord;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::{Admission, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost};
 use demi_host_interface::{HostIdentity, HostKey};
-use demi_runner_protocol::wire::{self, HelloErrorCode, Inbound};
+use demi_runner_protocol::wire::{self, HelloErrorCode, HostArtifact, Inbound};
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::ready;
@@ -196,7 +196,7 @@ impl Devices {
         device: &DeviceId,
         link: Link,
         driver: LinkDriver,
-        seen: LastSeen,
+        seen: DeviceRecorder,
     ) -> Serving {
         let slot = self.slot(device);
         slot.link.send_replace(DeviceLink::Online(link.clone()));
@@ -220,6 +220,7 @@ impl Devices {
                 .link(&device.id)
                 .map(|link| link.installs())
                 .unwrap_or_default(),
+            installed: device.installed,
             id: device.id,
             kind: device.kind,
             name: device.name,
@@ -277,7 +278,7 @@ pub struct Serving {
     identity: HostIdentity,
     link: Link,
     driver: LinkDriver,
-    seen: LastSeen,
+    seen: DeviceRecorder,
 }
 
 impl Serving {
@@ -314,14 +315,31 @@ impl Serving {
             (&mut outgoing)
                 .with(|frame: Vec<u8>| ready(Ok::<_, axum::Error>(Message::Binary(frame.into())))),
         );
-        // The owner's pages show the runner's installs as it reports them;
-        // the watch ends with the connection.
+        // The owner's pages show the runner's installs as it reports them,
+        // and what its cache holds, which the device's record keeps; the
+        // watches end with the connection.
         let mut installs = link.watch_installs();
         let marks = seen.marks.clone();
-        let reported = async move {
+        let progress = async move {
             while installs.changed().await.is_ok() {
                 marks.mark(Part::Devices);
             }
+        };
+        let mut installed = link.watch_installed();
+        let recorder = seen.clone();
+        let held = {
+            let device = device.clone();
+            async move {
+                while installed.changed().await.is_ok() {
+                    let reported = installed.borrow_and_update().clone();
+                    if let Some(artifacts) = reported {
+                        recorder.installed(device.clone(), artifacts).await;
+                    }
+                }
+            }
+        };
+        let reported = async move {
+            tokio::join!(progress, held);
             std::future::pending::<()>().await
         };
         let end = tokio::select! {
@@ -363,17 +381,18 @@ pub async fn send(socket: &mut WebSocket, message: &Inbound) -> Result<(), axum:
     socket.send(Message::Binary(frame.into())).await
 }
 
-/// Where a connection records that its device's runner was connected just
-/// now, which its owner's pages show with whether it is online: a
-/// connection records it as it starts and as it ends. Cloning it is cheap.
+/// Where a connection records what it learns of its device, which its
+/// owner's pages show: that its runner was connected just now, as the
+/// connection starts and as it ends, and what the runner reports its
+/// artifact cache holds. Cloning it is cheap.
 #[derive(Clone)]
-pub struct LastSeen {
+pub struct DeviceRecorder {
     control: ControlService,
     /// The owner's pages, which show whether the device is online.
     marks: UserMarks,
 }
 
-impl LastSeen {
+impl DeviceRecorder {
     pub fn new(control: ControlService, marks: UserMarks) -> Self {
         Self { control, marks }
     }
@@ -383,6 +402,16 @@ impl LastSeen {
         if let Err(error) = self.control.touch_device_seen(device.clone()).await {
             // The time is shown to the user and decides nothing.
             tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "last-seen time not recorded");
+        }
+        self.marks.mark(Part::Devices);
+    }
+
+    /// Records that `device`'s artifact cache holds `artifacts`.
+    pub async fn installed(&self, device: DeviceId, artifacts: Vec<HostArtifact>) {
+        if let Err(error) = self.control.set_device_installed(device.clone(), artifacts).await {
+            // The list is shown to the user and offered to plugins; the next
+            // report records it again.
+            tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "installed artifacts not recorded");
         }
         self.marks.mark(Part::Devices);
     }

@@ -863,6 +863,33 @@ pub enum Outbound {
         #[garde(length(max = MAX_INSTALLS), dive)]
         installs: Vec<Install>,
     },
+    /// Every artifact this runner's cache holds, once the connection is
+    /// online and whenever an install or a retirement changes them
+    /// (`native-runtime.md` § Installed artifacts).
+    Installed {
+        #[garde(length(max = MAX_INSTALLED), dive)]
+        artifacts: Vec<HostArtifact>,
+    },
+}
+
+/// The most artifacts one list of a cache's holds carries: the cache keeps
+/// one version of each line, so a Host holds a few.
+pub const MAX_INSTALLED: usize = 256;
+
+/// One artifact a Host holds: its package, its line's name and its
+/// version, such as `demi.browser`, `Chrome for Testing` and
+/// `153.0.8010.36`.
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, garde::Validate, JsonSchema,
+)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HostArtifact {
+    #[garde(length(min = 1, max = 200))]
+    pub package: String,
+    #[garde(length(min = 1, max = 100))]
+    pub name: String,
+    #[garde(length(min = 1, max = 100))]
+    pub version: String,
 }
 
 /// The most installs one list carries: one per service starting at once.
@@ -901,8 +928,8 @@ fn not_past_total(total: &u64) -> impl FnOnce(&u64, &()) -> garde::Result + '_ {
     }
 }
 
-/// Where an install is: downloading the artifact, or unpacking a
-/// resource's archive.
+/// Where an install is: downloading the artifact, or unpacking an
+/// archive.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InstallPhase {

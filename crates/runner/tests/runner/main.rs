@@ -154,7 +154,13 @@ async fn next(socket: &mut WebSocketStream<TcpStream>, process: &RunnerProcess) 
     loop {
         match socket.next().await {
             Some(Ok(Message::Binary(bytes))) => {
-                return wire::decode(&bytes).expect("the runner sends valid messages");
+                match wire::decode(&bytes).expect("the runner sends valid messages") {
+                    // What the cache holds, which the runner reports once
+                    // online and after each install; the backend's tests
+                    // follow it (`native-runtime.md` § Installed artifacts).
+                    Outbound::Installed { .. } => {}
+                    message => return message,
+                }
             }
             Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
             other => panic!(

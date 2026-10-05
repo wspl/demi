@@ -15,7 +15,7 @@ use crate::driver::{
         CdpDetachResult, CdpEventsResult, CdpSendResult, CdpTargetsResult, ClipboardReadResult,
         ClipboardWriteResult, CloseResult, ContentFetchResult, ContentReadResult, Dialog,
         DialogInspectResult, DialogOutcome, DialogResult, DownloadResult, EvalResult, FindResult,
-        HistoryResult, InfoResult, InspectResult, LogsResult, MouseButton, NavigationResult,
+        HistoryResult, InfoResult, InspectResult, InstallResult, LogsResult, MouseButton, NavigationResult,
         NodeValue, OpenResult, ProbeResult, ReadResult, ResolvedElement, ScreenshotResult,
         SelectedOption, TabsResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
         WebmcpListResult,
@@ -114,6 +114,7 @@ pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<Strin
         BrowserOperation::AssetsList(_) => assets_list(&typed(value)?),
         BrowserOperation::AssetsExport(_) => assets_export(&typed(value)?),
         BrowserOperation::Capabilities(_) => capabilities(&typed(value)?),
+        BrowserOperation::Install(_) => install(&typed(value)?),
         BrowserOperation::WebmcpList(_) => webmcp_list(&typed(value)?),
         BrowserOperation::WebmcpCall(_) => {
             let result: WebmcpCallResult = typed(value)?;
@@ -817,6 +818,57 @@ fn assets_export(result: &AssetsExportResult) -> String {
     )
 }
 
+/// Where the browser is, then, on Linux, what the Host lacks for it and the
+/// Ubuntu packages that provide it (`browser.md` § Installation).
+fn install(result: &InstallResult) -> String {
+    let mut text = format!(
+        "Installed {} at {}\n",
+        plain(&result.browser),
+        plain(&result.path)
+    );
+    if result.missing_libraries.is_empty() && result.missing_fonts.is_empty() {
+        return text;
+    }
+    if !result.missing_libraries.is_empty() {
+        let names: Vec<&str> = result
+            .missing_libraries
+            .iter()
+            .map(|library| library.name.as_str())
+            .collect();
+        text.push_str(&format!(
+            "Chrome needs system libraries this Host lacks: {}\n",
+            plain(&names.join(", "))
+        ));
+    }
+    if !result.missing_fonts.is_empty() {
+        let purposes: Vec<&str> = result
+            .missing_fonts
+            .iter()
+            .map(|font| font.purpose.as_str())
+            .collect();
+        text.push_str(&format!(
+            "Recommended fonts are missing: {}\n",
+            plain(&purposes.join("; "))
+        ));
+    }
+    let mut packages: Vec<&str> = Vec::new();
+    let wanted = result
+        .missing_libraries
+        .iter()
+        .map(|library| library.package.as_str())
+        .chain(result.missing_fonts.iter().map(|font| font.package.as_str()));
+    for package in wanted {
+        if !packages.contains(&package) {
+            packages.push(package);
+        }
+    }
+    text.push_str(&format!(
+        "On Ubuntu, install them with:\n  sudo apt-get install -y {}\n",
+        plain(&packages.join(" "))
+    ));
+    text
+}
+
 fn capabilities(result: &CapabilitiesResult) -> String {
     let mut available = String::new();
     let mut unavailable = String::new();
@@ -1254,6 +1306,30 @@ mod tests {
                 json!({"tab": "t1", "tool": "search", "tools": "tools_1", "arguments": "{}"}),
                 json!({"name": "search", "result": {"count": 2}}),
                 vec!["Called search.\nResult: {\"count\":2}\n"],
+            ),
+            (
+                "install",
+                json!({}),
+                json!({
+                    "browser": "Chrome for Testing 153.0.8010.36",
+                    "path": "/home/demi/.demi/artifacts/a/chrome-linux64/chrome",
+                    "missingLibraries": [
+                        {"name": "libnss3.so", "package": "libnss3"},
+                        {"name": "libnssutil3.so", "package": "libnss3"},
+                        {"name": "libgbm.so.1", "package": "libgbm1"},
+                    ],
+                    "missingFonts": [
+                        {"purpose": "color emoji", "file": "NotoColorEmoji.ttf", "package": "fonts-noto-color-emoji"},
+                        {"purpose": "Chinese, Japanese and Korean text", "file": "NotoSansCJK-Regular.ttc", "package": "fonts-noto-cjk"},
+                    ],
+                }),
+                vec![
+                    "Installed Chrome for Testing 153.0.8010.36 at /home/demi/.demi/artifacts/a/chrome-linux64/chrome\n",
+                    "Chrome needs system libraries this Host lacks: libnss3.so, libnssutil3.so, libgbm.so.1\n",
+                    "Recommended fonts are missing: color emoji; Chinese, Japanese and Korean text\n",
+                    // Each package once, whatever it provides.
+                    "On Ubuntu, install them with:\n  sudo apt-get install -y libnss3 libgbm1 fonts-noto-color-emoji fonts-noto-cjk\n",
+                ],
             ),
         ];
         for (operation, args, result, lines) in cases {

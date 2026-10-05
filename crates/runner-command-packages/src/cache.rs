@@ -23,7 +23,9 @@ use demi_shared_artifacts::{
     Archive, ArchiveInstall, Digest, Mode, Permissions, Publication, Staged,
 };
 use serde::{Deserialize, Serialize};
+use demi_runner_protocol::wire::HostArtifact;
 use tokio::io::AsyncWrite;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use demi_runner_process::private_files::chmod;
@@ -47,6 +49,9 @@ pub struct ArtifactCache {
     http: reqwest::Client,
     installs: Installs,
     holds: Holds,
+    /// What the cache holds, which the connection reports to the backend
+    /// (`native-runtime.md` § Installed artifacts).
+    contents: watch::Sender<Vec<HostArtifact>>,
 }
 
 /// An artifact to install: its line (its package and name) and version, its
@@ -124,7 +129,7 @@ impl ArtifactCache {
     ) -> Result<Self, RuntimeError> {
         tokio::fs::create_dir_all(&root).await?;
         chmod(&root, 0o700).await?;
-        Ok(Self {
+        let cache = Self {
             root,
             image,
             checked: Mutex::default(),
@@ -134,7 +139,16 @@ impl ArtifactCache {
             http: demi_shared_artifacts::client_allowing_http()?,
             installs,
             holds: Holds::default(),
-        })
+            contents: watch::Sender::new(Vec::new()),
+        };
+        cache.publish_contents().await;
+        Ok(cache)
+    }
+
+    /// What the cache holds now, and each later list: every artifact it
+    /// recorded, by package, line and version.
+    pub fn contents(&self) -> watch::Receiver<Vec<HostArtifact>> {
+        self.contents.subscribe()
     }
 
     /// The digests running services hold.
@@ -162,7 +176,38 @@ impl ArtifactCache {
         };
         self.record(wanted, &path).await?;
         self.remove_older(wanted).await;
+        self.publish_contents().await;
         Ok(path)
+    }
+
+    /// Publishes what the cache's records name, when it changed. A cache
+    /// that cannot be listed keeps its last list, which the next install
+    /// publishes again.
+    async fn publish_contents(&self) {
+        let records = match self.records().await {
+            Ok(records) => records,
+            Err(error) => {
+                tracing::warn!("the artifact cache could not be listed: {error}");
+                return;
+            }
+        };
+        let mut contents: Vec<HostArtifact> = records
+            .into_iter()
+            .map(|(_, record)| HostArtifact {
+                package: record.package,
+                name: record.name,
+                version: record.version,
+            })
+            .collect();
+        contents.sort();
+        contents.dedup();
+        self.contents.send_if_modified(|published| {
+            if *published == contents {
+                return false;
+            }
+            *published = contents;
+            true
+        });
     }
 
     /// The artifacts of the line `name` of `package` this cache installed,

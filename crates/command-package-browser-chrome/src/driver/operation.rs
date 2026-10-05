@@ -79,8 +79,8 @@ pub enum BrowserError {
         "Chrome does not run as root on Linux with its sandbox, which Demi keeps: run the runner as an ordinary user"
     )]
     Root,
-    /// Chrome for Testing could not be installed or found intact.
-    #[error("Chrome for Testing {0}")]
+    /// Chrome for Testing could not be installed, or the Host lacks it.
+    #[error("{0}")]
     Installation(String),
     #[error("{source}")]
     Action {

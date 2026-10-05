@@ -130,7 +130,8 @@ CREATE TABLE devices (
   platform     TEXT NOT NULL,
   token_hash   TEXT UNIQUE,
   claimed_at   INTEGER NOT NULL,
-  last_seen_at INTEGER
+  last_seen_at INTEGER,
+  installed    TEXT NOT NULL DEFAULT '[]'
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 

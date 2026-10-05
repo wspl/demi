@@ -883,7 +883,8 @@ pub async fn command_admitted(
             | BrowserOperation::AssetsList(_)
             | BrowserOperation::AssetsExport(_)
             | BrowserOperation::WebmcpList(_)
-            | BrowserOperation::WebmcpCall(_) => Box::pin(async {
+            | BrowserOperation::WebmcpCall(_)
+            | BrowserOperation::Install(_) => Box::pin(async {
                 unreachable!("conversation-level operation is dispatched before tab actions")
             }),
         };

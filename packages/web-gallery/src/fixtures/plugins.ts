@@ -1,6 +1,6 @@
 import { BrowserTabsError } from '@demicodes/plugin-browser/live/tabs'
 import type { OpenUserStream } from '@demicodes/web-ui/plugins/streams'
-import type { HostInstall } from '@demicodes/web-ui/devices/installs'
+import type { HostArtifact, HostInstall } from '@demicodes/web-ui/devices/installs'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
   PluginCallError,
@@ -40,6 +40,8 @@ export interface GalleryPlugin {
   streams?: Record<string, OpenUserStream>
   /** What the specimen's Host installs of its packages, read reactively. */
   installs?(): readonly HostInstall[]
+  /** What the specimen's Host holds of its packages, read reactively. */
+  installed?(): readonly HostArtifact[]
 }
 
 /**
@@ -82,6 +84,7 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
       throw new PluginCallError('unknown_stream', `No user stream "${name}"`)
     },
     installs: (plugin) => plugins[plugin]?.installs?.() ?? [],
+    installed: (plugin) => plugins[plugin]?.installed?.() ?? [],
     files: () => {
       if (!shell.files) {
         throw new Error('The specimen shows no conversation files')
@@ -159,6 +162,7 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
     },
     streams: { browser: browser.stream },
     installs: () => browser.installs(),
+    installed: () => browser.installed(),
   }
 }
 

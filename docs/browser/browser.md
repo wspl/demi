@@ -295,11 +295,10 @@ download metadata during release preparation
 ([Chrome for Testing](../delivery/builds-and-releases.md#chrome-for-testing));
 A Host installs the pinned artifact rather than resolving a moving channel
 such as `latest`. Validate downloaded bytes before publishing the installation.
-Paired-device installation and Cloud image preparation install the same
-archive through the same installer, the artifact library's archive
-installation, which is the one verified-download and atomic-publish path every
-Demi installer uses. Browser and driver/CDP compatibility must pass acceptance
-together.
+Every Host installs it the same way, through the runner's artifact cache and
+the artifact library's archive installation, which is the one
+verified-download and atomic-publish path every Demi installer uses. Browser
+and driver/CDP compatibility must pass acceptance together.
 
 Platform availability is checked for the exact selected version against the
 [official artifact matrix](https://github.com/GoogleChromeLabs/chrome-for-testing#supported-platforms).

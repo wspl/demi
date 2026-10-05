@@ -4,9 +4,8 @@
 //! the image's architecture, with an `xtask` built for that architecture.
 //! Into the Ubuntu tree the script made, it installs the runner and its
 //! `demi` alias from the verified runner release, each command package from
-//! its verified release under its content-addressed paths, its resources,
-//! such as Chrome for Testing, unpacked through `artifact`'s archive
-//! installation, and the pinned uv.
+//! its verified release under its content-addressed paths, and the pinned
+//! uv.
 //! It reads the package inventory from the tree's dpkg database without
 //! running a program of the image, writes the root archive with GNU tar,
 //! checks the manifest the way the machine manager decodes it, publishes the
@@ -25,8 +24,7 @@ use demi_machine_manager_protocol::image::{
 };
 use demi_runner_protocol::{image::ARTIFACTS_PATH, release::RunnerRelease};
 use demi_shared_artifacts::{
-    Archive, ArchiveInstall, Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord,
-    Staged,
+    Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
 };
 use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
@@ -222,7 +220,6 @@ async fn package(
     for (directory, (descriptor, artifact)) in options.packages.iter().zip(&releases) {
         let path = install_package(&root, directory, descriptor, artifact, target, cancel).await?;
         executables.insert(path, artifact.clone());
-        executables.extend(install_resources(&root, directory, descriptor, target, cancel).await?);
     }
     let (uv, uv_tool) = install_uv(&root, &pins.uv, architecture, client, cancel).await?;
     executables.extend(uv);
@@ -450,65 +447,6 @@ async fn symlink(target: &std::ffi::OsStr, alias: &Path) -> Result<(), Error> {
 #[cfg(not(unix))]
 async fn symlink(_: &std::ffi::OsStr, _: &Path) -> Result<(), Error> {
     Err(Error::NotLinux)
-}
-
-/// Installs each resource of `descriptor`'s release at `directory` that has
-/// an archive for `target`, unpacked with its receipt in the directory its
-/// archive's SHA-256 names, where the runner looks before it downloads one
-/// (`native-runtime.md` § Preinstalled artifacts); returns each entry's
-/// path in the image with its size and SHA-256.
-async fn install_resources(
-    root: &Path,
-    directory: &Path,
-    descriptor: &PackageDescriptor,
-    target: &str,
-    cancel: &CancellationToken,
-) -> Result<Vec<(String, PackageArtifact)>, Error> {
-    let artifacts = in_tree(root, ARTIFACTS_PATH);
-    let mut entries = Vec::new();
-    for resource in descriptor.resources.values() {
-        let Some(archive) = resource.targets.get(target) else {
-            continue;
-        };
-        let source = directory.join("resources").join(&archive.sha256);
-        let unpacking = match demi_shared_artifacts::install_archive(
-            &artifacts,
-            &Archive {
-                digest: Digest {
-                    size: archive.size,
-                    sha256: archive.sha256.clone(),
-                },
-                entry: archive.entry.clone(),
-            },
-            cancel,
-        )
-        .await?
-        {
-            ArchiveInstall::Installed(_) => {
-                return Err(invalid(&source, "is in the image twice"));
-            }
-            ArchiveInstall::Unpack(unpacking) => unpacking,
-        };
-        let expected = Digest {
-            size: archive.size,
-            sha256: archive.sha256.clone(),
-        };
-        let mut input = tokio::fs::File::open(&source).await.map_err(at(&source))?;
-        let mut output = tokio::fs::File::create(unpacking.archive()).await?;
-        demi_shared_artifacts::copy(&mut input, &expected, &mut output, cancel)
-            .await
-            .map_err(at(&source))?;
-        drop(output);
-        let entry = unpacking.finish(cancel).await?;
-        // The installation's lock serves installers running at once on one
-        // machine; an image starts with none running.
-        let lock = artifacts.join(format!("{}.lock", archive.sha256));
-        tokio::fs::remove_file(&lock).await.map_err(at(&lock))?;
-        let path = format!("{ARTIFACTS_PATH}/{}/{}", archive.sha256, archive.entry);
-        entries.push((path, measure(&entry, cancel).await?));
-        eprintln!("Cloud image: {} for {}", resource.title, descriptor.id);
-    }
-    Ok(entries)
 }
 
 /// Downloads the pinned uv archive of `architecture` and installs its
@@ -798,16 +736,13 @@ fn invalid(path: &Path, reason: impl ToString) -> Error {
 
 #[cfg(test)]
 mod tests {
-    use demi_command_protocol::{PackageResource, ResourceArtifact};
-    use demi_shared_artifacts::testing::{Answer, Server, zip};
+    use demi_shared_artifacts::testing::{Answer, Server};
 
     use super::*;
 
     /// The tests build an arm64 image, as for an arm64 execution host.
     const ARCHITECTURE: Architecture = Architecture::Arm64;
     const TARGET: &str = "aarch64-unknown-linux-musl";
-    /// Chrome's executable in its archive.
-    const CHROME: &str = "chrome-linux-arm64/chrome";
     /// uv's executables in its archive.
     const UV_EXECUTABLES: [&str; 2] = [
         "uv-aarch64-unknown-linux-gnu/uv",
@@ -885,7 +820,6 @@ Version: 0.19.0-3
             protocol_version: demi_command_protocol::VERSION,
             operations: vec!["file.read".to_owned()],
             targets: BTreeMap::from([(TARGET.to_owned(), measured(recorded).await)]),
-            resources: Default::default(),
         };
         write(&directory.join(TARGET).join(name), bytes);
         write(
@@ -943,16 +877,7 @@ Version: 0.19.0-3
             write(&runners.join(MANIFEST), &record);
             let browser = path.join("demi-browser");
             let claude = path.join("demi-claude-code");
-            let chrome = zip(&[
-                (CHROME, b"chrome"),
-                ("chrome-linux-arm64/LICENSE", b"license"),
-            ]);
-            let chrome_artifact = measured(&chrome).await;
-            write(
-                &browser.join("resources").join(&chrome_artifact.sha256),
-                &chrome,
-            );
-            let mut browser_release = command_package(
+            let browser_release = command_package(
                 &browser,
                 demi_command_package_browser_protocol::PACKAGE,
                 "demi-browser",
@@ -960,24 +885,6 @@ Version: 0.19.0-3
                 browser_program,
             )
             .await;
-            browser_release.resources.insert(
-                "chrome".to_owned(),
-                PackageResource {
-                    title: "Chrome for Testing 153.0.8010.36".to_owned(),
-                    targets: BTreeMap::from([(
-                        TARGET.to_owned(),
-                        ResourceArtifact {
-                            sha256: chrome_artifact.sha256.clone(),
-                            size: chrome_artifact.size,
-                            entry: CHROME.to_owned(),
-                        },
-                    )]),
-                },
-            );
-            write(
-                &browser.join(DESCRIPTOR),
-                &crate::record(&browser_release).unwrap(),
-            );
             let releases = vec![
                 browser_release,
                 command_package(
@@ -1084,7 +991,6 @@ Version: 0.19.0-3
         );
         assert_eq!(manifest.runner, fixture.runner);
         assert_eq!(manifest.releases, fixture.releases);
-        let chrome = &fixture.releases[0].resources["chrome"].targets[TARGET];
         let uv = &fixture.pins.uv.arm64;
         let tools = [("uv", "0.12.13", uv.sha256.as_str())];
         let recorded: Vec<(&str, &str, &str)> = manifest
@@ -1110,10 +1016,6 @@ Version: 0.19.0-3
                 format!("{ARTIFACTS_PATH}/{}/demi-browser", browser.sha256),
                 browser.clone(),
             ),
-            (
-                format!("{ARTIFACTS_PATH}/{}/{CHROME}", chrome.sha256),
-                measured(b"chrome").await,
-            ),
             (RUNNER_PATH.to_owned(), measured(b"runner").await),
             (INIT_PATH.to_owned(), measured(b"tini").await),
             (format!("{TOOLS_PATH}/uv"), measured(b"uv").await),
@@ -1127,8 +1029,8 @@ Version: 0.19.0-3
             (rootfs.sha256.as_str(), rootfs.size)
         );
         // The archive holds every executable with the bytes the manifest
-        // names, the `demi` alias, Chrome's receipt without its install lock,
-        // and only the kinds of entry the manager's import accepts.
+        // names, the `demi` alias, and only the kinds of entry the manager's
+        // import accepts.
         let entries = entries(&archive);
         for (path, artifact) in &manifest.executables {
             let (kind, _, bytes) = &entries[path.trim_start_matches('/')];
@@ -1140,13 +1042,7 @@ Version: 0.19.0-3
             (*kind, link.as_deref()),
             (tar::EntryType::Symlink, Some(Path::new("demi-runner")))
         );
-        let artifacts = ARTIFACTS_PATH.trim_start_matches('/');
-        assert!(entries.contains_key(&format!("{artifacts}/{}/receipt.json", chrome.sha256)));
         let paths: Vec<&String> = entries.keys().collect();
-        assert!(
-            !paths.iter().any(|path| path.ends_with(".lock")),
-            "{paths:?}"
-        );
         let accepted = [
             tar::EntryType::Regular,
             tar::EntryType::Directory,

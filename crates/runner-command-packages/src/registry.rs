@@ -22,6 +22,7 @@ use demi_command_protocol::{
     ArtifactForm, ConversationRequest, ConversationStatus, PackageDescriptor, Record, ServiceInfo,
 };
 use demi_command_sdk::{Client, ServiceError};
+use demi_runner_protocol::wire::HostArtifact;
 use tokio::{
     sync::{mpsc, oneshot, watch},
     task::JoinSet,
@@ -77,6 +78,7 @@ pub enum Decision {
 pub struct ServiceRegistry {
     handle: ServiceHandle,
     installs: Installs,
+    contents: watch::Receiver<Vec<HostArtifact>>,
     owner: tokio::task::JoinHandle<()>,
     #[cfg(feature = "testing")]
     decisions: tokio::sync::broadcast::Sender<(String, Decision)>,
@@ -94,6 +96,7 @@ impl ServiceRegistry {
     ) -> Result<Self, RuntimeError> {
         let installs = Installs::default();
         let cache = Arc::new(ArtifactCache::new(cache, image, installs.clone()).await?);
+        let contents = cache.contents();
         let invocations = Invocations::default();
         let (requests, receiver) = mpsc::channel(REQUESTS);
         #[cfg(feature = "testing")]
@@ -119,6 +122,7 @@ impl ServiceRegistry {
                 invocations,
             },
             installs,
+            contents,
             owner: tokio::spawn(owner.run(receiver)),
             #[cfg(feature = "testing")]
             decisions,
@@ -133,6 +137,12 @@ impl ServiceRegistry {
     /// § Installation progress).
     pub fn installs(&self) -> InstallsReceiver {
         self.installs.subscribe()
+    }
+
+    /// What the artifact cache holds, and each later list
+    /// (`native-runtime.md` § Installed artifacts).
+    pub fn installed(&self) -> watch::Receiver<Vec<HostArtifact>> {
+        self.contents.clone()
     }
 
     /// What the registry decides from now on, with each service's digest,

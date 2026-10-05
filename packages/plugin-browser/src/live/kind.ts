@@ -43,5 +43,6 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
     label: "New Tab in the Conversation's Browser",
     icon: GlobePlus,
     data: () => ({ url: NEW_TAB_URL }),
+    unavailable: (tab) => tab.session.unavailable.value,
   },
 }

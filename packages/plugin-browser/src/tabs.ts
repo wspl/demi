@@ -51,5 +51,6 @@ export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
     history: (tab, action) => call('history', { tab, action } satisfies TabHistory),
     stream: plugin.stream('browser'),
     installs: () => plugin.installs.value,
+    installed: () => plugin.installed.value,
   }
 }

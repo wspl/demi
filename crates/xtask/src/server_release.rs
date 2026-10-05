@@ -228,7 +228,6 @@ mod tests {
             publish: false,
             artifacts: Some(artifacts.clone()),
             caches: Caches {
-                resources: Some(artifacts.join("resources")),
                 compressed: Some(artifacts.join("compressed")),
             },
         };

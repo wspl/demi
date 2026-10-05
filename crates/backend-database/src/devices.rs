@@ -1,9 +1,10 @@
 //! Device records (`storage.md` § Control records): who owns a device, how
 //! it came to be, and the hash of its current token, which finds the device
-//! of a runner's hello or pipe request through one index lookup. Whether a
-//! device is online is its runner connection's, not a record's.
+//! of a runner's hello or pipe request through one index lookup, and what
+//! its runner last reported its artifact cache holds. Whether a device is
+//! online is its runner connection's, not a record's.
 
-use demi_runner_protocol::wire::RunnerPlatform;
+use demi_runner_protocol::wire::{HostArtifact, RunnerPlatform};
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
@@ -11,7 +12,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
 use super::accounts::TokenHash;
-use super::columns::{decode, instant};
+use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
 
 /// A `devices` row.
@@ -24,9 +25,13 @@ pub struct DeviceRecord {
     pub platform: RunnerPlatform,
     pub claimed_at: Timestamp,
     pub last_seen_at: Option<Timestamp>,
+    /// What its runner last reported its artifact cache holds
+    /// (`native-runtime.md` § Installed artifacts).
+    pub installed: Vec<HostArtifact>,
 }
 
-const DEVICE_COLUMNS: &str = "id, user_id, kind, name, platform, claimed_at, last_seen_at";
+const DEVICE_COLUMNS: &str =
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed";
 
 /// The name and platform of the one device a user's Cloud is.
 const CLOUD_NAME: &str = "Cloud";
@@ -65,6 +70,7 @@ impl ControlService {
                 platform,
                 claimed_at: now,
                 last_seen_at: None,
+                installed: Vec::new(),
             })
         })
         .await
@@ -168,6 +174,22 @@ impl ControlService {
         .await
     }
 
+    /// Records what `device`'s runner reported its artifact cache holds.
+    pub async fn set_device_installed(
+        &self,
+        device: DeviceId,
+        installed: Vec<HostArtifact>,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE devices SET installed = ?1 WHERE id = ?2",
+                params![to_json(&installed), device.as_str()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Records that the device's runner was connected just now.
     pub async fn touch_device_seen(&self, device: DeviceId) -> Result<(), StorageError> {
         self.call(move |connection, now| {
@@ -230,5 +252,6 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
         )?,
         claimed_at: instant(row, "devices", "claimed_at")?,
         last_seen_at,
+        installed: json("devices", "installed", &row.get::<_, String>("installed")?)?,
     })
 }

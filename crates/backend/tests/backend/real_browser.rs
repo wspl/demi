@@ -206,8 +206,8 @@ async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_
     let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
-    // The device's runner finds the pinned Chrome installed in its artifact
-    // cache, where it would unpack the archive the program asks for.
+    // The device's runner holds the pinned Chrome's archive unpacked in its
+    // artifact cache, so the agent's `install` downloads nothing.
     let pinned = BrowserRelease::pinned().unwrap();
     let platform = pinned
         .platform(host_target())
@@ -245,7 +245,7 @@ async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_
     .await;
 
     let script = format!(
-        "demi browser open {} && demi browser content read t1 --format text",
+        "demi browser install && demi browser open {} && demi browser content read t1 --format text",
         page.url
     );
     let read = work
@@ -253,6 +253,7 @@ async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_
         .await;
     let output = &read.received[0];
     assert!(output.contains("exitCode: 0"), "{output}");
+    assert!(output.contains("Installed Chrome for Testing"), "{output}");
     assert!(output.contains("Tab: t1"), "{output}");
     assert!(output.contains(GREETING), "{output}");
     assert!(

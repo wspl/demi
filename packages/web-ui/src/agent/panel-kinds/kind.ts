@@ -31,11 +31,16 @@ export interface PanelTabKind<Data = unknown> {
   picked?(data: Data): Data
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `data`. */
   badge?: Component
-  /** The kind is offered on the strip's new-tab control; `data` is a new tab's. */
+  /**
+   * The kind is offered on the strip's new-tab control; `data` is a new
+   * tab's. While `unavailable` gives a reason, read reactively, the control
+   * is disabled and says it.
+   */
   create?: {
     label: string
     icon: Component
     data(): Data
+    unavailable?(): string | null
   }
 }
 

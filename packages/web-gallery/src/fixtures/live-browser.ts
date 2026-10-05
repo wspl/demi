@@ -17,8 +17,8 @@ import { encodeVideo } from '@demicodes/plugin-browser/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
 import { BrowserTabsError, type BrowserTabList } from '@demicodes/plugin-browser/live/tabs'
-import type { HostInstall } from '@demicodes/web-ui/devices/installs'
-import { BROWSER_ARTIFACTS, playInstalls } from './installs'
+import type { HostArtifact, HostInstall } from '@demicodes/web-ui/devices/installs'
+import { BROWSER_PROGRAM, CHROME_FOR_TESTING, playInstalls } from './installs'
 
 const FPS = 10
 const encoder = new TextEncoder()
@@ -361,8 +361,9 @@ class GalleryBrowserView {
  * shows. It starts with the agent's and the user's tab unless a specimen
  * supplies its own list, such as an empty one for a panel whose strip starts
  * empty. With `install`, its first operation waits for a simulated install
- * of the browser's program and Chrome, as on a Host that never ran the
- * browser.
+ * of the browser's program, as on a Host that never ran the browser. Without
+ * `chrome`, the Host lacks the browser, which only the agent installs, so the
+ * strip offers no new tab and says why.
  */
 export interface GalleryBrowser {
   /** The tab list, as the plugin's conversation state last brought it. */
@@ -376,11 +377,13 @@ export interface GalleryBrowser {
   closeOnDevice(tab: string): void
   stream: OpenUserStream
   installs(): readonly HostInstall[]
+  /** What the Host holds of the browser's package. */
+  installed(): readonly HostArtifact[]
 }
 
 export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),
-  { install = false }: { install?: boolean } = {},
+  { install = false, chrome = true }: { install?: boolean; chrome?: boolean } = {},
 ): GalleryBrowser {
   const views = new Set<GalleryBrowserView>()
   const installs = shallowRef<readonly HostInstall[]>([])
@@ -391,7 +394,7 @@ export function galleryBrowser(
 
   /** The browser's first install, which every operation waits for once. */
   function installOnce(): Promise<void> {
-    installed ??= playInstalls(BROWSER_ARTIFACTS, (list) => {
+    installed ??= playInstalls([BROWSER_PROGRAM], (list) => {
       installs.value = list
     })
     return installed
@@ -414,10 +417,16 @@ export function galleryBrowser(
     return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy, loading: tab.loading }
   }
 
-  const listed = shallowRef<BrowserTabList>({ tabs: tabs.map(info) })
+  /** The browser a tab needs, which the pinned Chrome for Testing is. */
+  const needed = { name: CHROME_FOR_TESTING.name, version: CHROME_FOR_TESTING.version }
+  const held: readonly HostArtifact[] = [
+    { package: BROWSER_PROGRAM.package, name: BROWSER_PROGRAM.name, version: BROWSER_PROGRAM.version },
+    ...(chrome ? [{ package: CHROME_FOR_TESTING.package, ...needed }] : []),
+  ]
+  const listed = shallowRef<BrowserTabList>({ tabs: tabs.map(info), browser: needed })
 
   function changed(): void {
-    listed.value = { tabs: tabs.map(info) }
+    listed.value = { tabs: tabs.map(info), browser: needed }
     for (const view of views) {
       view.state()
     }
@@ -492,5 +501,6 @@ export function galleryBrowser(
     closeOnDevice: remove,
     stream,
     installs: () => installs.value,
+    installed: () => held,
   }
 }
