@@ -74,3 +74,30 @@ export function connectConversationClient(url: string, signal?: AbortSignal): Pr
     signal?.addEventListener('abort', aborted, { once: true })
   })
 }
+
+/**
+ * A connection made earlier, such as beside an opening's reads, for an
+ * attempt that `signal` may end first: the attempt fails with the signal's
+ * reason, and the connection, when it comes, is closed.
+ */
+export function takeConnection(made: Promise<ConversationClient>, signal: AbortSignal): Promise<ConversationClient> {
+  return new Promise((resolve, reject) => {
+    const aborted = () => reject(signal.reason)
+    if (signal.aborted) {
+      aborted()
+    } else {
+      signal.addEventListener('abort', aborted, { once: true })
+    }
+    made.then((client) => {
+      signal.removeEventListener('abort', aborted)
+      if (signal.aborted) {
+        client.disconnect()
+      } else {
+        resolve(client)
+      }
+    }, (error: unknown) => {
+      signal.removeEventListener('abort', aborted)
+      reject(error)
+    })
+  })
+}
