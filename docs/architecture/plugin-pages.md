@@ -142,7 +142,7 @@ calls.
 
 | Part | Gives | Supplied by `web` over |
 | --- | --- | --- |
-| `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls, its user streams and the installs of its packages on the conversation's primary Host ([Data a page shows](#data-a-page-shows)) | The sync channel, the conversation state route, the plugin call routes, the user stream route |
+| `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls and its user streams ([Data a page shows](#data-a-page-shows)) | The sync channel, the conversation state route, the plugin call routes, the user stream route |
 | `intents` | Opening an [intent](#intents) for a conversation, as `{ intent, payload }`, and whether any page the user has on opens it | The shell |
 | `panel` | The tabs of the page's own kinds in a conversation's panel, and adding one, selected with the panel opened or not | The shell |
 | `settings` | Opening a section of the settings dialog, such as Devices | The shell |
@@ -300,7 +300,7 @@ happened to use, and the SDK's entry exports them by these groups:
 | --- | --- |
 | Settings | `SettingsPage`, `SettingsGroup`, `SettingsRow` |
 | Controls | `Button`, `IconButton`, `Switch`, `TextInput`, `Dropdown`, `Menu`, `MenuItem`, `MenuGroup`, `MenuDivider`, `Popover`, `Tooltip`, `Dialog`, `Fold`, `FoldChevron`, `ExternalLink` |
-| Progress | `IndeterminateSpinner`, `HostInstalls` |
+| Progress | `IndeterminateSpinner` |
 | Navigation | `AddressBar` |
 | Files | `FileIcon`, `FileView`, `ChangeView`, and the shapes and paths the conversation files service gives |
 | Icons | `ICON_PX`, the icon sizes, and Demi's own icons, such as `GlobePlus` |

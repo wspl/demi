@@ -262,8 +262,7 @@ To download, the runner completes these steps:
    the Cloud image build uses.
 
 A download has no overall deadline, since an artifact of hundreds of megabytes
-takes minutes on a slow link and the user sees its progress
-([Installation progress](#installation-progress)); it fails when the
+takes minutes on a slow link; it fails when the
 connection makes no progress for 60 seconds, or when its work is cancelled.
 
 Concurrent callers share one download per digest. Cancelling one caller preserves
@@ -354,55 +353,6 @@ and its official URL, or from the call's input, as `demi-claude-code`
 receives the release the backend chose. A URL the program names cannot
 change what runs either: the runner checks the download against the size
 and SHA-256 the same request gives, as it does every download.
-
-### Installation progress
-
-The first `demi browser install` on a paired laptop downloads the
-`demi-browser` executable, then Chrome. The user sees both below the
-running command: `Installing demi.browser: program 0.1.3, 4 of 12 MB`, then
-`Installing demi.browser: Chrome for Testing 153.0.8010.36, 120 of 196 MB`,
-then `unpacking`. A new Claude Code CLI
-installing on the Cloud shows the same way, as `demi.claude-code: Claude Code
-2.1.278`, under the **Requesting** of the conversation that waits for it.
-
-The runner reports what it installs as **installs**: one entry for each
-artifact it is obtaining now, with the package, the artifact's name and
-version, the phase, `download` or `unpack`, and the bytes downloaded of the
-artifact's size. It sends the list of every install in progress on its
-connection, `installs { installs }`, when an install starts or ends, when a
-phase changes, and when an artifact's download passes another hundredth of
-its size, so a 196 MB archive sends at most about a hundred messages. A list
-is the whole truth: the backend keeps the last one per device and drops it
-when the connection ends. An install that fails or is cancelled leaves the
-list; the job or call that needed the artifact reports why. An artifact the
-cache or the image already holds sends nothing.
-
-The backend shows each device's installs in the product state
-([Page synchronization](../product/web-api.md#page-synchronization)). The
-page shows them with one `web-ui` component, the same line for every
-artifact, wherever someone may be waiting on that Host:
-
-| Where | Which installs |
-| --- | --- |
-| A conversation, while a turn runs, below the transcript's last row | Those of the conversation's Host, and, when its provider starts a CLI on the Cloud, those of that CLI's package on the Cloud |
-| A plugin component that waits for a call, such as the browser tab | Those of the plugin's packages on the conversation's Host ([The page](../architecture/plugins.md#the-page)) |
-| A CLI provider's entry in the settings | Those of its CLI's package on the Cloud |
-| Each device in the devices settings | All of that device's |
-
-For example, the first `demi file patch` on a new laptop shows its running
-command and, below it, `Installing demi.file: program 0.1.3, 2 of 9 MB`; the
-first Claude Code request after a reset shows **Requesting** and, below it,
-the CLI's download. The conversation shows what its Hosts install while a
-turn runs, not what this turn asked for: the installs carry no requester, and
-on a Host an install is shared by everyone who needs the artifact. A provider
-entry names its CLI's package (`cliPackage`,
-[Model configuration and provider inspection](../product/web-api.md#model-configuration-and-provider-inspection)),
-so no page knows a package by name.
-
-Since installing is a step of an artifact's first use, or of the command
-that asks for it, the progress needs no separate start: a Host whose agent
-never installs the browser downloads no Chrome. An install leaves nothing in
-the transcript; its line goes when the list no longer has it.
 
 ### Installed artifacts
 
