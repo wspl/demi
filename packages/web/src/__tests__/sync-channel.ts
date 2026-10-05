@@ -64,7 +64,8 @@ export function playChannels(): { readonly opened: readonly TestChannel[]; last(
   return {
     opened,
     last(): TestChannel {
-      const channel = opened.at(-1)
+      // A conversation's socket is no synchronization channel.
+      const channel = opened.findLast((candidate) => new URL(candidate.url).pathname.endsWith('/sync'))
       if (!channel) {
         throw new Error('The page opened no synchronization channel')
       }
