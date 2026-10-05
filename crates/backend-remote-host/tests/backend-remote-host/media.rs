@@ -13,9 +13,11 @@ use demi_host_interface::{
     Call, CommandSet, CommandState, CommandStatus, GroupBuilder, LeafBuilder, RpcError, RpcPort,
     TypedRpc,
 };
+use demi_runner_protocol::wire::Outbound;
 use demi_shared_types::BlobRef;
 use schemars::JsonSchema;
 use serde_json::{Map, Value};
+use tokio::sync::mpsc;
 
 use crate::runner::{catalog, exited, native_leaf, run, shell_on};
 
@@ -59,7 +61,7 @@ async fn return_medium(_: Call<Map<String, Value>>, port: RpcPort) -> Result<u8,
 /// A runner whose jobs run `demi medium`, the fixture's media; `demi
 /// undeclared`, the same operation under a leaf that does not declare
 /// media; and `demi returned`, a handler in the backend that returns one.
-async fn media_runner() -> (RunnerFixture, RemoteShellEnvironment) {
+async fn media_runner(tap: Option<mpsc::Sender<Outbound>>) -> (RunnerFixture, RemoteShellEnvironment) {
     let native = NativeFixture::load();
     let mut commands = CommandSet::new();
     commands
@@ -81,6 +83,7 @@ async fn media_runner() -> (RunnerFixture, RemoteShellEnvironment) {
     let selection = catalog(&native).select(&commands).unwrap();
     let fixture = RunnerFixture::start(FixtureOptions {
         commands,
+        tap,
         ..FixtureOptions::default()
     })
     .await;
@@ -125,7 +128,7 @@ fn png_medium(number: u32, index: u8) -> (u32, String, Vec<u8>) {
 /// rather than where it returned the medium.
 #[tokio::test(flavor = "local")]
 async fn a_medium_goes_to_the_job_or_is_the_whole_stdout_by_where_the_stdout_goes() {
-    let (fixture, shell) = media_runner().await;
+    let (fixture, shell) = media_runner(None).await;
     let home = fixture.home().to_owned();
 
     // Run on its own: the line among the command's text, the medium kept.
@@ -192,7 +195,7 @@ async fn a_medium_goes_to_the_job_or_is_the_whole_stdout_by_where_the_stdout_goe
 /// compare its own stdout (`xargs` would write the bytes).
 #[tokio::test(flavor = "local")]
 async fn a_commands_stdout_is_the_jobs_output_only_where_it_reaches_the_jobs_pipe() {
-    let (fixture, shell) = media_runner().await;
+    let (fixture, shell) = media_runner(None).await;
     let script = [
         "demi medium --before direct",
         "{ demi medium --before group; }",
@@ -232,7 +235,8 @@ async fn a_commands_stdout_is_the_jobs_output_only_where_it_reaches_the_jobs_pip
 /// `media`, or bytes that are no image or video, return one.
 #[tokio::test(flavor = "local")]
 async fn media_keep_their_place_their_order_their_bounds_and_their_checks() {
-    let (fixture, shell) = media_runner().await;
+    let (tap, mut replies) = mpsc::channel(1 << 12);
+    let (fixture, shell) = media_runner(Some(tap)).await;
 
     // A native and an rpc command of one job: each medium's line lies
     // between its command's two lines, numbered in the order they came.
@@ -246,6 +250,14 @@ async fn media_keep_their_place_their_order_their_bounds_and_their_checks() {
         media(&both),
         [png_medium(1, 1), (2, "image/png".to_owned(), returned().to_vec())]
     );
+    // The command's media were read with one request.
+    let mut media_reads = 0;
+    while let Ok(message) = replies.try_recv() {
+        if matches!(message, Outbound::JobMediaRead { .. }) {
+            media_reads += 1;
+        }
+    }
+    assert_eq!(media_reads, 1);
 
     // The 33rd medium is not kept: its place says so, and the command goes
     // on and succeeds.
