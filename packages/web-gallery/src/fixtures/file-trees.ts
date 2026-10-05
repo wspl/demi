@@ -61,6 +61,23 @@ export function rowsSource(): FileBrowserSource {
   return wrap(rowsTree())
 }
 
+export const SHOTS_DIR = `${TREE_ROOT}/.claude/screenshots`
+
+/**
+ * A folder of 40 screenshots inside `.claude`, with siblings after it: enough
+ * rows to scroll it far under the pinned path, and rows left once it folds.
+ */
+export function screenshotsSource(): FileBrowserSource {
+  return wrap(dir({
+    '.claude': dir({
+      screenshots: dir(stubs(Array.from({ length: 40 }, (_, index) => `screenshot-${String(index + 1).padStart(2, '0')}.png`))),
+      'settings.json': file(310, at),
+    }),
+    src: dir(stubs(['app.ts', 'main.ts'])),
+    ...stubs(['README.md', 'package.json', 'tsconfig.json']),
+  }))
+}
+
 /** The rows workspace, where listing `slowPath` never finishes. */
 export function stuckSource(slowPath: string): FileBrowserSource {
   const inner = wrap(rowsTree())

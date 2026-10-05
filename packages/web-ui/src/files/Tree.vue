@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import DropOutline from '../ui/DropOutline.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TreeRow from './TreeRow.vue'
-import { TREE_ROW_PITCH_PX, TREE_ROW_PX, stickyTreeRows, treeBlock, type TreeDropTarget, type TreeRow as Row } from './tree'
+import { TREE_ROW_PITCH_PX, TREE_ROW_PX, revealTreeRow, stickyTreeRows, treeBlock, type TreeDropTarget, type TreeRow as Row } from './tree'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
@@ -13,12 +13,12 @@ import type { SentenceText } from '../ui/ui-text'
  * directories the rows at the top sit in, each while its own row has
  * scrolled out above and its contents have not, so the way to what is in
  * view stays in sight and goes once the tree is past it. A pinned
- * directory scrolls its own row to the top, or acts as the row once it is
- * there. The rows are dressed through
- * the slots `mark`, `name` and `trailing`, given the row; `tooltip` covers a
- * row with a hint; `empty` fills the tree while it has no rows. A right-click
- * asks the host for a menu (`menu`), on a row or, given no row, on the tree's
- * empty space; a host with nothing to offer leaves the web browser's own.
+ * directory acts as its row, and once it folds its row rests where the
+ * pinned copy was. The rows are dressed through the slots `mark`, `name`
+ * and `trailing`, given the row; `tooltip` covers a row with a hint;
+ * `empty` fills the tree while it has no rows. A right-click asks the host
+ * for a menu (`menu`), on a row or, given no row, on the tree's empty space;
+ * a host with nothing to offer leaves the web browser's own.
  *
  * Where a drag would drop (`dropTarget`) lights under a dashed line: a
  * directory row with the rows it holds, its pinned copies too, or the whole
@@ -158,7 +158,7 @@ function layout(): void {
   measureDrop()
 }
 
-/** A pinned directory takes the top of the view, under the caption. */
+/** Scrolls a row to the top of the view, under the caption, for a host that sets up a scrolled state. */
 function scrollToRow(path: string): void {
   const viewport = scrollArea.value?.el
   const el = rowEls.get(path)
@@ -179,28 +179,20 @@ function revealRow(path: string): void {
   if (!viewport || !el || !row) {
     return
   }
-  // A row's ancestors are pinned above it once it reaches the top.
-  const belowAncestors = el.offsetTop - STACK_TOP_PX - row.depth * TREE_ROW_PITCH_PX
-  const atBottom = el.offsetTop + el.offsetHeight - viewport.clientHeight
-  if (viewport.scrollTop > belowAncestors) {
-    viewport.scrollTop = belowAncestors
-  } else if (viewport.scrollTop < atBottom) {
-    viewport.scrollTop = atBottom
+  const top = revealTreeRow(viewport, { depth: row.depth, top: el.offsetTop }, STACK_TOP_PX)
+  if (top !== null) {
+    viewport.scrollTop = top
   }
 }
 
 /**
- * A click on a pinned row brings its directory to the top; one already there
- * (its pinned copy lying over the row itself) acts as the row would.
+ * A click on a pinned row acts as the row would. Its directory folds, so the
+ * copy's slot would fill with what lies under it; the row itself comes to
+ * rest there instead, once the rows have changed.
  */
 function activatePinned(row: R): void {
-  const viewport = scrollArea.value?.el
-  const el = rowEls.get(row.path)
-  if (viewport && el && viewport.scrollTop === el.offsetTop - STACK_TOP_PX) {
-    emit('activate', row)
-    return
-  }
-  scrollToRow(row.path)
+  emit('activate', row)
+  void nextTick(() => revealRow(row.path))
 }
 
 /** Moves the tree by `px`, for a host that sets up a scrolled state. */
