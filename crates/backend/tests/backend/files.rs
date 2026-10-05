@@ -524,7 +524,7 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
 }
 
 #[tokio::test]
-async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_file() {
+async fn an_upload_streams_into_place_whole_makes_its_folders_and_asks_before_it_writes_over_a_file() {
     let device = OnDevice::start().await;
     let put = |path: &str, replace: Option<&str>, body: reqwest::Body| {
         let mut pairs = vec![("path", device.path(path))];
@@ -574,11 +574,10 @@ async fn an_upload_streams_into_place_whole_and_asks_before_it_writes_over_a_fil
         directory.refusal(),
         (StatusCode::CONFLICT, ErrorCode::IsDirectory)
     );
-    let orphan = put("missing/file.txt", None, "x".into()).await;
-    assert_eq!(
-        orphan.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::FsError)
-    );
+    // The write makes the folders above it.
+    let nested = put("made/on/the/way.txt", None, "x".into()).await;
+    assert_eq!(nested.status, StatusCode::NO_CONTENT);
+    assert_eq!(read("made/on/the/way.txt"), "x");
     let flag = put("notes.md", Some("yes"), "x".into()).await;
     assert_eq!(
         flag.refusal(),

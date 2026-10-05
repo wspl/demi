@@ -7,6 +7,10 @@ use std::{
     cell::RefCell,
     collections::{BTreeMap, HashMap, VecDeque},
     rc::Rc,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 use bytes::Bytes;
@@ -19,7 +23,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     ByteRange, CommandRecord, CpOptions, FileContents, FileKind, Host, HostError, MkdirOptions,
     Numbers, PageFeed, PageView, PortError, PortRequest, PortResponse, PortTransport, Process,
-    ProcessEnd, RmOptions, RpcPort, Signal, SpawnEnv, SpawnErrorKind, SpawnRequest, WriteOptions,
+    ProcessEnd, RmOptions, RpcPort, Signal, SpawnEnv, SpawnErrorKind, SpawnRequest, WhenExists, WriteOptions,
 };
 
 /// A page feed for environment tests: it keeps the view of each change it is
@@ -352,16 +356,14 @@ pub fn host_conformance_cases(host: Rc<dyn Host>, root: &str, path: &str) -> Vec
                 fs.write_file(
                     &format!("{root}/a/new/dir/g.txt"),
                     bytes("y"),
-                    WriteOptions {
-                        create_parents: true,
-                    },
+                    WriteOptions::default(),
                 )
                 .await
                 .map_err(text)?;
                 equal(
                     &read(&c, &format!("{root}/a/new/dir/g.txt")).await?,
                     "y",
-                    "create_parents",
+                    "a write makes the directories above it",
                 )?;
                 fs.cp(
                     &format!("{root}/a"),
@@ -512,13 +514,7 @@ pub fn host_conformance_cases(host: Rc<dyn Host>, root: &str, path: &str) -> Vec
             Box::pin(async move {
                 let fs = c.host.fs();
                 let file = format!("{}/stream/digits.txt", c.root);
-                fs.write_file(
-                    &file,
-                    bytes("0123456789"),
-                    WriteOptions {
-                        create_parents: true,
-                    },
-                )
+                fs.write_file(&file, bytes("0123456789"), WriteOptions::default())
                 .await
                 .map_err(text)?;
                 let streamed = |range: ByteRange| {
@@ -551,6 +547,75 @@ pub fn host_conformance_cases(host: Rc<dyn Host>, root: &str, path: &str) -> Vec
                     .read_stream(&format!("{}/stream/missing", c.root), ByteRange::default())
                     .await;
                 code(missing.map(|_| ()), "ENOENT", "a missing file")
+            })
+        },
+    );
+    case(
+        "fs: a write replaces a file, refuses one, or takes a free name, and never a directory",
+        |c| {
+            Box::pin(async move {
+                let fs = c.host.fs();
+                let root = format!("{}/exists", c.root);
+                let write = |name: &'static str, text: &'static str, exists: WhenExists| {
+                    let (fs, path) = (c.host.clone(), format!("{root}/{name}"));
+                    async move {
+                        fs.fs()
+                            .write_file(&path, bytes(text), WriteOptions { exists })
+                            .await
+                    }
+                };
+                let first = write("notes.txt", "one", WhenExists::Refuse).await;
+                equal(&first.map_err(text)?, &"notes.txt".to_owned(), "a free path")?;
+                code(
+                    write("notes.txt", "two", WhenExists::Refuse).await.map(|_| ()),
+                    "EEXIST",
+                    "a refused write",
+                )?;
+                equal(&read(&c, &format!("{root}/notes.txt")).await?, "one", "the refused file")?;
+                // A taken path refuses the write before its bytes move: of
+                // 64 MiB offered, the write takes hardly any.
+                let taken = Arc::new(AtomicUsize::new(0));
+                let chunks = {
+                    let taken = taken.clone();
+                    stream::iter(0..1024).map(move |_| {
+                        taken.fetch_add(1, Ordering::Relaxed);
+                        Ok(Bytes::from(vec![0; 64 * 1024]))
+                    })
+                };
+                let refused = fs
+                    .write_file(
+                        &format!("{root}/notes.txt"),
+                        FileContents::Stream(chunks.boxed()),
+                        WriteOptions {
+                            exists: WhenExists::Refuse,
+                        },
+                    )
+                    .await;
+                code(refused.map(|_| ()), "EEXIST", "a refused stream")?;
+                ok(
+                    taken.load(Ordering::Relaxed) < 1024,
+                    "the refused write took every byte offered",
+                )?;
+                let renamed = write("notes.txt", "two", WhenExists::Rename).await;
+                equal(&renamed.map_err(text)?, &"notes-2.txt".to_owned(), "a free name")?;
+                let again = write("notes.txt", "three", WhenExists::Rename).await;
+                equal(&again.map_err(text)?, &"notes-3.txt".to_owned(), "the next free name")?;
+                equal(&read(&c, &format!("{root}/notes-2.txt")).await?, "two", "the renamed file")?;
+                let replaced = write("notes.txt", "four", WhenExists::Replace).await;
+                equal(&replaced.map_err(text)?, &"notes.txt".to_owned(), "a replaced file")?;
+                equal(&read(&c, &format!("{root}/notes.txt")).await?, "four", "the replaced file")?;
+                fs.mkdir(&format!("{root}/folder"), MkdirOptions::default())
+                    .await
+                    .map_err(text)?;
+                for exists in [WhenExists::Replace, WhenExists::Refuse] {
+                    code(
+                        write("folder", "five", exists).await.map(|_| ()),
+                        "EISDIR",
+                        "a write over a directory",
+                    )?;
+                }
+                let beside = write("folder", "six", WhenExists::Rename).await;
+                equal(&beside.map_err(text)?, &"folder-2".to_owned(), "a name beside a directory")
             })
         },
     );

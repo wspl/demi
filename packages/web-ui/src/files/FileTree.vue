@@ -52,7 +52,8 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  * while the drag is over it, and a closed directory the drag rests on opens.
  * Names the directory already has wait on a question: Replace or Skip, and
  * Merge once a folder meets a folder. The uploads themselves belong to the
- * source (`uploadsOf`), and a directory an upload changes is listed again.
+ * source (`uploadsOf`), and a listed directory shows what an upload's
+ * answers add or delete in it without being listed again.
  *
  * While the source has uploads they list under the tree, fitting their rows
  * up to `UPLOADS_FIT_PX`; the divider between the two sizes the list, which
@@ -314,11 +315,31 @@ const uploadsSize = computed({
   },
 })
 
-// A directory an upload changes shows it, when it is listed.
+// What an upload's answers change shows in the directories listed, without
+// listing them again (`web-application.md` § Requests for one action).
 watch(uploads, (list, _previous, onCleanup) => {
-  onCleanup(list.onChanged((directory) => {
-    if (listings.get(directory)?.open)
-      void load(directory, true)
+  onCleanup(list.onChanged((change) => {
+    if (change.kind === 'removed') {
+      const parent = listings.get(parentPath(change.path))
+      if (parent)
+        parent.entries = parent.entries.filter((entry) => entry.name !== baseName(change.path))
+      // What was listed inside it is gone with it.
+      for (const path of [...listings.keys()]) {
+        if (path === change.path || path.startsWith(`${change.path}/`))
+          listings.delete(path)
+      }
+      return
+    }
+    const entry = listings.get(change.directory)
+    if (!entry || entry.failure)
+      return
+    // A listing on its way may have missed it.
+    if (entry.loading) {
+      entry.again = true
+      return
+    }
+    const others = entry.entries.filter((existing) => existing.name !== change.entry.name)
+    entry.entries = sortEntries([...others, change.entry], DEFAULT_SORT)
   }))
 }, { immediate: true })
 
