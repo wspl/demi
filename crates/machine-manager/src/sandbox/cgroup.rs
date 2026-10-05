@@ -38,21 +38,7 @@ fn sandboxes() -> PathBuf {
 /// there; an error names every one that is missing.
 pub async fn prepare() -> Result<(), CgroupError> {
     blocking::run(|_| {
-        let available = match fs_err::read_to_string(PathBuf::from(ROOT).join("cgroup.controllers"))
-        {
-            Ok(available) => available,
-            // A root that is no cgroup v2 hierarchy offers no controller.
-            Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
-            Err(error) => return Err(error.into()),
-        };
-        let available: Vec<_> = available.split_whitespace().collect();
-        let missing: Vec<_> = CONTROLLERS
-            .into_iter()
-            .filter(|controller| !available.contains(controller))
-            .collect();
-        if !missing.is_empty() {
-            return Err(CgroupError::Missing(missing));
-        }
+        require_controllers()?;
         let enable = "+cpu +memory +pids";
         fs_err::write(PathBuf::from(ROOT).join("cgroup.subtree_control"), enable)?;
         fs_err::create_dir_all(sandboxes())?;
@@ -60,6 +46,30 @@ pub async fn prepare() -> Result<(), CgroupError> {
         Ok(())
     })
     .await
+}
+
+/// Requires the CPU, memory and PID controllers, changing nothing.
+pub async fn check() -> Result<(), CgroupError> {
+    blocking::run(|_| require_controllers()).await
+}
+
+/// Fails naming every controller the cgroup v2 root does not offer.
+fn require_controllers() -> Result<(), CgroupError> {
+    let available = match fs_err::read_to_string(PathBuf::from(ROOT).join("cgroup.controllers")) {
+        Ok(available) => available,
+        // A root that is no cgroup v2 hierarchy offers no controller.
+        Err(error) if error.kind() == io::ErrorKind::NotFound => String::new(),
+        Err(error) => return Err(error.into()),
+    };
+    let available: Vec<_> = available.split_whitespace().collect();
+    let missing: Vec<_> = CONTROLLERS
+        .into_iter()
+        .filter(|controller| !available.contains(controller))
+        .collect();
+    if !missing.is_empty() {
+        return Err(CgroupError::Missing(missing));
+    }
+    Ok(())
 }
 
 /// Kills whatever runs in `sandbox`'s cgroup, waits for it to empty and
