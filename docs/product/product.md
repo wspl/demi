@@ -107,6 +107,10 @@ choice of a kind or a device saves it, whether or not a project is then
 created, as a backend user preference
 ([User preferences](web-api.md#user-preferences)), so every browser of the
 user starts the same way. The directory and the name are not remembered.
+Creating the project opens a new conversation in it, as the project's own New
+Conversation does: an immediately typeable draft, which the first send makes a
+conversation, so a project the user only wanted to set up leaves no empty
+conversation behind.
 
 Conversations can be archived and restored, but not deleted. Archiving is refused
 while root or child work or conflicting operations are active. Archived history
