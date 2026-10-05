@@ -1056,14 +1056,20 @@ input went when it named none.
 ### Installation
 
 `install` installs the pinned Chrome for Testing on the Host, from its
-official URL ([Browser distribution](#browser-distribution)). It shows the
-download and the unpacking while they run, and prints where the browser is.
+official URL ([Browser distribution](#browser-distribution)). It reports the
+download and the unpacking in its own output while they run, as a download in
+a terminal does, in lines the agent reads like the rest of the command's
+output, and prints where the browser is:
 Run again, it finds the installation and prints the same. On Linux it then
 names what the Host still lacks, from the package's record, and how to
 install it; it installs none of it:
 
 ```text
 $ demi browser install
+Downloading Chrome for Testing 153.0.8010.36: 18 of 182 MB
+Downloading Chrome for Testing 153.0.8010.36: 37 of 182 MB
+…
+Unpacking Chrome for Testing 153.0.8010.36
 Installed Chrome for Testing 153.0.8010.36 at /home/demi/.demi/artifacts/<sha256>/chrome-linux64/chrome
 Chrome needs system libraries this Host lacks: libnss3.so, libgbm.so.1, libasound.so.2
 Recommended fonts are missing: color emoji; Chinese, Japanese and Korean text
