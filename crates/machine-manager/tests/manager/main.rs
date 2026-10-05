@@ -22,10 +22,9 @@ use std::{
 
 use demi_machine_manager::{
     config::RUNTIME_DIRECTORY,
-    sandbox::runsc::RuntimeRelease,
     testing::{CloudImage, RUNNER, TINI, entries},
 };
-use demi_machine_manager_protocol::image::Architecture;
+use demi_machine_manager_protocol::{image::Architecture, runtime::RuntimeRelease};
 use rustix::process::{Pid, Signal, kill_process};
 
 const MANAGER: &str = env!("CARGO_BIN_EXE_demi-machine-manager");
