@@ -1,55 +1,35 @@
-//! Native artifact publication (`native-runtime.md` § Publish artifacts
-//! before enabling commands, § Backend deployment configuration): before the
-//! backend accepts requests, every command package release in its server
-//! release's `commands/` is verified whole (its descriptor, and each
-//! target's executable by size and SHA-256), and published into the
-//! deployment's one object store, local or S3 alike: its executables are
-//! stored once each as content-addressed objects, as the compressed copy its
-//! release carries once that copy is checked to decode to the executable,
-//! its descriptor and then its immutable package-and-version mapping are
-//! published, and only then does the catalog serve. Every object carries the
-//! SHA-256 and size of what it stands for, the executable's for an encoded
-//! one. A write never replaces an object: finding one in place is success when
-//! those are the ones published, and a refusal otherwise. Runners download an
-//! executable from a URL signed for five minutes when the store is S3, and
-//! from the backend itself when it is local (`local_store`).
+//! Native package publication (`native-runtime.md` § Publish packages, then
+//! source artifacts on demand, § Backend deployment configuration): before
+//! the backend accepts requests, every command package release in its server
+//! release's `commands/` is read and checked, its descriptor and then its
+//! immutable package-and-version mapping are published into the
+//! deployment's one object store, local or S3 alike, and only then does the
+//! catalog serve. No executable is stored here: each enters the store the
+//! first time something needs it ([`crate::sourcing`]). Every object carries
+//! the SHA-256 and size of what it stands for, the executable's for an
+//! encoded one. A write never replaces an object: finding one in place is
+//! success when those are the ones published, and a refusal otherwise.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path as FilePath, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
 
-use axum::http::Method;
 use bytes::Bytes;
 use demi_backend_blobs::store::Objects;
-use demi_backend_remote_host::ArtifactResolver;
-use demi_command_protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor};
-use futures_util::TryStreamExt as _;
-use futures_util::future::LocalBoxFuture;
+use demi_command_protocol::{PackageArtifact, PackageDescriptor};
+use demi_runner_protocol::release::{FilesLocation, SERVER_RELEASE, ServerRelease, compressed_file};
 use object_store::path::Path;
-use object_store::signer::Signer;
 use object_store::{
     Attribute, Attributes, GetOptions, ObjectStore, PutMode, PutOptions, PutPayload,
 };
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use tokio_util::sync::CancellationToken;
 
-use crate::local_store::LocalArtifacts;
-use crate::native::{NativeCatalog, Store};
-
-/// How long a runner's signed download URL stays valid.
-const SIGNED_FOR: Duration = Duration::from_secs(300);
-
-/// How many uploads run at once.
-const UPLOADS: usize = 4;
+use crate::native::{Artifacts, NativeCatalog};
+use crate::sourcing::{ReleaseArtifact, Sourcing};
 
 /// The key prefix of every command package object in the store
 /// (`storage.md` § The object store).
 pub const PREFIX: &str = "native";
-
-/// What a compressed copy's name adds to its executable's in a release
-/// (`builds-and-releases.md` § Packaging).
-const COMPRESSED_SUFFIX: &str = ".zst";
 
 /// The metadata keys of the SHA-256 and the size of what an object stands
 /// for.
@@ -69,9 +49,8 @@ const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'(')
     .remove(b')');
 
-/// One release directory of `commands/`: `descriptor.json`, and one
-/// executable per target triple, named as the directory (with `.exe` for
-/// Windows), beside its compressed copy.
+/// One release directory of `commands/`, named as its program, which holds
+/// its `descriptor.json`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Release {
     directory: PathBuf,
@@ -85,6 +64,10 @@ pub enum PublicationError {
     Commands { directory: PathBuf, reason: String },
     #[error("the native release in {} cannot be published: {reason}", directory.display())]
     Release { directory: PathBuf, reason: String },
+    #[error("the server release's files cannot be reached: {0}")]
+    Files(String),
+    #[error("the server release's record {} cannot be read: {reason}", path.display())]
+    Record { path: PathBuf, reason: String },
     #[error("an immutable native artifact object differs from the one in place: {0}")]
     Conflict(String),
     #[error("the object store failed: {0}")]
@@ -93,36 +76,55 @@ pub enum PublicationError {
     Cancelled,
 }
 
+/// Where the files of the server release whose root is `release` are, as
+/// its `release.json` says.
+pub async fn release_files(release: &FilePath) -> Result<FilesLocation, PublicationError> {
+    let path = release.join(SERVER_RELEASE);
+    let unreadable = |reason: String| PublicationError::Record {
+        path: path.clone(),
+        reason,
+    };
+    let record = tokio::fs::read(&path)
+        .await
+        .map_err(|error| unreadable(error.to_string()))?;
+    let record = ServerRelease::decode(&record).map_err(|error| unreadable(error.to_string()))?;
+    Ok(record.location())
+}
+
 /// Publishes the releases in `commands`, a server release's `commands/`,
 /// into `objects`, and makes the catalog of them, which the conversations'
-/// commands bind to. The backend accepts requests only once this completed;
-/// `cancel` interrupts it.
+/// commands bind to and whose executables come from `files`, the release's
+/// files. The backend accepts requests only once this completed; `cancel`
+/// interrupts it.
 pub async fn publish_native(
     commands: &FilePath,
+    files: FilesLocation,
     objects: &Objects,
     cancel: &CancellationToken,
 ) -> Result<NativeCatalog, PublicationError> {
     let releases = releases(commands).await?;
-    let published = publish(&releases, &*objects.store, cancel).await?;
-    let store = match &objects.signer {
-        Some(signer) => Store::Signed(SignedArtifacts {
-            signer: signer.clone(),
-            published: Arc::new(published.artifacts),
-        }),
-        None => Store::Local(Arc::new(LocalArtifacts::new(
-            objects.store.clone(),
-            published.artifacts,
-        ))),
-    };
+    let verified = verify_all(&releases).await?;
+    publish(&verified, &*objects.store, cancel).await?;
+    let mut executables = HashMap::new();
+    for (release, descriptor) in releases.iter().zip(&verified) {
+        for (target, artifact) in &descriptor.targets {
+            let wanted = ReleaseArtifact {
+                file: compressed_file(&release.executable, target),
+                artifact: artifact.clone(),
+                encoded: true,
+            };
+            executables.entry(artifact.sha256.clone()).or_insert(wanted);
+        }
+    }
+    let sourcing = Sourcing::new(objects.store.clone(), files)?;
+    let artifacts = Artifacts::new(sourcing, objects.signer.clone(), executables);
     tracing::info!(
-        packages = published.packages.len(),
+        packages = verified.len(),
         "the command packages are published"
     );
-    NativeCatalog::new(published.packages, store).map_err(|error| {
-        PublicationError::Commands {
-            directory: commands.to_owned(),
-            reason: error.to_string(),
-        }
+    NativeCatalog::new(verified, artifacts).map_err(|error| PublicationError::Commands {
+        directory: commands.to_owned(),
+        reason: error.to_string(),
     })
 }
 
@@ -162,76 +164,14 @@ async fn releases(commands: &FilePath) -> Result<Vec<Release>, PublicationError>
     Ok(releases)
 }
 
-/// A verified release: its descriptor, and its executables by target with
-/// their compressed copies.
-struct Verified {
-    descriptor: PackageDescriptor,
-    executables: Vec<(PathBuf, PackageArtifact)>,
-}
-
-/// The published catalog: the releases' descriptors, and the size of each
-/// artifact runners may download, by SHA-256.
-struct Published {
-    packages: Vec<PackageDescriptor>,
-    artifacts: HashMap<String, u64>,
-}
-
-/// Publishes `releases` to `store`, verifying every release before any
-/// upload. `cancel` stops it.
+/// Publishes each descriptor's canonical JSON and then its package and
+/// version's mapping. `cancel` stops it.
 async fn publish(
-    releases: &[Release],
+    descriptors: &[PackageDescriptor],
     store: &dyn ObjectStore,
     cancel: &CancellationToken,
-) -> Result<Published, PublicationError> {
-    let verified = verify_all(releases, cancel).await?;
-    // Each executable once, however many releases carry it, stored as its
-    // compressed copy in the content coding.
-    let mut uploads: HashMap<String, (PathBuf, PackageArtifact)> = HashMap::new();
-    for release in &verified {
-        for (path, artifact) in &release.executables {
-            uploads
-                .entry(artifact.sha256.clone())
-                .or_insert_with(|| (compressed(path), artifact.clone()));
-        }
-    }
-    let artifacts: HashMap<String, u64> = uploads
-        .iter()
-        .map(|(sha256, (_, artifact))| (sha256.clone(), artifact.size))
-        .collect();
-    futures_util::stream::iter(uploads.into_values().map(Ok))
-        .try_for_each_concurrent(UPLOADS, |(path, artifact)| async move {
-            let key = blob(&artifact.sha256)?;
-            if in_place(store, &key, &artifact, cancel).await? {
-                return Ok(());
-            }
-            let read = tokio::select! {
-                () = cancel.cancelled() => return Err(PublicationError::Cancelled),
-                read = tokio::fs::read(&path) => read,
-            };
-            let refused = |reason: String| PublicationError::Release {
-                directory: path.clone(),
-                reason,
-            };
-            let bytes = Bytes::from(read.map_err(|error| refused(error.to_string()))?);
-            let expected = demi_shared_artifacts::Digest {
-                size: artifact.size,
-                sha256: artifact.sha256.clone(),
-            };
-            // What is stored is what was verified, whatever changed the file
-            // since: what the compressed copy decodes to.
-            let checked = bytes.clone();
-            tokio::task::spawn_blocking(move || {
-                demi_shared_artifacts::check_encoded_blocking(&checked, &expected)
-            })
-            .await
-            .map_err(|error| refused(error.to_string()))?
-            .map_err(|error| refused(error.to_string()))?;
-            let coding = Some(demi_shared_artifacts::CONTENT_CODING);
-            put_immutable(store, &key, bytes, &artifact, coding, cancel).await
-        })
-        .await?;
-    for release in &verified {
-        let descriptor = &release.descriptor;
+) -> Result<(), PublicationError> {
+    for descriptor in descriptors {
         let body = serde_json_canonicalizer::to_vec(descriptor).map_err(|error| {
             PublicationError::Release {
                 directory: PathBuf::from(&descriptor.id),
@@ -260,49 +200,29 @@ async fn publish(
         ))?;
         put_immutable(store, &claim, body, &artifact, None, cancel).await?;
     }
-    Ok(Published {
-        packages: verified
-            .into_iter()
-            .map(|release| release.descriptor)
-            .collect(),
-        artifacts,
-    })
+    Ok(())
 }
 
-/// Where the compressed copy of the executable at `path` lies.
-fn compressed(path: &FilePath) -> PathBuf {
-    let mut name = path.as_os_str().to_owned();
-    name.push(COMPRESSED_SUFFIX);
-    PathBuf::from(name)
-}
-
-/// Verifies every release: its descriptor, and the executable of each
-/// target it carries. Two releases of one package are refused.
-async fn verify_all(
-    releases: &[Release],
-    cancel: &CancellationToken,
-) -> Result<Vec<Verified>, PublicationError> {
+/// Reads every release's descriptor. Two releases of one package are
+/// refused.
+async fn verify_all(releases: &[Release]) -> Result<Vec<PackageDescriptor>, PublicationError> {
     let mut verified = Vec::with_capacity(releases.len());
     let mut ids = HashSet::new();
     for release in releases {
-        let release = verify(release, cancel).await?;
-        if !ids.insert(release.descriptor.id.clone()) {
+        let descriptor = verify(release).await?;
+        if !ids.insert(descriptor.id.clone()) {
             return Err(PublicationError::Release {
-                directory: PathBuf::from(&release.descriptor.id),
+                directory: release.directory.clone(),
                 reason: "the package is released twice".into(),
             });
         }
-        verified.push(release);
+        verified.push(descriptor);
     }
     Ok(verified)
 }
 
-/// Reads a release's descriptor and checks the executable of each target it
-/// carries against it.
-async fn verify(
-    release: &Release,
-    cancel: &CancellationToken,
-) -> Result<Verified, PublicationError> {
+/// Reads a release's descriptor, which must carry a target.
+async fn verify(release: &Release) -> Result<PackageDescriptor, PublicationError> {
     let refused = |reason: String| PublicationError::Release {
         directory: release.directory.clone(),
         reason,
@@ -317,34 +237,7 @@ async fn verify(
     if descriptor.targets.is_empty() {
         return Err(refused("it carries no target".into()));
     }
-    let mut executables = Vec::with_capacity(descriptor.targets.len());
-    for (target, expected) in &descriptor.targets {
-        let suffix = if target.contains("windows") {
-            ".exe"
-        } else {
-            ""
-        };
-        let path = release
-            .directory
-            .join(target)
-            .join(format!("{}{suffix}", release.executable));
-        let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
-            .await
-            .map_err(|error| match error {
-                demi_shared_artifacts::Error::Cancelled => PublicationError::Cancelled,
-                error => refused(format!("{target}: {error}")),
-            })?;
-        if found.size != expected.size || found.sha256 != expected.sha256 {
-            return Err(refused(format!(
-                "{target}: the executable does not match the descriptor"
-            )));
-        }
-        executables.push((path, expected.clone()));
-    }
-    Ok(Verified {
-        descriptor,
-        executables,
-    })
+    Ok(descriptor)
 }
 
 /// The object at `key`, which is taken as it is: a version's percent
@@ -364,7 +257,7 @@ pub fn blob(sha256: &str) -> Result<Path, PublicationError> {
 /// Creates the object at `path`, which stands for `artifact`, from `bytes`
 /// in `coding`, unless one is there; one in place is success when it stands
 /// for `artifact`, and a conflict otherwise.
-async fn put_immutable(
+pub(crate) async fn put_immutable(
     store: &dyn ObjectStore,
     path: &Path,
     bytes: Bytes,
@@ -406,7 +299,7 @@ async fn put_immutable(
 /// Whether an object at `path` stands for `artifact`: none is `false`, one
 /// whose published SHA-256 and size are the artifact's is `true`, and any
 /// other is a conflict.
-async fn in_place(
+pub(crate) async fn in_place(
     store: &dyn ObjectStore,
     path: &Path,
     artifact: &PackageArtifact,
@@ -439,157 +332,123 @@ async fn in_place(
     Ok(true)
 }
 
-/// The published executables' downloads, signed on each request. `Send`,
-/// so each shard makes its resolver of it.
-#[derive(Clone)]
-pub struct SignedArtifacts {
-    signer: Arc<dyn Signer>,
-    /// Each published artifact's size, by SHA-256.
-    published: Arc<HashMap<String, u64>>,
-}
-
-impl SignedArtifacts {
-    /// A signed download of `artifact`, when it is a published executable.
-    async fn location(&self, artifact: &PackageArtifact) -> Result<ArtifactLocation, String> {
-        if self.published.get(&artifact.sha256) != Some(&artifact.size) {
-            return Err("the artifact is not in the published package catalog".into());
-        }
-        let key = blob(&artifact.sha256).map_err(|error| error.to_string())?;
-        let url = self
-            .signer
-            .signed_url(Method::GET, &key, SIGNED_FOR)
-            .await
-            .map_err(|error| error.to_string())?;
-        if url.scheme() != "https" {
-            return Err("a native artifact downloads over HTTPS only".into());
-        }
-        let expires_at = jiff::Timestamp::now() + SIGNED_FOR;
-        Ok(ArtifactLocation::Url(ArtifactUrl {
-            url: url.into(),
-            expires_at: Some(expires_at.as_millisecond()),
-        }))
-    }
-}
-
-impl ArtifactResolver for SignedArtifacts {
-    fn resolve(
-        &self,
-        artifact: &PackageArtifact,
-        _target: &str,
-        cancel: CancellationToken,
-    ) -> LocalBoxFuture<'static, Result<ArtifactLocation, String>> {
-        let artifacts = self.clone();
-        let artifact = artifact.clone();
-        Box::pin(async move {
-            tokio::select! {
-                () = cancel.cancelled() => Err("the work that asked no longer runs".into()),
-                location = artifacts.location(&artifact) => location,
-            }
-        })
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use demi_command_protocol::TARGETS;
-    use object_store::ObjectStoreExt as _;
+    use std::sync::Arc;
+
+    use demi_command_protocol::{ArtifactLocation, TARGETS};
     use object_store::aws::AmazonS3Builder;
     use sha2::{Digest as _, Sha256};
+    use tempfile::TempDir;
 
     use demi_backend_blobs::fake_s3::FakeS3;
     use demi_backend_blobs::local::LocalObjects;
     use demi_command_package_browser_protocol::PACKAGE as BROWSER_PACKAGE;
 
+    use crate::public_url::PublicUrl;
+
     use super::*;
 
-    /// A release of `targets` in `commands/commands`, whose executables are
-    /// test bytes, not programs, each with its compressed copy beside it.
-    fn release(commands: &FilePath, targets: &[&str]) -> Release {
-        let directory = commands.join("commands");
-        let mut artifacts = serde_json::Map::new();
-        for target in targets {
-            let bytes = format!("test-only artifact {target}");
-            let suffix = if target.contains("windows") {
-                ".exe"
-            } else {
-                ""
-            };
-            std::fs::create_dir_all(directory.join(target)).unwrap();
-            let executable = directory.join(target).join(format!("commands{suffix}"));
-            std::fs::write(&executable, &bytes).unwrap();
-            let encoded = demi_shared_artifacts::encode_blocking(
-                bytes.as_bytes(),
-                demi_shared_artifacts::Effort::Fast,
-            )
-            .unwrap();
-            std::fs::write(compressed(&executable), encoded).unwrap();
-            let artifact = serde_json::json!({ "sha256": hex::encode(Sha256::digest(&bytes)), "size": bytes.len() });
-            artifacts.insert((*target).to_owned(), artifact);
+    /// A server release's `commands/`, with one release named `commands`
+    /// of `targets`, and the release's files: each target's executable,
+    /// test bytes rather than a program, as its compressed copy.
+    struct Fixture {
+        commands: TempDir,
+        files: TempDir,
+    }
+
+    impl Fixture {
+        fn new(targets: &[&str]) -> Self {
+            let commands = tempfile::tempdir().unwrap();
+            let files = tempfile::tempdir().unwrap();
+            let release = commands.path().join("commands");
+            std::fs::create_dir_all(&release).unwrap();
+            let mut artifacts = serde_json::Map::new();
+            for target in targets {
+                let bytes = executable(target);
+                let encoded = demi_shared_artifacts::encode_blocking(
+                    &bytes,
+                    demi_shared_artifacts::Effort::Fast,
+                )
+                .unwrap();
+                std::fs::write(files.path().join(compressed_file("commands", target)), encoded)
+                    .unwrap();
+                artifacts.insert((*target).to_owned(), serde_json::to_value(artifact(target)).unwrap());
+            }
+            let descriptor = serde_json::json!({
+                "id": "example.commands", "version": "1.0.0+build", "protocolVersion": 1,
+                "operations": ["fixture"], "targets": artifacts,
+            });
+            std::fs::write(release.join("descriptor.json"), descriptor.to_string()).unwrap();
+            Self { commands, files }
         }
-        let descriptor = serde_json::json!({
-            "id": "example.commands", "version": "1.0.0+build", "protocolVersion": 1,
-            "operations": ["fixture"], "targets": artifacts,
-        });
-        std::fs::write(directory.join("descriptor.json"), descriptor.to_string()).unwrap();
-        Release {
-            directory,
-            executable: "commands".into(),
+
+        fn files(&self) -> FilesLocation {
+            FilesLocation::Directory(self.files.path().to_owned())
         }
+
+        async fn publish(&self, objects: &Objects) -> Result<NativeCatalog, PublicationError> {
+            let cancel = CancellationToken::new();
+            publish_native(self.commands.path(), self.files(), objects, &cancel).await
+        }
+    }
+
+    /// The test bytes standing for `target`'s executable.
+    fn executable(target: &str) -> Vec<u8> {
+        format!("test-only artifact {target}").into_bytes()
+    }
+
+    fn artifact(target: &str) -> PackageArtifact {
+        let bytes = executable(target);
+        PackageArtifact {
+            sha256: hex::encode(Sha256::digest(&bytes)),
+            size: bytes.len() as u64,
+        }
+    }
+
+    fn local(data: &FilePath) -> Objects {
+        Objects {
+            store: Arc::new(LocalObjects::new(data).unwrap()),
+            signer: None,
+        }
+    }
+
+    /// The backend's own URL, as once it listens.
+    fn backend() -> PublicUrl {
+        let backend = PublicUrl::default();
+        backend.listening(None, "127.0.0.1:3271".parse().unwrap());
+        backend
     }
 
     const CLAIM: &str = "native/packages/example.commands/1.0.0%2Bbuild.json";
 
     #[tokio::test]
-    async fn the_executables_precede_the_immutable_descriptor_and_a_version_keeps_its_meaning() {
+    async fn a_start_publishes_the_descriptor_alone_and_a_version_keeps_its_meaning() {
         let fake = FakeS3::start().await;
-        let store = fake.client();
-        let commands = tempfile::tempdir().unwrap();
-        let releases = [release(commands.path(), TARGETS)];
-        let cancel = CancellationToken::new();
-        let published = publish(&releases, &store, &cancel).await.unwrap();
-        assert_eq!(published.packages[0].id, "example.commands");
-        let written = fake.written();
-        assert_eq!(written.len(), 8, "{written:?}");
-        assert!(
-            written[..6]
-                .iter()
-                .all(|key| key.starts_with("native/blobs/")),
-            "{written:?}"
-        );
-        assert!(written[6].starts_with("native/descriptors/"), "{written:?}");
-        assert_eq!(written[7], CLAIM);
-        // An executable is stored as its compressed copy and downloads as
-        // the executable its descriptor names.
-        let executable = releases[0].directory.join(TARGETS[0]).join("commands");
-        let bytes = std::fs::read(&executable).unwrap();
-        let digest = demi_shared_artifacts::Digest {
-            size: bytes.len() as u64,
-            sha256: hex::encode(Sha256::digest(&bytes)),
+        let objects = Objects {
+            store: Arc::new(fake.client()),
+            signer: None,
         };
-        let key = format!("native/blobs/{}", digest.sha256);
-        assert_eq!(
-            fake.object(&key).unwrap(),
-            std::fs::read(compressed(&executable)).unwrap()
-        );
-        let mut downloaded = Vec::new();
-        let client = demi_shared_artifacts::client_allowing_http().unwrap();
-        let url = format!("{}demi/{key}", fake.endpoint);
-        demi_shared_artifacts::download(&client, &url, &digest, &mut downloaded, &cancel)
-            .await
-            .unwrap();
-        assert_eq!(downloaded, bytes);
+        let fixture = Fixture::new(TARGETS);
+        let catalog = fixture.publish(&objects).await.unwrap();
+        assert!(catalog.package("example.commands").is_some());
+        // No executable is stored before something needs it.
+        let written = fake.written();
+        assert_eq!(written.len(), 2, "{written:?}");
+        assert!(written[0].starts_with("native/descriptors/"), "{written:?}");
+        assert_eq!(written[1], CLAIM);
         // A second start finds its objects in place.
-        publish(&releases, &store, &cancel).await.unwrap();
-        assert_eq!(fake.written().len(), 8);
+        fixture.publish(&objects).await.unwrap();
+        assert_eq!(fake.written().len(), 2);
 
         // The same version naming other operations is refused, and the
         // version names what it named.
-        let descriptor = releases[0].directory.join("descriptor.json");
+        let descriptor = fixture.commands.path().join("commands/descriptor.json");
         let changed = std::fs::read_to_string(&descriptor)
             .unwrap()
             .replace(r#"["fixture"]"#, r#"["fixture","changed"]"#);
         std::fs::write(&descriptor, changed).unwrap();
-        let refused = publish(&releases, &store, &cancel).await;
+        let refused = fixture.publish(&objects).await;
         assert!(
             matches!(refused, Err(PublicationError::Conflict(_))),
             "{:?}",
@@ -600,93 +459,91 @@ mod tests {
         assert_eq!(claim["operations"], serde_json::json!(["fixture"]));
     }
 
+    /// The first `demi file read` on a laptop of a target: the runner asks
+    /// where the executable downloads from, and the backend takes it from
+    /// the release's files, checks it, stores it and answers.
     #[tokio::test]
-    async fn a_release_that_cannot_be_published_whole_publishes_no_descriptor() {
-        let fake = FakeS3::start().await;
-        let store = fake.client();
+    async fn an_executable_enters_the_store_the_first_time_a_runner_needs_it() {
+        let data = tempfile::tempdir().unwrap();
+        let objects = local(data.path());
+        let fixture = Fixture::new(&TARGETS[..2]);
+        let catalog = fixture.publish(&objects).await.unwrap();
+        let wanted = artifact(TARGETS[0]);
+        // Nothing serves it before a runner needs it.
+        assert!(catalog.local_artifact(&wanted.sha256).await.is_none());
+        let resolver = catalog.resolver(&backend());
         let cancel = CancellationToken::new();
-        let commands = tempfile::tempdir().unwrap();
-        let releases = [release(commands.path(), TARGETS)];
-        let windows = releases[0].directory.join(TARGETS[5]).join("commands.exe");
-        let bytes = std::fs::read(&windows).unwrap();
-        std::fs::write(&windows, "corrupt").unwrap();
-        let corrupt = publish(&releases, &store, &cancel).await.err().unwrap();
-        assert!(
-            corrupt
-                .to_string()
-                .contains("does not match the descriptor"),
-            "{corrupt}"
-        );
-        assert!(fake.written().is_empty(), "{:?}", fake.written());
-
-        // A compressed copy that is not the executable's is refused, and the
-        // version is not published.
-        std::fs::write(&windows, &bytes).unwrap();
-        std::fs::write(compressed(&windows), "not zstd").unwrap();
-        let undecodable = publish(&releases, &store, &cancel).await.err().unwrap();
-        assert!(
-            matches!(undecodable, PublicationError::Release { .. }),
-            "{undecodable}"
-        );
-        assert!(
-            fake.written()
-                .iter()
-                .all(|key| key.starts_with("native/blobs/")),
-            "{:?}",
-            fake.written()
-        );
-
-        // An executable's object that holds other bytes stops the release
-        // before its descriptor.
-        let other = tempfile::tempdir().unwrap();
-        let releases = [release(other.path(), TARGETS)];
-        let sha256 = hex::encode(Sha256::digest(&bytes));
-        let squatted = Path::parse(format!("native/blobs/{sha256}")).unwrap();
-        store
-            .put(&squatted, PutPayload::from_static(b"other bytes"))
+        let location = resolver
+            .resolve(&wanted, TARGETS[0], cancel.clone())
             .await
             .unwrap();
-        let conflict = publish(&releases, &store, &cancel).await;
-        assert!(
-            matches!(conflict, Err(PublicationError::Conflict(_))),
-            "{:?}",
-            conflict.err()
+        let ArtifactLocation::Url(location) = location else {
+            panic!("a runner downloads from a URL");
+        };
+        assert_eq!(
+            location.url,
+            format!("http://127.0.0.1:3271/native-artifacts/{}", wanted.sha256)
         );
-        assert!(
-            fake.written()
-                .iter()
-                .all(|key| key.starts_with("native/blobs/")),
-            "{:?}",
-            fake.written()
+        // The store holds the compressed copy, served in its content coding.
+        let file = fixture.files.path().join(compressed_file("commands", TARGETS[0]));
+        let stored = catalog.local_artifact(&wanted.sha256).await.unwrap().unwrap();
+        assert_eq!(
+            stored.attributes.get(&Attribute::ContentEncoding).map(|value| value.as_ref()),
+            Some("zstd")
         );
+        assert_eq!(stored.bytes().await.unwrap(), std::fs::read(&file).unwrap());
+        // A later need finds it stored, without the release's files.
+        std::fs::remove_file(&file).unwrap();
+        resolver.resolve(&wanted, TARGETS[0], cancel.clone()).await.unwrap();
+
+        // A copy that does not decode to the executable is not stored, and
+        // the need fails with the reason.
+        let other = artifact(TARGETS[1]);
+        let file = fixture.files.path().join(compressed_file("commands", TARGETS[1]));
+        std::fs::write(&file, "not zstd").unwrap();
+        let refused = resolver.resolve(&other, TARGETS[1], cancel.clone()).await.err().unwrap();
+        assert!(refused.contains("commands-"), "{refused}");
+        assert!(catalog.local_artifact(&other.sha256).await.is_none());
+        // Nor is an artifact the catalog does not name.
+        let unnamed = PackageArtifact {
+            size: wanted.size + 1,
+            ..wanted.clone()
+        };
+        let refused = resolver.resolve(&unnamed, TARGETS[0], cancel).await.err().unwrap();
+        assert!(refused.contains("not in the published"), "{refused}");
     }
 
     #[tokio::test]
-    async fn a_published_executable_downloads_from_an_https_url_signed_for_five_minutes() {
-        let s3 = AmazonS3Builder::new()
+    async fn an_s3_store_s_executable_downloads_from_an_https_url_signed_for_five_minutes() {
+        let data = tempfile::tempdir().unwrap();
+        let signer = AmazonS3Builder::new()
             .with_bucket_name("demi-native")
             .with_region("us-east-1")
             .with_access_key_id("fixture")
             .with_secret_access_key("fixture")
             .build()
             .unwrap();
-        let artifact = PackageArtifact {
-            sha256: "0".repeat(64),
-            size: 10,
+        let objects = Objects {
+            store: Arc::new(LocalObjects::new(data.path()).unwrap()),
+            signer: Some(Arc::new(signer)),
         };
-        let artifacts = SignedArtifacts {
-            signer: Arc::new(s3),
-            published: Arc::new(HashMap::from([(artifact.sha256.clone(), artifact.size)])),
-        };
+        let fixture = Fixture::new(&TARGETS[..1]);
+        let catalog = fixture.publish(&objects).await.unwrap();
+        let wanted = artifact(TARGETS[0]);
         let asked = jiff::Timestamp::now();
-        let ArtifactLocation::Url(location) = artifacts.location(&artifact).await.unwrap() else {
-            panic!("a published executable downloads from a URL");
+        let location = catalog
+            .resolver(&backend())
+            .resolve(&wanted, TARGETS[0], CancellationToken::new())
+            .await
+            .unwrap();
+        let ArtifactLocation::Url(location) = location else {
+            panic!("a runner downloads from a URL");
         };
         let url = url::Url::parse(&location.url).unwrap();
         assert_eq!(url.scheme(), "https");
         assert!(
             url.path()
-                .ends_with(&format!("/native/blobs/{}", artifact.sha256)),
+                .ends_with(&format!("/native/blobs/{}", wanted.sha256)),
             "{url}"
         );
         assert!(
@@ -696,69 +553,59 @@ mod tests {
         );
         let valid_for = location.expires_at.unwrap() - asked.as_millisecond();
         assert!((300_000..301_000).contains(&valid_for), "{valid_for}");
-        let unpublished = PackageArtifact {
-            size: 11,
-            ..artifact.clone()
-        };
-        let refused = artifacts.location(&unpublished).await.err().unwrap();
-        assert!(refused.contains("not in the published"), "{refused}");
+        // The backend serves none of an S3 store's objects itself.
+        assert!(catalog.local_artifact(&wanted.sha256).await.is_none());
     }
 
+    /// An installer's download of a runner executable: the runner release
+    /// names it, and the backend takes it from the release's files as it is.
     #[tokio::test]
-    async fn a_local_store_holds_what_s3_would_and_the_backend_serves_it() {
+    async fn a_runner_executable_is_sourced_as_it_is() {
         let data = tempfile::tempdir().unwrap();
-        let objects = Objects {
-            store: Arc::new(LocalObjects::new(data.path()).unwrap()),
-            signer: None,
+        let objects = local(data.path());
+        let fixture = Fixture::new(&TARGETS[..1]);
+        let catalog = fixture.publish(&objects).await.unwrap();
+        let target = TARGETS[5];
+        let bytes = b"a runner".to_vec();
+        let runner = PackageArtifact {
+            sha256: hex::encode(Sha256::digest(&bytes)),
+            size: bytes.len() as u64,
         };
-        let commands = tempfile::tempdir().unwrap();
-        let releases = [release(commands.path(), &TARGETS[..2])];
+        let file = fixture
+            .files
+            .path()
+            .join(demi_runner_protocol::release::release_file("demi-runner", target));
+        std::fs::write(&file, b"another runner").unwrap();
         let cancel = CancellationToken::new();
-        let catalog = publish_native(commands.path(), &objects, &cancel)
-            .await
-            .unwrap();
-        assert!(catalog.package("example.commands").is_some());
-        let executable = releases[0].directory.join(TARGETS[0]).join("commands");
-        let bytes = std::fs::read(&executable).unwrap();
-        let sha256 = hex::encode(Sha256::digest(&bytes));
-        let stored = catalog.local_artifact(&sha256).await.unwrap().unwrap();
-        assert_eq!(
-            stored.attributes.get(&Attribute::ContentEncoding).map(|value| value.as_ref()),
-            Some("zstd")
-        );
-        assert_eq!(
-            stored.bytes().await.unwrap(),
-            std::fs::read(compressed(&executable)).unwrap()
-        );
-        assert!(catalog.local_artifact(&"0".repeat(64)).await.is_none());
-        // A second start finds its objects in place, as on S3.
-        publish_native(commands.path(), &objects, &cancel)
-            .await
-            .unwrap();
+        let refused = catalog.runner_executable(target, &runner, &cancel).await.err().unwrap();
+        assert!(refused.contains("demi-runner-"), "{refused}");
+        std::fs::write(&file, &bytes).unwrap();
+        let stored = catalog.runner_executable(target, &runner, &cancel).await.unwrap();
+        assert!(stored.attributes.get(&Attribute::ContentEncoding).is_none());
+        assert_eq!(stored.bytes().await.unwrap(), bytes);
     }
 
     #[tokio::test]
     async fn the_commands_directory_names_each_release_and_an_empty_one_serves_no_package() {
-        let fake = FakeS3::start().await;
-        let objects = Objects {
-            store: Arc::new(fake.client()),
-            signer: None,
-        };
+        let data = tempfile::tempdir().unwrap();
+        let objects = local(data.path());
         let cancel = CancellationToken::new();
         let commands = tempfile::tempdir().unwrap();
-        let catalog = publish_native(commands.path(), &objects, &cancel)
+        let files = || FilesLocation::Directory(commands.path().to_owned());
+        let catalog = publish_native(commands.path(), files(), &objects, &cancel)
             .await
             .unwrap();
         assert!(catalog.package(BROWSER_PACKAGE).is_none());
         assert!(!catalog.serves(BROWSER_PACKAGE, &[]));
-        let missing = publish_native(&commands.path().join("absent"), &objects, &cancel).await;
+        let absent = commands.path().join("absent");
+        let missing = publish_native(&absent, files(), &objects, &cancel).await;
         assert!(
             matches!(missing, Err(PublicationError::Commands { .. })),
             "{:?}",
             missing.err()
         );
         std::fs::create_dir(commands.path().join("not a name")).unwrap();
-        let refused = publish_native(commands.path(), &objects, &cancel).await;
+        let refused = publish_native(commands.path(), files(), &objects, &cancel).await;
         assert!(
             matches!(refused, Err(PublicationError::Commands { .. })),
             "{:?}",

@@ -2,10 +2,10 @@
 //! second stage of a Cloud image build, which
 //! `cloud-guest-image/rootfs/build.sh` runs as root on a Linux builder of
 //! the image's architecture, with an `xtask` built for that architecture.
-//! Into the Ubuntu tree the script made, it installs the runner and its
-//! `demi` alias from the verified runner release, each command package from
-//! its verified release under its content-addressed paths, and the pinned
-//! uv.
+//! Into the Ubuntu tree the script made, it installs, from a server release
+//! and its files, the runner and its `demi` alias that the runner release
+//! names, each command package's executable under its content-addressed
+//! path, each checked against its release's record, and the pinned uv.
 //! It reads the package inventory from the tree's dpkg database without
 //! running a program of the image, writes the root archive with GNU tar,
 //! checks the manifest the way the machine manager decodes it, publishes the
@@ -22,7 +22,8 @@ use demi_machine_manager_protocol::image::{
     Architecture, CloudImageManifest, FormatVersion, INIT_PATH, InstalledPackage, ManifestError,
     Os, RUNNER_PATH, RootfsArchive, RootfsFile, StandaloneTool,
 };
-use demi_runner_protocol::{image::ARTIFACTS_PATH, release::RunnerRelease};
+use demi_runner_protocol::image::ARTIFACTS_PATH;
+use demi_runner_protocol::release::{RUNNER, RunnerRelease, compressed_file, release_file};
 use demi_shared_artifacts::{
     Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
 };
@@ -57,14 +58,14 @@ pub struct Options {
     /// The Ubuntu tree rootfs/build.sh made.
     #[arg(long, value_name = "DIRECTORY")]
     root: PathBuf,
-    /// The runner releases `cargo xtask native package --package
-    /// demi-runner` published; the image embeds the one their manifest
-    /// names.
+    /// The server release whose runner and command packages the image
+    /// embeds: the runner its `runners/manifest.json` names, and every
+    /// package in its `commands/`.
     #[arg(long, value_name = "DIRECTORY")]
-    runners: PathBuf,
-    /// A command package release to embed; repeat for each package.
-    #[arg(long = "package", value_name = "DIRECTORY", required = true)]
-    packages: Vec<PathBuf>,
+    release: PathBuf,
+    /// The directory of the release's files, which hold the programs.
+    #[arg(long, value_name = "DIRECTORY")]
+    files: PathBuf,
     /// The release directory to publish, a new one for every build.
     #[arg(long, value_name = "DIRECTORY")]
     output: PathBuf,
@@ -89,7 +90,7 @@ pub enum Error {
         release: String,
         target: &'static str,
     },
-    #[error("the command package {0} is named twice")]
+    #[error("the command package {0} is released twice")]
     Twice(String),
     #[error("the uv archive {url} {reason}")]
     Uv { url: String, reason: String },
@@ -193,32 +194,26 @@ async fn package(
     let target = architecture.target();
     let packages = installed_packages(&root).await?;
     let ubuntu = ubuntu_release(&root).await?;
-    let (runner, runner_artifact) = runner_release(&options.runners, target).await?;
-    let mut releases: Vec<(PackageDescriptor, PackageArtifact)> = Vec::new();
-    for directory in &options.packages {
-        let (descriptor, artifact) = package_release(directory, target).await?;
+    let release = std::path::absolute(&options.release)?;
+    let files = std::path::absolute(&options.files)?;
+    let (runner, runner_artifact) = runner_release(&release.join("runners"), target).await?;
+    let mut releases: Vec<(String, PackageDescriptor, PackageArtifact)> = Vec::new();
+    for (executable, directory) in command_packages(&release.join("commands")).await? {
+        let (descriptor, artifact) = package_release(&directory, target).await?;
         if releases
             .iter()
-            .any(|(release, _)| release.id == descriptor.id)
+            .any(|(_, release, _)| release.id == descriptor.id)
         {
             return Err(Error::Twice(descriptor.id));
         }
-        releases.push((descriptor, artifact));
+        releases.push((executable, descriptor, artifact));
     }
 
     let mut executables = BTreeMap::new();
-    install_runner(
-        &root,
-        &options.runners,
-        &runner,
-        &runner_artifact,
-        target,
-        cancel,
-    )
-    .await?;
+    install_runner(&root, &files, &runner, &runner_artifact, target, cancel).await?;
     executables.insert(RUNNER_PATH.to_owned(), runner_artifact);
-    for (directory, (descriptor, artifact)) in options.packages.iter().zip(&releases) {
-        let path = install_package(&root, directory, descriptor, artifact, target, cancel).await?;
+    for (executable, descriptor, artifact) in &releases {
+        let path = install_package(&root, &files, executable, descriptor, artifact, target).await?;
         executables.insert(path, artifact.clone());
     }
     let (uv, uv_tool) = install_uv(&root, &pins.uv, architecture, client, cancel).await?;
@@ -262,7 +257,7 @@ async fn package(
         executables,
         releases: releases
             .into_iter()
-            .map(|(descriptor, _)| descriptor)
+            .map(|(_, descriptor, _)| descriptor)
             .collect(),
         runner,
         tools: vec![uv_tool],
@@ -335,38 +330,35 @@ async fn package_release(
     Ok((descriptor, artifact))
 }
 
-/// The executable a release carries for `target`: the one file in the
-/// release's directory of that target besides a command package's
-/// compressed copy of it (`builds-and-releases.md` § Packaging).
-async fn release_executable(release: &Path, target: &str) -> Result<PathBuf, Error> {
-    let directory = release.join(target);
-    let mut entries = tokio::fs::read_dir(&directory)
-        .await
-        .map_err(at(&directory))?;
-    let mut files = Vec::new();
-    while let Some(entry) = entries.next_entry().await.map_err(at(&directory))? {
+/// The command package releases in `commands`, a server release's
+/// `commands/`: each directory's name, the program's, and the directory, in
+/// the order of their names.
+async fn command_packages(commands: &Path) -> Result<Vec<(String, PathBuf)>, Error> {
+    let mut entries = tokio::fs::read_dir(commands).await.map_err(at(commands))?;
+    let mut packages = Vec::new();
+    while let Some(entry) = entries.next_entry().await.map_err(at(commands))? {
         let path = entry.path();
-        if !crate::native::compressed_copy(&path) {
-            files.push(path);
-        }
+        let name = entry
+            .file_name()
+            .into_string()
+            .map_err(|_| invalid(&path, "is not named in UTF-8"))?;
+        packages.push((name, path));
     }
-    match <[PathBuf; 1]>::try_from(files) {
-        Ok([file]) => Ok(file),
-        Err(_) => Err(invalid(&directory, "does not hold exactly one executable")),
-    }
+    packages.sort();
+    Ok(packages)
 }
 
-/// Installs the runner of `release`, one of the runner releases in
-/// `runners`, as `/usr/bin/demi-runner`, and `demi` as its alias.
+/// Installs the runner of `release`, whose executable is among `files`, as
+/// `/usr/bin/demi-runner`, and `demi` as its alias.
 async fn install_runner(
     root: &Path,
-    runners: &Path,
+    files: &Path,
     release: &RunnerRelease,
     artifact: &PackageArtifact,
     target: &str,
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
-    let source = release_executable(&runners.join(&release.release), target).await?;
+    let source = files.join(release_file(RUNNER, target));
     let installed = in_tree(root, RUNNER_PATH);
     install_executable(&source, artifact, &installed, cancel).await?;
     // `demi` is the runner by another name, beside it.
@@ -378,22 +370,20 @@ async fn install_runner(
     Ok(())
 }
 
-/// Installs the executable of `descriptor`'s release at `directory` under
-/// its content-addressed path, and returns that path in the image.
+/// Installs `executable`, the program of `descriptor`'s release, whose
+/// compressed copy is among `files`, under its content-addressed path, and
+/// returns that path in the image. Nothing is there unless the copy decodes
+/// to `artifact`.
 async fn install_package(
     root: &Path,
-    directory: &Path,
+    files: &Path,
+    executable: &str,
     descriptor: &PackageDescriptor,
     artifact: &PackageArtifact,
     target: &str,
-    cancel: &CancellationToken,
 ) -> Result<String, Error> {
-    let source = release_executable(directory, target).await?;
-    let name = source
-        .file_name()
-        .and_then(|name| name.to_str())
-        .ok_or_else(|| invalid(&source, "is not named in UTF-8"))?;
-    let path = format!("{ARTIFACTS_PATH}/{}/{name}", artifact.sha256);
+    let source = files.join(compressed_file(executable, target));
+    let path = format!("{ARTIFACTS_PATH}/{}/{executable}", artifact.sha256);
     let installed = in_tree(root, &path);
     let parent = installed
         .parent()
@@ -401,7 +391,28 @@ async fn install_package(
     tokio::fs::create_dir_all(parent)
         .await
         .map_err(at(parent))?;
-    install_executable(&source, artifact, &installed, cancel).await?;
+    let encoded = tokio::fs::read(&source).await.map_err(at(&source))?;
+    let expected = Digest {
+        size: artifact.size,
+        sha256: artifact.sha256.clone(),
+    };
+    let decoded = tokio::task::spawn_blocking(move || {
+        demi_shared_artifacts::decode_blocking(&encoded, &expected)
+    })
+    .await
+    .map_err(std::io::Error::other)?
+    .map_err(|error| Error::File {
+        path: source.clone(),
+        source: error,
+    })?;
+    let publication = Publication {
+        mode: Mode::CreateNew,
+        permissions: Permissions::Executable,
+        durable: false,
+    };
+    demi_shared_artifacts::publish_bytes(&installed, &decoded, publication)
+        .await
+        .map_err(at(&installed))?;
     eprintln!(
         "Cloud image: command package {}@{}",
         descriptor.id, descriptor.version
@@ -804,11 +815,12 @@ Version: 0.19.0-3
         builder.into_inner().unwrap().finish().unwrap()
     }
 
-    /// A command package release at `directory` whose descriptor records
-    /// `recorded` as its executable `name`, and whose file holds `bytes`,
-    /// with a compressed copy beside it as packaging writes one.
+    /// The command package `name` of the server release at `release`,
+    /// whose descriptor records `recorded` as its executable, and whose
+    /// compressed copy among `files` decodes to `bytes`.
     async fn command_package(
-        directory: &Path,
+        release: &Path,
+        files: &Path,
         id: &str,
         name: &str,
         recorded: &[u8],
@@ -821,22 +833,22 @@ Version: 0.19.0-3
             operations: vec!["file.read".to_owned()],
             targets: BTreeMap::from([(TARGET.to_owned(), measured(recorded).await)]),
         };
-        write(&directory.join(TARGET).join(name), bytes);
+        let encoded =
+            demi_shared_artifacts::encode_blocking(bytes, demi_shared_artifacts::Effort::Fast)
+                .unwrap();
+        write(&files.join(compressed_file(name, TARGET)), &encoded);
         write(
-            &directory.join(TARGET).join(format!("{name}.zst")),
-            b"compressed copy",
-        );
-        write(
-            &directory.join(DESCRIPTOR),
+            &release.join("commands").join(name).join(DESCRIPTOR),
             &crate::record(&descriptor).unwrap(),
         );
         descriptor
     }
 
     /// A build's inputs: a tree as rootfs/build.sh leaves it with the dpkg
-    /// database `database`, a runner release, the two command packages, and
-    /// the pinned archives on a fixture server. The demi-browser file in its
-    /// release holds `browser`, whatever its descriptor records.
+    /// database `database`, a server release with a runner release and two
+    /// command packages, its files, and the pinned archives on a fixture
+    /// server. The demi-browser file decodes to `browser`, whatever its
+    /// descriptor records.
     struct Fixture {
         _directory: tempfile::TempDir,
         _server: Server,
@@ -858,7 +870,9 @@ Version: 0.19.0-3
             );
             write(&root.join("var/lib/dpkg/status"), database.as_bytes());
             std::fs::create_dir_all(root.join("usr/local/bin")).unwrap();
-            let runners = path.join("runners");
+            let release = path.join("release");
+            let files = path.join("files");
+            let runners = release.join("runners");
             let runner = RunnerRelease {
                 release: "1".repeat(64),
                 wire: demi_runner_protocol::wire::VERSION,
@@ -866,19 +880,12 @@ Version: 0.19.0-3
                 targets: BTreeMap::from([(TARGET.to_owned(), measured(b"runner").await)]),
             };
             let record = crate::record(&runner).unwrap();
-            write(
-                &runners
-                    .join(&runner.release)
-                    .join(TARGET)
-                    .join("demi-runner"),
-                b"runner",
-            );
+            write(&files.join(release_file(RUNNER, TARGET)), b"runner");
             write(&runners.join(&runner.release).join(MANIFEST), &record);
             write(&runners.join(MANIFEST), &record);
-            let browser = path.join("demi-browser");
-            let claude = path.join("demi-claude-code");
             let browser_release = command_package(
-                &browser,
+                &release,
+                &files,
                 demi_command_package_browser_protocol::PACKAGE,
                 "demi-browser",
                 b"browser",
@@ -888,7 +895,8 @@ Version: 0.19.0-3
             let releases = vec![
                 browser_release,
                 command_package(
-                    &claude,
+                    &release,
+                    &files,
                     demi_command_package_claude_code_protocol::PACKAGE,
                     "demi-claude-code",
                     b"claude",
@@ -914,8 +922,8 @@ Version: 0.19.0-3
             };
             let options = Options {
                 root,
-                runners,
-                packages: vec![browser, claude],
+                release,
+                files,
                 output: path.join("releases/build"),
             };
             Self {
@@ -1071,7 +1079,7 @@ Version: 0.19.0-3
         )
         .await;
         assert!(
-            matches!(&refused, Err(Error::File { path, source: demi_shared_artifacts::Error::Digest }) if path.ends_with("demi-browser")),
+            matches!(&refused, Err(Error::File { path, source: demi_shared_artifacts::Error::Digest }) if path.ends_with(compressed_file("demi-browser", TARGET))),
             "{refused:?}"
         );
         assert!(!corrupt.options.output.exists());

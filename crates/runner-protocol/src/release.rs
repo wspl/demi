@@ -2,9 +2,12 @@
 //! release of `demi-runner`, the wire and command protocol versions it
 //! speaks, and the executable of each target it carries. A runner release
 //! directory's `manifest.json` holds it, and a Cloud image manifest embeds it
-//! to name its runner.
+//! to name its runner. Beside it, a server release's own record,
+//! `release.json`, which says where the release's files are, and the name
+//! of each file (`builds-and-releases.md` § Server release).
 
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use demi_command_protocol::{PackageArtifact, digest, target_artifacts};
 use serde::{Deserialize, Serialize};
@@ -49,4 +52,96 @@ impl RunnerRelease {
         garde::Validate::validate(self)
             .map_err(|report| ReleaseError::Invalid(report.to_string().trim_end().to_owned()))
     }
+}
+
+/// A server release's record, the root's `release.json`: where the
+/// release's files are, an HTTPS URL or an absolute directory on the
+/// backend's machine (`native-runtime.md` § Backend deployment
+/// configuration).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct ServerRelease {
+    #[garde(custom(files_location))]
+    pub files: String,
+}
+
+/// The name of a server release's record in its root.
+pub const SERVER_RELEASE: &str = "release.json";
+
+/// The runner's executable, as a release's files name it.
+pub const RUNNER: &str = "demi-runner";
+
+/// Where a server release's files are.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FilesLocation {
+    /// A URL that each file's name is appended to.
+    Url(url::Url),
+    Directory(PathBuf),
+}
+
+impl ServerRelease {
+    /// Decodes a record's JSON and checks its values.
+    pub fn decode(bytes: &[u8]) -> Result<Self, ReleaseError> {
+        let release: Self = serde_json::from_slice(bytes)?;
+        garde::Validate::validate(&release)
+            .map_err(|report| ReleaseError::Invalid(report.to_string().trim_end().to_owned()))?;
+        Ok(release)
+    }
+
+    /// Where the files are. A URL's path ends with `/`, so a file's name
+    /// joins it as the last segment.
+    pub fn location(&self) -> FilesLocation {
+        match url::Url::parse(&self.files) {
+            Ok(mut url) => {
+                if !url.path().ends_with('/') {
+                    let path = format!("{}/", url.path());
+                    url.set_path(&path);
+                }
+                FilesLocation::Url(url)
+            }
+            Err(_) => FilesLocation::Directory(PathBuf::from(&self.files)),
+        }
+    }
+}
+
+/// A garde rule: an HTTPS URL without credentials, a query or a fragment,
+/// or an absolute path.
+fn files_location(value: &str, _: &()) -> garde::Result {
+    match url::Url::parse(value) {
+        Ok(url) => {
+            let plain = url.scheme() == "https"
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.query().is_none()
+                && url.fragment().is_none();
+            if !plain {
+                return Err(garde::Error::new(
+                    "the release's files are at an HTTPS URL without credentials, a query or a fragment",
+                ));
+            }
+            Ok(())
+        }
+        Err(_) if std::path::Path::new(value).is_absolute() => Ok(()),
+        Err(_) => Err(garde::Error::new(
+            "the release's files are at an HTTPS URL or an absolute directory",
+        )),
+    }
+}
+
+/// The name of `executable`'s file for `target` among a release's files,
+/// such as `demi-runner-aarch64-apple-darwin` or
+/// `demi-file-x86_64-pc-windows-msvc.exe`.
+pub fn release_file(executable: &str, target: &str) -> String {
+    let suffix = if target.contains("windows") {
+        ".exe"
+    } else {
+        ""
+    };
+    format!("{executable}-{target}{suffix}")
+}
+
+/// The name of the compressed copy of `executable`'s file for `target`,
+/// which is how a release's files hold a command program.
+pub fn compressed_file(executable: &str, target: &str) -> String {
+    format!("{}.zst", release_file(executable, target))
 }

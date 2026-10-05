@@ -72,7 +72,7 @@ async fn run(config: Config) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    settings.native = match publish(&settings, &release.join("commands"), &mut stop).await {
+    settings.native = match publish(&settings, &release, &mut stop).await {
         Ok(native) => native,
         Err(error) => {
             eprintln!("demi-backend: {error}");
@@ -103,16 +103,17 @@ async fn run(config: Config) -> ExitCode {
     }
 }
 
-/// Publishes the server release's command packages before the backend
-/// accepts requests (`native-runtime.md` § Publish artifacts before enabling
-/// commands); a stop signal interrupts it.
+/// Publishes the command packages of the server release whose root is
+/// `release` before the backend accepts requests (`native-runtime.md`
+/// § Publish packages, then source artifacts on demand); a stop signal
+/// interrupts it.
 async fn publish(
     settings: &BackendConfig,
-    commands: &Path,
+    release: &Path,
     stop: &mut StopSignals,
 ) -> Result<NativeCatalog, StartError> {
     let cancel = CancellationToken::new();
-    let publication = publish_commands(settings, commands, &cancel);
+    let publication = publish_commands(settings, release, &cancel);
     tokio::pin!(publication);
     tokio::select! {
         published = &mut publication => return published,

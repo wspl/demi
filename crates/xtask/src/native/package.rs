@@ -16,7 +16,9 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use demi_command_protocol::{PackageArtifact, PackageDescriptor, canonical_digest};
-use demi_runner_protocol::release::RunnerRelease;
+use demi_runner_protocol::release::{
+    RUNNER, RunnerRelease, SERVER_RELEASE, ServerRelease, compressed_file, release_file,
+};
 use demi_shared_artifacts::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
 use serde::Serialize;
 use tokio_util::sync::CancellationToken;
@@ -36,13 +38,6 @@ const COMPRESSED_SUFFIX: &str = ".zst";
 /// How many hexadecimal digits of its artifacts' digest a development
 /// version carries.
 const DEVELOPMENT_DIGITS: usize = 12;
-
-/// Whether `path` is a command package's compressed copy of an executable.
-pub fn compressed_copy(path: &Path) -> bool {
-    path.as_os_str()
-        .to_string_lossy()
-        .ends_with(COMPRESSED_SUFFIX)
-}
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -275,6 +270,83 @@ async fn compress(executable: &Path, destination: &Path) -> Result<(), Error> {
         durable: true,
     };
     demi_shared_artifacts::publish_bytes(destination, &encoded, publication).await?;
+    Ok(())
+}
+
+/// Takes the release of `executable` packaged at `release` apart into a
+/// server release (`builds-and-releases.md` § Server release): its records
+/// into the root at `root`, the runner's manifests into `runners/` and a
+/// command package's descriptor into `commands/<program>/`, and its
+/// programs into `files`, each runner executable as it is and each command
+/// program as its compressed copy. A file already in `files` must hold the
+/// same bytes.
+pub async fn split(
+    release: &Path,
+    executable: Executable,
+    root: &Path,
+    files: &Path,
+    cancel: &CancellationToken,
+) -> Result<(), Error> {
+    tokio::fs::create_dir_all(files).await?;
+    if executable == Executable::Runner {
+        let bytes = tokio::fs::read(release.join(MANIFEST)).await?;
+        let manifest =
+            RunnerRelease::decode(&bytes).map_err(|error| Error::Record(error.to_string()))?;
+        let runners = root.join("runners");
+        let current = runners.join(&manifest.release);
+        tokio::fs::create_dir_all(&current).await?;
+        tokio::fs::write(runners.join(MANIFEST), &bytes).await?;
+        tokio::fs::write(current.join(MANIFEST), &bytes).await?;
+        for target in manifest.targets.keys() {
+            let built = release
+                .join(&manifest.release)
+                .join(target)
+                .join(executable.file_name(target));
+            place(&built, &files.join(release_file(RUNNER, target)), cancel).await?;
+        }
+        return Ok(());
+    }
+    let bytes = tokio::fs::read(release.join(DESCRIPTOR)).await?;
+    let value = serde_json::from_slice(&bytes).map_err(|error| Error::Record(error.to_string()))?;
+    let descriptor =
+        PackageDescriptor::parse(value).map_err(|error| Error::Record(error.to_string()))?;
+    let package = root.join("commands").join(executable.name());
+    tokio::fs::create_dir_all(&package).await?;
+    tokio::fs::write(package.join(DESCRIPTOR), &bytes).await?;
+    for target in descriptor.targets.keys() {
+        let mut copy = executable.file_name(target);
+        copy.push_str(COMPRESSED_SUFFIX);
+        let file = files.join(compressed_file(executable.name(), target));
+        place(&release.join(target).join(copy), &file, cancel).await?;
+    }
+    Ok(())
+}
+
+/// Writes `record` as the `release.json` of the server release root at
+/// `root`.
+pub async fn write_server_release(root: &Path, record: &ServerRelease) -> Result<(), Error> {
+    tokio::fs::write(root.join(SERVER_RELEASE), self::record(record)?).await?;
+    Ok(())
+}
+
+/// Puts a copy of `source` at `file`, unless `file` holds the same bytes
+/// already; a file of other bytes there is refused.
+async fn place(source: &Path, file: &Path, cancel: &CancellationToken) -> Result<(), Error> {
+    if tokio::fs::try_exists(file).await? {
+        let wanted = demi_shared_artifacts::digest(source, u64::MAX, cancel).await?;
+        let found = demi_shared_artifacts::digest(file, u64::MAX, cancel).await?;
+        if found != wanted {
+            return Err(Error::OtherFile(file.to_owned()));
+        }
+        return Ok(());
+    }
+    let publication = Publication {
+        mode: Mode::CreateNew,
+        permissions: Permissions::Default,
+        durable: true,
+    };
+    let mut input = tokio::fs::File::open(source).await?;
+    demi_shared_artifacts::publish(file, &mut input, publication, cancel).await?;
     Ok(())
 }
 

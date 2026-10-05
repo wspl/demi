@@ -108,7 +108,7 @@ impl Environment {
     fn harness(&self) -> Harness {
         let mut harness = Harness::new();
         harness.machines = Some(self.socket.clone());
-        harness.commands = Some(self.release.join("commands"));
+        harness.server_release = Some(self.release.clone());
         harness.public_url = Some(self.url.clone());
         harness.lifecycle = idle_after(Duration::from_secs(2));
         harness.cloud.sweep = Duration::from_millis(200);

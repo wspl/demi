@@ -7,7 +7,7 @@ mod package;
 
 #[cfg(unix)]
 pub use package::development_package;
-pub use package::{Caches, Spec, Versioning, compressed_copy, package};
+pub use package::{Caches, Spec, Versioning, package, split, write_server_release};
 
 use std::path::{Path, PathBuf};
 
@@ -76,6 +76,8 @@ pub enum Error {
     },
     #[error("the release record is invalid: {0}")]
     Record(String),
+    #[error("{} holds another file of that name: the files directory belongs to another build", .0.display())]
+    OtherFile(PathBuf),
     #[error(transparent)]
     Artifact(#[from] demi_shared_artifacts::Error),
     #[error(transparent)]
@@ -110,7 +112,7 @@ impl Executable {
     /// The Cargo package, which is also the executable's name.
     pub fn name(self) -> &'static str {
         match self {
-            Self::Runner => "demi-runner",
+            Self::Runner => demi_runner_protocol::release::RUNNER,
             Self::File => "demi-file",
             Self::Browser => "demi-browser",
             Self::Claude => "demi-claude-code",
@@ -138,7 +140,7 @@ impl Executable {
     }
 
     /// The executable's file name on `target`.
-    fn file_name(self, target: &str) -> String {
+    pub(crate) fn file_name(self, target: &str) -> String {
         let suffix = if windows(target) { ".exe" } else { "" };
         format!("{}{suffix}", self.name())
     }

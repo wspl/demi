@@ -1,8 +1,8 @@
 //! The content coding of a command executable on its way to a runner
-//! (`native-runtime.md` § Publish artifacts before enabling commands):
-//! packaging compresses each executable with zstd, the object store serves
-//! the compressed copy under `Content-Encoding`, and the download decodes it
-//! before it verifies.
+//! (`native-runtime.md` § Publish packages, then source artifacts on
+//! demand): packaging compresses each executable with zstd, the object store
+//! serves the compressed copy under `Content-Encoding`, and the download
+//! decodes it before it verifies.
 
 use std::io::{Read as _, Write as _};
 
@@ -48,6 +48,25 @@ pub fn encode_blocking(bytes: &[u8], effort: Effort) -> Result<Vec<u8>, Error> {
 /// Checks that `encoded`, bytes in the content coding, decodes to bytes of
 /// `expected`'s size and SHA-256, as a runner's download will. Blocking.
 pub fn check_encoded_blocking(encoded: &[u8], expected: &Digest) -> Result<(), Error> {
+    decode_into(encoded, expected, &mut std::io::sink())
+}
+
+/// `encoded`, bytes in the content coding, decoded, once they are bytes of
+/// `expected`'s size and SHA-256. Blocking.
+pub fn decode_blocking(encoded: &[u8], expected: &Digest) -> Result<Vec<u8>, Error> {
+    let size = usize::try_from(expected.size).unwrap_or(usize::MAX);
+    let mut decoded = Vec::with_capacity(size);
+    decode_into(encoded, expected, &mut decoded)?;
+    Ok(decoded)
+}
+
+/// Decodes `encoded` into `output`, checking what it decodes to against
+/// `expected` as it goes. Blocking.
+fn decode_into(
+    encoded: &[u8],
+    expected: &Digest,
+    output: &mut impl std::io::Write,
+) -> Result<(), Error> {
     let mut decoder = zstd::stream::read::Decoder::new(encoded)?;
     let mut verifier = Verifier::new(expected);
     let mut buffer = vec![0; 256 * 1024];
@@ -57,6 +76,7 @@ pub fn check_encoded_blocking(encoded: &[u8], expected: &Digest) -> Result<(), E
             break;
         }
         verifier.update(&buffer[..count])?;
+        output.write_all(&buffer[..count])?;
     }
     verifier.finish()
 }

@@ -36,6 +36,18 @@ pub fn client_allowing_http() -> Result<reqwest::Client, Error> {
         .map_err(|error| Error::Download(error.without_url().to_string()))
 }
 
+/// [`client`], but following redirects: for a server release's files, which
+/// GitHub serves through a redirect to short-lived storage. The backend
+/// checks every file against the size and SHA-256 its own release records
+/// give, so where the bytes come from cannot change what it keeps
+/// (`native-runtime.md` § Publish packages, then source artifacts on demand).
+pub fn client_following_redirects() -> Result<reqwest::Client, Error> {
+    builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .build()
+        .map_err(|error| Error::Download(error.without_url().to_string()))
+}
+
 /// Streams `url` into `output`, decoding its content coding, and enforces the
 /// declared size and SHA-256 on the decoded bytes. The caller owns `output`
 /// and discards it on any failure.

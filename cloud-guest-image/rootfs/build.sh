@@ -3,11 +3,12 @@
 # builder, for the builder's architecture. This script is the first stage:
 # Ubuntu 26.04 by debootstrap, the toolchain from packages.txt and tini, the
 # guest user `demi` (uid 1000) with passwordless sudo, and the file overlay.
-# The second stage is `xtask cloud-image package`, built for this builder on
-# the developer's machine: it embeds the runner, the command packages, Chrome
-# for Testing and uv, and publishes the verified root archive and manifest.
+# The second stage is `xtask cloud-image package`, built for this builder: it
+# embeds the runner and the command packages of a server release, taken from
+# the release's files, and uv, and publishes the verified root archive and
+# manifest.
 #
-# Usage: sudo bash rootfs/build.sh --xtask PATH --runners DIR --package DIR...
+# Usage: sudo bash rootfs/build.sh --xtask PATH --release DIR --files DIR
 #          --output DIR [--work DIR] [--mirror URL] [--ca FILE]
 #
 # apt inside the tree runs with a cleared environment. A builder that reaches
@@ -19,14 +20,14 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 xtask=""
-runners=""
-packages=()
+release=""
+files=""
 output=""
 work=/var/tmp/demi-cloud-root
 mirror=""
 ca=""
 usage() {
-  echo 'usage: build.sh --xtask PATH --runners DIR --package DIR [--package DIR]...' >&2
+  echo 'usage: build.sh --xtask PATH --release DIR --files DIR' >&2
   echo '         --output DIR [--work DIR] [--mirror URL] [--ca FILE]' >&2
   exit 2
 }
@@ -34,8 +35,8 @@ while [ "$#" -gt 0 ]; do
   [ "$#" -ge 2 ] || usage
   case "$1" in
     --xtask) xtask=$2 ;;
-    --runners) runners=$2 ;;
-    --package) packages+=(--package "$2") ;;
+    --release) release=$2 ;;
+    --files) files=$2 ;;
     --output) output=$2 ;;
     --work) work=$2 ;;
     --mirror) mirror=$2 ;;
@@ -44,7 +45,7 @@ while [ "$#" -gt 0 ]; do
   esac
   shift 2
 done
-[ -n "$xtask" ] && [ -n "$runners" ] && [ "${#packages[@]}" -gt 0 ] && [ -n "$output" ] || usage
+[ -n "$xtask" ] && [ -n "$release" ] && [ -n "$files" ] && [ -n "$output" ] || usage
 [ -x "$xtask" ] || { echo "no xtask executable at $xtask" >&2; exit 2; }
 [ -z "$ca" ] || [ -f "$ca" ] || { echo "no certificate bundle at $ca" >&2; exit 2; }
 # A release is immutable: every build publishes a new one.
@@ -145,6 +146,6 @@ rm -rf "$work/dev/"* "$work/run/"* "$work/tmp/"*
 rm -f "$work/etc/machine-id" "$work/var/lib/dbus/machine-id"
 touch "$work/etc/resolv.conf"
 # The second stage prints the release's base version.
-"$xtask" cloud-image package --root "$work" --runners "$runners" \
-  "${packages[@]}" --output "$output"
+"$xtask" cloud-image package --root "$work" --release "$release" \
+  --files "$files" --output "$output"
 rm -rf "$work"

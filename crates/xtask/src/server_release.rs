@@ -1,13 +1,21 @@
 //! `cargo xtask server-release` (`builds-and-releases.md` § Server release):
-//! assembles a server release root from the executables
-//! `cargo xtask native build` wrote: the runner release in `runners/`, a
-//! release of each command package in `commands/`, and, when asked, a Linux
-//! target's backend and machine manager in `bin/` and the built web app in
-//! `web/`. The root is assembled in a stage beside it and renamed into
-//! place, so it exists whole or not at all, and is never changed in place.
+//! assembles a server release from the executables `cargo xtask native
+//! build` wrote. The root holds the runner release's manifests in
+//! `runners/`, each command package's descriptor in `commands/`, the record
+//! `release.json`, which says where the release's files are, and, when
+//! asked, a Linux target's backend and machine manager in `bin/` and the
+//! built web app in `web/`. The release's files hold each target's runner
+//! executable and each command program's compressed copy. Packaging makes
+//! each release whole first, so its records and its files are the ones
+//! packaging checked. The root is assembled in a stage beside it and renamed
+//! into place, so it exists whole or not at all, and is never changed in
+//! place; the files directory may already hold this build's files, as when
+//! the build's other Linux root was assembled into it, and a file in place
+//! must then be the same.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use demi_runner_protocol::release::ServerRelease;
 use tokio_util::sync::CancellationToken;
 
 use crate::native::{self, Caches, Executable, Spec, Versioning};
@@ -21,8 +29,16 @@ pub struct Options {
     /// The root to assemble, a directory that does not exist yet.
     #[arg(long, value_name = "DIRECTORY")]
     output: PathBuf,
-    /// A target of runners/ and commands/; repeat for several [default: all
-    /// six].
+    /// The directory of the release's files, which may hold this build's
+    /// files already.
+    #[arg(long, value_name = "DIRECTORY")]
+    files: PathBuf,
+    /// The HTTPS URL the files will be published at, which release.json
+    /// names [default: the files directory].
+    #[arg(long, value_name = "URL")]
+    downloads: Option<String>,
+    /// A target of the runner and the command packages; repeat for several
+    /// [default: all six].
     #[arg(long = "target", value_name = "TRIPLE", value_parser = native::target)]
     targets: Vec<&'static str>,
     /// The Linux target whose backend and machine manager go in bin/
@@ -55,6 +71,8 @@ pub enum Error {
     NotWeb(PathBuf),
     #[error("{} has no parent directory to assemble it beside", .0.display())]
     NoParent(PathBuf),
+    #[error("the release's record is invalid: {0}")]
+    Record(String),
     #[error("copying the web app failed: {0}")]
     Copy(#[from] fs_extra::error::Error),
     #[error(transparent)]
@@ -69,7 +87,8 @@ pub fn run(options: Options) -> Result<(), Error> {
     Ok(())
 }
 
-/// Assembles the root `options` name and returns its path.
+/// Assembles the root and the files `options` name and returns the root's
+/// path.
 async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathBuf, Error> {
     let output = std::path::absolute(&options.output)?;
     if tokio::fs::try_exists(&output).await? {
@@ -90,53 +109,50 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
         }
         None => None,
     };
+    let files = std::path::absolute(&options.files)?;
+    let record = ServerRelease {
+        files: match &options.downloads {
+            Some(url) => url.clone(),
+            None => files.to_string_lossy().into_owned(),
+        },
+    };
+    garde::Validate::validate(&record).map_err(|report| Error::Record(report.to_string()))?;
     let parent = output
         .parent()
         .ok_or_else(|| Error::NoParent(output.clone()))?
         .to_owned();
     tokio::fs::create_dir_all(&parent).await?;
+    tokio::fs::create_dir_all(&files).await?;
     let name = output
         .file_name()
         .ok_or_else(|| Error::NoParent(output.clone()))?
         .to_string_lossy()
         .into_owned();
-    // The stage is removed however assembling ends, unless it becomes the
-    // root.
-    let stage = tokio::task::spawn_blocking(move || {
-        tempfile::Builder::new()
-            .prefix(&format!(".{name}-stage-"))
-            .tempdir_in(parent)
-    })
-    .await
-    .map_err(std::io::Error::other)??;
+    // The stages are removed however assembling ends, unless the root's
+    // becomes the root.
+    let stage = staged(&parent, format!(".{name}-stage-")).await?;
+    let packaged = staged(&parent, format!(".{name}-packages-")).await?;
     let artifacts = native::artifacts(options.artifacts.as_deref())?;
     let versioning = if options.publish {
         Versioning::Published
     } else {
         Versioning::Development
     };
-    let releases = [Executable::Runner]
-        .into_iter()
-        .chain(Executable::COMMANDS)
-        .map(|executable| {
-            let directory = match executable {
-                Executable::Runner => stage.path().join("runners"),
-                command => stage.path().join("commands").join(command.name()),
-            };
-            (executable, directory)
-        });
-    for (executable, directory) in releases {
+    for executable in [Executable::Runner].into_iter().chain(Executable::COMMANDS) {
         let targets = native::targets(&[executable], &options.targets)?;
+        let release = packaged.path().join(executable.name());
         let spec = Spec {
             executable,
             targets: &targets,
             artifacts: &artifacts,
-            output: &directory,
+            output: &release,
             caches: &options.caches,
             versioning,
         };
         println!("{}", native::package(&spec, cancel).await?);
+        native::split(&release, executable, stage.path(), &files, cancel).await?;
     }
+    native::write_server_release(stage.path(), &record).await?;
     if let Some(server) = options.server {
         let bin = stage.path().join("bin");
         tokio::fs::create_dir_all(&bin).await?;
@@ -177,9 +193,25 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
     Ok(output)
 }
 
+/// A new directory in `parent` whose name starts with `prefix`, removed
+/// when dropped.
+async fn staged(parent: &Path, prefix: String) -> Result<tempfile::TempDir, Error> {
+    let parent = parent.to_owned();
+    let directory = tokio::task::spawn_blocking(move || {
+        tempfile::Builder::new().prefix(&prefix).tempdir_in(parent)
+    })
+    .await
+    .map_err(std::io::Error::other)??;
+    Ok(directory)
+}
+
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+
+    use demi_runner_protocol::release::{RunnerRelease, SERVER_RELEASE};
+
+    use crate::native::{DESCRIPTOR, MANIFEST};
 
     use super::*;
 
@@ -205,26 +237,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_root_holds_the_runner_the_command_packages_the_server_and_the_web_app_once() {
+    async fn a_root_holds_the_records_and_its_files_the_programs_once() {
         let root = tempfile::tempdir().unwrap();
         let artifacts = root.path().join("artifacts");
         let linux = "x86_64-unknown-linux-musl";
-        // Chrome for Testing has no Windows arm64 build, so demi-browser's
-        // release of that target carries no archive to download.
         let windows = "aarch64-pc-windows-msvc";
-        let mut commands = vec![Executable::Runner];
-        commands.extend(Executable::COMMANDS);
-        build(&artifacts, &commands, &[windows]);
+        let mut programs = vec![Executable::Runner];
+        programs.extend(Executable::COMMANDS);
+        build(&artifacts, &programs, &[windows]);
         let web = root.path().join("dist");
         std::fs::create_dir_all(web.join("assets")).unwrap();
         std::fs::write(web.join(WEB_BUILD), r#"{"build":"fixture"}"#).unwrap();
         std::fs::write(web.join("assets/index.js"), "page").unwrap();
         let output = root.path().join("release");
-        let options = Options {
-            output: output.clone(),
+        let files = root.path().join("files");
+        let options = |output: &Path, downloads: Option<&str>| Options {
+            output: output.to_owned(),
+            files: files.clone(),
+            downloads: downloads.map(str::to_owned),
             targets: vec![windows],
             server: Some(linux),
-            web: Some(web),
+            web: Some(web.clone()),
             publish: false,
             artifacts: Some(artifacts.clone()),
             caches: Caches {
@@ -232,30 +265,73 @@ mod tests {
             },
         };
         let cancel = CancellationToken::new();
-        // Without the server's build, nothing is assembled and nothing is
+        // Without the server's build, no root is assembled and no stage is
         // left behind.
-        let missing = assemble(&options, &cancel).await;
+        let missing = assemble(&options(&output, None), &cancel).await;
         assert!(
             matches!(missing, Err(Error::Native(native::Error::NotBuilt { .. }))),
             "{missing:?}"
         );
-        assert_eq!(names(root.path()), ["artifacts", "dist"]);
+        assert_eq!(names(root.path()), ["artifacts", "dist", "files"]);
         build(&artifacts, &[Executable::Backend, Executable::Machines], &[linux]);
-        assemble(&options, &cancel).await.unwrap();
-        assert_eq!(names(&output), ["bin", "commands", "runners", "web"]);
+        assemble(&options(&output, None), &cancel).await.unwrap();
+        assert_eq!(
+            names(&output),
+            ["bin", "commands", "release.json", "runners", "web"]
+        );
         assert_eq!(names(&output.join("bin")), ["demi-backend", "demi-machine-manager"]);
         assert_eq!(
             std::fs::read(output.join("bin/demi-backend")).unwrap(),
             format!("demi-backend {linux}").as_bytes()
         );
+        // The root holds the records; the programs are the release's files.
         assert_eq!(
             names(&output.join("commands")),
             ["demi-browser", "demi-claude-code", "demi-file"]
         );
-        assert!(output.join("runners/manifest.json").is_file());
+        assert_eq!(names(&output.join("commands/demi-file")), [DESCRIPTOR]);
+        let runners = output.join("runners");
+        let manifest = RunnerRelease::decode(&std::fs::read(runners.join(MANIFEST)).unwrap()).unwrap();
+        assert_eq!(names(&runners.join(&manifest.release)), [MANIFEST]);
+        assert_eq!(
+            names(&files),
+            [
+                "demi-browser-aarch64-pc-windows-msvc.exe.zst",
+                "demi-claude-code-aarch64-pc-windows-msvc.exe.zst",
+                "demi-file-aarch64-pc-windows-msvc.exe.zst",
+                "demi-runner-aarch64-pc-windows-msvc.exe",
+            ]
+        );
+        assert_eq!(
+            std::fs::read(files.join("demi-runner-aarch64-pc-windows-msvc.exe")).unwrap(),
+            format!("demi-runner {windows}").as_bytes()
+        );
+        let record = |output: &Path| {
+            ServerRelease::decode(&std::fs::read(output.join(SERVER_RELEASE)).unwrap()).unwrap()
+        };
+        assert_eq!(record(&output).files, files.to_str().unwrap());
         assert_eq!(names(&output.join("web")), ["assets", WEB_BUILD]);
         // A root is assembled once.
-        let again = assemble(&options, &cancel).await;
+        let again = assemble(&options(&output, None), &cancel).await;
         assert!(matches!(again, Err(Error::Exists(_))), "{again:?}");
+        // Another root of the same build shares the files, and names where
+        // they will be published.
+        let published = root.path().join("published");
+        let downloads = "https://github.com/wspl/demi/releases/download/v0.1.3/";
+        assemble(&options(&published, Some(downloads)), &cancel).await.unwrap();
+        assert_eq!(record(&published).files, downloads);
+        assert_eq!(names(&files).len(), 4);
+        // A rebuilt program is another build's, whose files these are not.
+        build(&artifacts, &[Executable::File], &[windows]);
+        std::fs::write(
+            native::built(&artifacts, Executable::File, windows),
+            "demi-file rebuilt",
+        )
+        .unwrap();
+        let other = assemble(&options(&root.path().join("other"), None), &cancel).await;
+        assert!(
+            matches!(other, Err(Error::Native(native::Error::OtherFile(_)))),
+            "{other:?}"
+        );
     }
 }

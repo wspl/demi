@@ -11,6 +11,7 @@ use std::process::Output;
 use demi_backend_remote_host::testing::{PAIRING_CODE, runner_binary};
 use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_provider_common::testing::MockVendor;
+use demi_runner_protocol::release::release_file;
 use demi_runner_protocol::wire;
 use demi_web_api_protocol::devices::ClaimedDevice;
 use reqwest::{Method, StatusCode};
@@ -24,7 +25,9 @@ fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
 }
 
-/// A runner release directory whose releases all carry `program`.
+/// A server release whose runner releases all carry `program`: its root,
+/// with the releases' manifests in `runners/` and no command package, and
+/// its files beside, where each target's runner is `program`.
 struct Releases {
     directory: tempfile::TempDir,
     program: PathBuf,
@@ -46,23 +49,31 @@ impl Releases {
         }
     }
 
+    /// The server release's root.
     fn path(&self) -> PathBuf {
-        self.directory.path().to_owned()
+        self.directory.path().join("root")
+    }
+
+    fn runners(&self) -> PathBuf {
+        self.path().join("runners")
     }
 
     /// Publishes a release named by `name`'s digest, which the top-level
-    /// manifest names from now on. The release links the program rather
-    /// than copying it.
+    /// manifest names from now on. Each target's file links the program
+    /// rather than copying it.
     fn publish(&self, name: &str) -> String {
         let release = sha(name.as_bytes());
-        let executable = self
-            .directory
-            .path()
-            .join(&release)
-            .join(host_target())
-            .join("demi-runner");
-        std::fs::create_dir_all(executable.parent().unwrap()).unwrap();
-        std::os::unix::fs::symlink(&self.program, &executable).unwrap();
+        let files = self.directory.path().join("files");
+        std::fs::create_dir_all(&files).unwrap();
+        std::fs::create_dir_all(self.path().join("commands")).unwrap();
+        crate::support::write_server_release(&self.path(), &files);
+        for target in TARGETS {
+            let file = files.join(release_file("demi-runner", target));
+            if !file.exists() {
+                std::os::unix::fs::symlink(&self.program, &file).unwrap();
+            }
+        }
+        std::fs::create_dir_all(self.runners().join(&release)).unwrap();
         // Test-only: every target names this machine's runner.
         let targets: serde_json::Map<String, Value> = TARGETS
             .iter()
@@ -76,11 +87,11 @@ impl Releases {
         })
         .to_string();
         std::fs::write(
-            self.directory.path().join(&release).join("manifest.json"),
+            self.runners().join(&release).join("manifest.json"),
             &manifest,
         )
         .unwrap();
-        std::fs::write(self.directory.path().join("manifest.json"), &manifest).unwrap();
+        std::fs::write(self.runners().join("manifest.json"), &manifest).unwrap();
         release
     }
 }

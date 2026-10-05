@@ -52,7 +52,7 @@ use axum::http::Method;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
-use demi_backend_runners::local_store;
+use demi_backend_runners::native;
 use hyper::body::Incoming;
 use tokio::net::TcpListener;
 use tokio::task::JoinHandle;
@@ -89,7 +89,7 @@ impl Edge {
         let tcp = TcpListener::bind(address).await?;
         let local_addr = tcp.local_addr()?;
         // Before the first request: a Cloud's boot, an expose's URL and a
-        // development store's downloads name this URL.
+        // local store's downloads name this URL.
         state
             .services
             .public_url
@@ -192,7 +192,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(install::artifact),
         )
         .route(
-            &format!("{}/{{sha256}}", local_store::ROUTE),
+            &format!("{}/{{sha256}}", native::ROUTE),
             get(install::native_artifact),
         )
         .route("/api/runner", get(runners::socket))
