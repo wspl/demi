@@ -1,8 +1,9 @@
 # Installation
 
-A Demi server is installed with one command on a Linux machine, by a person
-or by an AI agent. Every choice is a parameter, `--help` is the complete
-guide to them, and the installer asks only when a required parameter is
+A Demi server is installed on a Linux machine in two commands, by a person
+or by an AI agent: one puts `demi-server` on the machine, and its `setup`
+sets the server up. Every choice is a parameter of `setup`, its `--help` is
+the complete guide to them, and it asks only when a required parameter is
 missing and a terminal is there to answer. It installs the layout that
 [Upgrades](upgrades.md#one-release-on-a-server) defines, and the server
 moves between releases with `demi-server upgrade` from then on.
@@ -12,11 +13,12 @@ reverse proxy on the same machine that serves `demi.example.com` over HTTPS
 and forwards to port 3271:
 
 ```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh \
-  | sudo bash -s -- --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
+curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+sudo demi-server setup --help
+sudo demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
 ```
 
-The installer checks the machine, installs the few system packages the
+`setup` checks the machine, installs the few system packages the
 machine manager needs, fetches the newest release, writes the configuration,
 starts the backend and the machine manager, and checks the server from
 outside. It ends by printing `https://demi.example.com`, where the first
@@ -30,21 +32,25 @@ uninstall.
 
 `install.sh` is an asset of every release, beside `demi-server-<target>` for
 the two Linux targets ([Release workflow](builds-and-releases.md#release-workflow)).
-It does only what a shell must: it checks that it runs as root on Linux,
-picks the target from the machine's architecture, downloads that
-`demi-server` and the release's `SHA256SUMS` from the release it came from,
-checks the one against the other, and runs `demi-server install` with its own
-arguments. Everything else is `demi-server`'s, the program that upgrades the
-server later, so the two share the fetch, the layout and the units: an
-installation is the move from nothing to the first release.
+It takes no parameter and does only what a shell must: it checks that it
+runs as root on Linux, picks the target from the machine's architecture,
+downloads that `demi-server` and the release's `SHA256SUMS` from the release
+it came from, checks the one against the other, installs it as
+`/usr/local/bin/demi-server`, and prints the next command, `demi-server
+setup --help`. On a machine that has a Demi server already, it changes
+nothing and points to `demi-server upgrade`.
 
-After the installation, `/usr/local/bin/demi-server` links to
-`/opt/demi/current/bin/demi-server`, so the server's own program is on the
-path.
+Everything else is `demi-server`'s, the program that upgrades the server
+later, so setting up and upgrading share the fetch, the layout and the
+units: a setup is the move from nothing to the first release, the release of
+the `demi-server` that runs it unless `--version` names another. Once it has
+started that release, `/usr/local/bin/demi-server` becomes a link to
+`/opt/demi/current/bin/demi-server`, so the server's program on the path is
+always the current release's.
 
 ## Parameters
 
-`demi-server install --help` lists every parameter with its meaning, which
+`demi-server setup --help` lists every parameter with its meaning, which
 parameters each HTTPS choice needs, and complete examples; an agent reads it
 and composes the command.
 
@@ -54,13 +60,13 @@ and composes the command.
 | `--mode shared\|isolated` | Required, with no default ([Instance mode](../product/product.md#instance-mode-shared-vs-isolated)). |
 | `--listen <address:port>` | Required: where the backend listens, which the proxy in front of it reaches ([HTTPS](#https)). |
 | `--storage local\|s3` | Where the object store lives ([The object store](../backend/storage.md#the-object-store)). Default `local`. |
-| `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from the installer's own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
+| `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
 | `--expose-domain <name>` | The domain of expose hostnames ([Host expose](../execution/expose.md#deployment)). Optional: without it, exposes are off. |
 | `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/var/lib/demi/machine-manager`. |
 | `--cloud-limits on\|off` | Whether Clouds run under cgroup limits. Default `on`; a machine without the cgroup v2 controllers is refused unless it is `off`. |
-| `--version <version>` | The release to install. Default the newest. |
-| `--no-packages` | Install no system package: the operator installed e2fsprogs, bsdtar and nftables, on a distribution the installer does not know ([Distributions](#distributions)). |
-| `--no-input` | Never ask: a missing required parameter fails with its name. Without a terminal, the installer never asks anyway. |
+| `--version <version>` | The release to set up. Default the release of the running `demi-server`. |
+| `--no-packages` | Install no system package: the operator installed e2fsprogs, bsdtar and nftables, on a distribution `setup` does not know ([Distributions](#distributions)). |
+| `--no-input` | Never ask: a missing required parameter fails with its name. Without a terminal, `setup` never asks anyway. |
 
 A setting with no parameter keeps its default, as
 [Configuration](../backend/backend.md#configuration) and
@@ -70,8 +76,8 @@ needs another adds it to `/etc/demi/demi.env` and restarts the services.
 ## HTTPS
 
 Demi does not terminate TLS ([Public URL and listening address](../backend/backend.md#public-url-and-listening-address)),
-and the installer sets up none either: the operator provides what serves the
-domain over HTTPS and forwards to the backend, and tells the installer where
+and `setup` sets up none either: the operator provides what serves the
+domain over HTTPS and forwards to the backend, and tells `setup` where
 the backend listens. The two usual arrangements differ only in that address:
 
 - Behind a reverse proxy on the same machine, such as Caddy or nginx, or a
@@ -88,7 +94,8 @@ the expose domain is a zone of its own or the zone itself.
 
 ## The steps
 
-Each step can be taken again: running the same command after a stop, such as
+These are the steps of `setup`. Each can be taken again: running the same
+command after a stop, such as
 for a proxy that was not ready yet, continues where the last run stopped and
 repeats nothing that is done. Every failure says what failed and what the
 operator does next, and exits with a status other than 0.
@@ -111,7 +118,7 @@ operator does next, and exits with a status other than 0.
    `demi-cloud`, the data directories, and `/etc/demi/demi.env` readable by
    root alone. A configuration file that
    is already there and says something else than the parameters stops the
-   run: the installer never edits a configuration it did not just write.
+   run: `setup` never edits a configuration it did not just write.
 6. **Start the release**: point `current` at it, install the units, enable
    and start the services in order, and wait until each reports ready, as an
    upgrade's switch does ([Switch](upgrades.md#switch)).
@@ -126,7 +133,7 @@ operator does next, and exits with a status other than 0.
 
 ## Distributions
 
-The installer reads `/etc/os-release` and installs the packages with the
+`setup` reads `/etc/os-release` and installs the packages with the
 distribution's own package manager:
 
 | Distribution | Package manager | bsdtar's package |
@@ -137,15 +144,16 @@ distribution's own package manager:
 | Arch Linux | pacman | `libarchive` |
 
 e2fsprogs and nftables have those names everywhere. On another distribution
-the installer names the three tools and stops; an operator who installed
+`setup` names the three tools and stops; an operator who installed
 them runs it again with `--no-packages`. Each of these needs Linux 5.14 or
 later, systemd and cgroup v2, which their current releases have; the Cloud
 check of step 4 is what decides.
 
 ## Acceptance
 
-The installer runs end to end on a fresh machine of each package manager,
-behind a reverse proxy the test sets up, and the server serves the setup page
-at its domain with a valid certificate; on Ubuntu also with `s3`. A second run of a
-finished installation is refused, one after DNS was missing continues, and
-the installed server then moves with `demi-server upgrade` as any other.
+`install.sh` and `setup` run end to end on a fresh machine of each package
+manager, behind a reverse proxy the test sets up, and the server serves the
+setup page at its domain with a valid certificate; on Ubuntu also with `s3`.
+A second `setup` of a finished server is refused, one that stopped before
+the proxy was ready continues, and the server then moves with `demi-server
+upgrade` as any other.
