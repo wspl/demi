@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterView, useRoute, useRouter } from 'vue-router'
+import { RouterView, useRoute } from 'vue-router'
 import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -20,6 +20,7 @@ import SettingsDialog from './settings/SettingsDialog.vue'
 import TargetDialog from './targets/TargetDialog.vue'
 import WorkPane from './conversation/WorkPane.vue'
 import { useConversations } from './conversation/store'
+import { useConversationNavigation } from './conversation/navigation'
 import { useWorkPanel } from './conversation/work'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
@@ -56,8 +57,8 @@ const sidebarWidth = ref(resources.sidebarWidth)
 watch(() => resources.sidebarWidth, (width) => { sidebarWidth.value = width })
 const asideShare = ref(resources.asideShare)
 watch(() => resources.asideShare, (share) => { asideShare.value = share })
-const router = useRouter()
 const route = useRoute()
+const { open, create } = useConversationNavigation()
 const folded = computed({
   get: () => resources.local.foldedProjects,
   set: (value) => {
@@ -117,16 +118,6 @@ function reorder(request: SidebarReorder) {
       })
   } else {
     conversations.reorder(request.id, request.beforeId)
-  }
-}
-function open(id: string) {
-  resources.sidebarOpen = false
-  void router.push(`/chat/${id}`)
-}
-async function create(projectId: string | null) {
-  const id = await conversations.create(projectId)
-  if (id) {
-    open(id)
   }
 }
 function addProject() {
