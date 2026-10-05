@@ -337,9 +337,14 @@ Service                        Runner                          Backend
     from its official source, `url`, an HTTP or HTTPS URL without
     credentials, which the runner downloads from instead of asking the
     backend; the size and SHA-256 the program pinned decide what it keeps,
-    whatever the transport. The runner answers `{id, path}`, the absolute
-    path of the file or of the archive's entry, once the artifact is
-    installed.
+    whatever the transport. Before the outcome, the runner answers
+    `{id, progress}` as the download passes each tenth of the size, with
+    `phase` `download`, `done` and `total` in bytes, and once more with
+    `phase` `unpack` as an archive unpacks; a program that installs on
+    purpose, such as `demi browser install`, prints them, and one that
+    installs for its first use ignores them. The runner answers
+    `{id, path}`, the absolute path of the file or of the archive's entry,
+    once the artifact is installed.
   - `installed`: `name`. The runner answers `{id, installed}`: the artifacts
     of that line its cache and the image hold, each with its `version`,
     `sha256` and `path`, the cache's newest install first. It reads only the
