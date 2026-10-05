@@ -23,7 +23,7 @@ use demi_backend_remote_host::{
 use demi_command_declarations::NativeOperation;
 use demi_command_protocol::{CommandCaller, CommandContext};
 use demi_host_interface::{
-    ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents,
+    ByteRange, Call, CommandSet, CommandState, CommandStatus, ExecRequest, FileContents, FileKind,
     GroupBuilder, Host, HostError, HostErrorKind, JobCaller, LeafBuilder, ObservationWindow,
     Process, ProcessEnd, ProcessOutput, RpcError, RpcPort, Seen, ShellEnvironment, ShellTarget,
     Signal, SpawnEnv, SpawnRequest, Streams, TypedRpc, WriteOptions,
@@ -787,7 +787,12 @@ async fn a_reader_that_leaves_stops_the_runners_read_and_the_host_keeps_serving(
         .unwrap()
         .set_len(64 * MIB as u64)
         .unwrap();
-    let mut reader = host.read_pipe(&long, ByteRange::default()).await.unwrap();
+    let (stat, mut reader) = host.read_pipe(&long, ByteRange::default()).await.unwrap();
+    // The read answers the file's metadata, so no stat precedes it.
+    assert_eq!(
+        (stat.kind, stat.size),
+        (FileKind::File, std::fs::metadata(&long).unwrap().len())
+    );
     let mut received = 0;
     while received <= MIB {
         received += reader.next().await.unwrap().unwrap().len();
