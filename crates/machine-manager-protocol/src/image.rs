@@ -106,18 +106,6 @@ pub struct InstalledPackage {
     pub version: String,
 }
 
-/// A standalone tool the build installed, such as uv or Chrome.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct StandaloneTool {
-    #[garde(length(min = 1))]
-    pub name: String,
-    #[garde(length(min = 1))]
-    pub version: String,
-    #[garde(custom(digest))]
-    pub sha256: String,
-}
-
 /// A Cloud image release's manifest.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -145,8 +133,6 @@ pub struct CloudImageManifest {
     /// The runner release of `/opt/demi/bin/demi-runner`.
     #[garde(dive)]
     pub runner: RunnerRelease,
-    #[garde(dive)]
-    pub tools: Vec<StandaloneTool>,
 }
 
 /// A manifest the manager or the packaging command refuses.

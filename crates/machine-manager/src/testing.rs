@@ -100,7 +100,6 @@ impl CloudImage {
                 "commandProtocol": 1,
                 "targets": { architecture.target(): runner },
             },
-            "tools": [],
         });
         std::fs::write(
             directory.path().join("manifest.json"),

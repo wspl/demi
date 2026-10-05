@@ -1,0 +1,13 @@
+{
+  "serial": "20260927",
+  "amd64": {
+    "url": "https://partner-images.canonical.com/oci/resolute/20260927/ubuntu-resolute-oci-amd64-root.tar.gz",
+    "size": 39620349,
+    "sha256": "8b07c194f63393b173bd71a88ebdbb89ef3dd17d78a7601e7c058a9b4680f796"
+  },
+  "arm64": {
+    "url": "https://partner-images.canonical.com/oci/resolute/20260927/ubuntu-resolute-oci-arm64-root.tar.gz",
+    "size": 38386315,
+    "sha256": "5abfc469f667cf5e986fcaa47475335df7324e5751b26dfc74c476388989eea3"
+  }
+}
