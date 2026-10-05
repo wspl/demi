@@ -11,9 +11,10 @@
 //!   real runner jobs, and its factory;
 //! - manifests built from a command set ([`CommandCatalog`]).
 //!
-//! It owns no socket and no HTTP route: the backend's connection tasks and
-//! pipe routes feed it. Everything but the pipe ends runs inside the user's
-//! shard.
+//! It owns no HTTP route: the backend's connection tasks and pipe routes
+//! feed it, and with its `edge` feature it relays a stream pipe's WebSocket
+//! that a pipe route accepted ([`accept_stream_pipe`]). Everything but the
+//! pipe ends runs inside the user's shard.
 
 mod link;
 mod manifest;
@@ -22,6 +23,8 @@ mod pipes;
 mod relay;
 mod remote_host;
 mod shell_environment;
+#[cfg(feature = "edge")]
+mod stream_pipe;
 #[cfg(feature = "testing")]
 pub mod testing;
 
@@ -39,6 +42,8 @@ pub use remote_host::{
     Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, LogPage, Look, LookAt, RemoteHost, RemoteJob,
     ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, host_identity,
 };
+#[cfg(feature = "edge")]
+pub use stream_pipe::accept_stream_pipe;
 pub use shell_environment::{
     CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteShellEnvironment,
     RemoteShellEnvironmentFactory, edited_file,

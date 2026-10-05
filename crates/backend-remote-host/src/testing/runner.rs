@@ -1,6 +1,6 @@
 //! A real runner for one device: a [`RunnerProcess`] connected to a backend
 //! end of its own that serves the runner socket and the pipe routes the way
-//! the backend's edge does. What reaches the connection, the adoption and
+//! the backend's edge does, a stream pipe's WebSocket included. What reaches the connection, the adoption and
 //! the pipe claims, is handed to a local task that owns the device, as the
 //! edge hands it to the user's shard.
 
@@ -11,7 +11,7 @@ use axum::{
     body::Body,
     extract::{
         Path as UrlPath, State,
-        ws::{Message, WebSocket, WebSocketUpgrade},
+        ws::{Message, WebSocket, WebSocketUpgrade, rejection::WebSocketUpgradeRejection},
     },
     http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
@@ -28,7 +28,7 @@ use super::process::{RunnerProcess, RunnerProcessOptions};
 use super::{CommandPolicy, TEST_DEVICE};
 use crate::{
     Admission, DeviceLink, DeviceSink, DeviceSource, Link, LinkOptions, PipeRefusal, Pipes,
-    RemoteHost, host_identity,
+    RemoteHost, accept_stream_pipe, host_identity,
 };
 
 /// The device token the fixture's runner presents.
@@ -425,6 +425,26 @@ async fn pipe_source(
     if !authorized(&headers, &edge.token) {
         return (StatusCode::UNAUTHORIZED, "device token required").into_response();
     }
+    match claim_source(&edge, id).await {
+        Ok(source) => match source.pump(body.into_data_stream()).await {
+            Ok(()) => (StatusCode::OK, "drained").into_response(),
+            Err(failure) => (StatusCode::CONFLICT, failure.to_string()).into_response(),
+        },
+        Err(refusal) => refusal,
+    }
+}
+
+/// A stream pipe's source, relayed as the backend's route relays it.
+async fn stream_source(edge: &Edge, id: String, upgrade: WebSocketUpgrade) -> Response {
+    match claim_source(edge, id).await {
+        Ok(source) => accept_stream_pipe(upgrade, source),
+        Err(refusal) => refusal,
+    }
+}
+
+/// The source end of pipe `id`, which the device's task claims; the refusal
+/// answers the request.
+async fn claim_source(edge: &Edge, id: String) -> Result<DeviceSource, Response> {
     let (claimed, claim) = oneshot::channel();
     if edge
         .requests
@@ -432,25 +452,33 @@ async fn pipe_source(
         .await
         .is_err()
     {
-        return StatusCode::SERVICE_UNAVAILABLE.into_response();
+        return Err(StatusCode::SERVICE_UNAVAILABLE.into_response());
     }
     match claim.await {
-        Ok(Ok(source)) => match source.pump(body.into_data_stream()).await {
-            Ok(()) => (StatusCode::OK, "drained").into_response(),
-            Err(failure) => (StatusCode::CONFLICT, failure.to_string()).into_response(),
-        },
-        Ok(Err(refusal)) => refused(refusal),
-        Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+        Ok(Ok(source)) => Ok(source),
+        Ok(Err(refusal)) => Err(refused(refusal)),
+        Err(_) => Err(StatusCode::SERVICE_UNAVAILABLE.into_response()),
     }
 }
 
+/// A pipe's bytes for its sink, or, as a WebSocket upgrade, a stream pipe's
+/// bytes from its source, as the backend's pipe route takes them.
 async fn pipe_sink(
     State(edge): State<Edge>,
     UrlPath(id): UrlPath<String>,
     headers: HeaderMap,
+    upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Response {
     if !authorized(&headers, &edge.token) {
         return (StatusCode::UNAUTHORIZED, "device token required").into_response();
+    }
+    match upgrade {
+        Ok(upgrade) => return stream_source(&edge, id, upgrade).await,
+        // An upgrade the request asks for wrongly is no sink's GET.
+        Err(rejection) if headers.contains_key(header::UPGRADE) => {
+            return rejection.into_response();
+        }
+        Err(_) => {}
     }
     let (claimed, claim) = oneshot::channel();
     if edge
