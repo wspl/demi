@@ -103,9 +103,11 @@ the backend listens. The two usual arrangements differ only in that address:
 
 - Behind a reverse proxy on the same machine, such as Caddy or nginx, or a
   tunnel, such as Cloudflare Tunnel: `--listen 127.0.0.1:<port>`.
-- Behind Cloudflare's proxy, which reaches the machine from outside:
-  `--listen 0.0.0.0:<port>`, with one of the ports Cloudflare forwards HTTP
-  to, such as 8080.
+- Behind Cloudflare's proxy with the SSL/TLS mode Flexible, which reaches the
+  machine from outside over HTTP on port 80: `--listen 0.0.0.0:80`. Another
+  port needs an Origin Rule that sends the domain's requests to it; the modes
+  Full and Full (strict) reach the machine over HTTPS, which Demi does not
+  serve. The backend's unit lets it listen on a port below 1024.
 
 `--help` gives both, and what the proxy must do: pass `Origin` and `Host`
 unchanged and allow WebSocket upgrades. An expose domain needs the same proxy

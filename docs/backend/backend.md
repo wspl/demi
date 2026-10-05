@@ -560,12 +560,15 @@ domain name, and something in front of the backend holds the certificate:
 
 | Shape | `DEMI_BACKEND_LISTEN` | In front of the backend |
 | --- | --- | --- |
-| Behind a CDN | `0.0.0.0:<port>` | Cloudflare proxies the domain's DNS record and terminates TLS, then reaches the backend over HTTP on the server's public address |
+| Behind a CDN | `0.0.0.0:80` | Cloudflare proxies the domain's DNS record and terminates TLS, then reaches the backend over HTTP on the server's public address, with the SSL/TLS mode Flexible |
 | Behind a local reverse proxy | `127.0.0.1:<port>` | Caddy on the same machine terminates TLS on port 443 and forwards to the backend on loopback |
 
-Cloudflare forwards HTTP only to ports 80, 8080, 8880, 2052, 2082, 2086 and
-2095 ([Cloudflare network ports](https://developers.cloudflare.com/fundamentals/reference/network-ports/)),
-so a backend behind it listens on one of them. Either proxy must pass each
+With the SSL/TLS mode Flexible, Cloudflare reaches the origin of an HTTPS
+request over HTTP on port 80, so a backend behind it listens there; another
+port needs an Origin Rule
+([Cloudflare network ports](https://developers.cloudflare.com/fundamentals/reference/network-ports/)).
+The modes Full and Full (strict) reach the origin over HTTPS, which Demi does
+not serve. Either proxy must pass each
 request's `Origin` and `Host` unchanged
 ([Authentication and ownership](#authentication-and-ownership)).
 
