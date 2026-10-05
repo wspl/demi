@@ -267,6 +267,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     and `Manifest::build`, so both ends compute the hash one way;
   - the managed boot record (`ManagedBoot`) and the runner release record
     (`RunnerRelease`);
+  - a server release's record (`ServerRelease`, the root's `release.json`),
+    which says where the release's files are, and the name of each file
+    (`release_file`, `compressed_file`);
   - `Signal`, and the platform a runner reports in its hello
     (`RunnerPlatform`);
   - the protocol constants: `VERSION`, `MAX_MESSAGE_BYTES`, `JOB_VIEW_BYTES`,
@@ -281,7 +284,8 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   wire carries no conversation browser policy.
 - **Public boundary:** the items above. The runner and the backend link it; the
   machine manager uses `ManagedBoot`, and `machine-manager-protocol`'s image manifest
-  check and `xtask`'s image build use `ARTIFACTS_PATH`. Behavior:
+  check and `xtask`'s image build use `ARTIFACTS_PATH`. `xtask` writes a server
+  release's record and files, and the backend's publication reads them. Behavior:
   [Runner](../execution/runner.md).
 - **Must not:** contain network IO, a Host implementation, a shell environment,
   the job table, credentials, claim policy, the device registry or conversation
@@ -378,8 +382,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 - **Owns:** verified download over HTTPS with a declared size and SHA-256
   (plain HTTP too for the runner's artifact cache, whose digests come from the
-  pinned descriptor), and the measured download that establishes them when a
-  release is prepared; digests; atomic publication, durable when asked; release
+  pinned descriptor, and redirects followed for a server release's files,
+  which the backend checks against its own records), and the measured
+  download that establishes them when a release is prepared; the content
+  coding of a compressed copy, and its verified decoding; digests; atomic publication, durable when asked; release
   publication (a directory of verified files and the record that describes
   them, published once and immutable); the install lock between processes;
   install receipts; and archive installation (a verified zip archive unpacked
