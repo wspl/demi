@@ -167,8 +167,9 @@ e2fsprogs and nftables have those names everywhere. On another distribution
 `setup` names the three tools and stops; an operator who installed
 them runs it again with `--no-packages`, and the Cloud check of step 4
 decides whether the machine can run Demi. SELinux in enforcing mode, as the
-dnf distributions run it, lets gVisor run with no change of policy: the Cloud
-check passed on Fedora 44, Rocky Linux 10.2 and AlmaLinux 10.2 so. Arch's
+dnf distributions run it, lets gVisor run with no change of policy: `setup`
+passed its Cloud check on Fedora 44, Rocky Linux 10.2 and AlmaLinux 10.2 so,
+and a Cloud booted and ran commands on Fedora 44 and Rocky Linux 10.2. Arch's
 package names come from its repositories; `setup` has not run on an Arch
 machine yet. openSUSE is not offered. Each distribution offered needs Linux 5.14 or later, systemd
 and cgroup v2, which their current releases have.
