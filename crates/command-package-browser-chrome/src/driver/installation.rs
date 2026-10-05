@@ -56,12 +56,13 @@ impl Chrome {
         let path = self.source()?.install(install).await.map_err(|error| {
             BrowserError::Installation(format!("{} could not be installed: {error}", release.title()))
         })?;
-        let missing = requirements::missing()?;
+        let missing = requirements::missing(&path, &platform.executable)?;
         Ok(InstallResult {
             browser: release.title(),
             path: path.to_string_lossy().into_owned(),
             missing_libraries: missing.libraries,
             missing_fonts: missing.fonts,
+            sandbox_profile: missing.sandbox,
         })
     }
 
