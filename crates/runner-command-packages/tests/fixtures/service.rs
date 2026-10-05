@@ -81,7 +81,7 @@ impl Handler for Fixture {
                     let mut printed = String::new();
                     // Every report comes before the answer.
                     while let Ok(report) = reports.try_recv() {
-                        if let ArtifactProgress::Download { done } = report {
+                        if let ArtifactProgress::Download { done, .. } = report {
                             printed.push_str(&format!("{done}\n"));
                         }
                     }
