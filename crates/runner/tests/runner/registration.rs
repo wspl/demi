@@ -2,6 +2,8 @@
 //! its protocol, logs its start, runs a job whose declared command is a
 //! builtin of its shell, answers `status` while it runs, and on `drain`
 //! ends its connection with a close frame and releases the installation.
+//! Its removal (`runner.md` § Installation, pairing and removal): a revoked
+//! runner removes its installation, and a refused one keeps it.
 
 use std::{collections::BTreeMap, time::Duration};
 
@@ -135,6 +137,63 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
         assert!(!state.join("active.json").exists());
         // Without an active runner there is nobody to report.
         assert_eq!(manage("status", &state).await, Some(1));
+    })
+    .await
+    .unwrap();
+}
+
+/// Waits until the runner process has exited, while the backend end reads
+/// on and answers the close frame of the connection the runner ends.
+async fn exited(host: &mut Host) {
+    let socket = &mut host.socket;
+    let process = &mut host.process;
+    let answered = async { while socket.next().await.is_some() {} };
+    let exited = async {
+        while process.running() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    };
+    tokio::join!(answered, exited);
+}
+
+/// A runner whose device the user revoked hears it from its backend and
+/// removes its installation (`runner.md` § Installation, pairing and
+/// removal).
+#[tokio::test]
+async fn a_runner_whose_device_is_revoked_removes_its_installation() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        let state = host.state();
+        assert!(state.join("runner-token").exists());
+        host.send(Inbound::Revoked {}).await;
+        exited(&mut host).await;
+        assert!(!state.exists(), "{}", host.process.output());
+    })
+    .await
+    .unwrap();
+}
+
+/// A runner whose token its backend does not know may belong to a backend
+/// that lost its data, so it keeps its installation: it stops and says how
+/// to remove it.
+#[tokio::test]
+async fn a_runner_refused_at_its_hello_keeps_its_installation_and_says_how_to_remove_it() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await;
+        let state = host.state();
+        host.send(Inbound::HelloError {
+            code: wire::HelloErrorCode::UnknownDevice,
+            reason: "unknown device".into(),
+        })
+        .await;
+        exited(&mut host).await;
+        assert!(state.join("runner-token").exists());
+        let output = host.process.output();
+        assert!(
+            output.contains("this device is no longer paired with")
+                && output.contains(&format!("uninstall --home {}", state.display())),
+            "{output}"
+        );
     })
     .await
     .unwrap();
