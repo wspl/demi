@@ -259,6 +259,37 @@ A tab whose socket is lost or taken as broken
 another client disposed with `close`, opens the conversation again the same
 way and shows the tree as the backend then has it.
 
+### Requests for one action
+
+A page may be a long way from its server: a laptop behind a proxy, reaching a
+server on another continent through a TLS edge, waits about half a second for
+each round trip. So one thing the user does costs as few round trips as the
+work allows, and never one per item:
+
+- **Requests that do not depend on each other go out together.** Opening a
+  conversation sends the transcript, its attached hosts, its draft, its
+  permission requests and its panel at once, and opens its socket beside
+  them; the transcript does not wait for the hosts. The first load starts the
+  synchronization channel beside the session check, and opens the
+  conversation its URL names by its id, without waiting for the channel's
+  first state.
+- **An action that changes several things is one request.** Creating a
+  conversation carries its settings and its hosts in its own request
+  ([Conversation creation and Fork](web-api.md#conversation-creation-and-fork)),
+  and the page shows the conversation it created without reading it back;
+  Close Others is one change of the panel
+  ([Work panel state](web-api.md#work-panel-state)).
+- **An answer that says what happened is not followed by a read.** A change
+  of the panel answers the revision it made; the page reads the panel only
+  when the revision shows that another change came in between. A decision on
+  a permission request, an attached host's change and a provider's settings
+  change likewise update the page from their answer and the synchronization
+  channel, not from a second request.
+- **Several uploads run at once,** up to four at a time: dropping a folder
+  uploads its files, whose writes make their folders, and makes only its
+  empty folders; no listing follows each file, the tree takes the new entries
+  from the uploads' answers.
+
 ### Liveness and reconnection
 
 A page holds WebSockets of three kinds to the backend: the synchronization
