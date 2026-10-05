@@ -1,6 +1,9 @@
 //! The artifacts stream (`native-runtime.md` § The artifacts stream): a
 //! program's requests that the runner install an artifact for one of its
 //! invocations, or say which artifacts of a line it has, and their answers.
+//! Before it answers an install, the runner reports how its download goes,
+//! so a command that installs on purpose can say so in its own output
+//! (§ Install artifacts).
 
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -136,8 +139,29 @@ pub enum ArtifactReply {
     Installed(Vec<InstalledArtifact>),
 }
 
+/// How far an install has come: `done` bytes of the artifact's size have
+/// arrived, or the archive arrived whole and is being unpacked.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(tag = "phase", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ArtifactProgress {
+    Download {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        done: u64,
+    },
+    Unpack,
+}
+
+/// What an answer to a request says: how far an install has come, which
+/// may come several times, or the request's outcome, which ends it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ArtifactAnswered {
+    Progress(ArtifactProgress),
+    Outcome(Result<ArtifactReply, String>),
+}
+
 /// The answer to request `id`, one input chunk: a path, the line's
-/// artifacts, or why there is neither.
+/// artifacts, or why there is neither; or, before an install's outcome, how
+/// far it has come.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactAnswer {
@@ -164,6 +188,13 @@ pub struct ArtifactAnswer {
     )]
     #[garde(inner(length(min = 1)))]
     pub error: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(dive)]
+    pub progress: Option<ArtifactProgress>,
 }
 
 impl ArtifactAnswer {
@@ -173,6 +204,7 @@ impl ArtifactAnswer {
             path: None,
             installed: None,
             error: None,
+            progress: None,
         };
         match result {
             Ok(ArtifactReply::Path(path)) => answer.path = Some(path),
@@ -182,16 +214,33 @@ impl ArtifactAnswer {
         answer
     }
 
-    /// The answer's outcome; one that carries more than one or none is
-    /// invalid.
-    pub fn outcome(&self) -> Result<Result<ArtifactReply, String>, ProtocolError> {
+    /// How far request `id`'s install has come.
+    pub fn progress(id: u64, progress: ArtifactProgress) -> Self {
+        Self {
+            id,
+            path: None,
+            installed: None,
+            error: None,
+            progress: Some(progress),
+        }
+    }
+
+    /// What the answer says; one that carries more than one of its kinds or
+    /// none is invalid.
+    pub fn answered(&self) -> Result<ArtifactAnswered, ProtocolError> {
         garde::Validate::validate(self).map_err(ProtocolError::from)?;
-        match (&self.path, &self.installed, &self.error) {
-            (Some(path), None, None) => Ok(Ok(ArtifactReply::Path(path.clone()))),
-            (None, Some(installed), None) => Ok(Ok(ArtifactReply::Installed(installed.clone()))),
-            (None, None, Some(error)) => Ok(Err(error.clone())),
+        match (&self.path, &self.installed, &self.error, self.progress) {
+            (Some(path), None, None, None) => Ok(ArtifactAnswered::Outcome(Ok(
+                ArtifactReply::Path(path.clone()),
+            ))),
+            (None, Some(installed), None, None) => Ok(ArtifactAnswered::Outcome(Ok(
+                ArtifactReply::Installed(installed.clone()),
+            ))),
+            (None, None, Some(error), None) => Ok(ArtifactAnswered::Outcome(Err(error.clone()))),
+            (None, None, None, Some(progress)) => Ok(ArtifactAnswered::Progress(progress)),
             _ => Err(ProtocolError::Invalid(
-                "an artifact answer carries a path, the installed artifacts or an error".into(),
+                "an artifact answer carries a path, the installed artifacts, an error or progress"
+                    .into(),
             )),
         }
     }

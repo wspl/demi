@@ -4,6 +4,7 @@
 //! terminal sequences are escaped, so a page cannot forge a line of the
 //! result.
 
+use demi_command_protocol::ArtifactProgress;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -816,6 +817,26 @@ fn assets_export(result: &AssetsExportResult) -> String {
         plain(&result.directory),
         plain(&result.manifest)
     )
+}
+
+/// A line of `install`'s download of `browser`, whose archive is `size`
+/// bytes: how much has arrived, or that it is being unpacked
+/// (`browser.md` § Installation).
+pub fn install_progress(browser: &str, size: u64, progress: ArtifactProgress) -> String {
+    let browser = plain(browser);
+    match progress {
+        ArtifactProgress::Download { done } => format!(
+            "Downloading {browser}: {} of {} MB\n",
+            megabytes(done),
+            megabytes(size)
+        ),
+        ArtifactProgress::Unpack => format!("Unpacking {browser}\n"),
+    }
+}
+
+/// `bytes` in whole megabytes of 2^20 bytes, rounded to the nearest.
+fn megabytes(bytes: u64) -> u64 {
+    (bytes + (1 << 19)) >> 20
 }
 
 /// Where the browser is, then, on Linux, what the Host lacks for it: the

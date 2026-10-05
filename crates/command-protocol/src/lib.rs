@@ -16,8 +16,8 @@ mod package;
 pub mod testing;
 
 pub use artifacts::{
-    ArtifactAnswer, ArtifactAsk, ArtifactForm, ArtifactInstall, ArtifactReply, ArtifactRequest,
-    ArtifactsInstalled, InstalledArtifact,
+    ArtifactAnswer, ArtifactAnswered, ArtifactAsk, ArtifactForm, ArtifactInstall, ArtifactProgress,
+    ArtifactReply, ArtifactRequest, ArtifactsInstalled, InstalledArtifact,
 };
 pub use conversation::{ConversationRequest, ConversationStatus};
 pub use edits::{

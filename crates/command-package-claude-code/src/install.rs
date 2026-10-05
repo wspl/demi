@@ -77,7 +77,7 @@ pub async fn ensure(
         form: ArtifactForm::File,
         url: None,
     };
-    let path = artifacts.install(install).await?;
+    let path = artifacts.install(install, None).await?;
     Ok(Installed {
         version: release.version.clone(),
         path,

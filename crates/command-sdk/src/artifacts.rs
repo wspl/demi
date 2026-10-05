@@ -1,17 +1,18 @@
 //! The artifacts stream (`native-runtime.md` § The artifacts stream): the
 //! handler asks the runner to install an artifact for one of its
-//! invocations, or which artifacts of a line the Host has, through its
-//! [`Artifacts`], and uses only the paths the runner answers.
+//! invocations, following how its download goes if it likes, or which
+//! artifacts of a line the Host has, through its [`Artifacts`], and uses
+//! only the paths the runner answers.
 
 use std::path::PathBuf;
 
 use tokio::sync::mpsc;
 
 use crate::ServiceError;
-use crate::asking::{Asked, Asker, Pending};
+use crate::asking::{Answered, Asked, Asker, Pending};
 use demi_command_protocol::{
-    ArtifactAnswer, ArtifactAsk, ArtifactInstall, ArtifactReply, ArtifactRequest,
-    ArtifactsInstalled, InstalledArtifact, ProtocolError,
+    ArtifactAnswer, ArtifactAnswered, ArtifactAsk, ArtifactInstall, ArtifactProgress,
+    ArtifactReply, ArtifactRequest, ArtifactsInstalled, InstalledArtifact, ProtocolError,
 };
 
 /// The artifacts stream's kind of request.
@@ -21,6 +22,7 @@ impl Asked for ArtifactsAsk {
     type Request = ArtifactRequest;
     type Answer = ArtifactAnswer;
     type Reply = ArtifactReply;
+    type Progress = ArtifactProgress;
     const NAME: &'static str = "artifacts";
 
     fn with_id(request: ArtifactRequest, id: u64) -> ArtifactRequest {
@@ -39,12 +41,19 @@ impl Asked for ArtifactsAsk {
         ArtifactAnswer::new(id, result)
     }
 
+    fn progress(id: u64, progress: ArtifactProgress) -> ArtifactAnswer {
+        ArtifactAnswer::progress(id, progress)
+    }
+
     fn answer_id(answer: &ArtifactAnswer) -> u64 {
         answer.id
     }
 
-    fn outcome(answer: &ArtifactAnswer) -> Result<Result<ArtifactReply, String>, ProtocolError> {
-        answer.outcome()
+    fn answered(answer: &ArtifactAnswer) -> Result<Answered<Self>, ProtocolError> {
+        Ok(match answer.answered()? {
+            ArtifactAnswered::Progress(progress) => Answered::Progress(progress),
+            ArtifactAnswered::Outcome(outcome) => Answered::Outcome(outcome),
+        })
     }
 }
 
@@ -66,9 +75,14 @@ impl Artifacts {
     }
 
     /// Installs `install` for the invocation it names, and answers the path
-    /// of its file or of its archive's entry.
-    pub async fn install(&self, install: ArtifactInstall) -> Result<PathBuf, ServiceError> {
-        match self.ask(ArtifactAsk::Install(install)).await? {
+    /// of its file or of its archive's entry. How its download goes reaches
+    /// `progress`, from [`Artifacts::progress`], when given.
+    pub async fn install(
+        &self,
+        install: ArtifactInstall,
+        progress: Option<mpsc::Sender<ArtifactProgress>>,
+    ) -> Result<PathBuf, ServiceError> {
+        match self.ask(ArtifactAsk::Install(install), progress).await? {
             ArtifactReply::Path(path) => Ok(PathBuf::from(path)),
             ArtifactReply::Installed(_) => Err(unexpected()),
         }
@@ -80,19 +94,31 @@ impl Artifacts {
         let question = ArtifactsInstalled {
             name: name.to_owned(),
         };
-        match self.ask(ArtifactAsk::Installed(question)).await? {
+        match self.ask(ArtifactAsk::Installed(question), None).await? {
             ArtifactReply::Installed(installed) => Ok(installed),
             ArtifactReply::Path(_) => Err(unexpected()),
         }
     }
 
-    async fn ask(&self, ask: ArtifactAsk) -> Result<ArtifactReply, ServiceError> {
+    /// Where an install's progress is sent, and where its caller reads it.
+    pub fn progress() -> (
+        mpsc::Sender<ArtifactProgress>,
+        mpsc::Receiver<ArtifactProgress>,
+    ) {
+        Asker::<ArtifactsAsk>::progress()
+    }
+
+    async fn ask(
+        &self,
+        ask: ArtifactAsk,
+        progress: Option<mpsc::Sender<ArtifactProgress>>,
+    ) -> Result<ArtifactReply, ServiceError> {
         // Checked here, where the caller learns why, rather than where the
         // runner reads it and breaks the stream.
         let request = ArtifactRequest::new(0, ask);
         request.ask()?;
         self.asker
-            .ask(request)
+            .ask(request, progress)
             .await
             .ok_or_else(|| ServiceError::Artifacts("the artifacts stream has ended".into()))?
             .map_err(ServiceError::Artifacts)

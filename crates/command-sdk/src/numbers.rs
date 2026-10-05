@@ -5,7 +5,7 @@
 use tokio::sync::mpsc;
 
 use crate::ServiceError;
-use crate::asking::{Asked, Asker, Pending};
+use crate::asking::{Answered, Asked, Asker, Pending};
 use demi_command_protocol::{NumbersAnswer, NumbersRequest, ProtocolError, ServiceSequence};
 
 /// The numbers stream's kind of request.
@@ -15,6 +15,8 @@ impl Asked for NumbersAsk {
     type Request = NumbersRequest;
     type Answer = NumbersAnswer;
     type Reply = u64;
+    /// A draw is answered at once.
+    type Progress = std::convert::Infallible;
     const NAME: &'static str = "numbers";
 
     fn with_id(request: NumbersRequest, id: u64) -> NumbersRequest {
@@ -33,12 +35,16 @@ impl Asked for NumbersAsk {
         NumbersAnswer::new(id, result)
     }
 
+    fn progress(_id: u64, progress: std::convert::Infallible) -> NumbersAnswer {
+        match progress {}
+    }
+
     fn answer_id(answer: &NumbersAnswer) -> u64 {
         answer.id
     }
 
-    fn outcome(answer: &NumbersAnswer) -> Result<Result<u64, String>, ProtocolError> {
-        answer.outcome()
+    fn answered(answer: &NumbersAnswer) -> Result<Answered<Self>, ProtocolError> {
+        answer.outcome().map(Answered::Outcome)
     }
 }
 
@@ -79,7 +85,7 @@ impl Numbers {
         };
         request.validate()?;
         self.asker
-            .ask(request)
+            .ask(request, None)
             .await
             .ok_or_else(|| ServiceError::Numbers("the numbers stream has ended".into()))?
             .map_err(ServiceError::Numbers)

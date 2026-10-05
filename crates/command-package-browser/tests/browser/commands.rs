@@ -376,3 +376,91 @@ async fn conversation_browser_commands_share_state_and_retire() {
     .await
     .unwrap();
 }
+
+/// `demi browser install` reports its download in its own output
+/// (`browser.md` § Installation): a line for each report of the runner's
+/// download, one as it unpacks, then where the browser is. In JSON, the
+/// output is the one document.
+// Cost: about 0.1 s; the service runs in this process and no Chrome starts.
+#[tokio::test]
+async fn install_reports_its_download_in_its_output() {
+    use demi_command_package_browser_protocol::release::BrowserRelease;
+    use demi_command_protocol::{ArtifactAsk, ArtifactProgress, ArtifactReply};
+    use demi_command_sdk::{ArtifactsAsk, serve};
+    use std::sync::Arc;
+    use tokio_util::task::AbortOnDropHandle;
+
+    let release = BrowserRelease::pinned().unwrap();
+    let size = release
+        .platform(demi_command_protocol::host_target())
+        .unwrap()
+        .size;
+    let root = tempfile::tempdir().unwrap();
+    let chrome = root.path().join("chrome");
+    let (client_io, server_io) = tokio::io::duplex(128 * 1024);
+    let _server = AbortOnDropHandle::new(tokio::spawn(serve(
+        server_io,
+        Arc::new(demi_browser::DemiBrowser::new()),
+    )));
+    let (client, connection) = Client::connect(client_io).await.unwrap();
+    let _driver = AbortOnDropHandle::new(tokio::spawn(connection));
+    let _numbers = demi_command_sdk::testing::answer_numbers(&client).await.unwrap();
+    // A runner that downloads the archive in two halves, unpacks it, and
+    // answers where its entry is.
+    let stream = client.artifacts().await.unwrap();
+    let path = chrome.to_string_lossy().into_owned();
+    let _artifacts = AbortOnDropHandle::new(tokio::spawn(async move {
+        stream
+            .answer::<ArtifactsAsk, _>(|request, reporter| {
+                let path = path.clone();
+                async move {
+                    assert!(matches!(request.ask(), Ok(ArtifactAsk::Install(_))));
+                    reporter.report(ArtifactProgress::Download { done: size / 2 });
+                    reporter.report(ArtifactProgress::Download { done: size });
+                    reporter.report(ArtifactProgress::Unpack);
+                    Ok(ArtifactReply::Path(path))
+                }
+            })
+            .await
+    }));
+    let install = |json: Option<bool>| Invocation {
+        operation: "browser.install".into(),
+        invocation_id: uuid::Uuid::new_v4().to_string(),
+        cwd: root.path().to_str().unwrap().into(),
+        args: serde_json::json!({}),
+        env: BTreeMap::new(),
+        edits: None,
+        json,
+        context: CommandContext {
+            conversation: uuid::Uuid::new_v4().to_string(),
+            caller: CommandCaller::agent(1),
+            locale: CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        },
+        stdout: None,
+    };
+
+    let (completion, stdout, stderr) = exchange(&client, &install(None), false).await;
+    assert_eq!(completion.exit_code, 0, "{}", String::from_utf8_lossy(&stderr));
+    let title = release.title();
+    let megabytes = |bytes: u64| (bytes as f64 / (1024.0 * 1024.0)).round();
+    let expected = format!(
+        "Downloading {title}: {} of {total} MB\n\
+         Downloading {title}: {total} of {total} MB\n\
+         Unpacking {title}\n\
+         Installed {title} at {}\n",
+        megabytes(size / 2),
+        chrome.display(),
+        total = megabytes(size),
+    );
+    let stdout = String::from_utf8(stdout).unwrap();
+    // On Linux, what the Host lacks for Chrome follows.
+    assert!(stdout.starts_with(&expected), "{stdout}");
+
+    let (completion, stdout, stderr) = exchange(&client, &install(Some(true)), false).await;
+    assert_eq!(completion.exit_code, 0, "{}", String::from_utf8_lossy(&stderr));
+    let document: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+    assert_eq!(document["path"], chrome.to_string_lossy().as_ref());
+}

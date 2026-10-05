@@ -5,7 +5,9 @@
 //! from then on. Beside each entry a record names its line and version, so
 //! the cache answers which artifacts of a line it has and removes a line's
 //! older ones once a newer one is installed, except those a running service
-//! holds. Before it downloads an artifact, it takes the copy the Host's image
+//! holds. An install reports how its download goes, at each tenth of the
+//! artifact's size and as it unpacks an archive, to whoever follows it
+//! (§ Install artifacts). Before it downloads an artifact, it takes the copy the Host's image
 //! preinstalled (§ Preinstalled artifacts), which it checks the same way the
 //! first time the process needs it. Runners that share the cache publish one
 //! copy of each artifact.
@@ -18,7 +20,7 @@ use std::{
     time::SystemTime,
 };
 
-use demi_command_protocol::{ArtifactForm, InstalledArtifact, PackageArtifact};
+use demi_command_protocol::{ArtifactForm, ArtifactProgress, InstalledArtifact, PackageArtifact};
 use demi_shared_artifacts::{
     Archive, ArchiveInstall, Digest, Mode, Permissions, Publication, Staged,
 };
@@ -38,6 +40,13 @@ type Checked = HashMap<String, Option<PathBuf>>;
 
 /// The suffix of an entry's line record, beside the entry.
 const LINE: &str = ".line.json";
+
+/// Where an install reports how its download goes.
+pub type Progress<'a> = &'a (dyn Fn(ArtifactProgress) + Send + Sync);
+
+/// The progress of an install nobody follows, such as a program's own
+/// executable, which installs before the command that needs it starts.
+pub const SILENT: Progress<'static> = &|_| {};
 
 pub struct ArtifactCache {
     root: PathBuf,
@@ -152,17 +161,23 @@ impl ArtifactCache {
     /// one, else the image's copy that matches it, else one downloaded into
     /// the cache. Once it is there, the cache records it in its line and
     /// removes the line's other artifacts that no running service holds. A
-    /// cached entry whose metadata shows damage fails the install.
+    /// cached entry whose metadata shows damage fails the install. A
+    /// download reports to `progress` at each tenth of the artifact's size,
+    /// and an archive once more as it is unpacked.
     pub async fn install(
         &self,
         wanted: &Wanted<'_>,
         resolver: &dyn ArtifactResolver,
+        progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
         let path = match wanted.form {
-            ArtifactForm::File => self.install_file(wanted, resolver, cancel).await?,
+            ArtifactForm::File => {
+                self.install_file(wanted, resolver, progress, cancel)
+                    .await?
+            }
             ArtifactForm::Archive { entry } => {
-                self.install_archive(wanted, entry, resolver, cancel)
+                self.install_archive(wanted, entry, resolver, progress, cancel)
                     .await?
             }
         };
@@ -231,6 +246,7 @@ impl ArtifactCache {
         &self,
         wanted: &Wanted<'_>,
         resolver: &dyn ArtifactResolver,
+        progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
         let destination = self.root.join(&wanted.artifact.sha256);
@@ -245,7 +261,8 @@ impl ArtifactCache {
             {
                 return Ok(file);
             }
-            self.download(wanted, &destination, resolver, cancel).await?;
+            self.download(wanted, &destination, resolver, progress, cancel)
+                .await?;
             Ok(destination.clone())
         })
         .await
@@ -256,6 +273,7 @@ impl ArtifactCache {
         wanted: &Wanted<'_>,
         entry: &str,
         resolver: &dyn ArtifactResolver,
+        progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
         let archive = Archive {
@@ -280,9 +298,10 @@ impl ArtifactCache {
                     ArchiveInstall::Unpack(unpacking) => unpacking,
                 };
             let mut output = tokio::fs::File::create(unpacking.archive()).await?;
-            self.fetch(&wanted.artifact, &mut output, resolver, cancel)
+            self.fetch(&wanted.artifact, &mut output, resolver, progress, cancel)
                 .await?;
             drop(output);
+            progress(ArtifactProgress::Unpack);
             Ok(unpacking.finish(cancel).await?)
         })
         .await
@@ -439,6 +458,7 @@ impl ArtifactCache {
         wanted: &Wanted<'_>,
         destination: &Path,
         resolver: &dyn ArtifactResolver,
+        progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<(), RuntimeError> {
         let mut staged = Staged::new(
@@ -450,7 +470,7 @@ impl ArtifactCache {
             },
         )
         .await?;
-        self.fetch(&wanted.artifact, staged.file(), resolver, cancel)
+        self.fetch(&wanted.artifact, staged.file(), resolver, progress, cancel)
             .await?;
         match staged.publish().await {
             Err(demi_shared_artifacts::Error::Io(error))
@@ -464,22 +484,35 @@ impl ArtifactCache {
     }
 
     /// Writes the verified bytes of `artifact`, from where the backend says
-    /// it is, into `output`.
+    /// it is, into `output`, reporting to `progress` each time they pass
+    /// another tenth of its size.
     async fn fetch(
         &self,
         artifact: &PackageArtifact,
         output: &mut (impl AsyncWrite + Unpin),
         resolver: &dyn ArtifactResolver,
+        progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<(), RuntimeError> {
         let expected = digest_of(artifact);
+        let tenth = |bytes: u64| bytes.saturating_mul(10) / artifact.size;
         // A URL that expired on the way is asked for once more.
         let mut refreshed = false;
         loop {
+            let mut written = 0u64;
+            let mut output = tokio_util::io::InspectWriter::new(&mut *output, |bytes: &[u8]| {
+                let before = tenth(written);
+                written += bytes.len() as u64;
+                if tenth(written) > before {
+                    progress(ArtifactProgress::Download {
+                        done: written.min(artifact.size),
+                    });
+                }
+            });
             match resolver.resolve(artifact, cancel).await? {
                 ArtifactSource::Local(path) => {
                     let mut input = tokio::fs::File::open(path).await?;
-                    demi_shared_artifacts::copy(&mut input, &expected, &mut *output, cancel).await?;
+                    demi_shared_artifacts::copy(&mut input, &expected, &mut output, cancel).await?;
                 }
                 ArtifactSource::Url { url, expires_at } => {
                     let expired = || expires_at.is_some_and(|expires| expires <= SystemTime::now());
@@ -496,7 +529,7 @@ impl ArtifactCache {
                         &self.http,
                         &url,
                         &expected,
-                        &mut *output,
+                        &mut output,
                         cancel,
                     )
                     .await;
