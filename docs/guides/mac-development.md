@@ -116,6 +116,16 @@ unit and the link beneath that directory inside the VM. The script prepares its 
 state directory on the Lima data disk; `--data` names another prepared Linux
 state directory.
 
+Lima mounts the data disk late in the VM's boot, after systemd would start
+the manager, so the installed unit starts only once the disk is mounted, and
+the VM's provisioning starts it then; a manager started earlier would make its
+state directory on the VM's own disk, under the mount point, where the mounted
+disk hides it. Lima finds the disk by its filesystem label, `lima-` and the
+disk's name, which ext4 keeps to 16 characters: a disk name longer than 11
+characters loses its label, and Lima formats the disk again at the next boot.
+An existing instance keeps the template it was created from; a change to the
+template reaches it through `limactl edit`.
+
 Stopping or recreating the Lima instance preserves the data disk; deleting it
 is a separate explicit action. Lima formats the data disk only while it is
 blank, and the scripts never reformat storage or reuse another deployment's
