@@ -22,7 +22,7 @@ use crate::{
     storage::{
         clone::clone_sparse,
         durable::{remove_tree, sync, write_json},
-        ext4, skeleton,
+        base, ext4, skeleton,
         store::ImagePair,
         working::{WorkingPair, new_generation},
     },
@@ -225,6 +225,8 @@ impl DeviceWorker {
             Some(state) => state,
             None => self.initialize(&self.base.clone()).await?,
         };
+        let base = self.core.store.bases().join(&state.base_version);
+        let runner_release = base::runner_release(&base).await?;
         let stage = Stage::create(&self.core, "wake").await?;
         let copied = self.stage_working(&state, stage.path()).await;
         stage.remove().await;
@@ -232,13 +234,15 @@ impl DeviceWorker {
         fault::point("working-staged");
         let lease = self.core.slots.take()?;
         let mut sandbox = Sandbox::new(&self.core, lease);
-        let base = self
-            .core
-            .store
-            .bases()
-            .join(&state.base_version)
-            .join("rootfs");
-        let started = sandbox.start(&self.core, &self.working, &base, boot).await;
+        let started = sandbox
+            .start(
+                &self.core,
+                &self.working,
+                &base.join("rootfs"),
+                &runner_release,
+                boot,
+            )
+            .await;
         let Err(error) = started else {
             self.runtime = Some(sandbox);
             return Ok(());

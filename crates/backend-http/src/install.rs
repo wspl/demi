@@ -87,14 +87,9 @@ async fn installer(
     media_type: &'static str,
 ) -> Result<Response, ApiError> {
     let site = &state.site;
-    let Some(releases) = &site.runner_releases else {
+    let Some(release) = current_runner_release(site).await? else {
         return Ok((StatusCode::SERVICE_UNAVAILABLE, UNCONFIGURED).into_response());
     };
-    let release = read_release(releases.join("manifest.json"))
-        .await?
-        .ok_or_else(|| {
-            ApiError::internal_message("the runner release directory has no manifest.json")
-        })?;
     let backend = match &site.public_url {
         Some(url) => url.clone(),
         None => request_origin(https, headers)?,
@@ -109,6 +104,22 @@ async fn installer(
         script(&backend, &release),
     );
     Ok(answer.into_response())
+}
+
+/// The runner release the installers install and every paired device's
+/// runner follows, the one `runners/manifest.json` names; none for a backend
+/// without runner releases. The record is read on each use, so a release
+/// packaged into a running backend's `runners/` takes effect at once.
+pub(super) async fn current_runner_release(site: &Site) -> Result<Option<RunnerRelease>, ApiError> {
+    let Some(releases) = &site.runner_releases else {
+        return Ok(None);
+    };
+    let release = read_release(releases.join("manifest.json"))
+        .await?
+        .ok_or_else(|| {
+            ApiError::internal_message("the runner release directory has no manifest.json")
+        })?;
+    Ok(Some(release))
 }
 
 /// The origin the request came to, for a backend that names no public URL.

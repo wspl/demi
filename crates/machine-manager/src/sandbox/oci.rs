@@ -7,6 +7,7 @@
 use std::collections::HashSet;
 
 use demi_machine_manager_protocol::image::{INIT_PATH, RUNNER_PATH};
+use demi_runner_protocol::release::RELEASE_ENV;
 use oci_spec::{
     OciSpecError,
     runtime::{
@@ -53,6 +54,9 @@ pub struct Boot<'a> {
     /// The boot's cgroup; `None` with the resource limits off, when the
     /// sandbox has none.
     pub cgroup: Option<Cgroup<'a>>,
+    /// The release of the runner the sandbox runs, which the runner names
+    /// to the backend (`runner.md` § Runner updates).
+    pub runner_release: &'a str,
 }
 
 /// A sandbox's cgroup under `demi-cloud`, named by the sandbox id, and its
@@ -102,17 +106,14 @@ pub fn spec(boot: &Boot<'_>) -> Result<Spec, OciSpecError> {
             .map(String::from)
             .to_vec(),
         )
-        .env(
-            [
-                "HOME=/home/demi",
-                "USER=demi",
-                "LOGNAME=demi",
-                "LANG=en_US.UTF-8",
-                "PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin",
-            ]
-            .map(String::from)
-            .to_vec(),
-        )
+        .env(vec![
+            "HOME=/home/demi".into(),
+            "USER=demi".into(),
+            "LOGNAME=demi".into(),
+            "LANG=en_US.UTF-8".into(),
+            "PATH=/usr/local/bin:/usr/bin:/bin:/usr/local/sbin:/usr/sbin:/sbin".into(),
+            format!("{RELEASE_ENV}={}", boot.runner_release),
+        ])
         .capabilities(capabilities)
         .no_new_privileges(false)
         .rlimits(vec![
@@ -298,6 +299,7 @@ mod tests {
                     memory_mib: std::num::NonZeroU32::new(2048).unwrap(),
                 },
             }),
+            runner_release: "release-of-the-runner",
         })
         .unwrap();
         let expected: Spec =
