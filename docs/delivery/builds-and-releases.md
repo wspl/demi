@@ -363,8 +363,7 @@ For example, 0.1.3 for x86_64:
   bin/demi-machine-manager      the target's machine manager
   bin/demi-server               the server's installer and upgrader
   runtime/                      the pinned runsc distribution of the target's architecture
-  caddy/                        the pinned static Caddy of the target's architecture
-  systemd/                      the units of the backend, the machine manager and Caddy
+  systemd/                      the units of the backend and the machine manager
   web/                          the built web app, with its build.json
   runners/                      the runner release's manifests
   commands/demi-file/           one command package release per directory, its descriptor
