@@ -164,10 +164,11 @@ release descriptor, create the archive and manifest, and publish the directory
 atomically. The manager imports its configured release once, at startup, before
 it serves requests; a failed import stops startup with its diagnostic. An
 [upgrade](../delivery/upgrades.md#prepare) imports the next release's image
-earlier, with `demi-machine-manager import <release root>` beside the running
-manager, so the start finds it imported: a base is an immutable directory named
-by its `baseVersion` and published atomically, and a running manager reads no
-base it was not configured with. Import
+earlier: the next release's manager, run with `--import`, imports its own
+release's image beside the running manager and exits, so the start finds it
+imported. It takes none of the running manager's locks, since a base is an
+immutable directory named by its `baseVersion` and published atomically, and
+a running manager reads no base it was not configured with. Import
 rejects unknown schemas, mismatched hashes or sizes, missing executable
 entries, and an architecture that differs from its Linux host. A base already
 imported under the same `baseVersion` must hold the same manifest bytes.

@@ -189,7 +189,7 @@ current release serves:
    `/etc/demi/demi.env` with `--check-config`, which validates every setting
    as a start would and exits. A failure names the variable.
 2. **Cloud image.** The new manager imports the release's `image/` with
-   `demi-machine-manager import`, beside the running manager. Bases are
+   `demi-machine-manager --import`, beside the running manager. Bases are
    immutable directories named by their `baseVersion` and published
    atomically, and the running manager never reads one it was not configured
    with, so the two do not meet. The import is the slow step of a manager's
