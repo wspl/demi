@@ -58,6 +58,8 @@ pub enum End {
     Stopped,
     Disconnected,
     Rejected,
+    /// The backend revoked the device.
+    Revoked,
 }
 
 /// What each connection takes from its registration.
@@ -403,8 +405,22 @@ impl Owner<'_> {
                 if code == wire::HelloErrorCode::AlreadyConnected {
                     return Ok(Some(End::Disconnected));
                 }
+                // A device revoked while its runner was away, or a backend
+                // that lost its data: the runner cannot tell them apart, so
+                // it stops and leaves its removal to the person.
+                if code == wire::HelloErrorCode::UnknownDevice
+                    && let Some(removal) = &registered.removal
+                {
+                    eprintln!(
+                        "demi-runner: this device is no longer paired with {}; to remove this runner, run: {removal}",
+                        registered.backend
+                    );
+                }
                 management.set_phase(Phase::Rejected);
                 return Ok(Some(End::Rejected));
+            }
+            Inbound::Revoked {} if management.phase() == Phase::Online => {
+                return Ok(Some(End::Revoked));
             }
             Inbound::Ping {} => {
                 let pong = wire::encode(&wire::Outbound::Pong {

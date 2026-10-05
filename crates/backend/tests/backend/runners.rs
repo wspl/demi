@@ -84,7 +84,8 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
         .await;
     assert_eq!(backend.devices(&master).await.len(), 1);
 
-    // Revoked, the device is gone, and its runner hears why and stops.
+    // Revoked, the device is gone, and its runner hears why and removes
+    // itself.
     let revoked = backend
         .delete(&format!("/api/devices/{}", device.id), &master)
         .await;
@@ -359,6 +360,38 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     assert!(backend.online(&master, laptop.id()).await);
     drop(bound);
     backend.until_online(&master, laptop.id(), false).await;
+    backend.close().await;
+}
+
+/// Revoking a device tells its connected runner, which then removes itself
+/// (`runner.md` § Installation, pairing and removal), before the backend
+/// closes the connection.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_revoked_devices_runner_hears_it_was_revoked_before_its_connection_closes() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let token = laptop.token().await;
+    laptop.runner.stop().await;
+    backend.until_online(&master, laptop.id(), false).await;
+
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    assert!(matches!(runner.next().await, Some(Inbound::HelloOk { .. })));
+    let revoked = backend
+        .delete(&format!("/api/devices/{}", laptop.id()), &master)
+        .await;
+    assert_eq!(revoked.status, StatusCode::NO_CONTENT);
+    // What the backend sent the device before, such as its manifest, comes
+    // first.
+    loop {
+        match runner.next().await {
+            Some(Inbound::Revoked {}) => break,
+            Some(_) => {}
+            None => panic!("the connection closed without revoked"),
+        }
+    }
+    assert_eq!(runner.next().await, None);
     backend.close().await;
 }
 

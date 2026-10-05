@@ -1,8 +1,11 @@
 //! Removing a paired device's runner (`runner.md` § Installation, pairing
 //! and removal): the command that does it, which the runner tells the person
-//! at its console once it is paired.
+//! at its console once it is paired, and the removal of its installation's
+//! directory, with everything in it: the device token, the releases, the
+//! log, and the artifact cache unless `DEMI_ARTIFACTS` named one elsewhere.
+//! Other backends' installations each have a directory of their own.
 
-use std::path::Path;
+use std::{io, path::Path};
 
 /// The command that removes the runner of the installation in `directory`:
 /// the installation's launcher when an installer made it, else the runner's
@@ -38,4 +41,41 @@ fn sh(path: &Path) -> String {
 /// `path` as a PowerShell string literal.
 fn powershell(path: &Path) -> String {
     format!("'{}'", path.to_string_lossy().replace('\'', "''"))
+}
+
+/// Removes the installation's directory, which nothing of this runner uses
+/// any more. A running program's file can be deleted on Unix, so the
+/// directory goes at once.
+#[cfg(unix)]
+pub fn remove(directory: &Path) -> io::Result<()> {
+    std::fs::remove_dir_all(directory)
+}
+
+/// Removes the installation's directory. Windows deletes no running
+/// program's file, and this runner's executable, like that of an `uninstall`
+/// that waits for it, lies in the directory: a detached PowerShell process
+/// removes the directory once they exited, trying for a minute.
+#[cfg(windows)]
+pub fn remove(directory: &Path) -> io::Result<()> {
+    use std::os::windows::process::CommandExt as _;
+    // A process of its own: no console, and no part in this one's Ctrl+C.
+    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    const SCRIPT: &str = "$d = $env:DEMI_REMOVED_INSTALLATION; \
+        for ($i = 0; $i -lt 120; $i++) { \
+        if (-not (Test-Path -LiteralPath $d)) { exit 0 }; \
+        try { Remove-Item -LiteralPath $d -Recurse -Force -ErrorAction Stop } \
+        catch { Start-Sleep -Milliseconds 500 } }; \
+        exit 1";
+    std::process::Command::new("powershell.exe")
+        .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+        .env("DEMI_REMOVED_INSTALLATION", directory)
+        // A process's working directory cannot be removed while it runs.
+        .current_dir(std::env::temp_dir())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
+        .spawn()
+        .map(drop)
 }
