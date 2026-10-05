@@ -1,7 +1,8 @@
 //! Pipe records (`runner.md` § Pipes and output): every byte stream between
 //! processes. A pipe has a source and a sink; an end on a device is that
-//! runner's HTTP exchange with the backend (`PUT` from the source, `GET` by
-//! the sink), an end in this process is a reader or a writer. The records
+//! runner's HTTP exchange with the backend (a `PUT` body or a stream pipe's
+//! WebSocket from the source, `GET` by the sink), an end in this process is
+//! a reader or a writer. The records
 //! live in the user's shard and hold only the byte in flight; the ends are
 //! `Send`, so the edge that serves a device's request copies the bytes.
 //!
@@ -735,14 +736,15 @@ impl Drop for PipeSink {
     }
 }
 
-/// A device's `PUT` of a pipe's source, for the edge to feed.
+/// A device's source end of a pipe, a `PUT` body or a stream pipe's
+/// WebSocket, for the edge to feed.
 pub struct DeviceSource {
     writer: PipeWriter,
 }
 
 impl DeviceSource {
-    /// Forwards the request body into the pipe to its end, and resolves with
-    /// the pipe's outcome, which is the request's answer: drained, even when
+    /// Forwards the source's bytes into the pipe to their end, and resolves
+    /// with the pipe's outcome, which is the source's answer: drained, even when
     /// the sink stopped early, or failed, also mid-body. Dropping the future
     /// before its end fails the pipe: the request went away.
     pub async fn pump<S, E>(self, body: S) -> Result<(), PipeFailure>
