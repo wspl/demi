@@ -1,6 +1,7 @@
 //! The work panel (`web-api.md` § Work panel state): a conversation's tabs,
-//! which the backend changes one operation at a time and never interprets,
-//! counted by a revision the summary carries, with each tab's id used once.
+//! which the backend changes a request of changes at a time, all or none,
+//! and never interprets, counted by a revision the summary carries, with
+//! each tab's id used once.
 
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -50,26 +51,30 @@ impl Panel<'_> {
             .collect()
     }
 
-    async fn create(&self, body: Value) -> crate::support::Answer {
-        let path = format!("/api/conversations/{}/panel/tabs", self.id);
+    /// Sends `changes` as one request.
+    async fn send(&self, changes: Value) -> crate::support::Answer {
+        let path = format!("/api/conversations/{}/panel/changes", self.id);
+        let body = json!({ "changes": changes });
         self.backend.post(&path, Some(self.master), body).await
+    }
+
+    async fn create(&self, mut tab: Value) -> crate::support::Answer {
+        tab["op"] = json!("create");
+        self.send(json!([tab])).await
     }
 
     async fn update(&self, tab: &str, data: Value) -> crate::support::Answer {
-        let path = format!("/api/conversations/{}/panel/tabs/{tab}", self.id);
-        let body = json!({ "data": data });
-        self.backend.patch(&path, self.master, body).await
+        self.send(json!([{ "op": "update", "id": tab, "data": data }]))
+            .await
     }
 
     async fn remove(&self, tab: &str) -> crate::support::Answer {
-        let path = format!("/api/conversations/{}/panel/tabs/{tab}", self.id);
-        self.backend.delete(&path, self.master).await
+        self.send(json!([{ "op": "delete", "id": tab }])).await
     }
 
     async fn move_to(&self, tab: &str, index: usize) -> crate::support::Answer {
-        let path = format!("/api/conversations/{}/panel/tabs/{tab}/move", self.id);
-        let body = json!({ "index": index });
-        self.backend.post(&path, Some(self.master), body).await
+        self.send(json!([{ "op": "move", "id": tab, "index": index }]))
+            .await
     }
 
     async fn summary_revision(&self) -> u64 {
@@ -99,7 +104,7 @@ fn page(id: &str, url: &str) -> Value {
 }
 
 #[tokio::test]
-async fn a_work_panel_changes_one_operation_at_a_time_and_uses_a_tab_id_once() {
+async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let panel = Panel {
@@ -164,6 +169,22 @@ async fn a_work_panel_changes_one_operation_at_a_time_and_uses_a_tab_id_once() {
     assert_eq!(panel.ids().await, ["p1"]);
     assert_eq!(panel.summary_revision().await, 6);
 
+    // Several changes are one request and one revision, as Close Others
+    // sends them; a request with a change that has nothing to do applies
+    // the others.
+    for tab in ["p3", "p4", "p5"] {
+        panel.create(page(tab, "https://c.test/")).await;
+    }
+    assert_eq!(panel.ids().await, ["p1", "p3", "p4", "p5"]);
+    let others = json!([
+        { "op": "delete", "id": "p3" },
+        { "op": "delete", "id": "gone" },
+        { "op": "delete", "id": "p5" },
+    ]);
+    assert_eq!(revision(&panel.send(others).await), 10);
+    assert_eq!(panel.ids().await, ["p1", "p4"]);
+    assert_eq!(panel.summary_revision().await, 10);
+
     // The backend refuses a kind no plugin declares and a body that does not fit.
     let unknown = json!({ "id": "q", "kind": "a kind nobody declares", "data": {} });
     assert_eq!(
@@ -218,6 +239,17 @@ async fn a_work_panel_holds_64_tabs_and_64_kib_and_an_archived_conversation_take
         panel.create(large).await.refusal(),
         (StatusCode::CONFLICT, ErrorCode::PanelFull)
     );
+    // A request whose last change is refused applies none of them.
+    let before = panel.read().await;
+    let refused = json!([
+        { "op": "delete", "id": "t1" },
+        { "op": "update", "id": "t2", "data": { "large": "x".repeat(70 * 1024) } },
+    ]);
+    assert_eq!(
+        panel.send(refused).await.refusal(),
+        (StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::TooLarge)
+    );
+    assert_eq!(panel.read().await, before);
 
     let archived = backend
         .patch(

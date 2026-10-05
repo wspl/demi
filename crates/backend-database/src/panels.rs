@@ -1,10 +1,10 @@
 //! Work panels (`storage.md` § Control records): each conversation's tabs,
-//! the ids it ever had and the revision that counts its changes. A change
-//! reads the row and writes it in one transaction, so one conversation's
-//! changes apply one at a time. The backend never interprets a tab.
+//! the ids it ever had and the revision that counts its changes. A request
+//! of changes reads the row and writes it in one transaction, so one
+//! conversation's requests apply one at a time, each whole or not at all. The backend never interprets a tab.
 
 use demi_web_api_protocol::ids::ConversationId;
-use demi_web_api_protocol::panel::{Applied, PanelChange, PanelDocument, PanelEffect, WorkPanel};
+use demi_web_api_protocol::panel::{PanelChange, PanelDocument, PanelEffect, Refused, WorkPanel};
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::StorageError;
@@ -12,15 +12,16 @@ use super::columns::{decode, json, to_json};
 use super::control::ControlService;
 use super::drafts::archived;
 
-/// What a change came to.
+/// What a request of changes came to.
 #[derive(Debug, Clone, PartialEq)]
 pub enum PanelOutcome {
-    /// The change is in the panel, which is at `revision` now.
+    /// The changes are in the panel, which is at `revision` now; each that
+    /// had something to do did this.
     Changed {
         revision: u64,
-        effect: PanelEffect,
+        effects: Vec<PanelEffect>,
     },
-    /// The change had nothing to do; the panel stays at `revision`.
+    /// The changes had nothing to do; the panel stays at `revision`.
     Unchanged {
         revision: u64,
     },
@@ -48,11 +49,12 @@ impl ControlService {
         .await
     }
 
-    /// Applies `change` to the conversation's panel.
+    /// Applies `changes` to the conversation's panel in order, all or none,
+    /// as one change of its revision.
     pub async fn change_panel(
         &self,
         conversation: ConversationId,
-        change: PanelChange,
+        changes: Vec<PanelChange>,
     ) -> Result<PanelOutcome, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -70,11 +72,13 @@ impl ControlService {
                 return Ok(PanelOutcome::Archived);
             }
             let (revision, mut document) = stored(&transaction, &conversation)?;
-            let effect = match document.apply(change) {
-                Applied::Effect(effect) => effect,
-                Applied::Nothing => return Ok(PanelOutcome::Unchanged { revision }),
-                Applied::Full => return Ok(PanelOutcome::Full),
-                Applied::TooLarge => return Ok(PanelOutcome::TooLarge),
+            let effects = match document.apply_all(changes) {
+                Ok(effects) if effects.is_empty() => {
+                    return Ok(PanelOutcome::Unchanged { revision });
+                }
+                Ok(effects) => effects,
+                Err(Refused::Full) => return Ok(PanelOutcome::Full),
+                Err(Refused::TooLarge) => return Ok(PanelOutcome::TooLarge),
             };
             let revision = revision + 1;
             transaction.execute(
@@ -88,7 +92,7 @@ impl ControlService {
                 ],
             )?;
             transaction.commit()?;
-            Ok(PanelOutcome::Changed { revision, effect })
+            Ok(PanelOutcome::Changed { revision, effects })
         })
         .await
     }
