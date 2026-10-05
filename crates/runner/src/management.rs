@@ -1,5 +1,5 @@
-//! Installation status and coordinated upgrade drain, which the runner's
-//! local endpoint answers beside the declared commands.
+//! Installation status, coordinated upgrade drain and removal, which the
+//! runner's local endpoint answers beside the declared commands.
 
 use demi_command_protocol::{Completion, LocalInvocation};
 use demi_command_sdk::{Handler, InvocationContext, ServiceError};
@@ -34,6 +34,9 @@ pub struct Request {
 pub enum Action {
     Status,
     Drain,
+    /// Asks the backend to revoke the device, then drains (`runner.md`
+    /// § Installation, pairing and removal).
+    Uninstall,
 }
 
 #[derive(Serialize)]
@@ -59,6 +62,9 @@ pub struct Management {
     secret: String,
     release: String,
     snapshot: watch::Sender<Snapshot>,
+    /// Asked to remove itself: the runner asks its backend to revoke the
+    /// device, and drains once it answered or a bounded time passed.
+    pub removing: CancellationToken,
     pub draining: CancellationToken,
     pub stop: CancellationToken,
 }
@@ -72,6 +78,7 @@ impl Management {
                 phase: Phase::Connecting,
                 jobs: 0,
             }),
+            removing: CancellationToken::new(),
             draining: CancellationToken::new(),
             stop,
         })
@@ -121,8 +128,10 @@ impl Management {
         if !self.authorize(&request) {
             return Err(ServiceError::failed(InvalidSecret));
         }
-        if matches!(request.action, Action::Drain) {
-            self.draining.cancel();
+        match request.action {
+            Action::Status => {}
+            Action::Drain => self.draining.cancel(),
+            Action::Uninstall => self.removing.cancel(),
         }
         context
             .output
