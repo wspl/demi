@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch, type Component } from 'vue'
+import { computed, type Component } from 'vue'
 import { Brain, History, SquareTerminal } from '@lucide/vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -19,21 +19,13 @@ import FunctionalBlock from './FunctionalBlock.vue'
 const props = defineProps<{
   kind: ActivityKind
   incoming?: HandoffBlock | null
+  /** When the wait began, as `Date.now()`; Requesting shows how long it has waited since. */
+  since: number
 }>()
 
-// The clock runs across the agent's own retries: they are one wait on the provider.
-const isRequesting = computed(
-  () => props.kind === 'requesting' && !props.incoming,
-)
-const requestingSince = ref(Date.now())
-watch(isRequesting, (requesting) => {
-  if (requesting) {
-    requestingSince.value = Date.now()
-  }
-})
 const requestingElapsed = useElapsedTime(
-  () => requestingSince.value,
-  () => isRequesting.value,
+  () => props.since,
+  () => props.kind === 'requesting' && !props.incoming,
 )
 
 interface Face {

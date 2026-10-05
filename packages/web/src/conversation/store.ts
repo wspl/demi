@@ -224,7 +224,6 @@ export const useConversations = defineStore('conversations', () => {
       draftShown: 0,
       files: [],
       attachmentIds: [],
-      submission: 'idle',
       pendingSend: null,
       messageEdit: null,
       scroll: null,
@@ -548,7 +547,7 @@ export const useConversations = defineStore('conversations', () => {
         conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
         if (conversation.pendingSend && !conversation.pendingSend.error) {
           conversation.pendingSend.error =
-            'Sending was interrupted. Retry to confirm delivery.'
+            'Delivery was interrupted. Retry to confirm it.'
         }
         // A draft holds model settings only for a conversation without a
         // record.
@@ -1365,7 +1364,7 @@ export const useConversations = defineStore('conversations', () => {
   async function send(conversation: Conversation): Promise<void> {
     if (
       conversation.archived ||
-      conversation.submission === 'sending' ||
+      conversation.pendingSend?.error === null ||
       (!conversation.pendingSend && !attachmentsReady(messageFiles(conversation))) ||
       (!conversation.pendingSend &&
         !conversation.draft.trim() &&
@@ -1393,7 +1392,6 @@ export const useConversations = defineStore('conversations', () => {
     const files = pending.fileIds.flatMap((id) =>
       conversation.files.filter((file) => file.id === id),
     )
-    conversation.submission = 'sending'
     saveDrafts()
     try {
       await persistConversation(conversation)
@@ -1415,7 +1413,6 @@ export const useConversations = defineStore('conversations', () => {
         pending.error = error instanceof Error ? error.message : String(error)
       }
     } finally {
-      conversation.submission = 'idle'
       if (!signal.aborted) {
         saveDrafts()
       }

@@ -135,6 +135,8 @@ function detach(id: string): void {
         @retitle="updateTitle"
         has-provider
         @save-scroll="(_id, state) => (session.scroll = state)"
+        :pending-submission="flow.pendingSubmission.value"
+        @retry-submission="flow.retrySubmission"
         @retry="flow.resume()"
         @abort-subagents="flow.abortSubagents"
         @abort-subagent="flow.abortSubagent"

@@ -43,8 +43,8 @@ import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
+import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { compactionTranscript, type CompactionCase } from '../fixtures/compaction'
-import PendingSubmission from '@demicodes/web-ui/agent/PendingSubmission.vue'
 import { RestoreSweep } from '../fixtures/restore-sweep'
 import {
   sessionPaneStatus,
@@ -151,7 +151,27 @@ const dockSpecimens = reactive([
 ])
 // The product session opens with the root's request waiting, above its chips.
 const sessionRequests = ref<PermissionRequestView[]>([rootRequest()])
-const submissionError = ref<string | null>('Connection closed before confirmation')
+// A first message the server never confirmed. Retry sends it again with the
+// same id; this time it arrives and its turn runs.
+const deliveryFlow = useTurnFlow({ id: 'gallery-delivery' })
+const undeliveredText = `Review the notes ${ATTACHMENT_MARK} before the next run.`
+const undeliveredContent = joinMessageContent(undeliveredText, [[{
+  type: 'attachment',
+  name: 'notes.txt',
+  path: '/home/demi/.demi/attachments/gallery/notes.txt',
+  mediaType: 'text/plain',
+  sizeBytes: 2048,
+  sha256: '0'.repeat(64),
+} satisfies UserContentBlock]])
+
+function failDelivery(): void {
+  deliveryFlow.undelivered(
+    undeliveredContent,
+    { text: undeliveredText, attachments: [composerAttachment({ name: 'notes.txt', phase: 'ready' })] },
+    'Connection closed before confirmation',
+  )
+}
+failDelivery()
 
 const messageEdit = ref<MessageEditState | null>(null)
 const editRevision = ref(0)
@@ -520,6 +540,8 @@ const functionalThinkingEndedAt = new Date(
 ).toISOString()
 // Requesting covers a recovery in flight and the agent's own retries: one wait, one word.
 const activityKinds: ActivityKind[] = ['requesting', 'connecting']
+// The wait the slot specimens show began when the page opened.
+const activitySince = Date.now()
 const compactionCases: { state: CompactionCase; variant: string }[] = [
   { state: 'running', variant: 'compacting' },
   { state: 'done', variant: 'compacted, at its trigger' },
@@ -1378,7 +1400,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="ActivitySlot"
-        note="Requesting while the provider is asked, a Resume or Continue included, so a slow model reads as the provider's wait. The word and its clock stay through the agent's own retries after a failed attempt: they are the same wait, and a row that changed its word with each attempt would flicker. Elapsed time shows after one second; incoming blocks roll into the same row."
+        note="Requesting while the provider is asked, from the send of a message, its delivery included, and a Resume or Continue alike, so a slow model reads as the provider's wait. The word and its clock stay through the server's confirmation of the message and the agent's own retries after a failed attempt: they are the same wait, and a row that changed its word with each attempt would flicker. Elapsed time shows after one second; incoming blocks roll into the same row."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -1388,7 +1410,7 @@ onBeforeUnmount(() => {
             wide
           >
             <div class="gallery-frame gallery-activity-frame bg-surface">
-              <ActivitySlot :kind="kind" />
+              <ActivitySlot :kind="kind" :since="activitySince" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen
@@ -1399,6 +1421,7 @@ onBeforeUnmount(() => {
               <ActivitySlot
                 kind="requesting"
                 :incoming="incomingThinking"
+                :since="activitySince"
               />
             </div>
           </GallerySpecimen>
@@ -1410,6 +1433,7 @@ onBeforeUnmount(() => {
               <ActivitySlot
                 kind="requesting"
                 :incoming="runningShellTool"
+                :since="activitySince"
               />
             </div>
           </GallerySpecimen>
@@ -1483,7 +1507,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'turns'">
       <GallerySection
         title="Turn"
-        note="Requesting, then each block rolls into the tail row; Resume, Retry and Connect wait for the server first. First Request waits while the Cloud installs the provider's CLI: its progress shows below “Requesting”, not in it."
+        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Resume, Retry and Connect wait for the server first. First Request waits while the Cloud installs the provider's CLI: its progress shows below “Requesting”, not in it."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -1491,6 +1515,11 @@ onBeforeUnmount(() => {
             size="sm"
             @click="playTurn('turn')"
           >Replay</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('undelivered')"
+          >Not Delivered</Button>
           <Button
             variant="ghost"
             size="sm"
@@ -1525,10 +1554,12 @@ onBeforeUnmount(() => {
                 :phase="turnFlow.state.phase"
                 :load="turnFlow.state.load"
                 :pending-action="turnFlow.state.pendingAction"
+                :pending-submission="turnFlow.pendingSubmission.value"
                 :installs="turnFlow.installs.value"
                 :bottom-offset="turnSurface?.dockHeight ?? 0"
                 :persisted-scroll-state="undefined"
                 read-only
+                @retry-submission="turnFlow.retrySubmission"
               />
             </div>
             <template #dock>
@@ -1663,21 +1694,27 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Session Load"
-        note="First opening uses the loading pane until history arrives. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the “Connecting” tail row. An unconfirmed send keeps its user message and retries with the same ID. New conversation opens a local draft immediately."
+        note="First opening uses the loading pane until history arrives. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the “Connecting” tail row. An unconfirmed send keeps its user message as it will stay; Retry sends it again with the same ID and says Requesting from then, through the confirmation, until the answer begins. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
-            <div class="gallery-frame bg-surface">
-              <PendingSubmission
-                id="pending-example"
-                :text="`Review the notes ${ATTACHMENT_MARK} before the next run.`"
-                :attachments="[composerAttachment({ name: 'notes.txt', phase: 'ready' })]"
-                :sending="submissionError === null"
-                :error="submissionError"
-                @retry="submissionError = null"
+            <div class="gallery-frame flex h-[16rem] flex-col overflow-hidden bg-surface">
+              <AgentMessageList
+                class="min-h-0 flex-1"
+                :conversation-id="deliveryFlow.state.id"
+                :blocks="deliveryFlow.state.blocks"
+                :pending-steers="[]"
+                :queue="[]"
+                :phase="deliveryFlow.state.phase"
+                :load="deliveryFlow.state.load"
+                :pending-submission="deliveryFlow.pendingSubmission.value"
+                :bottom-offset="0"
+                :persisted-scroll-state="undefined"
+                read-only
+                @retry-submission="deliveryFlow.retrySubmission"
               />
             </div>
-            <Button size="sm" class="mt-2" @click="submissionError = 'Connection closed before confirmation'">Simulate Failure</Button>
+            <Button size="sm" class="mt-2" @click="failDelivery">Fail Again</Button>
           </GallerySpecimen>
           <GallerySpecimen
             variant="loading"
@@ -1718,7 +1755,7 @@ onBeforeUnmount(() => {
             wide
           >
             <div class="gallery-frame gallery-activity-frame bg-surface">
-              <ActivitySlot kind="connecting" />
+              <ActivitySlot kind="connecting" :since="activitySince" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen
@@ -1730,7 +1767,7 @@ onBeforeUnmount(() => {
             >
               <div class="min-h-0 flex-1 overflow-y-auto pt-2">
                 <UserBlock :content="userBubble" />
-                <ActivitySlot kind="connecting" />
+                <ActivitySlot kind="connecting" :since="activitySince" />
               </div>
             </div>
           </GallerySpecimen>
@@ -1837,6 +1874,8 @@ onBeforeUnmount(() => {
                 :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true }"
                 :files="sessionFiles"
                 @open-aside="panelAsideOpen = true"
+                :pending-submission="sessionFlow.pendingSubmission.value"
+                @retry-submission="sessionFlow.retrySubmission"
                 @retry="sessionFlow.resume()"
                 @rename="session.title = $event"
                 @abort-subagents="sessionFlow.abortSubagents"
@@ -2001,6 +2040,8 @@ onBeforeUnmount(() => {
         :permission-requests="sessionRequests"
         @decide-permission="(id, decision) => (sessionRequests = decidePermission(sessionRequests, id, decision))"
         v-model:message-edit="messageEdit"
+        :pending-submission="sessionFlow.pendingSubmission.value"
+        @retry-submission="sessionFlow.retrySubmission"
         @retry="sessionFlow.resume()"
         @rename="session.title = $event"
         @save-scroll="(_id, state) => (session.scroll = state)"

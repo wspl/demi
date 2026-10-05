@@ -4,7 +4,7 @@ import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import type { ChatSessionState, ConversationState } from '@demicodes/web-ui/agent/types'
+import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import type { HostInstall } from '@demicodes/web-ui/devices/installs'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
 import { demoModel, shellView } from './fixtures/blocks'
@@ -13,14 +13,19 @@ import { CLAUDE_CLI_ARTIFACTS, playInstalls } from './fixtures/installs'
 import { printLive } from './live-command'
 
 /**
- * `turn` is a full turn from a sent message; `resume` and `retry` recover an
- * aborted or failed tail; `connect` opens over a dropped socket; `stream` is
- * thinking then reply with nothing waited for; `install` is a first request
- * that waits while the Cloud installs its provider's CLI. Every fixture only changes
- * conversation state, the way the product's runtime does: the transcript's
- * tail row, its faces and the handoff into a block are `web-ui`'s.
+ * `turn` is a full turn from a sent message, whose delivery the server
+ * confirms; `undelivered` is a sent message whose delivery fails, until Retry
+ * sends it again; `resume` and `retry` recover an aborted or failed tail;
+ * `connect` opens over a dropped socket; `stream` is thinking then reply with
+ * nothing waited for; `install` is a first request that waits while the Cloud
+ * installs its provider's CLI. Every fixture only changes conversation state,
+ * the way the product's runtime does: the transcript's tail row, its faces and
+ * the handoff into a block are `web-ui`'s.
  */
-export type TurnFlowKind = 'turn' | 'resume' | 'retry' | 'connect' | 'stream' | 'install'
+export type TurnFlowKind = 'turn' | 'undelivered' | 'resume' | 'retry' | 'connect' | 'stream' | 'install'
+
+/** A sent message as the composer showed it: what the page holds until the server confirms it. */
+export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'>
 
 /** The state `ChatSession` reads, over the full live conversation state the runtime keeps. */
 export type TurnFlowState = ConversationState & ChatSessionState
@@ -39,6 +44,11 @@ const USER_TEXT = 'The login test in packages/web/src/auth.test.ts is failing af
 const RETRY_ERROR = 'Anthropic API request failed with HTTP 529: Overloaded. The upstream service is temporarily unavailable.'
 /** The simulated server's acknowledgement of a recovery or a reconnect. */
 const ACK_MS = 800
+/** The simulated server admits a sent message: the turn starts before the message is written, as the backend's does. */
+const ADMIT_MS = 400
+/** The simulated server writes the sent message to the transcript, which confirms its delivery; past a second, so the wait shows its clock first. */
+const CONFIRM_MS = 1600
+const DELIVERY_ERROR = 'Connection closed before confirmation'
 const WAIT_MS = 80
 /** Time the model takes before its first output in a turn. */
 const FIRST_OUTPUT_MS = 1000
@@ -88,6 +98,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const timers: number[] = []
   /** What the conversation's Hosts install now, as `ChatSession` shows below the tail. */
   const installs = shallowRef<readonly HostInstall[]>([])
+  /** The message sent and not yet confirmed, as `ChatSession` shows it. */
+  const pendingSubmission = shallowRef<PendingSubmissionState | null>(null)
+  /** What the pending message sends, which its user block holds once confirmed. */
+  let pendingContent: UserContentBlock[] = []
   /** Ends the install the flow plays, if one is under way. */
   let installing: AbortController | null = null
   let token = 0
@@ -324,12 +338,73 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.phase = 'running'
   }
 
-  /** Send a message on the current transcript. */
-  function turn(content: UserContentBlock[]): void {
+  /** Send a message on the current transcript; its turn runs once the server confirms it. */
+  function turn(content: UserContentBlock[], message: SentMessage): void {
     cancel()
-    const run = token
-    append(userBlock(content.length ? content : [{ type: 'text', text: USER_TEXT }]))
-    runTurn(run)
+    holdMessage(content, message, null)
+    deliver(token, false)
+  }
+
+  /** The page holds a sent message until the server confirms it, or with why its delivery failed. */
+  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null): void {
+    pendingSubmission.value = { id: nextId('message'), ...message, error }
+    pendingContent = content
+  }
+
+  /**
+   * The simulated server answers the pending message: it admits the turn, then
+   * writes the message, which confirms it. A delivery that fails is answered
+   * with the failure alone.
+   */
+  function deliver(run: number, fails: boolean): void {
+    if (fails) {
+      at(run, CONFIRM_MS, () => {
+        undeliver(DELIVERY_ERROR)
+      })
+      return
+    }
+    at(run, ADMIT_MS, () => {
+      state.phase = 'running'
+    })
+    at(run, CONFIRM_MS, () => {
+      confirmMessage()
+      runTurn(run)
+    })
+  }
+
+  /** The pending message's user block is written: the message is no longer pending. */
+  function confirmMessage(): void {
+    if (pendingSubmission.value?.error !== null) {
+      return
+    }
+    pendingSubmission.value = null
+    append(userBlock(pendingContent))
+  }
+
+  function undeliver(error: string): void {
+    const pending = pendingSubmission.value
+    if (pending) {
+      pendingSubmission.value = { ...pending, error }
+    }
+  }
+
+  /** A new conversation whose first message was not delivered, as a page shows it after the failure. */
+  function undelivered(content: UserContentBlock[], message: SentMessage, error: string): void {
+    cancel()
+    state.phase = 'idle'
+    state.blocks = []
+    holdMessage(content, message, error)
+  }
+
+  /** Retry sends the undelivered message again with its id, as the product's does; this time it arrives. */
+  function retrySubmission(): void {
+    const pending = pendingSubmission.value
+    if (!pending?.error) {
+      return
+    }
+    cancel()
+    pendingSubmission.value = { ...pending, error: null }
+    deliver(token, false)
   }
 
   /** Resume or retry from the current tail, the way Resume and Retry do in the product. */
@@ -351,6 +426,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       return
     }
     cancel()
+    // An admitted message belongs to the turn: the stop writes it first.
+    confirmMessage()
     const stopped = state.phase
     state.phase = 'idle'
     if (stopped === 'compacting') {
@@ -475,6 +552,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.pendingAction = null
     state.load = 'ready'
     state.phase = 'idle'
+    pendingSubmission.value = null
 
     if (kind === 'stream') {
       // Thinking is the tail from the first running frame, so nothing is waited for.
@@ -556,7 +634,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
 
     state.blocks = []
-    turn([{ type: 'text', text: USER_TEXT }])
+    holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
+    deliver(run, kind === 'undelivered')
   }
 
   onBeforeUnmount(cancel)
@@ -564,8 +643,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   return {
     state,
     installs,
+    pendingSubmission,
     play,
     turn,
+    retrySubmission,
+    undelivered,
     resume,
     stop,
     compact,
