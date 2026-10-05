@@ -175,7 +175,7 @@ jobs:
     env:
       VERSION: ${{ needs.version.outputs.version }}
     steps:
-      # For the runtime's pin and the script that fetches it.
+      # For install.sh.
       - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
@@ -212,10 +212,8 @@ jobs:
             arch=${pair%%:*}
             target=${pair#*:}
             root="$RUNNER_TEMP/roots/$arch"
-            runtime="$RUNNER_TEMP/runtime/$arch"
-            bash crates/machine-manager/scripts/fetch-runsc.sh "$arch" "$runtime"
             "$RUNNER_TEMP/xtask/xtask" server-release --publish --output "$root" \
-              --files files --downloads "$downloads" --server "$target" --runtime "$runtime" \
+              --files files --downloads "$downloads" --server "$target" \
               --web "$RUNNER_TEMP/web" --artifacts native-target --compressed compressed
             tar --zstd -cf "dist/demi-$VERSION-server-linux-$arch.tar.zst" -C "$root" .
             cp "native-target/$target/release/demi-server" "dist/demi-server-$target"

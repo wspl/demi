@@ -21,7 +21,7 @@ case "$(uname -m)" in
   aarch64 | arm64) target=aarch64-unknown-linux-musl ;;
   *) fail "Demi runs on no $(uname -m) server" ;;
 esac
-if [ -e /opt/demi/current ] && [ ! -e /var/lib/demi/server/setup ]; then
+if [ -e /opt/demi/current ] && [ ! -e /opt/demi/server/setup ]; then
   echo 'This machine is a Demi server already: `demi-server upgrade` moves it to a later release.'
   exit 0
 fi

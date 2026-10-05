@@ -319,7 +319,7 @@ Against a manager installed on the host:
 ```sh
 DEMI_TEST_MACHINES_SOCKET=/run/demi-cloud/machines.sock \
 DEMI_TEST_CLOUD_URL=http://<address>:<port> \
-DEMI_TEST_MACHINES_DATA=/var/lib/demi-machine-manager \
+DEMI_TEST_MACHINES_DATA=/opt/demi/data/cloud \
 DEMI_TEST_CLOUD_NATIVE=<native configuration> \
   cargo test --workspace --features demi-runner/test-fixtures --test backend \
   -- --include-ignored real_cloud --test-threads=1 --nocapture
@@ -334,8 +334,9 @@ sudo bash crates/machine-manager/scripts/cloud-suite.sh --release <root> \
   --work <directory>
 ```
 
-The script starts the manager the workspace built (`target/debug`) with its
-resource limits off, in a stand-in execution host: the init of a throwaway PID
+The script starts the manager the workspace built (`target/debug`), with the
+pinned `runsc` that the workspace's `demi-server runtime` fetches unless
+`--runsc` names another, and with its resource limits off, in a stand-in execution host: the init of a throwaway PID
 and mount namespace with its own `/run` and an empty, read-only cgroup root,
 sharing the machine's network namespace so that the Clouds reach the backend.
 Like a host's init, it reaps the processes it adopts, such as the Sentry of a

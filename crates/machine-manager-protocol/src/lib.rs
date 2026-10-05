@@ -1,9 +1,10 @@
 //! The contract between the backend and the Cloud machine manager
 //! (`managed-hosts.md`): the manager socket's messages and their line codec,
-//! the record of a device's stored images, and the Cloud image manifest.
-//! Both ends link this crate, so each is defined once.
+//! the record of a device's stored images, the Cloud image manifest, and the
+//! pinned gVisor runtime. Both ends link this crate, so each is defined once.
 
 pub mod image;
+pub mod runtime;
 mod state;
 mod wire;
 

@@ -1,7 +1,8 @@
 //! Moves between releases on a server laid out in a directory, with the
 //! services simulated (`upgrades.md` § Acceptance): each release's programs
-//! are scripts that accept the configuration and the import, and a release
-//! named as failing does not start.
+//! are scripts that accept the configuration and the import, its
+//! `demi-server` names a gVisor version of its own, and a release named as
+//! failing does not start.
 
 use std::{
     cell::RefCell,
@@ -68,7 +69,7 @@ impl Server {
         let root = tempfile::tempdir().unwrap();
         let layout = Layout::new(root.path().to_owned());
         for version in [OLD, NEW] {
-            release(&layout.release(&version), &version);
+            release(&layout, &version);
         }
         std::fs::create_dir_all(layout.current().parent().unwrap()).unwrap();
         std::os::unix::fs::symlink(layout.release(&OLD), layout.current()).unwrap();
@@ -133,14 +134,22 @@ impl Server {
     }
 }
 
-/// A release root with programs that accept every check, and its units,
-/// which name its version.
-fn release(root: &Path, version: &Version) {
+/// A release root with programs that accept every check, a `demi-server`
+/// whose `runtime` makes and names the release's gVisor version,
+/// `gvisor-<version>`, and its units, which name its version.
+fn release(layout: &Layout, version: &Version) {
+    let root = layout.release(version);
     std::fs::create_dir_all(root.join("bin")).unwrap();
     std::fs::create_dir_all(root.join("systemd")).unwrap();
-    for program in ["demi-backend", "demi-machine-manager"] {
+    let gvisor = layout.gvisor().join(format!("gvisor-{version}"));
+    let runtime = format!("#!/bin/sh\nmkdir -p '{0}'\necho '{0}'\n", gvisor.display());
+    for (program, script) in [
+        ("demi-backend", "#!/bin/sh\nexit 0\n"),
+        ("demi-machine-manager", "#!/bin/sh\nexit 0\n"),
+        ("demi-server", runtime.as_str()),
+    ] {
         let path = root.join("bin").join(program);
-        std::fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        std::fs::write(&path, script).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
     }
     for unit in UNITS {
@@ -151,8 +160,18 @@ fn release(root: &Path, version: &Version) {
 #[test]
 fn an_upgrade_copies_what_it_migrates_and_its_rollback_puts_it_back() {
     let server = Server::new();
+    // A version an earlier release used, and a stage a killed fetch left.
+    for left in ["gvisor-0.0.1", ".staging-x"] {
+        std::fs::create_dir_all(server.layout.gvisor().join(left)).unwrap();
+    }
     let services = server.services(&[]);
     moving::start(&server.layout, &services, &NEW).unwrap();
+    let mut gvisor: Vec<String> = std::fs::read_dir(server.layout.gvisor())
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    gvisor.sort();
+    assert_eq!(gvisor, ["gvisor-0.1.0", "gvisor-0.2.0"]);
     assert_eq!(server.layout.current_version().unwrap(), NEW);
     assert_eq!(server.unit(UNITS[1]), format!("{} of {NEW}\n", UNITS[1]));
     assert_eq!(

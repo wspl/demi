@@ -108,7 +108,10 @@ which the configuration names.
   installed software, and refuses one in a data directory or a home
   directory: tried on Fedora 44, a service whose program lay in
   `/var/lib/<user>` or `/home/<user>` failed to start until the program was
-  relabeled. One directory under `/opt` needs no such rule.
+  relabeled. Services write their data under `/opt` as well: on Fedora 44
+  in enforcing mode, a service running as a system user wrote into its
+  directory there, and a root service wrote its own and ran a program from
+  another. One directory under `/opt` needs no such rule.
 
 ## What follows the release
 

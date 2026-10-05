@@ -9,7 +9,7 @@ use crate::{
     blocking::{self, OffLoop},
     linux::{freeze, loopdev, mount},
     manager::Core,
-    sandbox::runsc::{RuntimeRelease, reports_version},
+    sandbox::runsc::reports_version,
     storage::{clone::clone_sparse, durable::remove_tree, ext4},
     tools::ToolError,
 };
@@ -100,6 +100,7 @@ pub async fn probe_runtime(core: &Core) -> Result<(), PreflightError> {
                 "--platform=systrap",
                 "--network=none",
                 "--ignore-cgroups",
+                "--sidecar-usage-policy=STRICT",
                 "do",
                 "/bin/true",
             ],

@@ -20,8 +20,10 @@ use crate::{
 /// The runtime profile: systrap, gVisor's own network stack in the slot's
 /// namespace, no temporary root overlay (system writes land in the device's
 /// image), shared file access so the images can be saved while the sandbox
-/// is paused, and setuid programs for sudo.
-pub const PROFILE_FLAGS: [&str; 7] = [
+/// is paused, setuid programs for sudo, and only the sidecar programs
+/// beside runsc: without the strict policy runsc downloads a missing one or
+/// falls back to a deprecated embedded copy.
+pub const PROFILE_FLAGS: [&str; 8] = [
     "--platform=systrap",
     "--network=sandbox",
     "--overlay2=none",
@@ -29,44 +31,11 @@ pub const PROFILE_FLAGS: [&str; 7] = [
     "--file-access-mounts=shared",
     "--allow-suid=true",
     "--directfs=true",
+    "--sidecar-usage-policy=STRICT",
 ];
 
 /// A runsc command that does not finish in this time has hung.
 const DEADLINE: Duration = Duration::from_secs(60);
-
-/// The runtime release the manager is built with (`runtime/release.json`).
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct RuntimeRelease {
-    pub upstream: String,
-    pub commit: String,
-    pub arm64_version: String,
-    pub arm64_patch_sha256: String,
-    /// The SHA-512 of the arm64 distribution the Runtime workflow published,
-    /// which fetch-runsc.sh checks.
-    pub arm64_archive_sha512: String,
-    pub amd64_archive_sha512: String,
-    pub bazel: String,
-    pub bazel_arm64_sha256: String,
-}
-
-impl RuntimeRelease {
-    const MANIFEST: &str = include_str!("../../runtime/release.json");
-
-    pub fn pinned() -> Self {
-        serde_json::from_str(Self::MANIFEST).expect("the pinned runtime release is valid")
-    }
-
-    /// The version runsc reports on this architecture: arm64 runs the build
-    /// with the seccomp trap fix, amd64 the upstream release.
-    pub fn version(&self) -> String {
-        if cfg!(target_arch = "aarch64") {
-            self.arm64_version.clone()
-        } else {
-            format!("release-{}", self.upstream)
-        }
-    }
-}
 
 /// Whether `runsc --version` printed exactly `version` on its first line.
 pub fn reports_version(output: &str, version: &str) -> bool {
@@ -277,6 +246,8 @@ impl Runsc {
 
 #[cfg(test)]
 mod tests {
+    use demi_machine_manager_protocol::runtime::RuntimeRelease;
+
     use super::*;
 
     #[test]
@@ -330,6 +301,7 @@ mod tests {
                 "--file-access-mounts=shared",
                 "--allow-suid=true",
                 "--directfs=true",
+                "--sidecar-usage-policy=STRICT",
                 "pause",
                 "demi-a",
             ]

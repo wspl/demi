@@ -1,11 +1,13 @@
 //! `demi-server` (`upgrades.md`): the server's program for its own
 //! installation. `upgrade` fetches a release beside the current one and hands
 //! the move to that release's own `demi-server`; `rollback` hands it to the
-//! release the last upgrade replaced; `status` says where the server is. A
-//! move interrupted at any step is finished by the next command.
+//! release the last upgrade replaced; `status` says where the server is;
+//! `runtime` fetches the gVisor version this release pins. A move
+//! interrupted at any step is finished by the next command.
 
 mod data;
 mod fetch;
+mod gvisor;
 mod journal;
 mod layout;
 mod moving;
@@ -62,6 +64,9 @@ enum Action {
     /// Prints the current release, the one a rollback returns to, and an
     /// interrupted move.
     Status,
+    /// Fetches the gVisor runtime this release's machine manager pins, unless
+    /// it is there, and prints its directory.
+    Runtime,
     /// Carries out the move to this program's own release; `upgrade` and
     /// `rollback` start it.
     #[command(hide = true)]
@@ -77,6 +82,9 @@ fn main() -> ExitCode {
     let result = match cli.command {
         Action::Status => status(&layout),
         Action::Setup(options) => setup(&layout, options),
+        // A setup or a move runs it holding the lock; a fetch publishes
+        // its version whole or not at all.
+        Action::Runtime => require_root(&layout).and_then(|()| runtime(&layout)),
         command => require_root(&layout).and_then(|()| locked(&layout, |layout| act(layout, command))),
     };
     match result {
@@ -139,6 +147,15 @@ fn setup(layout: &Layout, options: setup::Options) -> Result<(), Box<dyn std::er
     }
 }
 
+fn runtime(layout: &Layout) -> Result<(), Box<dyn std::error::Error>> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let directory = runtime.block_on(gvisor::fetch(layout, &CancellationToken::new()))?;
+    println!("{}", directory.display());
+    Ok(())
+}
+
 fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error>> {
     // An interrupted move comes first, finished by its own release.
     if !matches!(command, Action::Resume)
@@ -161,8 +178,7 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
             println!("The server runs {}", own_version());
             Ok(())
         }
-        Action::Status => status(layout),
-        Action::Setup(_) => unreachable!("setup runs on its own"),
+        Action::Status | Action::Setup(_) | Action::Runtime => unreachable!("runs without the lock"),
     }
 }
 

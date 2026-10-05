@@ -14,6 +14,7 @@ use std::{
 };
 
 use clap::{CommandFactory, FromArgMatches, parser::ValueSource};
+use demi_machine_manager_protocol::runtime::RuntimeRelease;
 use ipnet::Ipv4Net;
 
 /// Where the manager keeps its runtime bundles, locks and namespace handle.
@@ -69,11 +70,12 @@ struct Cli {
         long,
         env = "DEMI_MANAGED_DATA",
         value_name = "DEMI_MANAGED_DATA",
-        default_value = "/var/lib/demi-machine-manager",
+        default_value = "/opt/demi/data/cloud",
         value_parser = absolute
     )]
     data: PathBuf,
-    /// The pinned runsc executable [default: the release's runtime/runsc].
+    /// The pinned runsc executable [default: the pinned version's runsc in
+    /// /opt/demi/gvisor].
     #[arg(long, env = "DEMI_MANAGED_RUNSC", value_name = "DEMI_MANAGED_RUNSC", value_parser = absolute)]
     runsc: Option<PathBuf>,
     /// The backend's public URL: the only backend a sandbox's runner may
@@ -242,7 +244,9 @@ impl Config {
             Some(release) => release,
             None => release_of_executable()?,
         };
-        let runsc = cli.runsc.unwrap_or_else(|| release.join("runtime").join("runsc"));
+        let runsc = cli
+            .runsc
+            .unwrap_or_else(|| RuntimeRelease::pinned().directory().join("runsc"));
         let dns = if cli.dns.is_empty() {
             host_resolvers()?
         } else {
@@ -479,10 +483,10 @@ mod tests {
         assert_eq!(config.mode, Mode::Serve);
         assert_eq!(config.backend_url.as_str(), "https://backend.example.com/");
         assert_eq!(config.image, PathBuf::from("/opt/demi/0.1.3/image"));
-        assert_eq!(config.data, PathBuf::from("/var/lib/demi-machine-manager"));
+        assert_eq!(config.data, PathBuf::from("/opt/demi/data/cloud"));
         assert_eq!(
             config.working(),
-            PathBuf::from("/var/lib/demi-machine-manager/working")
+            PathBuf::from("/opt/demi/data/cloud/working")
         );
         let limits = config.limits.expect("the limits are on by default");
         assert_eq!(limits.cpus.get(), 2);
@@ -561,7 +565,7 @@ mod tests {
     }
 
     #[test]
-    fn the_socket_and_the_runsc_default_to_the_backends_and_the_releases() {
+    fn the_socket_and_the_runsc_default_to_the_backends_and_the_pinned_version() {
         let command = Cli::command();
         let mut args = vec![OsString::from("demi-machine-manager"), "--recover".into()];
         for (name, value) in REQUIRED
@@ -578,7 +582,12 @@ mod tests {
         let recovering = Config::parse(args, Vec::new()).expect("valid configuration");
         assert_eq!(recovering.mode, Mode::Recover);
         assert_eq!(recovering.socket, PathBuf::from(SOCKET));
-        assert_eq!(recovering.runsc, PathBuf::from("/opt/demi/0.1.3/runtime/runsc"));
+        assert_eq!(
+            recovering.runsc,
+            Path::new("/opt/demi/gvisor")
+                .join(RuntimeRelease::pinned().version())
+                .join("runsc")
+        );
         assert!(parse(&["--recover", "--recover-namespace"], &[]).is_err());
     }
 
@@ -634,18 +643,15 @@ mod tests {
         std::fs::create_dir_all(release.join("bin")).unwrap();
         std::fs::create_dir_all(release.join("image")).unwrap();
         std::fs::write(release.join("image/manifest.json"), "{}").unwrap();
-        std::fs::create_dir_all(release.join("runtime")).unwrap();
         std::fs::create_dir_all(release.join("systemd")).unwrap();
-        for executable in ["bin/demi-machine-manager", "runtime/runsc"] {
-            let path = release.join(executable);
-            std::fs::write(&path, "#!/bin/sh\n").unwrap();
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        }
+        let manager = release.join("bin/demi-machine-manager");
+        std::fs::write(&manager, "#!/bin/sh\n").unwrap();
+        std::fs::set_permissions(&manager, std::fs::Permissions::from_mode(0o755)).unwrap();
         let shipped = include_str!("../systemd/demi-machine-manager.service");
         std::fs::write(release.join("systemd/demi-machine-manager.service"), shipped).unwrap();
         // The deployment's configuration file, which the backend reads too.
         let root = directory.path().join("root");
-        let settings = root.join("etc/demi/demi.env");
+        let settings = root.join("opt/demi/config/demi.env");
         std::fs::create_dir_all(settings.parent().unwrap()).unwrap();
         std::fs::write(
             &settings,
@@ -691,7 +697,7 @@ mod tests {
             "PrivateMounts=yes".to_owned(),
             "UMask=0077".to_owned(),
             "Group=demi-cloud".to_owned(),
-            "EnvironmentFile=/etc/demi/demi.env".to_owned(),
+            "EnvironmentFile=/opt/demi/config/demi.env".to_owned(),
             format!("ExecStart={manager}"),
             format!("ExecStopPost={manager} --recover"),
         ] {
