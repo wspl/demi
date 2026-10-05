@@ -666,11 +666,13 @@ uses:
   command names with `--artifacts`.
 - `target/debug/demi-backend` in isolated mode on port 3271 (`--port`
   changes it), with the public URL `http://127.0.0.1:<port>`, the manager's
-  socket, the local store of the data directory, and a server release root
-  beside the data directory that holds only `commands/`: a release of each
-  command program the build made, `demi-file`, `demi-browser` and
-  `demi-claude-code`, for this machine's target only. The command passes on
-  none of its own `DEMI_*` variables.
+  socket, the local store of the data directory, and a server release
+  beside the data directory, assembled anew on each run: a root that holds
+  only `commands/` and `release.json`, with a release of each command
+  program the build made, `demi-file`, `demi-browser` and
+  `demi-claude-code`, for this machine's target only, and the release's
+  files in a directory beside it. The command passes on none of its own
+  `DEMI_*` variables.
 - With `DEMI_DEV_ECHO=1`, an Anthropic-compatible Messages endpoint inside
   `xtask`, on a free port of the loopback interface, that answers each
   request with `Echo: <the last user message's text>` as a stream; without

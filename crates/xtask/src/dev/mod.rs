@@ -16,6 +16,7 @@ use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
 
 use demi_command_protocol::testing::built_program;
+use demi_runner_protocol::release::ServerRelease;
 use demi_web_api_protocol::providers::ProviderAnswer;
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop, ProcessGroup};
 use reqwest::header::{CONTENT_TYPE, COOKIE, SET_COOKIE};
@@ -24,7 +25,7 @@ use tokio::io::{AsyncBufReadExt as _, BufReader};
 use tokio::signal::unix::SignalKind;
 use tokio_util::sync::CancellationToken;
 
-use crate::native::{Executable, development_package};
+use crate::native::{self, Executable, development_package};
 use account::Account;
 use provider::DevProvider;
 
@@ -257,21 +258,35 @@ async fn session(
     }
 }
 
-/// Assembles under `root` the server release root the backend publishes
-/// and serves: a development release of each command program the build
-/// made, for this machine's target, in its `commands/`, and nothing else,
-/// since Vite serves the page and the scripted manager starts its runners
-/// itself (`backend.md` § One-command development backend). Answers the
-/// root.
+/// Assembles under `root` the server release the backend publishes and
+/// serves: a development release of each command program the build made,
+/// for this machine's target, its descriptor in the root's `commands/` and
+/// its compressed copy among the release's files, and nothing else, since
+/// Vite serves the page and the scripted manager starts its runners itself
+/// (`backend.md` § One-command development backend). Each run assembles it
+/// anew from the programs built now. Answers the root.
 async fn release_root(root: &Path) -> Result<PathBuf, Error> {
     // Never cancelled: an interrupt drops the whole session instead.
     let cancel = CancellationToken::new();
     let release = root.join("release");
+    let files = root.join("files");
+    let packaged = root.join("packages");
+    for directory in [&release, &files, &packaged] {
+        if tokio::fs::try_exists(directory).await? {
+            tokio::fs::remove_dir_all(directory).await?;
+        }
+    }
+    tokio::fs::create_dir_all(&release).await?;
     for command in Executable::COMMANDS {
         let name = command.name();
-        let directory = release.join("commands").join(name);
-        development_package(command, built_program(name), &directory, &cancel).await?;
+        let package = packaged.join(name);
+        development_package(command, built_program(name), &package, &cancel).await?;
+        native::split(&package, command, &release, &files, &cancel).await?;
     }
+    let record = ServerRelease {
+        files: files.to_string_lossy().into_owned(),
+    };
+    native::write_server_release(&release, &record).await?;
     Ok(release)
 }
 

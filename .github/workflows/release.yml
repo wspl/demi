@@ -165,21 +165,29 @@ jobs:
           for archive in "$RUNNER_TEMP"/native/native-*.tar; do
             tar -xf "$archive" -C .cache/native-target
           done
-      - name: Assemble the roots
+      # Both roots share the release's files, which the release offers at
+      # its download location.
+      - name: Assemble the roots and the release's files
         run: |
           mkdir -p dist
+          downloads="https://github.com/$GITHUB_REPOSITORY/releases/download/v$VERSION/"
           for pair in amd64:x86_64-unknown-linux-musl arm64:aarch64-unknown-linux-musl; do
             arch=${pair%%:*}
             target=${pair#*:}
             root="$RUNNER_TEMP/roots/$arch"
-            cargo xtask server-release --publish --output "$root" \
-              --server "$target" --web "$RUNNER_TEMP/web"
+            cargo xtask server-release --publish --output "$root" --files files \
+              --downloads "$downloads" --server "$target" --web "$RUNNER_TEMP/web"
             tar --zstd -cf "dist/demi-$VERSION-server-linux-$arch.tar.zst" -C "$root" .
           done
       - uses: actions/upload-artifact@v7
         with:
           name: server
           path: dist
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: files
+          path: files
           retention-days: 1
 
   image:
@@ -202,6 +210,10 @@ jobs:
         with:
           name: server
           path: ${{ runner.temp }}/server
+      - uses: actions/download-artifact@v8
+        with:
+          name: files
+          path: ${{ runner.temp }}/files
       - name: Unpack the root
         run: |
           mkdir "$RUNNER_TEMP/root"
@@ -216,10 +228,8 @@ jobs:
           root="$RUNNER_TEMP/root"
           sudo bash cloud-guest-image/rootfs/build.sh \
             --xtask target/debug/xtask \
-            --runners "$root/runners" \
-            --package "$root/commands/demi-file" \
-            --package "$root/commands/demi-browser" \
-            --package "$root/commands/demi-claude-code" \
+            --release "$root" \
+            --files "$RUNNER_TEMP/files" \
             --work "$RUNNER_TEMP/work" \
             --output "$RUNNER_TEMP/out/image"
           mkdir -p dist
@@ -249,6 +259,10 @@ jobs:
           pattern: image-*
           path: dist
           merge-multiple: true
+      - uses: actions/download-artifact@v8
+        with:
+          name: files
+          path: dist
       - name: Publish the release
         run: |
           cd dist

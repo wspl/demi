@@ -13,7 +13,7 @@ use std::sync::atomic::AtomicBool;
 use demi_backend_blobs::ObjectError;
 use demi_backend_blobs::store as objects;
 use demi_backend_runners::native::NativeCatalog;
-use demi_backend_runners::publication::{PublicationError, publish_native};
+use demi_backend_runners::publication::{PublicationError, publish_native, release_files};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
@@ -103,17 +103,20 @@ impl fmt::Display for ShutdownErrors {
 
 impl std::error::Error for ShutdownErrors {}
 
-/// Publishes the command packages in `commands`, a server release's
-/// `commands/`, into the object store `config` names, before the backend
-/// that serves them starts (`native-runtime.md` § Publish artifacts before
-/// enabling commands); `cancel` interrupts it.
+/// Publishes the command packages of the server release whose root is
+/// `release`: its `commands/`, whose executables come from the files its
+/// `release.json` names, into the object store `config` names, before the
+/// backend that serves them starts (`native-runtime.md` § Publish packages,
+/// then source artifacts on demand); `cancel` interrupts it.
 pub async fn publish_commands(
     config: &BackendConfig,
-    commands: &std::path::Path,
+    release: &std::path::Path,
     cancel: &tokio_util::sync::CancellationToken,
 ) -> Result<NativeCatalog, StartError> {
+    let files = release_files(release).await?;
     let objects = objects::open(&config.data_dir, &config.storage).await?;
-    Ok(publish_native(commands, &objects, cancel).await?)
+    let commands = release.join("commands");
+    Ok(publish_native(&commands, files, &objects, cancel).await?)
 }
 
 impl Backend {

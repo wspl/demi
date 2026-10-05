@@ -1,10 +1,10 @@
 //! The public installation routes (`web-api.md` § Resource index): the
-//! runner installers for the backend's current runner release, and the
-//! runner executables of each release, from the directory
-//! `DEMI_RUNNER_RELEASE_DIR` names (`builds-and-releases.md` § Packaging);
-//! and a development store's command executables (`native-runtime.md`
-//! § Backend deployment configuration). None holds a credential; pairing
-//! grants device access. Without the runner release directory, the
+//! runner installers for the backend's current runner release, the runner
+//! executables of each release its server release's `runners/` names,
+//! sourced into the object store on their first download
+//! (`native-runtime.md` § Runner releases), and a local store's command
+//! executables (§ Backend deployment configuration). None holds a
+//! credential; pairing grants device access. Without runner releases, the
 //! installers answer 503 and the runner executables 404.
 
 use std::path::PathBuf;
@@ -19,7 +19,7 @@ use demi_backend_runners::install::{backend_url, powershell_script, shell_script
 use demi_command_protocol::{is_digest, is_target};
 use demi_runner_protocol::release::RunnerRelease;
 use demi_web_api_protocol::error::ErrorCode;
-use tokio_util::io::ReaderStream;
+use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use super::AppState;
@@ -33,9 +33,10 @@ pub struct Site {
     /// The URL the product's pages and the runners reach the backend at;
     /// without it, a request's own origin.
     pub public_url: Option<Url>,
-    /// The runner releases the installers serve: `manifest.json` names the
-    /// current one, and each release's directory holds its own and one
-    /// executable per target.
+    /// The runner releases the installers serve, a server release's
+    /// `runners/`: `manifest.json` names the current one, and each
+    /// release's directory holds its own, which names each target's
+    /// executable.
     pub runner_releases: Option<PathBuf>,
     /// Whether a request showed that a proxy in front of the backend drops
     /// `Origin`, which the edge warns about once.
@@ -43,11 +44,6 @@ pub struct Site {
 }
 
 const UNCONFIGURED: &str = "Runner releases are not configured on this backend.\n";
-
-/// How much of an executable one read sends. `ReaderStream` reads 4 KiB by
-/// default, which cut a runner of many megabytes into tens of thousands of
-/// chunks.
-const ARTIFACT_READ: usize = 256 * 1024;
 
 /// The caching of an immutable executable's download: a year.
 const IMMUTABLE: &str = "public, max-age=31536000, immutable";
@@ -149,25 +145,28 @@ pub(super) async fn artifact(
     if !is_digest(&release) || !is_target(&target) || file != executable {
         return Err(not_found());
     }
-    let directory = releases.join(&release);
-    let manifest = read_release(directory.join("manifest.json"))
+    let manifest = read_release(releases.join(&release).join("manifest.json"))
         .await?
         .ok_or_else(not_found)?;
-    if manifest.release != release || !manifest.targets.contains_key(&target) {
+    if manifest.release != release {
         return Err(not_found());
     }
-    let opened = match tokio::fs::File::open(directory.join(&target).join(executable)).await {
-        Ok(opened) => opened,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Err(not_found()),
-        Err(error) => return Err(ApiError::internal_message(error.to_string())),
-    };
-    immutable_download(opened).await
+    let artifact = manifest.targets.get(&target).ok_or_else(not_found)?;
+    // The download ends the need when its requester goes away.
+    let cancel = CancellationToken::new();
+    let _abandoned = cancel.clone().drop_guard();
+    let stored = state
+        .services
+        .native
+        .runner_executable(&target, artifact, &cancel)
+        .await
+        .map_err(ApiError::internal_message)?;
+    stored_download(stored)
 }
 
-/// A local store's command artifact, by its SHA-256, as S3 would serve it:
-/// the stored bytes with the content coding they were stored with, an
-/// executable's compressed copy in zstd and a resource's archive as it is.
-/// Only one that the backend published; any other digest answers 404.
+/// A local store's command executable, by its SHA-256, as S3 would serve
+/// it: its compressed copy, in zstd. Only one of the catalog's that a
+/// runner's need put in the store; any other digest answers 404.
 pub(super) async fn native_artifact(
     State(state): State<AppState>,
     Path(sha256): Path<String>,
@@ -180,14 +179,20 @@ pub(super) async fn native_artifact(
         ));
     };
     let artifact = artifact.map_err(|error| ApiError::internal_message(error.to_string()))?;
+    stored_download(artifact)
+}
+
+/// A stored artifact as an immutable download, cacheable for a year: the
+/// stored bytes with the content coding they were stored with.
+fn stored_download(stored: object_store::GetResult) -> Result<Response, ApiError> {
     let mut headers = HeaderMap::new();
     headers.insert(
         CONTENT_TYPE,
         HeaderValue::from_static("application/octet-stream"),
     );
     headers.insert(CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE));
-    headers.insert(CONTENT_LENGTH, HeaderValue::from(artifact.meta.size));
-    if let Some(coding) = artifact
+    headers.insert(CONTENT_LENGTH, HeaderValue::from(stored.meta.size));
+    if let Some(coding) = stored
         .attributes
         .get(&object_store::Attribute::ContentEncoding)
     {
@@ -195,30 +200,7 @@ pub(super) async fn native_artifact(
             .map_err(|error| ApiError::internal_message(error.to_string()))?;
         headers.insert(CONTENT_ENCODING, coding);
     }
-    Ok((headers, Body::from_stream(artifact.into_stream())).into_response())
-}
-
-/// `file`, an immutable executable or archive, as a download: its whole length in large
-/// reads, cacheable for a year.
-async fn immutable_download(file: tokio::fs::File) -> Result<Response, ApiError> {
-    let size = file
-        .metadata()
-        .await
-        .map_err(|error| ApiError::internal_message(error.to_string()))?
-        .len();
-    let headers = [
-        (
-            CONTENT_TYPE,
-            HeaderValue::from_static("application/octet-stream"),
-        ),
-        (CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE)),
-        (CONTENT_LENGTH, HeaderValue::from(size)),
-    ];
-    Ok((
-        headers,
-        Body::from_stream(ReaderStream::with_capacity(file, ARTIFACT_READ)),
-    )
-        .into_response())
+    Ok((headers, Body::from_stream(stored.into_stream())).into_response())
 }
 
 /// The release record at `path`, when there is one; a record that does not

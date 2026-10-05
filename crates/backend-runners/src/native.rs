@@ -1,60 +1,130 @@
 //! The command packages the conversations' commands bind to
-//! (`native-runtime.md` § Publish artifacts before enabling commands,
+//! (`native-runtime.md` § Publish packages, then source artifacts on demand,
 //! § Backend deployment configuration): the descriptors of the published
-//! releases, and where a runner downloads each package's artifacts, from an
-//! S3 store or, for a local store, from this backend. The artifact module
-//! makes the catalog at startup from the server release's `commands/`. Each
-//! shard thread builds its own `CommandCatalog` from it, since a catalog's
-//! artifact resolver lives on one thread.
+//! releases, and where a runner downloads each package's executable. The
+//! artifact module makes the catalog at startup from the server release's
+//! `commands/`; an executable enters the store the first time a runner asks
+//! for it, and a runner then downloads it from S3 through a URL signed for
+//! five minutes or, with a local store, from this backend, which serves the
+//! stored object at `/native-artifacts/<sha256>`. The installers' runner
+//! executables are sourced the same way. Each shard thread builds its own
+//! `CommandCatalog` from the catalog, since a catalog's artifact resolver
+//! lives on one thread.
 
+use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::Arc;
+use std::time::Duration;
 
+use axum::http::Method;
 use demi_backend_remote_host::{ArtifactResolver, CommandCatalog};
-use demi_command_protocol::{ArtifactLocation, PackageArtifact, PackageDescriptor};
+use demi_command_protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor};
 use demi_runner_protocol::manifest::ManifestError;
+use demi_runner_protocol::release::{RUNNER, release_file};
 use futures_util::future::LocalBoxFuture;
+use object_store::signer::Signer;
+use object_store::{GetResult, ObjectStoreExt as _};
 use tokio_util::sync::CancellationToken;
 
-use crate::local_store::{LocalArtifacts, ServedArtifacts};
 use crate::public_url::PublicUrl;
-use crate::publication::SignedArtifacts;
+use crate::publication::blob;
+use crate::sourcing::{ReleaseArtifact, Sourcing};
+
+/// Where a local store's artifacts download from, at the root of the
+/// backend's public URL.
+pub const ROUTE: &str = "/native-artifacts";
+
+/// How long a runner's signed download URL stays valid.
+const SIGNED_FOR: Duration = Duration::from_secs(300);
 
 /// The loaded command packages, as each shard's catalog is built from them.
 #[derive(Clone)]
 pub struct NativeCatalog {
     packages: Vec<PackageDescriptor>,
-    store: Store,
+    /// None for a backend that loaded no server release.
+    artifacts: Option<Arc<Artifacts>>,
 }
 
-/// Where runners download the packages' executables.
-#[derive(Clone)]
-pub enum Store {
-    /// No package, so nothing to download.
-    Unpublished,
-    /// An S3 store, through a URL signed for each request.
-    Signed(SignedArtifacts),
-    /// A local store: this backend serves them itself.
-    Local(Arc<LocalArtifacts>),
+/// The release's artifacts: the store that holds them once sourced, and
+/// the signer of S3 downloads, without which this backend serves them.
+pub struct Artifacts {
+    sourcing: Sourcing,
+    signer: Option<Arc<dyn Signer>>,
+    /// Each package executable, by SHA-256.
+    executables: HashMap<String, ReleaseArtifact>,
+}
+
+impl Artifacts {
+    pub fn new(
+        sourcing: Sourcing,
+        signer: Option<Arc<dyn Signer>>,
+        executables: HashMap<String, ReleaseArtifact>,
+    ) -> Self {
+        Self {
+            sourcing,
+            signer,
+            executables,
+        }
+    }
+
+    /// Where a runner downloads `artifact`, a package's executable, once the
+    /// store holds it: a signed S3 URL, or this backend at `backend`.
+    async fn location(
+        &self,
+        artifact: &PackageArtifact,
+        backend: &PublicUrl,
+        cancel: &CancellationToken,
+    ) -> Result<ArtifactLocation, String> {
+        let wanted = self
+            .executables
+            .get(&artifact.sha256)
+            .filter(|wanted| wanted.artifact.size == artifact.size)
+            .ok_or("the artifact is not in the published package catalog")?;
+        self.sourcing.ensure(wanted, cancel).await?;
+        let key = blob(&artifact.sha256).map_err(|error| error.to_string())?;
+        let Some(signer) = &self.signer else {
+            let backend = backend.get().ok_or("the backend does not listen yet")?;
+            let origin = backend.url().origin().ascii_serialization();
+            return Ok(ArtifactLocation::Url(ArtifactUrl {
+                url: format!("{origin}{ROUTE}/{}", artifact.sha256),
+                expires_at: None,
+            }));
+        };
+        let url = signer
+            .signed_url(Method::GET, &key, SIGNED_FOR)
+            .await
+            .map_err(|error| error.to_string())?;
+        if url.scheme() != "https" {
+            return Err("a native artifact downloads over HTTPS only".into());
+        }
+        let expires_at = jiff::Timestamp::now() + SIGNED_FOR;
+        Ok(ArtifactLocation::Url(ArtifactUrl {
+            url: url.into(),
+            expires_at: Some(expires_at.as_millisecond()),
+        }))
+    }
 }
 
 impl NativeCatalog {
-    /// The catalog of `packages`, whose executables `store` holds. It is
-    /// refused when a descriptor is invalid or two packages share an id.
-    pub fn new(packages: Vec<PackageDescriptor>, store: Store) -> Result<Self, ManifestError> {
+    /// The catalog of `packages`, whose executables `artifacts` sources. It
+    /// is refused when a descriptor is invalid or two packages share an id.
+    pub fn new(packages: Vec<PackageDescriptor>, artifacts: Artifacts) -> Result<Self, ManifestError> {
         CommandCatalog::new(packages.clone(), Rc::new(Unpublished))?;
-        Ok(Self { packages, store })
+        Ok(Self {
+            packages,
+            artifacts: Some(Arc::new(artifacts)),
+        })
     }
 
-    /// No package: a command set that declares a native command selects no
-    /// manifest, so a node whose commands include one gets no shell. A
-    /// test's backend runs on it unless it loads releases; the product's
-    /// start publishes its server release's `commands/` instead
-    /// (`publish_native`).
+    /// No package and no release: a command set that declares a native
+    /// command selects no manifest, so a node whose commands include one
+    /// gets no shell, and no runner executable is served. A test's backend
+    /// runs on it unless it loads a server release; the product's start
+    /// publishes its server release instead (`publish_native`).
     pub fn unpublished() -> Self {
         Self {
             packages: Vec::new(),
-            store: Store::Unpublished,
+            artifacts: None,
         }
     }
 
@@ -69,26 +139,64 @@ impl NativeCatalog {
     /// work that binds a package without a manifest: a user stream or a
     /// one-shot user call. A local store's downloads are on `backend`.
     pub fn resolver(&self, backend: &PublicUrl) -> Rc<dyn ArtifactResolver> {
-        match &self.store {
-            Store::Unpublished => Rc::new(Unpublished),
-            Store::Signed(signed) => Rc::new(signed.clone()),
-            Store::Local(artifacts) => Rc::new(ServedArtifacts {
+        match &self.artifacts {
+            None => Rc::new(Unpublished),
+            Some(artifacts) => Rc::new(Resolver {
                 artifacts: artifacts.clone(),
                 backend: backend.clone(),
             }),
         }
     }
 
-    /// The stored object of the artifact whose SHA-256 is `sha256`, when a
-    /// local store holds it.
-    pub async fn local_artifact(
-        &self,
-        sha256: &str,
-    ) -> Option<object_store::Result<object_store::GetResult>> {
-        match &self.store {
-            Store::Local(artifacts) => artifacts.artifact(sha256).await,
-            Store::Unpublished | Store::Signed(_) => None,
+    /// The stored object of the package executable whose SHA-256 is
+    /// `sha256`, when this backend serves it: with a local store, once a
+    /// runner's need put it there.
+    pub async fn local_artifact(&self, sha256: &str) -> Option<object_store::Result<GetResult>> {
+        let artifacts = self.artifacts.as_ref()?;
+        if artifacts.signer.is_some() || !artifacts.executables.contains_key(sha256) {
+            return None;
         }
+        let key = match blob(sha256) {
+            Ok(key) => key,
+            Err(error) => {
+                return Some(Err(object_store::Error::Generic {
+                    store: "the object store",
+                    source: error.into(),
+                }));
+            }
+        };
+        match artifacts.sourcing.store().get(&key).await {
+            Err(object_store::Error::NotFound { .. }) => None,
+            got => Some(got),
+        }
+    }
+
+    /// The stored runner executable `artifact` of `target`, a runner
+    /// release's, sourced first when the store lacks it, for an installer's
+    /// download (`native-runtime.md` § Runner releases).
+    pub async fn runner_executable(
+        &self,
+        target: &str,
+        artifact: &PackageArtifact,
+        cancel: &CancellationToken,
+    ) -> Result<GetResult, String> {
+        let artifacts = self
+            .artifacts
+            .as_ref()
+            .ok_or("this backend loaded no server release")?;
+        let wanted = ReleaseArtifact {
+            file: release_file(RUNNER, target),
+            artifact: artifact.clone(),
+            encoded: false,
+        };
+        artifacts.sourcing.ensure(&wanted, cancel).await?;
+        let key = blob(&artifact.sha256).map_err(|error| error.to_string())?;
+        artifacts
+            .sourcing
+            .store()
+            .get(&key)
+            .await
+            .map_err(|error| error.to_string())
     }
 
     /// The loaded package `id`.
@@ -105,6 +213,32 @@ impl NativeCatalog {
                     .iter()
                     .any(|served| served == operation)
             })
+        })
+    }
+}
+
+/// One thread's resolver: the release's artifacts, sourced on demand, at
+/// the URL of the backend that serves a local store's.
+struct Resolver {
+    artifacts: Arc<Artifacts>,
+    backend: PublicUrl,
+}
+
+impl ArtifactResolver for Resolver {
+    fn resolve(
+        &self,
+        artifact: &PackageArtifact,
+        _target: &str,
+        cancel: CancellationToken,
+    ) -> LocalBoxFuture<'static, Result<ArtifactLocation, String>> {
+        let artifacts = self.artifacts.clone();
+        let backend = self.backend.clone();
+        let artifact = artifact.clone();
+        Box::pin(async move {
+            tokio::select! {
+                () = cancel.cancelled() => Err("the work that asked no longer runs".into()),
+                location = artifacts.location(&artifact, &backend, &cancel) => location,
+            }
         })
     }
 }
