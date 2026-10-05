@@ -12,7 +12,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_runner_command_packages::{InstallsReceiver, ServiceHandle};
+use demi_runner_command_packages::ServiceHandle;
 use demi_runner_host::{
     host::HostServer,
     volumes::{ManagedVolume, Volumes},
@@ -64,9 +64,6 @@ pub struct Registered {
     pub token: watch::Sender<Option<DeviceToken>>,
     pub management: Arc<Management>,
     pub services: ServiceHandle,
-    /// The installs the services' starts make, which each connection
-    /// reports (`native-runtime.md` § Installation progress).
-    pub installs: InstallsReceiver,
     /// What the artifact cache holds, which each connection reports
     /// (`native-runtime.md` § Installed artifacts).
     pub cached: watch::Receiver<Vec<wire::HostArtifact>>,
@@ -120,9 +117,6 @@ struct Owner<'r> {
     host: HostServer,
     streams: ServiceStreams,
     volumes: Volumes,
-    package_installs: InstallsReceiver,
-    /// Whether this connection reported package installs yet.
-    installs_reported: bool,
     /// What the artifact cache holds.
     cached: watch::Receiver<Vec<wire::HostArtifact>>,
 }
@@ -176,8 +170,6 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
             transport.cancellation(),
         ),
         handle,
-        package_installs: registered.installs.clone(),
-        installs_reported: false,
         cached: registered.cached.clone(),
     };
     let result = owner.run(&mut transport, &mut requests).await;
@@ -233,9 +225,6 @@ impl Owner<'_> {
                     self.worked(work.expect("connection work does not panic"))?;
                 }
                 Some(()) = self.volumes.checked() => {}
-                true = self.package_installs.changed(), if management.phase() == Phase::Online => {
-                    self.report_installs().await?;
-                }
                 Ok(()) = self.cached.changed(), if management.phase() == Phase::Online => {
                     self.report_installed().await?;
                 }
@@ -249,19 +238,6 @@ impl Owner<'_> {
                 },
             }
         }
-    }
-
-    /// Reports the installs in progress, unless there are none to report on
-    /// a connection that has reported nothing yet.
-    async fn report_installs(&mut self) -> io::Result<()> {
-        let installs = self.package_installs.current();
-        if installs.is_empty() && !self.installs_reported {
-            return Ok(());
-        }
-        self.installs_reported = true;
-        let frame =
-            wire::encode(&wire::Outbound::Installs { installs }).map_err(io::Error::other)?;
-        self.send(frame).await
     }
 
     /// Reports what the artifact cache holds.
@@ -362,8 +338,6 @@ impl Owner<'_> {
                     .spawn(async move { Work::Stored(state.write_config(&config).await) });
                 management.set_phase(Phase::Online);
                 tracing::warn!("online");
-                // What a previous connection reported ended with it.
-                self.report_installs().await?;
                 self.report_installed().await?;
             }
             Inbound::ClaimPending { claim_token } if management.phase() != Phase::Online => {

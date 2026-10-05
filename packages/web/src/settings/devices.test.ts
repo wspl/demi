@@ -25,7 +25,6 @@ beforeEach(async () => {
         lastSeenAt: null,
         online: true,
         home: null,
-        installs: [],
         installed: [],
       },
     ],

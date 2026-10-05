@@ -23,7 +23,7 @@ import { placesFor } from '../devices/files'
 import { fileSource } from '../api/files'
 import { uploadAttachment } from '../api/uploads'
 import type { Conversation } from '../state/types'
-import { cliPackageOf } from '../state/installs'
+import { cliPackageOf } from '../state/catalog'
 
 const props = defineProps<{ conversation: Conversation }>()
 const store = useConversations()

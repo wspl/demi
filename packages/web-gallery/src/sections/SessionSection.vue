@@ -285,9 +285,8 @@ function fileViewGoForward() {
   fileViewBack.value = [...fileViewBack.value, fileViewPath.value]
   fileViewPath.value = next
 }
-// The frame's conversation has opened no browser tab yet: its strip starts
-// empty, and its Host installs the browser before the first tab opens.
-const panelWork = useWorkTabs('change', { browser: galleryBrowser([], { install: true }) })
+// The frame's conversation has opened no browser tab yet: its strip starts empty.
+const panelWork = useWorkTabs('change', { browser: galleryBrowser([]) })
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
 const sessionFiles: ConversationFiles = {
   imageUrl: (path) => workspace.source.contents.url(path),
@@ -1520,7 +1519,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'turns'">
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Resume, Retry and Connect wait for the server first. First Request waits while the Cloud installs the provider's CLI: its progress shows below “Requesting”, not in it."
+        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -1548,11 +1547,6 @@ onBeforeUnmount(() => {
             size="sm"
             @click="playTurn('connect')"
           >Connect</Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            @click="playTurn('install')"
-          >First Request</Button>
         </div>
         <div class="gallery-frame h-[20rem] bg-surface">
           <SessionSurface ref="turnSurface">
@@ -1568,7 +1562,6 @@ onBeforeUnmount(() => {
                 :load="turnFlow.state.load"
                 :pending-action="turnFlow.state.pendingAction"
                 :pending-submission="turnFlow.pendingSubmission.value"
-                :installs="turnFlow.installs.value"
                 :bottom-offset="turnSurface?.dockHeight ?? 0"
                 :persisted-scroll-state="undefined"
                 read-only
