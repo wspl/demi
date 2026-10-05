@@ -66,6 +66,12 @@ printf '%s\n' \
 # The manager is renamed into place, so a running manager keeps its own file.
 limactl shell "$instance" -- sudo install -D -m 0755 "$manager" "$release/bin/.demi-machine-manager.new"
 limactl shell "$instance" -- sudo mv "$release/bin/.demi-machine-manager.new" "$release/bin/demi-machine-manager"
+# The root the image build made holds no unit and no runsc; a server
+# release carries both, and so does this one from here on.
+limactl shell "$instance" -- sudo install -D -m 0644 "$here/systemd/demi-machine-manager.service" "$release/systemd/demi-machine-manager.service"
+if ! limactl shell "$instance" -- test -x "$release/runtime/runsc"; then
+  limactl shell "$instance" -- sudo bash "$here/scripts/fetch-runsc.sh" arm64 "$release/runtime"
+fi
 if [ -n "$root" ]; then
   # The VM sees this Mac's home at the same path, so the script is read there.
   limactl shell "$instance" -- bash "$here/scripts/install-managed-hosts.sh" \

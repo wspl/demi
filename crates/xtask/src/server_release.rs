@@ -3,8 +3,9 @@
 //! build` wrote. The root holds the runner release's manifests in
 //! `runners/`, each command package's descriptor in `commands/`, the record
 //! `release.json`, which says where the release's files are, and, when
-//! asked, a Linux target's backend and machine manager in `bin/` and the
-//! built web app in `web/`. The release's files hold each target's runner
+//! asked, a Linux target's backend and machine manager in `bin/` with the
+//! pinned runsc distribution in `runtime/` and the services' units in
+//! `systemd/`, and the built web app in `web/`. The release's files hold each target's runner
 //! executable and each command program's compressed copy. Packaging makes
 //! each release whole first, so its records and its files are the ones
 //! packaging checked. The root is assembled in a stage beside it and renamed
@@ -24,6 +25,19 @@ use crate::native::{self, Caches, Executable, Spec, Versioning};
 /// (`web-api.md` § Serving the web app build).
 const WEB_BUILD: &str = "build.json";
 
+/// The services' units, which each program's crate keeps and a server
+/// release carries (`upgrades.md` § One release on a server).
+const UNITS: [(&str, &str); 2] = [
+    (
+        "demi-backend.service",
+        include_str!("../../backend/systemd/demi-backend.service"),
+    ),
+    (
+        "demi-machine-manager.service",
+        include_str!("../../machine-manager/systemd/demi-machine-manager.service"),
+    ),
+];
+
 #[derive(clap::Args)]
 pub struct Options {
     /// The root to assemble, a directory that does not exist yet.
@@ -41,10 +55,14 @@ pub struct Options {
     /// [default: all six].
     #[arg(long = "target", value_name = "TRIPLE", value_parser = native::target)]
     targets: Vec<&'static str>,
-    /// The Linux target whose backend and machine manager go in bin/
-    /// [default: no bin/].
-    #[arg(long, value_name = "TRIPLE", value_parser = native::target)]
+    /// The Linux target whose backend and machine manager go in bin/, with
+    /// the units in systemd/ [default: no bin/].
+    #[arg(long, value_name = "TRIPLE", value_parser = native::target, requires = "runtime")]
     server: Option<&'static str>,
+    /// The unpacked runsc distribution of the server's architecture, which
+    /// fetch-runsc.sh fetched and checked, to copy into runtime/.
+    #[arg(long, value_name = "DIRECTORY", requires = "server")]
+    runtime: Option<PathBuf>,
     /// The built web app to copy into web/ [default: no web/].
     #[arg(long, value_name = "DIRECTORY")]
     web: Option<PathBuf>,
@@ -69,6 +87,8 @@ pub enum Error {
     NotLinux(&'static str),
     #[error("{} holds no {WEB_BUILD}: it is not a built web app", .0.display())]
     NotWeb(PathBuf),
+    #[error("{} holds no runsc: it is not a runsc distribution", .0.display())]
+    NotRuntime(PathBuf),
     #[error("{} has no parent directory to assemble it beside", .0.display())]
     NoParent(PathBuf),
     #[error("the release's record is invalid: {0}")]
@@ -106,6 +126,16 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
                 return Err(Error::NotWeb(web));
             }
             Some(web)
+        }
+        None => None,
+    };
+    let runtime = match &options.runtime {
+        Some(runtime) => {
+            let runtime = std::path::absolute(runtime)?;
+            if !tokio::fs::try_exists(runtime.join("runsc")).await? {
+                return Err(Error::NotRuntime(runtime));
+            }
+            Some(runtime)
         }
         None => None,
     };
@@ -169,17 +199,17 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
             // `copy` keeps the executable's permissions.
             tokio::fs::copy(&built, bin.join(executable.name())).await?;
         }
+        let systemd = stage.path().join("systemd");
+        tokio::fs::create_dir_all(&systemd).await?;
+        for (name, unit) in UNITS {
+            tokio::fs::write(systemd.join(name), unit).await?;
+        }
+    }
+    if let Some(runtime) = runtime {
+        copy_directory(runtime, stage.path().join("runtime")).await?;
     }
     if let Some(web) = web {
-        let destination = stage.path().join("web");
-        tokio::task::spawn_blocking(move || -> Result<(), Error> {
-            std::fs::create_dir(&destination)?;
-            let contents = fs_extra::dir::CopyOptions::new().content_only(true);
-            fs_extra::dir::copy(&web, &destination, &contents)?;
-            Ok(())
-        })
-        .await
-        .map_err(std::io::Error::other)??;
+        copy_directory(web, stage.path().join("web")).await?;
     }
     if cancel.is_cancelled() {
         return Err(native::Error::Artifact(demi_shared_artifacts::Error::Cancelled).into());
@@ -191,6 +221,19 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
         return Err(error.into());
     }
     Ok(output)
+}
+
+/// Copies the contents of `source` into the new directory `destination`,
+/// keeping each file's permissions.
+async fn copy_directory(source: PathBuf, destination: PathBuf) -> Result<(), Error> {
+    tokio::task::spawn_blocking(move || -> Result<(), Error> {
+        std::fs::create_dir(&destination)?;
+        let contents = fs_extra::dir::CopyOptions::new().content_only(true);
+        fs_extra::dir::copy(&source, &destination, &contents)?;
+        Ok(())
+    })
+    .await
+    .map_err(std::io::Error::other)?
 }
 
 /// A new directory in `parent` whose name starts with `prefix`, removed
@@ -245,6 +288,10 @@ mod tests {
         let mut programs = vec![Executable::Runner];
         programs.extend(Executable::COMMANDS);
         build(&artifacts, &programs, &[windows]);
+        let runtime = root.path().join("runsc");
+        std::fs::create_dir_all(runtime.join("gvisor-bin")).unwrap();
+        std::fs::write(runtime.join("runsc"), "runsc").unwrap();
+        std::fs::write(runtime.join("gvisor-bin/helper"), "helper").unwrap();
         let web = root.path().join("dist");
         std::fs::create_dir_all(web.join("assets")).unwrap();
         std::fs::write(web.join(WEB_BUILD), r#"{"build":"fixture"}"#).unwrap();
@@ -257,6 +304,7 @@ mod tests {
             downloads: downloads.map(str::to_owned),
             targets: vec![windows],
             server: Some(linux),
+            runtime: Some(runtime.clone()),
             web: Some(web.clone()),
             publish: false,
             artifacts: Some(artifacts.clone()),
@@ -272,12 +320,17 @@ mod tests {
             matches!(missing, Err(Error::Native(native::Error::NotBuilt { .. }))),
             "{missing:?}"
         );
-        assert_eq!(names(root.path()), ["artifacts", "dist", "files"]);
+        assert_eq!(names(root.path()), ["artifacts", "dist", "files", "runsc"]);
         build(&artifacts, &[Executable::Backend, Executable::Machines], &[linux]);
         assemble(&options(&output, None), &cancel).await.unwrap();
         assert_eq!(
             names(&output),
-            ["bin", "commands", "release.json", "runners", "web"]
+            ["bin", "commands", "release.json", "runners", "runtime", "systemd", "web"]
+        );
+        assert_eq!(names(&output.join("runtime")), ["gvisor-bin", "runsc"]);
+        assert_eq!(
+            names(&output.join("systemd")),
+            ["demi-backend.service", "demi-machine-manager.service"]
         );
         assert_eq!(names(&output.join("bin")), ["demi-backend", "demi-machine-manager"]);
         assert_eq!(

@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # Installs the Cloud machine manager of a server release as a systemd
-# service (`setup.md` § Storage and service setup): the pinned runsc, the
-# service's group and its unit, which runs the release's manager with the
-# deployment's configuration file. The release, the configuration file and
-# the state directory on its own Linux filesystem must exist already; the
-# installer reads the state directory from the file and writes no setting.
+# service on a developer's Linux host (`setup.md` § Storage and service
+# setup): it points /opt/demi/current at the release, as a server's layout
+# does (`upgrades.md` § One release on a server), and installs the release's
+# own unit, which runs the manager /opt/demi/current names with the
+# deployment's configuration file and the release's pinned runsc. The
+# release, the configuration file and the state directory on its own Linux
+# filesystem must exist already; the installer reads the state directory
+# from the file and writes no setting.
 #
-# With --root DIR the unit is written beneath DIR for review, the
-# configuration file is read from beneath DIR, and nothing else on the
+# With --root DIR the link and the unit are written beneath DIR for review,
+# the configuration file is read from beneath DIR, and nothing else on the
 # system changes.
 set -euo pipefail
-here="$(cd "$(dirname "$0")" && pwd)"
 user=""
 release=""
 root=/
@@ -42,17 +44,13 @@ installing=true
 [ "$root" = / ] || installing=false
 if $installing; then
   [ "$(id -u)" = 0 ] || { echo 'run as root' >&2; exit 2; }
-  # The manager's earlier name: two managers would share the socket, the
-  # network names and the nftables table (`setup.md` § Upgrading from
-  # demi-machines).
-  if [ -n "$(systemctl list-unit-files --no-legend demi-machines.service)" ]; then
-    echo 'demi-machines.service is installed: stop and disable it first (setup.md § Upgrading from demi-machines)' >&2
-    exit 2
-  fi
 fi
 manager="$release/bin/demi-machine-manager"
 [ -x "$manager" ] || { echo "the release has no manager: $manager" >&2; exit 2; }
 [ -f "$release/image/manifest.json" ] || { echo "the release has no Cloud image: $release/image" >&2; exit 2; }
+[ -x "$release/runtime/runsc" ] || { echo "the release has no runsc: assemble it with --runtime" >&2; exit 2; }
+source_unit="$release/systemd/demi-machine-manager.service"
+[ -f "$source_unit" ] || { echo "the release has no unit: $source_unit" >&2; exit 2; }
 id "$user" >/dev/null
 settings="${root%/}$config"
 [ -f "$settings" ] || { echo "write the configuration file first: $settings" >&2; exit 2; }
@@ -67,51 +65,20 @@ case "$filesystem" in
   xfs|ext4|btrfs) ;;
   *) echo "unsupported Cloud storage filesystem: $filesystem" >&2; exit 2 ;;
 esac
-if $installing; then
-  bash "$here/install-runsc.sh" >/dev/null
-fi
-
 unit="${root%/}/etc/systemd/system/demi-machine-manager.service"
-mkdir -p "$(dirname "$unit")"
-# The unit is written beside its place and renamed into it, so a failed
-# install leaves the previous one whole and no half-written file behind.
-trap 'rm -f "$unit.new"' EXIT
-# Type=notify: the manager reports readiness once it has recovered, installed
-# its network policy, imported its base and opened its socket; none of that,
-# nor a stop's drain and its recovery, has a deadline. KillMode=mixed signals
-# the manager alone, which stops its own children while it drains. The
-# manager finds its release from where its executable lies.
-cat > "$unit.new" <<UNIT
-[Unit]
-Description=Demi Cloud machine manager
-After=network-online.target
-Wants=network-online.target
-RequiresMountsFor=$data $release
-
-[Service]
-Type=notify
-User=root
-Group=demi-cloud
-PrivateMounts=yes
-UMask=0077
-KillMode=mixed
-TimeoutStartSec=infinity
-TimeoutStopSec=infinity
-Restart=on-failure
-RestartSec=3
-RuntimeDirectory=demi-cloud
-RuntimeDirectoryMode=0750
-EnvironmentFile=$config
-ExecStart=$manager
-ExecStopPost=$manager --recover
-
-[Install]
-WantedBy=multi-user.target
-UNIT
+current="${root%/}/opt/demi/current"
+mkdir -p "$(dirname "$unit")" "$(dirname "$current")"
+# The unit and the link are written beside their places and renamed into
+# them, so a failed install leaves the previous ones whole and no
+# half-written file behind.
+trap 'rm -f "$unit.new" "$current.new"' EXIT
+cp "$source_unit" "$unit.new"
+ln -sfn "$release" "$current.new"
 chmod 0644 "$unit.new"
 if ! $installing; then
+  mv -T "$current.new" "$current"
   mv "$unit.new" "$unit"
-  echo "wrote $unit"
+  echo "wrote $unit and $current"
   exit 0
 fi
 
@@ -128,6 +95,7 @@ fi
 if systemctl is-active --quiet demi-machine-manager.service; then
   systemctl stop demi-machine-manager.service
 fi
+mv -T "$current.new" "$current"
 mv "$unit.new" "$unit"
 systemctl daemon-reload
 systemctl enable demi-machine-manager.service

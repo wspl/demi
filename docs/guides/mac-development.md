@@ -60,9 +60,11 @@ Unix socket forwarding. The VM runs the same privileged manager and runsc
 profile as a Linux execution host. `--release` names the manager's root in
 the VM, the one whose `image/` the image build wrote. The script copies the
 manager built for the VM's architecture into that root's `bin/`, renaming it
-into place so that a running manager keeps its own file, writes the VM's
+into place so that a running manager keeps its own file, puts the manager's
+unit in its `systemd/` and, when the root has none, the pinned runsc in its
+`runtime/`, as a server release carries them, writes the VM's
 configuration file with the public URL, the socket and the state directory,
-and installs the service from the root.
+and installs the service from the root through `/opt/demi/current`.
 
 ```sh
 cargo xtask native build --package demi-machine-manager --target aarch64-unknown-linux-musl
@@ -89,7 +91,7 @@ script again with the new URL and restart the backend with it. The Clouds use
 the VM's own upstream resolver, the manager's default.
 
 `--root <directory>` passes on to the installer, which then only writes the
-unit beneath that directory inside the VM. The script prepares its default
+unit and the link beneath that directory inside the VM. The script prepares its default
 state directory on the Lima data disk; `--data` names another prepared Linux
 state directory.
 
