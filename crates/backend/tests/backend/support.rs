@@ -811,8 +811,14 @@ impl TestBackend {
     /// online and holding its device token, so a test may stop it and start
     /// it again as the same device.
     pub async fn pair(&self, session: &Session, name: &str) -> Paired {
+        self.pair_through(session, name, &self.url).await
+    }
+
+    /// [`TestBackend::pair`], with a runner that reaches the backend at
+    /// `url`, such as an edge in front of it.
+    pub async fn pair_through(&self, session: &Session, name: &str, url: &str) -> Paired {
         let runner = RunnerProcess::start(
-            &self.url,
+            url,
             RunnerProcessOptions {
                 name: name.into(),
                 ..RunnerProcessOptions::default()
