@@ -120,18 +120,24 @@ export const useResources = defineStore('resources', () => {
     return device ? productDevice(device) : null
   }
   const projects = computed<Project[]>(() =>
-    (product.snapshot?.workspaces ?? []).map((workspace) => {
+    (product.snapshot?.workspaces ?? []).map((workspace): Project => {
       const device = product.snapshot?.devices.find(
         (candidate) => candidate.id === workspace.deviceId,
       )
-      const cloud = device?.kind === 'managed'
-      return {
+      const checkout = {
         id: workspace.id,
         name: workspace.name,
         deviceId: workspace.deviceId,
-        host: cloud ? 'Cloud' : (device?.name ?? 'Unavailable device'),
-        hostKind: cloud ? 'cloud' : 'device',
         path: workspace.path,
+      }
+      if (device?.kind === 'managed') {
+        return { ...checkout, host: 'Cloud', hostKind: 'cloud' }
+      }
+      return {
+        ...checkout,
+        host: device?.name ?? 'Unavailable device',
+        hostKind: 'device',
+        online: device?.online ?? false,
       }
     }),
   )
