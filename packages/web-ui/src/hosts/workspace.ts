@@ -1,3 +1,6 @@
+import { ref, watch } from 'vue'
+import type { PairingDevice } from '../devices/pairing'
+
 /** What the working-environment dialog shows and asks for. Hosts map their own projects and devices onto these. */
 export interface WorkspaceProject {
   id: string
@@ -53,4 +56,33 @@ export function openingChoice(
     return { kind, deviceId }
   }
   return { kind }
+}
+
+/**
+ * Selects the device paired from beside a device menu in that menu. The claim
+ * answers before the page's device list may carry the device, so the menu
+ * selects it once it is among `devices`. Call it in a component's setup: the
+ * wait ends with the component.
+ */
+export function usePairedSelection(
+  devices: () => readonly WorkspaceDevice[],
+  select: (id: string) => void,
+): (device: PairingDevice) => void {
+  const awaited = ref<string | null>(null)
+  watch(
+    () =>
+      awaited.value !== null &&
+      devices().some((device) => device.id === awaited.value),
+    (listed) => {
+      if (!listed || awaited.value === null) {
+        return
+      }
+      const id = awaited.value
+      awaited.value = null
+      select(id)
+    },
+  )
+  return (device) => {
+    awaited.value = device.id
+  }
 }
