@@ -22,6 +22,7 @@ members = [
   "crates/backend-runners",
   "crates/backend-user-shard",
   "crates/backend-database",
+  "crates/server",
   "crates/backend-page-sync",
   "crates/backend-permissions",
   "crates/command-package-browser-protocol",

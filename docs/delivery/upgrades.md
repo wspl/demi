@@ -232,10 +232,13 @@ user.
 
 ### Interruptions
 
-The journal lets an upgrade killed at any point be finished or undone. The
-next `demi-server` command finds it and continues from the recorded step:
-before step 4 it starts the old release again; after it, it waits for the
-new release to report ready and returns to the old release if it does not.
+The journal lets an upgrade killed at any point be finished. The next
+`demi-server` command finds it, hands it to the `demi-server` of the release
+the move goes to, and that one takes the recorded step again and the steps
+after it: every step can be taken twice, since a service stops or starts
+twice harmlessly, the copy of the databases is made anew from databases no
+release has opened since, and `current` and the units are written whole. A
+release whose services do not start then returns the server as step 5 does.
 The steps themselves leave nothing half done: `current` is replaced by one
 rename, a migration commits in one transaction
 ([Schemas and migrations](../backend/storage.md#schemas-and-migrations)), and
@@ -246,9 +249,13 @@ services migrate and start as they would have.
 
 `demi-server rollback` returns to the release that the last upgrade replaced,
 the other directory under `releases/`; it refuses when that release is the
-newer one, as after a rollback, since going forward is an upgrade. It stops both services, restores the
+newer one, as after a rollback, since going forward is an upgrade. The
+earlier release's own `demi-server` carries out the return, as each release
+carries out the move to itself: it stops both services, restores the
 databases from that release's snapshot when the upgrade took one, points
-`current` back, copies the old units, and starts both services.
+`current` back, copies the old units, and starts both services. A return
+whose services do not start leaves its journal, and the next command tries
+it again.
 
 Restoring a snapshot loses what the backend wrote since the upgrade, such as
 the conversations of that time. `demi-server` says how long ago the snapshot

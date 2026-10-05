@@ -23,6 +23,7 @@ pub mod permissions;
 pub mod plugin_values;
 pub mod providers;
 mod schema;
+pub use schema::{DatabaseKind, schema_differs};
 pub mod sequences;
 pub mod sidebar;
 mod sqlite;
