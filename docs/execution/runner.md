@@ -216,6 +216,42 @@ time, which the runner reads beside the entry as it lists the directory: a
 home directory of 105 entries, listed with one request per entry, took about
 fifty seconds to show in the folder picker, and takes one round trip so.
 
+The filesystem requests have the shapes that keep it so:
+
+- **Look at several paths.** One request names several paths and answers
+  each: whether it exists, its kind, a directory's entries with their
+  metadata, a file's bytes up to a bound the request gives, with its size, or
+  the error that kept the runner from reading it. A plugin's reads of a
+  conversation's files are this request
+  ([Reading a conversation's files](../architecture/plugins.md#reading-a-conversations-files)),
+  and so is any check of several paths, such as a plugin's directories on a
+  Host.
+- **Read several files.** One request names the files and one pipe carries
+  their contents, each after its length, in the request's order: a command's
+  edit copies ([Edit copies](edit-tracking.md#edit-copies)) and a command's
+  media.
+- **Read with the file's metadata.** A read answers the file's size,
+  modification time and version with its first bytes, so no `stat` precedes
+  it. A read that refuses a file over a size reads one byte more than the
+  bound and refuses when that byte arrives.
+- **Write a directory.** One request carries a directory's listing, each
+  file's path and mode, and one pipe its contents; the runner writes it into a
+  temporary directory beside the final one, makes it read-only as the request
+  says and renames it into place. Removing directories is one request too
+  ([Host directories](../architecture/plugins.md#host-directories)).
+- **Write without replacing.** A write says what to do when its path exists:
+  replace the file, refuse with `file_exists`, or take the first free name of
+  the form `name-2.ext`, `name-3.ext`, and answer the name it took. A write
+  makes the missing parent directories of its path. No check precedes a
+  write.
+
+Requests that do not depend on each other go out together, not one after
+another: the two sides of a changed file, the reads a command's completion
+needs. Their pipes share one connection: the runner's HTTP client speaks
+HTTP/2 where the backend's edge offers it, so a concurrent pipe costs no new
+connection, which through a proxy and a TLS edge costs two or three round
+trips of its own.
+
 Raw process environment selection follows these rules:
 
 | Request | Child environment |

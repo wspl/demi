@@ -160,9 +160,10 @@ plugin needs the model to know beyond its commands' help reaches the model as
 a `context` block, and so does anything that differs by user or
 conversation, or changes while a conversation lives
 ([Transcript](../agent/runtime.md#block-types)). Before each provider request
-of a node, the session asks every context source in a fixed order: the
-product's execution context first, then each plugin that declared itself a
-context source, in registration order. Each source is given the text of its
+of a node, the session asks every context source at once and takes their
+answers in a fixed order: the product's execution context first, then each
+plugin that declared itself a context source, in registration order; a source
+that reads a Host does not make the others wait. Each source is given the text of its
 own context blocks that the model receives, the ones from the last
 `compaction_boundary` on, oldest first, with the node's working directory and
 the id of its current input turn, and answers new text or nothing. Each
@@ -207,15 +208,18 @@ access installs each directory of the user's set that the Host does not hold
 yet, before the job starts:
 
 - A directory is installed once per runner connection. The first job of a
-  connection, and the first after the user's set changed, lists each
-  plugin's directory on the Host (`~/.demi/plugins/<plugin>/`), and host
+  connection, and the first after the user's set changed, lists every
+  plugin's directory on the Host (`~/.demi/plugins/<plugin>/`) in one
+  request, and host
   access remembers that the Host holds the set until the connection ends. A
   Cloud's new boot is a new connection, so it is checked again; a directory
   the user deletes by hand while the connection lasts comes back at the next
   connection. Installations on one shard take turns.
-- An installation writes the files into a temporary directory beside the
-  final one, makes every file and directory read-only, keeping a file's
-  executable bit, and then renames it into place. A directory that exists is
+- An installation writes each directory with one request
+  ([Host operations](../execution/runner.md#host-operations)): the runner
+  writes the files into a temporary directory beside the final one, makes
+  every file and directory read-only, keeping a file's executable bit, and
+  then renames it into place. A directory that exists is
   complete, so a crash leaves at most a temporary directory, which the next
   installation removes.
 - The same installation removes the plugin's directories on that Host that
@@ -236,7 +240,9 @@ Host is running, but never wakes it, writes to it or keeps it awake. For
 example, `plugin-skills` looks for the skills a repository holds in its
 `.agents/skills` directory ([Project skills](../agent/skills.md#project-skills)).
 
-One request of the port names several paths, and the reply answers each:
+One request of the port names several paths, and the reply answers each, and
+it reaches the Host as one request too
+([Host operations](../execution/runner.md#host-operations)):
 whether it exists, its kind, a directory's entries, a file's bytes up to a
 bound the request gives with its size, or that the Host could not read it,
 such as for want of permission. A symbolic link at a path is followed; a
