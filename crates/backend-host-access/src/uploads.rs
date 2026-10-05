@@ -7,13 +7,11 @@
 //! to the session with it. An upload that is gone, another user's, or whose
 //! bytes are missing becomes the text that says it is not available.
 
-use std::path::Path;
-
 use bytes::Bytes;
 use demi_agent_store::attachments::{Upload, unavailable, upload_blocks};
 use demi_agent_store::media::HeldMedia;
 use demi_backend_remote_host::RemoteHost;
-use demi_host_interface::{FileContents, Host as _, HostError, WriteOptions};
+use demi_host_interface::{FileContents, Host as _, HostError, WhenExists, WriteOptions};
 use demi_shared_types::{B64Bytes, UserContentBlock};
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId};
 
@@ -70,7 +68,8 @@ struct Written {
 
 /// Writes `bytes` into the conversation's attachment directory on `host`,
 /// under `file_name` or, when a file has that name already, the first free
-/// `name-2.ext`, `name-3.ext` and so on; nothing is overwritten, and what is
+/// `name-2.ext`, `name-3.ext` and so on, which the write itself takes
+/// (`runner.md` § Host operations); nothing is overwritten, and what is
 /// written stays, so the path a transcript names stays readable.
 async fn write_attachment(
     host: &RemoteHost,
@@ -80,32 +79,51 @@ async fn write_attachment(
 ) -> Result<Written, HostError> {
     let home = host.identity().home_dir;
     let directory = format!("{}/{ATTACHMENTS_DIR}/{id}", home.trim_end_matches('/'));
-    let mut name = file_name.to_owned();
-    let mut number = 2;
-    while host.fs().exists(&format!("{directory}/{name}")).await? {
-        name = numbered(file_name, number);
-        number += 1;
-    }
-    let path = format!("{directory}/{name}");
-    let options = WriteOptions::default();
-    host.fs()
-        .write_file(&path, FileContents::Bytes(bytes), options)
+    let options = WriteOptions {
+        exists: WhenExists::Rename,
+    };
+    let name = host
+        .fs()
+        .write_file(
+            &format!("{directory}/{file_name}"),
+            FileContents::Bytes(bytes),
+            options,
+        )
         .await?;
+    let path = format!("{directory}/{name}");
     Ok(Written { name, path })
 }
 
-/// `file_name` with `number` before its extension: `notes-2.txt`, and
-/// `.env-2` for a name that is all extension.
-fn numbered(file_name: &str, number: u32) -> String {
-    let name = Path::new(file_name);
-    match (name.file_stem(), name.extension()) {
-        (Some(stem), Some(extension)) => {
-            format!(
-                "{}-{number}.{}",
-                stem.to_string_lossy(),
-                extension.to_string_lossy()
-            )
+#[cfg(test)]
+mod tests {
+    use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture, answered_requests};
+    use tokio::sync::mpsc;
+
+    use super::*;
+
+    // About a tenth of a second: a real runner process writes the files.
+    #[tokio::test(flavor = "local")]
+    async fn an_attachment_takes_the_first_free_name_with_one_request() {
+        let (tap, mut replies) = mpsc::channel(1 << 10);
+        let fixture = RunnerFixture::start(FixtureOptions {
+            tap: Some(tap),
+            ..FixtureOptions::default()
+        })
+        .await;
+        let host = fixture.host();
+        let id = ConversationId::try_from("0193f1e2-7c4d-7e8f-9a0b-1c2d3e4f5a6b").unwrap();
+        answered_requests(&mut replies);
+
+        let mut names = Vec::new();
+        for text in ["one", "two", "three"] {
+            let written = write_attachment(&host, &id, "notes.txt", Bytes::from(text))
+                .await
+                .unwrap();
+            assert_eq!(answered_requests(&mut replies), 1, "one request writes {text}");
+            assert_eq!(std::fs::read_to_string(&written.path).unwrap(), text);
+            names.push(written.name);
         }
-        _ => format!("{file_name}-{number}"),
+        assert_eq!(names, ["notes.txt", "notes-2.txt", "notes-3.txt"]);
+        fixture.stop().await;
     }
 }

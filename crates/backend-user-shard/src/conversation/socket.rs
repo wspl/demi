@@ -19,7 +19,7 @@ use std::rc::{Rc, Weak};
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_agent_server::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
-use demi_agent_store::media::HeldMedia;
+use demi_agent_store::media::{HeldMedia, READS_AT_ONCE};
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
@@ -31,7 +31,7 @@ use demi_shared_gates::{GateLease, Purpose};
 use demi_shared_types::{Block, UserContentBlock};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
-use futures_util::StreamExt as _;
+use futures_util::{StreamExt as _, TryStreamExt as _};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
@@ -587,32 +587,48 @@ impl ContentResolver for ConversationFiles {
                 .upgrade()
                 .ok_or_else(|| refused("The backend is shutting down".into()))?;
             // Each file's blocks by its place, the remote files' once they
-            // are granted together, and the bytes of the uploads' media.
-            let mut resolved: Vec<Option<Vec<UserContentBlock>>> = Vec::with_capacity(files.len());
-            let mut media = HeldMedia::default();
+            // are granted together, and the bytes of the uploads' media. The
+            // uploads are written together, as many at once as blobs are
+            // read, since each reads its own: each write takes a free name
+            // itself, so two of one name never meet.
+            let mut uploads = Vec::new();
             let mut remote = Vec::new();
-            for file in files {
+            for file in &files {
                 match file {
-                    FileReference::Upload { r#ref, file_name } => {
-                        // A frame with uploads is admitted on its Host first.
-                        let host = self.host.borrow().clone();
-                        let host = host
-                            .ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
-                        let (blocks, held) = shard
-                            .host_shard()
-                            .resolve_upload(&self.conversation, &host, &r#ref, &file_name)
-                            .await
-                            .map_err(|error| refused(error.to_string()))?;
+                    FileReference::Upload { r#ref, file_name } => uploads.push((r#ref, file_name)),
+                    FileReference::RemoteFile { device_id, path } => remote.push(RemoteFile {
+                        device: device_id.clone(),
+                        path: path.clone(),
+                    }),
+                }
+            }
+            let mut written = Vec::new().into_iter();
+            if !uploads.is_empty() {
+                // A frame with uploads is admitted on its Host first.
+                let host = self.host.borrow().clone();
+                let host =
+                    host.ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
+                let host_shard = shard.host_shard();
+                let writes = uploads.into_iter().map(|(reference, file_name)| {
+                    host_shard.resolve_upload(&self.conversation, &host, reference, file_name)
+                });
+                let writes: Vec<_> = futures_util::stream::iter(writes)
+                    .buffered(READS_AT_ONCE)
+                    .try_collect()
+                    .await
+                    .map_err(|error| refused(error.to_string()))?;
+                written = writes.into_iter();
+            }
+            let mut media = HeldMedia::default();
+            let mut resolved: Vec<Option<Vec<UserContentBlock>>> = Vec::with_capacity(files.len());
+            for file in &files {
+                match file {
+                    FileReference::Upload { .. } => {
+                        let (blocks, held) = written.next().expect("one answer per upload");
                         resolved.push(Some(blocks));
                         media.absorb(held);
                     }
-                    FileReference::RemoteFile { device_id, path } => {
-                        remote.push(RemoteFile {
-                            device: device_id,
-                            path,
-                        });
-                        resolved.push(None);
-                    }
+                    FileReference::RemoteFile { .. } => resolved.push(None),
                 }
             }
             let mut references = if remote.is_empty() {
