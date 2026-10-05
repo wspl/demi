@@ -21,7 +21,7 @@ import { PLUGIN_PAGES } from '../generated/pages'
 import { createSettingsState } from '../fixtures/settings'
 import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
 import { productWould } from '../product-would'
-import { demoAccount, demoConversations, demoProjects, emailOnlyAccount } from '../sidebar/sidebar-data'
+import { demoAccount, demoConversations, demoProjects, emailOnlyAccount, longEmailAccount } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
@@ -85,7 +85,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Bottom',
-    'The account (avatar and name), whose menu holds settings and sign-out, then Settings. Without a name the email stands in. A name too long to fit beside the avatar hides whole, leaving the avatar, and Settings keeps the end of the row. The menu names the account, with the email under a name.'
+    'The account (avatar and name), whose menu holds settings and sign-out, then Settings. Without a name the email stands in. A name too long to fit beside the avatar ends in an ellipsis; the avatar keeps its size, and Settings keeps the end of the row. The menu names the account, with the email under a name.'
   ],
   ['Search', 'Not designed yet.'],
 ]
@@ -377,7 +377,7 @@ onBeforeUnmount(() => listRestore.stop())
 
     <GallerySection
       title="Account"
-      note="The foot of the sidebar at its narrowest and at its default width. The email that stands in for a missing name fits at 256px but not at 200px, where it hides and leaves the avatar, with Settings still at the row's end."
+      note="The foot of the sidebar at its narrowest and at its default width. The email that stands in for a missing name fits at 256px but not at 200px, where it ends in an ellipsis beside the avatar, with Settings still at the row's end; a longer email, as a new master account has, ends in one at 256px too. The account menu and Settings say what the product would open."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen
@@ -385,6 +385,7 @@ onBeforeUnmount(() => listRestore.stop())
             { variant: '200px · a name', width: SIDEBAR_WIDTH.min, account: demoAccount },
             { variant: '200px · only an email', width: SIDEBAR_WIDTH.min, account: emailOnlyAccount },
             { variant: '256px · only an email', width: SIDEBAR_WIDTH.default, account: emailOnlyAccount },
+            { variant: '256px · a long email', width: SIDEBAR_WIDTH.default, account: longEmailAccount },
           ]"
           :key="specimen.variant"
           :variant="specimen.variant"
@@ -395,6 +396,10 @@ onBeforeUnmount(() => listRestore.stop())
               :projects="[]"
               :conversations="[]"
               :active-id="null"
+              @create="productWould('Start a New Conversation')"
+              @add-project="productWould('Add a Project')"
+              @open-settings="wouldOpenSettings"
+              @sign-out="productWould('Sign Out')"
             />
           </div>
         </GallerySpecimen>

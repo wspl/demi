@@ -16,6 +16,12 @@ export const emailOnlyAccount: SidebarAccount = {
   email: 'alex.chen@acme.dev',
 }
 
+/** A master account as setup leaves it, with no name and an email too long for the default sidebar. */
+export const longEmailAccount: SidebarAccount = {
+  name: '',
+  email: 'someone.longname@protonmail.example',
+}
+
 export function demoProjects(): SidebarProject[] {
   return [
     {
