@@ -2695,6 +2695,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-server"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "demi-backend-database",
+ "demi-machine-manager-protocol",
+ "demi-shared-artifacts",
+ "dotenvy",
+ "jiff",
+ "rusqlite",
+ "rustix",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tar",
+ "tempfile",
+ "thiserror",
+ "tokio",
+ "tokio-util",
+ "zstd 0.13.3",
+]
+
+[[package]]
 name = "demi-shared-artifacts"
 version = "0.1.0"
 dependencies = [
@@ -2889,6 +2913,12 @@ checksum = "442039f5147480ba31067cb00ada1adae6892028e40e45fc5de7b7df6dcc1b5f"
 dependencies = [
  "const-random",
 ]
+
+[[package]]
+name = "dotenvy"
+version = "0.15.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "dunce"
@@ -7239,6 +7269,10 @@ name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8a7852d02fc848982e0c167ef163aaff9cd91dc640ba85e263cb1ce46fae51cd"
+dependencies = [
+ "serde",
+ "serde_core",
+]
 
 [[package]]
 name = "serde"

@@ -147,7 +147,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/native-tools
       - name: Build
-        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} --package demi-backend --package demi-machine-manager
+        run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} --package demi-backend --package demi-machine-manager --package demi-server
       - uses: ./.github/actions/collect-programs
         with:
           name: native-${{ matrix.target }}-server
