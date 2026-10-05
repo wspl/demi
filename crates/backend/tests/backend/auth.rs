@@ -44,18 +44,38 @@ async fn setup_creates_the_master_once_and_signs_it_in() {
             .needed
     );
 
+    // The nickname is bounded as `PATCH /auth/me` bounds it.
+    for nickname in [" ".to_owned(), "x".repeat(81)] {
+        let refused = backend
+            .post(
+                "/api/setup",
+                None,
+                json!({ "nickname": nickname, "email": MASTER_EMAIL, "password": MASTER_PASSWORD }),
+            )
+            .await;
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
+            "{nickname:?}"
+        );
+    }
+
     let answer = backend
         .post(
             "/api/setup",
             None,
-            json!({ "email": "  Master@Example.TEST ", "password": MASTER_PASSWORD }),
+            json!({
+                "nickname": "  Ana  ",
+                "email": "  Master@Example.TEST ",
+                "password": MASTER_PASSWORD,
+            }),
         )
         .await;
     assert_eq!(answer.status, StatusCode::CREATED);
     let master = session_from(&answer);
     assert_eq!(master.user.email.as_str(), MASTER_EMAIL);
     assert_eq!(master.user.role, Role::Master);
-    assert_eq!(master.user.nickname, "");
+    assert_eq!(master.user.nickname, "Ana");
     let token = master
         .cookie
         .strip_prefix(&format!("{SESSION_COOKIE}="))
@@ -87,7 +107,7 @@ async fn setup_creates_the_master_once_and_signs_it_in() {
         .post(
             "/api/setup",
             None,
-            json!({ "email": "other@example.test", "password": "other-pass-1" }),
+            json!({ "nickname": "Other", "email": "other@example.test", "password": "other-pass-1" }),
         )
         .await;
     assert_eq!(
@@ -109,7 +129,7 @@ async fn concurrent_setups_create_one_master() {
         backend.post(
             "/api/setup",
             None,
-            json!({ "email": email, "password": MASTER_PASSWORD }),
+            json!({ "nickname": "Master", "email": email, "password": MASTER_PASSWORD }),
         )
     };
     let (first, second) = tokio::join!(setup("first@example.test"), setup("second@example.test"));
@@ -222,6 +242,8 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
     let others = ["https://elsewhere.example", expose.as_str(), "null"];
     let forbidden = (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin);
     let credentials = json!({ "email": MASTER_EMAIL, "password": MASTER_PASSWORD });
+    let setup_body =
+        json!({ "nickname": "Master", "email": MASTER_EMAIL, "password": MASTER_PASSWORD });
 
     for origin in others {
         let setup = post_from(
@@ -229,7 +251,7 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
             Some(origin),
             "/api/setup",
             None,
-            Some(credentials.clone()),
+            Some(setup_body.clone()),
         )
         .await;
         assert_eq!(setup.refusal(), forbidden, "{origin}");
@@ -249,7 +271,7 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
             None,
             "/api/setup",
             None,
-            Some(credentials.clone()),
+            Some(setup_body),
         )
         .await,
     );

@@ -1000,7 +1000,7 @@ impl TestBackend {
             .post(
                 "/api/setup",
                 None,
-                json!({ "email": MASTER_EMAIL, "password": MASTER_PASSWORD }),
+                json!({ "nickname": "Master", "email": MASTER_EMAIL, "password": MASTER_PASSWORD }),
             )
             .await;
         assert_eq!(

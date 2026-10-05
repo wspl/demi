@@ -31,20 +31,27 @@ const props = defineProps<{
   phase: SetupPhase
 }>()
 
+/** The most characters a name has once trimmed (`web-api.md` § Account API). */
+const NAME_MAX_LENGTH = 80
+
+const name = defineModel<string>('name', { default: '' })
 const email = defineModel<string>('email', { default: '' })
 const password = defineModel<string>('password', { default: '' })
 const confirmation = defineModel<string>('confirmation', { default: '' })
 
 const emit = defineEmits<{
-  submit: [email: string, password: string]
+  submit: [name: string, email: string, password: string]
   signIn: []
 }>()
 
+const nameLength = computed(() => Array.from(name.value.trim()).length)
 const tooShort = computed(() => isTooShort(password.value))
 const mismatch = computed(() => differs(password.value, confirmation.value))
 const canSubmit = computed(
   () =>
     !props.phase.busy &&
+    nameLength.value >= 1 &&
+    nameLength.value <= NAME_MAX_LENGTH &&
     isEmail(email.value) &&
     password.value.length >= PASSWORD_MIN_LENGTH &&
     confirmation.value === password.value,
@@ -52,7 +59,7 @@ const canSubmit = computed(
 
 function submit() {
   if (!canSubmit.value) return
-  emit('submit', email.value.trim(), password.value)
+  emit('submit', name.value.trim(), email.value.trim(), password.value)
 }
 </script>
 
@@ -78,6 +85,18 @@ function submit() {
   >
     <form class="flex flex-col gap-4" @submit.prevent="submit">
       <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
+        Name
+        <TextInput
+          v-model="name"
+          size="lg"
+          autocomplete="name"
+          name="name"
+          :disabled="phase.busy"
+          focused
+          @keydown.enter="submit"
+        />
+      </label>
+      <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
         Email
         <TextInput
           v-model="email"
@@ -86,7 +105,6 @@ function submit() {
           inputmode="email"
           name="email"
           :disabled="phase.busy"
-          focused
           @keydown.enter="submit"
         />
       </label>

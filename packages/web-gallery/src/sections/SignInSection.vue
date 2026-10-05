@@ -21,7 +21,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Setup',
-    'What the first visitor of a Demi without accounts sees instead of signing in: email, password and its confirmation create the master account, which signs in. Once it exists, the page is gone and every visitor signs in.'
+    'What the first visitor of a Demi without accounts sees instead of signing in: a name, an email, a password and its confirmation create the master account, which signs in. Once it exists, the page is gone and every visitor signs in.'
   ],
 ]
 
@@ -95,6 +95,7 @@ const setupStates: {
 ]
 
 const setupState = ref('form')
+const setupName = ref('Zan')
 const setupEmail = ref('zan@example.com')
 const setupPassword = ref('correct horse')
 const setupConfirmation = ref('correct horse')
@@ -109,8 +110,8 @@ function showSetupState(value: string) {
   setupConfirmation.value = typed?.confirmation ?? 'correct horse'
 }
 
-function createAccount(address: string) {
-  productWould(`Create the Master Account ${address} and Open the Chat`)
+function createAccount(name: string, address: string) {
+  productWould(`Create the Master Account ${name} (${address}) and Open the Chat`)
 }
 </script>
 
@@ -160,6 +161,7 @@ function createAccount(address: string) {
       </div>
       <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
         <SetupPage
+          v-model:name="setupName"
           v-model:email="setupEmail"
           v-model:password="setupPassword"
           v-model:confirmation="setupConfirmation"
