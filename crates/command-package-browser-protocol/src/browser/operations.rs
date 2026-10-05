@@ -1325,6 +1325,24 @@ pub struct InstallResult {
     pub missing_libraries: Vec<LinuxLibrary>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub missing_fonts: Vec<LinuxFont>,
+    /// The AppArmor profile Chrome's sandbox needs on a Host that restricts
+    /// user namespaces, such as Ubuntu 23.10 and later, when none is loaded.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "SandboxProfile")]
+    pub sandbox_profile: Option<SandboxProfile>,
+}
+
+/// An AppArmor profile that allows the installed Chrome the user namespaces
+/// its sandbox needs: the file it belongs in, and its text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SandboxProfile {
+    pub path: String,
+    pub profile: String,
 }
 
 input! {
