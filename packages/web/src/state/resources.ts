@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -13,6 +13,7 @@ import { usePreferences } from './preferences'
 import { modelInfo, providerView, wireApi } from './catalog'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
+import type { PairingDevice } from '@demicodes/web-ui/devices/pairing'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
@@ -66,7 +67,16 @@ export const useResources = defineStore('resources', () => {
     sidebarEntries(PLUGIN_PAGES, (plugin) => pluginEnabled(product.snapshot, plugin)),
   )
   const targetOpen = ref(false)
-  const pairingOpen = ref(false)
+  /**
+   * The open pairing dialog and whom it tells of the device it pairs: the
+   * device menu it was started beside, if any; null while it is closed.
+   */
+  const pairingRequest = shallowRef<{
+    onPaired?: (device: PairingDevice) => void
+  } | null>(null)
+  function openPairing(onPaired?: (device: PairingDevice) => void) {
+    pairingRequest.value = { onPaired }
+  }
   const sidebarOpen = ref(false)
 
   watch(
@@ -76,7 +86,7 @@ export const useResources = defineStore('resources', () => {
       controller = new AbortController()
       settingsOpen.value = false
       targetOpen.value = false
-      pairingOpen.value = false
+      pairingRequest.value = null
       sidebarOpen.value = false
       selectedProviderId.value = null
       providerDetailOpen.value = false
@@ -278,7 +288,8 @@ export const useResources = defineStore('resources', () => {
     openSettings,
     sectionEntries,
     targetOpen,
-    pairingOpen,
+    pairingRequest,
+    openPairing,
     sidebarOpen,
     sidebarWidth,
     asideShare,

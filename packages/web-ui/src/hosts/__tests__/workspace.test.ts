@@ -1,7 +1,13 @@
 import { expect, test } from 'bun:test'
-import { openingChoice, type WorkspaceDevice } from '../workspace'
+import { effectScope, nextTick, ref } from 'vue'
+import { useDevicePairing } from '../../devices/pairing'
+import {
+  openingChoice,
+  usePairedSelection,
+  type WorkspaceDevice,
+} from '../workspace'
 
-// Pure function over two small arrays: well under a millisecond.
+// Pure functions over two small arrays and one stubbed claim: well under a millisecond.
 
 const devices: WorkspaceDevice[] = [
   { id: 'laptop', name: 'laptop', online: true },
@@ -28,4 +34,34 @@ test('a device the user no longer has leaves Device with no device chosen', () =
   expect(openingChoice({ kind: 'device', deviceId: 'removed' }, devices)).toEqual({
     kind: 'device',
   })
+})
+
+test('a device paired from beside the device menu is selected there once the menu lists it', async () => {
+  const listed = ref<WorkspaceDevice[]>([...devices])
+  const selected = ref('laptop')
+  const scope = effectScope()
+  const pairing = scope.run(() => {
+    const paired = usePairedSelection(
+      () => listed.value,
+      (id) => {
+        selected.value = id
+      },
+    )
+    const pairing = useDevicePairing(async () => ({
+      ok: true,
+      device: { id: 'studio', name: 'studio' },
+    }))
+    pairing.open(paired)
+    return pairing
+  })!
+  pairing.phase.value = { kind: 'code' }
+  await pairing.submit('ABCD-1234')
+  await nextTick()
+  // The claim has answered, but the page has not brought the device yet.
+  expect(selected.value).toBe('laptop')
+
+  listed.value = [...listed.value, { id: 'studio', name: 'studio', online: true }]
+  await nextTick()
+  expect(selected.value).toBe('studio')
+  scope.stop()
 })
