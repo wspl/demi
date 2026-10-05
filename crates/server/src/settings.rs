@@ -1,4 +1,4 @@
-//! The installation's configuration, `/etc/demi/demi.env`, as the two
+//! The installation's configuration, `/opt/demi/config/demi.env`, as the two
 //! services read it: an upgrade runs the next release's programs with it and
 //! finds the data directories in it. Reading it never changes it.
 
