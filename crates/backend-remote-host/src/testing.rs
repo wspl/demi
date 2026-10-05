@@ -38,6 +38,27 @@ use crate::{
     Pipes, RemoteHost,
 };
 
+/// How many requests the runner answered among the messages a fixture's
+/// tap received so far, which it takes: each Host request is answered once,
+/// so this counts the round trips an operation cost.
+pub fn answered_requests(tap: &mut mpsc::Receiver<Outbound>) -> usize {
+    let mut answered = 0;
+    while let Ok(message) = tap.try_recv() {
+        if matches!(
+            message,
+            Outbound::FsOk(_)
+                | Outbound::FsError { .. }
+                | Outbound::GitOk(_)
+                | Outbound::GitError { .. }
+                | Outbound::JobRead { .. }
+                | Outbound::JobMediaRead { .. }
+        ) {
+            answered += 1;
+        }
+    }
+    answered
+}
+
 /// The device a test connection serves.
 pub const TEST_DEVICE: &str = "test-device";
 

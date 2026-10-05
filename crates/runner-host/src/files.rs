@@ -99,6 +99,57 @@ impl FileTransfers {
         Ok(())
     }
 
+    /// `fs_look`: what each path is, answered at once, then the files' first
+    /// bytes into the output pipe, one file after another.
+    pub fn look(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
+        let Inbound::FsLook {
+            id,
+            paths,
+            cwd,
+            output,
+        } = message
+        else {
+            return Err(io::Error::other("not a look"));
+        };
+        self.admit()?;
+        let base = cwd.map_or_else(|| default_cwd.to_owned(), PathBuf::from);
+        let reply = self.output.clone();
+        let pipes = self.pipes.clone();
+        let transfer = self.cancel.child_token();
+        let shutdown = self.cancel.clone();
+        self.transfers.spawn(async move {
+            let mut bytes = Vec::new();
+            let mut looked = Vec::with_capacity(paths.len());
+            for wanted in &paths {
+                // Without a pipe, no file's bytes are read.
+                let limit = if output.is_some() { wanted.limit } else { 0 };
+                looked.push(look_at(&base, &wanted.path, limit, &mut bytes, &transfer).await);
+            }
+            let answer = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
+                id: id.clone(),
+                result: wire::FsResult::Look(looked),
+            }))
+            .and_then(|answer| {
+                wire::within_limit(answer, |reason| {
+                    wire::encode(&wire::Outbound::FsError {
+                        id,
+                        code: Some("too_large".into()),
+                        message: reason,
+                    })
+                })
+            });
+            if !send(&reply, answer, &shutdown).await {
+                return;
+            }
+            if let Some(output) = output {
+                let body = futures_util::stream::iter([Ok::<_, io::Error>(Bytes::from(bytes))]);
+                let result = pipes.put(&output.url, body, &transfer).await;
+                report_pipe(&reply, output.id, result, &shutdown).await;
+            }
+        });
+        Ok(())
+    }
+
     /// `fs_writeFile`: the input pipe into a temporary file beside the
     /// destination, renamed into place only when the pipe ended cleanly.
     pub fn write(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
@@ -251,6 +302,57 @@ async fn open_range(
     }
     file.seek(SeekFrom::Start(offset)).await?;
     Ok(file.take(length.unwrap_or(u64::MAX)))
+}
+
+/// What is at `path`, a symbolic link followed. A file's first `limit`
+/// bytes are added to `bytes`; a file it could not read adds none.
+async fn look_at(
+    base: &Path,
+    path: &str,
+    limit: u64,
+    bytes: &mut Vec<u8>,
+    cancel: &CancellationToken,
+) -> wire::Looked {
+    let unreadable = |error: io::Error| wire::Looked::Unreadable {
+        code: error_code(&error).map(String::from),
+        message: error.to_string(),
+    };
+    let target = match resolve(base, path) {
+        Ok(target) => target,
+        Err(error) => return unreadable(error),
+    };
+    let metadata = match fs::metadata(&target).await {
+        Ok(metadata) => metadata,
+        Err(error) if matches!(error_code(&error), Some("ENOENT" | "ENOTDIR")) => {
+            return wire::Looked::Missing;
+        }
+        Err(error) => return unreadable(error),
+    };
+    if metadata.is_dir() {
+        return match crate::fs::list(&target, cancel).await {
+            Ok(entries) => wire::Looked::Directory { entries },
+            Err(error) => unreadable(error),
+        };
+    }
+    if !metadata.is_file() {
+        return wire::Looked::Other;
+    }
+    let start = bytes.len();
+    let read = async {
+        // Out of open files, the look waits for one (`runner.md` § Load).
+        let file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
+        file.take(limit).read_to_end(bytes).await
+    };
+    match read.await {
+        Ok(read) => wire::Looked::File {
+            size: metadata.len(),
+            read: read as u64,
+        },
+        Err(error) => {
+            bytes.truncate(start);
+            unreadable(error)
+        }
+    }
 }
 
 /// The upload body: one chunk per read, taken only when the upload asks for
