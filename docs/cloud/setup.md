@@ -27,19 +27,17 @@ names the capability. An ordinary hardware-virtualized VPS can provide these
 facilities without exposing KVM. A restricted container sold as a VPS may not;
 check the facilities instead of relying on the provider's product name.
 
-The server release carries the complete pinned runsc distribution of its
-architecture in `runtime/`, `runsc` with its accompanying `gvisor-bin/`
-directory, since upstream packaging can include helper binaries
-([Server release](../delivery/builds-and-releases.md#server-release)). So the
-manager and the runsc it was built against arrive and leave together, and
-nothing installs runsc on the host. On amd64 the distribution is the upstream
-release, checked against the SHA-512 that the runtime release manifest,
-`crates/machine-manager/runtime/release.json`, pins. On arm64 it is built
-from the same pinned source with the shipped seccomp ABI fix and the
-native/systrap regression probe, once per pin, and published as a release of
-its own whose SHA-512 the manifest pins too ([gVisor runtime](../delivery/builds-and-releases.md#gvisor-runtime)); build dependencies and inputs
-are in `crates/machine-manager/runtime/README.md`. Startup requires the
-executable to report exactly the pinned version.
+The manager runs the `runsc` version that the runtime release manifest,
+`crates/machine-manager/runtime/release.json`, pins, from
+`/opt/demi/gvisor/<version>/`, where `demi-server` fetches it before a
+release that pins it runs ([gVisor runtime](../delivery/builds-and-releases.md#gvisor-runtime)).
+On amd64 the archive is upstream's release, checked against the SHA-512 the
+manifest pins. On arm64 it is built from the same pinned source with the
+shipped seccomp ABI fix and the native/systrap regression probe, once per
+pin, and published as a release of its own whose SHA-512 the manifest pins
+too; build dependencies and inputs are in
+`crates/machine-manager/runtime/README.md`. Startup requires the executable
+to report exactly the pinned version.
 
 The manager is a Linux executable, released for amd64 and arm64
 ([Builds and releases](../delivery/builds-and-releases.md)). Besides `runsc`, it
@@ -70,14 +68,14 @@ public egress and private destination refusal through a real sandbox.
 ## Configuration
 
 The manager reads the deployment's one configuration file,
-`/etc/demi/demi.env`, which the backend reads too
+`/opt/demi/config/demi.env`, which the backend reads too
 ([Backend configuration](../backend/backend.md#configuration)). It reads
 three of the backend's settings, and the backend's definition of each holds:
 
 - `DEMI_RELEASE`, the [server release](../delivery/builds-and-releases.md#server-release)
-  root: the manager imports the Cloud image in its `image/` and runs its
-  `runtime/runsc`. A server leaves it out, so the manager takes the release
-  of its own executable, as the backend does.
+  root: the manager imports the Cloud image in its `image/`. A server leaves
+  it out, so the manager takes the release of its own executable, as the
+  backend does.
 - `DEMI_BACKEND_PUBLIC_URL`: the one endpoint, address and port, that a Cloud
   may reach on the host or a private address, and the URL every boot record
   must name.
@@ -89,8 +87,8 @@ fail configuration. Counts and MiB sizes are positive decimal integers.
 
 | Variable | Meaning |
 | --- | --- |
-| `DEMI_MANAGED_DATA` | The manager's persistent state, on one filesystem; default `/var/lib/demi-machine-manager`. |
-| `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default the release root's `runtime/runsc`. A deployment leaves it out; the manager's tests name a stand-in. |
+| `DEMI_MANAGED_DATA` | The manager's persistent state, on one filesystem; default `/opt/demi/data/cloud`. |
+| `DEMI_MANAGED_RUNSC` | The pinned runsc executable; default `/opt/demi/gvisor/<pinned version>/runsc`. A deployment leaves it out; the manager's tests name a stand-in. |
 | `DEMI_MANAGED_DNS` | The IPv4 resolvers a Cloud uses. Optional: the host's own upstream resolvers otherwise (below). |
 | `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory, and PID limits ([Resource limits](managed-hosts.md#resource-limits)). |
 | `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on; either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
@@ -170,7 +168,7 @@ The manager's systemd unit is part of the server release, in its
 to a release ([One release on a server](../delivery/upgrades.md#one-release-on-a-server)).
 It runs `/opt/demi/current/bin/demi-machine-manager` as root with the
 `demi-cloud` group, private mounts, and a restrictive umask, and loads the
-deployment's configuration file, `/etc/demi/demi.env`. The unit uses
+deployment's configuration file, `/opt/demi/config/demi.env`. The unit uses
 `Type=notify`: the manager reports readiness only after it has recovered and
 saved leftover devices, installed its network policy, imported its base,
 checked storage, and opened its owner/group-restricted socket, so the
