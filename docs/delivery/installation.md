@@ -7,20 +7,20 @@ missing and a terminal is there to answer. It installs the layout that
 [Upgrades](upgrades.md#one-release-on-a-server) defines, and the server
 moves between releases with `demi-server upgrade` from then on.
 
-For example, an agent installs Demi on a fresh Ubuntu server whose domain
-`demi.example.com` points at it:
+For example, an agent installs Demi on a fresh Ubuntu server, behind a
+reverse proxy on the same machine that serves `demi.example.com` over HTTPS
+and forwards to port 3271:
 
 ```sh
 curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh \
-  | sudo bash -s -- --domain demi.example.com --mode isolated
+  | sudo bash -s -- --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
 ```
 
 The installer checks the machine, installs the few system packages the
-machine manager needs, fetches the newest release, checks that the domain
-resolves to this machine, writes the configuration, starts the backend, the
-machine manager and Caddy, which obtains the certificate, and checks the
-server from outside. It ends by printing `https://demi.example.com`, where the
-first visitor creates the master account on the setup page.
+machine manager needs, fetches the newest release, writes the configuration,
+starts the backend and the machine manager, and checks the server from
+outside. It ends by printing `https://demi.example.com`, where the first
+visitor creates the master account on the setup page.
 
 Installation is Linux only, on the distributions below, and a machine that
 cannot run Cloud is refused: every deployment has Cloud. There is no
@@ -52,8 +52,7 @@ and composes the command.
 | --- | --- |
 | `--domain <name>` | Required. The domain the product is reached at; the public URL is `https://<name>`. An IP address is refused ([Public URL and listening address](../backend/backend.md#public-url-and-listening-address)). |
 | `--mode shared\|isolated` | Required, with no default ([Instance mode](../product/product.md#instance-mode-shared-vs-isolated)). |
-| `--tls caddy\|cloudflare\|external` | Who holds the certificate ([HTTPS](#https)). Default `caddy`. |
-| `--port <port>` | The port the backend listens on. Default 3271, or 8080 with `cloudflare`. |
+| `--listen <address:port>` | Required: where the backend listens, which the proxy in front of it reaches ([HTTPS](#https)). |
 | `--storage local\|s3` | Where the object store lives ([The object store](../backend/storage.md#the-object-store)). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from the installer's own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
 | `--expose-domain <name>` | The domain of expose hostnames ([Host expose](../execution/expose.md#deployment)). Optional: without it, exposes are off. |
@@ -70,41 +69,27 @@ needs another adds it to `/etc/demi/demi.env` and restarts the services.
 
 ## HTTPS
 
-Demi does not terminate TLS ([Public URL and listening address](../backend/backend.md#public-url-and-listening-address)).
-The installer sets up one of three shapes:
+Demi does not terminate TLS ([Public URL and listening address](../backend/backend.md#public-url-and-listening-address)),
+and the installer sets up none either: the operator provides what serves the
+domain over HTTPS and forwards to the backend, and tells the installer where
+the backend listens. Both shapes of that page are one parameter:
 
-| `--tls` | The backend listens on | In front of it |
-| --- | --- | --- |
-| `caddy` | `127.0.0.1:<port>` | Caddy on this machine, which the installer configures: it obtains the domain's certificate on ports 80 and 443 and forwards to the backend |
-| `cloudflare` | `0.0.0.0:<port>`, one of the ports Cloudflare forwards HTTP to | Cloudflare, whose proxied DNS record for the domain the operator creates |
-| `external` | `127.0.0.1:<port>` | The operator's own reverse proxy, whose requirements the installer prints: pass `Origin` and `Host` unchanged, allow WebSocket upgrades |
+- Behind a reverse proxy on the same machine, such as Caddy or nginx, or a
+  tunnel, such as Cloudflare Tunnel: `--listen 127.0.0.1:<port>`.
+- Behind Cloudflare's proxy, which reaches the machine from outside:
+  `--listen 0.0.0.0:<port>`, with one of the ports Cloudflare forwards HTTP
+  to, such as 8080.
 
-A machine without a public address, such as one at home, can still serve
-Demi through a tunnel the operator runs, such as Cloudflare Tunnel, with
-`--tls external`; `--help` says so. The installer sets up no tunnel.
-
-With `caddy`, Caddy is part of the server release: a static Caddy executable
-of a version the release pins, checked against its SHA-256, in the root's
-`caddy/`, with its unit `demi-caddy.service` in `systemd/`
-([Server release](builds-and-releases.md#server-release)). So Caddy is the
-same on every distribution, needs no repository of its own, and moves with
-the release. Its configuration, `/etc/demi/Caddyfile`, is the installation's
-and names the domain and the backend's port; `demi-server` installs the
-Caddy unit on every move for an installation that has it.
-
-**Undecided: exposes with Caddy.** Expose hostnames need a certificate for
-`*.<expose domain>`. Caddy obtains a wildcard certificate only through the
-DNS challenge, which needs the DNS provider's credentials and a Caddy built
-with that provider's module; alternatively it obtains one certificate per
-expose hostname as the first visitor arrives, which needs no credentials but
-counts against the certificate authority's weekly limit for the domain. Until
-this is decided, `--expose-domain` with `caddy` is refused, and with the other
-two shapes the operator provides the wildcard certificate.
+`--help` gives both, and what the proxy must do: pass `Origin` and `Host`
+unchanged and allow WebSocket upgrades. An expose domain needs the same proxy
+to serve `*.<expose domain>` with a wildcard certificate; Cloudflare's free
+certificate covers one level of wildcard below a zone, so behind Cloudflare
+the expose domain is a zone of its own or the zone itself.
 
 ## The steps
 
 Each step can be taken again: running the same command after a stop, such as
-for DNS that was not ready yet, continues where the last run stopped and
+for a proxy that was not ready yet, continues where the last run stopped and
 repeats nothing that is done. Every failure says what failed and what the
 operator does next, and exits with a status other than 0.
 
@@ -122,24 +107,22 @@ operator does next, and exits with a status other than 0.
    starting anything. A machine that fails is refused with the manager's
    reasons, such as a container that drops `CAP_SYS_RESOURCE`, or SELinux
    refusing gVisor.
-5. **Check the domain.** With `caddy`, the domain must resolve to an address
-   of this machine; with `cloudflare`, to Cloudflare; with `external`, the
-   installer only prints what the proxy must reach. An expose domain must
-   resolve a random name under it the same way. Records that are missing are
-   printed as the operator must create them, and the run stops until they
-   resolve.
-6. **Write the installation**: the system user `demi` and the group
-   `demi-cloud`, the data directories, `/etc/demi/demi.env` readable by root
-   alone, and `/etc/demi/Caddyfile` with `caddy`. A configuration file that
+5. **Write the installation**: the system user `demi` and the group
+   `demi-cloud`, the data directories, and `/etc/demi/demi.env` readable by
+   root alone. A configuration file that
    is already there and says something else than the parameters stops the
    run: the installer never edits a configuration it did not just write.
-7. **Start the release**: point `current` at it, install the units, enable
+6. **Start the release**: point `current` at it, install the units, enable
    and start the services in order, and wait until each reports ready, as an
    upgrade's switch does ([Switch](upgrades.md#switch)).
-8. **Check from outside**: an HTTPS request to the public URL answers with a
+7. **Check from outside**: an HTTPS request to the public URL answers with a
    valid certificate, and one naming another origin answers 403
    `forbidden_origin`, which shows the proxy passes `Origin`
    ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
+   A proxy that is not set up yet fails this step with what it must do; the
+   run stops with the server running, and the same command checks again once
+   the proxy is there. With an expose domain, a random name under it is
+   checked the same way.
 
 ## Distributions
 
@@ -162,7 +145,7 @@ check of step 4 is what decides.
 ## Acceptance
 
 The installer runs end to end on a fresh machine of each package manager,
-with `caddy`, and the server serves the setup page at its domain with a valid
-certificate; on Ubuntu also with `external` and with `s3`. A second run of a
+behind a reverse proxy the test sets up, and the server serves the setup page
+at its domain with a valid certificate; on Ubuntu also with `s3`. A second run of a
 finished installation is refused, one after DNS was missing continues, and
 the installed server then moves with `demi-server upgrade` as any other.
