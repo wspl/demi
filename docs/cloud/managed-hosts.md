@@ -403,7 +403,9 @@ system to the configured base.
 
 The OCI process is a shipped minimal init (`tini`) running as `demi`, UID/GID
 1000, which starts the runner, `/opt/demi/bin/demi-runner`, and reaps orphaned
-descendants. The manager
+descendants. The runner's environment names its release in `DEMI_RELEASE_ID`,
+from the manifest of the base it comes from, which the runner presents to the
+backend ([Runner updates](../execution/runner.md#runner-updates)). The manager
 supplies mounts, network configuration, and, with its
 [resource limits](#resource-limits) on, the cgroup limits before start. The
 runner is an ordinary process; it does not mount a root filesystem, configure

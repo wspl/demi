@@ -4,7 +4,9 @@
 //! directory's `manifest.json` holds it, and a Cloud image manifest embeds it
 //! to name its runner. Beside it, a server release's own record,
 //! `release.json`, which says where the release's files are, and the name
-//! of each file (`builds-and-releases.md` § Server release).
+//! of each file (`builds-and-releases.md` § Server release). And the
+//! release check before a runner's socket opens (`runner.md` § Runner
+//! updates), the one part of the connection every release keeps.
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -144,4 +146,48 @@ pub fn release_file(executable: &str, target: &str) -> String {
 /// which is how a release's files hold a command program.
 pub fn compressed_file(executable: &str, target: &str) -> String {
     format!("{}.zst", release_file(executable, target))
+}
+
+/// The variable that names the release a runner was installed from: an
+/// installer's launcher sets it, and so does the machine manager for a
+/// Cloud's runner.
+pub const RELEASE_ENV: &str = "DEMI_RELEASE_ID";
+
+/// The request header that names the release a runner was installed from.
+pub const RELEASE_HEADER: &str = "demi-runner-release";
+
+/// The request header that names a runner's target.
+pub const TARGET_HEADER: &str = "demi-runner-target";
+
+/// The backend's 409 answer to a runner of another release than its own:
+/// the backend's runner release and, when it carries one for the runner's
+/// target, that executable. Every release reads this body, so fields may be
+/// added to it but never changed or removed, and a reader ignores the
+/// fields it does not know.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+pub struct RunnerUpdate {
+    #[garde(custom(digest))]
+    pub release: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub executable: Option<UpdateExecutable>,
+}
+
+/// The executable a runner updates to: its SHA-256 and size.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+pub struct UpdateExecutable {
+    #[garde(custom(digest))]
+    pub sha256: String,
+    #[garde(range(min = 1))]
+    pub size: u64,
+}
+
+impl RunnerUpdate {
+    /// Decodes a 409 answer's body and checks its values.
+    pub fn decode(bytes: &[u8]) -> Result<Self, ReleaseError> {
+        let update: Self = serde_json::from_slice(bytes)?;
+        garde::Validate::validate(&update)
+            .map_err(|report| ReleaseError::Invalid(report.to_string().trim_end().to_owned()))?;
+        Ok(update)
+    }
 }

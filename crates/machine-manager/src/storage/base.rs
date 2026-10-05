@@ -62,6 +62,14 @@ pub enum BaseError {
     Executable(String),
 }
 
+/// The release of the runner that the imported base at `base` embeds,
+/// which its manifest names.
+pub async fn runner_release(base: &Path) -> Result<String, BaseError> {
+    let bytes = tokio::fs::read(base.join("manifest.json")).await?;
+    let manifest = CloudImageManifest::decode(&bytes)?;
+    Ok(manifest.runner.release)
+}
+
 /// A release read and checked, not yet imported.
 struct Release {
     manifest: CloudImageManifest,
