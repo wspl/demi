@@ -42,6 +42,9 @@ pub struct RuntimeRelease {
     pub commit: String,
     pub arm64_version: String,
     pub arm64_patch_sha256: String,
+    /// The SHA-512 of the arm64 distribution the Runtime workflow published,
+    /// which fetch-runsc.sh checks.
+    pub arm64_archive_sha512: String,
     pub amd64_archive_sha512: String,
     pub bazel: String,
     pub bazel_arm64_sha256: String,
