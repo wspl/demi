@@ -59,7 +59,7 @@ function detach(id: string) {
 }
 
 function connect() {
-  resources.pairingOpen = true
+  resources.openPairing()
 }
 </script>
 
