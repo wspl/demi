@@ -167,6 +167,7 @@ function createWorkspace(draft: WorkspaceDraft) {
     }
   )
   workspaceKey.value += 1
+  productWould(`Open a New Conversation in ${name}`)
 }
 
 // Select folder: the workspace picker's use, opening on the laptop's projects.
