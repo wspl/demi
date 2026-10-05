@@ -207,6 +207,15 @@ by name from one closed set that raw processes and jobs share. When the backend
 drops the handle of a raw process that has not ended, it asks the runner to kill
 the process and does not wait: nothing controls such a process any more.
 
+Every request crosses the Host's connection, which may take hundreds of
+milliseconds each way: a laptop behind a proxy on another continent from its
+server takes about half a second for a round trip. So a filesystem operation
+that the backend needs as one answer is one request, never one per entry. A
+directory listing carries each entry's name, kind, size and modification
+time, which the runner reads beside the entry as it lists the directory: a
+home directory of 105 entries, listed with one request per entry, took about
+fifty seconds to show in the folder picker, and takes one round trip so.
+
 Raw process environment selection follows these rules:
 
 | Request | Child environment |
