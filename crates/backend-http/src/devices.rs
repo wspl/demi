@@ -15,6 +15,7 @@ use demi_backend_runners::files::browse_directory;
 use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
 use demi_web_api_protocol::devices::{
     Claim, ClaimedDevice, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery, Devices,
+    RevokedDevice,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
@@ -93,26 +94,25 @@ fn invalid_code() -> ApiError {
     )
 }
 
-/// Revokes a paired device: it stays while workspaces point at it.
+/// Revokes a paired device, which nothing refuses; its workspaces go with
+/// it.
 pub(super) async fn revoke(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<RevokedDevice>, ApiError> {
     let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
-    let revoked = state
+    let removal = state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move { shard.revoke_device(device.id).await })
         .await??;
-    revoked.map_err(|in_use| {
-        ApiError::new(
-            StatusCode::CONFLICT,
-            ErrorCode::DeviceInUse,
-            in_use.to_string(),
-        )
-    })?;
-    Ok(StatusCode::NO_CONTENT)
+    let removed = removal
+        .workspaces
+        .into_iter()
+        .map(|workspace| workspace.id)
+        .collect();
+    Ok(Json(RevokedDevice { removed }))
 }
 
 /// A directory of a paired device, its home when the query names none.

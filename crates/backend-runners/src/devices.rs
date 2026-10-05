@@ -30,8 +30,7 @@ use tokio::sync::watch;
 use crate::file_gate::FileLease;
 use crate::host_key::{HostOwner, host_key};
 
-/// Why a revoked device's connection ended; its runner hears that it was
-/// revoked and removes itself.
+/// Why a revoked device's connection ended.
 const REVOKED: &str = "device revoked";
 
 /// The user's devices, each with its connection slot.
@@ -43,12 +42,16 @@ pub struct Devices {
 /// One device's connection, which its Hosts watch.
 struct DeviceSlot {
     link: watch::Sender<DeviceLink>,
+    /// Set once the device is revoked: the projects that went with it,
+    /// which its runner hears of as its connection ends.
+    revoked: RefCell<Option<Vec<String>>>,
 }
 
 impl DeviceSlot {
     fn new() -> Rc<Self> {
         Rc::new(Self {
             link: watch::Sender::new(DeviceLink::Offline { last: None }),
+            revoked: RefCell::new(None),
         })
     }
 
@@ -249,8 +252,10 @@ impl Devices {
     }
 
     /// Ends the connection of a revoked device, whose runner hears that it
-    /// was revoked and removes itself.
-    pub fn revoke(&self, device: &DeviceId) {
+    /// was revoked, with the names of the `projects` that went with it, and
+    /// removes itself.
+    pub fn revoke(&self, device: &DeviceId, projects: Vec<String>) {
+        self.slot(device).revoked.replace(Some(projects));
         self.disconnect(device, REVOKED);
     }
 
@@ -340,8 +345,8 @@ impl Serving {
                 tracing::info!(device = %device, "runner connection ended: {reason}");
             }
         }
-        if end == LinkEnd::Disconnected(REVOKED.into()) {
-            let frame = wire::encode(&Inbound::Revoked {})
+        if let Some(projects) = slot.revoked.take() {
+            let frame = wire::encode(&Inbound::Revoked { projects })
                 .expect("the backend's own runner messages encode")
                 .into_bytes();
             // A runner that went away has nothing left to remove; it learns

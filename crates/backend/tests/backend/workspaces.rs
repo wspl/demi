@@ -9,6 +9,11 @@ use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
+use demi_provider_common::testing::MockVendor;
+
+use crate::conversations::{
+    FIRST, Socket, anthropic, answer, choose, create, last_text, summary, transcript,
+};
 use crate::support::{Harness, Session, TestBackend};
 
 async fn create_workspace(backend: &TestBackend, session: &Session, body: Value) -> String {
@@ -149,7 +154,7 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
         (StatusCode::NOT_FOUND, ErrorCode::WorkspaceNotFound)
     );
 
-    // A conversation targets it: neither it nor its device goes.
+    // A conversation targets it: it does not go.
     let conversation = create_conversation(&backend, &master).await;
     let target = json!({ "target": { "kind": "workspace", "workspaceId": notes } });
     let moved = backend
@@ -176,13 +181,6 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
     assert_eq!(
         in_use.refusal(),
         (StatusCode::CONFLICT, ErrorCode::WorkspaceInUse)
-    );
-    let revoke = backend
-        .delete(&format!("/api/devices/{}", laptop.id()), &master)
-        .await;
-    assert_eq!(
-        revoke.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::DeviceInUse)
     );
 
     // Once nothing targets it, it goes, and its files stay.
@@ -212,6 +210,65 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
         gone.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::WorkspaceNotFound)
     );
+    backend.close().await;
+}
+
+/// Revoking a device, which nothing refuses, removes its projects with it
+/// but never their files: a project's conversation stays with its history,
+/// outside any project, targeting the project's directory on the device
+/// directly (`web-api.md` § Workspaces, devices, and attached hosts).
+// About a second: a scripted model answers one turn on the paired runner.
+#[tokio::test]
+async fn revoking_a_device_removes_its_projects_but_not_their_conversations_or_files() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let laptop = backend.pair(&master, "laptop").await;
+    let home = laptop.runner.home().to_owned();
+    let notes = create_workspace(
+        &backend,
+        &master,
+        json!({ "kind": "device", "deviceId": laptop.id(), "path": home, "name": "notes" }),
+    )
+    .await;
+    let vendor = MockVendor::start().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let into = json!({ "target": { "kind": "workspace", "workspaceId": notes } });
+    let moved = backend
+        .patch(&format!("/api/conversations/{FIRST}"), &master, into)
+        .await;
+    assert_eq!(
+        moved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&moved.body)
+    );
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["Noted."], 1, 1));
+    socket.chat("m1", "Remember this").await;
+    drop(socket);
+
+    let revoked = backend
+        .delete(&format!("/api/devices/{}", laptop.id()), &master)
+        .await;
+    assert_eq!(
+        revoked.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&revoked.body)
+    );
+    assert_eq!(revoked.json::<Value>(), json!({ "removed": [notes] }));
+    assert!(workspace_names(&backend, &master).await.is_empty());
+    let kept = summary(&backend, &master, FIRST).await;
+    assert_eq!(
+        serde_json::to_value(&kept.target).unwrap(),
+        json!({ "kind": "device", "deviceId": laptop.id(), "path": home })
+    );
+    let history = transcript(&backend, &master, FIRST).await;
+    assert_eq!(last_text(&history.blocks), "Noted.");
+    assert!(std::path::Path::new(&home).is_dir());
     backend.close().await;
 }
 

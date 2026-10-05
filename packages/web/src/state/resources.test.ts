@@ -32,7 +32,7 @@ test("a plugin page's sidebar entry shows while its plugin is on and opens the s
   expect(resources.settingsTab).toBe('skills')
 })
 
-test("a device project's row follows its device online and offline; a Cloud project has no online state", () => {
+test("a device project's row follows its device online, offline and gone; a Cloud project has no online state", () => {
   const product = useProduct()
   const resources = useResources()
   const device = {
@@ -64,4 +64,9 @@ test("a device project's row follows its device online and offline; a Cloud proj
 
   product.snapshot = productState({ devices: [{ ...device, online: false }, cloud], workspaces })
   expect(resources.projects[0]).toMatchObject({ hostKind: 'device', online: false })
+
+  // A device the list no longer holds, as for a moment around its
+  // revocation, shows as unavailable and offline.
+  product.snapshot = productState({ devices: [cloud], workspaces })
+  expect(resources.projects[0]).toMatchObject({ host: 'Unavailable device', hostKind: 'device', online: false })
 })
