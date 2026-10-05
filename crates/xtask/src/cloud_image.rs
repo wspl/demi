@@ -37,8 +37,10 @@ use crate::native::{DESCRIPTOR, MANIFEST};
 const UV: &str = include_str!("../../../cloud-guest-image/rootfs/uv.json");
 /// The image release's record.
 const IMAGE_MANIFEST: &str = "manifest.json";
-/// The name the runner also answers to, beside it in `/usr/bin`.
+/// The name the runner also answers to, beside it in `/opt/demi/bin`.
 const RUNNER_ALIAS: &str = "demi";
+/// Where the runner and its alias are linked from, on every `PATH`.
+const LINKS_PATH: &str = "/usr/bin";
 /// Where the image's standalone tools are installed.
 const TOOLS_PATH: &str = "/usr/local/bin";
 /// What the build reads of the tree: its dpkg database and its os-release
@@ -349,7 +351,10 @@ async fn command_packages(commands: &Path) -> Result<Vec<(String, PathBuf)>, Err
 }
 
 /// Installs the runner of `release`, whose executable is among `files`, as
-/// `/usr/bin/demi-runner`, and `demi` as its alias.
+/// `/opt/demi/bin/demi-runner` with `demi` as its alias beside it, and links
+/// both from `/usr/bin`: everything of Demi's lies under `/opt/demi`, which
+/// a Cloud takes from the configured image (`images.md` § Root filesystem
+/// contents).
 async fn install_runner(
     root: &Path,
     files: &Path,
@@ -360,12 +365,23 @@ async fn install_runner(
 ) -> Result<(), Error> {
     let source = files.join(release_file(RUNNER, target));
     let installed = in_tree(root, RUNNER_PATH);
+    let directory = installed.parent().expect("the runner's path has a directory");
+    tokio::fs::create_dir_all(directory)
+        .await
+        .map_err(at(directory))?;
     install_executable(&source, artifact, &installed, cancel).await?;
     // `demi` is the runner by another name, beside it.
     let name = installed
         .file_name()
         .expect("the runner's path names a file");
-    symlink(name, &installed.with_file_name(RUNNER_ALIAS)).await?;
+    let alias = installed.with_file_name(RUNNER_ALIAS);
+    symlink(name, &alias).await?;
+    let links = in_tree(root, LINKS_PATH);
+    tokio::fs::create_dir_all(&links).await.map_err(at(&links))?;
+    for program in [Path::new(RUNNER_PATH), &Path::new(RUNNER_PATH).with_file_name(RUNNER_ALIAS)] {
+        let name = program.file_name().expect("a program's path names a file");
+        symlink(program.as_os_str(), &links.join(name)).await?;
+    }
     eprintln!("Cloud image: runner release {}", release.release);
     Ok(())
 }
@@ -1045,11 +1061,19 @@ Version: 0.19.0-3
             assert_eq!(*kind, tar::EntryType::Regular, "{path}");
             assert_eq!(measured(bytes).await, *artifact, "{path}");
         }
-        let (kind, link, _) = &entries["usr/bin/demi"];
+        let (kind, link, _) = &entries["opt/demi/bin/demi"];
         assert_eq!(
             (*kind, link.as_deref()),
             (tar::EntryType::Symlink, Some(Path::new("demi-runner")))
         );
+        for name in ["demi-runner", "demi"] {
+            let (kind, link, _) = &entries[format!("usr/bin/{name}").as_str()];
+            let target = Path::new("/opt/demi/bin").join(name);
+            assert_eq!(
+                (*kind, link.as_deref()),
+                (tar::EntryType::Symlink, Some(target.as_path()))
+            );
+        }
         let paths: Vec<&String> = entries.keys().collect();
         let accepted = [
             tar::EntryType::Regular,

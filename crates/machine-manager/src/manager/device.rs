@@ -5,6 +5,7 @@
 
 use std::{num::NonZeroU64, path::Path, rc::Rc};
 
+use demi_machine_manager_protocol::image::PROGRAMS_PATH;
 use demi_machine_manager_protocol::{
     BaseVersion, DeviceId, MachineImageState, RuntimeState, Volume,
 };
@@ -225,8 +226,14 @@ impl DeviceWorker {
             Some(state) => state,
             None => self.initialize(&self.base.clone()).await?,
         };
-        let base = self.core.store.bases().join(&state.base_version);
-        let runner_release = base::runner_release(&base).await?;
+        let bases = self.core.store.bases();
+        let base = bases.join(&state.base_version);
+        // Demi's own programs come from the configured base, whatever base
+        // the device is pinned to (`managed-hosts.md` § Demi's programs in a
+        // Cloud).
+        let configured = bases.join(&self.base);
+        let runner_release = base::runner_release(&configured).await?;
+        let programs = configured.join("rootfs").join(PROGRAMS_PATH.trim_start_matches('/'));
         let stage = Stage::create(&self.core, "wake").await?;
         let copied = self.stage_working(&state, stage.path()).await;
         stage.remove().await;
@@ -239,6 +246,7 @@ impl DeviceWorker {
                 &self.core,
                 &self.working,
                 &base.join("rootfs"),
+                &programs,
                 &runner_release,
                 boot,
             )

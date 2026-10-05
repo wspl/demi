@@ -230,7 +230,7 @@ fn manifest() -> serde_json::Value {
         "ubuntu": "26.04",
         "packages": [{ "name": "adduser", "version": "3.153ubuntu1" }],
         "executables": {
-            "/usr/bin/demi-runner": runner,
+            "/opt/demi/bin/demi-runner": runner,
             "/usr/bin/tini": { "sha256": "e".repeat(64), "size": 10 },
             format!("/opt/demi/artifacts/{}/demi-file", "c".repeat(64)): file,
         },
@@ -261,7 +261,7 @@ fn an_image_manifest_names_its_embedded_runner_and_packages() {
     assert_eq!(decoded.architecture.target(), "aarch64-unknown-linux-musl");
 
     let mut changed = manifest();
-    changed["executables"]["/usr/bin/demi-runner"]["size"] = 1.into();
+    changed["executables"]["/opt/demi/bin/demi-runner"]["size"] = 1.into();
     assert!(matches!(decode(&changed), Err(ManifestError::Runner)));
     let mut changed = manifest();
     changed["architecture"] = "amd64".into();
@@ -270,7 +270,7 @@ fn an_image_manifest_names_its_embedded_runner_and_packages() {
     changed["executables"]
         .as_object_mut()
         .unwrap()
-        .retain(|path, _| !path.starts_with("/opt/"));
+        .retain(|path, _| !path.starts_with("/opt/demi/artifacts/"));
     assert!(matches!(decode(&changed), Err(ManifestError::Release(id)) if id == "demi.file"));
     for (field, value) in [
         ("formatVersion", serde_json::json!(2)),

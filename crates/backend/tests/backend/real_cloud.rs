@@ -764,11 +764,12 @@ async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_it
     .await;
     assert!(repaired.contains("latest-home\n755"), "{repaired}");
 
-    // Without its runner's executable, the next boot cannot start one.
+    // Without its init, the next boot cannot start the runner; the runner
+    // itself is the configured image's, which the system cannot remove.
     let removed = run(
         &mut first,
-        "remove-runner",
-        "sudo -n rm /usr/bin/demi-runner; echo removed",
+        "remove-init",
+        "sudo -n rm /usr/bin/tini; echo removed",
     )
     .await;
     assert!(removed.contains("removed"), "{removed}");
@@ -787,7 +788,7 @@ async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_it
     until_cloud(
         &backend,
         &master,
-        "the reset of a Cloud without a runner is ready",
+        "the reset of a Cloud without an init is ready",
         |status| {
             status
                 .operation
@@ -804,10 +805,10 @@ async fn a_reset_brings_back_a_cloud_whose_bash_or_runner_is_broken_and_keeps_it
     let back = run(
         &mut first,
         "back",
-        "cat ~/note; test -x /usr/bin/demi-runner && echo runner-back",
+        "cat ~/note; test -x /usr/bin/tini && echo init-back",
     )
     .await;
-    assert!(back.contains("latest-home\nrunner-back"), "{back}");
+    assert!(back.contains("latest-home\ninit-back"), "{back}");
     assert_eq!(the_device(&backend, &master).await, device);
     drop(working);
     backend.close().await;

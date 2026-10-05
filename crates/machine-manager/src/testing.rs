@@ -22,15 +22,16 @@ pub enum Entry {
 }
 
 /// The runner every image embeds, with its contents.
-pub const RUNNER: (&str, &[u8]) = ("/usr/bin/demi-runner", b"runner");
+pub const RUNNER: (&str, &[u8]) = ("/opt/demi/bin/demi-runner", b"runner");
 /// The init every image embeds, with its contents.
 pub const TINI: (&str, &[u8]) = ("/usr/bin/tini", b"tini");
 
-/// The entries of a small root: the runner, tini as init and a skeleton
-/// profile.
+/// The entries of a small root: the runner with its link in `/usr/bin`,
+/// tini as init and a skeleton profile.
 pub fn entries() -> Vec<(&'static str, Entry)> {
     vec![
-        ("usr/bin/demi-runner", Entry::File(RUNNER.1)),
+        ("opt/demi/bin/demi-runner", Entry::File(RUNNER.1)),
+        ("usr/bin/demi-runner", Entry::Link("/opt/demi/bin/demi-runner")),
         ("usr/bin/tini", Entry::File(TINI.1)),
         ("usr/sbin/init", Entry::Link("../bin/tini")),
         ("etc/skel/.profile", Entry::File(b"export EDITOR=vi\n")),
