@@ -83,7 +83,7 @@ and composes the command.
 | `--storage local\|s3` | Where the object store lives ([The object store](../backend/storage.md#the-object-store)). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
 | `--expose-domain <name>` | The domain of expose hostnames ([Host expose](../execution/expose.md#deployment)). Optional: without it, exposes are off. |
-| `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/var/lib/demi/machine-manager`. |
+| `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/opt/demi/data/cloud`. |
 | `--cloud-limits on\|off` | Whether Clouds run under cgroup limits. Default `on`; a machine without the cgroup v2 controllers is refused unless it is `off`. |
 | `--version <version>` | The release to set up. Default the release of the running `demi-server`. |
 | `--no-packages` | Install no system package: the operator installed e2fsprogs, bsdtar and nftables, on a distribution `setup` does not know ([Distributions](#distributions)). |
@@ -92,7 +92,7 @@ and composes the command.
 A setting with no parameter keeps its default, as
 [Configuration](../backend/backend.md#configuration) and
 [Cloud setup](../cloud/setup.md#configuration) give them; an operator who
-needs another adds it to `/etc/demi/demi.env` and restarts the services.
+needs another adds it to `/opt/demi/config/demi.env` and restarts the services.
 
 ## HTTPS
 
@@ -129,7 +129,9 @@ operator does next, and exits with a status other than 0.
 2. **Install the system packages** the machine manager runs: e2fsprogs,
    bsdtar and nftables.
 3. **Fetch the release** into `/opt/demi/releases/<version>`, as an upgrade
-   does ([Fetch](upgrades.md#fetch)).
+   does ([Fetch](upgrades.md#fetch)), and the gVisor version its manager
+   pins into `/opt/demi/gvisor/<version>/`
+   ([gVisor runtime](builds-and-releases.md#gvisor-runtime)).
 4. **Check that the machine can run Cloud**, with the release's own manager,
    `demi-machine-manager --check-host`: everything its start checks before it
    serves ([Startup and recovery](../cloud/managed-hosts.md#startup-and-recovery)),
@@ -138,7 +140,7 @@ operator does next, and exits with a status other than 0.
    reasons, such as a container that drops `CAP_SYS_RESOURCE`, or SELinux
    refusing gVisor.
 5. **Write the installation**: the system user `demi` and the group
-   `demi-cloud`, the data directories, and `/etc/demi/demi.env` readable by
+   `demi-cloud`, the data directories, and `/opt/demi/config/demi.env` readable by
    root alone. A configuration file that
    is already there and says something else than the parameters stops the
    run: `setup` never edits a configuration it did not just write.
