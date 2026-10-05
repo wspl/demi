@@ -3,7 +3,7 @@
 //! middle of a turn; a reopen from the store after a close and after a
 //! crash; model switches; the product's texts.
 
-use std::{rc::Rc, time::Duration};
+use std::{cell::Cell, rc::Rc, time::Duration};
 
 use demi_agent_server::{
     ServerConfig,
@@ -29,7 +29,7 @@ use futures_util::StreamExt;
 use serde_json::{Value, json};
 
 use crate::support::{
-    Fixture, Gate, conversation, held, is_idle, is_pending_steers, kinds, open, send, session_of,
+    Fixture, Gate, PluginSource, TestProduct, conversation, held, is_idle, is_pending_steers, kinds, open, send, session_of,
     switch, until,
 };
 
@@ -717,6 +717,57 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
         [
             vec![],
             vec!["The conversation now runs on the Cloud.".to_owned()]
+        ]
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn the_context_sources_are_asked_at_once_and_answer_in_their_order() {
+    let script = ScriptedRuntime::new([Turn::Events(vec![
+        event::text("ok"),
+        event::response(1, 1),
+    ])]);
+    let product = TestProduct {
+        plugin: Some(Rc::new(PluginSource {
+            text: "Skills: review.".into(),
+            asked: Cell::new(false),
+        })),
+        ..TestProduct::default()
+    };
+    *product.context.borrow_mut() = Some("The conversation runs on the Cloud.".into());
+    let fixture = Fixture::with_product(
+        &script,
+        product,
+        MemoryTreeStore::new(),
+        ServerConfig::default(),
+    );
+    let mut client = fixture.opened().await;
+
+    client.send(send("m1", "hi")).await;
+    client.next_until(is_idle).await;
+
+    // The plugin was asked while the execution context was still reading.
+    assert_eq!(*fixture.product.plugin_asked_meanwhile.borrow(), [true]);
+    let blocks = fixture
+        .server
+        .tree(&conversation())
+        .unwrap()
+        .root()
+        .session()
+        .transcript()
+        .blocks;
+    let contexts: Vec<String> = blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Context(context) => Some(format!("{}: {}", context.source, context.text)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        contexts,
+        [
+            "execution: The conversation runs on the Cloud.",
+            "plugin: Skills: review."
         ]
     );
 }

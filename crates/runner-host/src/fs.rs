@@ -70,31 +70,7 @@ async fn call(
         FsReaddir {
             path: value, cwd, ..
         } => {
-            let target = path(value, cwd)?;
-            let mut directory = read_dir(&target, cancel).await?;
-            let mut entries = Vec::new();
-            while let Some(entry) = directory.next_entry().await? {
-                check_cancelled(cancel)?;
-                // The entry's own metadata, as `lstat` reads it, so the
-                // listing answers in one reply (`runner.md` § Host
-                // operations).
-                let metadata = match entry.metadata().await {
-                    Ok(metadata) => metadata,
-                    // Removed since the directory named it: no longer listed.
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
-                    Err(error) => return Err(error),
-                };
-                let kind = metadata.file_type();
-                entries.push(wire::DirEntry {
-                    name: entry.file_name().to_string_lossy().into_owned(),
-                    is_file: kind.is_file(),
-                    is_directory: kind.is_dir(),
-                    is_symbolic_link: kind.is_symlink(),
-                    size: metadata.len(),
-                    mtime: modified(&metadata)?,
-                });
-            }
-            FsResult::Readdir(entries)
+            FsResult::Readdir(list(&path(value, cwd)?, cancel).await?)
         }
         FsMkdir {
             path: value,
@@ -218,6 +194,35 @@ async fn call(
             ));
         }
     })
+}
+
+/// The directory's entries, each with its own metadata, as `lstat` reads
+/// it, so a listing answers in one reply (`runner.md` § Host operations).
+pub(crate) async fn list(
+    path: &Path,
+    cancel: &CancellationToken,
+) -> io::Result<Vec<wire::DirEntry>> {
+    let mut directory = read_dir(path, cancel).await?;
+    let mut entries = Vec::new();
+    while let Some(entry) = directory.next_entry().await? {
+        check_cancelled(cancel)?;
+        let metadata = match entry.metadata().await {
+            Ok(metadata) => metadata,
+            // Removed since the directory named it: no longer listed.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(error),
+        };
+        let kind = metadata.file_type();
+        entries.push(wire::DirEntry {
+            name: entry.file_name().to_string_lossy().into_owned(),
+            is_file: kind.is_file(),
+            is_directory: kind.is_dir(),
+            is_symbolic_link: kind.is_symlink(),
+            size: metadata.len(),
+            mtime: modified(&metadata)?,
+        });
+    }
+    Ok(entries)
 }
 
 /// Out of open files, reading a directory waits for one (`runner.md` § Load).
