@@ -204,12 +204,13 @@ async fn pump_output(
     reader: tokio::net::tcp::OwnedReadHalf,
     cancel: &CancellationToken,
 ) -> io::Result<()> {
-    // A read error fails the upload instead of ending it like a clean EOF;
-    // the connection's end ends it cleanly. The finished upload drops the read
+    // A stream pipe: the socket's bytes reach the backend as they arrive. A
+    // read error fails the pipe instead of ending it like a clean EOF; the
+    // connection's end ends it cleanly. The finished pipe drops the read
     // half, which closes that side of the socket.
     let body = tokio_util::io::ReaderStream::with_capacity(reader, READ_BYTES)
         .take_until(cancel.clone().cancelled_owned());
-    pipes.put(url, body, cancel).await
+    pipes.stream(url, body, cancel).await
 }
 
 async fn send_net_error(
