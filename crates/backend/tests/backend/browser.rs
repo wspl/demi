@@ -12,6 +12,7 @@
 
 use std::time::Duration;
 
+use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_shared_gates::Purpose;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -65,6 +66,14 @@ async fn tabs(backend: &TestBackend, master: &Session, id: &str) -> crate::suppo
     backend.get(&path, Some(master)).await
 }
 
+/// The conversation state of a browser that runs no tab: none, and the
+/// pinned Chrome for Testing, which the page looks for among the Host's
+/// installed artifacts.
+fn no_tabs() -> Value {
+    let pinned = BrowserRelease::pinned().unwrap();
+    json!({ "tabs": [], "browser": { "name": ARTIFACT, "version": pinned.version } })
+}
+
 /// The plugin's refusal: `plugin_refused` with its own reason.
 fn plugin_refusal(answer: &crate::support::Answer) -> (StatusCode, ErrorCode, Option<String>) {
     let error = answer.error();
@@ -101,7 +110,7 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
     );
     assert_eq!(
         listed.json::<Value>(),
-        json!({ "revision": 0, "state": { "tabs": [] } })
+        json!({ "revision": 0, "state": no_tabs() })
     );
     let synced = call(&backend, &master, &id, "sync", json!({})).await;
     assert_eq!(synced.status, StatusCode::OK);
@@ -189,7 +198,7 @@ async fn a_stopped_cloud_is_not_woken_to_list_sync_or_move_its_tabs() {
         "{}",
         String::from_utf8_lossy(&listed.body)
     );
-    assert_eq!(listed.json::<Value>()["state"], json!({ "tabs": [] }));
+    assert_eq!(listed.json::<Value>()["state"], no_tabs());
     let synced = call(&backend, &master, &id, "sync", json!({})).await;
     assert_eq!(synced.status, StatusCode::OK);
     let navigate = json!({ "tab": ABSENT, "url": "https://example.test/" });
@@ -345,7 +354,7 @@ async fn a_job_that_ends_and_a_tab_method_raise_the_revisions_the_summary_carrie
     let listed = tabs(&backend, &master, &id).await;
     assert_eq!(
         listed.json::<Value>(),
-        json!({ "revision": 1, "state": { "tabs": [] } })
+        json!({ "revision": 1, "state": no_tabs() })
     );
 
     // The user's own tab methods change the list too; the working tree is the jobs'.

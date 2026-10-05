@@ -10,7 +10,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Link, LinkOptions, host_identity};
-use demi_backend_runners::devices::{LastSeen, Serving, send};
+use demi_backend_runners::devices::{DeviceRecorder, Serving, send};
 use demi_host_interface::HostIdentity;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceDto;
@@ -103,7 +103,7 @@ impl Shard {
             policy: Rc::new(ShardPolicy::new(self, device.clone())),
             ping: self.services().runners.ping,
         });
-        let seen = LastSeen::new(
+        let seen = DeviceRecorder::new(
             self.services().control.clone(),
             self.services().sync.of(self.user()),
         );

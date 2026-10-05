@@ -34,7 +34,7 @@ export type {
   UserStream,
   UserStreamHandlers,
 } from '@demicodes/web-ui/plugins/streams'
-export type { HostInstall } from '@demicodes/web-ui/devices/installs'
+export type { HostArtifact, HostInstall } from '@demicodes/web-ui/devices/installs'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
 // The style a plugin's own prop of UI text declares (the gallery's Writing page).

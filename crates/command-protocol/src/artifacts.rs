@@ -21,7 +21,10 @@ pub enum ArtifactForm {
 }
 
 /// An artifact to install for `invocation`: its line's name and its version
-/// for the user, its bytes' SHA-256 and size, and its form.
+/// for the user, its bytes' SHA-256 and size, its form, and, for software the
+/// program installs from its official source, the URL it downloads from
+/// (`native-runtime.md` § The artifacts stream). Without a URL, the runner
+/// asks the backend where.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ArtifactInstall {
@@ -37,6 +40,13 @@ pub struct ArtifactInstall {
     pub size: u64,
     #[garde(dive)]
     pub form: ArtifactForm,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(inner(custom(crate::package::download_url)))]
+    pub url: Option<String>,
 }
 
 /// Which artifacts of the line `name` the Host has.
