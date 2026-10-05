@@ -87,6 +87,39 @@ mod service {
         Ok(())
     }
 
+    /// Checks what a start checks before it serves, changing nothing that
+    /// outlives the check (`installation.md` § The steps): each check prints
+    /// its name as it passes, and the first that fails ends the run.
+    async fn check_host(config: Config) -> Result<(), Failure> {
+        blocking::run(preflight::require_private_namespace).await?;
+        blocking::run(preflight::require_sys_resource).await?;
+        println!("ok: privileges");
+        let runsc = config.runsc.clone();
+        let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;
+        let core = Rc::new(Core::new(config, tools));
+        preflight::require_runsc(&core).await?;
+        println!("ok: programs and runsc");
+        if core.config.limits.is_some() {
+            cgroup::check().await?;
+            println!("ok: cgroup v2 controllers");
+        }
+        let (data, runtime) = (core.config.data.clone(), core.config.runtime().to_owned());
+        blocking::run(move |off| -> std::io::Result<()> {
+            durable::create_private(off, &data)?;
+            durable::create_private(off, &runtime)
+        })
+        .await?;
+        let (working, images) = (core.config.working(), core.config.images());
+        blocking::run(move |off| preflight::require_one_filesystem(off, &working, &images)).await?;
+        preflight::probe_storage(&core).await?;
+        println!("ok: storage");
+        core.network.check().await?;
+        println!("ok: network");
+        preflight::probe_runtime(&core).await?;
+        println!("ok: gVisor");
+        Ok(())
+    }
+
     /// Deaths waiting for the server's fan-out, which takes them at once.
     const DEATHS: usize = 64;
 
@@ -97,6 +130,9 @@ mod service {
         preflight::require_root()?;
         if config.mode == Mode::Import {
             return import(config).await;
+        }
+        if config.mode == Mode::CheckHost {
+            return check_host(config).await;
         }
         blocking::run(preflight::require_private_namespace).await?;
         let runsc = config.runsc.clone();
