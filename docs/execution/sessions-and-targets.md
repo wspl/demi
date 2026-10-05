@@ -24,7 +24,9 @@ unknown until the runner connects again; no operation reaches the device before
 then.
 
 A workspace is a named `(user, device, path)` record. It groups conversations but
-does not own a sandbox or restrict filesystem access. Default Cloud project paths are
+does not own a sandbox or restrict filesystem access, and it does not hold its
+device: revoking the device leaves the workspace, whose conversations cannot
+run there any more ([Web API](../product/web-api.md)). Default Cloud project paths are
 `/home/demi/projects/<workspaceId>`. A user can also select an existing directory.
 All of a user's Cloud directories share one machine; different users have separate
 managed devices and writable disks.
