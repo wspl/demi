@@ -4,9 +4,13 @@
 //! one runner release. A script downloads its platform's runner from the
 //! backend, checks its SHA-256, installs it under an installation of its own
 //! per backend, drains an older runner of that installation before it
-//! upgrades, and starts the runner, which asks to be paired. A script holds
-//! no credential: pairing grants device access.
+//! upgrades, and starts the runner, which asks to be paired. It then shows
+//! the runner's pairing codes until the runner is paired, and the device's
+//! name and the removal command once it is (`runner.md` § Installation,
+//! pairing and removal). A script holds no credential: pairing grants device
+//! access.
 
+use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
 use demi_runner_protocol::release::RunnerRelease;
 use sha2::{Digest, Sha256};
 use url::Url;
@@ -67,6 +71,9 @@ pub fn shell_script(backend: &Url, release: &RunnerRelease) -> String {
         .replace("@RELEASE@", &sh(&release.release))
         .replace("@REGISTRATION@", &sh(&registration(backend)))
         .replace("@BASE@", &sh(&backend.origin().ascii_serialization()))
+        .replace("@PAIRING@", &sh(PAIRING_CODE))
+        .replace("@PAIRED@", &sh(PAIRED))
+        .replace("@REMOVAL@", &sh(REMOVAL))
         .replace("@CASES@", &cases.join("\n"))
 }
 
@@ -94,6 +101,9 @@ pub fn powershell_script(backend: &Url, release: &RunnerRelease) -> String {
         )
         .replace("@RELEASE@", &powershell(&release.release))
         .replace("@REGISTRATION@", &powershell(&registration(backend)))
+        .replace("@PAIRING@", &powershell(PAIRING_CODE))
+        .replace("@PAIRED@", &powershell(PAIRED))
+        .replace("@REMOVAL@", &powershell(REMOVAL))
         .replace("@ARTIFACTS@", &artifacts.join("\n"))
 }
 
@@ -103,6 +113,9 @@ backend=@BACKEND@
 release=@RELEASE@
 registration=@REGISTRATION@
 base=@BASE@
+pairing_prefix=@PAIRING@
+paired_prefix=@PAIRED@
+removal_prefix=@REMOVAL@
 case "$(uname -s):$(uname -m)" in
   Darwin:arm64) target=aarch64-apple-darwin ;;
   Darwin:x86_64) target=x86_64-apple-darwin ;;
@@ -177,18 +190,17 @@ else
   mv "$stage" "$bin"
   mkdir "$stage"
 fi
+pid=
 if DEMI_HOME="$state" DEMI_RELEASE_ID="$release" "$bin/demi-runner" status --backend "$backend" >/dev/null 2>&1; then
   echo "Runner already running: $state"
-  exit 0
 else
   status=$?
   if [ "$status" -eq 3 ]; then
     echo 'Waiting for existing jobs before upgrading this runner…'
     DEMI_HOME="$state" "$bin/demi-runner" drain --backend "$backend"
   fi
-fi
-# Pass values as quoted arguments; never interpolate a backend into executable shell code.
-cat > "$state/run.next" <<'LAUNCHER'
+  # Pass values as quoted arguments; never interpolate a backend into executable shell code.
+  cat > "$state/run.next" <<'LAUNCHER'
 #!/bin/sh
 set -eu
 state=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
@@ -197,24 +209,72 @@ IFS= read -r release < "$state/release-id"
 export DEMI_HOME="$state" DEMI_RELEASE_ID="$release"
 exec "$state/releases/$release/demi-runner" "${1:-run}" --backend "$backend"
 LAUNCHER
-printf '%s\n' "$backend" > "$state/backend-url"
-printf '%s\n' "$release" > "$state/release-id"
-chmod 755 "$state/run.next"
-mv "$state/run.next" "$state/run"
-# The log is made here, under 077: it holds the pairing code.
-nohup sh -c 'umask "$1" && exec "$2"' sh "$user_umask" "$state/run" > "$state/runner.log" 2>&1 < /dev/null &
-pid=$!
-tries=0
-until "$state/run" status >/dev/null 2>&1; do
-  tries=$((tries + 1))
-  if ! kill -0 "$pid" 2>/dev/null || [ "$tries" -ge 100 ]; then
-    cat "$state/runner.log" >&2
+  printf '%s\n' "$backend" > "$state/backend-url"
+  printf '%s\n' "$release" > "$state/release-id"
+  chmod 755 "$state/run.next"
+  mv "$state/run.next" "$state/run"
+  # The log is made here, under 077: it holds the pairing code. With job
+  # control on, the runner starts in a process group of its own, so that
+  # interrupting this installer at its terminal leaves the runner running.
+  set -m 2>/dev/null
+  nohup sh -c 'umask "$1" && exec "$2"' sh "$user_umask" "$state/run" > "$state/runner.log" 2>&1 < /dev/null &
+  pid=$!
+  set +m
+  printf 'Runner installed for %s\n' "$backend"
+fi
+# The installation is in place; the runner's own updates may take its lock
+# while this installer waits for pairing.
+trap - EXIT
+cleanup
+# Shows the runner's log as pairing goes: each pairing code the runner
+# receives, then the device's name and the removal command once it is
+# paired. Only complete lines are read; of the codes read at once, only the
+# last is still live.
+log="$state/runner.log"
+seen=0
+shown=
+while :; do
+  lines=$(($(wc -l < "$log")))
+  code=
+  name=
+  removal=
+  if [ "$lines" -gt "$seen" ]; then
+    chunk=$(sed -n "$((seen + 1)),${lines}p" "$log")
+    seen=$lines
+    while IFS= read -r line; do
+      case "$line" in
+        "$pairing_prefix"*) code=${line#"$pairing_prefix"} ;;
+        "$paired_prefix"*) name=${line#"$paired_prefix"} ;;
+        "$removal_prefix"*) removal=${line#"$removal_prefix"} ;;
+      esac
+    done <<CHUNK
+$chunk
+CHUNK
+  fi
+  if [ -n "$removal" ]; then
+    printf 'Paired as %s\nTo remove this runner, run: %s\n' "$name" "$removal"
+    exit 0
+  fi
+  if [ -n "$code" ] && [ "$code" != "$shown" ]; then
+    if [ -z "$shown" ]; then
+      printf 'Enter this pairing code in Add Device: %s\n' "$code"
+    else
+      printf 'The code expired; enter this one instead: %s\n' "$code"
+    fi
+    shown=$code
+  fi
+  if [ -n "$pid" ]; then
+    alive=$(kill -0 "$pid" 2>/dev/null && echo yes || echo no)
+  else
+    alive=$("$state/run" status >/dev/null 2>&1 && echo yes || echo no)
+  fi
+  if [ "$alive" = no ]; then
+    echo 'The runner stopped:' >&2
+    cat "$log" >&2
     exit 1
   fi
-  sleep 0.1
+  sleep 0.2
 done
-printf 'Runner installed for %s\nState and pairing log: %s\n' "$backend" "$state/runner.log"
-cat "$state/runner.log"
 "#;
 
 const POWERSHELL_SCRIPT: &str = r#"#requires -Version 5.1
@@ -223,6 +283,9 @@ $demiBackend = @BACKEND@
 $demiBase = @BASE@
 $demiRelease = @RELEASE@
 $demiRegistration = @REGISTRATION@
+$demiPairingPrefix = @PAIRING@
+$demiPairedPrefix = @PAIRED@
+$demiRemovalPrefix = @REMOVAL@
 $demiArtifacts = @{
 @ARTIFACTS@
 }
@@ -267,47 +330,47 @@ function Invoke-DemiControl([string]$Action) {
   }
 }
 try {
-  if ((Test-Path $demiBackendFile) -and ([IO.File]::ReadAllText($demiBackendFile).Trim() -ne $demiBackend)) {
-    throw 'Installation belongs to another backend'
-  }
-  [IO.Directory]::CreateDirectory($demiStage) | Out-Null
-  $demiDownload = Join-Path $demiStage 'demi-runner.exe'
-  Write-Output "Downloading runner for $demiTarget..."
-  $demiPreviousProgress = $ProgressPreference
   try {
-    $ProgressPreference = 'SilentlyContinue'
-    Invoke-WebRequest -UseBasicParsing -Uri "$demiBase/runner-artifacts/$demiRelease/$demiTarget/demi-runner.exe" -OutFile $demiDownload
-  } finally {
-    $ProgressPreference = $demiPreviousProgress
-  }
-  if ((Get-Item $demiDownload).Length -ne $demiArtifacts[$demiTarget].Size -or
-      (Get-FileHash -Algorithm SHA256 $demiDownload).Hash.ToLowerInvariant() -ne $demiArtifacts[$demiTarget].Hash) {
-    throw 'Runner download checksum mismatch'
-  }
-  if (Test-Path $demiBin) {
-    if ((Get-Item $demiExe).Length -ne $demiArtifacts[$demiTarget].Size -or
-        (Get-FileHash -Algorithm SHA256 $demiExe).Hash.ToLowerInvariant() -ne $demiArtifacts[$demiTarget].Hash) {
-      throw 'Installed runner checksum mismatch'
+    if ((Test-Path $demiBackendFile) -and ([IO.File]::ReadAllText($demiBackendFile).Trim() -ne $demiBackend)) {
+      throw 'Installation belongs to another backend'
     }
-  } else {
-    Move-Item $demiStage $demiBin
-  }
-  $env:DEMI_HOME = $demiState
-  $env:DEMI_RELEASE_ID = $demiRelease
-  $demiStatus = Invoke-DemiControl 'status'
-  if ($demiStatus -eq 0) {
-    Write-Output "Runner already running: $demiState"
-    return
-  }
-  if ($demiStatus -eq 3) {
-    Write-Output 'Waiting for existing jobs before upgrading this runner...'
-    if ((Invoke-DemiControl 'drain') -ne 0) { throw 'Runner drain failed' }
-  }
-  $demiUtf8 = [Text.UTF8Encoding]::new($false)
-  [IO.File]::WriteAllText($demiBackendFile, $demiBackend + [Environment]::NewLine, $demiUtf8)
-  [IO.File]::WriteAllText((Join-Path $demiState 'release-id'), $demiRelease + [Environment]::NewLine, $demiUtf8)
-  $demiLauncher = @'
-param([ValidateSet('run', 'status', 'drain')][string]$Action = 'run')
+    [IO.Directory]::CreateDirectory($demiStage) | Out-Null
+    $demiDownload = Join-Path $demiStage 'demi-runner.exe'
+    Write-Output "Downloading runner for $demiTarget..."
+    $demiPreviousProgress = $ProgressPreference
+    try {
+      $ProgressPreference = 'SilentlyContinue'
+      Invoke-WebRequest -UseBasicParsing -Uri "$demiBase/runner-artifacts/$demiRelease/$demiTarget/demi-runner.exe" -OutFile $demiDownload
+    } finally {
+      $ProgressPreference = $demiPreviousProgress
+    }
+    if ((Get-Item $demiDownload).Length -ne $demiArtifacts[$demiTarget].Size -or
+        (Get-FileHash -Algorithm SHA256 $demiDownload).Hash.ToLowerInvariant() -ne $demiArtifacts[$demiTarget].Hash) {
+      throw 'Runner download checksum mismatch'
+    }
+    if (Test-Path $demiBin) {
+      if ((Get-Item $demiExe).Length -ne $demiArtifacts[$demiTarget].Size -or
+          (Get-FileHash -Algorithm SHA256 $demiExe).Hash.ToLowerInvariant() -ne $demiArtifacts[$demiTarget].Hash) {
+        throw 'Installed runner checksum mismatch'
+      }
+    } else {
+      Move-Item $demiStage $demiBin
+    }
+    $env:DEMI_HOME = $demiState
+    $env:DEMI_RELEASE_ID = $demiRelease
+    $demiStatus = Invoke-DemiControl 'status'
+    if ($demiStatus -eq 0) {
+      Write-Output "Runner already running: $demiState"
+    } else {
+      if ($demiStatus -eq 3) {
+        Write-Output 'Waiting for existing jobs before upgrading this runner...'
+        if ((Invoke-DemiControl 'drain') -ne 0) { throw 'Runner drain failed' }
+      }
+      $demiUtf8 = [Text.UTF8Encoding]::new($false)
+      [IO.File]::WriteAllText($demiBackendFile, $demiBackend + [Environment]::NewLine, $demiUtf8)
+      [IO.File]::WriteAllText((Join-Path $demiState 'release-id'), $demiRelease + [Environment]::NewLine, $demiUtf8)
+      $demiLauncher = @'
+param([ValidateSet('run', 'status', 'drain', 'uninstall')][string]$Action = 'run')
 $ErrorActionPreference = 'Stop'
 $demiState = $PSScriptRoot
 $demiBackend = [IO.File]::ReadAllText((Join-Path $demiState 'backend-url')).Trim()
@@ -325,35 +388,70 @@ try {
 }
 exit $demiExit
 '@
-  [IO.File]::WriteAllText((Join-Path $demiState 'run.ps1'), $demiLauncher, $demiUtf8)
-  Write-Output 'Starting runner...'
-  $demiProcess = Start-Process -FilePath $demiExe -ArgumentList @('run', '--backend', $demiBackend) -WorkingDirectory $demiHome -WindowStyle Hidden -RedirectStandardOutput (Join-Path $demiState 'runner.stdout.log') -RedirectStandardError (Join-Path $demiState 'runner.log') -PassThru
-  $demiStarted = $false
-  for ($demiAttempt = 0; $demiAttempt -lt 100; $demiAttempt++) {
-    if ((Invoke-DemiControl 'status') -eq 0) {
-      $demiStarted = $true
-      break
+      [IO.File]::WriteAllText((Join-Path $demiState 'run.ps1'), $demiLauncher, $demiUtf8)
+      Write-Output 'Starting runner...'
+      $demiProcess = Start-Process -FilePath $demiExe -ArgumentList @('run', '--backend', $demiBackend) -WorkingDirectory $demiHome -WindowStyle Hidden -RedirectStandardOutput (Join-Path $demiState 'runner.stdout.log') -RedirectStandardError (Join-Path $demiState 'runner.log') -PassThru
+      Write-Output "Runner installed for $demiBackend"
     }
-    if ($demiProcess.HasExited) {
-      break
+  } catch {
+    if ($demiProcess -and -not $demiProcess.HasExited) {
+      $demiProcess.Kill()
+      $demiProcess.WaitForExit()
     }
-    Start-Sleep -Milliseconds 100
+    throw
+  } finally {
+    # The installation is in place; the runner's own updates may take its
+    # lock while this installer waits for pairing.
+    $demiLock.Dispose()
+    if (Test-Path $demiStage) { Remove-Item -Recurse -Force $demiStage }
   }
-  if (-not $demiStarted) { throw ([IO.File]::ReadAllText((Join-Path $demiState 'runner.log'))) }
-  Write-Output "Runner installed for $demiBackend"
-  Write-Output "State and pairing log: $demiState/runner.log"
-} catch {
-  if ($demiProcess -and -not $demiProcess.HasExited) {
-    $demiProcess.Kill()
-    $demiProcess.WaitForExit()
+  # Shows the runner's log as pairing goes: each pairing code the runner
+  # receives, then the device's name and the removal command once it is
+  # paired. Of the codes read at once, only the last is still live.
+  # Interrupting this installer leaves the runner running.
+  $demiLog = Join-Path $demiState 'runner.log'
+  $demiReader = [IO.StreamReader]::new([IO.FileStream]::new($demiLog, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]'ReadWrite, Delete'))
+  try {
+    $demiShown = $null
+    while ($true) {
+      $demiCode = $null
+      $demiName = $null
+      $demiRemoval = $null
+      while ($null -ne ($demiLine = $demiReader.ReadLine())) {
+        if ($demiLine.StartsWith($demiPairingPrefix)) {
+          $demiCode = $demiLine.Substring($demiPairingPrefix.Length)
+        } elseif ($demiLine.StartsWith($demiPairedPrefix)) {
+          $demiName = $demiLine.Substring($demiPairedPrefix.Length)
+        } elseif ($demiLine.StartsWith($demiRemovalPrefix)) {
+          $demiRemoval = $demiLine.Substring($demiRemovalPrefix.Length)
+        }
+      }
+      if ($demiRemoval) {
+        Write-Output "Paired as $demiName"
+        Write-Output "To remove this runner, run: $demiRemoval"
+        break
+      }
+      if ($demiCode -and $demiCode -ne $demiShown) {
+        if ($demiShown) {
+          Write-Output "The code expired; enter this one instead: $demiCode"
+        } else {
+          Write-Output "Enter this pairing code in Add Device: $demiCode"
+        }
+        $demiShown = $demiCode
+      }
+      $demiAlive = if ($demiProcess) { -not $demiProcess.HasExited } else { (Invoke-DemiControl 'status') -eq 0 }
+      if (-not $demiAlive) {
+        throw ('The runner stopped:' + [Environment]::NewLine + [IO.File]::ReadAllText($demiLog))
+      }
+      Start-Sleep -Milliseconds 200
+    }
+  } finally {
+    $demiReader.Dispose()
   }
-  throw
 } finally {
   $env:DEMI_HOME = $demiPreviousHome
   $env:DEMI_RELEASE_ID = $demiPreviousRelease
-  $demiLock.Dispose()
   if ($demiProcess) { $demiProcess.Dispose() }
-  if (Test-Path $demiStage) { Remove-Item -Recurse -Force $demiStage }
 }
 "#;
 

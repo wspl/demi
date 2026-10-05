@@ -5,9 +5,12 @@
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    io,
+    io::{self, Write as _},
     path::PathBuf,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::Duration,
 };
 
@@ -33,6 +36,7 @@ use demi_runner_process::{
     pipes::{PipeClient, report_pipe},
 };
 use demi_runner_protocol::{
+    console::{PAIRED, PAIRING_CODE, REMOVAL},
     values::{BackendUrl, DeviceToken},
     wire::{self, Inbound},
 };
@@ -85,6 +89,29 @@ pub struct Registered {
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
     pub volumes: Vec<ManagedVolume>,
+    /// The command that removes this runner; none for a managed guest's.
+    pub removal: Option<String>,
+    /// Whether this process told its console that the device is paired.
+    pub announced: AtomicBool,
+}
+
+impl Registered {
+    /// Tells the person at the console, once per process, that the device
+    /// is paired as `name` and how to remove the runner again; an installer
+    /// shows them these lines (`runner.md` § Installation, pairing and
+    /// removal).
+    fn announce_paired(&self, name: &str) {
+        let Some(removal) = &self.removal else {
+            return;
+        };
+        if self.announced.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        // One write, so that whoever reads the log sees both lines at once.
+        let lines = format!("{PAIRED}{name}\n{REMOVAL}{removal}\n");
+        // A console that went away loses nothing the runner needs.
+        let _ = io::stderr().write_all(lines.as_bytes());
+    }
 }
 
 /// What the owner's child tasks hand back.
@@ -94,8 +121,11 @@ enum Work {
         result: io::Result<Installed>,
     },
     Stored(io::Result<()>),
-    /// The claimed device token was stored.
-    Paired(io::Result<()>),
+    /// The claimed device token was stored for the device of this name.
+    Paired {
+        result: io::Result<()>,
+        name: String,
+    },
     Done,
 }
 
@@ -309,11 +339,12 @@ impl Owner<'_> {
                 self.installed = Some(installed);
             }
             Work::Stored(result) => result?,
-            Work::Paired(result) => {
+            Work::Paired { result, name } => {
                 result?;
                 // Said once the token is stored, so a runner that reports
                 // itself paired keeps its pairing.
                 tracing::warn!("online");
+                self.registered.announce_paired(&name);
             }
             Work::Done => {}
         }
@@ -328,7 +359,10 @@ impl Owner<'_> {
         let registered = self.registered;
         let management = &registered.management;
         match message {
-            Inbound::HelloOk { device_id } => {
+            Inbound::HelloOk {
+                device_id,
+                device_name,
+            } => {
                 let state = registered.state.clone();
                 let config = RunnerConfig {
                     backend_url: registered.backend.clone(),
@@ -338,20 +372,28 @@ impl Owner<'_> {
                     .spawn(async move { Work::Stored(state.write_config(&config).await) });
                 management.set_phase(Phase::Online);
                 tracing::warn!("online");
+                registered.announce_paired(&device_name);
                 self.report_installed().await?;
             }
             Inbound::ClaimPending { claim_token } if management.phase() != Phase::Online => {
                 management.set_phase(Phase::ClaimPending);
                 // The code is a secret for the person at the console; the log
                 // only says that one is waiting.
-                eprintln!("demi-runner: pairing code: {claim_token}");
+                eprintln!("{PAIRING_CODE}{claim_token}");
                 tracing::info!("waiting to be paired");
             }
-            Inbound::Claimed { device_token } if management.phase() != Phase::Online => {
+            Inbound::Claimed {
+                device_token,
+                device_name,
+            } if management.phase() != Phase::Online => {
                 registered.token.send_replace(Some(device_token.clone()));
                 let state = registered.state.clone();
-                self.work
-                    .spawn(async move { Work::Paired(state.write_token(&device_token).await) });
+                self.work.spawn(async move {
+                    Work::Paired {
+                        result: state.write_token(&device_token).await,
+                        name: device_name,
+                    }
+                });
                 management.set_phase(Phase::Online);
                 // A Host paired again may hold artifacts from before.
                 self.report_installed().await?;

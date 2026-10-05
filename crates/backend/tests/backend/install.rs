@@ -8,18 +8,17 @@ use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 
-use demi_backend_remote_host::testing::{PAIRING_CODE, runner_binary};
+use demi_backend_remote_host::testing::runner_binary;
 use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_provider_common::testing::MockVendor;
 use demi_runner_protocol::release::release_file;
 use demi_runner_protocol::wire;
-use demi_web_api_protocol::devices::ClaimedDevice;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::conversations::{FIRST, Socket, anthropic, choose, create, tool_result, tool_use};
-use crate::support::{Harness, TestBackend, answer, eventually};
+use crate::support::{Harness, Session, TestBackend, answer, eventually};
 
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -131,23 +130,32 @@ impl Installations {
         state
     }
 
-    /// Fetches the backend's installer and runs it.
-    async fn install(&self, backend: &TestBackend, extra: &[(&str, &str)]) -> Output {
+    /// Fetches the backend's installer and runs it until it exits, pairing
+    /// the runner with `session` when it shows a code; what it printed.
+    async fn install(&self, backend: &TestBackend, session: &Session) -> String {
         let script = self.script(backend).await;
-        self.run(&script, extra).await
+        let mut installer = self.shell();
+        installer.arg(&script);
+        paired(installer, backend, session, 0).await
     }
 
     /// Fetches the backend's installer and runs it from a shell whose file
-    /// mode creation mask is `umask`.
-    async fn install_with_umask(&self, backend: &TestBackend, umask: &str) -> Output {
+    /// mode creation mask is `umask`, pairing the runner with `session` once
+    /// `expired` codes went by; what it printed.
+    async fn install_with_umask(
+        &self,
+        backend: &TestBackend,
+        session: &Session,
+        umask: &str,
+        expired: usize,
+    ) -> String {
         let script = self.script(backend).await;
-        self.shell()
+        let mut installer = self.shell();
+        installer
             .arg("-c")
             .arg(format!("umask {umask} && exec sh \"$0\""))
-            .arg(&script)
-            .output()
-            .await
-            .unwrap()
+            .arg(&script);
+        paired(installer, backend, session, expired).await
     }
 
     /// The backend's installer, saved in the home.
@@ -173,11 +181,13 @@ impl Installations {
             .unwrap()
     }
 
-    /// A shell for an installer, with the home and without an installation ID.
+    /// A shell for an installer, with the home and without an installation
+    /// ID; the runners it starts call their device [`DEVICE`].
     fn shell(&self) -> tokio::process::Command {
         let mut shell = tokio::process::Command::new("sh");
         shell
             .env("HOME", self.home.path())
+            .env("DEMI_RUNNER_NAME", DEVICE)
             .env_remove("DEMI_INSTALLATION_ID");
         shell
     }
@@ -195,19 +205,89 @@ impl Drop for Installations {
     }
 }
 
+/// The name of the device each installed runner pairs as.
+const DEVICE: &str = "installed-laptop";
+
+/// What an installer prints before the first pairing code and before each
+/// one after it.
+const CODES: [&str; 2] = [
+    "Enter this pairing code in Add Device: ",
+    "The code expired; enter this one instead: ",
+];
+
+/// Runs `installer`, which stays until its runner is paired: it shows each
+/// pairing code as its runner receives one, and the code after `expired`
+/// codes went by is claimed with `session`. What it printed, once it exited
+/// successfully.
+async fn paired(
+    mut installer: tokio::process::Command,
+    backend: &TestBackend,
+    session: &Session,
+    expired: usize,
+) -> String {
+    use tokio::io::AsyncBufReadExt as _;
+    let mut child = installer
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    let mut lines = tokio::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut printed = String::new();
+    let mut codes = 0;
+    // A hang guard: an installer that never sees its runner paired would
+    // wait for ever.
+    let read = tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        while let Some(line) = lines.next_line().await.unwrap() {
+            printed.push_str(&line);
+            printed.push('\n');
+            let Some(code) = CODES.iter().find_map(|prefix| line.strip_prefix(prefix)) else {
+                continue;
+            };
+            codes += 1;
+            if codes == expired + 1 {
+                let claimed = backend
+                    .post("/api/devices/claim", Some(session), json!({ "code": code }))
+                    .await;
+                assert_eq!(
+                    claimed.status,
+                    StatusCode::CREATED,
+                    "{}",
+                    String::from_utf8_lossy(&claimed.body)
+                );
+            }
+        }
+    })
+    .await;
+    if read.is_err() {
+        // The runner it started stays, and the installations' drop drains it.
+        child.start_kill().unwrap();
+    }
+    let output = child.wait_with_output().await.unwrap();
+    assert!(
+        read.is_ok() && output.status.success(),
+        "{printed}\n{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    printed
+}
+
 /// The installation's active runner: its endpoint and its release.
 fn active(state: &Path) -> Value {
     serde_json::from_slice(&std::fs::read(state.join("active.json")).unwrap()).unwrap()
 }
 
-fn succeeded(output: &Output) -> String {
-    assert!(
-        output.status.success(),
-        "{}\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
+/// Asserts that an installer said its runner is paired as [`DEVICE`],
+/// with the launcher of the installation in `state` as the removal command.
+fn says_paired(printed: &str, state: &Path) {
+    let removal = format!(
+        "To remove this runner, run: {} uninstall",
+        state.join("run").display()
     );
-    String::from_utf8_lossy(&output.stdout).into_owned()
+    assert!(
+        printed.contains(&format!("Paired as {DEVICE}\n{removal}\n")),
+        "{printed}"
+    );
 }
 
 // Several seconds: the installer runs for real, and each of its three installs
@@ -217,13 +297,13 @@ fn succeeded(output: &Output) -> String {
 async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_only_its_own_runner() {
     let releases = Releases::new(runner_binary());
     let initial = releases.publish("initial");
-    let a = Harness::new()
+    let (a, master_a) = Harness::new()
         .with_runner_releases(releases.path())
-        .start()
+        .start_set_up()
         .await;
-    let b = Harness::new()
+    let (b, master_b) = Harness::new()
         .with_runner_releases(releases.path())
-        .start()
+        .start_set_up()
         .await;
     let installations = Installations::new();
     let state_a = installations.state(&format!("{}/", a.url));
@@ -246,16 +326,19 @@ async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_onl
             .contains("aarch64-pc-windows-msvc")
     );
 
-    succeeded(&installations.install(&a, &[]).await);
-    succeeded(&installations.install(&b, &[]).await);
+    // Each installer shows its runner's code and stays until the runner is
+    // paired with it; then it names the device and the removal command.
+    says_paired(&installations.install(&a, &master_a).await, &state_a);
+    says_paired(&installations.install(&b, &master_b).await, &state_b);
     let first_a = active(&state_a);
     let first_b = active(&state_b);
     assert_ne!(first_a["endpoint"], first_b["endpoint"]);
     assert_eq!(first_a["release"], json!(initial));
 
-    // Installed again, the running runner stays.
-    let again = succeeded(&installations.install(&a, &[]).await);
+    // Installed again, the running runner stays, paired already.
+    let again = installations.install(&a, &master_a).await;
     assert!(again.contains("already running"), "{again}");
+    says_paired(&again, &state_a);
     assert_eq!(active(&state_a)["endpoint"], first_a["endpoint"]);
 
     // One backend's installer cannot take another backend's installation.
@@ -276,7 +359,7 @@ async fn an_installer_keeps_each_backend_apart_reuses_a_release_and_upgrades_onl
     // A new release drains and replaces this backend's runner alone, and the
     // old release's runner stays downloadable.
     let upgraded = releases.publish("upgraded");
-    succeeded(&installations.install(&a, &[]).await);
+    says_paired(&installations.install(&a, &master_a).await, &state_a);
     let old = reqwest::Client::new()
         .request(
             Method::HEAD,
@@ -317,11 +400,11 @@ async fn an_installed_runner_follows_its_backend_to_another_release() {
     let releases = Releases::new(runner_binary());
     let initial = releases.publish("initial");
     let harness = Harness::new().with_runner_releases(releases.path());
-    let backend = harness.start().await;
+    let (backend, master) = harness.start_set_up().await;
     let address = backend.address();
     let installations = Installations::new();
     let state = installations.state(&format!("{}/", backend.url));
-    succeeded(&installations.install(&backend, &[]).await);
+    installations.install(&backend, &master).await;
     assert_eq!(active(&state)["release"], json!(initial));
 
     // The backend comes back with a release whose runner it cannot supply:
@@ -371,45 +454,36 @@ fn mode(path: &Path) -> u32 {
 }
 
 // Several seconds (8 s here under load): the installer downloads this build's
-// runner (170 MB) from its backend, verifies it and starts it; a scripted
-// model then runs one job on the paired runner.
+// runner (170 MB) from its backend, verifies it and starts it, and shows a
+// code that expires after two seconds before it shows the one claimed; a
+// scripted model then runs one job on the paired runner.
 #[tokio::test]
-async fn an_installed_runner_works_with_the_mask_of_the_shell_that_ran_the_installer() {
+async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the_shells_mask() {
     let releases = Releases::new(runner_binary());
     releases.publish("initial");
-    let harness = Harness::new().with_runner_releases(releases.path());
+    let mut harness = Harness::new().with_runner_releases(releases.path());
+    // Long enough for the installer to show a code and the test to claim it.
+    harness.runners.claim_lifetime = std::time::Duration::from_secs(2);
     let (backend, master) = harness.start_set_up().await;
     let installations = Installations::new();
     let state = installations.state(&format!("{}/", backend.url));
 
-    // The user's shell lets the group write, as some systems' shells do.
-    succeeded(&installations.install_with_umask(&backend, "002").await);
+    // The user's shell lets the group write, as some systems' shells do. The
+    // installer shows the runner's code, and the next one once it expired,
+    // which pairs the runner.
+    let printed = installations
+        .install_with_umask(&backend, &master, "002", 1)
+        .await;
+    assert!(printed.contains(CODES[1]), "{printed}");
+    says_paired(&printed, &state);
     // The installation stays the user's alone: its log holds the pairing code.
     assert_eq!(mode(&state), 0o700);
     assert_eq!(mode(&state.join("runner.log")), 0o600);
-
-    let log = state.join("runner.log");
-    let mut code = None;
-    eventually("the installed runner prints its pairing code", || {
-        code = std::fs::read_to_string(&log)
-            .unwrap()
-            .lines()
-            .find_map(|line| line.strip_prefix(PAIRING_CODE))
-            .map(|code| code.trim().to_owned());
-        let printed = code.is_some();
-        async move { printed }
-    })
-    .await;
-    let claimed = backend
-        .post("/api/devices/claim", Some(&master), json!({ "code": code }))
-        .await;
-    assert_eq!(
-        claimed.status,
-        StatusCode::CREATED,
-        "{}",
-        String::from_utf8_lossy(&claimed.body)
-    );
-    let device = claimed.json::<ClaimedDevice>().device;
+    let devices = backend.devices(&master).await;
+    let [device] = devices.as_slice() else {
+        panic!("one paired device: {devices:?}");
+    };
+    assert_eq!(device.name, DEVICE);
     backend
         .until_online(&master, device.id.as_str(), true)
         .await;

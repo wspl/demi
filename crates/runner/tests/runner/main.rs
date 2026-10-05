@@ -75,6 +75,7 @@ impl Host {
     pub async fn online(mut self) -> Self {
         self.send(Inbound::HelloOk {
             device_id: "device".into(),
+            device_name: "fixture".into(),
         })
         .await;
         self

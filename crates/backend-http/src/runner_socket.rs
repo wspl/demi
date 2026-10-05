@@ -247,6 +247,7 @@ async fn hand_over(shards: &Shards, mut socket: WebSocket, runner: RunnerInfo, g
     } = grant;
     let claimed = Inbound::Claimed {
         device_token: token,
+        device_name: device.name.clone(),
     };
     if send(&mut socket, &claimed).await.is_err() {
         return;

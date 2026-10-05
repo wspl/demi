@@ -4,6 +4,7 @@
 //! defined once.
 
 pub mod boot;
+pub mod console;
 pub mod image;
 pub mod manifest;
 pub mod release;

@@ -57,6 +57,7 @@ impl Shard {
         let identity = host_identity(&runner.identity);
         let welcome = Inbound::HelloOk {
             device_id: device.id.to_string(),
+            device_name: device.name.clone(),
         };
         // A closing shard takes no runner; dropping the socket closes it.
         let Some(serving) = self.bind(&device.id, identity) else {
