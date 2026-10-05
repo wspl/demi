@@ -36,7 +36,7 @@ demi-backend-plugins = { path = "../backend-plugins" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-shared-types = { path = "../shared-types" }
-demi-backend-remote-host = { path = "../backend-remote-host" }
+demi-backend-remote-host = { path = "../backend-remote-host", features = ["edge"] }
 demi-provider-common = { path = "../provider-common" }
 demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
