@@ -70,12 +70,39 @@ export const usePermissions = defineStore('permissions', () => {
     }))
   }
 
+  /** The reads on their way, each with whether a newer revision was heard of meanwhile. */
+  const reading = new Map<string, { again: boolean }>()
+
+  /** Whether the summary names a revision newer than the one the page holds. */
+  function behind(conversationId: string): boolean {
+    const summary = product.snapshot?.conversations.find((item) => item.id === conversationId)
+    const run = product.snapshot?.run ?? null
+    return summary !== undefined && isNewer({ run, revision: summary.permissionsRevision }, stateFor(conversationId).held)
+  }
+
+  /**
+   * Reads the requests, unless a read is on its way: that one is read again
+   * after, if the summary is still newer than what it brought, so a page
+   * that opens a conversation reads its requests once.
+   */
   async function read(conversationId: string): Promise<void> {
+    const running = reading.get(conversationId)
+    if (running) {
+      running.again = true
+      return
+    }
     const state = stateFor(conversationId)
+    const current = { again: false }
+    reading.set(conversationId, current)
     try {
       take(state, await readPermissions(conversationId))
     } catch (error) {
       reportError('Could Not Read Permissions', error)
+    } finally {
+      reading.delete(conversationId)
+    }
+    if (current.again && behind(conversationId)) {
+      await read(conversationId)
     }
   }
 
@@ -89,10 +116,8 @@ export const usePermissions = defineStore('permissions', () => {
   watch(
     () => product.snapshot?.conversations,
     (summaries) => {
-      const run = product.snapshot?.run ?? null
       for (const summary of summaries ?? []) {
-        const state = states.get(summary.id)
-        if (state && isNewer({ run, revision: summary.permissionsRevision }, state.held)) {
+        if (states.has(summary.id) && behind(summary.id)) {
           void read(summary.id)
         }
       }
