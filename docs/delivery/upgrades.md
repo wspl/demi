@@ -48,28 +48,40 @@ none of the wires between them needs to accept another version. The few
 things that do cross from one release to the next are listed in
 [What crosses releases](#what-crosses-releases), and each has a rule.
 
-A server keeps its releases under `/opt/demi`, and the services run whichever
-one `current` points to:
+Everything of Demi's on a server lies in one directory, `/opt/demi`, so an
+operator finds all of it in one place, and the services run whichever
+release `current` points to:
 
 ```text
 /opt/demi/
   releases/0.1.0/            a server release root, unpacked, never changed
   releases/0.2.0/            (builds-and-releases.md § Server release)
   current -> releases/0.2.0  the release the services run
-/etc/demi/demi.env           the configuration, shared by both services
-/etc/systemd/system/
-  demi-backend.service       copied from the current release's systemd/
-  demi-machine-manager.service
-<DEMI_BACKEND_DATA>/         the backend's data directory, with snapshots/
-<DEMI_MANAGED_DATA>/         the machine manager's state directory
-/var/lib/demi/server/        demi-server's lock and the journal of an upgrade
+  gvisor/<runsc version>/    the gVisor runtime a release's manager pins
+  config/demi.env            the configuration, shared by both services
+  data/backend/              the backend's data directory, with snapshots/
+  data/cloud/                the machine manager's state directory
+  server/                    demi-server's lock, an upgrade's journal and a setup's marker
 ```
+
+Outside it there are only what the system requires elsewhere: the two units
+in `/etc/systemd/system/`, the link `/usr/local/bin/demi-server` to
+`/opt/demi/current/bin/demi-server`, and the system user `demi` with the
+group `demi-cloud`. `data/cloud` may be another directory, such as one on a
+dedicated filesystem ([Storage and service setup](../cloud/setup.md#storage-and-service-setup)),
+which the configuration names.
 
 - **Releases.** Each root is the [server release](builds-and-releases.md#server-release)
   of the server's Linux target, unpacked from its two archives. A root is
   never changed once unpacked; a new release is a new directory. A server
   keeps the current release and at most one other, the one a rollback
   returns to.
+- **gVisor.** No release carries gVisor: each machine manager is built
+  against one pinned version of `runsc`, and `demi-server` fetches that
+  version into `gvisor/<version>/` before a release that needs it runs
+  ([gVisor runtime](builds-and-releases.md#gvisor-runtime)). Versions sit
+  beside each other, so a rollback finds its own; a move keeps the versions
+  of its two releases and removes the others.
 - **`current`.** A symbolic link, replaced atomically by renaming a new link
   over it. The units run `/opt/demi/current/bin/demi-backend` and
   `/opt/demi/current/bin/demi-machine-manager`. Each program takes its
@@ -86,18 +98,24 @@ one `current` points to:
   Both units use `Type=notify` with no start timeout: a service reports
   ready only once it serves, and a long migration or image import is not a
   failure.
-- **Configuration and data.** `/etc/demi/demi.env` and the two data
+- **Configuration and data.** `config/demi.env` and the two data
   directories belong to the installation, not to a release; no upgrade
   rewrites them. Moving to a release never edits the configuration: a
   release that needs a new setting fails the [check](#prepare) and names it,
   and the operator adds it.
+- **Programs under `/opt`.** SELinux, which the dnf distributions enforce,
+  lets systemd start a program under `/opt`, whose files it labels as
+  installed software, and refuses one in a data directory or a home
+  directory: tried on Fedora 44, a service whose program lay in
+  `/var/lib/<user>` or `/home/<user>` failed to start until the program was
+  relabeled. One directory under `/opt` needs no such rule.
 
 ## What follows the release
 
 | Part | How it reaches the new release | When |
 | --- | --- | --- |
 | Backend and web app | The backend restarts from `current`; an open page shows the restart screen meanwhile and then loads the new build ([A page of another build](../product/web-application.md#a-page-of-another-build)) | During the upgrade |
-| Machine manager and `runsc` | The manager restarts from `current`; the release root carries the pinned `runsc` of its architecture in `runtime/` ([Server release](builds-and-releases.md#server-release)) | During the upgrade |
+| Machine manager and `runsc` | The manager restarts from `current`, with the `runsc` version it pins, which the preparation fetched ([Prepare](#prepare)) | During the upgrade |
 | Cloud image | The manager imports the release's `image/` before the services stop ([Prepare](#prepare)) | During the upgrade |
 | A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)) | The Cloud's next wake |
 | A Cloud's system | Stays on the image it is pinned to; Cloud settings says when a newer one is available, and a reset moves to it ([Cloud settings](../product/product.md#cloud-settings)) | When the user resets |
@@ -160,7 +178,7 @@ older version than the current one is refused: going back is a
 an earlier upgrade was interrupted ([Interruptions](#interruptions)).
 
 Only one `demi-server` runs at a time: it holds a lock in
-`/var/lib/demi/server/` and refuses to start beside another.
+`/opt/demi/server/` and refuses to start beside another.
 
 ### Fetch
 
@@ -186,20 +204,23 @@ Everything that can fail without stopping anything happens now, while the
 current release serves:
 
 1. **Configuration.** The new backend and the new machine manager each check
-   `/etc/demi/demi.env` with `--check-config`, which validates every setting
+   `/opt/demi/config/demi.env` with `--check-config`, which validates every setting
    as a start would and exits. A failure names the variable.
-2. **Cloud image.** The new manager imports the release's `image/` with
+2. **gVisor.** `demi-server` fetches the `runsc` version the new manager
+   pins into `/opt/demi/gvisor/<version>/`, unless it is there
+   ([gVisor runtime](builds-and-releases.md#gvisor-runtime)).
+3. **Cloud image.** The new manager imports the release's `image/` with
    `demi-machine-manager --import`, beside the running manager. Bases are
    immutable directories named by their `baseVersion` and published
    atomically, and the running manager never reads one it was not configured
    with, so the two do not meet. The import is the slow step of a manager's
    start, and doing it now keeps it out of the interruption.
-3. **Data.** `demi-server` reads the schema version of each database in the
+4. **Data.** `demi-server` reads the schema version of each database in the
    data directory that the configuration names and compares it with the new backend's; it knows them,
    being built from the same workspace. The databases whose versions differ
    will be migrated, so they will be copied, and the file system must have
    room for the copy.
-4. **Manager state.** It reads the format of the manager's state directory.
+5. **Manager state.** It reads the format of the manager's state directory.
    A release that changes the format is marked as one a rollback cannot
    cross ([Rollback](#rollback)), and `demi-server` says so before it goes
    on.
@@ -207,7 +228,7 @@ current release serves:
 ### Switch
 
 From here the server is interrupted, and `demi-server` records each step in
-its journal, `/var/lib/demi/server/upgrade.json`, before taking it:
+its journal, `/opt/demi/server/upgrade.json`, before taking it:
 
 1. Stop the backend. Its shutdown ends every turn with the shutdown record,
    hibernates every Cloud and closes every runner connection

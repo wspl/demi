@@ -362,7 +362,6 @@ For example, 0.1.3 for x86_64:
   bin/demi-backend              the target's backend
   bin/demi-machine-manager      the target's machine manager
   bin/demi-server               the server's installer and upgrader
-  runtime/                      the pinned runsc distribution of the target's architecture
   systemd/                      the units of the backend and the machine manager
   web/                          the built web app, with its build.json
   runners/                      the runner release's manifests
@@ -415,13 +414,9 @@ cargo xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.
 - Repeated `--target` options name the targets of the runner and the command
   packages; without them it requires all six, as packaging does.
 - `--server <triple>` puts that Linux target's backend, machine manager and
-  `demi-server` in `bin/` and the services' units in `systemd/`, and
-  `--runtime <directory>`, which it requires, copies the pinned runsc
-  distribution of that architecture into `runtime/`: the directory
-  `crates/machine-manager/scripts/fetch-runsc.sh` fetched, checked against
-  the pin and unpacked ([gVisor runtime](#gvisor-runtime)). Without them the
-  root has none of the three: a developer's backend runs from the Cargo
-  target directory.
+  `demi-server` in `bin/` and the services' units in `systemd/`. Without it
+  the root has neither: a developer's backend runs from the Cargo target
+  directory. No root carries gVisor ([gVisor runtime](#gvisor-runtime)).
 - `--web <directory>` copies the built web app into `web/`. Without it the
   root has no `web/`, and the backend serves no web app, as in development,
   where Vite serves it.
@@ -550,20 +545,36 @@ names, and starting it.
 
 ## gVisor runtime
 
-Each Demi release carries the runsc distribution that
-`crates/machine-manager/runtime/release.json` pins, in each server root's
-`runtime/` ([Linux requirements](../cloud/setup.md#linux-requirements)). The
-amd64 distribution is upstream's release, which the manifest pins by its
-SHA-512. The arm64 distribution carries Demi's patch, so it is built from
-the pinned source once per pin, not in every release:
-`.github/workflows/runtime.yml`, which pushing the tag `runsc-<arm64Version>`
-starts, runs
+No release carries gVisor. The machine manager is built against the one
+`runsc` version that `crates/machine-manager/runtime/release.json` pins,
+and refuses any other; `demi-server` fetches that version onto a server
+before a release that pins it runs, as a setup or an upgrade's preparation
+([One release on a server](upgrades.md#one-release-on-a-server)). It is
+built from the same workspace, so it knows the pin, and it fetches the
+archive for the server's architecture through the artifact library, checks
+it against the pinned SHA-512, and unpacks into
+`/opt/demi/gvisor/<version>/` only what the manager runs: `runsc` and the
+sidecar programs `runsc` starts from `gvisor-bin/` beside it,
+`gvisor_sentry`, `gvisor-sentry-prewarmer` and `runsc-fd-parking`. The
+distribution's other programs, the containerd shim, the metric server and
+the memory checkpoint gofer, stay out; the manager uses none of them, and
+leaving them halves the size. The manager runs `runsc` with
+`--sidecar-usage-policy=STRICT`, so a missing sidecar fails rather than
+being downloaded by `runsc` itself or replaced by its deprecated embedded
+copy ([Isolation and joining](../cloud/managed-hosts.md#isolation-and-joining)).
+
+The amd64 archive is upstream's release. The arm64 archive carries Demi's
+patch, so it is built from the pinned source once per pin, not in every
+release: `.github/workflows/runtime.yml`, which pushing the tag
+`runsc-<arm64Version>` starts, runs
 `crates/machine-manager/scripts/build-runsc-arm64.sh` and the regression
-probe on `ubuntu-26.04-arm` and publishes the distribution as the GitHub
-release of that tag. The change that adopts a new pin records that
-archive's SHA-512 in the manifest beside the version.
-`crates/machine-manager/scripts/fetch-runsc.sh` fetches either
-architecture's pinned distribution, checks it and unpacks it.
+probe on `ubuntu-26.04-arm` and publishes the archive as the GitHub release
+of that tag. The change that adopts a new pin records that archive's
+SHA-512 in the manifest beside the version.
+
+A developer's Linux host gets the pinned version the same way, with
+`demi-server runtime`, which fetches it into `/opt/demi/gvisor/<version>/`
+alone.
 
 ## Validation
 

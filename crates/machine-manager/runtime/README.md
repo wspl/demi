@@ -14,10 +14,11 @@ No seccomp rule or Chrome sandbox feature is disabled by this fix.
 `getpid` call with a recognizable first argument and checks the signal frame.
 The ARM build runs it on native Linux and under the compiled systrap runtime.
 
-`../scripts/fetch-runsc.sh amd64|arm64 <new-directory>` fetches the pinned
-distribution of either architecture, checks its SHA-512 and unpacks it: on
-amd64 the upstream release, on arm64 the build with the fix that
-`.github/workflows/runtime.yml` publishes as the release
+`demi-server` fetches the pinned archive of the server's architecture,
+checks its SHA-512 and unpacks what the manager runs of it into
+`/opt/demi/gvisor/<version>/` (`docs/delivery/builds-and-releases.md`
+§ gVisor runtime): on amd64 the upstream release, on arm64 the build with
+the fix that `.github/workflows/runtime.yml` publishes as the release
 `runsc-<arm64Version>`. That workflow runs `../scripts/build-runsc-arm64.sh
 <new-directory>` on an arm64 runner; the build needs jq, Git, curl, Python,
 build-essential, the amd64 cross compiler, clang, pkg-config, libffi-dev,
@@ -26,8 +27,8 @@ libssl-dev, libnuma-dev, and libbpf-dev. On Ubuntu, install
 runtime distribution. Bazel's version and download checksum are pinned; its
 source dependencies come from the pinned gVisor tree. No Docker build is
 used. The build records its source inputs and archive checksum beside the
-executable. Both scripts read this directory's `release.json` with jq, and
-the manager embeds the same file when it is built.
+executable. The build script reads this directory's `release.json` with jq;
+the manager and `demi-server` embed the same file when they are built.
 
 The patch should be removed when a pinned upstream version passes this probe and
 the Cloud acceptance suite. Replacing the runtime still requires conversation
