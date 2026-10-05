@@ -491,7 +491,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     // over the SDK MCP channel, Demi runs both commands on the Cloud, and
     // the CLI sends both results to the vendor, all in the process that kept
     // the conversation.
-    let call = |text: &str| json!({ "description": "Run", "script": format!("printf '{text}'"), "timeoutMs": 60_000 });
+    let call = |text: &str| json!({ "description": "Print the text", "script": format!("printf '{text}'"), "timeoutMs": 60_000 });
     let batch = vec![
         tool_use_block(
             0,
