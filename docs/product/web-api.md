@@ -58,7 +58,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
 | Attached hosts | `GET /conversations/:id/hosts`, `POST .../hosts { deviceId }`, `PATCH .../hosts/:deviceId { name }`, `DELETE .../hosts/:deviceId` |
-| Runner transport | `WS /runner`; device-authenticated `PUT/GET /pipes/:id` for source/sink streams |
+| Runner transport | `WS /runner`; device-authenticated pipes at `/pipes/:id`: `PUT` for a content pipe and `WS` for a stream pipe from the runner, `GET` for a pipe to it ([Host operations](../execution/runner.md#host-operations)) |
 | Public installation | `GET /install.sh`, `GET /install.ps1`, `GET /runner-artifacts/:release/:target/:file`, and, with a local object store, the command artifacts, `GET /native-artifacts/:sha256` ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)) (root paths, outside `/api`) |
 
 ### Authentication
@@ -71,7 +71,7 @@ Each route authenticates its caller in one of these ways
 | `GET/POST /setup`, `POST /auth/login` | None; a successful `POST` sets the session cookie |
 | `WS /sync` | The session cookie, which the route checks without renewing the session |
 | Every other path under `/api`, unknown paths included, except the runner transport | The session cookie, which the session gate checks |
-| The runner transport, `WS /runner` and `PUT/GET /pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
+| The runner transport, `WS /runner` and the pipes at `/pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
 | The public installation routes and the [web app build](#serving-the-web-app-build) | None |
 | Every path on an expose hostname | None; the public relay answers it, never a route of this API ([Expose hostnames](#expose-hostnames)) |
 

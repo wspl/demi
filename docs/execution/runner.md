@@ -258,6 +258,26 @@ HTTP/2 where the backend's edge offers it, so a concurrent pipe costs no new
 connection, which through a proxy and a TLS edge costs two or three round
 trips of its own.
 
+A pipe that carries bytes from the runner to the backend is one of two kinds,
+which the request that names it decides:
+
+- A **content pipe** carries one finite thing: a file, kept output, a
+  command's edit copies or media. The runner sends it as the body of `PUT
+  /api/pipes/:id` on its pooled connection.
+- A **stream pipe** carries bytes that must arrive as they are written, for
+  as long as they flow: the output of a network stream or a service stream
+  ([Network streams](#network-streams), [Service streams](#service-streams)).
+  The runner sends it over a WebSocket it opens at `/api/pipes/:id`, its
+  bytes in binary messages and its end in the close frame. A TLS edge in
+  front of the backend, such as Cloudflare's, holds a request's body until it
+  ends or passes about 2 MB, and passes WebSocket messages as they come: the
+  live browser view of a still page, whose frames are small, showed nothing
+  for minutes behind Cloudflare while its pictures waited in such a body, and
+  went white again each time the view opened anew.
+
+A pipe the runner reads from the backend is a `GET /api/pipes/:id` whose
+response streams, which such an edge passes as it comes.
+
 Raw process environment selection follows these rules:
 
 | Request | Child environment |
