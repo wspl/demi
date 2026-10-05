@@ -131,8 +131,7 @@ opt-level = 3
 # these 20.4 and 14.0 MiB in 125 s. Panics unwind: the runner and the command
 # services contain a panic to one job or invocation.
 [profile.release]
-lto = "fat"
-codegen-units = 1
+lto = "thin"
 opt-level = "s"
 strip = true
 
