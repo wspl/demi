@@ -177,7 +177,8 @@ terminal early finds them there; closing it does not stop the runner.
 
 1. It asks the backend, when it can reach it, to revoke the device, so the
    device leaves the user's list as it leaves the computer; nothing refuses
-   a revocation. A backend it cannot reach keeps listing the device, offline,
+   a revocation, and it names the projects that went with the device, whose
+   files stay ([Web API](../product/web-api.md)). A backend it cannot reach keeps listing the device, offline,
    until the user revokes it.
 2. It drains the runner: no new work, and the running jobs end first.
 3. It removes the installation's directory, only when the directory holds an
