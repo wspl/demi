@@ -483,7 +483,9 @@ and never with product routes. The records, their lifetime, the relay, and the
 
 ## Account API
 
-`POST /api/setup` and `POST /api/auth/login` take `{ email, password }`.
+`POST /api/setup` takes `{ nickname, email, password }`, the nickname as
+`PATCH /api/auth/me` takes it, and `POST /api/auth/login` takes
+`{ email, password }`.
 The users routes are an administrator's: a user answers 403 `forbidden`.
 `GET /api/users` returns `{ users }`, every account in the order they were
 created. `POST /api/users` takes `{ email, password, role }` with role `admin`
