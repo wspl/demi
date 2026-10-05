@@ -428,8 +428,9 @@ authentication request. Each state has its pages: setup needed only
 `/login` and `/setup` to the chat.
 
 On an instance without accounts, the first visitor creates the master account
-on the setup page: email, password and its confirmation, the password of the
-length every password has ([Account API](web-api.md#account-api)).
+on the setup page: a name, which becomes the account's nickname, the email,
+and a password with its confirmation, each as the
+[Account API](web-api.md#account-api) bounds it.
 `POST /api/setup` creates it and signs it in, and the page opens the chat.
 Another visitor who set the instance up first makes the request answer 404
 `already_set_up`; the page then says the instance is set up and offers only
