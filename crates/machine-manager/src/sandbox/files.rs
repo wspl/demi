@@ -96,7 +96,14 @@ pub struct RuntimeDirectory {
 
 /// The mount points in the order they are released: the overlay first, the
 /// filesystems it stacks on after it.
-pub const MOUNT_POINTS: [&str; 5] = ["rootfs", "home", "system", "base", "credentials"];
+pub const MOUNT_POINTS: [&str; 6] = [
+    "rootfs",
+    "home",
+    "system",
+    "base",
+    "programs",
+    "credentials",
+];
 
 impl RuntimeDirectory {
     pub fn new(runtime: &Path, sandbox: &str) -> Self {
@@ -112,6 +119,12 @@ impl RuntimeDirectory {
     /// The read-only bind of the base's root.
     pub fn base(&self) -> PathBuf {
         self.root.join("base")
+    }
+
+    /// The read-only bind of the configured base's `/opt/demi`, which the
+    /// sandbox sees in place of its own base's.
+    pub fn programs(&self) -> PathBuf {
+        self.root.join("programs")
     }
 
     /// Where a working image is mounted.

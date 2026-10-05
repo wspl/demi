@@ -6,7 +6,7 @@
 
 use std::collections::HashSet;
 
-use demi_machine_manager_protocol::image::{INIT_PATH, RUNNER_PATH};
+use demi_machine_manager_protocol::image::{INIT_PATH, PROGRAMS_PATH, RUNNER_PATH};
 use demi_runner_protocol::release::RELEASE_ENV;
 use oci_spec::{
     OciSpecError,
@@ -269,6 +269,7 @@ fn mounts(directory: &RuntimeDirectory) -> Result<Vec<Mount>, OciSpecError> {
             ],
         )?,
         bind(directory.home(), "/home", &["bind", "nodev"])?,
+        bind(directory.programs(), PROGRAMS_PATH, &["bind", "ro", "nodev"])?,
         bind(directory.boot(), BOOT_RECORD, &["bind", "ro", "nodev"])?,
         bind(
             directory.resolver(),
