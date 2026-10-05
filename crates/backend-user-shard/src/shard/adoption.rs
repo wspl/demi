@@ -117,7 +117,7 @@ impl Shard {
 
     /// Revokes a device: its exposes end with their connections, its row
     /// goes with its attachments, and its runner hears that it was revoked
-    /// and stops for good.
+    /// and removes itself.
     pub async fn revoke_device(&self, device: DeviceId) -> Result<(), StorageError> {
         self.expose_shard().destroy_exposes_on(&device).await;
         self.services()

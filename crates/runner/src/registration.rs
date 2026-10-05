@@ -68,6 +68,10 @@ pub enum Ending {
     /// successor starts once this registration has let everything go
     /// (`runner.md` § Runner updates).
     Replaced(Successor),
+    /// The backend revoked the device: the installation goes once this
+    /// registration has let everything go (`runner.md` § Installation,
+    /// pairing and removal).
+    Removed,
 }
 
 pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending> {
@@ -222,6 +226,7 @@ async fn reconnect(registered: &Registered, installed: Option<&Installed>) -> io
                 ));
             }
             Ok(End::Stopped) => return Ok(Ending::Stopped),
+            Ok(End::Revoked) => return Ok(Ending::Removed),
             Ok(End::Disconnected) => {
                 tracing::warn!("backend connection lost");
                 failure = None;

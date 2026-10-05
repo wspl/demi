@@ -20,7 +20,7 @@ use demi_backend_database::devices::DeviceRecord;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::{Admission, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost};
 use demi_host_interface::{HostIdentity, HostKey};
-use demi_runner_protocol::wire::{self, HelloErrorCode, HostArtifact, Inbound};
+use demi_runner_protocol::wire::{self, HostArtifact, Inbound};
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::ready;
@@ -30,7 +30,8 @@ use tokio::sync::watch;
 use crate::file_gate::FileLease;
 use crate::host_key::{HostOwner, host_key};
 
-/// Why a revoked device's connection ended; its runner hears it and stops.
+/// Why a revoked device's connection ended; its runner hears that it was
+/// revoked and removes itself.
 const REVOKED: &str = "device revoked";
 
 /// The user's devices, each with its connection slot.
@@ -248,7 +249,7 @@ impl Devices {
     }
 
     /// Ends the connection of a revoked device, whose runner hears that it
-    /// was revoked and stops for good.
+    /// was revoked and removes itself.
     pub fn revoke(&self, device: &DeviceId) {
         self.disconnect(device, REVOKED);
     }
@@ -340,14 +341,11 @@ impl Serving {
             }
         }
         if end == LinkEnd::Disconnected(REVOKED.into()) {
-            let refusal = Inbound::HelloError {
-                code: HelloErrorCode::Revoked,
-                reason: REVOKED.into(),
-            };
-            let frame = wire::encode(&refusal)
+            let frame = wire::encode(&Inbound::Revoked {})
                 .expect("the backend's own runner messages encode")
                 .into_bytes();
-            // A runner that went away needs no refusal.
+            // A runner that went away has nothing left to remove; it learns
+            // of the revocation when its token is refused.
             let _ = outgoing.send(Message::Binary(frame.into())).await;
         }
         // The connection is over whether or not the close reaches the runner.

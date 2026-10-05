@@ -318,6 +318,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     // stricter one (`process::umask`).
     #[cfg(unix)]
     let _umask = demi_runner_process::process::umask();
+    let installation_directory = directory.clone();
     let options = Options {
         backend,
         log: log.reader(),
@@ -366,19 +367,20 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         },
     };
     // Past this point the log holds what went wrong, and the console hears it.
-    let (code, successor) = match outcome {
-        Ok(Ending::Stopped) => (0, None),
-        Ok(Ending::Replaced(successor)) => (0, Some(successor)),
-        Err(error) => {
-            tracing::error!("{error}");
-            (1, None)
-        }
-    };
-    log.close().await;
-    if let Some(successor) = successor {
-        successor.start()?;
+    if let Err(error) = &outcome {
+        tracing::error!("{error}");
     }
-    Ok(code)
+    log.close().await;
+    match outcome {
+        Ok(Ending::Stopped) => {}
+        Ok(Ending::Replaced(successor)) => successor.start()?,
+        Ok(Ending::Removed) => {
+            eprintln!("demi-runner: this device was revoked; removing this runner");
+            removal::remove(&installation_directory)?;
+        }
+        Err(_) => return Ok(1),
+    }
+    Ok(0)
 }
 
 fn identity(home_dir: String) -> io::Result<wire::HostIdentity> {
