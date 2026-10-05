@@ -7,6 +7,11 @@ pub mod image;
 mod state;
 mod wire;
 
+/// The format of the manager's state directory's records, which
+/// `<data>/format` names (`managed-hosts.md` § Startup and recovery). A
+/// release that changes a record raises it and migrates the earlier formats.
+pub const STATE_FORMAT: u32 = 1;
+
 pub use state::{
     BaseVersion, DeviceId, GenerationId, IdError, MachineImageState, RuntimeState, Volume,
     is_image_name,

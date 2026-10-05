@@ -63,18 +63,41 @@ mod service {
         preflight, recovery,
         sandbox::cgroup,
         server::{self, Socket},
-        storage::{base, durable},
+        storage::{base, durable, state, store::ImageStore},
         tools::Tools,
     };
     use tokio::signal::unix::{SignalKind, signal};
 
     type Failure = Box<dyn Error>;
 
+    /// Imports the configured release's image beside a running manager, as
+    /// an upgrade does before it stops that manager (`upgrades.md`
+    /// § Prepare), and prints its base version. Bases are immutable
+    /// directories published under their own names, and a running manager
+    /// reads none it was not configured with, so the import takes none of
+    /// the manager's locks and needs no private namespace.
+    async fn import(config: Config) -> Result<(), Failure> {
+        let runsc = config.runsc.clone();
+        let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;
+        let bases = ImageStore::new(config.images()).bases();
+        let data = config.data.clone();
+        blocking::run(move |off| durable::create_private(off, &data)).await?;
+        let base = base::import(&tools, &config.image, &bases).await?;
+        println!("{base}");
+        Ok(())
+    }
+
     /// Deaths waiting for the server's fan-out, which takes them at once.
     const DEATHS: usize = 64;
 
     pub async fn run(config: Config) -> Result<(), Failure> {
+        if config.mode == Mode::CheckConfig {
+            return Ok(());
+        }
         preflight::require_root()?;
+        if config.mode == Mode::Import {
+            return import(config).await;
+        }
         blocking::run(preflight::require_private_namespace).await?;
         let runsc = config.runsc.clone();
         let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;
@@ -86,6 +109,7 @@ mod service {
             durable::create_private(off, &runtime)
         })
         .await?;
+        state::require_format(&core.config.data).await?;
         if core.config.mode == Mode::RecoverNamespace {
             // The manager that started this process holds the locks and
             // waits for it, inside the namespace it recovers.
