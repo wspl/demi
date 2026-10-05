@@ -1,17 +1,18 @@
 //! The pinned Chrome for Testing release (`browser.md` § Browser
 //! distribution): `install` asks the runner to install it from its official
 //! URL over the artifacts stream (`native-runtime.md` § The artifacts
-//! stream), and every other command starts it only from an installation the
-//! runner already holds. Nothing here downloads Chrome itself.
+//! stream), following how the download goes, and every other command starts
+//! it only from an installation the runner already holds. Nothing here
+//! downloads Chrome itself.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use demi_command_package_browser_protocol::browser::InstallResult;
 use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease, ReleasePlatform};
-use demi_command_protocol::{ArtifactForm, ArtifactInstall, host_target};
+use demi_command_protocol::{ArtifactForm, ArtifactInstall, ArtifactProgress, host_target};
 use demi_command_sdk::Artifacts;
-use tokio::sync::watch;
+use tokio::sync::{mpsc, watch};
 
 use crate::driver::operation::{BrowserError, Result};
 use crate::driver::requirements;
@@ -39,7 +40,12 @@ impl Chrome {
 
     /// Installs the pinned release for `invocation` from its official URL,
     /// unless the Host has it, and names what the Host still lacks for it.
-    pub async fn install(&self, invocation: &str) -> Result<InstallResult> {
+    /// How its download goes reaches `progress`.
+    pub async fn install(
+        &self,
+        invocation: &str,
+        progress: mpsc::Sender<ArtifactProgress>,
+    ) -> Result<InstallResult> {
         let release = release()?;
         let platform = platform(&release)?;
         let install = ArtifactInstall {
@@ -53,7 +59,7 @@ impl Chrome {
             },
             url: Some(platform.url.clone()),
         };
-        let path = self.source()?.install(install).await.map_err(|error| {
+        let path = self.source()?.install(install, Some(progress)).await.map_err(|error| {
             BrowserError::Installation(format!("{} could not be installed: {error}", release.title()))
         })?;
         let missing = requirements::missing(&path, &platform.executable)?;
@@ -145,6 +151,18 @@ fn platform(release: &BrowserRelease) -> Result<&ReleasePlatform> {
             host_target()
         ))
     })
+}
+
+/// The line `install` prints for `progress` of the pinned release
+/// (`browser.md` § Installation).
+pub fn progress_line(progress: ArtifactProgress) -> Result<String> {
+    let release = release()?;
+    let platform = platform(&release)?;
+    Ok(crate::driver::text::install_progress(
+        &release.title(),
+        platform.size,
+        progress,
+    ))
 }
 
 /// The pinned release's version, such as `153.0.8010.36`.

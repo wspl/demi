@@ -1,7 +1,7 @@
 //! Deliberately faulty operations available only in native integration tests.
 use bytes::Bytes;
 use demi_command_protocol::{
-    ArtifactForm, ArtifactInstall, Completion, ConversationRequest, Invocation, ServiceSequence,
+    ArtifactForm, ArtifactInstall, ArtifactProgress, Completion, ConversationRequest, Invocation, ServiceSequence,
 };
 use demi_command_sdk::{
     Artifacts, ConversationContext, Handler, InvocationContext, Numbers, ServiceError,
@@ -60,7 +60,8 @@ impl Handler for Fixture {
             match context.request.operation.as_str() {
                 // Installs the file of the arguments' `sha256` and `size`
                 // from their `url`, as a program installs software from its
-                // official source, and prints its path.
+                // official source, and prints how many bytes had arrived at
+                // each report of its download, one line each, then its path.
                 "install" => {
                     let artifacts =
                         artifacts.ok_or_else(|| ServiceError::failed("no artifacts source"))?;
@@ -75,11 +76,17 @@ impl Handler for Fixture {
                         form: ArtifactForm::File,
                         url: text("url"),
                     };
-                    let path = artifacts.install(install).await?;
-                    context
-                        .output
-                        .stdout(Bytes::from(path.to_string_lossy().into_owned()))
-                        .await?;
+                    let (progress, mut reports) = Artifacts::progress();
+                    let path = artifacts.install(install, Some(progress)).await?;
+                    let mut printed = String::new();
+                    // Every report comes before the answer.
+                    while let Ok(report) = reports.try_recv() {
+                        if let ArtifactProgress::Download { done } = report {
+                            printed.push_str(&format!("{done}\n"));
+                        }
+                    }
+                    printed.push_str(&path.to_string_lossy());
+                    context.output.stdout(Bytes::from(printed)).await?;
                 }
                 // Draws `count` tab numbers of the invoking conversation, one
                 // by default, and prints the first.

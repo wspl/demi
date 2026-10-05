@@ -18,7 +18,7 @@
 use std::time::Duration;
 
 use demi_command_protocol::{ArtifactForm, PackageArtifact};
-use demi_runner_command_packages::cache::{ArtifactCache, Wanted};
+use demi_runner_command_packages::cache::{ArtifactCache, SILENT, Wanted};
 use demi_runner_command_packages::{ArtifactResolver, ArtifactSource, RuntimeError};
 use tokio_util::sync::CancellationToken;
 
@@ -96,7 +96,7 @@ async fn install_by_hand(cache: &std::path::Path, version: &str) -> String {
     };
     let resolver = Local(source.path().to_owned());
     let path = cache
-        .install(&wanted, &resolver, &CancellationToken::new())
+        .install(&wanted, &resolver, SILENT, &CancellationToken::new())
         .await
         .unwrap();
     path.to_string_lossy().into_owned()

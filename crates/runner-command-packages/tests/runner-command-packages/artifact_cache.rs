@@ -1,12 +1,13 @@
 //! The verified artifact cache (`native-runtime.md` § Install artifacts,
 //! § The cache): a miss downloads and verifies, a hit asks nobody, nothing
-//! partial or mismatched is ever published, and a newer version of a line
-//! replaces the older ones no running service holds.
+//! partial or mismatched is ever published, a download reports how it goes,
+//! and a newer version of a line replaces the older ones no running service
+//! holds.
 
-use demi_command_protocol::{ArtifactForm, PackageArtifact};
+use demi_command_protocol::{ArtifactForm, ArtifactProgress, PackageArtifact};
 use demi_runner_command_packages::{
     ArtifactResolver, ArtifactSource, RuntimeError,
-    cache::{ArtifactCache, Wanted},
+    cache::{ArtifactCache, SILENT, Wanted},
 };
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
@@ -80,7 +81,7 @@ async fn a_cached_file_is_reused_without_asking_and_one_of_another_size_fails() 
     let cache = cache(root.path()).await;
     let cancel = CancellationToken::new();
     let wanted = file("program", "1.0.0", bytes);
-    let path = cache.install(&wanted, &resolver, &cancel).await.unwrap();
+    let path = cache.install(&wanted, &resolver, SILENT, &cancel).await.unwrap();
     assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
     #[cfg(unix)]
     {
@@ -89,12 +90,12 @@ async fn a_cached_file_is_reused_without_asking_and_one_of_another_size_fails() 
         assert_eq!(mode & 0o111, 0o111, "the cached file runs");
     }
     assert_eq!(
-        cache.install(&wanted, &resolver, &cancel).await.unwrap(),
+        cache.install(&wanted, &resolver, SILENT, &cancel).await.unwrap(),
         path
     );
     assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
     tokio::fs::write(&path, b"corrupt cache").await.unwrap();
-    let result = cache.install(&wanted, &resolver, &cancel).await;
+    let result = cache.install(&wanted, &resolver, SILENT, &cancel).await;
     assert!(
         matches!(
             result,
@@ -119,6 +120,7 @@ async fn a_mismatched_or_cancelled_install_leaves_nothing_behind() {
         .install(
             &file("program", "1.0.0", b"small"),
             &resolver,
+            SILENT,
             &CancellationToken::new(),
         )
         .await;
@@ -132,6 +134,7 @@ async fn a_mismatched_or_cancelled_install_leaves_nothing_behind() {
         .install(
             &file("program", "1.0.0", b"too much data"),
             &resolver,
+            SILENT,
             &cancel,
         )
         .await;
@@ -147,15 +150,21 @@ async fn a_mismatched_or_cancelled_install_leaves_nothing_behind() {
     );
 }
 
-/// An archive is unpacked into the cache, which a second install takes
-/// unread.
+/// An archive's download reports each tenth of its size once, then its
+/// unpacking (`native-runtime.md` § Install artifacts); it is unpacked into
+/// the cache, which a second install takes unread and reports nothing of.
 #[tokio::test]
-async fn an_archive_is_unpacked_once() {
+async fn an_archive_reports_its_download_by_tenths_and_is_unpacked_once() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("chrome.zip");
+    // About a megabyte that does not compress, so the copy writes it in
+    // many pieces, each well under a tenth.
+    let license: Vec<u8> = (0u32..32_768)
+        .flat_map(|block| Sha256::digest(block.to_le_bytes()))
+        .collect();
     let bytes = demi_shared_artifacts::testing::zip(&[
         ("chrome-linux64/chrome", b"chrome"),
-        ("chrome-linux64/LICENSE", b"license"),
+        ("chrome-linux64/LICENSE", &license),
     ]);
     tokio::fs::write(&source, &bytes).await.unwrap();
     let resolver = Resolver::at(source);
@@ -171,7 +180,28 @@ async fn an_archive_is_unpacked_once() {
         form: &form,
     };
     let cancel = CancellationToken::new();
-    let entry = cache.install(&wanted, &resolver, &cancel).await.unwrap();
+    let reported = std::sync::Mutex::new(Vec::new());
+    let report = |progress| reported.lock().unwrap().push(progress);
+    let entry = cache
+        .install(&wanted, &resolver, &report, &cancel)
+        .await
+        .unwrap();
+    let size = wanted.artifact.size;
+    let reported = std::mem::take(&mut *reported.lock().unwrap());
+    let (unpack, downloads) = reported.split_last().unwrap();
+    assert_eq!(*unpack, ArtifactProgress::Unpack);
+    let tenths: Vec<u64> = downloads
+        .iter()
+        .map(|progress| match progress {
+            ArtifactProgress::Download { done } => done * 10 / size,
+            ArtifactProgress::Unpack => panic!("unpacking before the download ends"),
+        })
+        .collect();
+    assert_eq!(tenths, (1..=10).collect::<Vec<_>>());
+    assert_eq!(
+        downloads.last(),
+        Some(&ArtifactProgress::Download { done: size })
+    );
     assert_eq!(
         entry,
         root.path()
@@ -180,10 +210,16 @@ async fn an_archive_is_unpacked_once() {
             .join("chrome-linux64/chrome")
     );
     assert_eq!(tokio::fs::read(&entry).await.unwrap(), b"chrome");
+    let again = std::sync::Mutex::new(Vec::new());
+    let report = |progress| again.lock().unwrap().push(progress);
     assert_eq!(
-        cache.install(&wanted, &resolver, &cancel).await.unwrap(),
+        cache
+            .install(&wanted, &resolver, &report, &cancel)
+            .await
+            .unwrap(),
         entry
     );
+    assert_eq!(*again.lock().unwrap(), []);
     assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
 }
 
@@ -201,13 +237,13 @@ async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
         tokio::fs::write(&source, bytes).await.unwrap();
         let resolver = Resolver::at(source);
         let wanted = file("Claude Code", version, bytes);
-        paths.push(cache.install(&wanted, &resolver, &cancel).await.unwrap());
+        paths.push(cache.install(&wanted, &resolver, SILENT, &cancel).await.unwrap());
     }
     let other_source = root.path().join("other");
     tokio::fs::write(&other_source, b"program").await.unwrap();
     let other = file("program", "0.1.3", b"program");
     let other_path = cache
-        .install(&other, &Resolver::at(other_source), &cancel)
+        .install(&other, &Resolver::at(other_source), SILENT, &cancel)
         .await
         .unwrap();
     assert!(!paths[0].exists(), "version 1 is replaced");
@@ -226,7 +262,7 @@ async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
     tokio::fs::write(&three, b"cli three").await.unwrap();
     let wanted = file("Claude Code", "3", b"cli three");
     cache
-        .install(&wanted, &Resolver::at(three), &cancel)
+        .install(&wanted, &Resolver::at(three), SILENT, &cancel)
         .await
         .unwrap();
     let listed: Vec<String> = cache
@@ -240,7 +276,7 @@ async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
     assert!(paths[1].exists());
     drop(held);
     cache
-        .install(&wanted, &Resolver::at(root.path().join("3")), &cancel)
+        .install(&wanted, &Resolver::at(root.path().join("3")), SILENT, &cancel)
         .await
         .unwrap();
     assert!(!paths[1].exists(), "version 2 goes once nothing holds it");

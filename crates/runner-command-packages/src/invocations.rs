@@ -13,7 +13,7 @@ use futures_util::future::BoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use crate::{ArtifactResolver, ArtifactSource, RuntimeError};
-use crate::cache::{ArtifactCache, Hold, Wanted};
+use crate::cache::{ArtifactCache, Hold, Progress, Wanted};
 
 /// The invocations running now, by id: the package each runs in, the
 /// resolver of the work it serves, and a token its end cancels. Cloning
@@ -95,7 +95,13 @@ pub(crate) struct ServiceArtifacts {
 }
 
 impl ServiceArtifacts {
-    pub(crate) async fn answer(&self, ask: ArtifactAsk) -> Result<ArtifactReply, String> {
+    /// Answers `ask`; an install reports how its download goes to
+    /// `progress` before it is answered.
+    pub(crate) async fn answer(
+        &self,
+        ask: ArtifactAsk,
+        progress: Progress<'_>,
+    ) -> Result<ArtifactReply, String> {
         match ask {
             ArtifactAsk::Install(install) => {
                 let invocation = self
@@ -127,7 +133,7 @@ impl ServiceArtifacts {
                 };
                 let path = self
                     .cache
-                    .install(&wanted, resolver, &invocation.ended)
+                    .install(&wanted, resolver, progress, &invocation.ended)
                     .await
                     .map_err(|error| error.to_string())?;
                 self.held.lock().expect("the holds are intact").push(hold);
