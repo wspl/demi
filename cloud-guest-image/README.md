@@ -7,8 +7,8 @@ format, the build pipeline, import, and acceptance;
 
 A build runs as root on a Linux builder of the image's architecture.
 `rootfs/build.sh` makes the Ubuntu tree, then runs `xtask cloud-image package`,
-which embeds the runner release, the command packages, Chrome for Testing, and
-uv, and publishes the release. The image goes into the `image/` directory of
+which embeds the runner release, the command packages' executables and uv,
+and publishes the release. The image goes into the `image/` directory of
 the [server release](../docs/delivery/builds-and-releases.md#server-release)
 whose runner and command package releases it embeds. The release workflow
 builds the published images this way on its `ubuntu-26.04` and
@@ -25,6 +25,7 @@ target for its own runner:
 ```sh
 cargo xtask native build --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
 cargo xtask server-release --output .cache/release-<build> \
+  --files .cache/release-<build>-files \
   --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
 cargo zigbuild --release --locked -p xtask \
   --target aarch64-unknown-linux-musl --target-dir .cache/native-target
@@ -36,14 +37,14 @@ util-linux installed:
 ```sh
 sudo bash cloud-guest-image/rootfs/build.sh \
   --xtask .cache/native-target/aarch64-unknown-linux-musl/release/xtask \
-  --runners .cache/release-<build>/runners \
-  --package .cache/release-<build>/commands/demi-file \
-  --package .cache/release-<build>/commands/demi-browser \
-  --package .cache/release-<build>/commands/demi-claude-code \
+  --release .cache/release-<build> --files .cache/release-<build>-files \
   --output <root on the builder>/image
 ```
 
-`--output` names a new directory on a Linux filesystem: a release is
+`--release` names the server release whose runner and command packages the
+image embeds, and `--files` the directory of its files, from which the build
+takes the image target's programs and checks each against the release's
+manifests. `--output` names a new directory on a Linux filesystem: a release is
 immutable, so every build publishes a new one. When the server release lies
 on a Linux filesystem of the builder, the output is its own `image/`; a root
 on a shared Mac directory cannot hold it, so the builder's manager gets a root

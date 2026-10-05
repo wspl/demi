@@ -96,6 +96,15 @@ page                         backend (panel, plugin-browser)            Host
  view: watch t3 ◀═══════════════════ browser user stream ═════════════▶ pictures, tab list
 ```
 
+- **Availability.** A browser tab needs the browser on the conversation's
+  Host. The plugin compares the Host's installed artifacts
+  ([Installed artifacts](../execution/native-runtime.md#installed-artifacts))
+  with the version its package pins. When the Host lacks it, the strip's
+  control to create a browser tab is disabled and says why: `No browser on
+  this Host. Ask the agent to run demi browser install.` The user cannot
+  install it from the page; the agent installs it
+  ([Browser distribution](browser.md#browser-distribution)). Tabs already
+  open stay as they are.
 - **Opening.** The strip's control creates a tab with `url: 'about:blank'`
   and selects it. Its content shows at once what a new tab is: the address
   bar on `about:blank` and a blank page
