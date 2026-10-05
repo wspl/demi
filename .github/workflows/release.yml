@@ -1,0 +1,249 @@
+# Builds a release and publishes it as a GitHub release
+# (docs/delivery/builds-and-releases.md § Release workflow). A tag
+# v<workspace version> publishes that release; a manual start builds the
+# workspace version into a draft. Each platform's targets build natively on
+# the newest free standard runner of that platform, and every step is a
+# command of the repository: the workflow only orders them and carries files
+# between jobs.
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  # The cross tools' pins, as scripts/native/Dockerfile names them.
+  ZIG_VERSION: "0.15.2"
+  CARGO_ZIGBUILD_VERSION: "0.23.4"
+
+jobs:
+  version:
+    name: Version
+    runs-on: ubuntu-26.04
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: version
+        name: Check the version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          [ -n "$version" ] || { echo 'no workspace version in Cargo.toml' >&2; exit 1; }
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            [ "$GITHUB_REF_NAME" = "v$version" ] || {
+              echo "the tag $GITHUB_REF_NAME does not name the workspace version $version" >&2
+              exit 1
+            }
+          elif gh release view "v$version" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            echo "v$version has a release already: a published version is immutable" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.name }}
+    needs: version
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - name: macos
+            runner: macos-26
+            arguments: --target aarch64-apple-darwin --target x86_64-apple-darwin
+          - name: linux-x86_64
+            runner: ubuntu-26.04
+            arguments: >-
+              --target x86_64-unknown-linux-musl
+              --package demi-runner --package demi-file --package demi-browser
+              --package demi-claude-code --package demi-backend --package demi-machine-manager
+          - name: linux-arm64
+            runner: ubuntu-26.04-arm
+            arguments: >-
+              --target aarch64-unknown-linux-musl
+              --package demi-runner --package demi-file --package demi-browser
+              --package demi-claude-code --package demi-backend --package demi-machine-manager
+          - name: windows-x86_64
+            runner: windows-2025
+            msvc: amd64
+            arguments: --target x86_64-pc-windows-msvc
+          - name: windows-arm64
+            runner: windows-11-arm
+            msvc: arm64
+            arguments: --target aarch64-pc-windows-msvc
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Zig and cargo-zigbuild
+        if: runner.os == 'Linux'
+        run: |
+          python3 -m pip install --user --break-system-packages "ziglang==$ZIG_VERSION"
+          cargo install --locked cargo-zigbuild --version "$CARGO_ZIGBUILD_VERSION"
+      - name: Select the pinned Apple SDK
+        if: runner.os == 'macOS'
+        run: echo "SDKROOT=$(xcrun --sdk macosx --show-sdk-path)" >> "$GITHUB_ENV"
+      - name: Enter the Visual Studio environment
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.msvc }}
+      - name: Build
+        run: cargo xtask native build ${{ matrix.arguments }}
+      - name: Collect the executables
+        run: |
+          cd .cache/native-target
+          find . -maxdepth 3 -type f -path '*/release/demi-*' \
+            ! -name '*.d' ! -name '*.pdb' -print > "$RUNNER_TEMP/built"
+          tar -cf "$GITHUB_WORKSPACE/native-${{ matrix.name }}.tar" -T "$RUNNER_TEMP/built"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.name }}
+          path: native-${{ matrix.name }}.tar
+          retention-days: 1
+
+  web:
+    name: Web app
+    needs: version
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v5
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run web:build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: packages/web/dist
+          retention-days: 1
+
+  server-release:
+    name: Server release
+    needs: [version, build, web]
+    runs-on: ubuntu-26.04
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: native-*
+          path: ${{ runner.temp }}/native
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: ${{ runner.temp }}/web
+      - name: Gather the executables
+        run: |
+          mkdir -p .cache/native-target
+          for archive in "$RUNNER_TEMP"/native/native-*.tar; do
+            tar -xf "$archive" -C .cache/native-target
+          done
+      - name: Assemble the roots
+        run: |
+          mkdir -p dist
+          for pair in amd64:x86_64-unknown-linux-musl arm64:aarch64-unknown-linux-musl; do
+            arch=${pair%%:*}
+            target=${pair#*:}
+            root="$RUNNER_TEMP/roots/$arch"
+            cargo xtask server-release --publish --output "$root" \
+              --server "$target" --web "$RUNNER_TEMP/web"
+            tar --zstd -cf "dist/demi-$VERSION-server-linux-$arch.tar.zst" -C "$root" .
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: server
+          path: dist
+          retention-days: 1
+
+  image:
+    name: Image ${{ matrix.arch }}
+    needs: [version, server-release]
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-26.04
+          - arch: arm64
+            runner: ubuntu-26.04-arm
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: server
+          path: ${{ runner.temp }}/server
+      - name: Unpack the root
+        run: |
+          mkdir "$RUNNER_TEMP/root"
+          tar --zstd -xf "$RUNNER_TEMP/server/demi-$VERSION-server-linux-${{ matrix.arch }}.tar.zst" \
+            -C "$RUNNER_TEMP/root"
+      - name: Build xtask for this builder
+        run: cargo build --locked -p xtask
+      - name: Build the image
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y debootstrap
+          root="$RUNNER_TEMP/root"
+          sudo bash cloud-guest-image/rootfs/build.sh \
+            --xtask target/debug/xtask \
+            --runners "$root/runners" \
+            --package "$root/commands/demi-file" \
+            --package "$root/commands/demi-browser" \
+            --package "$root/commands/demi-claude-code" \
+            --work "$RUNNER_TEMP/work" \
+            --output "$RUNNER_TEMP/out/image"
+          mkdir -p dist
+          tar -cf "dist/demi-$VERSION-image-linux-${{ matrix.arch }}.tar" -C "$RUNNER_TEMP/out" image
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-${{ matrix.arch }}
+          path: dist
+          retention-days: 1
+
+  publish:
+    name: Publish
+    needs: [version, server-release, image]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.version.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: server
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: image-*
+          path: dist
+          merge-multiple: true
+      - name: Publish the release
+        run: |
+          cd dist
+          sha256sum demi-* > SHA256SUMS
+          if [ "$GITHUB_EVENT_NAME" = push ]; then
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "Demi $VERSION" --generate-notes ./*
+          else
+            gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --draft \
+              --target "$GITHUB_SHA" --title "Demi $VERSION" --generate-notes ./*
+          fi

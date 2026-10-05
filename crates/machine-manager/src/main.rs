@@ -116,7 +116,7 @@ mod service {
         let base = base::import(&core.tools, &core.config.image, &core.store.bases()).await?;
         namespace.pin().await?;
         preflight::probe_storage(&core).await?;
-        let socket_path = core.config.socket.clone().expect("serving has a socket");
+        let socket_path = core.config.socket.clone();
         let socket = Socket::bind(&socket_path).await?;
         let (deaths, received) = tokio::sync::mpsc::channel(DEATHS);
         let manager = Rc::new(Manager::new(core.clone(), base, deaths));

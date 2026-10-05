@@ -3,9 +3,9 @@
 
 pub(crate) mod secret;
 
-use std::net::{Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use demi_shared_types::{Clock, SystemClock};
@@ -14,6 +14,7 @@ use tracing_subscriber::filter::Targets;
 use url::Url;
 
 use demi_backend_accounts::email_change::AccountMail;
+use demi_backend_blobs::store::{S3Config, Storage};
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL;
@@ -36,22 +37,25 @@ use self::secret::InstanceSecret;
 #[derive(clap::Parser)]
 #[command(name = "demi-backend", version, about = "The Demi product server")]
 pub struct Config {
+    /// The server release root [default: the directory above the one that
+    /// holds this executable]
+    #[arg(long, env = "DEMI_RELEASE", value_name = "DEMI_RELEASE")]
+    pub release: Option<PathBuf>,
     /// The data directory [default: ~/.demi/backend]
     #[arg(long, env = "DEMI_BACKEND_DATA", value_name = "DEMI_BACKEND_DATA")]
     pub data: Option<PathBuf>,
-    /// The TCP port the backend listens on, 1 to 65535
+    /// The address and port the backend listens on
     #[arg(
         long,
-        env = "DEMI_BACKEND_PORT",
-        value_name = "DEMI_BACKEND_PORT",
-        default_value_t = 3271,
-        value_parser = clap::value_parser!(u16).range(1..)
+        env = "DEMI_BACKEND_LISTEN",
+        value_name = "DEMI_BACKEND_LISTEN",
+        default_value = "0.0.0.0:3271"
     )]
-    pub port: u16,
+    pub listen: SocketAddr,
     /// `shared` or `isolated`: who configures providers
     #[arg(long, env = "DEMI_INSTANCE_MODE", value_name = "DEMI_INSTANCE_MODE")]
     pub mode: InstanceMode,
-    /// The URL runners and Cloud guests connect to
+    /// The URL browsers, runners and Cloud guests reach the backend at
     #[arg(
         long,
         env = "DEMI_BACKEND_PUBLIC_URL",
@@ -62,19 +66,35 @@ pub struct Config {
     #[arg(
         long,
         env = "DEMI_MACHINE_MANAGER_SOCKET",
-        value_name = "DEMI_MACHINE_MANAGER_SOCKET"
+        value_name = "DEMI_MACHINE_MANAGER_SOCKET",
+        default_value = "/run/demi-cloud/machines.sock"
     )]
     pub machines_socket: PathBuf,
-    /// The native command releases and the object storage they are published to
-    #[arg(long, env = "DEMI_NATIVE_CONFIG", value_name = "DEMI_NATIVE_CONFIG")]
-    pub native_config: PathBuf,
-    /// A JSON file that puts the object store in an S3 bucket
+    /// Where the one object store lives: `local`, the data directory, or `s3`
     #[arg(
         long,
-        env = "DEMI_OBJECT_STORE_CONFIG",
-        value_name = "DEMI_OBJECT_STORE_CONFIG"
+        env = "DEMI_STORAGE",
+        value_name = "DEMI_STORAGE",
+        default_value = "local"
     )]
-    pub object_store_config: Option<PathBuf>,
+    pub storage: StorageKind,
+    /// The S3 store's bucket
+    #[arg(long, env = "DEMI_S3_BUCKET", value_name = "DEMI_S3_BUCKET")]
+    pub s3_bucket: Option<String>,
+    /// The S3 store's region
+    #[arg(long, env = "DEMI_S3_REGION", value_name = "DEMI_S3_REGION")]
+    pub s3_region: Option<String>,
+    /// An HTTPS endpoint of an S3-compatible service [default: the region's AWS endpoint]
+    #[arg(long, env = "DEMI_S3_ENDPOINT", value_name = "DEMI_S3_ENDPOINT")]
+    pub s3_endpoint: Option<Url>,
+    /// `true` names the bucket in the request path instead of the host name [default: false]
+    #[arg(
+        long,
+        env = "DEMI_S3_FORCE_PATH_STYLE",
+        value_name = "DEMI_S3_FORCE_PATH_STYLE",
+        action = clap::ArgAction::Set
+    )]
+    pub s3_force_path_style: Option<bool>,
     /// The instance secret as 64 hexadecimal digits [default: generated into the data directory]
     #[arg(
         long,
@@ -86,16 +106,6 @@ pub struct Config {
     /// The domain of expose hostnames; without it, exposes are unavailable
     #[arg(long, env = "DEMI_EXPOSE_DOMAIN", value_name = "DEMI_EXPOSE_DOMAIN")]
     pub expose_domain: Option<ExposeDomain>,
-    /// The web app build's directory, to serve beside the API
-    #[arg(long, env = "DEMI_WEB_DIRECTORY", value_name = "DEMI_WEB_DIRECTORY")]
-    pub web_directory: Option<PathBuf>,
-    /// The runner releases the installer routes serve
-    #[arg(
-        long,
-        env = "DEMI_RUNNER_RELEASE_DIR",
-        value_name = "DEMI_RUNNER_RELEASE_DIR"
-    )]
-    pub runner_release_dir: Option<PathBuf>,
     /// The Claude Code distribution whose newest release the CLI on each Cloud follows
     #[arg(
         long,
@@ -115,11 +125,22 @@ pub struct Config {
     pub log: Targets,
 }
 
+/// Where the one object store lives (`storage.md` § The object store).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum StorageKind {
+    Local,
+    S3,
+}
+
 /// A configuration value clap cannot check by itself.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("DEMI_BACKEND_DATA is not set and the home directory is unknown")]
     NoDataDirectory,
+    #[error("DEMI_RELEASE is not set and the executable's directory is unknown: {0}")]
+    NoRelease(std::io::Error),
+    #[error("DEMI_BACKEND_LISTEN must name a port, not 0")]
+    ListenPort,
     /// The value itself is secret, so the error leaves it out.
     #[error("DEMI_INSTANCE_SECRET must be 64 hexadecimal digits")]
     InstanceSecret,
@@ -127,12 +148,70 @@ pub enum ConfigError {
         "DEMI_BACKEND_PUBLIC_URL must be an HTTP or HTTPS URL without a user, a password, a query or a fragment"
     )]
     PublicUrl,
+    #[error("DEMI_STORAGE=s3 needs {0}")]
+    S3Missing(&'static str),
+    #[error("{0} names an S3 bucket, and DEMI_STORAGE is local")]
+    S3Unused(&'static str),
+    #[error("{0}")]
+    S3(#[from] demi_backend_blobs::store::S3ConfigError),
 }
 
 impl Config {
-    /// What `Backend::start` takes, for this configuration on the system
-    /// clock and one shard thread.
-    pub fn backend(&self) -> Result<BackendConfig, ConfigError> {
+    /// The server release root (`builds-and-releases.md` § Server release):
+    /// `DEMI_RELEASE`, or the directory above the one that holds this
+    /// executable.
+    pub fn release(&self) -> Result<PathBuf, ConfigError> {
+        if let Some(release) = &self.release {
+            return Ok(release.clone());
+        }
+        let executable = std::env::current_exe().map_err(ConfigError::NoRelease)?;
+        executable
+            .parent()
+            .and_then(Path::parent)
+            .map(Path::to_owned)
+            .ok_or_else(|| {
+                ConfigError::NoRelease(std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "the executable lies in no directory of a release",
+                ))
+            })
+    }
+
+    /// The object store the `DEMI_STORAGE` and `DEMI_S3_*` settings name.
+    fn storage(&self) -> Result<Storage, ConfigError> {
+        let named = [
+            ("DEMI_S3_BUCKET", self.s3_bucket.is_some()),
+            ("DEMI_S3_REGION", self.s3_region.is_some()),
+            ("DEMI_S3_ENDPOINT", self.s3_endpoint.is_some()),
+            ("DEMI_S3_FORCE_PATH_STYLE", self.s3_force_path_style.is_some()),
+        ];
+        match self.storage {
+            StorageKind::Local => match named.iter().find(|(_, set)| *set) {
+                Some((name, _)) => Err(ConfigError::S3Unused(name)),
+                None => Ok(Storage::Local),
+            },
+            StorageKind::S3 => {
+                let config = S3Config {
+                    bucket: self
+                        .s3_bucket
+                        .clone()
+                        .ok_or(ConfigError::S3Missing("DEMI_S3_BUCKET"))?,
+                    region: self
+                        .s3_region
+                        .clone()
+                        .ok_or(ConfigError::S3Missing("DEMI_S3_REGION"))?,
+                    endpoint: self.s3_endpoint.clone(),
+                    force_path_style: self.s3_force_path_style.unwrap_or(false),
+                };
+                config.check()?;
+                Ok(Storage::S3(config))
+            }
+        }
+    }
+
+    /// What `Backend::start` takes, for this configuration and its server
+    /// release root `release`, on the system clock and one shard thread.
+    pub fn backend(&self, release: &Path) -> Result<BackendConfig, ConfigError> {
         let data_dir = match &self.data {
             Some(data) => data.clone(),
             None => std::env::home_dir()
@@ -140,6 +219,9 @@ impl Config {
                 .join(".demi")
                 .join("backend"),
         };
+        if self.listen.port() == 0 {
+            return Err(ConfigError::ListenPort);
+        }
         let instance_secret = self
             .instance_secret
             .as_deref()
@@ -150,18 +232,22 @@ impl Config {
             .transpose()?;
         let mut config = BackendConfig::new(
             data_dir,
-            SocketAddr::from((Ipv4Addr::UNSPECIFIED, self.port)),
+            self.listen,
             self.mode,
             self.machines_socket.clone(),
         );
         config.instance_secret = instance_secret;
-        config.web_directory = self.web_directory.clone();
+        config.storage = self.storage()?;
+        // A root serves the parts it holds: a developer's has no web app,
+        // which Vite serves instead.
+        let web = release.join("web");
+        config.web_directory = web.is_dir().then_some(web);
+        let runners = release.join("runners");
+        config.runner_releases = runners.is_dir().then_some(runners);
         config.expose_domain = self.expose_domain.clone();
         let public_url = demi_backend_runners::install::backend_url(&self.public_url)
             .map_err(|_| ConfigError::PublicUrl)?;
         config.public_url = Some(public_url);
-        config.runner_releases = self.runner_release_dir.clone();
-        config.object_store = self.object_store_config.clone();
         config.claude_releases = self.claude_releases_url.clone();
         Ok(config)
     }
@@ -190,9 +276,8 @@ pub struct BackendConfig {
     /// The runner releases the installer routes serve; without them, the
     /// installers answer 503.
     pub runner_releases: Option<PathBuf>,
-    /// The JSON file that puts the object store in an S3 bucket; without it,
-    /// the data directory holds it.
-    pub object_store: Option<PathBuf>,
+    /// Where the one object store lives.
+    pub storage: Storage,
     /// The instance secret; without it, the one in the data directory, which
     /// the first start creates.
     pub instance_secret: Option<InstanceSecret>,
@@ -253,7 +338,7 @@ impl BackendConfig {
             public_url: None,
             expose_domain: None,
             runner_releases: None,
-            object_store: None,
+            storage: Storage::Local,
             instance_secret: None,
             account_mail: None,
             clock: Arc::new(SystemClock),
@@ -270,8 +355,8 @@ impl BackendConfig {
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),
             pages: PageTuning::default(),
-            // The product's start publishes the releases `DEMI_NATIVE_CONFIG`
-            // names and sets the catalog of them.
+            // The product's start publishes its server release's
+            // `commands/` and sets the catalog of them.
             native: NativeCatalog::unpublished(),
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),

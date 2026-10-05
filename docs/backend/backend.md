@@ -427,13 +427,14 @@ At startup the backend:
 
 1. Reads its configuration and validates all of it; an error names the
    variable ([Configuration](#configuration)).
-2. Opens the data directory, loads the instance secret, and opens the object
-   store ([The object store](storage.md#the-object-store)).
+2. Opens the data directory and the object store
+   ([The object store](storage.md#the-object-store)).
 3. Loads the command package releases of its server release and publishes
    their artifacts into the object store
    ([Native runtime](../execution/native-runtime.md#publish-artifacts-before-enabling-commands)).
    An interrupt or termination signal during publication stops the start.
-4. Opens the control database; a new database receives its schema.
+4. Loads the instance secret and opens the control database; a new database
+   receives its schema.
 5. Starts the shared services, among them the plugin host, which checks
    every plugin's manifest against the others and the native catalog; a
    manifest that breaks a rule stops the start and the error names the plugin
@@ -584,15 +585,15 @@ For example, on an x86_64 Linux machine that is also its own Cloud's
 execution host, the Hosts in use are the machine as a paired device and the
 Cloud guest, and both run `x86_64-unknown-linux-musl`:
 
-1. Build the runner, the command programs and the machine manager for that
-   target, and assemble a server release of it
+1. Build the runner, the command programs, the backend and the machine
+   manager for that target, and assemble a server release of it
    ([Server release](../delivery/builds-and-releases.md#server-release)).
    A root is assembled once: to try a changed program, assemble a new one.
 
    ```sh
    cargo xtask native build --target x86_64-unknown-linux-musl \
      --package demi-runner --package demi-file --package demi-browser \
-     --package demi-claude-code --package demi-machine-manager
+     --package demi-claude-code --package demi-backend --package demi-machine-manager
    cargo xtask server-release --output /opt/demi/dev-<build> \
      --target x86_64-unknown-linux-musl --server x86_64-unknown-linux-musl
    ```
@@ -664,10 +665,10 @@ uses:
 - `target/debug/demi-backend` in isolated mode on port 3271 (`--port`
   changes it), with the public URL `http://127.0.0.1:<port>`, the manager's
   socket, the local store of the data directory, and a server release root
-  under the data directory that holds a release of each command program the
-  build made, `demi-file`, `demi-browser` and `demi-claude-code`, and of the
-  runner, for this machine's target only, without `web/` or `bin/`. The
-  command passes on none of its own `DEMI_*` variables.
+  beside the data directory that holds only `commands/`: a release of each
+  command program the build made, `demi-file`, `demi-browser` and
+  `demi-claude-code`, for this machine's target only. The command passes on
+  none of its own `DEMI_*` variables.
 - With `DEMI_DEV_ECHO=1`, an Anthropic-compatible Messages endpoint inside
   `xtask`, on a free port of the loopback interface, that answers each
   request with `Echo: <the last user message's text>` as a stream; without

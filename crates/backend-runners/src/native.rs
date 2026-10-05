@@ -1,11 +1,11 @@
 //! The command packages the conversations' commands bind to
 //! (`native-runtime.md` § Publish artifacts before enabling commands,
-//! § Backend deployment configuration): the descriptors of the loaded
-//! releases, and where a runner downloads each package's executables, from
-//! object storage or, for a development store, from this backend. The
-//! artifact module makes the catalog at startup from `DEMI_NATIVE_CONFIG`.
-//! Each shard thread builds its own `CommandCatalog` from it, since a
-//! catalog's artifact resolver lives on one thread.
+//! § Backend deployment configuration): the descriptors of the published
+//! releases, and where a runner downloads each package's artifacts, from an
+//! S3 store or, for a local store, from this backend. The artifact module
+//! makes the catalog at startup from the server release's `commands/`. Each
+//! shard thread builds its own `CommandCatalog` from it, since a catalog's
+//! artifact resolver lives on one thread.
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -32,9 +32,9 @@ pub struct NativeCatalog {
 pub enum Store {
     /// No package, so nothing to download.
     Unpublished,
-    /// Object storage, through a URL signed for each request.
+    /// An S3 store, through a URL signed for each request.
     Signed(SignedArtifacts),
-    /// A development store: this backend serves them itself.
+    /// A local store: this backend serves them itself.
     Local(Arc<LocalArtifacts>),
 }
 
@@ -49,7 +49,7 @@ impl NativeCatalog {
     /// No package: a command set that declares a native command selects no
     /// manifest, so a node whose commands include one gets no shell. A
     /// test's backend runs on it unless it loads releases; the product's
-    /// start loads the releases `DEMI_NATIVE_CONFIG` names instead
+    /// start publishes its server release's `commands/` instead
     /// (`publish_native`).
     pub fn unpublished() -> Self {
         Self {
@@ -58,7 +58,7 @@ impl NativeCatalog {
         }
     }
 
-    /// The calling thread's catalog; a development store's downloads are on
+    /// The calling thread's catalog; a local store's downloads are on
     /// `backend`.
     pub fn catalog(&self, backend: &PublicUrl) -> CommandCatalog {
         CommandCatalog::new(self.packages.clone(), self.resolver(backend))
@@ -67,8 +67,7 @@ impl NativeCatalog {
 
     /// The calling thread's resolver of the packages' executables, for the
     /// work that binds a package without a manifest: a user stream or a
-    /// one-shot user call. A development store's downloads are on
-    /// `backend`.
+    /// one-shot user call. A local store's downloads are on `backend`.
     pub fn resolver(&self, backend: &PublicUrl) -> Rc<dyn ArtifactResolver> {
         match &self.store {
             Store::Unpublished => Rc::new(Unpublished),
@@ -80,12 +79,12 @@ impl NativeCatalog {
         }
     }
 
-    /// The artifact whose SHA-256 is `sha256` as runners download it, when
-    /// a development store serves it.
+    /// The stored object of the artifact whose SHA-256 is `sha256`, when a
+    /// local store holds it.
     pub async fn local_artifact(
         &self,
         sha256: &str,
-    ) -> Option<std::io::Result<crate::local_store::LocalArtifact>> {
+    ) -> Option<object_store::Result<object_store::GetResult>> {
         match &self.store {
             Store::Local(artifacts) => artifacts.artifact(sha256).await,
             Store::Unpublished | Store::Signed(_) => None,

@@ -339,8 +339,8 @@ async fn package_release(
 }
 
 /// The executable a release carries for `target`: the one file in the
-/// release's directory of that target (`builds-and-releases.md`
-/// § Packaging).
+/// release's directory of that target besides a command package's
+/// compressed copy of it (`builds-and-releases.md` § Packaging).
 async fn release_executable(release: &Path, target: &str) -> Result<PathBuf, Error> {
     let directory = release.join(target);
     let mut entries = tokio::fs::read_dir(&directory)
@@ -348,7 +348,10 @@ async fn release_executable(release: &Path, target: &str) -> Result<PathBuf, Err
         .map_err(at(&directory))?;
     let mut files = Vec::new();
     while let Some(entry) = entries.next_entry().await.map_err(at(&directory))? {
-        files.push(entry.path());
+        let path = entry.path();
+        if !crate::native::compressed_copy(&path) {
+            files.push(path);
+        }
     }
     match <[PathBuf; 1]>::try_from(files) {
         Ok([file]) => Ok(file),
@@ -867,7 +870,8 @@ Version: 0.19.0-3
     }
 
     /// A command package release at `directory` whose descriptor records
-    /// `recorded` as its executable `name`, and whose file holds `bytes`.
+    /// `recorded` as its executable `name`, and whose file holds `bytes`,
+    /// with a compressed copy beside it as packaging writes one.
     async fn command_package(
         directory: &Path,
         id: &str,
@@ -884,6 +888,10 @@ Version: 0.19.0-3
             resources: Default::default(),
         };
         write(&directory.join(TARGET).join(name), bytes);
+        write(
+            &directory.join(TARGET).join(format!("{name}.zst")),
+            b"compressed copy",
+        );
         write(
             &directory.join(DESCRIPTOR),
             &crate::record(&descriptor).unwrap(),
