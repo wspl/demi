@@ -40,7 +40,7 @@ pub(super) async fn setup(
     let password_hash = services.hasher.hash(request.password).await?;
     let Some(user) = services
         .control
-        .create_master(request.email, password_hash)
+        .create_master(request.nickname.into_string(), request.email, password_hash)
         .await?
     else {
         return Err(ApiError::new(

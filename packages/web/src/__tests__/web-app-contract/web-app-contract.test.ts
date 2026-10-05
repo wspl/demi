@@ -65,7 +65,7 @@ beforeAll(async () => {
   webBrowser = openWebBrowser(backend.origin)
   setActivePinia(createPinia())
   // The instance's first account, signed in by its setup.
-  await apiRequest('/setup', { method: 'POST', ...jsonBody({ email: EMAIL, password: PASSWORD } satisfies SetupRequest) })
+  await apiRequest('/setup', { method: 'POST', ...jsonBody({ nickname: 'Master', email: EMAIL, password: PASSWORD } satisfies SetupRequest) })
 })
 
 // A test that failed may leave replies it scripted; the next starts with none.

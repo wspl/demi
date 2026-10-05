@@ -21,15 +21,23 @@ function respond(body: unknown, status = 200): void {
   globalThis.fetch = (async () => Response.json(body, { status })) as unknown as typeof fetch
 }
 
-/** Answers each `<method> <path>` with its body and status. */
-function serve(answers: Record<string, [unknown, number]>): void {
+/**
+ * Answers each `<method> <path>` with its body and status; answers the
+ * bodies the requests sent, in order.
+ */
+function serve(answers: Record<string, [unknown, number]>): unknown[] {
+  const sent: unknown[] = []
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const answer = answers[`${init?.method ?? 'GET'} ${String(input)}`]
     if (!answer) {
       throw new Error(`unexpected request ${init?.method ?? 'GET'} ${String(input)}`)
     }
+    if (init?.body !== undefined) {
+      sent.push(JSON.parse(String(init.body)))
+    }
     return Response.json(answer[0], { status: answer[1] })
   }) as unknown as typeof fetch
+  return sent
 }
 
 const signedOut: [unknown, number] = [{ code: 'unauthenticated', message: 'Sign in first' }, 401]
@@ -65,8 +73,9 @@ describe('cookie session', () => {
     serve({ 'GET /api/auth/me': signedOut, 'GET /api/setup': [{ needed: true }, 200] })
     await session.restore()
     expect(session.current).toEqual({ status: 'setupNeeded' })
-    serve({ 'POST /api/setup': [{ user: { ...user, role: 'master' } }, 200] })
-    await session.setUp(user.email, 'correct horse', new AbortController().signal)
+    const sent = serve({ 'POST /api/setup': [{ user: { ...user, role: 'master' } }, 200] })
+    await session.setUp(user.nickname, user.email, 'correct horse', new AbortController().signal)
+    expect(sent).toEqual([{ nickname: user.nickname, email: user.email, password: 'correct horse' }])
     expect(session.user?.role).toBe('master')
   })
 
@@ -79,7 +88,7 @@ describe('cookie session', () => {
       'POST /api/setup': [{ code: 'already_set_up', message: 'Demi is set up already' }, 404],
     })
     await expect(session.setUp(
-      user.email, 'correct horse', new AbortController().signal,
+      user.nickname, user.email, 'correct horse', new AbortController().signal,
     )).rejects.toMatchObject({ code: 'already_set_up' })
     expect(session.current).toEqual({ status: 'signedOut' })
   })

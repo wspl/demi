@@ -112,6 +112,7 @@ export const useSession = defineStore('session', {
      * created it first, the visitor signs in instead.
      */
     async setUp(
+      nickname: string,
       email: string,
       password: string,
       signal: AbortSignal,
@@ -120,6 +121,7 @@ export const useSession = defineStore('session', {
         const response = await apiRequest('/setup', {
           method: 'POST',
           ...jsonBody({
+            nickname,
             email,
             password,
           } satisfies SetupRequest),
