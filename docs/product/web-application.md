@@ -283,7 +283,10 @@ pauses for a checkpoint, keeps the view.
 A socket that closes, is taken as broken, or cannot be made connects again
 after a second, then after twice as long each time, up to 30 seconds, each
 wait shortened by a random part so that the pages of all users do not return
-at once after a restart. The waits start over at a second once the socket
+at once after a restart. A channel that the backend closed because it shuts
+down is the exception: the page shows the restart screen and connects again
+every one to two seconds instead
+([A page of another build](#a-page-of-another-build)). The waits start over at a second once the socket
 works again: the channel when its snapshot arrives, a conversation when it
 opens, a live view when its first `state` arrives. Meanwhile the page keeps
 the channel's copy as it was, and a conversation shows that it is connecting.
@@ -356,32 +359,61 @@ the failure with a retry, which connects at once.
 
 ### A page of another build
 
-A tab can outlive the build that served it. For example, a user leaves Demi
-open, and the instance restarts with a new release. The page's channel
-connects again and the new snapshot says that the backend now serves another
-build of the web app than the page runs. The page then shows a toast, "Demi
-Was Updated", whose Reload loads the page again, and which stays until the
-user reloads or closes it. The page goes on working meanwhile, as far as the
-tolerant contract lets it
-([Strict and tolerant objects](../architecture/contracts.md#generated-typescript)).
+A tab can outlive the build that served it, and a page never runs against a
+backend of another build: the server's release decides the web app as it
+decides every other part ([Upgrades](../delivery/upgrades.md)). For example,
+a user has Demi open while its server is upgraded:
 
+```text
+the channel closes with 1001 backend_closing
+        |
+        v
+the page shows "Demi Is Restarting" over the whole app and connects again
+        |
+        v  the channel's snapshot arrives
+   +----+-------------------------------+
+   another build than the page's        the page's own build
+   -> the page loads itself again       -> the restart screen goes, and the
+      from the backend                     page goes on where it was
+```
+
+- **The restart screen.** When the synchronization channel closes with
+  1001 `backend_closing` ([Page synchronization](web-api.md#page-synchronization)),
+  the backend shut down on purpose and will be back, so the page covers the
+  whole app with the restart screen of `web-ui`: "Demi Is Restarting", "This
+  page goes on when Demi is back." Nothing under it can be used, since
+  nothing works without the backend. The backend does not know whether it
+  stops for an upgrade or a restart, so the screen does not say which. While
+  it shows, the channel connects again every one to two seconds, at a random
+  point of that interval, so that the pages of all users do not return at
+  once; the doubling waits of [Liveness and reconnection](#liveness-and-reconnection)
+  are for a backend that went away unexpectedly, which a lost connection
+  without that close means, and which shows no screen.
+- **Another build.** Whenever a snapshot names another build than the page
+  runs, whether after the restart screen or after a laptop slept through a
+  restart, the page loads itself again at once, without asking. Nothing the
+  user typed is lost: a draft is in IndexedDB and on the backend from the
+  moment it is typed ([Drafts](#drafts)). A page that loaded itself for a
+  build and still gets another one, as when a cache in front of the backend
+  serves an old `index.html`, does not load again: it shows the restart
+  screen's error state, "This Page Could Not Be Updated", with the reason,
+  and keeps the build it tried in `sessionStorage` so that it tries once per
+  build.
 - **Where the build comes from.** Each `vite build` of `web` names its build
   with a new random id. The page carries the id, and the build writes it
   beside `index.html` as `build.json`, `{ "build": "<id>" }`. A rebuild of the
   same sources is another build: comparing ids needs no version scheme, and a
-  needless reload costs one click.
+  needless reload costs a moment.
 - **Who compares.** The backend that serves a web app reads its `build.json`
   as it starts, and refuses to start when it is missing or does not read
   ([Serving the web app build](web-api.md#serving-the-web-app-build)). Each
-  snapshot carries it as `webBuild`. The page compares it with its own on
-  every snapshot, since the backend's build changes only when the backend
-  restarts, which every page sees as a new connection. It asks once while
-  the two differ; a later snapshot that agrees, or names no build, ends it.
+  snapshot carries it as `webBuild`, and the page compares it with its own.
 - **Development.** Vite's development server serves sources, which name no
   build, and the development backend serves no web app, so its `webBuild` is
   null and nothing is compared. A page and a backend of different revisions
   there show their disagreement as any page shows a state or an answer it
   cannot read ([Calls and states](../architecture/plugin-pages.md#calls-and-states)).
+  The restart screen shows there too, when the development backend stops.
 
 ## Authentication
 
