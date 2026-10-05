@@ -52,6 +52,30 @@ pub(crate) const CONVERSATION: Schema = Schema {
     history: &[],
 };
 
+/// A kind of database, as a server's upgrade asks about it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DatabaseKind {
+    Control,
+    Conversation,
+}
+
+/// Whether this build would change the database at `path` as it opens it:
+/// one that records another schema version than this build's, which it
+/// migrates or refuses (`upgrades.md` § Prepare). The database is read, never
+/// written.
+pub fn schema_differs(path: &Path, kind: DatabaseKind) -> Result<bool, StorageError> {
+    let connection = Connection::open_with_flags(
+        path,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
+    )?;
+    let recorded: i32 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let schema = match kind {
+        DatabaseKind::Control => &CONTROL,
+        DatabaseKind::Conversation => &CONVERSATION,
+    };
+    Ok(recorded != schema.version())
+}
+
 /// The version a database of the schema `sql` records in `user_version`:
 /// the first 31 bits of its SHA-256, never 0, which SQLite gives a database
 /// that records none. Any edit of the SQL is another version.

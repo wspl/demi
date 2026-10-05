@@ -100,6 +100,8 @@ pub enum Executable {
     Backend,
     #[value(name = "demi-machine-manager")]
     Machines,
+    #[value(name = "demi-server")]
+    Server,
 }
 
 impl Executable {
@@ -118,6 +120,7 @@ impl Executable {
             Self::Claude => "demi-claude-code",
             Self::Backend => "demi-backend",
             Self::Machines => "demi-machine-manager",
+            Self::Server => "demi-server",
         }
     }
 
@@ -134,8 +137,10 @@ impl Executable {
                 "x86_64-unknown-linux-musl",
             ],
             // gVisor, namespaces, cgroups, loop devices and nftables exist
-            // only on Linux.
-            Self::Machines => &["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"],
+            // only on Linux, and so do the servers demi-server installs.
+            Self::Machines | Self::Server => {
+                &["aarch64-unknown-linux-musl", "x86_64-unknown-linux-musl"]
+            }
         }
     }
 

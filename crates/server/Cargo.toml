@@ -1,0 +1,33 @@
+[package]
+name = "demi-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "demi-server"
+path = "src/main.rs"
+doctest = false
+bench = false
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+demi-backend-database = { path = "../backend-database" }
+demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
+dotenvy = "0.15"
+jiff.workspace = true
+rustix = { version = "1", features = ["fs", "process"] }
+semver = { workspace = true, features = ["serde"] }
+serde.workspace = true
+serde_json.workspace = true
+tar = { version = "0.4", default-features = false }
+tempfile = "3"
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+zstd = { version = "0.13", default-features = false }
+
+[dev-dependencies]
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+sha2 = "0.10"

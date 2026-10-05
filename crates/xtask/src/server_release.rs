@@ -3,7 +3,8 @@
 //! build` wrote. The root holds the runner release's manifests in
 //! `runners/`, each command package's descriptor in `commands/`, the record
 //! `release.json`, which says where the release's files are, and, when
-//! asked, a Linux target's backend and machine manager in `bin/` with the
+//! asked, a Linux target's backend, machine manager and `demi-server` in
+//! `bin/` with the
 //! pinned runsc distribution in `runtime/` and the services' units in
 //! `systemd/`, and the built web app in `web/`. The release's files hold each target's runner
 //! executable and each command program's compressed copy. Packaging makes
@@ -186,7 +187,7 @@ async fn assemble(options: &Options, cancel: &CancellationToken) -> Result<PathB
     if let Some(server) = options.server {
         let bin = stage.path().join("bin");
         tokio::fs::create_dir_all(&bin).await?;
-        for executable in [Executable::Backend, Executable::Machines] {
+        for executable in [Executable::Backend, Executable::Machines, Executable::Server] {
             let built = native::built(&artifacts, executable, server);
             if !tokio::fs::try_exists(&built).await? {
                 return Err(native::Error::NotBuilt {
@@ -321,7 +322,11 @@ mod tests {
             "{missing:?}"
         );
         assert_eq!(names(root.path()), ["artifacts", "dist", "files", "runsc"]);
-        build(&artifacts, &[Executable::Backend, Executable::Machines], &[linux]);
+        build(
+            &artifacts,
+            &[Executable::Backend, Executable::Machines, Executable::Server],
+            &[linux],
+        );
         assemble(&options(&output, None), &cancel).await.unwrap();
         assert_eq!(
             names(&output),
@@ -332,7 +337,10 @@ mod tests {
             names(&output.join("systemd")),
             ["demi-backend.service", "demi-machine-manager.service"]
         );
-        assert_eq!(names(&output.join("bin")), ["demi-backend", "demi-machine-manager"]);
+        assert_eq!(
+            names(&output.join("bin")),
+            ["demi-backend", "demi-machine-manager", "demi-server"]
+        );
         assert_eq!(
             std::fs::read(output.join("bin/demi-backend")).unwrap(),
             format!("demi-backend {linux}").as_bytes()
