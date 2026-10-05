@@ -56,7 +56,9 @@ jobs:
     needs: version
     runs-on: ${{ matrix.runner }}
     strategy:
-      fail-fast: true
+      # Every platform's result in one run: any failure stops the release
+      # anyway, at the server release that needs them all.
+      fail-fast: false
       matrix:
         include:
           - name: macos
@@ -101,6 +103,12 @@ jobs:
         with:
           arch: ${{ matrix.msvc }}
       - name: Build
+        if: runner.os != 'Windows'
+        run: cargo xtask native build ${{ matrix.arguments }}
+      # Not in bash: Git's /usr/bin/link comes before MSVC's link.exe there.
+      - name: Build
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: cargo xtask native build ${{ matrix.arguments }}
       - name: Collect the executables
         run: |
