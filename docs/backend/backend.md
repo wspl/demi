@@ -452,9 +452,9 @@ At startup the backend:
    ([Conversation Fork](../agent/conversation-fork.md#backend-creation-and-retries)).
    Each saved yield wakeup is armed again: its conversation's shard restores
    the tree when the wakeup is due
-   ([Yield wakeups](../agent/runtime.md#yield-wakeups)). The first request
-   to the machine manager checks that both speak one wire version, so a
-   manager of another release stops the start here
+   ([Yield wakeups](../agent/runtime.md#yield-wakeups)). The manager's
+   `hello` on the first connection names its wire version, so a manager of
+   another release stops the start here
    ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
 7. Opens its listener, and starts the daily retention pass, whose first pass
    runs at once ([The retention pass](storage.md#the-retention-pass)).

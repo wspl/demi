@@ -16,7 +16,7 @@ use std::{
 
 use demi_machine_manager_protocol::{
     DeviceId, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, decode_request,
-    encode_line,
+    WIRE_VERSION, encode_line,
 };
 use futures_util::StreamExt;
 use tokio::{
@@ -134,6 +134,12 @@ pub async fn serve<S: MachineService + 'static>(
                     let id = next_connection;
                     next_connection += 1;
                     let (outbox, queued) = mpsc::channel(OUTBOX_LINES);
+                    // The connection's first line names the wire's version;
+                    // its queue is new, so it has room.
+                    let hello = encode_line(&MachineResponse::Hello {
+                        version: WIRE_VERSION,
+                    });
+                    outbox.try_send(hello).expect("a new connection's queue has room");
                     outboxes.insert(id, outbox.downgrade());
                     let connection = connection(stream, service.clone(), outbox, queued, requests.clone());
                     connections.spawn_local(async move {
