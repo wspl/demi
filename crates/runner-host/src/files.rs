@@ -76,8 +76,8 @@ impl FileTransfers {
         let transfer = self.cancel.child_token();
         let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
-            let file = match open_range(target, offset.unwrap_or(0), length, &transfer).await {
-                Ok(file) => file,
+            let (file, stat) = match open_range(target, offset.unwrap_or(0), length, &transfer).await {
+                Ok(opened) => opened,
                 Err(error) => {
                     // Nothing moves; the pipe end is still reported, as every
                     // end named to the runner is.
@@ -88,7 +88,7 @@ impl FileTransfers {
             };
             let opened = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                 id,
-                result: wire::FsResult::ReadFile,
+                result: wire::FsResult::ReadFile(stat),
             }));
             if !send(&reply, opened, &shutdown).await {
                 return;
@@ -359,24 +359,29 @@ impl FileTransfers {
 }
 
 /// The regular file at `target`, positioned at `offset` and limited to
-/// `length` bytes when given.
+/// `length` bytes, or to the end it had when it was opened, with its
+/// metadata then, which the read answers so that no `stat` precedes it
+/// (`runner.md` § Host operations).
 async fn open_range(
     target: io::Result<PathBuf>,
     offset: u64,
     length: Option<u64>,
     cancel: &CancellationToken,
-) -> io::Result<impl AsyncRead + Unpin + Send + 'static> {
+) -> io::Result<(impl AsyncRead + Unpin + Send + 'static, wire::FileStat)> {
     let target = target?;
     // Out of open files, the transfer waits for one (`runner.md` § Load).
     let mut file = demi_command_sdk::descriptors::retry(cancel, || fs::File::open(&target)).await?;
-    if !file.metadata().await?.is_file() {
+    let metadata = file.metadata().await?;
+    if !metadata.is_file() {
         return Err(io::Error::new(
             io::ErrorKind::IsADirectory,
             "not a regular file",
         ));
     }
+    let rest = metadata.len().saturating_sub(offset);
+    let stat = crate::fs::stat(metadata)?;
     file.seek(SeekFrom::Start(offset)).await?;
-    Ok(file.take(length.unwrap_or(u64::MAX)))
+    Ok((file.take(length.map_or(rest, |length| length.min(rest))), stat))
 }
 
 /// A file of a read of several, open, and the size it had then.

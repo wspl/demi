@@ -5,10 +5,11 @@
 //! the size an edit snapshot keeps, so a file the runner counted lines for
 //! is one the web app shows.
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use demi_command_protocol::EDIT_FILE_BYTES;
 use demi_command_protocol::is_text;
-use demi_host_interface::{FileKind, HostError, HostFs};
+use demi_host_interface::{ByteRange, FileKind, HostError, HostFs};
+use futures_util::StreamExt as _;
 use demi_web_api_protocol::files::DirectoryEntry;
 
 /// Why a file is not shown as text.
@@ -41,14 +42,24 @@ pub fn text_of(bytes: Bytes) -> Result<String, TextRefusal> {
     Ok(String::from_utf8(bytes.to_vec()).expect("text is UTF-8"))
 }
 
-/// One file of a Host as text; a file over the limit is refused before its
-/// bytes are read.
+/// One file of a Host as text, with one request (`runner.md` § Host
+/// operations): it reads one byte more than the limit, and a file whose
+/// bytes go past it is refused once that byte arrives.
 pub async fn read_text_file(fs: &dyn HostFs, path: &str) -> Result<String, TextError> {
-    let stat = fs.stat(path).await?;
-    if stat.size > EDIT_FILE_BYTES as u64 {
-        return Err(TextRefusal::TooLarge.into());
+    let limit = EDIT_FILE_BYTES as u64;
+    let range = ByteRange {
+        offset: 0,
+        length: Some(limit + 1),
+    };
+    let mut stream = fs.read_stream(path, range).await?;
+    let mut bytes = BytesMut::new();
+    while let Some(chunk) = stream.next().await {
+        bytes.extend_from_slice(&chunk?);
+        if bytes.len() > EDIT_FILE_BYTES {
+            return Err(TextRefusal::TooLarge.into());
+        }
     }
-    Ok(text_of(fs.read_file(path).await?)?)
+    Ok(text_of(bytes.freeze())?)
 }
 
 /// A directory's entries with their metadata, which the listing carries,
@@ -149,6 +160,33 @@ mod tests {
                 ),
             ]
         );
+        fixture.stop().await;
+    }
+
+    // About a tenth of a second: a real runner process reads the files.
+    #[tokio::test(flavor = "local")]
+    async fn a_files_text_is_one_request_and_a_file_past_the_limit_is_refused_by_its_bytes() {
+        let (tap, mut replies) = mpsc::channel(1 << 10);
+        let fixture = RunnerFixture::start(FixtureOptions {
+            tap: Some(tap),
+            ..FixtureOptions::default()
+        })
+        .await;
+        std::fs::write(fixture.home_dir().join("notes.txt"), "1\n2\n").unwrap();
+        std::fs::write(
+            fixture.home_dir().join("large.txt"),
+            vec![b'a'; EDIT_FILE_BYTES + 1],
+        )
+        .unwrap();
+        answered_requests(&mut replies);
+        let host = fixture.host();
+
+        let notes = read_text_file(&host, &format!("{}/notes.txt", fixture.home())).await;
+        assert_eq!(notes, Ok("1\n2\n".to_owned()));
+        assert_eq!(answered_requests(&mut replies), 1, "one request reads the text");
+        let large = read_text_file(&host, &format!("{}/large.txt", fixture.home())).await;
+        assert_eq!(large, Err(TextError::Refused(TextRefusal::TooLarge)));
+        assert_eq!(answered_requests(&mut replies), 1, "one request refuses it");
         fixture.stop().await;
     }
 

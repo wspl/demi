@@ -2496,7 +2496,6 @@ dependencies = [
  "futures-util",
  "hostname",
  "libc",
- "rmp-serde",
  "rustix",
  "serde",
  "serde_json",

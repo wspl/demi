@@ -187,12 +187,19 @@ impl RemoteHost {
     }
 
     /// A pipe the device's runner fills with `range` of the file, once the
-    /// file is open: a file that cannot be opened fails here, before any
-    /// byte. Dropping the reader stops the read.
-    pub async fn read_pipe(&self, path: &str, range: ByteRange) -> Result<PipeReader, HostError> {
+    /// file is open, with the file's metadata then, so no `stat` precedes
+    /// a read (`runner.md` § Host operations): a file that cannot be opened,
+    /// or is not a regular file, fails here, before any byte. A range is
+    /// read up to the end the file had when it was opened. Dropping the
+    /// reader stops the read.
+    pub async fn read_pipe(
+        &self,
+        path: &str,
+        range: ByteRange,
+    ) -> Result<(FileStat, PipeReader), HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
-        filled(&link, Expected::Fs("readFile"), |id, output| {
+        let (answer, reader) = answered(&link, Expected::Fs("readFile"), |id, output| {
             Inbound::FsReadFile {
                 id,
                 path: path.into(),
@@ -202,7 +209,11 @@ impl RemoteHost {
                 output,
             }
         })
-        .await
+        .await?;
+        match answer {
+            Answer::Fs(FsResult::ReadFile(stat)) => Ok((file_stat(stat)?, reader)),
+            _ => Err(mismatch()),
+        }
     }
 
     /// A pipe to the device's runner that this process fills.
@@ -1014,7 +1025,7 @@ impl HostFs for RemoteHost {
     fn read_file<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
         Box::pin(async move {
             collect(
-                self.read_pipe(path, ByteRange::default()).await?,
+                self.read_pipe(path, ByteRange::default()).await?.1,
                 usize::MAX,
             )
             .await
@@ -1027,7 +1038,7 @@ impl HostFs for RemoteHost {
         range: ByteRange,
     ) -> LocalBoxFuture<'a, Result<ByteStream, HostError>> {
         Box::pin(async move {
-            let reader = self.read_pipe(path, range).await?;
+            let (_, reader) = self.read_pipe(path, range).await?;
             Ok(reader
                 .into_stream()
                 .map(|chunk| chunk.map_err(|failure| HostError::interrupted(failure.to_string())))
