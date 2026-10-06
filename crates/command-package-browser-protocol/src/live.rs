@@ -35,6 +35,12 @@ pub const VIDEO_FRAME: u8 = 2;
 /// encodes with it, and the page asks the user's browser for a decoder
 /// of it before it opens a view.
 pub const VIDEO_CODEC: &str = "avc1.640033";
+/// The most bits per second [`VIDEO_CODEC`]'s level carries: level 5.1's
+/// maximum video bit rate (H.264 Table A-1). The capture extension's
+/// software encoder refuses to start above the level's limit ("Failed to
+/// initialize OpenH264 encoder", measured with the pinned Chrome between 288
+/// and 299 Mbps), so a budget never asks for more.
+pub const VIDEO_MAX_BITRATE: u32 = 240_000_000;
 /// A chosen file's bytes: [`FileHeader`], then the data.
 pub const FILE_FRAME: u8 = 3;
 /// The largest frame after its length: a paste's text and HTML, or a key frame.
