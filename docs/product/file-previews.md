@@ -91,6 +91,16 @@ lines, unlike in messages. Task list checkboxes are read-only. Leading YAML
 front matter shows as a YAML code block. A file over 2 MiB shows only its
 source, since rendering that much stalls the page.
 
+Math follows Pandoc's rule for dollar signs, the same in a file and in the
+agent's replies, which render through the same Markdown renderer. `$$…$$` is
+display math. `$…$` is inline math only when the opening `$` has a
+character other than a space right after it, and the closing `$` has one
+other than a space right before it and no digit right after it. So prices
+stay text: in `Notion is $10 vs $12`, the `$` before `12` cannot close,
+since a digit follows it, and both dollar signs show as typed. Inline math
+may touch the text around it, as Chinese writing does: `面积为$x^2$平方米`
+renders `x^2` as math.
+
 HTML inside the Markdown renders after it is sanitized
 ([Keeping file content inert](#keeping-file-content-inert)), so README layouts
 such as a centered logo or a `<details>` block look as their authors meant.
