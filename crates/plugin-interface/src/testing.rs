@@ -562,6 +562,7 @@ pub mod command_line {
                 Node::Group(Group {
                     name: DEMI_ROOT.into(),
                     summary: DEMI_SUMMARY.into(),
+                    index_entry: None,
                     permissions: Vec::new(),
                     subcommands: demi,
                 }),

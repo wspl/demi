@@ -99,6 +99,10 @@ struct ShowArgs {
     id: u64,
 }
 
+/// The group's entry in the model's capability index (`system-prompt.md`
+/// § Capability index).
+const AGENT_ENTRY: &str = "Runs helper agents, each with a fresh context of its own, that work in parallel on parts of a task and report back; sends them messages and checks on them. Use it for work that splits into independent pieces, a long investigation whose details would crowd your context, or a task one of the user's subagent profiles fits (`demi agent profiles`). Not for a step you can do yourself in a few commands.";
+
 /// `demi agent spawn --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -168,7 +172,7 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
     } else {
         "Agent tree communication: this session may not spawn subagents; send, list and show any live agent."
     };
-    let mut group = GroupBuilder::new("agent", summary);
+    let mut group = GroupBuilder::new("agent", summary).index_entry(AGENT_ENTRY);
     if can_spawn {
         group = group.leaf(
             LeafBuilder::rpc("spawn", SPAWN_SUMMARY)

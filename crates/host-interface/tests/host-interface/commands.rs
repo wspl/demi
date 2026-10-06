@@ -212,26 +212,84 @@ fn registration_refuses_inputs_outside_the_subset_naming_the_field() {
     }
 }
 
+/// A leaf that reads a file, for groups whose leaves no test runs.
+fn read(name: &str) -> LeafBuilder {
+    LeafBuilder::native(
+        name,
+        "Read a file.",
+        NativeOperation {
+            package: "demi.file".into(),
+            operation: "file.read".into(),
+        },
+    )
+}
+
 #[test]
-fn help_opens_with_the_defaults_and_lists_every_root() {
-    assert_eq!(CommandSet::new().render_help(), "");
+fn the_index_opens_with_the_defaults_and_lists_each_group_with_an_entry_by_path() {
+    assert_eq!(CommandSet::new().render_index(), "");
+    // Registered out of order: `zeta` under `demi`, then a root of its own
+    // between them, then `alpha` grafted after. `demi` and `content`, which
+    // declare no entry, are reached through the groups that list them.
     let mut set = CommandSet::new();
-    set.register(notes()).unwrap();
-    let help = set.render_help();
-    assert!(
-        help.starts_with(demi_command_declarations::HELP_DEFAULTS),
-        "{help}"
-    );
-    let root = set.declarations().next().unwrap().help("demi");
+    set.register(
+        GroupBuilder::new("demi", "Demi commands.").group(
+            GroupBuilder::new("zeta", "Zeta.")
+                .index_entry("Works the last letter.")
+                .leaf(read("open"))
+                .group(GroupBuilder::new("content", "Content.").leaf(read("fetch"))),
+        ),
+    )
+    .unwrap();
+    set.register(
+        GroupBuilder::new("lint", "Lint.")
+            .index_entry("Checks the code.")
+            .leaf(read("run")),
+    )
+    .unwrap();
+    set.graft(
+        &["demi"],
+        GroupBuilder::new("alpha", "Alpha.")
+            .index_entry("Works the first letter.")
+            .leaf(read("one"))
+            .leaf(read("two")),
+    )
+    .unwrap();
+
+    let index = set.render_index();
+
+    let defaults = demi_command_declarations::HELP_DEFAULTS;
+    let opener = demi_command_declarations::INDEX_OPENER;
     assert_eq!(
-        help,
-        format!("{}\n\n{root}", demi_command_declarations::HELP_DEFAULTS)
+        index,
+        format!(
+            "{defaults}\n\n{opener}\n\n\
+             demi alpha\nWorks the first letter.\nOperations: one, two\n\
+             Details: demi alpha --help; one operation: demi alpha <operation> --help\n\n\
+             demi zeta\nWorks the last letter.\nOperations: open, content fetch\n\
+             Details: demi zeta --help; one operation: demi zeta <operation> --help\n\n\
+             lint\nChecks the code.\nOperations: run\n\
+             Details: lint --help; one operation: lint <operation> --help"
+        )
     );
-    assert!(
-        root.contains("demi note add <text> [--count <count>] [--json]"),
-        "{root}"
-    );
-    assert!(root.contains("How many copies"), "{root}");
+}
+
+#[test]
+fn an_index_entry_over_600_characters_is_refused_at_registration() {
+    let group = |entry: String| {
+        GroupBuilder::new("demi", "Demi commands.").group(
+            GroupBuilder::new("notes", "Notes.")
+                .index_entry(entry)
+                .leaf(read("read")),
+        )
+    };
+    // Characters, not bytes: 600 of a two-byte letter fit.
+    CommandSet::new().register(group("é".repeat(600))).unwrap();
+    let error = CommandSet::new()
+        .register(group("é".repeat(601)))
+        .unwrap_err()
+        .to_string();
+    assert!(error.contains("notes"), "{error}");
+    assert!(error.contains("601 characters"), "{error}");
 }
 
 #[tokio::test(flavor = "current_thread")]
