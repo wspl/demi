@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { renderMarkdown } from '../render'
+import { holdUndecidedMedium, renderMarkdown } from '../render'
 import type { AttachmentLookup, MessageFiles } from '../types'
 
 // The files a message names (`file-previews.md` § Files named in messages).
@@ -36,7 +36,7 @@ test('a link opens a Host file or a web page, and anything else stays text', () 
 
 test('an image loads from the web, as a data URL, or from the Host; anything else shows its alt text', () => {
   const html = renderMarkdown(
-    '![chart](out/chart.png) ![logo](https://example.com/l.png) ![dot](data:image/png;base64,AAAA) ![mail](mailto:a@b.c)',
+    '![chart](out/chart.png) and ![logo](https://example.com/l.png) and ![dot](data:image/png;base64,AAAA) and ![mail](mailto:a@b.c)',
     { files },
   )
   // A click shows the image whole: a Host file in the File view, a web image in a new tab.
@@ -112,4 +112,54 @@ test('an attachment shows its text while the page asks for it, when asking faile
     .toBe('<p>shot flow</p>\n')
   expect(renderMarkdown('![shot](attachment:a1)', { files })).toBe('<p>shot</p>\n')
   expect(renderMarkdown('![shot](attachment:a1)')).toBe('<p>shot</p>\n')
+})
+
+// Images that follow each other stand side by side (`file-previews.md`
+// § Files named in messages): a run is one row, each image an item of it.
+
+const shot = (n: number) => `![shot ${n}](https://example.com/${n}.png)`
+const item = (n: number) => `<span><a href="https://example.com/${n}.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/${n}.png" alt="shot ${n}" /></a></span>`
+
+test('images with only white space between them in one paragraph are one run', () => {
+  expect(renderMarkdown(`${shot(1)} ${shot(2)}\n${shot(3)}`, { files }))
+    .toBe(`<p class="media-run">${item(1)}${item(2)}${item(3)}</p>\n`)
+})
+
+test('paragraphs of images that follow each other are one run, a video among them', () => {
+  expect(renderMarkdown(`${shot(1)}\n\n![The flow](attachment:a2)\n\n\n${shot(2)}`, { files: withAttachments }))
+    .toBe(`<p class="media-run">${item(1)}<span><video src="/blobs/2?type=video%2Fmp4" controls preload="metadata" aria-label="The flow"></video></span>${item(2)}</p>\n`)
+})
+
+test('text, a list or a heading between images ends the run', () => {
+  const html = renderMarkdown(
+    `${shot(1)}\n${shot(2)}\n\nThen:\n\n${shot(3)}\n${shot(4)}\n\n- one\n\n${shot(5)} and ${shot(6)}\n\n# Done\n\n${shot(7)}`,
+    { files },
+  )
+  expect(html.match(/class="media-run"/g)).toHaveLength(2)
+  expect(html).toContain(`<p class="media-run">${item(1)}${item(2)}</p>`)
+  expect(html).toContain(`<p class="media-run">${item(3)}${item(4)}</p>`)
+  expect(html).not.toContain('<span><a href="https://example.com/5.png"')
+  expect(html).not.toContain('<span><a href="https://example.com/7.png"')
+})
+
+test('a lone image keeps its paragraph', () => {
+  expect(renderMarkdown(`Here it is:\n\n${shot(1)}\n\nThat is all.`, { files }))
+    .toContain('<p><a href="https://example.com/1.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/1.png" alt="shot 1" /></a></p>')
+})
+
+test('an image inside a link counts as an image of a run, and follows its link', () => {
+  expect(renderMarkdown(`[![build](https://example.com/badge.svg)](https://example.com/ci)\n${shot(1)}`, { files }))
+    .toBe(`<p class="media-run"><span><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a></span>${item(1)}</p>\n`)
+})
+
+test('while a message streams, a lone image at its end waits for what follows', () => {
+  const intro = 'The pages:\n\n'
+  // The first image could stand alone or start a run, so it waits.
+  expect(holdUndecidedMedium(`${intro}${shot(1)}`)).toBe(intro)
+  expect(holdUndecidedMedium(`${intro}${shot(1)}\n!`)).toBe(intro)
+  expect(holdUndecidedMedium(`${intro}${shot(1)}\n[![b](x.png)](y`)).toBe(intro)
+  // A second one makes a run, which shows; images that join it show at once.
+  expect(holdUndecidedMedium(`${intro}${shot(1)}\n${shot(2)}`)).toBe(`${intro}${shot(1)}\n${shot(2)}`)
+  // Text after it makes it a lone image, which shows.
+  expect(holdUndecidedMedium(`${intro}${shot(1)}\n\nDone`)).toBe(`${intro}${shot(1)}\n\nDone`)
 })

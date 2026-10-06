@@ -35,7 +35,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex h-[160px] max-w-full items-start">
+  <div class="flex h-preview max-w-full items-start">
     <div
       v-if="failed"
       class="flex h-full w-60 max-w-full items-center justify-center rounded-md border border-line-subtle px-3 text-center text-xs text-fg-muted"
@@ -53,7 +53,7 @@ onBeforeUnmount(() => {
         ref="element"
         :src="src"
         :alt="name"
-        class="checkerboard block max-h-[160px] max-w-full rounded-md ring-1 ring-line"
+        class="checkerboard block max-h-preview max-w-full rounded-md ring-1 ring-line"
         @error="failed = true"
       >
     </button>

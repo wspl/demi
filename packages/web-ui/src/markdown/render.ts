@@ -1,4 +1,4 @@
-import { Marked, type RendererObject, type Tokens } from 'marked'
+import { Marked, type RendererObject, type Token, type Tokens } from 'marked'
 import markedKatex from 'marked-katex-extension'
 import type { MarkdownRenderOptions, MessageAttachment } from './types'
 import { codeToHtml } from './highlight'
@@ -148,8 +148,134 @@ const messageRenderer: RendererObject = {
   },
 }
 
+/** Whether an inline token is only white space: a space or a line break. */
+function isWhiteSpace(token: Token): boolean {
+  return token.type === 'br' || (token.type === 'text' && token.raw.trim() === '')
+}
+
+/** Whether an inline token is an image, or a link around one image and nothing else. */
+function isMedium(token: Token): boolean {
+  if (token.type === 'image')
+    return true
+  if (token.type !== 'link')
+    return false
+  const inside = (token.tokens ?? []).filter((part) => !isWhiteSpace(part))
+  return inside.length === 1 && inside[0]?.type === 'image'
+}
+
+/**
+ * The images a block holds when it is a paragraph of images with nothing but
+ * white space between them; null for any other block.
+ */
+function paragraphMedia(token: Token): Token[] | null {
+  if (token.type !== 'paragraph')
+    return null
+  const media: Token[] = []
+  for (const part of token.tokens ?? []) {
+    if (isMedium(part))
+      media.push(part)
+    else if (!isWhiteSpace(part))
+      return null
+  }
+  return media.length > 0 ? media : null
+}
+
+/**
+ * The images of the paragraphs of images that follow each other from block
+ * `start`, across the blank lines between them, and the index after the last
+ * of those paragraphs; none when block `start` is not one.
+ */
+function mediaFrom(blocks: Token[], start: number): { media: Token[]; end: number } {
+  const media: Token[] = []
+  let end = start
+  for (let index = start; index < blocks.length; index += 1) {
+    const block = blocks[index]
+    if (block === undefined)
+      break
+    if (block.type === 'space' && media.length > 0)
+      continue
+    const found = paragraphMedia(block)
+    if (found === null)
+      break
+    media.push(...found)
+    end = index + 1
+  }
+  return { media, end }
+}
+
+/** The block a run of images becomes: two or more of them, in one paragraph or in several that follow each other. */
+const MEDIA_RUN = 'mediaRun'
+
+/**
+ * Turns each run of a message's images into one block, which stands them side
+ * by side; a lone image stays in its paragraph
+ * (`file-previews.md` § Files named in messages).
+ */
+function groupMediaRuns(blocks: Token[]): void {
+  for (let index = 0; index < blocks.length; index += 1) {
+    const { media, end } = mediaFrom(blocks, index)
+    if (media.length < 2)
+      continue
+    const raw = blocks.slice(index, end).map((block) => block.raw).join('')
+    blocks.splice(index, end - index, { type: MEDIA_RUN, raw, tokens: media })
+  }
+}
+
 const agentMarked = new Marked({ gfm: true, breaks: true, renderer: messageRenderer })
 agentMarked.use(katexExtension)
+agentMarked.use({
+  hooks: {
+    processAllTokens(tokens) {
+      groupMediaRuns(tokens)
+      return tokens
+    },
+  },
+  extensions: [{
+    name: MEDIA_RUN,
+    renderer(token) {
+      const items = (token.tokens ?? []).map((medium) => `<span>${this.parser.parseInline([medium])}</span>`)
+      return `<p class="media-run">${items.join('')}</p>\n`
+    },
+  }],
+})
+
+/**
+ * A medium cut off at the end of streamed text, after what holding back an
+ * open link leaves: the `!` of an image, or a link still open around a whole
+ * image.
+ */
+const PARTIAL_MEDIUM = /(?:\[?!|\[!\[[^\]]*\]\([^)]*\)\](?:\([^)]*)?)$/
+
+/**
+ * Streamed text without the lone image at its end: whether that image stands
+ * alone or starts a run is decided only by what follows it, so it shows once
+ * that arrives, or once the message is complete, and never shows large first
+ * and then shrinks into a row. An image that joins a run already shown shows
+ * at once.
+ */
+export function holdUndecidedMedium(text: string): string {
+  const settled = text.replace(PARTIAL_MEDIUM, '')
+  // A paragraph of images ends with the `)` of its last one.
+  if (!/\)\s*$/.test(settled))
+    return text
+  const blocks = agentMarked.lexer(settled)
+  let start = blocks.length
+  for (let index = blocks.length - 1; index >= 0; index -= 1) {
+    const block = blocks[index]
+    if (block === undefined)
+      break
+    if (block.type === 'space')
+      continue
+    if (paragraphMedia(block) === null)
+      break
+    start = index
+  }
+  if (mediaFrom(blocks, start).media.length !== 1)
+    return text
+  const before = blocks.slice(0, start).map((block) => block.raw).join('')
+  // The lexer reads a carriage return as a line feed; such text is shown as it is.
+  return settled.startsWith(before) ? before : text
+}
 
 /** An agent's message: GitHub Flavored Markdown with math. */
 export function renderMarkdown(src: string, options?: MarkdownRenderOptions): string {
