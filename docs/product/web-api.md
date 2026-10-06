@@ -1350,8 +1350,15 @@ The backend sends:
 
 | Message | Carries | Sent when |
 | --- | --- | --- |
-| `state` | `state`: `live`, `lost`, `unavailable` or `offline`, and for `unavailable` the Host's `reason` | `live` once the Host's watch runs, so what is read from then on is covered; `lost` when the Host's watch lost reports, so nothing read before is confirmed, followed by `live` again; `unavailable` when the Host cannot watch; `offline` while the Host is out of reach or a stopped Cloud |
+| `state` | `state`: `live`, `lost`, `unavailable` or `offline`, and for `unavailable` the Host's `reason` | `live` once the Host's watches run, so what is read from then on is covered, and again once the watches of each `paths` message run, so the page trusts a path outside the working tree only after the `live` that answers the message naming it; `lost` when a watch lost reports, so nothing read before is confirmed, followed by `live` again; `unavailable` when the Host cannot watch, after which the socket sends no other state; `offline` while the Host is out of reach or a stopped Cloud |
 | `changed` | `paths`, absolute paths on the Host that changed | The Host reports them, at most every 100 ms, a path once per message. More than 1,000 paths at once come as `lost`. |
+| `heartbeat` | Nothing | 30 seconds pass without another message, so the page tells a quiet watch from a dead one ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
+
+The backend closes the socket with the user streams' codes: 1011
+`host_unreachable` when the Host became unreachable, 4000
+`conversation_changed` when an archive, a target or directory change, or a
+detach ended the watch, and 1003 `invalid_message` for a message the page
+should not have sent.
 
 A watch that ends, by a closed socket, a lost connection to the Host or an
 archive, a target change or a detach, ends with the socket; the page opens a
