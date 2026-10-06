@@ -162,6 +162,26 @@ impl ControlService {
         .await
     }
 
+    /// The platforms of every user's paired devices, each once: the systems
+    /// whose runners this backend serves.
+    pub async fn paired_platforms(&self) -> Result<Vec<RunnerPlatform>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection
+                .prepare_cached("SELECT DISTINCT platform FROM devices WHERE kind = 'user'")?;
+            let mut rows = statement.query([])?;
+            let mut platforms = Vec::new();
+            while let Some(row) = rows.next()? {
+                platforms.push(decode(
+                    "devices",
+                    "platform",
+                    row.get::<_, String>("platform")?.parse::<RunnerPlatform>(),
+                )?);
+            }
+            Ok(platforms)
+        })
+        .await
+    }
+
     /// Deletes the device with its attachments to conversations and its
     /// workspaces, one transaction; its exposes go with it. The workspaces'
     /// conversations first move off them, each to its workspace's directory

@@ -32,7 +32,7 @@ test("a plugin page's sidebar entry shows while its plugin is on and opens the s
   expect(resources.settingsTab).toBe('skills')
 })
 
-test("a device project's row follows its device online, offline and gone; a Cloud project has no online state", () => {
+test("a device project's row follows its device online, updating, offline and gone; a Cloud project has no state", () => {
   const product = useProduct()
   const resources = useResources()
   const device = {
@@ -42,7 +42,7 @@ test("a device project's row follows its device online, offline and gone; a Clou
     platform: 'darwin' as const,
     claimedAt: '2026-09-10T00:00:00.000Z',
     lastSeenAt: null,
-    online: true,
+    state: 'online' as const,
     home: null,
     installed: [],
     startCommand: null,
@@ -59,15 +59,18 @@ test("a device project's row follows its device online, offline and gone; a Clou
 
   product.snapshot = productState({ devices: [device, cloud], workspaces })
   expect(resources.projects).toEqual([
-    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', host: 'ZandeMacBook-Pro.local', hostKind: 'device', online: true },
+    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', host: 'ZandeMacBook-Pro.local', hostKind: 'device', state: 'online' },
     { id: 'notes', name: 'notes', path: '/notes', deviceId: 'cloud', host: 'Cloud', hostKind: 'cloud' },
   ])
 
-  product.snapshot = productState({ devices: [{ ...device, online: false }, cloud], workspaces })
-  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', online: false })
+  product.snapshot = productState({ devices: [{ ...device, state: 'updating' }, cloud], workspaces })
+  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', state: 'updating' })
+
+  product.snapshot = productState({ devices: [{ ...device, state: 'offline' }, cloud], workspaces })
+  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', state: 'offline' })
 
   // A device the list no longer holds, as for a moment around its
   // revocation, shows as unavailable and offline.
   product.snapshot = productState({ devices: [cloud], workspaces })
-  expect(resources.projects[0]).toMatchObject({ host: 'Unavailable device', hostKind: 'device', online: false })
+  expect(resources.projects[0]).toMatchObject({ host: 'Unavailable device', hostKind: 'device', state: 'offline' })
 })

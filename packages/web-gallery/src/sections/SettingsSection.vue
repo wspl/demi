@@ -43,8 +43,9 @@ const directPaths = [
   { value: 'blocked', label: 'Blocked by the Browser' },
 ] as const
 const directDevices = ref<SettingsDevice[]>([
-  { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now' },
-  { id: 'build', name: 'build-01', online: false, seen: '3 days ago', start: demoDeviceStart('linux') },
+  { id: 'mac', name: 'zan-mbp', state: 'online', seen: 'Now' },
+  { id: 'build', name: 'build-01', state: 'offline', seen: '3 days ago', start: demoDeviceStart('linux') },
+  { id: 'lab', name: 'lab-01', state: 'updating', seen: 'Now' },
 ])
 /** Each device as the Devices page lists it: an online one directly connected, a blocked browser blocking every one. */
 const directListed = computed(() =>
@@ -53,7 +54,7 @@ const directListed = computed(() =>
     direct:
       directPath.value === 'blocked'
         ? ('blocked' as const)
-        : directPath.value === 'connected' && device.online
+        : directPath.value === 'connected' && device.state === 'online'
           ? ('connected' as const)
           : undefined,
   })),
@@ -62,7 +63,7 @@ function revokeDirectDevice(id: string) {
   directDevices.value = directDevices.value.filter((device) => device.id !== id)
 }
 async function claimDirectDevice(_code: string) {
-  const device = { id: `device-${Date.now()}`, name: `host-${directDevices.value.length + 1}`, online: true, seen: 'Now' }
+  const device = { id: `device-${Date.now()}`, name: `host-${directDevices.value.length + 1}`, state: 'online' as const, seen: 'Now' }
   directDevices.value.push(device)
   return { ok: true as const, device }
 }
@@ -202,7 +203,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="Beside a paired device, Connected directly while this page reaches its runner without the server in the middle; under every paired device, how to allow direct connections while the browser blocks local network access. Switch the page's path to see each."
+        note="Beside a paired device, Connected directly while this page reaches its runner without the server in the middle; under every paired device, how to allow direct connections while the browser blocks local network access. Switch the page's path to see each. A device whose runner updates itself reads Updating; one that is offline says how to start its runner again, with Copy."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented v-model="directPath" :options="directPaths" size="sm" />

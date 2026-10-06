@@ -6,6 +6,9 @@
 
 use std::io::{Read as _, Write as _};
 
+use bytes::Bytes;
+use futures_util::{Stream, TryStreamExt as _};
+
 use crate::{Digest, Error, Verifier};
 
 /// The `Content-Encoding` an encoded executable is served with.
@@ -79,4 +82,19 @@ fn decode_into(
         output.write_all(&buffer[..count])?;
     }
     verifier.finish()
+}
+
+/// `encoded`, a stream of bytes in the content coding, decoded as it
+/// streams, for a reader that cannot decode it, such as an installer. What
+/// it decodes to is whatever the encoded bytes hold: the caller serves bytes
+/// that were checked when they were stored.
+pub fn decode_stream<E>(
+    encoded: impl Stream<Item = Result<Bytes, E>> + Send + Unpin,
+) -> impl Stream<Item = std::io::Result<Bytes>> + Send
+where
+    E: std::error::Error + Send + Sync + 'static,
+{
+    let reader = tokio_util::io::StreamReader::new(encoded.map_err(std::io::Error::other));
+    let decoder = async_compression::tokio::bufread::ZstdDecoder::new(reader);
+    tokio_util::io::ReaderStream::new(decoder)
 }

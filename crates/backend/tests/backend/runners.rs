@@ -15,7 +15,7 @@ use demi_runner_protocol::wire::{
     self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo,
     RunnerPlatform, StreamArtifactOwner,
 };
-use demi_web_api_protocol::devices::{ClaimedDevice, DeviceKind, DeviceLog};
+use demi_web_api_protocol::devices::{ClaimedDevice, DeviceKind, DeviceLog, DeviceState};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::Directory;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -60,7 +60,7 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
         (device.name.as_str(), device.kind),
         ("laptop", DeviceKind::User)
     );
-    assert!(device.online);
+    assert_eq!(device.state, DeviceState::Online);
     assert_eq!(device.home.as_deref(), Some(runner.home()));
     // A code is single use.
     assert_eq!(
@@ -69,7 +69,7 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
     );
     let listed = backend.devices(&master).await;
     assert_eq!(listed.len(), 1);
-    assert_eq!((&listed[0].id, listed[0].online), (&device.id, true));
+    assert_eq!((&listed[0].id, listed[0].state), (&device.id, DeviceState::Online));
 
     // A restarted runner presents the token it stored and is the same device,
     // online.

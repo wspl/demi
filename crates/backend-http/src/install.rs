@@ -15,9 +15,11 @@ use axum::extract::{Path, State};
 use axum::http::header::{CACHE_CONTROL, CONTENT_ENCODING, CONTENT_LENGTH, CONTENT_TYPE, HOST};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use demi_backend_runners::install::{backend_url, powershell_script, shell_script};
+use demi_backend_runners::install::{
+    backend_url, powershell_script, read_runner_release, shell_script,
+};
 use demi_command_protocol::{is_digest, is_target};
-use demi_runner_protocol::release::RunnerRelease;
+use demi_runner_protocol::release::{COMPRESSED_SUFFIX, RunnerRelease};
 use demi_web_api_protocol::error::ErrorCode;
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -153,7 +155,14 @@ pub(super) async fn artifact(
     } else {
         "demi-runner"
     };
-    if !is_digest(&release) || !is_target(&target) || file != executable {
+    // The compressed copy as it is stored, for a runner's update, or the
+    // executable decoded as it streams, for an installer, which has no zstd.
+    let compressed = match file.strip_suffix(COMPRESSED_SUFFIX) {
+        Some(name) if name == executable => true,
+        None if file == executable => false,
+        _ => return Err(not_found()),
+    };
+    if !is_digest(&release) || !is_target(&target) {
         return Err(not_found());
     }
     let manifest = read_release(releases.join(&release).join("manifest.json"))
@@ -172,7 +181,18 @@ pub(super) async fn artifact(
         .runner_executable(&target, artifact, &cancel)
         .await
         .map_err(ApiError::internal_message)?;
-    stored_download(stored)
+    if compressed {
+        return stored_download(stored);
+    }
+    let mut headers = HeaderMap::new();
+    headers.insert(
+        CONTENT_TYPE,
+        HeaderValue::from_static("application/octet-stream"),
+    );
+    headers.insert(CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE));
+    headers.insert(CONTENT_LENGTH, HeaderValue::from(artifact.size));
+    let decoded = demi_shared_artifacts::decode_stream(stored.into_stream());
+    Ok((headers, Body::from_stream(decoded)).into_response())
 }
 
 /// A local store's command executable, by its SHA-256, as S3 would serve
@@ -217,12 +237,7 @@ fn stored_download(stored: object_store::GetResult) -> Result<Response, ApiError
 /// The release record at `path`, when there is one; a record that does not
 /// decode is the deployment's fault.
 async fn read_release(path: PathBuf) -> Result<Option<RunnerRelease>, ApiError> {
-    let bytes = match tokio::fs::read(&path).await {
-        Ok(bytes) => bytes,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
-        Err(error) => return Err(ApiError::internal_message(error.to_string())),
-    };
-    RunnerRelease::decode(&bytes)
-        .map(Some)
-        .map_err(|error| ApiError::internal_message(format!("{}: {error}", path.display())))
+    read_runner_release(&path)
+        .await
+        .map_err(ApiError::internal_message)
 }

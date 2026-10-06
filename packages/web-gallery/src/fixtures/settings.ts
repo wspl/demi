@@ -687,13 +687,13 @@ export function mockProviders(): MockProvider[] {
 /** The paired devices the devices page lists. */
 function galleryDevices(): SettingsDevice[] {
   return [
-    { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now', direct: 'connected' },
-    { id: 'build', name: 'build-01', online: false, seen: '3 days ago', start: demoDeviceStart('linux') },
-    { id: 'studio', name: 'studio-pc', online: false, seen: 'Yesterday', start: demoDeviceStart('windows') },
+    { id: 'mac', name: 'zan-mbp', state: 'online', seen: 'Now', direct: 'connected' },
+    { id: 'build', name: 'build-01', state: 'offline', seen: '3 days ago', start: demoDeviceStart('linux') },
+    { id: 'studio', name: 'studio-pc', state: 'offline', seen: 'Yesterday', start: demoDeviceStart('windows') },
     {
       id: 'lab',
       name: 'lab-workstation-with-a-long-hostname',
-      online: true,
+      state: 'updating',
       seen: '2 minutes ago',
     },
   ]

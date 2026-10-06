@@ -501,12 +501,7 @@ export const useConversations = defineStore('conversations', () => {
           unread: false,
         })
         conversation.persistence = draft.local.phase
-        conversation.attachedHosts = draft.local.hosts.map((host) => ({
-          ...host,
-          online: resources.devices.some(
-            (device) => device.id === host.deviceId && device.online,
-          ),
-        }))
+        conversation.attachedHosts = draft.local.hosts.map((host) => ({ ...host }))
         conversation.load = 'ready'
         items.value.unshift(conversation)
         const restoredConversation = items.value.find(
@@ -1274,7 +1269,6 @@ export const useConversations = defineStore('conversations', () => {
           deviceId,
           name: device.name,
           cwd: null,
-          online: device.online,
         })
         saveDrafts()
       }

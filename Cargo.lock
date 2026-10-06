@@ -2857,6 +2857,7 @@ dependencies = [
 name = "demi-shared-artifacts"
 version = "0.1.13"
 dependencies = [
+ "async-compression",
  "bytes",
  "demi-shared-artifacts",
  "futures-util",

@@ -234,7 +234,7 @@ function pairedDevice() {
     const deadline = Date.now() + SETTLE_MS
     for (;;) {
       const { devices } = await readResponse(await apiRequest('/devices'), devicesSchema)
-      if (devices.some((each) => each.id === device.id && each.online)) {
+      if (devices.some((each) => each.id === device.id && each.state === 'online')) {
         return { deviceId: device.id, runner }
       }
       if (Date.now() > deadline) {

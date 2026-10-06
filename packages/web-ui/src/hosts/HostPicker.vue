@@ -6,6 +6,7 @@ import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import type { MenuListItem } from '@demicodes/web-ui/ui/menu-context'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 import type { HostDeviceOption } from './types'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 
 const props = defineProps<{
   devices: HostDeviceOption[]
@@ -22,9 +23,9 @@ const items = computed((): MenuListItem[] =>
     ...device,
     label: device.name,
     icon: Monitor,
-    note: device.online ? undefined : 'Offline',
-    indicator: device.online ? 'success' as const : 'muted' as const,
-    indicatorLabel: device.online ? 'Online' : 'Offline',
+    note: device.state === 'online' ? undefined : DEVICE_STATE_LABEL[device.state],
+    indicator: DEVICE_STATE_TONE[device.state],
+    indicatorLabel: DEVICE_STATE_LABEL[device.state],
     disabledReason: disabledReason(device),
   })),
 )
@@ -35,7 +36,10 @@ function disabledReason(device: HostDeviceOption): SentenceText | undefined {
   if (props.boundIds?.includes(device.id)) {
     return 'Already attached to this conversation.'
   }
-  if (!device.online) {
+  if (device.state === 'updating') {
+    return 'This device is updating.'
+  }
+  if (device.state === 'offline') {
     return 'This device is offline.'
   }
   return undefined

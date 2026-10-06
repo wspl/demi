@@ -43,7 +43,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   // connect at once, and the watch moves whenever the path to its device
   // changes (`direct-channel.md` § Choosing the path).
   effectScope(true).run(() => {
-    watch(() => device.value?.online === true ? device.value.id : null, (online, _previous, onCleanup) => {
+    watch(() => device.value?.state === 'online' ? device.value.id : null, (online, _previous, onCleanup) => {
       if (online === null)
         return
       watcher.online()

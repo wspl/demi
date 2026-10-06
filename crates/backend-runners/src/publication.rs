@@ -557,10 +557,11 @@ mod tests {
         assert!(catalog.local_artifact(&wanted.sha256).await.is_none());
     }
 
-    /// An installer's download of a runner executable: the runner release
-    /// names it, and the backend takes it from the release's files as it is.
+    /// A runner executable's download: the runner release names it, and the
+    /// backend takes its compressed copy from the release's files, checks
+    /// what it decodes to, and keeps it in the content coding.
     #[tokio::test]
-    async fn a_runner_executable_is_sourced_as_it_is() {
+    async fn a_runner_executable_is_sourced_as_its_compressed_copy() {
         let data = tempfile::tempdir().unwrap();
         let objects = local(data.path());
         let fixture = Fixture::new(&TARGETS[..1]);
@@ -574,15 +575,23 @@ mod tests {
         let file = fixture
             .files
             .path()
-            .join(demi_runner_protocol::release::release_file("demi-runner", target));
-        std::fs::write(&file, b"another runner").unwrap();
+            .join(demi_runner_protocol::release::compressed_file("demi-runner", target));
+        let encode = |bytes: &[u8]| {
+            demi_shared_artifacts::encode_blocking(bytes, demi_shared_artifacts::Effort::Fast)
+                .unwrap()
+        };
+        std::fs::write(&file, encode(b"another runner")).unwrap();
         let cancel = CancellationToken::new();
         let refused = catalog.runner_executable(target, &runner, &cancel).await.err().unwrap();
         assert!(refused.contains("demi-runner-"), "{refused}");
-        std::fs::write(&file, &bytes).unwrap();
+        let encoded = encode(&bytes);
+        std::fs::write(&file, &encoded).unwrap();
         let stored = catalog.runner_executable(target, &runner, &cancel).await.unwrap();
-        assert!(stored.attributes.get(&Attribute::ContentEncoding).is_none());
-        assert_eq!(stored.bytes().await.unwrap(), bytes);
+        assert_eq!(
+            stored.attributes.get(&Attribute::ContentEncoding).map(|coding| coding.as_ref()),
+            Some(demi_shared_artifacts::CONTENT_CODING)
+        );
+        assert_eq!(stored.bytes().await.unwrap(), encoded);
     }
 
     #[tokio::test]

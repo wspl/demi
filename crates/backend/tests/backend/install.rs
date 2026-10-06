@@ -11,8 +11,11 @@ use std::process::Output;
 use demi_backend_remote_host::testing::runner_binary;
 use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_provider_common::testing::MockVendor;
-use demi_runner_protocol::release::release_file;
+use demi_runner_protocol::release::{
+    RELEASE_HEADER, RUNNER, TARGET_HEADER, TOKEN_HEADER, compressed_file,
+};
 use demi_runner_protocol::wire;
+use demi_web_api_protocol::devices::DeviceState;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -26,10 +29,12 @@ fn sha(bytes: &[u8]) -> String {
 
 /// A server release whose runner releases all carry `program`: its root,
 /// with the releases' manifests in `runners/` and no command package, and
-/// its files beside, where each target's runner is `program`.
+/// its files beside, where each target's runner is `program`'s compressed
+/// copy, as a release's files hold it.
 struct Releases {
     directory: tempfile::TempDir,
-    program: PathBuf,
+    /// `program` compressed, which each target's file links.
+    compressed: PathBuf,
     /// The program's size and digest, which every release names.
     artifact: Value,
 }
@@ -38,12 +43,18 @@ impl Releases {
     fn new(program: PathBuf) -> Self {
         let bytes = std::fs::read(&program).unwrap();
         let artifact = json!({ "sha256": sha(&bytes), "size": bytes.len() });
+        let directory = tempfile::Builder::new()
+            .prefix("demi-releases-")
+            .tempdir()
+            .unwrap();
+        let compressed = directory.path().join("program.zst");
+        let encoded =
+            demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Fast)
+                .unwrap();
+        std::fs::write(&compressed, encoded).unwrap();
         Self {
-            directory: tempfile::Builder::new()
-                .prefix("demi-releases-")
-                .tempdir()
-                .unwrap(),
-            program,
+            directory,
+            compressed,
             artifact,
         }
     }
@@ -73,9 +84,9 @@ impl Releases {
         std::fs::create_dir_all(self.path().join("commands")).unwrap();
         crate::support::write_server_release(&self.path(), &files);
         for target in TARGETS {
-            let file = files.join(release_file("demi-runner", target));
+            let file = files.join(compressed_file(RUNNER, target));
             if !file.exists() {
-                std::os::unix::fs::symlink(&self.program, &file).unwrap();
+                std::os::unix::fs::symlink(&self.compressed, &file).unwrap();
             }
         }
         std::fs::create_dir_all(self.runners().join(&release)).unwrap();
@@ -524,9 +535,9 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     backend.close().await;
 }
 
-/// The command a paired device shows starts its stopped runner again: it is
-/// the launcher of the installation the installer made for this backend
-/// (`runner.md` § Installation, pairing and removal).
+/// The command a paired device shows starts its stopped runner again in
+/// the background: `run start` of the installation the installer made for
+/// this backend (`runner.md` § Installation, pairing and removal).
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it, and the runner starts a second time.
 #[tokio::test]
@@ -550,19 +561,204 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
     assert!(drained.status.success(), "{drained:?}");
     backend.until_online(&master, device.id.as_str(), false).await;
 
+    // The command returns once the runner it started in the background is
+    // connected; the installations' drop drains it.
     let command = device.start_command.clone().expect("a paired device has a start command");
-    // The runner runs in the shell the command was typed into; the
-    // installations' drop drains it.
-    let _started = installations
-        .shell()
-        .arg("-c")
-        .arg(&command)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .kill_on_drop(true)
-        .spawn()
+    let started = installations.shell().arg("-c").arg(&command).output().await.unwrap();
+    assert!(started.status.success(), "{started:?}");
+    assert!(backend.online(&master, device.id.as_str()).await);
+    // Typed again, it leaves the running runner as it is.
+    let endpoint = active(&state)["endpoint"].clone();
+    let again = installations.shell().arg("-c").arg(&command).output().await.unwrap();
+    assert!(again.status.success(), "{again:?}");
+    assert!(String::from_utf8_lossy(&again.stdout).contains("running already"), "{again:?}");
+    assert_eq!(active(&state)["endpoint"], endpoint);
+    drop(installations);
+    backend.close().await;
+}
+
+/// A backend sources the runner executables of its paired devices' systems
+/// as it starts, so that a runner's update after the server's upgrade waits
+/// on no origin (`native-runtime.md` § Runner releases).
+// Several seconds: the installer downloads this build's runner (170 MB)
+// and starts it.
+#[tokio::test]
+async fn a_backend_sources_the_runners_of_its_paired_devices_as_it_starts() {
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    installations.install(&backend, &master).await;
+    let devices = backend.devices(&master).await;
+    let [device] = devices.as_slice() else {
+        panic!("one paired device: {devices:?}");
+    };
+    // Nobody asks for a runner while the backend is away.
+    let drained = std::process::Command::new(state.join("run"))
+        .arg("drain")
+        .output()
         .unwrap();
-    backend.until_online(&master, device.id.as_str(), true).await;
+    assert!(drained.status.success(), "{drained:?}");
+    backend.until_online(&master, device.id.as_str(), false).await;
+    let address = backend.address();
+    backend.close().await;
+
+    // The server moves to a release with another runner, which its store
+    // does not hold.
+    let next = b"the next runner";
+    let encoded =
+        demi_shared_artifacts::encode_blocking(next, demi_shared_artifacts::Effort::Fast).unwrap();
+    let files = releases.directory.path().join("files");
+    for target in TARGETS {
+        let file = files.join(compressed_file(RUNNER, target));
+        std::fs::remove_file(&file).unwrap();
+        std::fs::write(&file, &encoded).unwrap();
+    }
+    releases.publish_naming("next", &json!({ "sha256": sha(next), "size": next.len() }));
+    let backend = harness.start_at(address).await;
+    let stored = harness.data_dir().join("native/blobs").join(sha(next));
+    eventually("the next runner is in the store", || {
+        let held = stored.exists();
+        async move { held }
+    })
+    .await;
+    drop(installations);
+    backend.close().await;
+}
+
+/// Asks for the runner socket as a runner of `release` asks for it, naming
+/// its device with `token` when it has one, and answers the status; an
+/// opened socket says hello with the token and answers whether it was
+/// welcomed, the socket staying open while the answer is held.
+async fn ask_socket(
+    backend: &TestBackend,
+    release: &str,
+    token: Option<&str>,
+) -> (
+    StatusCode,
+    Option<tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>>,
+) {
+    use futures_util::{SinkExt as _, StreamExt as _};
+    use tokio_tungstenite::tungstenite::{Error, Message, client::IntoClientRequest as _};
+    let mut request = backend.ws_url("/api/runner").into_client_request().unwrap();
+    let headers = request.headers_mut();
+    headers.insert(RELEASE_HEADER, release.parse().unwrap());
+    headers.insert(TARGET_HEADER, host_target().parse().unwrap());
+    if let Some(token) = token {
+        headers.insert(TOKEN_HEADER, token.parse().unwrap());
+    }
+    let mut socket = match tokio_tungstenite::connect_async(request).await {
+        Ok((socket, _)) => socket,
+        Err(Error::Http(response)) => {
+            return (StatusCode::from_u16(response.status().as_u16()).unwrap(), None);
+        }
+        Err(error) => panic!("the runner socket failed: {error}"),
+    };
+    let hello = wire::Outbound::Hello {
+        protocol: wire::VERSION,
+        device_token: token.map(|token| token.to_owned().try_into().unwrap()),
+        runner: wire::RunnerInfo {
+            name: "raw".into(),
+            platform: wire::RunnerPlatform::Linux,
+            version: release.into(),
+            native_target: None,
+            identity: wire::HostIdentity {
+                uid: 1,
+                gid: 1,
+                hostname: "raw".into(),
+                home_dir: "/home/raw".into(),
+            },
+            managed: None,
+        },
+    };
+    let frame = wire::encode(&hello).unwrap().into_bytes();
+    socket.send(Message::Binary(frame.into())).await.unwrap();
+    loop {
+        match socket.next().await {
+            Some(Ok(Message::Binary(frame))) => {
+                let welcomed = matches!(
+                    wire::decode::<wire::Inbound>(&frame).unwrap(),
+                    wire::Inbound::HelloOk { .. }
+                );
+                assert!(welcomed);
+                return (StatusCode::SWITCHING_PROTOCOLS, Some(socket));
+            }
+            Some(Ok(_)) => {}
+            other => panic!("the socket closed before its hello was answered: {other:?}"),
+        }
+    }
+}
+
+/// A runner the backend sends to an update names its device with its token,
+/// and the device shows as updating until its next hello or the window
+/// ends; a runner of an earlier release names none, and its device shows as
+/// offline (`runner.md` § Runner updates).
+// Several seconds: the installer downloads this build's runner (170 MB)
+// and starts it, and the window passes once.
+#[tokio::test]
+async fn a_runner_sent_to_an_update_shows_its_device_updating_until_its_next_hello_or_the_window_ends() {
+    let releases = Releases::new(runner_binary());
+    let initial = releases.publish("initial");
+    let mut harness = Harness::new().with_runner_releases(releases.path());
+    let window = std::time::Duration::from_millis(1500);
+    harness.runners.updating = window;
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    installations.install(&backend, &master).await;
+    let devices = backend.devices(&master).await;
+    let [device] = devices.as_slice() else {
+        panic!("one paired device: {devices:?}");
+    };
+    let id = device.id.clone();
+    backend.until_online(&master, id.as_str(), true).await;
+    let token = std::fs::read_to_string(state.join("runner-token")).unwrap();
+    let token = token.trim();
+    let drained = std::process::Command::new(state.join("run"))
+        .arg("drain")
+        .output()
+        .unwrap();
+    assert!(drained.status.success(), "{drained:?}");
+    backend.until_online(&master, id.as_str(), false).await;
+    let upgraded = releases.publish("upgraded");
+    let device_state = || async {
+        backend
+            .devices(&master)
+            .await
+            .into_iter()
+            .find(|device| device.id == id)
+            .expect("the device is listed")
+            .state
+    };
+
+    // A runner of a release before 0.1.14 names no device.
+    assert_eq!(ask_socket(&backend, &initial, None).await.0, StatusCode::CONFLICT);
+    assert_eq!(device_state().await, DeviceState::Offline);
+
+    // Its token names the device, which shows as updating until the window
+    // ends.
+    let asked = tokio::time::Instant::now();
+    assert_eq!(ask_socket(&backend, &initial, Some(token)).await.0, StatusCode::CONFLICT);
+    assert_eq!(device_state().await, DeviceState::Updating);
+    eventually("the window ends", || async {
+        device_state().await == DeviceState::Offline
+    })
+    .await;
+    assert!(asked.elapsed() >= window, "{:?}", asked.elapsed());
+
+    // The runner of the new release says hello, which ends the update.
+    assert_eq!(ask_socket(&backend, &initial, Some(token)).await.0, StatusCode::CONFLICT);
+    assert_eq!(device_state().await, DeviceState::Updating);
+    let (opened, socket) = ask_socket(&backend, &upgraded, Some(token)).await;
+    assert_eq!(opened, StatusCode::SWITCHING_PROTOCOLS);
+    assert_eq!(device_state().await, DeviceState::Online);
+    drop(socket);
+    eventually("the device is offline", || async {
+        device_state().await == DeviceState::Offline
+    })
+    .await;
     drop(installations);
     backend.close().await;
 }
@@ -616,6 +812,7 @@ async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served
         format!("{release}/aarch64-apple-ios/demi-runner"),
         format!("{}/{}/demi-runner", sha(b"unpublished"), host_target()),
         format!("{}/{}/demi-runner", &release[..16], host_target()),
+        format!("{release}/{}/demi-runner.zst.zst", host_target()),
     ] {
         let refused = reqwest::get(format!("{}/runner-artifacts/{wrong}", served.url))
             .await
@@ -630,10 +827,33 @@ async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served
     .await
     .unwrap();
     assert_eq!(executable.status(), StatusCode::OK);
+    assert!(executable.headers().get("content-encoding").is_none());
     assert_eq!(
-        json!(executable.bytes().await.unwrap().len()),
-        releases.artifact["size"]
+        executable.bytes().await.unwrap(),
+        std::fs::read(stand_in.path()).unwrap()
     );
+    // A runner's update downloads the compressed copy, which its client
+    // decodes from the content coding and checks.
+    let expected = demi_shared_artifacts::Digest {
+        size: releases.artifact["size"].as_u64().unwrap(),
+        sha256: releases.artifact["sha256"].as_str().unwrap().to_owned(),
+    };
+    let client = demi_shared_artifacts::client_allowing_http().unwrap();
+    let mut decoded = Vec::new();
+    demi_shared_artifacts::download(
+        &client,
+        &format!(
+            "{}/runner-artifacts/{release}/{}/demi-runner.zst",
+            served.url,
+            host_target()
+        ),
+        &expected,
+        &mut decoded,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(decoded, std::fs::read(stand_in.path()).unwrap());
     backend.close().await;
     served.close().await;
 }

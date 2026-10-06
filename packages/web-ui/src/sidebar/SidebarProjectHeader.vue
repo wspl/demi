@@ -5,9 +5,10 @@ import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices/state'
 import type { SidebarProject } from './types'
 
-/** A project row: the checkout's name, the host it is on with a device's online state, and the fold. */
+/** A project row: the checkout's name, the host it is on with a device's state, and the fold. */
 defineProps<{
   project: SidebarProject
   collapsed: boolean
@@ -57,8 +58,8 @@ const emit = defineEmits<{
           <Cloud v-if="project.hostKind === 'cloud'" :size="ICON_PX.in20" />
           <StatusDot
             v-else
-            :tone="project.online ? 'success' : 'muted'"
-            :label="project.online ? 'Online' : 'Offline'"
+            :tone="DEVICE_STATE_TONE[project.state]"
+            :label="DEVICE_STATE_LABEL[project.state]"
           />
         </span>
       </span>

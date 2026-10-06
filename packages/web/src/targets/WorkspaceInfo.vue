@@ -32,7 +32,7 @@ const recentDirectories = computed(() =>
     .map((project) => ({
       id: project.id,
       path: project.path,
-      disabled: project.hostKind === 'device' && !project.online,
+      disabled: project.hostKind === 'device' && project.state !== 'online',
     })),
 )
 const hosts = computed(() =>

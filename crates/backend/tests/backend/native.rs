@@ -12,6 +12,7 @@
 
 use demi_command_protocol::host_target;
 use demi_runner_protocol::wire::HostArtifact;
+use demi_web_api_protocol::devices::DeviceState;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use reqwest::header::{CACHE_CONTROL, CONTENT_ENCODING};
@@ -42,7 +43,7 @@ async fn a_runner_installs_a_development_release_from_the_backend_which_serves_n
         move || async move {
             backend.devices(master).await.iter().any(|listed| {
                 listed.id.as_str() == device
-                    && listed.online == online
+                    && (listed.state == DeviceState::Online) == online
                     && listed.installed.contains(program)
             })
         }

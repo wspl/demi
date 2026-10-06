@@ -10,12 +10,13 @@ use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceRecord, DeviceRemoval};
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Link, LinkOptions, host_identity};
-use demi_backend_runners::devices::{DeviceRecorder, Serving, send};
+use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
 use demi_host_interface::HostIdentity;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::DeviceId;
 use tokio::sync::oneshot;
+use tokio_util::task::AbortOnDropHandle;
 
 use super::Shard;
 use super::policy::ShardPolicy;
@@ -37,6 +38,11 @@ impl Shard {
             .hellos
             .pass(crate::holds::HelloStep::Bind)
             .await;
+        // The update the runner was sent to is over, whatever this hello
+        // comes to.
+        if self.devices().hello(&device.id) {
+            self.mark(Part::Devices);
+        }
         // A held connection that answers its ping keeps the device; one
         // that does not is the same runner's, lost without a close, and
         // gives way.
@@ -135,6 +141,25 @@ impl Shard {
         self.tasks()
             .spawn_local(async move { seen.touch(device).await });
         Some(serving)
+    }
+
+    /// Shows `device` as updating: its runner was just sent to the
+    /// backend's runner release (`runner.md` § Runner updates), until its
+    /// next hello or the window of the runners' tuning ends.
+    pub fn runner_updating(self: &Rc<Self>, device: &DeviceId) {
+        let until = tokio::time::Instant::now() + self.services().runners.updating;
+        let shard = Rc::downgrade(self);
+        // The device's pages see the window end; the slot's drop of the
+        // window stops this first, as the next hello or update does.
+        let expiry = tokio::task::spawn_local(async move {
+            tokio::time::sleep_until(until).await;
+            if let Some(shard) = shard.upgrade() {
+                shard.mark(Part::Devices);
+            }
+        });
+        let updating = Updating::new(until, AbortOnDropHandle::new(expiry));
+        self.devices().updating(device, updating);
+        self.mark(Part::Devices);
     }
 
     /// Revokes a device, which nothing refuses: its exposes end with their

@@ -17,6 +17,7 @@ import {
   MapPin,
 } from '@lucide/vue'
 import { CLOUD_HOST_ID, hostIcon } from '../hosts/icons'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -352,17 +353,15 @@ onBeforeUnmount(() => pending?.abort())
                 :indicator="
                   host.id === CLOUD_HOST_ID || host.canWake
                     ? undefined
-                    : host.online
-                      ? 'success'
-                      : 'muted'
+                    : DEVICE_STATE_TONE[host.state]
                 "
-                :indicator-label="host.online ? 'Online' : 'Offline'"
+                :indicator-label="DEVICE_STATE_LABEL[host.state]"
                 :note="
-                  host.id !== CLOUD_HOST_ID && !host.canWake && !host.online
-                    ? 'Offline'
+                  host.id !== CLOUD_HOST_ID && !host.canWake && host.state !== 'online'
+                    ? DEVICE_STATE_LABEL[host.state]
                     : undefined
                 "
-                :disabled="host.id !== CLOUD_HOST_ID && !host.online && !host.canWake"
+                :disabled="host.id !== CLOUD_HOST_ID && host.state !== 'online' && !host.canWake"
                 disabled-reason="This device is offline."
                 :label="host.label"
                 choice

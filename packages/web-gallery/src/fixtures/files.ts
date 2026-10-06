@@ -178,7 +178,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'mac',
       label: 'zan-mbp',
-      online: true,
+      state: 'online',
       source: createMemoryFileSource(
         {
           platform: 'linux',
@@ -208,7 +208,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'build',
       label: 'build-01',
-      online: true,
+      state: 'online',
       source: createMemoryFileSource(
         {
           platform: 'linux',
@@ -228,7 +228,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'studio',
       label: 'studio',
-      online: false,
+      state: 'offline',
       icon: undefined,
       source: createMemoryFileSource(
         {
@@ -256,7 +256,7 @@ export function createGalleryRemoteFileHosts(latencyMs = 250): GalleryFileHost[]
     {
       id: 'managed-device',
       label: 'Cloud',
-      online: false,
+      state: 'offline',
       canWake: true,
       icon: Cloud,
       source: createMemoryFileSource({

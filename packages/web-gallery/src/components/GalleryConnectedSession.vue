@@ -58,7 +58,7 @@ const hosts = createGalleryFileHosts()
 const devices: HostDeviceOption[] = hosts.map((host) => ({
   id: host.id,
   name: host.label,
-  online: host.online,
+  state: host.state,
 }))
 const folder = ref({
   deviceId: hosts[0]!.id,
@@ -71,15 +71,15 @@ const recentDirectories = computed(() => {
   return recent.map((place) => ({
     id: `${host!.id}:${place.path}`,
     path: place.path,
-    disabled: !host!.online,
+    disabled: host!.state !== 'online',
   }))
 })
 const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean).at(-1) ?? null)
 const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
   return device
-    ? { id: device.id, name: device.name, kind: 'device', online: device.online }
-    : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
+    ? { id: device.id, name: device.name, kind: 'device', state: device.state }
+    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online' }
 })
 const attachedHosts = ref<HostMenuHost[]>([])
 // The conversation header's tools come from the plugin packages, over the

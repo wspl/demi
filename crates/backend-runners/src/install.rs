@@ -10,6 +10,8 @@
 //! pairing and removal). A script holds no credential: pairing grants device
 //! access.
 
+use std::path::Path;
+
 use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
 use demi_runner_protocol::release::RunnerRelease;
 use demi_runner_protocol::wire::RunnerPlatform;
@@ -46,18 +48,33 @@ fn registration(backend: &Url) -> String {
 /// The command that starts the runner of `backend`'s installation again on
 /// a device of `platform`, typed in a terminal there: the launcher the
 /// installers write, where they put it unless the person named another
-/// installation, which runs the runner in that terminal (`runner.md`
-/// § Installation, pairing and removal).
+/// installation, with `start`, which starts the runner in the background
+/// (`runner.md` § Installation, pairing and removal). On Windows it runs
+/// through PowerShell with a policy that lets the launcher run.
 pub fn start_command(backend: &Url, platform: RunnerPlatform) -> String {
     let installation = registration(backend);
     match platform {
-        RunnerPlatform::Win32 => {
-            format!("& \"$env:USERPROFILE\\.demi\\instances\\{installation}\\run.ps1\"")
-        }
+        RunnerPlatform::Win32 => format!(
+            "powershell -ExecutionPolicy Bypass -File \"$env:USERPROFILE\\.demi\\instances\\{installation}\\run.ps1\" start"
+        ),
         RunnerPlatform::Darwin | RunnerPlatform::Linux => {
-            format!("~/.demi/instances/{installation}/run")
+            format!("~/.demi/instances/{installation}/run start")
         }
     }
+}
+
+/// The runner release record at `path`, a release's or the top-level
+/// `manifest.json` of a server release's `runners/`, when there is one; a
+/// record that does not decode is the deployment's fault.
+pub async fn read_runner_release(path: &Path) -> Result<Option<RunnerRelease>, String> {
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    RunnerRelease::decode(&bytes)
+        .map(Some)
+        .map_err(|error| format!("{}: {error}", path.display()))
 }
 
 /// `value` as one POSIX shell word.
@@ -388,7 +405,7 @@ try {
       [IO.File]::WriteAllText($demiBackendFile, $demiBackend + [Environment]::NewLine, $demiUtf8)
       [IO.File]::WriteAllText((Join-Path $demiState 'release-id'), $demiRelease + [Environment]::NewLine, $demiUtf8)
       $demiLauncher = @'
-param([ValidateSet('run', 'status', 'drain', 'uninstall')][string]$Action = 'run')
+param([ValidateSet('run', 'start', 'status', 'drain', 'uninstall')][string]$Action = 'run')
 $ErrorActionPreference = 'Stop'
 $demiState = $PSScriptRoot
 $demiBackend = [IO.File]::ReadAllText((Join-Path $demiState 'backend-url')).Trim()

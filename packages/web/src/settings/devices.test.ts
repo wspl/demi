@@ -23,7 +23,7 @@ beforeEach(async () => {
         platform: 'darwin',
         claimedAt: '2026-01-01T00:00:00.000Z',
         lastSeenAt: null,
-        online: true,
+        state: 'online',
         home: null,
         installed: [],
         startCommand: null,

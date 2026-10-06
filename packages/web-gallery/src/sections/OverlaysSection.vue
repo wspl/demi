@@ -25,7 +25,7 @@ import { reactive, ref } from 'vue'
 import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import SessionToolsMenu from '@demicodes/plugin-expose/SessionToolsMenu.vue'
-import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import type { ExposeMenuEntry } from '@demicodes/plugin-expose/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import { demoImageUrl } from '../fixtures/blocks'
@@ -34,36 +34,37 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices/state'
 
 const { view } = useGalleryView()
 
-const hostDevices = [
-  { id: 'mac', name: 'zan-mbp', online: true },
-  { id: 'build', name: 'build-01', online: true },
-  { id: 'studio', name: 'studio', online: false },
+const hostDevices: HostDeviceOption[] = [
+  { id: 'mac', name: 'zan-mbp', state: 'online' },
+  { id: 'build', name: 'build-01', state: 'updating' },
+  { id: 'studio', name: 'studio', state: 'offline' },
 ]
 const hostStatusItems = hostDevices.map((device) => ({
   id: device.id,
   label: device.name,
-  indicator: device.online ? 'success' as const : 'muted' as const,
-  indicatorLabel: device.online ? 'Online' : 'Offline',
+  indicator: DEVICE_STATE_TONE[device.state],
+  indicatorLabel: DEVICE_STATE_LABEL[device.state],
 }))
 const primaryHost = ref<HostMenuHost>({
   id: 'mac',
   name: 'zan-mbp',
   kind: 'device',
-  online: true,
+  state: 'online',
 })
 const attachedHosts = ref<HostMenuHost[]>([
   ...hostDevices.filter(device => device.id !== 'mac').map(device => ({ ...device, kind: 'device' as const })),
-  { id: 'managed-device', name: 'Cloud', kind: 'cloud', online: false },
+  { id: 'managed-device', name: 'Cloud', kind: 'cloud', state: 'offline' },
 ])
 
 function switchPrimaryHost(id: string) {
   const device = hostDevices.find(device => device.id === id)
   primaryHost.value = device
-    ? { id: device.id, name: device.name, kind: 'device', online: device.online }
-    : { id: 'cloud', name: 'Cloud', kind: 'cloud', online: true }
+    ? { id: device.id, name: device.name, kind: 'device', state: device.state }
+    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online' }
 }
 
 function attachHost(id: string) {
@@ -426,7 +427,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
         </GallerySpecimen>
         <GallerySpecimen variant="cloud host · no status dot">
           <HostMenu
-            :primary-host="{ id: 'cloud', name: 'Cloud', kind: 'cloud', online: false }"
+            :primary-host="{ id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'offline' }"
             :attached-hosts="[]"
             :devices="hostDevices"
             @switch-primary="productWould(`Move the Conversation to ${deviceName($event)}`)"
@@ -448,7 +449,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">
           <HostMenu
-            :primary-host="{ id: 'lab', name: 'lab-workstation-with-a-long-hostname', kind: 'device', online: true }"
+            :primary-host="{ id: 'lab', name: 'lab-workstation-with-a-long-hostname', kind: 'device', state: 'online' }"
             :attached-hosts="[]"
             :devices="hostDevices"
             @switch-primary="productWould(`Move the Conversation to ${deviceName($event)}`)"
