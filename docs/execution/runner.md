@@ -149,7 +149,9 @@ An update takes as long as one compressed executable's download, about
 10 MB, from a backend that already holds it. While a runner updates, the
 backend shows its device as updating rather than offline, from the 409 that
 named the executable to the device the request's token names until the
-device's next hello or 5 minutes, whichever comes first. A runner of a
+device's next hello or 5 minutes after the first such 409, whichever comes
+first: the retries of an update that keeps failing do not extend it, and the
+device then shows as offline. A runner of a
 release before 0.1.14 sends no token, so its device shows as offline during
 that one update.
 
@@ -198,7 +200,8 @@ installer does, and returns once it is connected or has said why it cannot
 connect; a runner already running is left as it is. It is how a person
 starts a runner that a restart of the computer or a kill stopped, and the
 web app shows it under a paired device that is offline, ready to copy, as
-`<installation>/run start` (on Windows,
+`<installation>/run start`, with the installation directory the runner
+reported in its last hello (on Windows,
 `powershell -ExecutionPolicy Bypass -File '<installation>\run.ps1' start`, so
 the default execution policy does not refuse it).
 
