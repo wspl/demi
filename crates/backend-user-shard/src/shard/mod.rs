@@ -11,7 +11,7 @@ pub mod exposes;
 mod host;
 #[cfg(test)]
 mod host_tests;
-mod page_socket;
+pub mod page_socket;
 mod permissions;
 
 pub use self::permissions::deliver_decisions;
