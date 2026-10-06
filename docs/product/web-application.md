@@ -140,8 +140,8 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   and closing A then shows File. The same holds for a tab another page
   closed or a plugin turned off. When no entry is left, the panel shows its
   first tab, the Change view. A page selects a tab without its user's
-  click only when a plugin's page asks to, as the browser does for a tab the
-  agent shows ([Showing a tab](../browser/live-view.md#showing-a-tab)); it is
+  click only when the tab's kind says that something asked that the user see
+  it, as the browser does for a tab the agent shows ([Showing a tab](../browser/live-view.md#showing-a-tab)); it is
   an ordinary selection and enters the history.
 - **Contents stay.** A tab's content, once shown, stays on the page until
   the tab closes, the panel closes or the panel shows another conversation.
