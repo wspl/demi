@@ -1120,7 +1120,8 @@ so its latest answered request is the last request that ended a turn. A title re
 
 A message's images, videos and documents and a tool result's images and
 videos are stored once, as blobs in the conversation owner's blob namespace,
-and blocks hold them by reference: `{ type: "ref", ref, mediaType }`, with a
+and blocks hold them by reference: `{ type: "ref", ref, mediaType }`, with an
+image's `width` and `height` in pixels, which its fitting reads, and a
 document's `fileName`. The session keeps a medium's bytes only while a
 provider request can still send them.
 
