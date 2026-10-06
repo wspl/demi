@@ -292,11 +292,15 @@ The limits of 80, 400 and 4,000 characters count Unicode scalar values, and a
 cut never splits one.
 
 The instruction tells the model to produce a title, never an answer: one line
-that fits where it is shown, in the language of the message. The instruction
+that fits where it is shown, in the language the user writes in, where names
+such as packages, files and commands count as no language, so an English
+message full of package names still gets an English title. The instruction
 describes the place rather than listing a length per language: one line of a
 narrow sidebar about 24 columns wide, where a Latin character takes one column
-and a Chinese, Japanese or Korean character two, and the overflow is cut off;
-examples show the result. It also asks for natural grammar,
+and a Chinese, Japanese or Korean character two, and the overflow is cut off.
+It holds no examples: a model copies an example's language and shape, as one
+gave an English request the half-Chinese title "lodash moment request 维护状态"
+after the instruction's examples ended in three Chinese ones. It also asks for natural grammar,
 exact technical terms, file names, numbers and error codes kept, no tool
 names, no leading "the" or "my", and something meaningful even for a greeting.
 
