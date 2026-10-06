@@ -90,15 +90,15 @@ test('the channel\'s snapshot is the page\'s copy, and each later message replac
 test('a plugin turned off leaves the page with its state, and one turned on again brings its state afresh', () => {
   const product = started()
   const channel = channels.last()
-  const expose = productState().plugins[0]!
+  const skills = productState().plugins[0]!
 
-  channel.send({ type: 'plugins', plugins: [{ ...expose, enabled: false }] })
-  expect(product.snapshot?.plugins).toEqual([{ ...expose, enabled: false }])
+  channel.send({ type: 'plugins', plugins: [{ ...skills, enabled: false }] })
+  expect(product.snapshot?.plugins).toEqual([{ ...skills, enabled: false }])
   expect(product.snapshot?.pluginStates).toEqual({})
 
-  channel.send({ type: 'plugins', plugins: [expose] })
-  channel.send({ type: 'plugin', plugin: 'expose', state: { available: true, exposes: [] } })
-  expect(product.snapshot?.pluginStates).toEqual({ expose: { available: true, exposes: [] } })
+  channel.send({ type: 'plugins', plugins: [skills] })
+  channel.send({ type: 'plugin', plugin: 'skills', state: { sources: [] } })
+  expect(product.snapshot?.pluginStates).toEqual({ skills: { sources: [] } })
 })
 
 test('a page of another build than the backend serves is out of date, as soon as a snapshot says so', () => {

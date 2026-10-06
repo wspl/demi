@@ -1,4 +1,4 @@
-//! Filesystem, working-tree and network requests for one backend connection.
+//! Filesystem and working-tree requests for one backend connection.
 
 use std::{future::Future, io, path::PathBuf, sync::Arc};
 
@@ -10,7 +10,6 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use crate::{
     files::FileTransfers,
     git::{GitService, MAX_FILES},
-    net::NetStreams,
     watches::{WatchRequests, Watches},
 };
 
@@ -24,7 +23,6 @@ pub struct HostServer {
     filesystem_capacity: Arc<Semaphore>,
     git: GitService,
     git_capacity: Arc<Semaphore>,
-    net: NetStreams,
     files: FileTransfers,
     watches: WatchRequests,
     cancel: CancellationToken,
@@ -52,7 +50,6 @@ impl HostServer {
                 cancel.clone(),
             ),
             default_cwd,
-            net: NetStreams::new(output.clone(), pipes.clone(), cancel.clone()),
             files: FileTransfers::new(output.clone(), pipes, cancel.clone()),
             output,
             filesystem: TaskTracker::new(),
@@ -171,12 +168,6 @@ impl HostServer {
         self.watches.handle(message)
     }
 
-    /// One network stream request (`runner.md` § Network streams): the
-    /// tracker owns the socket until the connection closes or both pipes end.
-    pub fn handle_net(&self, message: Inbound) -> io::Result<()> {
-        self.net.handle_open(message)
-    }
-
     /// The connection's file system watches, which every watch of a page's
     /// follows.
     pub fn watches(&self) -> &Watches {
@@ -187,6 +178,6 @@ impl HostServer {
         self.cancel.cancel();
         self.watches.close();
         self.filesystem.close();
-        tokio::join!(self.filesystem.wait(), self.net.close(), self.files.close());
+        tokio::join!(self.filesystem.wait(), self.files.close());
     }
 }

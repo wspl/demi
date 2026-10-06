@@ -98,14 +98,15 @@ fn revision(answer: &crate::support::Answer) -> u64 {
     answer.json::<Value>()["revision"].as_u64().unwrap()
 }
 
-/// A tab of `expose`'s `page` kind, whose plugin does nothing with a tab.
+/// A tab of the panel fixture's `page` kind, whose plugin does nothing with
+/// a tab.
 fn page(id: &str, url: &str) -> Value {
     json!({ "id": id, "kind": "page", "data": { "url": url } })
 }
 
 #[tokio::test]
 async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
-    let harness = Harness::new();
+    let harness = Harness::new().with_panel_fixture();
     let (backend, master) = harness.start_set_up().await;
     let panel = Panel {
         backend: &backend,
@@ -210,7 +211,7 @@ async fn a_work_panel_changes_one_request_at_a_time_and_uses_a_tab_id_once() {
 
 #[tokio::test]
 async fn a_work_panel_holds_64_tabs_and_64_kib_and_an_archived_conversation_takes_no_change() {
-    let harness = Harness::new();
+    let harness = Harness::new().with_panel_fixture();
     let (backend, master) = harness.start_set_up().await;
     let panel = Panel {
         backend: &backend,

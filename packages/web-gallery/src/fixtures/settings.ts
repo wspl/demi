@@ -1,6 +1,5 @@
 import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
-import type { ExposeMenuEntry } from '@demicodes/plugin-expose/types'
 import type {
   SettingsArchivedConversation,
   SettingsDevice,
@@ -10,7 +9,6 @@ import type {
   SettingsProviderModel,
   SettingsVendor
 } from '@demicodes/web-ui/settings/types'
-import type { ExposeState } from '@demicodes/plugin-expose'
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import { commitOf } from './plugins'
 import { createSubagentState } from './subagent-profiles'
@@ -21,52 +19,6 @@ import { demoDeviceStart } from './device-installation'
  * A coding agent's whole settings surface, mocked in every awkward state at once:
  * expiring auth, a crashed server, a full quota, a disabled provider.
  */
-
-/** The exposes the session tools specimens list: two on `zan-mbp` (one under a minute), one on Cloud. */
-export function demoExposes(): ExposeMenuEntry[] {
-  return [
-    {
-      id: 'k7x2maqw4p3s6tavaw2y4z6aab',
-      address: '127.0.0.1:5173',
-      hostName: 'zan-mbp',
-      url: 'https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/',
-      expiresAt: ahead(52 * 60_000),
-    },
-    {
-      id: 'q7w6e7r6t5y4u3i2o3p2a4s2d3',
-      address: '127.0.0.1:3000',
-      hostName: 'zan-mbp',
-      url: 'https://q7w6e7r6t5y4u3i2o3p2a4s2d3.expose.demi.example/',
-      expiresAt: ahead(45_000),
-    },
-    {
-      id: 'm3n5p7rgtxv3w5x7yez4a3c5ek',
-      address: '127.0.0.1:8080',
-      hostName: 'Cloud',
-      url: 'https://m3n5p7rgtxv3w5x7yez4a3c5ek.expose.demi.example/',
-      expiresAt: ahead(9 * 60_000),
-    },
-  ]
-}
-/**
- * `demoExposes` as the expose plugin's state gives them: on the gallery's
- * `mac` host, named `zan-mbp`, and on its Cloud.
- */
-export function demoExposeState(): ExposeState {
-  const devices: Record<string, string> = { 'zan-mbp': 'mac', Cloud: 'managed-device' }
-  return {
-    available: true,
-    exposes: demoExposes().map((expose, index) => ({
-      id: expose.id,
-      number: index + 1,
-      deviceId: devices[expose.hostName]!,
-      deviceName: expose.hostName,
-      address: expose.address,
-      url: expose.url,
-      expiresAt: expose.expiresAt,
-    })),
-  }
-}
 
 /** A skill of the Skills showcase: on unless `enabled` says otherwise, offered to the agent, no warning. */
 function showcaseSkill(name: string, description: string, change: Partial<SourceState['skills'][number]> = {}): SourceState['skills'][number] {
@@ -730,14 +682,13 @@ export function createSettingsState() {
     selectedProviderId: null as string | null,
     providerDetailOpen: false,
     plugins: [
-      { id: 'file', name: 'Demi File Commands', description: 'Reads, writes, edits and searches the conversation’s files with demi file.', enabled: true },
+      { id: 'file', name: 'Demi File Commands', description: 'Reads, writes, edits and searches the conversation’s files with demi file.', enabled: false },
       {
         id: 'browser',
         name: 'Browser',
         description: 'A browser on the conversation’s host that the agent drives with demi browser and the user watches in the work panel.',
         enabled: true,
       },
-      { id: 'expose', name: 'Expose', description: 'Gives a service on one of your hosts a public URL for an hour, with demi expose.', enabled: false },
       {
         id: 'skills',
         name: 'Skills',

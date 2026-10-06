@@ -188,8 +188,6 @@ impl Backend {
             plugins: config.plugins,
             cloud: CloudServices::new(machines, config.cloud),
             lifecycle: config.lifecycle,
-            expose_domain: config.expose_domain,
-            exposes: config.exposes,
         };
         let services = Services::start(storage.clone(), keys, providers, settings);
         let services = Arc::new(services.await?);
@@ -206,8 +204,8 @@ impl Backend {
             shards.shards(),
         )));
         // Before the backend serves, the machine manager settles what an
-        // earlier backend left, which stops every Cloud and so ends their
-        // exposes, and resets it left unfinished commit their disks.
+        // earlier backend left, which stops every Cloud, and resets it left
+        // unfinished commit their disks.
         if let Err(error) = recover_resets(&services.control, &services.cloud).await {
             shards.close().await;
             services.close_providers().await;
@@ -338,32 +336,6 @@ impl Backend {
             .expect("the user's shard serves while the backend runs")
     }
 
-    /// A new expose of `address` on the user's `device` for an hour, as the
-    /// `expose` plugin makes it: a scenario's way to an expose without a
-    /// turn of the agent.
-    #[cfg(feature = "testing")]
-    pub async fn create_expose(
-        &self,
-        user: &demi_web_api_protocol::ids::UserId,
-        device: &demi_web_api_protocol::ids::DeviceId,
-        address: &str,
-    ) -> Result<demi_backend_expose::records::Expose, demi_backend_expose::records::ExposeError>
-    {
-        let device = device.clone();
-        let address = demi_web_api_protocol::exposes::ExposeAddress::try_from(address.to_owned())
-            .expect("a scenario exposes a valid address");
-        self.shards
-            .shards()
-            .of(user)
-            .call(move |shard, _| async move {
-                shard
-                    .expose_shard()
-                    .add_expose(&device, address, jiff::SignedDuration::from_hours(1))
-                    .await
-            })
-            .await
-            .expect("the user's shard serves while the backend runs")
-    }
 
     /// Shuts the backend down. The listener closes first, so no new work
     /// starts and a new request on an open connection answers 503

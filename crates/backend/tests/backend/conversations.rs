@@ -831,7 +831,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     );
     // Without the command packages the backend's own groups are
     // offered, and none of the packages'.
-    assert!(system.contains("demi expose"), "{system}");
+    assert!(system.contains("demi skills"), "{system}");
     assert!(
         !system.contains("demi file") && !system.contains("demi browser"),
         "{system}"
@@ -1425,19 +1425,19 @@ pub(crate) fn configured(output: u32) -> Value {
     })
 }
 
-/// A page on an expose shares the product's site, so the user's browser
-/// sends it the session cookie; the socket must still refuse it
+/// A page on another host of the product's site shares it, so the user's
+/// browser sends it the session cookie; the socket must still refuse it
 /// (`backend.md` § Authentication and ownership).
 #[tokio::test]
 async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
-    let harness = Harness::new().with_expose_domain("expose.localhost");
+    let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     create(&backend, &master, FIRST).await;
-    // An expose's origin as the backend prints its URLs: the public URL's
-    // scheme and port under the expose domain.
+    // A page on another host of the product's site: the public URL's scheme
+    // and port, another host name.
     let port = backend.url.rsplit(':').next().unwrap();
-    let expose = format!("http://a1b2c3d4e5.expose.localhost:{port}");
-    for origin in ["https://elsewhere.example", expose.as_str()] {
+    let sibling = format!("http://blog.localhost:{port}");
+    for origin in ["https://elsewhere.example", sibling.as_str()] {
         let refused = Socket::try_connect_from(&backend, &master, FIRST, origin)
             .await
             .err();

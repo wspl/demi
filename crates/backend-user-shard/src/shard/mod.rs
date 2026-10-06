@@ -9,7 +9,6 @@ mod adoption;
 #[cfg(test)]
 pub(crate) use self::adoption::PlayedRunner;
 pub mod cloud;
-pub mod exposes;
 mod host;
 #[cfg(test)]
 mod host_tests;
@@ -35,7 +34,6 @@ use std::sync::Arc;
 
 use demi_agent_server::AgentServer;
 use demi_backend_cloud::machine::Cloud;
-use demi_backend_expose::relay::Exposes;
 use demi_backend_plugins::UserPlugins;
 use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_remote_host::{ARRIVAL, Pipes};
@@ -113,8 +111,6 @@ pub struct Shard {
     idle_watches: ConversationWatches,
     /// The Claude Code CLI work on the user's Cloud.
     claude_cli: ClaudeCli,
-    /// The user's exposes with relayed connections open.
-    exposes: Exposes,
     /// An instance of every plugin for the user.
     plugins: UserPlugins,
     /// What the shard remembers of its Hosts' plugin directories.
@@ -171,7 +167,6 @@ impl Shard {
             cloud: Cloud::default(),
             idle_watches: ConversationWatches::default(),
             claude_cli: ClaudeCli::default(),
-            exposes: Exposes::default(),
             plugins,
             plugin_installs: PluginInstalls::default(),
             permission_revisions: demi_backend_permissions::Revisions::default(),
@@ -264,10 +259,9 @@ impl Shard {
     /// Ends the user's work in order (`backend.md` § Startup and shutdown):
     /// the synchronization channels close; the idle watches stop, and a
     /// retirement already running finishes;
-    /// title requests are aborted and relayed expose connections end; the
-    /// conversation sockets end, and so do the restores of trees whose saved
-    /// wakeup is due; open file transfers and user streams end,
-    /// and stay closed; the agent turns are aborted while their runners are
+    /// title requests are aborted; the conversation sockets end, and so do
+    /// the restores of trees whose saved wakeup is due; open file transfers
+    /// and user streams end, and stay closed; the agent turns are aborted while their runners are
     /// still connected; the Cloud is saved and stopped; the runner
     /// connections close, their work ends with them, and then the pipes
     /// fail. The answer says why the Cloud was not saved, when it was not.
@@ -278,7 +272,6 @@ impl Shard {
         self.stop_idle_watches();
         self.cloud.stop();
         self.titles.abort_all();
-        self.exposes.end_all();
         self.tree_openers.close();
         self.tree_openers.wait().await;
         let _transfers_closed = self.conversations.end_transfers().await;
