@@ -205,11 +205,28 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
 
     let asked_one = &model.requests_of("task one")[0];
     let asked_two = &model.requests_of("task two")[0];
-    assert!(asked_one.system_prompt.starts_with("explore prompt one\n"));
-    assert!(!asked_one.system_prompt.contains("demi agent spawn"));
-    assert!(asked_one.system_prompt.contains("demi agent profiles"));
-    assert!(asked_two.system_prompt.starts_with("explore prompt two\n"));
-    assert!(asked_two.system_prompt.contains("demi agent spawn"));
+    // A profile's instructions replace only the identity: the harness guide
+    // follows, and the index lists what the child may run.
+    assert!(
+        asked_one
+            .system_prompt
+            .starts_with("explore prompt one\n\nharness guide\n\n")
+    );
+    assert!(
+        asked_one
+            .system_prompt
+            .contains("Operations: send, list, show, profiles\n")
+    );
+    assert!(
+        asked_two
+            .system_prompt
+            .starts_with("explore prompt two\n\nharness guide\n\n")
+    );
+    assert!(
+        asked_two
+            .system_prompt
+            .contains("Operations: spawn, send, abort, resume, list, show, profiles\n")
+    );
 
     // Deleted after the spawn, the profile changes nothing in its child:
     // resumed, it runs as it was spawned.

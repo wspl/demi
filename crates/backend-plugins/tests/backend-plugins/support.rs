@@ -141,6 +141,7 @@ impl Fixture {
                 profiles: Vec::new(),
             }),
             instructions: Rc::from("You are a coding agent."),
+            guide: Rc::from("How Demi works."),
             hosts: Rc::new(DeviceHost(host.clone())),
             context: Rc::new([]),
             providers,

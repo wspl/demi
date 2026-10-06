@@ -22,7 +22,13 @@ pub trait SessionRuntime {
     /// delivery. Dropping the reservation ends the hold.
     fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<Reservation>, String>>;
 
-    fn system_prompt(&self) -> LocalBoxFuture<'_, String>;
+    /// The system prompt of a request that infers with `model`, whose
+    /// last line names that model (`system-prompt.md` § Model identity);
+    /// why it could not be rendered, such as a provider entry that is gone.
+    fn system_prompt<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<String, String>>;
 
     /// The window the session's token thresholds use for `model`: the
     /// model's context window, or the limit the user set on it
