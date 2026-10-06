@@ -24,6 +24,7 @@ struct Counters {
     puts: AtomicU64,
     bytes_put: AtomicU64,
     gets: AtomicU64,
+    bytes_got: AtomicU64,
     heads: AtomicU64,
     reading: AtomicU64,
     most_reading: AtomicU64,
@@ -39,6 +40,8 @@ pub struct ObjectTally {
     pub bytes_put: u64,
     /// Reads of an object's bytes.
     pub gets: u64,
+    /// The bytes the reads' answers carry.
+    pub bytes_got: u64,
     /// Asks whether an object exists, which transfer no bytes.
     pub heads: u64,
     /// The most reads that were in flight at once.
@@ -57,6 +60,7 @@ impl ObjectTally {
             puts: self.puts - earlier.puts,
             bytes_put: self.bytes_put - earlier.bytes_put,
             gets: self.gets - earlier.gets,
+            bytes_got: self.bytes_got - earlier.bytes_got,
             heads: self.heads - earlier.heads,
             most_gets_at_once: self.most_gets_at_once,
             lists: self.lists - earlier.lists,
@@ -72,6 +76,7 @@ impl ObjectCounts {
             puts: counters.puts.load(Ordering::SeqCst),
             bytes_put: counters.bytes_put.load(Ordering::SeqCst),
             gets: counters.gets.load(Ordering::SeqCst),
+            bytes_got: counters.bytes_got.load(Ordering::SeqCst),
             heads: counters.heads.load(Ordering::SeqCst),
             most_gets_at_once: counters.most_reading.load(Ordering::SeqCst),
             lists: counters.lists.load(Ordering::SeqCst),
@@ -156,7 +161,10 @@ impl ObjectStore for Counted {
         // this yield reads that start together would count as one at a
         // time.
         tokio::task::yield_now().await;
-        self.inner.get_opts(location, options).await
+        let answer = self.inner.get_opts(location, options).await?;
+        let carried = answer.range.end - answer.range.start;
+        self.counts.0.bytes_got.fetch_add(carried, Ordering::SeqCst);
+        Ok(answer)
     }
 
     fn delete_stream(

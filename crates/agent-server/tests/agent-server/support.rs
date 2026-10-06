@@ -401,6 +401,7 @@ pub async fn agent_call(
         "argv": [],
         "args": args,
         "json": json,
+        "host": "laptop",
         "cwd": "/workspace",
         "env": {},
         "context": {

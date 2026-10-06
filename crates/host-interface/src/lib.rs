@@ -15,7 +15,7 @@
 //!   pages' view of it ([`PageView`]), and the feed through which an
 //!   environment reports that view's changes and learns whether a page
 //!   watches ([`PageFeed`]);
-//! - the text a handler prints: aligned columns and sizes ([`text`]).
+//! - the text a handler prints: aligned columns ([`text`]).
 //!
 //! Everything here runs inside a user's shard, so nothing requires `Send`.
 

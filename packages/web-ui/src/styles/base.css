@@ -43,6 +43,9 @@
   --spacing-hit-sm: 24px;
   --spacing-hit: 28px;
   --spacing-hit-lg: 32px;
+  /* The height of a tool's preview of an image or a video, which a run of a
+     message's images shares (`file-previews.md` § Media a tool returned). */
+  --spacing-preview: 160px;
 }
 
 :root,
@@ -1033,6 +1036,33 @@ svg.lucide {
 .markdown-body video {
   display: block;
   background: black;
+}
+
+/* A run of a message's images and videos (`markdown/render.ts`) stands in a
+   row that wraps, 8px apart both ways, each at most a tool's preview high and
+   the message wide; a video takes that height before its bytes arrive. */
+.markdown-body .media-run {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.markdown-body .media-run > span {
+  max-width: 100%;
+}
+
+.markdown-body .media-run a {
+  display: block;
+}
+
+.markdown-body .media-run :is(img, video) {
+  display: block;
+  max-height: var(--spacing-preview);
+}
+
+.markdown-body .media-run video {
+  height: var(--spacing-preview);
 }
 
 /* What a message says of an attachment number its conversation does not
