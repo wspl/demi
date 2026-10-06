@@ -204,7 +204,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="Beside a paired device, Connected directly while this page reaches its runner without the server in the middle; under every paired device, how to allow direct connections while the browser blocks local network access. Switch the page's path to see each. A device whose runner updates itself reads Updating; one that is offline says when it was last seen, and its ? opens how to start its runner again, with Copy; Escape or a click outside closes it."
+        note="An online paired device's row says in a few words how this page reaches it, Connected directly or Through the server; switch the page's path to see each. While the browser blocks local network access, its ? says how to allow it. A device whose runner updates itself reads Updating; an offline one says when it was last seen, and its ? opens the command that starts its runner, with Copy. Escape or a click outside closes the help."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented v-model="directPath" :options="directPaths" size="sm" />

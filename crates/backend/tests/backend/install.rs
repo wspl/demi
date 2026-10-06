@@ -589,8 +589,7 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
     // drop drains it.
     let devices = backend.devices(&master).await;
     let command = devices[0].start_command.clone().expect("a paired device has a start command");
-    let launcher = state.join("run");
-    assert!(command.contains(launcher.to_str().unwrap()), "{command}");
+    assert_eq!(command, "~/.demi/instances/elsewhere/run start");
     let started = installations.shell().arg("-c").arg(&command).output().await.unwrap();
     assert!(started.status.success(), "{started:?}");
     assert!(backend.online(&master, id.as_str()).await);
