@@ -14,6 +14,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use demi_backend_database::conversation_index::{ConversationRecord, Creation};
+use demi_backend_database::conversation_attachments::{self, AttachmentNumber};
 use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::{
@@ -21,6 +22,7 @@ use demi_web_api_protocol::conversations::{
     ConversationUpdate, Conversations, ConversationsQuery, CreateConversation, FieldResult,
     ForkAnswer, ForkRequest, ReadRequest, SubagentHistory, Transcript,
 };
+use demi_web_api_protocol::attachments::ConversationAttachment;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 
@@ -144,6 +146,42 @@ pub(super) async fn transcript(
         blocks: history.blocks,
         failures,
         subagents,
+    }))
+}
+
+/// `GET /conversations/:id/attachments/:attachment`: an attachment the agent
+/// uploaded, by its number such as `a3`, from the conversation's database
+/// alone; it wakes no Host. A number the conversation does not have answers
+/// 404 `not_found`.
+pub(super) async fn attachment(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path((id, attachment)): Path<(String, String)>,
+) -> Result<Json<ConversationAttachment>, ApiError> {
+    let services = &state.services;
+    let record = owned(services, &user.id, &id).await?;
+    let no_attachment = || {
+        ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::NotFound,
+            format!("No attachment {attachment} in this conversation"),
+        )
+    };
+    let number: AttachmentNumber = attachment.parse().map_err(|_| no_attachment())?;
+    let row = services
+        .conversations
+        .read(&record.id, move |connection| {
+            conversation_attachments::read(connection, number)
+        })
+        .await?
+        .flatten()
+        .ok_or_else(no_attachment)?;
+    Ok(Json(ConversationAttachment {
+        id: row.number.to_string(),
+        name: row.name,
+        media_type: row.media_type,
+        size: row.size,
+        blob: row.blob,
     }))
 }
 

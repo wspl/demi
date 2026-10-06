@@ -14,7 +14,8 @@
 //!   which keeps the model's place in each command's output apart from the
 //!   pages' view of it ([`PageView`]), and the feed through which an
 //!   environment reports that view's changes and learns whether a page
-//!   watches ([`PageFeed`]).
+//!   watches ([`PageFeed`]);
+//! - the text a handler prints: aligned columns and sizes ([`text`]).
 //!
 //! Everything here runs inside a user's shard, so nothing requires `Send`.
 
@@ -27,6 +28,7 @@ mod output;
 mod record;
 mod reserved;
 mod rpc;
+pub mod text;
 #[cfg(feature = "testing")]
 pub mod testing;
 

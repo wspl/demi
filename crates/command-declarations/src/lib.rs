@@ -452,6 +452,14 @@ impl<B> Leaf<B> {
         self.input.as_ref()?.value().get("properties")?.as_object()
     }
 
+    /// The last positional field when it is an array, which takes every
+    /// positional argument after the ones before it, such as the paths of
+    /// `demi attachment upload <path>...`.
+    pub fn repeated_positional(&self) -> Option<&str> {
+        let last = self.positionals.as_ref()?.last()?;
+        (self.property_type(last) == Some("array")).then_some(last.as_str())
+    }
+
     pub fn required(&self, field: &str) -> bool {
         self.input
             .as_ref()
@@ -512,8 +520,18 @@ impl<B> Leaf<B> {
                 return Err(invalid("rest input must be a string array".into()));
             }
         }
+        let positionals = self.positionals.as_deref().unwrap_or_default();
+        if let Some((_, before)) = positionals.split_last()
+            && let Some(field) = before
+                .iter()
+                .find(|field| self.property_type(field) == Some("array"))
+        {
+            return Err(invalid(format!(
+                "only the last positional may be an array: {field}"
+            )));
+        }
         let mut optional = false;
-        for field in self.positionals.iter().flatten() {
+        for field in positionals {
             if self.required(field) && optional {
                 return Err(invalid(
                     "required positional follows optional positional".into(),

@@ -16,6 +16,7 @@
 //! reuses (`support::Built`).
 
 mod accounts;
+mod attachments;
 mod auth;
 mod blobs;
 mod browser;

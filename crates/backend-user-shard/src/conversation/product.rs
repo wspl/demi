@@ -1,6 +1,7 @@
 //! What the backend's conversations are assembled from (`runtime.md`
 //! § Sessions and turns): the product's instructions, the toolset of the
-//! plugins the user has on with the product's `demi host` group, the user's
+//! plugins the user has on with the product's `demi host` and `demi
+//! attachment` groups, the user's
 //! subagent settings, which each spawn reads, the Host each
 //! node reaches, the conversation's current primary Host, the execution
 //! context source, which tells a node that the conversation's execution
@@ -12,6 +13,7 @@ use demi_agent_tools::{
     ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource,
 };
+use demi_backend_host_access::attachment_commands::attachment_group;
 use demi_backend_host_access::host_commands::host_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_backend_plugins::ContextAsk;
@@ -25,10 +27,10 @@ use tokio_util::sync::CancellationToken;
 use crate::shard::Shard;
 
 /// The product's instructions, which open every node's system prompt.
-pub(crate) const INSTRUCTIONS: &str = "You are a coding agent. Use shell session tools to inspect, edit, test, and verify the workspace.\n\nTreat cwd as the task workspace. Create, edit, and verify task files there by default; do not create a separate project directory under /tmp or another absolute path unless the user asks for it or the workspace is unusable.";
+pub(crate) const INSTRUCTIONS: &str = "You are a coding agent. Use shell session tools to inspect, edit, test, and verify the workspace.\n\nTreat cwd as the task workspace. Create, edit, and verify task files there by default; do not create a separate project directory under /tmp or another absolute path unless the user asks for it or the workspace is unusable.\n\nYour messages render as Markdown for the user. To give the user a file, such as a screenshot, a download, a recording or a file you made, upload it with `demi attachment upload <path>` and show it as `![description](attachment:a3)` for an image or a video, or link it as `[name](attachment:a3)`. A Markdown link or image with a host path shows that file as it is now: use one for a workspace file the user should see live. A path in code or plain text stays text.";
 
 /// What a conversation's tree opens with: the commands of the plugins the
-/// user has on, with the product's `demi host` group.
+/// user has on, with the product's `demi host` and `demi attachment` groups.
 pub(crate) struct ShardToolsets {
     /// Weak: the shard owns the agent server that holds the source.
     pub(crate) shard: Weak<Shard>,
@@ -44,7 +46,7 @@ impl ToolsetSource for ShardToolsets {
             let hosts: Weak<dyn HostShard> = self.shard.clone();
             let toolset = shard
                 .plugins()
-                .toolset(vec![host_group(hosts)])
+                .toolset(vec![host_group(hosts.clone()), attachment_group(hosts)])
                 .await
                 .map_err(|error| error.to_string())?;
             Ok(Toolset {

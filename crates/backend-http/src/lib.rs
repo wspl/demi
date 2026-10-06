@@ -262,6 +262,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(conversations::transcript),
         )
         .route("/conversations/{id}/read", post(conversations::read))
+        .route(
+            "/conversations/{id}/attachments/{attachment}",
+            get(conversations::attachment),
+        )
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
         .route("/conversations/{id}/fs/watch", get(file_watch::open))

@@ -1021,12 +1021,24 @@ svg.lucide {
   text-decoration: line-through;
 }
 
-/* A message's image fits the message and 60% of the conversation's visible
-   height, which the transcript sets; outside one, the window's. */
-.markdown-body img {
+/* A message's image, and an attachment's video, fit the message and 60% of
+   the conversation's visible height, which the transcript sets; outside one,
+   the window's. */
+.markdown-body :is(img, video) {
   max-width: 100%;
   max-height: calc(var(--conversation-visible-height, 100svh) * 0.6);
   border-radius: 0.375rem;
+}
+
+.markdown-body video {
+  display: block;
+  background: black;
+}
+
+/* What a message says of an attachment number its conversation does not
+   have, after the attachment's text. */
+.markdown-body .attachment-missing {
+  color: var(--fg-muted);
 }
 
 /* One file in a message's text (`AttachmentCapsule`). What the pill holds is

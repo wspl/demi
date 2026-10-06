@@ -30,6 +30,8 @@ import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace, gallerySides } from '../fixtures/workspace'
 import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
+import { galleryAttachment } from '../fixtures/attachments'
+import GalleryAttachmentMessage from '../components/GalleryAttachmentMessage.vue'
 import { productWould } from '../product-would'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
@@ -318,6 +320,7 @@ const panelWork = useWorkTabs('change', { browser: galleryBrowser([]) })
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
 const sessionFiles: ConversationFiles = {
   imageUrl: (path) => workspace.source.contents.url(path),
+  attachment: galleryAttachment,
   open: (path) => {
     panelWork.openIn({ intent: 'file', payload: { path } })
     panelAsideOpen.value = true
@@ -1185,6 +1188,14 @@ onBeforeUnmount(() => {
       >
         <GallerySpecimen variant="message footer" wide>
           <GalleryAssistantMessages />
+        </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Attachments in a Message"
+        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video plays in place at an image's bounds, a link opens the attachment, any other file downloads, and a number the conversation does not have says so."
+      >
+        <GallerySpecimen variant="attachments" wide>
+          <GalleryAttachmentMessage :files="sessionFiles" :cwd="workspace.root" />
         </GallerySpecimen>
       </GallerySection>
       <GallerySection

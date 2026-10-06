@@ -215,10 +215,22 @@ impl RemoteHost {
     /// range is read up to the end the file had when it was opened. Dropping
     /// the reader stops the read.
     pub async fn read_pipe(&self, path: &str, range: ByteRange) -> Result<OpenedRead, HostError> {
-        match self.read_pipe_held(path, range, None).await? {
-            ConditionalRead::Opened(opened) => Ok(opened),
-            ConditionalRead::Unchanged { .. } => Err(mismatch()),
-        }
+        opened(self.read_pipe_held(self.cwd(), path, range, None).await?)
+    }
+
+    /// [`RemoteHost::read_pipe`], with a relative `path` resolved against
+    /// `cwd` instead of the directory the Host's work starts in, such as the
+    /// directory a command was invoked in.
+    pub async fn read_pipe_in(
+        &self,
+        cwd: &str,
+        path: &str,
+        range: ByteRange,
+    ) -> Result<OpenedRead, HostError> {
+        opened(
+            self.read_pipe_held(Some(cwd.to_owned()), path, range, None)
+                .await?,
+        )
     }
 
     /// [`RemoteHost::read_pipe`], except that a file that still has the
@@ -229,11 +241,12 @@ impl RemoteHost {
         range: ByteRange,
         held: &str,
     ) -> Result<ConditionalRead, HostError> {
-        self.read_pipe_held(path, range, Some(held)).await
+        self.read_pipe_held(self.cwd(), path, range, Some(held)).await
     }
 
     async fn read_pipe_held(
         &self,
+        cwd: Option<String>,
         path: &str,
         range: ByteRange,
         held: Option<&str>,
@@ -244,7 +257,7 @@ impl RemoteHost {
             Inbound::FsReadFile {
                 id,
                 path: path.into(),
-                cwd: self.cwd(),
+                cwd,
                 offset: (range.offset > 0).then_some(range.offset),
                 length: range.length,
                 version: held.map(str::to_owned),
@@ -429,7 +442,7 @@ impl RemoteHost {
             })
             .await?;
             let limit = usize::try_from(bound).unwrap_or(usize::MAX);
-            (answer, collect(reader, limit).await?)
+            (answer, collect_pipe(reader, limit).await?)
         } else {
             let answer = link
                 .call(Expected::Fs("look"), |id| Inbound::FsLook {
@@ -507,7 +520,7 @@ impl RemoteHost {
             }
         })
         .await?;
-        collect(reader, usize::MAX).await
+        collect_pipe(reader, usize::MAX).await
     }
 
     /// Up to `limit` lines of the Host's log after `since`, oldest first, of
@@ -874,7 +887,7 @@ impl RemoteJob {
             output,
         })
         .await?;
-        let bytes = collect(reader, wire::JOB_KEPT_READ_BYTES).await?;
+        let bytes = collect_pipe(reader, wire::JOB_KEPT_READ_BYTES).await?;
         decode_output(&bytes, None)
             .map_err(|error| protocol(&format!("the job's kept output does not decode: {error}")))
     }
@@ -1086,8 +1099,8 @@ impl Host for RemoteHost {
 impl HostFs for RemoteHost {
     fn read_file<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
         Box::pin(async move {
-            collect(
-                self.read_pipe(path, ByteRange::default()).await?.body,
+            collect_pipe(
+self.read_pipe(path, ByteRange::default()).await?.body,
                 usize::MAX,
             )
             .await
@@ -1549,7 +1562,7 @@ async fn split_reads(
         .unwrap_or(usize::MAX)
         .saturating_add(length)
         .saturating_mul(read);
-    let mut bytes = collect(reader, bound).await?;
+    let mut bytes = collect_pipe(reader, bound).await?;
     let files = reads
         .into_iter()
         .map(|read| match read {
@@ -1575,7 +1588,17 @@ async fn split_reads(
 }
 
 /// Reads a pipe to its end, which comes within `limit` bytes.
-async fn collect(mut reader: PipeReader, limit: usize) -> Result<Bytes, HostError> {
+/// A read that named no version it holds, which the runner always opens.
+fn opened(read: ConditionalRead) -> Result<OpenedRead, HostError> {
+    match read {
+        ConditionalRead::Opened(opened) => Ok(opened),
+        ConditionalRead::Unchanged { .. } => Err(mismatch()),
+    }
+}
+
+/// The bytes of `reader` to its end; more than `limit` of them is the
+/// runner's protocol error.
+pub async fn collect_pipe(mut reader: PipeReader, limit: usize) -> Result<Bytes, HostError> {
     let mut bytes = BytesMut::new();
     while let Some(chunk) = reader.next().await {
         let chunk = chunk.map_err(|failure| HostError::interrupted(failure.to_string()))?;

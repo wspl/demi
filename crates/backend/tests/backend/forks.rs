@@ -11,6 +11,7 @@ use demi_agent_tools::testing::field;
 use demi_backend_blobs::counting::ObjectCounts;
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{Block, BlockId, ToolView};
+use demi_web_api_protocol::attachments::ConversationAttachment;
 use demi_web_api_protocol::conversations::{ConversationStatus, ForkAnswer};
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -415,5 +416,66 @@ async fn a_fork_reads_the_outputs_of_the_commands_its_history_names() {
     );
     // The destination goes on from its source's numbers.
     assert_eq!(field(&read, "commandId"), "3");
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_fork_keeps_the_attachments_of_its_source_and_numbers_on_from_them() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let (_paired, root) = on_device(&harness, &backend, &master, FIRST).await;
+    std::fs::write(format!("{root}/shot.png"), "not really a picture").unwrap();
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut source = Socket::connect(&backend, &master, FIRST).await;
+    source.open().await;
+    let shell = |id: &str, script: &str| {
+        tool_use(
+            id,
+            "shell_exec",
+            &json!({ "description": id, "script": script, "timeoutMs": 60_000 }),
+        )
+    };
+    vendor.respond(shell("toolu_upload", "demi attachment upload shot.png"));
+    vendor.respond(answer(&["![The page](attachment:a1)"], 1, 1));
+    source.chat("m1", "Show me").await;
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let shown = texts(&blocks)[0].clone();
+
+    let created = backend
+        .post(
+            &format!("/api/conversations/{FIRST}/fork"),
+            Some(&master),
+            fork(SECOND, &shown),
+        )
+        .await;
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
+    // The destination's message names a1, which it holds with the same blob.
+    let read = async |conversation: &str, number: &str| {
+        backend
+            .get(
+                &format!("/api/conversations/{conversation}/attachments/{number}"),
+                Some(&master),
+            )
+            .await
+            .json::<ConversationAttachment>()
+    };
+    assert_eq!(read(SECOND, "a1").await, read(FIRST, "a1").await);
+    // Its next upload takes the number after its source's.
+    let mut socket = Socket::connect(&backend, &master, SECOND).await;
+    socket.open().await;
+    let requests = vendor.requests().len();
+    vendor.respond(shell("toolu_again", "demi attachment upload shot.png"));
+    vendor.respond(answer(&["Again."], 1, 1));
+    socket.chat("m2", "Once more").await;
+    let again = tool_result(&vendor.requests()[requests + 1].json(), "toolu_again");
+    assert!(again.contains("a2  shot.png  "), "{again}");
     backend.close().await;
 }

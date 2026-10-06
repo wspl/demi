@@ -3,13 +3,14 @@
 //! target resolution and the transitions that end a target (switch, archive,
 //! detach); file transfers, uploads, remote files, user streams and the
 //! file watch; the shell environments of the agent's nodes over it; and the product's
-//! `demi host` group.
+//! `demi host` and `demi attachment` groups.
 //!
 //! Host access's operations are methods of `dyn HostShard`, what host access
 //! needs of its user's shard (`concurrency.md` § The user shard), which the
 //! shard implements.
 
 pub mod access;
+pub mod attachment_commands;
 pub mod file_watch;
 pub mod host_commands;
 pub mod lease;

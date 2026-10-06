@@ -90,7 +90,7 @@ impl<B> Node<B> {
                         } else {
                             "optional"
                         };
-                        let repeatable = if source == Source::Option
+                        let repeatable = if matches!(source, Source::Option | Source::Positional)
                             && schema.get("type").and_then(Value::as_str) == Some("array")
                         {
                             ", repeatable"
@@ -161,6 +161,9 @@ fn source<B>(leaf: &Leaf<B>, field: &str) -> Source {
 
 fn syntax(field: &str, schema: &Value, source: Source) -> String {
     match source {
+        Source::Positional if schema.get("type").and_then(Value::as_str) == Some("array") => {
+            format!("<{field}>...")
+        }
         Source::Positional => format!("<{field}>"),
         Source::Rest => format!("-- <{field}>..."),
         _ if schema.get("type").and_then(Value::as_str) == Some("boolean") => {

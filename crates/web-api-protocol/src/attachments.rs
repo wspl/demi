@@ -49,3 +49,21 @@ pub struct AttachmentDto {
     #[schemars(with = "String")]
     pub snippet: Option<String>,
 }
+
+/// `GET /conversations/:id/attachments/:attachment`: an attachment the agent
+/// uploaded to the conversation (`commands.md` § Attachment commands). It
+/// never changes, so a page asks for each once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConversationAttachment {
+    /// Its number in the conversation, such as `a3`.
+    pub id: String,
+    /// The file's name.
+    pub name: String,
+    /// The media type the backend read from the bytes.
+    pub media_type: String,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub size: u64,
+    /// The hash its bytes are served under, at `GET /blobs/:sha256`.
+    pub blob: BlobRef,
+}
