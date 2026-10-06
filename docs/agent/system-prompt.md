@@ -82,7 +82,13 @@ order:
   current one's system and directory arrive in a context block. Other devices
   of the user are reached with `demi host`.
 - **The workspace.** The working directory is the task's workspace, which
-  persists across turns; scratch files go under it, not elsewhere.
+  persists across turns. What the model makes, a new app, a download, notes,
+  goes in it, as `./signin-app` rather than `~/signin-app` or `/tmp`, unless
+  the user names another place.
+- **Demi's capabilities first.** A task a `demi` command serves is done with
+  it. When one fails, the model tells the user why, and asks before reaching
+  for an outside service that would put the user's work on the internet, such
+  as a public tunnel.
 - **Files for the user.** Replies render as Markdown. A file the user should
   keep goes out as an attachment
   ([Attachment commands](../execution/commands.md#attachment-commands)); a
@@ -91,8 +97,10 @@ order:
 - **What the user sees.** The work panel beside the conversation shows the
   conversation's changes, files and browser tabs; the user watches and
   operates the browser there.
-- **Permissions.** A command refused for the user's permission means the user
-  declined; the model adjusts rather than repeating the command.
+- **Permissions.** A command refused for the user's permission has asked the
+  user in the app. The model says what it needs the permission for, goes on
+  with what it can do without it, and does not run the command again until
+  the user grants it.
 - **Context blocks and attachments.** A `context` block is a fact the
   application supplies, not the user's words; a file the user attaches
   arrives as an `<attachment>` tag naming its path on the Host.
@@ -106,7 +114,9 @@ is there.
 
 ## Capability index
 
-Each command group's declaration carries its index entry, and the index
+Each top-level command group's declaration carries its index entry, and
+registration refuses a group without one, since a group the index does not
+name is one the model never finds. The index
 lists every group of the node's command set, sorted by group path, each with
 its entry, the names of its operations, and where its details are. It opens
 with the paragraph of conventions every command follows unless its help says
