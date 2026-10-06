@@ -181,6 +181,8 @@ pub(super) async fn attachment(
         name: row.name,
         media_type: row.media_type,
         size: row.size,
+        width: row.pixels.map(|pixels| pixels.width),
+        height: row.pixels.map(|pixels| pixels.height),
         blob: row.blob,
     }))
 }
