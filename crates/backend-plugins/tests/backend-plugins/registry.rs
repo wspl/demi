@@ -122,6 +122,7 @@ async fn run(commands: &CommandSet, path: &[&str]) -> Result<String, RpcError> {
         argv: Vec::new(),
         args: Default::default(),
         json: false,
+        host: "laptop".into(),
         cwd: "/workspace".into(),
         env: Default::default(),
         context: test_command_context(),

@@ -3,8 +3,9 @@
 //! beside the invocation into the conversation as `a1`, `a2`, …, and a file
 //! it cannot copy fails with its own line while the others are stored; the
 //! page reads an attachment by its number from the conversation's database,
-//! and its bytes as a blob. The model is an Anthropic endpoint the test
-//! scripts; the device is a real runner.
+//! and its bytes as a blob. A job `demi host shell` runs on an attached Host
+//! uploads that Host's files. The model is an Anthropic endpoint the test
+//! scripts; the devices are real runners.
 
 use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::MockVendor;
@@ -13,9 +14,9 @@ use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 
 use crate::conversations::{anthropic_at, create, on_device};
-use crate::support::Harness;
+use crate::support::{Harness, eventually};
 use crate::uploads::PNG;
-use crate::work::{Driven, say, shell};
+use crate::work::{Driven, say, shell, switch};
 
 const CONVERSATION: &str = "6a1b2c3d-8f3a-4c1e-9d2b-7a1c2e3f4a06";
 
@@ -52,7 +53,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     let png = PNG.len();
     assert!(
         output.contains(&format!(
-            "a1  login.png    image/png      {png} B\na2  ../notes.md  text/markdown  8 B\n"
+            "a1  login.png    image/png      {png} bytes\na2  ../notes.md  text/markdown  8 bytes\n"
         )),
         "{output}"
     );
@@ -126,5 +127,58 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
         .get(&format!("/api/blobs/{}", first.blob), Some(&master))
         .await;
     assert_eq!(kept.body, *PNG);
+    backend.close().await;
+}
+
+// Under a second: two real devices each run a job, one of them through `demi
+// host shell`.
+//
+// Planted defect it catches: the upload reads on the conversation's primary
+// Host whatever Host the invoking job runs on. The devices here share one
+// filesystem, so the far job stops the primary's runner before it uploads:
+// a read there never answers, and the attachment never comes.
+#[tokio::test]
+async fn a_job_on_an_attached_host_uploads_that_hosts_file() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let beta = backend.pair(&master, "beta").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    // Working on alpha and then on beta leaves alpha attached.
+    let on_alpha = alpha.runner.home_dir().to_owned();
+    let on_beta = beta.runner.home_dir().to_owned();
+    switch(&backend, &master, CONVERSATION, &alpha, &on_alpha).await;
+    switch(&backend, &master, CONVERSATION, &beta, &on_beta).await;
+    std::fs::create_dir_all(on_alpha.join("out")).unwrap();
+    std::fs::write(on_alpha.join("out/shot.png"), &*PNG).unwrap();
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+
+    let script = format!(
+        "demi host shell --host alpha 'kill -STOP {} && cd out && demi attachment upload shot.png'",
+        beta.runner.pid()
+    );
+    let attachment = format!("/api/conversations/{CONVERSATION}/attachments/a1");
+    let turn = work.turn(vec![shell("t1", &script, 30_000), say("uploaded")]);
+    let stored = async {
+        eventually("the far job stored a1", async || {
+            backend.get(&attachment, Some(&master)).await.status == StatusCode::OK
+        })
+        .await;
+        beta.runner.resume();
+    };
+    let (uploaded, ()) = tokio::join!(turn, stored);
+    let result = &uploaded.received[0];
+    assert_eq!(
+        shown_output(result),
+        format!("a1  shot.png  image/png  {} bytes\n", PNG.len()),
+        "{result}"
+    );
+    let attachment: ConversationAttachment = backend.get(&attachment, Some(&master)).await.json();
+    let bytes = backend
+        .get(&format!("/api/blobs/{}", attachment.blob), Some(&master))
+        .await;
+    assert_eq!(bytes.body, *PNG);
     backend.close().await;
 }

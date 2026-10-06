@@ -73,6 +73,7 @@ impl World {
             argv: argv(line),
             args: parsed.values,
             json: parsed.json,
+            host: "laptop".into(),
             cwd: "/workspace".into(),
             env: Default::default(),
             context: test_command_context(),
