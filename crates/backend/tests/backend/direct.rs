@@ -3,9 +3,10 @@
 //! answers the page's offer; the socket's close closes the runner's peer;
 //! the Cloud and an offline device are refused; a quiet socket hears a
 //! heartbeat, and the runner's connection ending closes it. A page in
-//! process opens the user's streams on the channel: the relay opens one
-//! whose service the runner must fetch first, and a plugin turned off ends
-//! its streams with the peer, whose next introduction lacks them.
+//! process opens the user's streams on the channel: one installs its service
+//! and what its invocation asks for from the backend as a relay stream
+//! does, and a plugin turned off ends its streams with the peer, whose next
+//! introduction lacks them.
 
 use std::time::Duration;
 
@@ -18,8 +19,9 @@ use bytes::Bytes;
 use demi_runner_direct::testing::{Heard, Page};
 use reqwest::StatusCode;
 
-use crate::streams::{CONVERSATION, answered, conversation};
-use crate::support::{Harness, Paired, Session, TestBackend};
+use crate::streams::{CONVERSATION, conversation};
+use crate::support::{EXTRA, Harness, Paired, Session, TestBackend};
+use demi_command_protocol::host_target;
 
 type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
@@ -216,27 +218,32 @@ async fn a_quiet_socket_hears_a_heartbeat_and_closes_when_the_runner_goes() {
     backend.close().await;
 }
 
-// Half a second: a paired device's real runner installs the fixture
-// package for a relay stream, and two pages in process connect to it over
-// loopback.
+// About a second: a paired device's real runner installs the fixture's
+// service and a file of 100 KB from the backend for a direct stream, and
+// two pages in process connect to it over loopback.
 #[tokio::test]
-async fn a_stream_whose_service_is_not_fetched_yet_goes_to_the_relay_and_a_plugin_turned_off_ends_it() {
-    let harness = Harness::new().with_native_fixture();
+async fn a_direct_stream_installs_its_service_and_what_it_asks_for_and_a_plugin_turned_off_ends_it() {
+    let harness = Harness::new().with_native_fixture().with_extra_package();
     let (backend, master, laptop) = conversation(&harness).await;
     let mut socket = signaling(&backend, &master, &laptop).await;
     let page = connected_page(&mut socket).await;
     let cwd = laptop.runner.home_dir().to_str().unwrap().to_owned();
-    let echo = json!({ "op": "stream", "conversation": CONVERSATION, "cwd": cwd, "stream": "echo" });
+    let header = |stream: &str, args: Value| {
+        json!({ "op": "stream", "conversation": CONVERSATION, "cwd": cwd, "stream": stream, "args": args })
+    };
 
-    // The device has not fetched the fixture's service yet, which only a
-    // stream the backend opened can ask for.
-    let mut refused = page.open(echo.clone()).await;
-    let refusal = refused.next().await.json();
-    assert_eq!(refusal["error"]["code"], "needs_relay", "{refusal}");
-    let mut relayed = crate::streams::socket(&backend, &master, CONVERSATION, "echo").await;
-    answered(&mut relayed).await;
-    relayed.close(None).await.unwrap();
-    let mut direct = page.open(echo.clone()).await;
+    // The device holds neither the fixture's service nor the extra
+    // package's artifact: the direct stream asks the backend for both, the
+    // service before it starts and the artifact its invocation installs,
+    // as a stream the backend opened would. No relay stream opens.
+    let extra = &EXTRA.descriptor.targets[host_target()];
+    let args = json!({ "sha256": extra.sha256, "size": extra.size });
+    let mut install = page.open(header("install", args)).await;
+    assert_eq!(install.next().await.json(), json!({ "ok": true }));
+    let printed = String::from_utf8(install.bytes_to_end().await).unwrap();
+    let installed = printed.lines().last().unwrap();
+    assert_eq!(std::fs::read(installed).unwrap(), std::fs::read(&EXTRA.program).unwrap());
+    let mut direct = page.open(header("echo", json!({}))).await;
     assert_eq!(direct.next().await.json(), json!({ "ok": true }));
     direct.binary(b"ping");
     assert_eq!(direct.next().await, Heard::Binary(Bytes::from_static(b"ping")));
@@ -251,7 +258,7 @@ async fn a_stream_whose_service_is_not_fetched_yet_goes_to_the_relay_and_a_plugi
     assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "closed" }));
     // The next introduction carries the user's streams as they are now.
     let page = connected_page(&mut socket).await;
-    let mut gone = page.open(echo).await;
+    let mut gone = page.open(header("echo", json!({}))).await;
     assert_eq!(gone.next().await.json()["error"]["code"], "unknown_stream");
     backend.close().await;
 }

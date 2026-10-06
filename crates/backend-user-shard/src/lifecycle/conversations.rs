@@ -349,6 +349,7 @@ mod tests {
                 // Only the page's direct stream reaches the device: nothing
                 // the backend admitted started the idle watch.
                 let stream = |open| Outbound::DirectStream {
+                    stream: "direct".to_owned(),
                     conversation: ID.to_owned(),
                     open,
                 };

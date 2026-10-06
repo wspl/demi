@@ -197,7 +197,9 @@ async fn a_stream_carries_bytes_both_ways_and_an_unknown_name_is_refused() {
     assert_eq!(stream.next().await, Heard::Binary(Bytes::from_static(b"echo:hello")));
     stream.binary(b"again");
     assert_eq!(stream.next().await, Heard::Binary(Bytes::from_static(b"echo:again")));
-    assert_eq!(fake.held.lock().unwrap().streams, ["live_view"]);
+    // The stream's request names it by the id its activity gave it.
+    let opened = [("live_view".to_owned(), "s1".to_owned())];
+    assert_eq!(fake.held.lock().unwrap().streams, opened);
 
     let mut unknown = page.open(header("stream", json!({ "stream": "terminal" }))).await;
     assert_eq!(unknown.next().await.json()["error"]["code"], "unknown_stream");

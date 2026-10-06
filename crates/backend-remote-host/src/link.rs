@@ -49,6 +49,8 @@ pub const OUTBOUND_FRAMES: usize = 64;
 
 /// The artifact requests a connection answers at a time.
 const ARTIFACT_REQUESTS: usize = 32;
+/// Why an artifact request names no work the backend knows.
+const NO_LIVE_WORK: &str = "No matching live job or stream";
 /// The numbers requests a connection answers at a time.
 const NUMBERS_REQUESTS: usize = 32;
 
@@ -100,11 +102,23 @@ pub trait LinkPolicy {
     ) -> LocalBoxFuture<'static, Result<u64, String>>;
 
     /// A page's direct channel opened a stream of `conversation` on the
-    /// device (`direct-channel.md` § Operations on the channel): the lease
-    /// that holds the conversation active while it is open, as an open relay
-    /// stream's does, or why there is none.
+    /// device (`direct-channel.md` § Operations on the channel): what the
+    /// backend knows the stream with while it is open, as a stream it opened,
+    /// or why it does not know it.
     fn direct_stream(&self, conversation: String)
-    -> LocalBoxFuture<'static, Result<GateLease, String>>;
+    -> LocalBoxFuture<'static, Result<DirectAdmission, String>>;
+}
+
+/// What the backend knows an open direct stream with: the lease that holds
+/// its conversation active, as an open relay stream's does, and where the
+/// artifacts it asks for come from (`native-runtime.md` § Install
+/// artifacts).
+pub struct DirectAdmission {
+    pub lease: GateLease,
+    /// The packages whose executables it may install: those of the user's
+    /// streams, of which it runs one.
+    pub packages: Vec<PackageDescriptor>,
+    pub resolver: Rc<dyn crate::ArtifactResolver>,
 }
 
 /// Whose a job is, recorded when it starts and read by its calls.
@@ -208,17 +222,27 @@ struct State {
     pong_jobs: u64,
     /// The file watches the connection's Hosts follow.
     watches: LinkWatches,
-    /// The direct streams open on the device, by conversation.
-    direct_streams: HashMap<String, DirectStreams>,
+    /// The direct streams open on the device, by the id the runner gave
+    /// each.
+    direct_streams: HashMap<String, DirectStream>,
 }
 
-/// One conversation's direct streams, as the runner reports their opening
-/// and closing, and the activity lease they hold together once the policy
-/// admitted the first.
-#[derive(Default)]
-struct DirectStreams {
-    open: usize,
+/// A direct stream the runner reported open: what its close cancels, the
+/// policy's admission of it, and once admitted the lease that holds its
+/// conversation active.
+struct DirectStream {
+    cancel: CancellationToken,
+    admitted: watch::Sender<Admitted>,
     lease: Option<GateLease>,
+}
+
+/// Whether the policy admitted a direct stream; its artifact requests wait
+/// for the answer.
+#[derive(Clone)]
+enum Admitted {
+    Waiting,
+    Yes(Grant),
+    No,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -780,7 +804,11 @@ impl Link {
                 let answer = Answer::Direct(DirectAnswer::Answer(sdp));
                 self.answer(&id, Expected::DirectOffer, answer);
             }
-            Outbound::DirectStream { conversation, open } => self.direct_stream(conversation, open),
+            Outbound::DirectStream {
+                stream,
+                conversation,
+                open,
+            } => self.direct_stream(stream, conversation, open),
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);
@@ -1073,9 +1101,9 @@ impl Link {
     /// live work that runs it and only while it does
     /// (`native-runtime.md` § Install artifacts).
     fn resolve_artifact(&self, id: String, owner: ArtifactOwner, sha256: String, target: String) {
-        let grant = self.grant(&owner);
-        let refusal = match &grant {
-            None => Some("No matching live job or stream"),
+        let granted = self.grant(&owner);
+        let refusal = match &granted {
+            None => Some(NO_LIVE_WORK),
             Some(_) => {
                 let mut state = self.0.state.borrow_mut();
                 if state.artifact_requests.len() >= ARTIFACT_REQUESTS
@@ -1093,8 +1121,31 @@ impl Link {
                 link.answer_artifact(id, Err(refusal.into())).await;
                 return;
             }
-            let Some(grant) = grant else {
+            let Some(granted) = granted else {
                 return;
+            };
+            let grant = match granted {
+                Granted::Now(grant) => grant,
+                Granted::Admitting(mut admitted) => {
+                    let decided = admitted
+                        .wait_for(|admitted| !matches!(admitted, Admitted::Waiting))
+                        .await
+                        .map(|admitted| admitted.clone());
+                    match decided {
+                        Ok(Admitted::Yes(grant)) => grant,
+                        Ok(_) => {
+                            link.0.state.borrow_mut().artifact_requests.remove(&id);
+                            link.answer_artifact(id, Err(NO_LIVE_WORK.into())).await;
+                            return;
+                        }
+                        // The stream closed before the policy decided: its
+                        // request gets no answer, as one it had in flight.
+                        Err(_) => {
+                            link.0.state.borrow_mut().artifact_requests.remove(&id);
+                            return;
+                        }
+                    }
+                }
             };
             let attached = grant
                 .attached
@@ -1133,45 +1184,60 @@ impl Link {
         });
     }
 
-    /// Counts a conversation's open direct streams as the runner reports
-    /// them: the first one's opening asks the policy for the lease they hold
-    /// together, and the last one's closing drops it, as the connection's
-    /// end does with every one.
-    fn direct_stream(&self, conversation: String, open: bool) {
-        let mut state = self.0.state.borrow_mut();
+    /// Keeps the direct streams the runner reports open, by their ids, as
+    /// streams the backend opened (`direct-channel.md` § Operations on the
+    /// channel): each opening asks the policy to admit the stream, and once
+    /// admitted the stream holds its conversation active and its artifact
+    /// requests are answered; its closing, or the connection's end, ends both
+    /// and cancels the requests in flight.
+    fn direct_stream(&self, stream: String, conversation: String, open: bool) {
         if !open {
-            let Some(streams) = state.direct_streams.get_mut(&conversation) else {
-                return;
-            };
-            streams.open -= 1;
-            if streams.open == 0 {
-                state.direct_streams.remove(&conversation);
+            let closed = self.0.state.borrow_mut().direct_streams.remove(&stream);
+            if let Some(closed) = closed {
+                closed.cancel.cancel();
             }
             return;
         }
-        let streams = state.direct_streams.entry(conversation.clone()).or_default();
-        streams.open += 1;
-        if streams.open > 1 {
-            return;
-        }
-        drop(state);
-        let admitted = self.0.policy.direct_stream(conversation.clone());
-        let link = self.clone();
-        let device = self.0.device.clone();
-        self.spawn(async move {
-            let lease = match admitted.await {
-                Ok(lease) => lease,
-                Err(error) => {
-                    tracing::warn!(device = %device, %conversation, "a direct stream was not admitted: {error}");
-                    return;
-                }
+        let cancel = self.0.closed.child_token();
+        {
+            let mut state = self.0.state.borrow_mut();
+            if state.direct_streams.contains_key(&stream) {
+                tracing::warn!(device = %self.0.device, %stream, "a direct stream was reported open twice");
+                return;
+            }
+            let opened = DirectStream {
+                cancel: cancel.clone(),
+                admitted: watch::Sender::new(Admitted::Waiting),
+                lease: None,
             };
-            // Streams that all closed meanwhile hold nothing.
+            state.direct_streams.insert(stream.clone(), opened);
+        }
+        let admission = self.0.policy.direct_stream(conversation.clone());
+        let link = self.clone();
+        self.spawn(async move {
+            let admission = tokio::select! {
+                // A stream that closed meanwhile holds nothing.
+                _ = cancel.cancelled() => return,
+                admission = admission => admission,
+            };
             let mut state = link.0.state.borrow_mut();
-            if let Some(streams) = state.direct_streams.get_mut(&conversation)
-                && streams.lease.is_none()
-            {
-                streams.lease = Some(lease);
+            let Some(open) = state.direct_streams.get_mut(&stream) else {
+                return;
+            };
+            match admission {
+                Ok(admission) => {
+                    open.lease = Some(admission.lease);
+                    open.admitted.send_replace(Admitted::Yes(Grant {
+                        packages: admission.packages,
+                        resolver: admission.resolver,
+                        attached: Vec::new(),
+                        cancel,
+                    }));
+                }
+                Err(error) => {
+                    tracing::warn!(device = %link.0.device, %conversation, "a direct stream was not admitted: {error}");
+                    open.admitted.send_replace(Admitted::No);
+                }
             }
         });
     }
@@ -1228,27 +1294,33 @@ impl Link {
         }
     }
 
-    fn grant(&self, owner: &ArtifactOwner) -> Option<Grant> {
+    /// What `owner` may install, when it is live work on the connection.
+    fn grant(&self, owner: &ArtifactOwner) -> Option<Granted> {
         let state = self.0.state.borrow();
         match owner {
             ArtifactOwner::Job(owner) => {
                 let job = state.jobs.get(&owner.job_id)?;
                 let commands = job.commands.as_ref()?;
-                (commands.hash() == owner.manifest_hash).then(|| Grant {
-                    packages: commands.packages(),
-                    resolver: commands.resolver(),
-                    attached: Vec::new(),
-                    cancel: job.cancel.clone(),
+                (commands.hash() == owner.manifest_hash).then(|| {
+                    Granted::Now(Grant {
+                        packages: commands.packages(),
+                        resolver: commands.resolver(),
+                        attached: Vec::new(),
+                        cancel: job.cancel.clone(),
+                    })
                 })
             }
             ArtifactOwner::Stream(owner) => {
+                if let Some(direct) = state.direct_streams.get(&owner.stream_id) {
+                    return Some(Granted::Admitting(direct.admitted.subscribe()));
+                }
                 let service = state.services.get(&owner.stream_id)?;
-                Some(Grant {
+                Some(Granted::Now(Grant {
                     packages: vec![service.package.clone()],
                     resolver: service.resolver.clone(),
                     attached: service.attached.clone(),
                     cancel: service.cancel.clone(),
-                })
+                }))
             }
         }
     }
@@ -1335,6 +1407,14 @@ impl StateView<'_> {
     }
 }
 
+/// What live work may install: now, or once the policy admitted the direct
+/// stream it is.
+enum Granted {
+    Now(Grant),
+    Admitting(watch::Receiver<Admitted>),
+}
+
+#[derive(Clone)]
 struct Grant {
     packages: Vec<PackageDescriptor>,
     resolver: Rc<dyn crate::ArtifactResolver>,

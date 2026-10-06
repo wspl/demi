@@ -11,11 +11,11 @@
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::sequences;
-use demi_backend_remote_host::{JobOrigin, LinkPolicy};
-use demi_command_protocol::ServiceSequence;
+use demi_backend_remote_host::{DirectAdmission, JobOrigin, LinkPolicy};
+use demi_command_protocol::{PackageDescriptor, ServiceSequence};
 use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
-use demi_shared_gates::{GateLease, Purpose};
+use demi_shared_gates::Purpose;
 use bytes::Bytes;
 use demi_shared_types::{BlobRef, Sequence};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -174,14 +174,16 @@ impl LinkPolicy for ShardPolicy {
         })
     }
 
-    /// Holds a conversation of the user that reaches this device active as
-    /// an open user stream does: a demand lease of its stream gate, and its
-    /// idle watch started, as a Host admission starts it
-    /// (`resource-lifecycle.md` § Activity).
+    /// Knows a direct stream of a conversation of the user that reaches
+    /// this device as an open user stream: it holds the conversation active
+    /// with a demand lease of its stream gate, and its idle watch started, as
+    /// a Host admission starts it (`resource-lifecycle.md` § Activity), and
+    /// installs the executable of a package of the user's streams, which the
+    /// runner fetches from where the published catalog says.
     fn direct_stream(
         &self,
         conversation: String,
-    ) -> LocalBoxFuture<'static, Result<GateLease, String>> {
+    ) -> LocalBoxFuture<'static, Result<DirectAdmission, String>> {
         let shard = self.shard();
         let device = self.device.clone();
         Box::pin(async move {
@@ -201,7 +203,18 @@ impl LinkPolicy for ShardPolicy {
                 .enter(Purpose::Demand)
                 .await;
             shard.track_idle(&conversation);
-            Ok(lease)
+            let services = shard.services();
+            let mut packages: Vec<PackageDescriptor> = Vec::new();
+            for (_, binding) in services.user_streams.iter() {
+                if !packages.contains(&binding.package) {
+                    packages.push(binding.package.clone());
+                }
+            }
+            Ok(DirectAdmission {
+                lease,
+                packages,
+                resolver: services.native.resolver(&services.public_url),
+            })
         })
     }
 }
