@@ -27,8 +27,8 @@
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
     "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-changes/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture ./crates/command-package-browser-chrome/src/page",
-    "web:gallery": "bun run contracts && bun --filter @demicodes/web-gallery dev",
-    "web:dev": "bun run contracts && bun scripts/web-dev.ts",
+    "web:gallery": "bun scripts/web-gallery.ts",
+    "web:dev": "bun scripts/web-dev.ts",
     "web:build": "bun run contracts && bun --filter @demicodes/web build"
   },
   "devDependencies": {
