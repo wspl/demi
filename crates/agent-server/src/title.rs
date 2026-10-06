@@ -29,7 +29,7 @@ pub const INPUT_MAX_CHARS: usize = 4_000;
 /// reasoning model counts its thinking against the limit, so a cap sized for
 /// the line alone can end before any text. A model whose own output limit is
 /// lower sends that one.
-pub const OUTPUT_CAP: NonZeroU32 = NonZeroU32::new(1_024).expect("the cap is not zero");
+pub const OUTPUT_CAP: NonZeroU32 = NonZeroU32::new(4_096).expect("the cap is not zero");
 
 /// The whole system prompt of a title request.
 pub const TITLE_INSTRUCTION: &str = "You are a title generator. You output ONLY a conversation title. Nothing else.
