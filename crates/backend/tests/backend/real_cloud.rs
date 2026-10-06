@@ -853,9 +853,9 @@ async fn install_tools(test: &str, driven: &mut Driven<'_>) {
 
 /// Installs Chrome on the Cloud of `driven`'s conversation as an agent
 /// would (`browser.md` § Installation): `demi browser install`, then the
-/// apt command its output ends with, which installs the libraries and fonts
-/// the Cloud lacks, from the package lists [`install_tools`] updated. Prints
-/// how long each step took.
+/// apt command its output ends with, as printed, which refreshes the package
+/// lists and installs the libraries and fonts the Cloud lacks. Prints how
+/// long each step took.
 async fn install_chrome(test: &str, driven: &mut Driven<'_>) {
     let started = Instant::now();
     let installed = run_download(
@@ -879,7 +879,7 @@ async fn install_chrome(test: &str, driven: &mut Driven<'_>) {
     let Some(command) = installed
         .lines()
         .map(str::trim)
-        .find(|line| line.starts_with("sudo apt-get install "))
+        .find(|line| line.starts_with("sudo apt-get update && sudo apt-get install "))
     else {
         return;
     };
