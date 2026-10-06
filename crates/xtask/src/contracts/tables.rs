@@ -6,8 +6,10 @@
 
 use std::fmt::Write as _;
 
+use demi_runner_protocol::direct;
 use demi_shared_types::{
-    ATTACHMENT_FILE_EXTENSIONS, CONTEXT_LIMIT_STEPS, PREVIEW_TYPES, VIDEO_FILE_EXTENSIONS,
+    ATTACHMENT_FILE_EXTENSIONS, CONTEXT_LIMIT_STEPS, IMAGE_CONTENT_POLICY, PREVIEW_TYPES,
+    VIDEO_FILE_EXTENSIONS,
 };
 
 use super::zod::push_doc;
@@ -36,6 +38,18 @@ pub fn module(header: &str) -> String {
     )
     .expect("writing to a string");
     source.push_str(LOOKUPS);
+
+    source.push('\n');
+    push_doc(
+        &mut source,
+        Some(
+            "The content policy an image served in place carries (`file-previews.md`\n\
+             § Keeping file content inert).",
+        ),
+        0,
+    );
+    let policy = serde_json::to_string(IMAGE_CONTENT_POLICY).expect("the policy serializes");
+    writeln!(source, "export const IMAGE_CONTENT_POLICY = {policy}").expect("writing to a string");
 
     for (name, description, extensions) in [
         (
@@ -90,6 +104,33 @@ pub fn module(header: &str) -> String {
         count(demi_web_api_protocol::MAX_PAGE_MESSAGE_BYTES)
     )
     .expect("writing to a string");
+
+    for (name, description, value) in [
+        (
+            "DIRECT_MESSAGE_BYTES",
+            "The most bytes of one binary message on a direct channel (`direct-channel.md`).",
+            count(direct::MESSAGE_BYTES),
+        ),
+        (
+            "DIRECT_QUEUE_BYTES",
+            "The most bytes either end keeps queued on one direct channel.",
+            count(direct::QUEUE_BYTES),
+        ),
+        (
+            "DIRECT_CONNECT_MS",
+            "How long a page waits for a direct channel's peer to connect.",
+            u64::try_from(direct::CONNECT_TIMEOUT.as_millis()).expect("a timeout fits"),
+        ),
+        (
+            "DIRECT_WATCH_HEARTBEAT_MS",
+            "How long a direct channel's watch stays silent before its heartbeat.",
+            u64::try_from(direct::WATCH_HEARTBEAT.as_millis()).expect("a timeout fits"),
+        ),
+    ] {
+        source.push('\n');
+        push_doc(&mut source, Some(description), 0);
+        writeln!(source, "export const {name} = {value}").expect("writing to a string");
+    }
 
     source
 }

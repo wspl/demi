@@ -65,6 +65,7 @@ tower = { version = "0.5", features = ["util"] }
 tower-http = { version = "0.6", features = ["fs", "trace"] }
 tracing.workspace = true
 typed-path = "0.12"
+uuid = { version = "1", features = ["v4"] }
 url = "2"
 
 [dev-dependencies]

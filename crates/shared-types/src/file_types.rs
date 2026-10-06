@@ -77,6 +77,11 @@ pub fn preview_media_type(path: &str) -> Option<&'static str> {
         .map(|entry| entry.media_type)
 }
 
+/// The content policy an image served in place carries
+/// (`file-previews.md` § Keeping file content inert): it runs no script and
+/// fetches nothing, in an opaque origin.
+pub const IMAGE_CONTENT_POLICY: &str = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
+
 /// Whether the page shows `media_type` in place instead of downloading it.
 pub fn shows_in_place(media_type: &str) -> bool {
     PREVIEW_TYPES
