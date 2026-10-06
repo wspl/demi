@@ -556,7 +556,12 @@ pub enum LiveModuleMessage {
         #[garde(skip)]
         watched: Option<TabId>,
     },
-    /// Video frames of this generation follow, starting with a key frame.
+    /// Video frames of this generation follow, starting with a key frame:
+    /// `width` × `height` pixels of `viewport`, at `scale` of its device
+    /// pixels. The page places a picture, and maps input on it, by its own
+    /// generation's viewport (`live-view.md` § Modes). At scale 1 a picture
+    /// is the page's own pixels, less the last row or column of an odd side,
+    /// which H.264 cannot encode; below 1 congestion lowered its resolution.
     Stream {
         #[garde(skip)]
         tab: TabId,
@@ -566,6 +571,10 @@ pub enum LiveModuleMessage {
         width: u32,
         #[garde(range(min = 1))]
         height: u32,
+        #[garde(dive)]
+        viewport: BrowserViewport,
+        #[garde(range(min = f64::MIN_POSITIVE, max = 1.0))]
+        scale: f64,
     },
     Heartbeat {},
     Cursor {
