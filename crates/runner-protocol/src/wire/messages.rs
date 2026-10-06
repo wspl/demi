@@ -370,7 +370,9 @@ pub enum Inbound {
         output: PipeRef,
     },
     /// The file's size and SHA-256, and none of its bytes, so the backend
-    /// can tell whether it holds them already (`runner.md` § File contents).
+    /// can tell whether it holds them already; a file over `limit` bytes
+    /// answers its size alone, before a byte is read (`runner.md` § File
+    /// contents).
     #[serde(rename = "fs_hashFile")]
     FsHashFile {
         id: String,
@@ -381,6 +383,7 @@ pub enum Inbound {
             with = "unwrap_or_skip"
         )]
         cwd: Option<String>,
+        limit: u64,
     },
     /// Fill the file from `input`, making the directories above it that are
     /// missing; `exists` says what to do when the path is taken. The answer
@@ -1241,21 +1244,27 @@ pub struct OpenedFile {
     pub unchanged: bool,
 }
 
-/// What `fs_hashFile` answers: the bytes hashed, and their SHA-256, which
-/// names their blob.
+/// What `fs_hashFile` answers: the bytes hashed and their SHA-256, which
+/// names their blob, or, for a file over the request's limit, its size
+/// alone (`too_large`), none of its bytes read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct FileHash {
-    pub size: u64,
-    pub sha256: BlobRef,
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum FileHash {
+    Hashed { size: u64, sha256: BlobRef },
+    TooLarge { size: u64 },
 }
 
 impl FileHash {
     /// The answer for `size` bytes whose SHA-256 is `sha256`, in lowercase
     /// hexadecimal; anything else is refused.
-    pub fn new(size: u64, sha256: String) -> Result<Self, String> {
+    pub fn hashed(size: u64, sha256: String) -> Result<Self, String> {
         let sha256 = BlobRef::try_from(sha256)?;
-        Ok(Self { size, sha256 })
+        Ok(Self::Hashed { size, sha256 })
     }
 }
 

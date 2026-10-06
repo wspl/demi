@@ -14,9 +14,21 @@ use demi_shared_types::{B64Bytes, BlobRef};
 use demi_web_api_protocol::ids::UserId;
 use futures_util::future::LocalBoxFuture;
 use object_store::path::Path;
-use object_store::{ObjectStore, ObjectStoreExt as _, PutMode, PutOptions, PutPayload};
+use object_store::{GetOptions, ObjectStore, ObjectStoreExt as _, PutMode, PutOptions, PutPayload};
 
 use crate::ObjectError;
+
+/// The most bytes of a blob read for what its opening tells: the media type
+/// its bytes show and a text file's snippet both come from a file's first
+/// bytes (`web-api.md` § Uploads and media).
+pub const OPENING_BYTES: u64 = 64 * 1024;
+
+/// A blob's first [`OPENING_BYTES`], or all of a smaller one, and its size.
+#[derive(Debug, Clone)]
+pub struct BlobOpening {
+    pub bytes: Bytes,
+    pub size: u64,
+}
 
 /// Every user's blob namespace.
 #[derive(Clone)]
@@ -98,6 +110,21 @@ impl UserBlobs {
     pub async fn get(&self, blob: &BlobRef) -> Result<Option<Bytes>, ObjectError> {
         match self.objects.get(&self.location(blob)).await {
             Ok(object) => Ok(Some(object.bytes().await?)),
+            Err(object_store::Error::NotFound { .. }) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// The opening of `blob`, read as one range of the stored object, or
+    /// `None` when this namespace does not hold it.
+    pub async fn opening(&self, blob: &BlobRef) -> Result<Option<BlobOpening>, ObjectError> {
+        let options = GetOptions::new().with_range(Some(0..OPENING_BYTES));
+        match self.objects.get_opts(&self.location(blob), options).await {
+            Ok(object) => {
+                let size = object.meta.size;
+                let bytes = object.bytes().await?;
+                Ok(Some(BlobOpening { bytes, size }))
+            }
             Err(object_store::Error::NotFound { .. }) => Ok(None),
             Err(error) => Err(error.into()),
         }
