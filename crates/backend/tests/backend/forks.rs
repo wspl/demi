@@ -114,7 +114,7 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     assert_eq!(destination.cwd, directory);
     assert_eq!(
         transcript(&backend, &master, SECOND).await.blocks,
-        history[..2]
+        history[..3]
     );
     let listed: Vec<String> = summaries(&backend, &master)
         .await
@@ -213,7 +213,8 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     assert_eq!(
         kinds(&source.live().await),
         [
-            "user", "text", "response", "user", "text", "response", "user", "abort"
+            "user", "context", "text", "response", "user", "text", "response", "user",
+            "abort"
         ]
     );
     backend.close().await;
@@ -263,7 +264,7 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     // The history through the latest text, without the response after it.
     assert_eq!(
         transcript(&backend, &master, SECOND).await.blocks,
-        stored[..5]
+        stored[..6]
     );
     let again = backend
         .post(&path, Some(&master), fork(SECOND, &second_text))
@@ -303,7 +304,7 @@ async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_
     vendor.respond(answer(&["Written."], 1, 1));
     source.chat("m1", "Write the notes").await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
-    let files = |blocks: &[Block]| match blocks.get(1) {
+    let files = |blocks: &[Block]| match blocks.get(2) {
         Some(Block::ToolCall(call)) => match &call.view {
             Some(ToolView::Shell(view)) => view.files.clone(),
             view => panic!("{view:?}"),

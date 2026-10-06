@@ -223,6 +223,10 @@ fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -> Outbound 
         runner: RunnerInfo {
             name: "raw".into(),
             platform: RunnerPlatform::Linux,
+            os: wire::OperatingSystem {
+                name: "Ubuntu 26.04".into(),
+                arch: "x86_64".into(),
+            },
             version: "0".into(),
             native_target: None,
             identity: HostIdentity {

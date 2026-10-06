@@ -20,7 +20,7 @@ use demi_backend_database::devices::DeviceRecord;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::{Admission, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost};
 use demi_host_interface::{HostIdentity, HostKey};
-use demi_runner_protocol::wire::{self, HostArtifact, Inbound};
+use demi_runner_protocol::wire::{self, HostArtifact, Inbound, OperatingSystem};
 use demi_runner_protocol::values::BackendUrl;
 use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceState};
 use demi_web_api_protocol::ids::{DeviceId, UserId};
@@ -468,8 +468,8 @@ pub async fn send(socket: &mut WebSocket, message: &Inbound) -> Result<(), axum:
 
 /// Where a connection records what it learns of its device, which its
 /// owner's pages show: that its runner was connected just now, as the
-/// connection starts and as it ends, and what the runner reports its
-/// artifact cache holds. Cloning it is cheap.
+/// connection starts and as it ends, the operating system its hello names,
+/// and what the runner reports its artifact cache holds. Cloning it is cheap.
 #[derive(Clone)]
 pub struct DeviceRecorder {
     control: ControlService,
@@ -480,6 +480,17 @@ pub struct DeviceRecorder {
 impl DeviceRecorder {
     pub fn new(control: ControlService, marks: UserMarks) -> Self {
         Self { control, marks }
+    }
+
+    /// Records what `device`'s runner said in its hello: its operating
+    /// system, and that it was connected just now.
+    pub async fn hello(&self, device: DeviceId, os: OperatingSystem) {
+        if let Err(error) = self.control.set_device_os(device.clone(), os).await {
+            // The agent's context block names the Host without its system
+            // until the next hello records it.
+            tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "operating system not recorded");
+        }
+        self.touch(device).await;
     }
 
     /// Records that `device`'s runner was connected just now.
