@@ -5,7 +5,8 @@ import { isTextCut } from './truncation'
 /**
  * One line of text, cut with an ellipsis at its end where it does not fit;
  * while it is cut, its tooltip shows it whole. The Writing page's rule for
- * long text says which text may be cut and where.
+ * long text says which text may be cut and where. The slot dresses the
+ * text, such as with marked matches; the tooltip still shows it plain.
  */
 defineProps<{
   text: string
@@ -14,6 +15,6 @@ defineProps<{
 
 <template>
   <Tooltip tag="span" class="block min-w-0 truncate" :content="text" :show-if="isTextCut">
-    {{ text }}
+    <slot>{{ text }}</slot>
   </Tooltip>
 </template>
