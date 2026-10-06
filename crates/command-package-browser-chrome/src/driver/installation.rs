@@ -2,8 +2,8 @@
 //! distribution): `install` asks the runner to install it from its official
 //! URL over the artifacts stream (`native-runtime.md` § The artifacts
 //! stream), following how the download goes, and every other command starts
-//! it only from an installation the runner already holds. Nothing here
-//! downloads Chrome itself.
+//! it only from an installation the runner already holds, on a Host that has
+//! the libraries it loads. Nothing here downloads Chrome itself.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -15,24 +15,41 @@ use demi_command_sdk::Artifacts;
 use tokio::sync::{mpsc, watch};
 
 use crate::driver::operation::{BrowserError, Result};
-use crate::driver::requirements;
+use crate::driver::requirements::{self, Missing};
+use crate::driver::text;
+
+/// What a Host lacks for the Chrome at an executable, which is an entry in
+/// its archive.
+type Requirements = dyn Fn(&Path, &str) -> Result<Missing> + Send + Sync;
 
 /// The Chrome a service starts, through the runner that installs it.
 /// Cloning shares the one source.
 #[derive(Clone)]
 pub struct Chrome {
     artifacts: Arc<watch::Sender<Option<Artifacts>>>,
+    requirements: Arc<Requirements>,
 }
 
 impl Default for Chrome {
     fn default() -> Self {
         Self {
             artifacts: Arc::new(watch::Sender::new(None)),
+            requirements: Arc::new(requirements::missing),
         }
     }
 }
 
 impl Chrome {
+    /// A Chrome on a Host that lacks `missing` for it, whatever the Host's
+    /// own files say.
+    #[cfg(any(test, feature = "testing"))]
+    pub fn lacking(missing: Missing) -> Self {
+        Self {
+            requirements: Arc::new(move |_: &Path, _: &str| Ok(missing.clone())),
+            ..Self::default()
+        }
+    }
+
     /// Takes the service's artifacts source, which the runner answers.
     pub fn attach(&self, artifacts: Artifacts) {
         self.artifacts.send_replace(Some(artifacts));
@@ -62,7 +79,7 @@ impl Chrome {
         let path = self.source()?.install(install, Some(progress)).await.map_err(|error| {
             BrowserError::Installation(format!("{} could not be installed: {error}", release.title()))
         })?;
-        let missing = requirements::missing(&path, &platform.executable)?;
+        let missing = self.missing(&path, &platform.executable).await?;
         Ok(InstallResult {
             browser: release.title(),
             path: path.to_string_lossy().into_owned(),
@@ -72,7 +89,9 @@ impl Chrome {
         })
     }
 
-    /// The pinned release's executable, when the Host has it installed.
+    /// The pinned release's executable, to start: when the Host has it
+    /// installed and has every library it loads; fonts the Host lacks do
+    /// not keep it from starting (`browser.md` § Browser distribution).
     pub async fn executable(&self) -> Result<PathBuf> {
         let release = release()?;
         let platform = platform(&release)?;
@@ -81,16 +100,29 @@ impl Chrome {
             .installed(ARTIFACT)
             .await
             .map_err(|error| BrowserError::Installation(error.to_string()))?;
-        installed
+        let path = installed
             .into_iter()
             .find(|installed| installed.sha256 == platform.sha256)
             .map(|installed| PathBuf::from(installed.path))
             .ok_or_else(|| {
-                BrowserError::Installation(format!(
-                    "{} is not installed on this Host: run `demi browser install`",
-                    release.title()
-                ))
-            })
+                BrowserError::Installation(text::not_installed(&release.title(), platform.size))
+            })?;
+        let missing = self.missing(&path, &platform.executable).await?;
+        if missing.libraries.is_empty() {
+            return Ok(path);
+        }
+        let lines = text::requirements(&missing.libraries, &missing.fonts);
+        Err(BrowserError::Installation(lines.trim_end().to_owned()))
+    }
+
+    /// What this Host lacks for the Chrome at `executable`, which is `entry`
+    /// in its archive, read on the blocking pool: the check reads the
+    /// Host's library and font directories.
+    async fn missing(&self, executable: &Path, entry: &str) -> Result<Missing> {
+        let requirements = self.requirements.clone();
+        let executable = executable.to_owned();
+        let entry = entry.to_owned();
+        tokio::task::spawn_blocking(move || requirements(&executable, &entry)).await?
     }
 
     /// Where Chrome's executables live, its helpers' included, for finding

@@ -64,6 +64,9 @@ struct Started {
 
 #[derive(Clone)]
 enum EnvironmentFailure {
+    /// The Host lacks Chrome or a library it loads, which the message says
+    /// how to install (`browser.md` § Browser distribution).
+    Installation(String),
     Unavailable(String),
     Lost(String),
 }
@@ -188,6 +191,7 @@ impl ConversationBrowser {
         loop {
             if let Some(result) = ready.borrow_and_update().clone() {
                 return result.map(Some).map_err(|failure| match failure {
+                    EnvironmentFailure::Installation(message) => BrowserError::Installation(message),
                     EnvironmentFailure::Unavailable(message) => BrowserError::Unavailable(message),
                     EnvironmentFailure::Lost(message) => BrowserError::Connection(message),
                 });
@@ -481,7 +485,9 @@ impl Owner {
             .await;
             if let Err(error) = &result {
                 let message = error.to_string();
-                let failure = if publish.borrow().as_ref().is_some_and(|ready| ready.is_ok()) {
+                let failure = if matches!(error, BrowserError::Installation(_)) {
+                    EnvironmentFailure::Installation(message)
+                } else if publish.borrow().as_ref().is_some_and(|ready| ready.is_ok()) {
                     EnvironmentFailure::Lost(message)
                 } else {
                     EnvironmentFailure::Unavailable(message)
