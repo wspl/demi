@@ -3,11 +3,14 @@
  * service keeps): the reads a host makes, each a request, over the Host's
  * kept files (`HostFiles`). A view shows an entry through the source and
  * sees it replaced in place when it is read again; a one-shot read answers
- * from what is confirmed, and reads otherwise. The source's own writes mark
- * what they change, so the views that show it read it again.
+ * from what is confirmed, and reads otherwise. The source's own writes edit
+ * the listings they change as their answers tell, without listing them
+ * again: the Host's watch reports the write, and the folder is listed once
+ * for its reports (`web-application.md` § Requests for one action).
  */
 import { reactive } from 'vue'
 import type { HostFiles, KeptSpec, Showing } from './file-cache'
+import { baseName, parentPath } from './paths'
 import type { ChangeSetSource, ChangeSides, WorkingTreeChange } from './changes'
 import type {
   FileBrowserEntry,
@@ -15,6 +18,7 @@ import type {
   FileContents,
   FileDescription,
   FileText,
+  FileUploadOptions,
   FileWatchNote,
 } from './types'
 
@@ -114,8 +118,24 @@ export function keptContents(
 /** A file source over `reads` that keeps what it read in `files`. */
 export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBrowserSource {
   const { files, follower } = options
-  /** A write's own change at `path`, which concerns its folder's listing too: the views that show them read them again. */
-  const wrote = (path: string) => files.changed([path])
+  const listing = (path: string) => listingSpec(reads, path)
+  /**
+   * `entry` is in its folder `directory` now, in place of what had its name,
+   * and each folder above it is in its own: a write makes the folders it
+   * needs, and a folder listed already keeps what was listed of it.
+   */
+  const added = (directory: string, entry: FileBrowserEntry) => {
+    files.amend(listing(directory), (entries) => [...entries.filter((kept) => kept.name !== entry.name), entry])
+    for (let folder = directory; parentPath(folder) !== folder; folder = parentPath(folder)) {
+      const made: FileBrowserEntry = { name: baseName(folder), isDirectory: true }
+      files.amend(listing(parentPath(folder)), (entries) =>
+        entries.some((kept) => kept.name === made.name) ? entries : [...entries, made])
+    }
+  }
+  /** Nothing is at `path` now. */
+  const removed = (path: string) => {
+    files.amend(listing(parentPath(path)), (entries) => entries.filter((kept) => kept.name !== baseName(path)))
+  }
   const readText = reads.readText
   return {
     platform: reads.platform,
@@ -136,15 +156,16 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
       ? {
           createDirectory: async (path: string, signal?: AbortSignal) => {
             await reads.createDirectory!(path, signal)
-            wrote(path)
+            added(parentPath(path), { name: baseName(path), isDirectory: true })
           },
         }
       : {}),
     ...(reads.upload
       ? {
-          upload: async (...args: Parameters<NonNullable<FileBrowserSource['upload']>>) => {
-            await reads.upload!(...args)
-            wrote(args[0])
+          // The tree adds the entry with the name and size it sent.
+          upload: async (path: string, file: File, options: FileUploadOptions) => {
+            await reads.upload!(path, file, options)
+            added(parentPath(path), { name: baseName(path), isDirectory: false, size: file.size })
           },
         }
       : {}),
@@ -152,7 +173,7 @@ export function keptSource(reads: FileReads, options: KeptSourceOptions): FileBr
       ? {
           remove: async (path: string, signal?: AbortSignal) => {
             await reads.remove!(path, signal)
-            wrote(path)
+            removed(path)
           },
         }
       : {}),
