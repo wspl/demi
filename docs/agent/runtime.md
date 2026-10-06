@@ -480,8 +480,9 @@ the five completes as an error `Tool not found: <name>`.
   offending field, so the model can correct the call.
 - `timeoutMs` and `durationMs` are whole milliseconds from 1 to 600,000,
   declared to the model as `integer`. A fraction is refused, not rounded.
-- Every tool accepts an optional `description`, the call's title for the user
-  ([Rendering boundary](#rendering-boundary)).
+- Every tool takes a `description`, the call's title for the user: required
+  for `shell_exec` and `shell_write`, optional for the others
+  ([Tool descriptions](#tool-descriptions)).
 
 ### Running shell tools
 
@@ -1350,7 +1351,7 @@ presentation of changed files are shown in the gallery, not here.
 
 ### Tool descriptions
 
-Every tool's input accepts an optional `description`: a short title, shown to
+Every tool's input takes a `description`: a short title, shown to
 the user, for what the step does, as a command in the imperative: `Install
 Chrome for Testing`, `Start the browser with a blank tab`, `Run the type
 checker`. The model writes it before the step runs, so it never states a
@@ -1359,8 +1360,14 @@ while the download still runs, and still claim it after the step failed. The
 block shows whether the step runs, ended or failed beside the title. The title
 names the work the user cares about, not how the tool works.
 
-1. A non-empty `description` is the preferred title of the tool block.
-2. Without it, the renderer uses the tool's own fallback title.
+1. `shell_exec` and `shell_write` require a non-empty `description`: they
+   start or feed work, and without a title the block would show the raw
+   script or input, which tells the user little. A call without one is
+   refused as invalid input, so the model adds the title and calls again.
+2. `shell_status`, `shell_abort` and `yield` accept it as optional: they act
+   on a command that already has its title, or only wait, so the renderer's
+   fallback title says enough. A non-empty `description` is their preferred
+   title.
 3. `description` affects display only. It changes neither the shell's
    behavior, the tool result, nor what the model receives on replay.
 4. A `description` does not state a result or a state reached, does not
