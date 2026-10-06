@@ -299,20 +299,24 @@ work allows, and never one per item:
 - **Several uploads run at once,** up to four at a time: dropping a folder
   uploads its files, whose writes make their folders, and makes only its
   empty folders; no listing follows each file: the tree adds each entry it
-  uploaded, with the name and size it sent, when its upload succeeds.
+  uploaded, with the name and size it sent, when its upload succeeds, and the
+  Host's watch then reports the folder, which is listed once for the reports
+  of 100 ms ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
 
 ### Liveness and reconnection
 
-A page holds WebSockets of three kinds to the backend: the synchronization
-channel, a socket for each open conversation, and the stream of each
-[live browser view](../browser/live-view.md). All three tell a quiet socket
+A page holds WebSockets of four kinds to the backend: the synchronization
+channel, a socket for each open conversation, the stream of each
+[live browser view](../browser/live-view.md), and the
+[file watch](web-api.md#file-watch) of the conversation whose files it shows.
+All four tell a quiet socket
 from a dead one by one rule and connect again by another, and one module of
 `web-ui` implements both. For example, a laptop sleeps and its network drops
 without a close. Nothing tells the page: its sockets still look open, a
 conversation would go on showing a turn as running, and a live view would go
 on showing its stream as stalled. The far end of each socket sends a
 heartbeat once it has sent nothing else for a while: the backend on the
-channel and on each conversation socket after 30 seconds
+channel, on each conversation socket and on the file watch after 30 seconds
 ([Order and delivery](../agent/runtime.md#order-and-delivery),
 [Page synchronization](web-api.md#page-synchronization)), and a live view's
 module on its stream after a quarter of a second

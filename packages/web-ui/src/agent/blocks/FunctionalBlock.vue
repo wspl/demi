@@ -4,6 +4,7 @@ import { CircleX } from '@lucide/vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useFollowEnd } from '../../composables/useFollowEnd'
 
@@ -37,7 +38,8 @@ const hasPinnedSlot = () => !!slots['pinned']
 // Read at render time: a conditional icon slot changes between renders, and slots are not reactive.
 const showIcon = () => !!slots['icon'] || props.tone === 'danger'
 const isExpandable = computed(() => props.expandable || hasPinnedSlot() || hasBodySlot() || !!props.errorText)
-const bodyScroll = ref<HTMLElement>()
+const bodyArea = ref<InstanceType<typeof ScrollArea>>()
+const bodyScroll = computed(() => bodyArea.value?.el)
 const bodyContent = ref<HTMLElement>()
 let closeTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -157,12 +159,11 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
             class="flex min-h-0 flex-col"
             :class="framed ? 'mx-3 my-1 rounded-md border border-line-subtle bg-surface-base py-2' : ''"
           >
-            <div v-if="hasPinnedSlot()" class="max-h-40 shrink-0 overflow-y-auto">
+            <ScrollArea v-if="hasPinnedSlot()" class="max-h-40 shrink-0">
               <slot name="pinned" />
-            </div>
-            <div
-              ref="bodyScroll"
-              class="min-h-0 overflow-y-auto"
+            </ScrollArea>
+            <ScrollArea
+              ref="bodyArea"
               :class="hasPinnedSlot() && (hasBodySlot() || errorText) ? 'mt-1' : ''"
             >
               <div ref="bodyContent">
@@ -172,7 +173,7 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
                   class="whitespace-pre-wrap px-3 py-1.5 font-mono text-xs text-on-danger-muted"
                 >{{ errorText }}</pre>
               </div>
-            </div>
+            </ScrollArea>
           </div>
         </div>
       </div>
