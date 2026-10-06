@@ -163,7 +163,7 @@ its tabs.
 | `kind` | Its id, unique across plugins; the panel refuses a duplicate |
 | `schema` | The schema of a tab's `data`, checked where the backend's panel enters the page |
 | `title(data, tab)`, `mark` | The tab's title, from its data and its conversation and panel session, and its strip mark (props: `data`) |
-| `content` | The tab's content (props: `conversation`, `session`, `tabId`, `data`, `shown`; emits `update` with the next `data`, and `close`) |
+| `content` | The tab's content (props: `conversation`, `session`, `tabId`, `data`, `shown`, whether it is the tab the panel shows: a content stays mounted while another tab is selected ([Work panel](../product/web-application.md#work-panel)); emits `update` with the next `data`, and `close`) |
 | `create` | Whether the strip's new-tab control offers it, with its label, icon and a new tab's `data` |
 | `pinned` | The kind has one tab in every conversation's panel, ahead of the other tabs, never created, closed or kept by the backend; its data starts from the data this gives and lives in the page's memory; its id is the kind's id |
 | `picked(data)` | What a tab shows next when its user picks it in the strip, even while it is selected: the Change view returns to Uncommitted ([Delivery to the conversation](../execution/edit-tracking.md#delivery-to-the-conversation)) |

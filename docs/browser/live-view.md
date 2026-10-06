@@ -87,7 +87,8 @@ panel's tabs ([Work panel state](../product/web-api.md#work-panel-state)), and
 | `tab` | The plugin | The id of the conversation browser's tab it shows, once it has one |
 | `closed` | The plugin | The browser no longer has that tab |
 | `failure` | The plugin | `{ code, message }`: why the plugin could not open a browser tab for it |
-| `shown` | The plugin | How many times the agent showed the browser tab, as the tab list counts it; absent while it never did ([Showing a tab](#showing-a-tab)) |
+| `title` | The page, and the plugin | The page's title as the address bar last showed it, so the strip names the tab while no view shows it |
+| `shows` | The plugin | How many times the agent showed the browser tab, as the tab list counts it; absent while it never did ([Showing a tab](#showing-a-tab)) |
 
 ```text
 page                         backend (panel, plugin-browser)            Host
@@ -125,7 +126,10 @@ page                         backend (panel, plugin-browser)            Host
   user's request until the tab list says the page stopped loading. The
   address bar follows the page and writes its URL into `url` as it changes.
 - **Showing.** A tab with a browser tab shows it on the page's one view
-  (below). A view that reconnects keeps the last picture and its address, and
+  (below). A tab shown again, after another tab or after the user's browser
+  hid the page, shows at once its last picture, address and title, and the
+  view resumes over them: it never turns blank or shows the loading line for
+  a page that had loaded. A view that reconnects keeps the last picture and its address, and
   a stall shows as a quiet note over it; the content never replaces a picture
   with a waiting message. A view waiting to reconnect connects at once when
   the shown tab gets a browser tab, so a view that ended while the browser
@@ -192,14 +196,14 @@ ends, the user's panel opens on the new tab `t3`. While the agent later checks
 its own work in `t4` without `--show`, `t4` only joins the strip, and the user
 keeps looking at `t3`.
 
-- **The request.** `show`, and `open --show`, raise the tab's `shown` count in
+- **The request.** `show`, and `open --show`, raise the tab's `shows` count in
   the browser's tab list. Nothing else changes in the browser.
 - **The panel tab.** When the plugin reads the list after a job, it adds the
-  agent's new tabs as before, and writes each tab's count into `shown` of the
+  agent's new tabs as before, and writes each tab's count into `shows` of the
   panel tab bound to it when the count is higher. A tab the user created is
   shown the same way.
 - **Each page shows it once.** The kind's panel session follows its panel
-  tabs. When one's `shown` is higher than the count the page last applied for
+  tabs. When one's `shows` is higher than the count the page last applied for
   that tab, the session selects the tab, with the panel opened
   ([The page context](../architecture/plugin-pages.md#the-page-context)), and
   the page records the count beside its selection history
@@ -406,6 +410,11 @@ keeps running. Booting the VM's kernel with `arm64.nosme` restores capture.
   the page ends the view and opens a new one after its waits, or at once
   when the page comes back from a sleep that long. A stall that ends sooner,
   such as that pause, keeps the view.
+- A capture starts at the viewport the watching viewer's panel gives the
+  tab: the page sends its panel's size before it names a tab to watch, and
+  the module sizes the tab before it captures it. The module never captures a
+  watched tab at a size it is about to replace, and a new size changes the
+  running capture rather than starting another.
 - The page acknowledges each frame it shows. The module adapts from
   end-to-end acknowledgement delay: queueing delay is the main signal. Under
   congestion it lowers the bit rate, then the frame rate, then the resolution.
@@ -443,12 +452,17 @@ of the tab being watched.
   `viewport reset` returns the tab to Web.
 - The Mobile client hints keep the browser's own brands and set `mobile` and
   the Android platform, so the user agent and the hints agree.
+- In Web mode a picture is shown at its own CSS size from the panel's
+  top-left corner and is never scaled. While the panel grows, the part a
+  picture does not cover yet shows white until a picture at the new size
+  arrives, as a local window does while it resizes; while it shrinks, the
+  panel cuts the picture. It never shows bars around a smaller picture.
 - When the viewport and the panel differ, as in Mobile and Custom, the view
-  scales the picture to fit and centers it. Input maps back to page
-  coordinates.
-  During resize, the retained frame keeps its own aspect ratio until a frame
-  painted at the new viewport size replaces it; viewport metadata must not
-  stretch the old picture.
+  scales the picture to fit and centers it.
+- Each stream generation names its size and pixel ratio. The view places the
+  picture it shows, and maps input back to page coordinates, by that
+  picture's generation, never by a viewport the tab list already reports for
+  a picture that has not arrived.
 - A Web tab nobody watches keeps its last size. A tab never watched is
   1280 × 720.
 - With several viewers, the viewer that operated most recently decides the Web
@@ -534,6 +548,18 @@ suggestion field is not rejected. The page receives the value with synthetic
 which is a pipe, into a directory of the environment, and then attach to the
 input. Observers run
 in an isolated world, so pages can neither see nor call them.
+
+The view shows the cursor the page asks for under the viewer's pointer, at
+once and exactly. The page's observer reports, in every frame of the page,
+where on the visible page each cursor applies, and the view resolves the
+cursor under the pointer locally from that report, so moving across a row of
+buttons shows each one's cursor without a round trip. Where the page leaves
+the cursor to the browser, the observer resolves it, a text cursor over text,
+for the point the view asks about. A cursor list uses its last keyword. After
+a navigation the new document's cursor at the pointer replaces the old one.
+No local element over the picture, such as the hidden text field or a native
+control placed over the page's, shows a cursor of its own or takes the
+pointer's clicks from the picture.
 
 An open view is conversation activity, whether the user operates it or only
 watches ([Activity](../execution/resource-lifecycle.md#activity)).
