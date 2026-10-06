@@ -183,8 +183,6 @@ enum ChannelRequest {
     },
     /// An ack, a key frame request or an encoding for a capture.
     Command(CaptureCommand),
-    /// A capture's new size, which a full connection does not drop.
-    Resize(CaptureCommand),
 }
 
 /// What an extension connection's reader hands the owner.
@@ -307,20 +305,6 @@ impl Capture {
         });
     }
 
-    /// Captures at `width` × `height` pixels from now on; the frames at the
-    /// new size start with a key frame. Unlike the commands a later one
-    /// supersedes, a resize is never dropped: an extension that cannot take
-    /// it loses its connection, and the capture fails and starts again.
-    pub async fn resize(&self, width: u32, height: u32) {
-        let command = CaptureCommand::Resize {
-            capture: self.id,
-            width,
-            height,
-        };
-        // The channel ends with the environment, as the capture does.
-        let _ended = self.requests.send(ChannelRequest::Resize(command)).await;
-    }
-
     /// A command the next one supersedes, so a full channel drops it.
     fn command(&self, command: CaptureCommand) {
         let _dropped = self.requests.try_send(ChannelRequest::Command(command));
@@ -397,13 +381,6 @@ impl Owner {
             ChannelRequest::Command(command) => {
                 if let Some(connection) = &self.connection {
                     let _dropped = connection.commands.try_send(command);
-                }
-            }
-            ChannelRequest::Resize(command) => {
-                if let Some(connection) = &self.connection
-                    && connection.commands.try_send(command).is_err()
-                {
-                    self.disconnect();
                 }
             }
         }

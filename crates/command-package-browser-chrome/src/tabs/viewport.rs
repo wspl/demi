@@ -73,14 +73,6 @@ pub fn pixels(viewport: &BrowserViewport, scale: f64) -> (u32, u32) {
     (side(viewport.width), side(viewport.height))
 }
 
-/// The size a capture of `pixels` is encoded at. H.264 4:2:0 encodes only
-/// even sides, so an odd side loses its last row or column, which is never
-/// scaled into the rest (`live-view.md` § Modes).
-pub fn encoded(pixels: (u32, u32)) -> (u32, u32) {
-    let even = |length: u32| (length - length % 2).max(2);
-    (even(pixels.0), even(pixels.1))
-}
-
 /// A tab's viewport, and the Web viewport it returns to when the agent's
 /// setting is reset.
 #[derive(Debug, Clone, Copy)]
@@ -319,7 +311,7 @@ mod tests {
     }
 
     #[test]
-    fn a_picture_keeps_the_pages_pixels_and_cuts_an_odd_one() {
+    fn a_capture_takes_the_pages_whole_pixels() {
         let mut viewport = BrowserViewport {
             mode: ViewportMode::Web,
             width: 701,
@@ -327,11 +319,8 @@ mod tests {
             device_pixel_ratio: 1.5,
         };
         assert_eq!(pixels(&viewport, 1.0), (1052, 602));
-        assert_eq!(encoded(pixels(&viewport, 1.0)), (1052, 602));
         assert_eq!(pixels(&viewport, 0.5), (526, 301));
-        assert_eq!(encoded(pixels(&viewport, 0.5)), (526, 300));
         viewport.device_pixel_ratio = 1.0;
         assert_eq!(pixels(&viewport, 1.0), (701, 401));
-        assert_eq!(encoded(pixels(&viewport, 1.0)), (700, 400));
     }
 }

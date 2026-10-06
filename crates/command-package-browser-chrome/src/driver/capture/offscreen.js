@@ -28,9 +28,9 @@ function ask(message) {
   });
 }
 
-// H.264 4:2:0 encodes only even sides: a picture with an odd side is
-// encoded without its last row or column rather than scaled, so every
-// encoded pixel is the page's own.
+// H.264 4:2:0 encodes only even sides. Chrome already scales a tab with an
+// odd side to an even size of its shape; a picture that still has an odd
+// side is encoded without its last row or column.
 function even(length) {
   return Math.max(2, length - (length % 2));
 }
@@ -42,7 +42,7 @@ function size(width, height) {
 }
 
 function pack(chunk, state) {
-  // The sides the picture was encoded at, which a resize may have changed since.
+  // The sides the picture was encoded at, which a newer picture may have changed.
   const sides = state.sides.get(chunk.timestamp) ?? state;
   state.sides.delete(chunk.timestamp);
   const data = new ArrayBuffer(HEADER + chunk.byteLength);
@@ -123,7 +123,6 @@ async function stop(id) {
   captures.delete(id);
   clearInterval(state.timer);
   clearTimeout(state.watchdog);
-  clearTimeout(state.resizing);
   state.latest?.close();
   if (state.encoder && state.encoder.state !== 'closed') state.encoder.close();
   for (const track of state.stream.getTracks()) track.stop();
@@ -222,8 +221,6 @@ async function start(message) {
     height: 0,
     // Each picture in the encoder's queue with the sides it is encoded at.
     sides: new Map(),
-    // The size a resize asked for, until its first picture arrives.
-    target: null,
   };
   captures.set(state.id, state);
   // The socket may have closed while Chrome was opening this media source.
@@ -248,15 +245,6 @@ async function start(message) {
         if (captures.get(state.id) !== state) {
           frame.close();
           break;
-        }
-        // Pictures Chrome took before a resize applied are of the old size.
-        if (state.target && (frame.displayWidth !== state.target.width || frame.displayHeight !== state.target.height)) {
-          frame.close();
-          continue;
-        }
-        if (state.target) {
-          state.target = null;
-          clearTimeout(state.resizing);
         }
         state.latest?.close();
         state.latest = frame;
@@ -290,31 +278,6 @@ async function start(message) {
   send({ type: 'started', capture: state.id });
 }
 
-// The same capture at a new size: the track takes the new constraints, the
-// pictures still at the old size are dropped, and the frames in flight at it
-// will never be acknowledged. A capture that never reaches the size fails,
-// and the Host starts a new one.
-function resize(state, message) {
-  state.target = { width: message.width, height: message.height };
-  state.latest?.close();
-  state.latest = null;
-  state.ack = state.sequence;
-  clearTimeout(state.resizing);
-  state.resizing = setTimeout(() => {
-    if (captures.get(state.id) !== state || !state.target) return;
-    tasks = tasks.then(async () => {
-      if (captures.get(state.id) !== state) return;
-      fail(state.id, 'tab capture did not take its new size');
-      await stop(state.id);
-    }).catch(error => fail(state.id, error));
-  }, 3000);
-  state.track.applyConstraints(size(message.width, message.height)).catch(error => {
-    if (captures.get(state.id) !== state) return;
-    fail(state.id, error);
-    tasks = tasks.then(() => stop(state.id)).catch(error => fail(state.id, error));
-  });
-}
-
 socket.addEventListener('message', event => {
   const message = JSON.parse(event.data);
   const state = captures.get(message.capture);
@@ -333,9 +296,6 @@ socket.addEventListener('message', event => {
       break;
     case 'keyframe':
       if (state) state.force = true;
-      break;
-    case 'resize':
-      if (state) resize(state, message);
       break;
     case 'encoding':
       if (!state) break;
