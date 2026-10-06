@@ -68,7 +68,7 @@ impl Skills {
         let mut manifest = Manifest::new(
             PluginId::try_from("skills").expect("a valid plugin id"),
             "Skills",
-            "Workflows the agent follows: skills from Git repositories you add, and those your repository carries.",
+            "Teaches the agent workflows with skills from Git repositories you add with demi skills, and from your repository.",
         );
         manifest.context = true;
         manifest.commands = commands::commands().manifest_commands();
