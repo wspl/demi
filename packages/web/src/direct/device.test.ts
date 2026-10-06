@@ -24,6 +24,7 @@ function device() {
   const attempts: PromiseWithResolvers<DirectPeer>[] = []
   const timers: { ms: number; run: () => void; cancelled: boolean }[] = []
   const direct = new DeviceDirect({
+    ready: () => true,
     connect: () => {
       const attempt = Promise.withResolvers<DirectPeer>()
       attempts.push(attempt)
@@ -134,6 +135,26 @@ test('a stopped device closes its peer, tells its streams, and tries no more', a
   expect(choices).toEqual(['direct', 'relay'])
   await flush()
   expect(waiting()).toBeUndefined()
+  direct.tryNow()
+  expect(attempts).toHaveLength(1)
+})
+
+test('no attempt starts before the signaling socket is open, whose opening is the reason to try', async () => {
+  let open = false
+  const attempts: PromiseWithResolvers<DirectPeer>[] = []
+  const direct = new DeviceDirect({
+    ready: () => open,
+    connect: () => {
+      const attempt = Promise.withResolvers<DirectPeer>()
+      attempts.push(attempt)
+      return attempt.promise
+    },
+    after: () => () => {},
+  })
+  direct.setPermission('prompt')
+  direct.tryNow()
+  expect(attempts).toHaveLength(0)
+  open = true
   direct.tryNow()
   expect(attempts).toHaveLength(1)
 })
