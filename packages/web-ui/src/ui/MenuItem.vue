@@ -5,6 +5,7 @@ import { computed, inject, onBeforeUnmount, ref, useSlots } from 'vue'
 import type { Component } from 'vue'
 import { Check, ChevronRight } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
+import HighlightText from './HighlightText.vue'
 import Popover from './Popover.vue'
 import Tooltip from './Tooltip.vue'
 import { ICON_PX } from './icon-metrics'
@@ -14,8 +15,10 @@ import {
   createSubmenuController,
   menuIconlessKey,
   menuRootKey,
+  menuSlotKeyboardKey,
   menuSubmenuKey,
-  shouldDismissMenuTree
+  shouldDismissMenuTree,
+  type MenuSlotRow
 } from './menu-context'
 
 export type MenuIndicator = 'success' | 'muted' | 'accent' | 'danger'
@@ -69,6 +72,14 @@ const hasSuffix = computed(
 )
 
 const triggerRef = ref<HTMLElement | null>(null)
+
+// In a Menu that lays out its slot, the row its keyboard reaches: focused there, its typed prefix marked.
+const keyboard = inject(menuSlotKeyboardKey, null)
+const slotRow: MenuSlotRow = { label: () => props.label, el: () => triggerRef.value }
+const unregister = keyboard?.register(slotRow)
+const keyboardFocused = computed(() => keyboard?.focused.value === slotRow)
+const isFocused = computed(() => props.isFocused || keyboardFocused.value)
+const typedPrefix = computed(() => (keyboardFocused.value && props.label ? keyboard?.highlight(props.label) : null) ?? undefined)
 /** Pins the submenu open regardless of hover (gallery specimens). */
 const pinnedOpen = defineModel<boolean>('submenuOpen', { default: false })
 // The enclosing Menu arbitrates which row's submenu is open; a row rendered outside a
@@ -118,6 +129,7 @@ function handleClick(event: MouseEvent) {
 onBeforeUnmount(() => {
   submenus.close(submenuId)
   ownSubmenus?.dispose()
+  unregister?.()
 })
 
 const toneClass = computed(() => {
@@ -128,11 +140,11 @@ const toneClass = computed(() => {
   if (isChoice.value) {
     if (props.isSelected)
       return 'bg-active text-fg-emphasis'
-    if (props.isFocused || submenuOpen.value)
+    if (isFocused.value || submenuOpen.value)
       return 'bg-hover text-fg'
     return 'text-fg-body hover:bg-hover hover:text-fg'
   }
-  if (submenuOpen.value)
+  if (isFocused.value || submenuOpen.value)
     return 'bg-active text-fg-emphasis'
   return 'text-fg-body hover:bg-active hover:text-fg-emphasis'
 })
@@ -178,7 +190,7 @@ const toneClass = computed(() => {
       </span>
       <span class="menu-cell-label on-fill" :class="faded ? 'faded' : ''">
         <slot>
-          <span class="min-w-0 truncate">{{ label }}</span>
+          <span class="min-w-0 truncate"><HighlightText :text="label ?? ''" :indexes="typedPrefix" /></span>
         </slot>
         <!-- The note follows the name; the label cell is the grid column, so nothing needs to stretch. -->
         <span v-if="note" class="shrink-0 pl-1 text-fg-subtle">({{ note }})</span>

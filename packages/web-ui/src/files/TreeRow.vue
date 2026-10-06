@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ChevronRight } from '@lucide/vue'
+import HighlightText from '../ui/HighlightText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
@@ -14,12 +15,16 @@ import type { SentenceText } from '../ui/ui-text'
  * the slots: `mark` sits on the icon's corner, `name` replaces the plain
  * name, `trailing` ends the row, kept off the scrollbar. A `tooltip` covers
  * the whole row. A hidden entry's icon and name are faded. A row whose menu
- * is open keeps its hover look until the menu closes.
+ * is open keeps its hover look until the menu closes. The row the tree's
+ * keyboard is on (`cursor`) wears the focus ring while the tree has focus,
+ * and `highlight` marks letters of its name, as a type-select query's prefix.
  */
 defineProps<{
   row: TreeRow
   selected: boolean
   menuOpen?: boolean
+  cursor?: boolean
+  highlight?: readonly number[]
   tooltip?: SentenceText
 }>()
 
@@ -34,7 +39,10 @@ defineEmits<{
     :aria-selected="selected"
     :aria-expanded="row.isDirectory ? row.open : undefined"
     class="flex h-7 shrink-0 cursor-default select-none items-center rounded-md pr-2 text-chrome transition-colors duration-200 ease-out"
-    :class="selected ? 'bg-active text-fg-emphasis' : menuOpen ? 'bg-hover text-fg' : 'text-fg-body hover:bg-hover'"
+    :class="[
+      selected ? 'bg-active text-fg-emphasis' : menuOpen ? 'bg-hover text-fg' : 'text-fg-body hover:bg-hover',
+      cursor ? 'ring-1 ring-inset ring-line-focus' : '',
+    ]"
     :style="{ paddingLeft: `${4 + row.depth * 12}px` }"
     @click="$emit('activate')"
   >
@@ -61,8 +69,8 @@ defineEmits<{
       <span class="flex min-w-0" :class="isHiddenName(row.name) ? 'faded' : ''">
         <slot name="name">
           <!-- The row's own tip (why it failed) says more than its name, so it keeps the hover. -->
-          <span v-if="tooltip" class="truncate">{{ row.name }}</span>
-          <TruncatedText v-else :text="row.name" />
+          <span v-if="tooltip" class="truncate"><HighlightText :text="row.name" :indexes="highlight" /></span>
+          <TruncatedText v-else :text="row.name"><HighlightText :text="row.name" :indexes="highlight" /></TruncatedText>
         </slot>
       </span>
       <slot name="trailing" />

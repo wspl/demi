@@ -361,7 +361,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'workspace'">
-      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product's preference does. Switching between existing projects is the sidebar's “Move To” and the header's workspace control, not a dialog.">
+      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product's preference does. Switching between existing projects is the sidebar's “Move To” and the header's workspace control, not a dialog. The directory completes from the device's folders as it is typed: the folder before the caret lists under the field, filtered fuzzily by what follows its last slash; ↓ and ↑ highlight a row, Tab or Enter completes it and the menu goes on into it, Escape puts the menu away.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(form, index) in projectForms" :key="form.variant" wide :variant="form.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
