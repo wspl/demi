@@ -4,6 +4,7 @@ import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Search, CircleX } from '@lucide/vue'
 import HighlightText from './HighlightText.vue'
 import MenuItem from './MenuItem.vue'
+import ScrollArea from './ScrollArea.vue'
 import { createSubmenuController, menuIconlessKey, menuSubmenuKey } from './menu-context'
 import { provideLayerElevation } from '../overlay/layerElevation'
 import { ICON_PX } from './icon-metrics'
@@ -47,7 +48,8 @@ const filterQuery = ref(props.initialQuery ?? '')
 const focusedIndex = ref(-1)
 const inputRef = ref<HTMLInputElement>()
 const panelRef = ref<HTMLElement>()
-const scrollRef = ref<HTMLElement>()
+const scrollArea = ref<InstanceType<typeof ScrollArea>>()
+const scrollRef = computed(() => scrollArea.value?.el)
 
 const listItems = computed(() => props.items ?? [])
 
@@ -194,10 +196,11 @@ function handleKeydown(event: KeyboardEvent) {
     >
       {{ emptyText }}
     </div>
-    <div
+    <ScrollArea
       v-else
-      ref="scrollRef"
-      class="overlay-menu-scroll p-1"
+      ref="scrollArea"
+      class="flex-auto"
+      viewport-class="overlay-menu-scroll p-1"
     >
       <template v-if="items != null && isVirtual">
         <div
@@ -274,6 +277,6 @@ function handleKeydown(event: KeyboardEvent) {
         </MenuItem>
       </template>
       <slot v-else />
-    </div>
+    </ScrollArea>
   </div>
 </template>
