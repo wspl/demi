@@ -1,5 +1,5 @@
 use crate::families::with_browser_fixture;
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
@@ -167,6 +167,83 @@ async fn cdp_eviction_marks_truncation_and_worker_handles_expire() {
         assert_eq!(targets["targets"][0]["url"], "about:blank");
         fixture
     }).await;
+}
+
+/// About 3.5 s here: Chrome starts and loads two local pages.
+///
+/// Planted defects this catches: a cookie expiry typed as a number that is
+/// always there, which Chrome contradicts by writing null for an expiry JSON
+/// cannot hold (±Inf, as the protocol says), so the browser connection could
+/// not decode the event and lost the browser with every tab; and a catalog
+/// that rejects that null, or requires the deprecated `sameParty` Chrome 153
+/// no longer sends, either of which ended the debugging connection.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_cookie_expiry_chrome_writes_as_null_keeps_the_browser_and_reaches_cdp_events() {
+    let server = crate::server::Server::start("<!doctype html><title>Before</title>").await;
+    let url = format!("{}/unbounded-cookie", server.base);
+    with_browser_fixture(|fixture| async move {
+        let tab = fixture.open("cdp.html").await;
+        fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Network.enable","params":"{}"})).await;
+        let before = fixture.call("browser.cdp.events", json!({"tab":tab})).await;
+        fixture.call("browser.goto", json!({"tab":tab,"url":url})).await;
+
+        // The browser's own connection read the event and goes on.
+        let info = fixture.call("browser.info", json!({"tab":tab})).await;
+        assert_eq!(info["title"], "Unbounded cookie", "{info}");
+
+        // The debugging connection records it as Chrome wrote it.
+        let events = fixture
+            .call("browser.cdp.events", json!({"tab":tab,"after":before["cursor"],"method":["Network.responseReceivedExtraInfo"],"timeout":5000}))
+            .await;
+        let blocked = events["events"][0]["params"]["blockedCookies"][0].clone();
+        assert_eq!(blocked["cookie"]["name"], "unbounded", "{events}");
+        assert_eq!(blocked["cookie"]["expires"], Value::Null, "{events}");
+        fixture
+    })
+    .await;
+    server.close().await;
+}
+
+/// About 3 s here: Chrome starts, and a page sends 64 MiB to a binding.
+///
+/// Planted defect this catches: a debugging connection that ends and tells
+/// its calls only that it ended, so the caller cannot tell a page that
+/// overflowed it from a lost browser.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn an_ended_debugging_connection_says_why_to_its_calls() {
+    with_browser_fixture(|fixture| async move {
+        let tab = fixture.open("cdp.html").await;
+        fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Runtime.addBinding","params":"{\"name\":\"demiLarge\"}"})).await;
+        // Only this debugging connection hears the binding; its event is over
+        // the 64 MiB a CDP message may have, which ends the connection.
+        let expression = format!("demiLarge('x'.repeat({})); 1", 64 * 1024 * 1024);
+        let (code, pending) = fixture
+            .result(
+                "browser.cdp.send",
+                json!({"tab":tab,"method":"Runtime.evaluate","params":json!({"expression":expression}).to_string()}),
+                CancellationToken::new(),
+            )
+            .await;
+        let reason = "and it answers no request";
+        assert_eq!(code, 1, "{pending}");
+        let message = pending["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("tab debugging connection ended") && message.contains(reason), "{pending}");
+
+        // A later call hears the same reason.
+        let (_, later) = fixture
+            .result("browser.cdp.events", json!({"tab":tab}), CancellationToken::new())
+            .await;
+        let message = later["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("tab debugging connection ended") && message.contains(reason), "{later}");
+
+        // The browser and its tab go on.
+        let info = fixture.call("browser.info", json!({"tab":tab})).await;
+        assert_eq!(info["tab"], tab, "{info}");
+        fixture
+    })
+    .await;
 }
 
 #[tokio::test]

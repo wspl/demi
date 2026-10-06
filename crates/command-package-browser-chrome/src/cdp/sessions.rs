@@ -152,10 +152,8 @@ impl SessionsOwner {
 
     async fn connect(&mut self, caller: u64) -> Result<DebugHandle> {
         if let Some(connection) = self.connections.get(&caller) {
-            if connection.ended.is_cancelled() {
-                return Err(BrowserError::Connection(
-                    "tab debugging connection ended".into(),
-                ));
+            if let Some(reason) = connection.ended() {
+                return Err(ended(&reason));
             }
             return Ok(connection.handle.clone());
         }
@@ -268,7 +266,7 @@ impl SessionsOwner {
         let mut callers: Vec<_> = self
             .connections
             .iter()
-            .filter(|(_, connection)| !connection.ended.is_cancelled())
+            .filter(|(_, connection)| connection.ended().is_none())
             .map(|(caller, _)| *caller)
             .collect();
         callers.sort();
@@ -280,8 +278,9 @@ impl SessionsOwner {
 struct DebugConnection {
     handle: DebugHandle,
     stop: CancellationToken,
-    /// Cancelled by the pump as it ends, however it ends.
-    ended: CancellationToken,
+    /// Why the pump ended, once it has; its sender is the pump's, so a pump
+    /// that ends without saying, aborted with its tab, closes the channel.
+    ended: watch::Receiver<Option<String>>,
     task: AbortOnDropHandle<Result<()>>,
 }
 
@@ -322,21 +321,32 @@ impl DebugConnection {
         attach_descendants(&mut socket, attached.session_id)?;
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let stop = ended.child_token();
-        let pump_ended = CancellationToken::new();
+        let (reason, ended) = watch::channel(None);
         let task = AbortOnDropHandle::new(tasks.spawn(pump(
             socket,
             receiver,
             targets,
             recording,
             stop.clone(),
-            pump_ended.clone(),
+            reason,
         )));
         Ok(Self {
             handle: DebugHandle { requests },
             stop,
-            ended: pump_ended,
+            ended,
             task,
         })
+    }
+
+    /// Why the connection ended, or `None` while it lives.
+    fn ended(&self) -> Option<String> {
+        if let Some(reason) = &*self.ended.borrow() {
+            return Some(reason.clone());
+        }
+        self.ended
+            .has_changed()
+            .is_err()
+            .then(|| "its task stopped".into())
     }
 
     async fn close(self) -> Result<()> {
@@ -359,9 +369,8 @@ async fn pump(
     mut targets: HashMap<String, Target>,
     recording: mpsc::Sender<Recorded>,
     stop: CancellationToken,
-    ended: CancellationToken,
+    reason: watch::Sender<Option<String>>,
 ) -> Result<()> {
-    let _ended = ended.clone().drop_guard();
     let mut pending: HashMap<CallId, (String, oneshot::Sender<Result<Value>>)> = HashMap::new();
     let work = async {
         loop {
@@ -444,20 +453,16 @@ async fn pump(
     let failure = work
         .as_ref()
         .err()
-        .map_or_else(|| "debugging connection closed".into(), ToString::to_string);
+        .map_or_else(|| "it was closed".into(), ToString::to_string);
     for (_, (_, sender)) in pending {
         // A cancelled invocation can already have dropped its response receiver.
-        let _left = sender.send(Err(BrowserError::Cdp(chromiumoxide::error::CdpError::msg(
-            failure.clone(),
-        ))));
+        let _left = sender.send(Err(ended(&failure)));
     }
     while let Some(request) = requests.recv().await {
         match request {
             // A cancelled invocation can already have dropped its response receiver.
             ConnectionRequest::Send { response, .. } => {
-                let _left = response.send(Err(BrowserError::Cdp(
-                    chromiumoxide::error::CdpError::msg(failure.clone()),
-                )));
+                let _left = response.send(Err(ended(&failure)));
             }
             ConnectionRequest::Targets { reply } => {
                 let _left = reply.send(Vec::new());
@@ -507,7 +512,7 @@ async fn pump(
     drop(socket);
     // The owner learns that this connection ended, unless it is closing it:
     // then it waits for this task and reads nothing meanwhile.
-    ended.cancel();
+    reason.send_replace(Some(failure));
     tokio::select! {
         biased;
         _ = stop.cancelled() => {}
@@ -515,6 +520,12 @@ async fn pump(
         _closed = recording.send(Recorded::Ended) => {}
     }
     after_cleanup(work, cleanup)
+}
+
+/// The failure of a call on a debugging connection that ended, and why
+/// (`browser.md` § CDP commands and events).
+fn ended(reason: &str) -> BrowserError {
+    BrowserError::Connection(format!("tab debugging connection ended: {reason}"))
 }
 
 /// Subscribe a CDP debug session only to iframe and worker descendants of its tab.
