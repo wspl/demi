@@ -6,7 +6,7 @@ import { fitMessageMedia, fitMessageMedium } from '@demicodes/web-ui/markdown/me
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
-import { useContentScrollbars } from '@demicodes/web-ui/composables/useContentScrollbars'
+import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
 import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
 import {
   closeOpenInlineMarkdown,
@@ -22,7 +22,7 @@ const props = withDefaults(defineProps<{
 })
 
 const root = ref<HTMLElement>()
-useContentScrollbars(root)
+useContentScrollers(root)
 const { shown, frontier } = useStreamReveal(() => props.content, () => props.streaming)
 
 // The text is still arriving while the view catches up with it, which goes on

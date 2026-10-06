@@ -103,6 +103,7 @@ Conversations that run commands on Cloud or your own machines.
 \`\`\`bash
 bun install
 bun run dev
+bun test --timeout=20000 --coverage --coverage-reporter=lcov packages/web/src/auth/__tests__/session-cookie.test.ts
 \`\`\`
 
 | Command | What it does |
