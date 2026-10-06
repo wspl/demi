@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import ScrollArea from '../ui/ScrollArea.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
@@ -21,8 +22,9 @@ defineProps<{
       <div class="select-none px-8 pt-8 lg:px-14">
         <span class="text-chrome font-medium text-fg-emphasis">Demi</span>
       </div>
-      <div
-        class="flex min-h-0 flex-1 flex-col justify-center overflow-y-auto px-8 py-12 lg:px-14"
+      <ScrollArea
+        class="flex-1"
+        viewport-class="flex flex-col justify-center px-8 py-12 lg:px-14"
       >
         <header class="select-none">
           <h1 class="text-[22px] font-medium text-fg-emphasis">{{ title }}</h1>
@@ -31,7 +33,7 @@ defineProps<{
         <div class="mt-8">
           <slot />
         </div>
-      </div>
+      </ScrollArea>
     </section>
     <aside class="relative hidden min-w-0 flex-1 bg-surface md:block">
       <div class="flex h-full flex-col justify-center px-16 lg:px-24">

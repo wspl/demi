@@ -8,6 +8,7 @@ import { IconButton } from '@demicodes/plugin-sdk'
 import { Switch } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
 import { Button } from '@demicodes/plugin-sdk'
+import { ScrollArea } from '@demicodes/plugin-sdk'
 import { ICON_PX } from '@demicodes/plugin-sdk'
 import AddSkillSourceDialog from './AddSkillSourceDialog.vue'
 import { SettingsGroup } from '@demicodes/plugin-sdk'
@@ -198,10 +199,11 @@ const empty = computed(() => props.sources.length === 0)
           />
         </SettingsRow>
         <Fold :open="isOpen(source.id) && foldable(source)">
-          <div
+          <ScrollArea
             v-if="foldable(source)"
             class="skill-list"
             :class="source.skills.length + source.skipped.length > SKILL_LIST_CAP ? 'skill-list-scroll' : ''"
+            viewport-class="skill-list-rows"
           >
             <SettingsRow
               v-for="skill in source.skills"
@@ -233,7 +235,7 @@ const empty = computed(() => props.sources.length === 0)
                 <span class="block truncate">Not a skill: {{ skipped.reason }}</span>
               </template>
             </SettingsRow>
-          </div>
+          </ScrollArea>
         </Fold>
       </div>
       <div
@@ -257,14 +259,16 @@ const empty = computed(() => props.sources.length === 0)
   border-top: 1px solid var(--line-subtle);
 }
 
-.skill-list > * + * {
+.skill-list-rows > * + * {
   border-top: 1px solid var(--line-subtle);
 }
 
 /* Six inset rows (label + one-line description). More than six scrolls inside the pack. */
 .skill-list-scroll {
   max-height: calc(6 * 3.125rem);
-  overflow-y: auto;
+}
+
+.skill-list-scroll :deep(.skill-list-rows) {
   overscroll-behavior: contain;
 }
 </style>

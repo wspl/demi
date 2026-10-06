@@ -2,6 +2,7 @@
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import ExternalLink from '@demicodes/web-ui/ui/ExternalLink.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import GallerySection from '../components/GallerySection.vue'
@@ -346,7 +347,7 @@ const sources: readonly Required<Source>[] = [
     </div>
 
     <GallerySection title="Which Style Each Element Takes">
-      <div class="overflow-x-auto rounded-xl border border-line">
+      <ScrollArea axis="x" class="rounded-xl border border-line">
         <table class="w-full min-w-[56rem] text-left text-[12px] leading-4">
           <thead class="bg-surface-raised text-fg-subtle">
             <tr>
@@ -380,7 +381,7 @@ const sources: readonly Required<Source>[] = [
             </tr>
           </tbody>
         </table>
-      </div>
+      </ScrollArea>
     </GallerySection>
 
     <GallerySection title="Title-Style Words" note="The Apple Style Guide’s rule for each word of a title.">

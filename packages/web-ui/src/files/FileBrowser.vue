@@ -495,7 +495,7 @@ onBeforeUnmount(() => pending?.abort())
     <div class="flex min-h-0 flex-1 border-y border-line">
       <ScrollArea
         v-if="hasRail"
-        class="hidden w-44 shrink-0 border-r border-line bg-surface @md:block"
+        class="hidden w-44 shrink-0 border-r border-line bg-surface @md:flex"
         viewport-class="flex flex-col gap-3 p-2"
       >
         <nav

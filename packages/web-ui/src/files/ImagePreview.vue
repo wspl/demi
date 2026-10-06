@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue'
 import { dropSource } from './preview'
+import ScrollArea from '../ui/ScrollArea.vue'
 
 /**
  * A picture scaled down to fit and never enlarged; a click shows it at its
@@ -30,7 +31,7 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- Auto margins center a picture that fits and start one that overflows at its corner. -->
-  <div class="flex h-full min-h-0 w-full overflow-auto p-4">
+  <ScrollArea class="h-full w-full" axis="both" viewport-class="flex p-4">
     <img
       ref="image"
       :src="src"
@@ -41,5 +42,5 @@ onBeforeUnmount(() => {
       @error="emit('failed')"
       @click="actual = !actual"
     >
-  </div>
+  </ScrollArea>
 </template>
