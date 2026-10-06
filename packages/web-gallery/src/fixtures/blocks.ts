@@ -185,8 +185,8 @@ export const runningShellTool = toolCall({
   toolName: 'shell_exec',
   status: 'executing',
   input: JSON.stringify({
-    // Long enough to wrap over several lines: the command stays whole above
-    // the output, which scrolls under it.
+    // Long enough to wrap over more than two lines: the command shows two
+    // above the output, which scrolls under it.
     script: [
       'DEMI_LOG=auth=debug,cookie=debug,session=info bun test --watch --timeout 20000 --rerun-each 1 --bail 5 packages/web/src/auth.test.ts packages/web/src/cookie.test.ts packages/web/src/session.test.ts \\',
       '  2>&1 | tee target/auth-watch.log',
@@ -201,8 +201,9 @@ export const runningShellTool = toolCall({
 })
 
 /**
- * A script longer than the command's own bound, with output longer than the
- * box: the script scrolls on its own above, the output below it.
+ * A heredoc that writes a whole page, with output longer than the box: the
+ * command shows two lines until a click shows it whole, and then scrolls on
+ * its own above the output.
  */
 export const longScriptShellTool = toolCall({
   id: 'tool-shell-script',
@@ -210,20 +211,26 @@ export const longScriptShellTool = toolCall({
   status: 'completed',
   input: JSON.stringify({
     script: [
-      "python3 - <<'EOF'",
-      'import json, pathlib',
-      'root = pathlib.Path("packages/web/src")',
-      'hits = []',
-      'for path in sorted(root.rglob("*.ts")):',
-      '    for number, line in enumerate(path.read_text().splitlines(), 1):',
-      '        if "sid" in line:',
-      '            hits.append({"path": str(path), "line": number})',
-      'for hit in hits:',
-      '    print(f"{hit[\'path\']}:{hit[\'line\']}")',
-      'print(json.dumps({"files": len({h[\'path\'] for h in hits}), "hits": len(hits)}))',
+      "cat > public/status.html <<'EOF'",
+      '<!doctype html>',
+      '<html lang="en">',
+      '<head>',
+      '  <meta charset="utf-8">',
+      '  <title>Service Status</title>',
+      '  <link rel="stylesheet" href="/styles/status.css">',
+      '</head>',
+      '<body>',
+      '  <main>',
+      '    <h1>Service Status</h1>',
+      '    <p id="summary">All systems are running.</p>',
+      '    <ul id="services"></ul>',
+      '  </main>',
+      '</body>',
+      '</html>',
       'EOF',
+      'grep -rn "sid" packages/web/src',
     ].join('\n'),
-    description: 'List every place the old cookie name is read',
+    description: 'Write the status page and list where the old cookie name is read',
   }),
   view: shellView({
     commandId: 'cmd-script',
@@ -232,8 +239,8 @@ export const longScriptShellTool = toolCall({
         stream: 'stdout',
         text: Array.from(
           { length: 40 },
-          (_, index) => `packages/web/src/${['auth', 'cookie', 'session', 'login'][index % 4]}.ts:${index * 3 + 7}\n`,
-        ).join('') + '{"files": 4, "hits": 40}\n',
+          (_, index) => `packages/web/src/${['auth', 'cookie', 'session', 'login'][index % 4]}.ts:${index * 3 + 7}:  const sid = cookies.get("sid")\n`,
+        ).join(''),
       },
     ],
   }),
