@@ -67,7 +67,7 @@ reaches the next spawn ([Profiles](subagents.md#profiles)).
 
 | The product supplies | What it is | Where it comes from in Demi |
 | --- | --- | --- |
-| The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The commands of the plugins the user has on, and the `demi host` group ([Plugins](../architecture/plugins.md#commands)) |
+| The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The commands of the plugins the user has on, and the `demi host` and `demi attachment` groups ([Plugins](../architecture/plugins.md#commands)) |
 | Instructions | The text that opens the system prompt, before the runtime's rules for its tools | The product's instructions; a plugin adds only its commands' help ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
 | Subagent settings | Whether subagents are on, and the named [subagent profiles](subagents.md#profiles) with whether each is enabled, as data, asked at each spawn and each `demi agent profiles` | The user's current settings, which the user edits in the Subagent section of settings |
 | Provider runtimes | A node's model selection and the runtime that serves it: the root's from the conversation's record, a child's from its profile's model settings or its parent's ([Runtime](subagents.md#runtime)) | The backend's provider assembly ([Inference admission and runtime ownership](../providers/providers.md#inference-admission-and-runtime-ownership)) |
@@ -940,6 +940,7 @@ that replays it, and a short number is copied without a slip.
 | An agent | `0` for the root, then `1`, `2`, … in spawn order | The conversation | The backend, when the agent is spawned ([Model-facing surface](subagents.md#model-facing-surface)) |
 | An agent's round | `1` for its first run, one more at each resume | The agent | The agent's supervisor |
 | A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
+| An attachment the agent uploaded | `a3` | The conversation | The backend, when `demi attachment upload` stores it ([Attachment commands](../execution/commands.md#attachment-commands)) |
 | An element reference | `e37` | Its tab | The conversation browser, as it observes the tab |
 | An expose | `2` | The user | The backend, when the expose is added ([Commands](../execution/expose.md#commands)) |
 | A host | Its name, as `demi host list` shows it | The conversation's hosts | The user ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |

@@ -213,6 +213,13 @@ type and the snippet on the file's capsule
 ([Attachments](product.md#attachments)), so the capsule shows what the backend
 determined.
 
+`GET /api/conversations/:id/attachments/:attachment` answers an attachment
+the agent uploaded ([Attachment commands](../execution/commands.md#attachment-commands))
+as `{ id, name, mediaType, size, blob }`, where `attachment` is its number,
+such as `a3`, and `blob` the hash its bytes are served under, below; a number
+the conversation does not have answers 404 `not_found`. It reads the
+conversation's database alone and wakes no Host.
+
 `GET /blobs/:sha256` serves a blob of the caller's own namespace, under the
 headers [Media by reference](../backend/backend.md#media-by-reference)
 gives it. A name that is not a SHA-256 in lowercase hexadecimal, or that the

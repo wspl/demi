@@ -20,7 +20,7 @@ a plugin contributes commands, the model's context, Host directories and a
 part of the page through messages, and nothing in those components is about
 one plugin. The agent runtime supplies its own tools and the `demi agent` and
 `demi shell` groups; the product supplies the conversation's Host and the
-`demi host` group; everything else the agent can do is a plugin's.
+`demi host` and `demi attachment` groups; everything else the agent can do is a plugin's.
 
 A capability that keeps state on the Host is, in addition, a command package
 behind the runner's narrow port, and that port is all the runner and the
@@ -1049,7 +1049,7 @@ demi-backend (executable: configuration, composition)
   uploads, remote files and user streams, with the leases the edge holds of
   them; the shell environments of agent nodes over it, which keep the
   commands' outputs and edit copies as the user's blobs (`ConversationBlobs`);
-  the product's `demi host` group; the installation
+  the product's `demi host` and `demi attachment` groups; the installation
   of the user's [Host directories](plugins.md#host-directories) before a job
   runs, once per runner connection, the reads of a conversation's files and
   the package calls plugins make; and `HostShard`,
@@ -1063,7 +1063,7 @@ demi-backend (executable: configuration, composition)
   on it.
 - **Public boundary:** host access and its operations on `dyn HostShard`, the
   conversations' slots, the transitions, the leases, the shell environment
-  factory and the `demi host` group. A slot's file gate gives its leases, the
+  factory and the `demi host` and `demi attachment` groups. A slot's file gate gives its leases, the
   ones a conversation's Host is made against, only to host access; other
   work holds the conversation through the gate itself (`file_gate`), whose
   leases make no Host.

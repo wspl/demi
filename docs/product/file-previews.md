@@ -131,8 +131,19 @@ The chart loads from the Host the way a document's image does, and a click on
 | Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view | Resolved the same way and loaded from the Host |
 | Absolute path, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
+| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video large, any other file as a download | An image shows; a video plays in place, in the player of the user's browser, at an image's bounds |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
+
+A Host path names the file as it is now: the image changes when the file
+does, and is gone with it, with the Host out of reach, with an archive or with
+a target change. A file the agent gives the user is therefore an attachment,
+a copy that stays; a Host path suits a file of the workspace the user should
+see as it is, such as a chart the repository keeps. An attachment number the
+conversation does not have shows its alt text with *No attachment a9 in this
+conversation*. The product's instructions tell the model that its messages
+render as Markdown, which of the two to use, and that a path in code or plain
+text stays text.
 
 An image is scaled down, its proportions kept, to at most the message's width
 and 60 percent of the conversation's visible height, the part the composer
