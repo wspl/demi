@@ -1035,7 +1035,7 @@ shows only the declared arguments.
 
 | Family | Commands |
 | --- | --- |
-| Navigation and ownership | `open`, `tabs`, `info`, `goto`, `back`, `forward`, `reload`, `history`, `close` |
+| Navigation and ownership | `open`, `show`, `tabs`, `info`, `goto`, `back`, `forward`, `reload`, `history`, `close` |
 | Observation | `inspect`, `find` including `--query`, `read`, `screenshot`, `probe`, enforced read-only `eval`, `logs` |
 | Page input | `click`, `move`, `drag`, `scroll`, `fill`, `type`, `key`, `check`, `select`, `select-text`, `wait` |
 | Files and clipboard | `upload`, `download`, `clipboard write/read` |
@@ -1153,9 +1153,30 @@ $ demi browser history t1
 
 $ demi browser close t2
 Closed t2.
+
+$ demi browser open http://localhost:3000/login --show
+Tab: t3
+URL: http://localhost:3000/login
+Title: Sign in
+Shown to the user.
+
+$ demi browser show t1
+Shown t1 to the user.
 ```
 
 `open` returns the tab it created, never another concurrent caller's latest tab.
+
+Whether the user sees a tab is the agent's choice. A tab the agent opens
+appears in the user's work panel without taking the user's view; `show`, or
+`open --show` for a new tab, asks the panel to show it. The agent shows a tab
+when the user is meant to look at it or act in it: the user asked to see a
+page, a sign-in or a choice needs the user's hand, or the page is a result for
+the user. It does not show the tabs it opens to check its own work. `show`
+only records the request on the tab and answers at once; the user's panel
+opens and selects the tab once the command's job ends
+([Showing a tab](live-view.md#showing-a-tab)). It does not bring the tab to
+the front of the Host's browser window, and the user may have looked away
+again by the time the agent continues. Showing a tab again shows it again.
 Navigation defaults to `domcontentloaded`; `--load commit|domcontentloaded|load`
 changes the completion condition. `back` and `forward` return `history_boundary`
 before issuing anything when no history entry exists. History is local to the
@@ -1865,7 +1886,8 @@ field with a different meaning or type. A `viewport` value carries `width`,
 | Command | Successful result fields |
 | --- | --- |
 | open, info | `tab, url, title, viewport`; info can include `dialog` |
-| tabs | `tabs: [{id, title, url, createdBy}], truncated` |
+| show | `tab` |
+| tabs | `tabs: [{id, title, url, createdBy, shown}], truncated`, where `shown` counts the times the tab was shown, 0 for one never shown |
 | goto, back, forward, reload | `tab, url, title` |
 | history | `entries: [{index, url, title, current}], truncated` |
 | close | `closed` |
