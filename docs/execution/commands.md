@@ -107,8 +107,8 @@ these declarations:
 
 - a group with no subcommands;
 - an input source that names a field the input does not have, overlapping
-  input sources, duplicate positional fields, and a required positional after
-  an optional one;
+  input sources, duplicate positional fields, a required positional after
+  an optional one, and an array positional that is not the last;
 - an option named `help` or `json`;
 - a `permission` on a `native` leaf, a `permission` that names a category
   none of the leaf's groups declares, and a category declared twice in the
@@ -135,7 +135,7 @@ Each input field has one source:
 | Declaration | Source and behavior |
 | --- | --- |
 | `input` | The JSON Schema of the leaf's argument type. It validates the whole input. |
-| `positionals` | Ordered fields supplied as positional arguments. They have no named-option form. |
+| `positionals` | Ordered fields supplied as positional arguments. They have no named-option form. The last may be an array, which takes every positional token left, as `demi attachment upload <path>...` does; usage shows it with `...`. |
 | `stdinField` | A string field populated from finite stdin: a quoted heredoc, a pipe, or input redirection. It has no option or positional form. |
 | `restField` | An array receiving raw tokens after `--`. It has no named-option form. |
 | Remaining input fields | Named options such as `--path notes.txt`. Their schemas define values, optionality, boolean flags, enums, and repeated array options. |
@@ -334,6 +334,7 @@ The invocation carries:
 | Path and argv | The leaf's path from its root, and the raw argv. |
 | Arguments | The input, validated against the leaf's schema. A `stdinField` body is already among them. |
 | `json` | Whether the caller passed `--json`. |
+| Host | The Host the job runs on: the conversation's primary Host, or an attached Host for a job `demi host shell` started there ([Attached hosts](sessions-and-targets.md#attached-hosts)). A handler that reads or writes the invoker's files does so on this Host. |
 | cwd and environment | The invoking shell's directory and environment. |
 | Command context | The [command context](native-runtime.md#command-context) from the backend's record of the job: conversation, caller, and locale. |
 | Caller | The agent node the job runs for, from the same record; none for a job no agent started. A job the handler starts on another Host carries it on. |
@@ -530,8 +531,8 @@ of the flow:
 
 ```text
 $ demi attachment upload out/login.png demo.mp4
-a3  out/login.png  image/png  412 KB
-a4  demo.mp4       video/mp4  8.2 MB
+a3  out/login.png  image/png  421888 bytes
+a4  demo.mp4       video/mp4  8598311 bytes
 ```
 
 Its reply then shows both, the image as an image and the video playing in
@@ -564,13 +565,15 @@ The sign-in page works again:
   a regular file, or a file over 25 MiB, the user's own upload limit, fails
   with a line on stderr that names the path and why; the command goes on with
   the next path and exits with status 1, and the files it stored keep their
-  numbers and lines. `--json` prints `{ attachments: [{ id, path, mediaType,
+  numbers and lines. A size is a count of bytes, as a medium's line gives it.
+  `--json` prints `{ attachments: [{ id, path, mediaType,
   size }] }`.
 - **No medium.** The command prints the numbers and returns no medium: the
   attachment is for the user, and the model reads a file with `demi file read`
   when it needs to see it.
 - **Where it runs.** `demi attachment` is the product's group beside
-  `demi host`, handled by the backend: the runner reads the file beside the
+  `demi host`, handled by the backend: the runner of the invocation's Host
+  ([Handle an rpc call](#handle-an-rpc-call)) reads the file beside the
   invocation and streams its bytes to the backend through a pipe
   ([File contents](runner.md#file-contents)), and the backend stores the blob
   and then the record.
