@@ -3,7 +3,8 @@
 //! through one of its completed assistant texts. The creation reserves its
 //! destination's id in the control store, the agent prepares the seed, the
 //! kept edits of its retained shell calls are copied into the destination's
-//! namespace, the agent commits the destination's root in the destination's
+//! namespace, the outputs of its commands and the conversation's attachments
+//! are copied into the destination's database, the agent commits the destination's root in the destination's
 //! own database, and a control transaction then publishes the destination. Requests for one
 //! destination run one at a time, a retry of the same attempt finds its
 //! destination, and startup publishes a destination whose root committed
@@ -16,7 +17,7 @@ use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::conversations::ConversationStores;
 use demi_backend_database::forks::{ForkMetadata, ForkOperation};
 use demi_backend_database::tree;
-use demi_backend_database::{command_outputs, sequences};
+use demi_backend_database::{command_outputs, conversation_attachments, sequences};
 use demi_backend_page_sync::Part;
 use demi_shared_types::BlockId;
 use demi_web_api_protocol::conversations::ConversationTarget;
@@ -167,8 +168,24 @@ impl Shard {
                 .call(move |connection| command_outputs::insert(connection, &rows))
                 .await?;
         }
-        // Its sequences go on from the source's, read after the seed, so a
-        // number its history names is never given to something new.
+        // The attachments its messages name are its too, with the blobs
+        // shared (`commands.md` § Attachment commands). They are read before
+        // the sequences, so every number copied lies below the next one.
+        let attachments = services
+            .conversations
+            .read(&source.id, conversation_attachments::all)
+            .await?
+            .unwrap_or_default();
+        if !attachments.is_empty() {
+            services
+                .conversations
+                .db(&destination)
+                .call(move |connection| conversation_attachments::insert(connection, &attachments))
+                .await?;
+        }
+        // Its sequences go on from the source's, read after the seed and its
+        // records, so a number its history names is never given to
+        // something new.
         let numbers = services
             .conversations
             .read(&source.id, sequences::all)

@@ -92,6 +92,10 @@ fn filer() -> Node {
                 "input": object(json!({"v": {"type": "array", "items": {"type": "number"}},
                     "label": {"type": "array", "items": {"type": "string"}},
                     "quiet": {"type": "boolean"}}), &["v"])},
+            {"name": "upload", "summary": "Upload files.", "kind": "rpc",
+                "input": object(json!({"path": {"type": "array", "items": {"type": "string"},
+                    "minItems": 1}}), &["path"]),
+                "positionals": ["path"]},
             {"name": "forward", "summary": "Forward argv.", "kind": "rpc",
                 "input": object(json!({"args": {"type": "array", "items": {"type": "string"}}}),
                     &["args"]),
@@ -170,6 +174,32 @@ fn each_field_takes_its_value_from_its_one_source() {
     for option in ["--path", "--content", "--args"] {
         assert!(!help.contains(option), "{option} in {help}");
     }
+}
+
+#[test]
+fn a_trailing_array_positional_takes_every_positional_argument_after_the_others() {
+    let filer = filer();
+    assert_eq!(
+        values(&filer, &["upload", "out/login.png", "demo.mp4"], None),
+        json!({"path": ["out/login.png", "demo.mp4"]})
+    );
+    assert_eq!(
+        values(&filer, &["upload", "demo.mp4"], None),
+        json!({"path": ["demo.mp4"]})
+    );
+    let error = refusal(&filer, &["upload"], None);
+    assert!(error.contains("\"path\""), "{error}");
+    let help = filer.help("filer");
+    assert!(help.contains("  filer upload <path>...\n"), "{help}");
+    assert!(help.contains("      <path>... (required, repeatable)"), "{help}");
+    // Only the last positional may take the rest.
+    let first: Node = serde_json::from_value(json!({"name": "copy", "summary": "Copy.",
+        "kind": "rpc",
+        "input": object(json!({"from": {"type": "array", "items": {"type": "string"}},
+            "to": {"type": "string"}}), &["from", "to"]),
+        "positionals": ["from", "to"]}))
+    .unwrap();
+    assert!(first.validate().is_err());
 }
 
 #[test]

@@ -1,14 +1,15 @@
 //! The SQLite databases (`storage.md`): the control service and every
 //! control record, the conversation index, each conversation's database with
-//! the tree store over it and its records of commands' outputs, the schemas
-//! and their migrations, and the encodings of stored values; and the record
-//! types it stores, which the domains above use. The object store is
-//! `backend-blobs`'.
+//! the tree store over it, its records of commands' outputs and of the
+//! attachments the agent uploaded, the schemas and their migrations, and the
+//! encodings of stored values; and the record types it stores, which the
+//! domains above use. The object store is `backend-blobs`'.
 
 pub mod accounts;
 pub mod attachments;
 pub mod columns;
 pub mod command_outputs;
+pub mod conversation_attachments;
 pub mod control;
 pub mod conversation_index;
 pub mod conversations;
