@@ -686,7 +686,7 @@ export function mockProviders(): MockProvider[] {
 /** The paired devices the devices page lists. */
 function galleryDevices(): SettingsDevice[] {
   return [
-    { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now' },
+    { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now', direct: 'connected' },
     { id: 'build', name: 'build-01', online: false, seen: '3 days ago' },
     {
       id: 'lab',

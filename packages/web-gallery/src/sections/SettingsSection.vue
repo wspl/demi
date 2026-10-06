@@ -27,8 +27,45 @@ import {
   subagentProviders,
 } from '../fixtures/subagent-profiles'
 import { productWould } from '../product-would'
+import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
+import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
+import { demoDeviceInstallation } from '../fixtures/device-installation'
 
 const { view } = useGalleryView()
+
+/** The page's path to each online paired device, which the Direct Channel specimen switches. */
+type DirectPath = 'relay' | 'connected' | 'blocked'
+const directPath = ref<DirectPath>('connected')
+const directPaths = [
+  { value: 'relay', label: 'Through the Server' },
+  { value: 'connected', label: 'Connected Directly' },
+  { value: 'blocked', label: 'Blocked by the Browser' },
+] as const
+const directDevices = ref<SettingsDevice[]>([
+  { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now' },
+  { id: 'build', name: 'build-01', online: false, seen: '3 days ago' },
+])
+/** Each device as the Devices page lists it: an online one directly connected, a blocked browser blocking every one. */
+const directListed = computed(() =>
+  directDevices.value.map((device) => ({
+    ...device,
+    direct:
+      directPath.value === 'blocked'
+        ? ('blocked' as const)
+        : directPath.value === 'connected' && device.online
+          ? ('connected' as const)
+          : undefined,
+  })),
+)
+function revokeDirectDevice(id: string) {
+  directDevices.value = directDevices.value.filter((device) => device.id !== id)
+}
+async function claimDirectDevice(_code: string) {
+  const device = { id: `device-${Date.now()}`, name: `host-${directDevices.value.length + 1}`, online: true, seen: 'Now' }
+  directDevices.value.push(device)
+  return { ok: true as const, device }
+}
 
 const anatomy: [string, string][] = [
   [
@@ -161,6 +198,26 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             <GallerySettingsRows />
           </div>
         </GallerySpecimen>
+      </GallerySection>
+
+      <GallerySection
+        title="Devices · Direct Channel"
+        note="Beside a paired device, Connected directly while this page reaches its runner without the server in the middle; under every paired device, how to allow direct connections while the browser blocks local network access. Switch the page's path to see each."
+      >
+        <div class="flex w-full max-w-2xl flex-col gap-4">
+          <Segmented v-model="directPath" :options="directPaths" size="sm" />
+          <div class="rounded-xl border border-line bg-surface-dialog p-6">
+            <SettingsDevices
+              :cloud="null"
+              :devices="directListed"
+              :overlay-store="appOverlayStore"
+              :installation="demoDeviceInstallation"
+              :claim-device="claimDirectDevice"
+              @revoke="revokeDirectDevice"
+              @retry="productWould('Load the Devices Again')"
+            />
+          </div>
+        </div>
       </GallerySection>
 
       <GallerySection

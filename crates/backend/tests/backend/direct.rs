@@ -189,3 +189,212 @@ async fn a_quiet_socket_hears_a_heartbeat_and_closes_when_the_runner_goes() {
     assert_eq!(closed, 1011);
     backend.close().await;
 }
+
+/// A page that connects to `deviceId`'s runner directly, as the web app's
+/// direct channel does, and reads `length` bytes of `path` from `offset` on
+/// a `read` channel: the runner's answer, the bytes in hexadecimal, and the
+/// milliseconds the connection took.
+const DIRECT_PAGE: &str = r#"<!doctype html><title>Direct</title><script>
+async function readDirectly(deviceId, path, offset, length) {
+  const started = performance.now()
+  const socket = new WebSocket(`ws://${location.host}/api/devices/${deviceId}/direct`)
+  await new Promise((resolve, reject) => { socket.onopen = resolve; socket.onclose = reject })
+  const connection = new RTCPeerConnection({ iceServers: [] })
+  connection.createDataChannel('direct')
+  await connection.setLocalDescription(await connection.createOffer())
+  const answered = new Promise((resolve) => {
+    socket.onmessage = (event) => {
+      const message = JSON.parse(event.data)
+      if (message.type !== 'heartbeat') resolve(message)
+    }
+  })
+  socket.send(JSON.stringify({ type: 'offer', sdp: connection.localDescription.sdp }))
+  const answer = await answered
+  if (answer.type !== 'answer') return { failed: JSON.stringify(answer) }
+  await connection.setRemoteDescription({ type: 'answer', sdp: answer.sdp })
+  await new Promise((resolve, reject) => {
+    const change = () => {
+      if (connection.connectionState === 'connected') resolve()
+      if (connection.connectionState === 'failed') reject(new Error('failed'))
+    }
+    connection.onconnectionstatechange = change
+    change()
+  })
+  const connectedMs = performance.now() - started
+  const channel = connection.createDataChannel('read')
+  channel.binaryType = 'arraybuffer'
+  channel.onopen = () => channel.send(JSON.stringify({ op: 'read', conversation: 'c1', cwd: '/', path, offset, length }))
+  const messages = []
+  await new Promise((resolve) => {
+    channel.onmessage = (event) => messages.push(event.data)
+    channel.onclose = resolve
+  })
+  const bytes = messages.slice(1).flatMap((part) => [...new Uint8Array(part)])
+  connection.close()
+  socket.close()
+  return {
+    answer: messages[0],
+    hex: bytes.map((byte) => byte.toString(16).padStart(2, '0')).join(''),
+    connectedMs,
+  }
+}
+</script>"#;
+
+/// Chrome under the DevTools protocol, which the test asks to evaluate
+/// expressions in one page.
+struct Chrome {
+    process: tokio::process::Child,
+    socket: Socket,
+    session: String,
+    next: u64,
+    _profile: tempfile::TempDir,
+}
+
+impl Chrome {
+    /// Launches the Chrome `DEMI_TEST_CHROME` names, headless, on `url`.
+    async fn open(url: &str) -> Self {
+        let executable = std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME");
+        let profile = tempfile::tempdir().unwrap();
+        let process = tokio::process::Command::new(executable)
+            .args([
+                "--headless=new",
+                "--no-first-run",
+                "--no-default-browser-check",
+                "--remote-debugging-port=0",
+                &format!("--user-data-dir={}", profile.path().display()),
+                "about:blank",
+            ])
+            .kill_on_drop(true)
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let active = profile.path().join("DevToolsActivePort");
+        crate::support::eventually("Chrome serves the DevTools protocol", || {
+            let active = active.clone();
+            async move { std::fs::read_to_string(&active).is_ok_and(|text| text.lines().count() >= 2) }
+        })
+        .await;
+        let text = std::fs::read_to_string(&active).unwrap();
+        let mut lines = text.lines();
+        let port = lines.next().unwrap();
+        let path = lines.next().unwrap();
+        let (socket, _) = tokio_tungstenite::connect_async(format!("ws://127.0.0.1:{port}{path}"))
+            .await
+            .unwrap();
+        let mut chrome = Self {
+            process,
+            socket,
+            session: String::new(),
+            next: 0,
+            _profile: profile,
+        };
+        let target = chrome.call(None, "Target.createTarget", json!({ "url": url })).await;
+        let attached = chrome
+            .call(
+                None,
+                "Target.attachToTarget",
+                json!({ "targetId": target["targetId"], "flatten": true }),
+            )
+            .await;
+        chrome.session = attached["sessionId"].as_str().unwrap().to_owned();
+        chrome
+    }
+
+    /// Calls `method`, of the page's session or the browser's, and answers its result.
+    async fn call(&mut self, session: Option<&str>, method: &str, params: Value) -> Value {
+        self.next += 1;
+        let id = self.next;
+        let mut message = json!({ "id": id, "method": method, "params": params });
+        if let Some(session) = session {
+            message["sessionId"] = json!(session);
+        }
+        self.socket.send(Message::Text(message.to_string().into())).await.unwrap();
+        loop {
+            let Some(Ok(Message::Text(text))) = self.socket.next().await else {
+                panic!("Chrome's DevTools socket ended");
+            };
+            let reply: Value = serde_json::from_str(text.as_str()).unwrap();
+            if reply["id"] == id {
+                assert!(reply.get("error").is_none(), "{method}: {reply}");
+                return reply["result"].clone();
+            }
+        }
+    }
+
+    /// The value `expression` evaluates to in the page, a promise awaited.
+    async fn evaluate(&mut self, expression: &str) -> Value {
+        let session = self.session.clone();
+        let result = self
+            .call(
+                Some(&session),
+                "Runtime.evaluate",
+                json!({ "expression": expression, "awaitPromise": true, "returnByValue": true }),
+            )
+            .await;
+        assert!(result.get("exceptionDetails").is_none(), "{result}");
+        result["result"]["value"].clone()
+    }
+
+    async fn close(mut self) {
+        let _ = self.process.kill().await;
+    }
+}
+
+// Seconds: Chrome for Testing starts, connects to a paired device's real
+// runner over loopback, and reads a range of a file of 300 KB.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CHROME pointing to an installed Chrome for Testing release"]
+async fn chrome_connects_to_the_runner_directly_and_reads_a_range_of_a_file() {
+    let harness = Harness::new().with_web(&[
+        ("index.html", DIRECT_PAGE),
+        ("build.json", r#"{ "build": "direct" }"#),
+    ]);
+    let (backend, master) = harness.start_set_up().await;
+    let paired = backend.pair(&master, "laptop").await;
+    let file = paired.runner.home_dir().join("clip.bin");
+    let content: Vec<u8> = (0..300_000u32).map(|index| (index * 7) as u8).collect();
+    std::fs::write(&file, &content).unwrap();
+
+    let mut chrome = Chrome::open("about:blank").await;
+    let (name, value) = master.cookie.split_once('=').unwrap();
+    chrome
+        .call(
+            Some(&chrome.session.clone()),
+            "Network.setCookie",
+            json!({ "name": name, "value": value, "url": backend.url }),
+        )
+        .await;
+    chrome
+        .call(
+            Some(&chrome.session.clone()),
+            "Page.navigate",
+            json!({ "url": format!("{}/index.html", backend.url) }),
+        )
+        .await;
+    // The navigation answers before the page's script ran.
+    let read = loop {
+        let defined = chrome.evaluate("typeof readDirectly").await;
+        if defined == "function" {
+            break chrome
+                .evaluate(&format!(
+                    "readDirectly({:?}, {:?}, 123456, 70000)",
+                    paired.id(),
+                    file.to_str().unwrap()
+                ))
+                .await;
+        }
+    };
+    assert!(read.get("failed").is_none(), "{read}");
+    let answer: Value = serde_json::from_str(read["answer"].as_str().unwrap()).unwrap();
+    assert_eq!(answer["ok"], true);
+    assert_eq!(answer["size"], 300_000);
+    let expected: String = content[123_456..193_456]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    assert_eq!(read["hex"].as_str().unwrap(), expected, "the range, byte for byte");
+    eprintln!("the direct channel connected in {} ms", read["connectedMs"]);
+    chrome.close().await;
+    backend.close().await;
+}

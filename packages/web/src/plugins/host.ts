@@ -4,6 +4,8 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { userStreamAt } from '@demicodes/web-ui/transport/user-stream'
 import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import { conversationFiles } from '../conversation/files'
+import { directRoute } from '../direct'
+import { directStream } from '../direct/operations'
 import { useWorkPanel } from '../conversation/work'
 import { useProduct } from '../state/product'
 import { packageInstalled } from '../state/installed'
@@ -58,7 +60,8 @@ export function productPageHost(): PageHost {
       const path = `/conversations/${encodeURIComponent(conversation)}/streams/${encodeURIComponent(name)}`
       const url = new URL(apiUrl(path), window.location.href)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      return userStreamAt(url.toString())
+      // Over the direct channel while the conversation's device has one.
+      return directStream(() => directRoute(conversation), name, userStreamAt(url.toString()))
     },
     installed(plugin, conversation) {
       const host = primaryHost(plugin, conversation)

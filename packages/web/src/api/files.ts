@@ -236,6 +236,8 @@ export function fileSource(
   endpoints: FileRoutes,
   device: Pick<Device, 'id' | 'platform' | 'home'> | null,
   follower?: FileFollower,
+  /** Stands other reads in for the requests, as a conversation's direct channel does. */
+  through: (reads: FileReads) => FileReads = (reads) => reads,
 ): FileBrowserSource {
   const key = JSON.stringify([endpoints, device?.id, device?.platform, device?.home])
   const cached = sources.get(key)
@@ -244,7 +246,7 @@ export function fileSource(
   }
   // Without a device nothing is listed, so nothing is kept.
   const files = hostFiles(device?.id ?? '')
-  const source = keptSource(fileReads(endpoints, device), { files, follower })
+  const source = keptSource(through(fileReads(endpoints, device)), { files, follower })
   sources.set(key, source)
   return source
 }

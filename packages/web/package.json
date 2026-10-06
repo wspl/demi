@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.app.json"
+    "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.app.json tsconfig.sw.json"
   },
   "dependencies": {
     "@demicodes/plugin-browser": "workspace:^",

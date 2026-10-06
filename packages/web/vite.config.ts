@@ -22,8 +22,47 @@ function webBuild(): Plugin {
   }
 }
 
+/**
+ * The direct channel's service worker (`direct-channel.md` § Bytes the
+ * browser fetches itself), served from the root so that its scope is the
+ * whole origin: the development server transforms it on request, and the
+ * build emits it beside the page under its fixed name.
+ */
+function directServiceWorker(): Plugin {
+  const source = resolve(import.meta.dirname, 'src/direct/service-worker.ts')
+  const url = '/direct-sw.js'
+  let building = false
+  return {
+    name: 'demi-direct-service-worker',
+    configResolved(config) {
+      building = config.command === 'build'
+    },
+    configureServer(server) {
+      server.middlewares.use(url, (_request, response, next) => {
+        server
+          .transformRequest('/src/direct/service-worker.ts')
+          .then((result) => {
+            if (!result) {
+              next()
+              return
+            }
+            response.setHeader('content-type', 'text/javascript')
+            response.setHeader('cache-control', 'no-cache')
+            response.end(result.code)
+          })
+          .catch(next)
+      })
+    },
+    buildStart() {
+      if (!building)
+        return
+      this.emitFile({ type: 'chunk', id: source, fileName: url.slice(1) })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), webBuild()],
+  plugins: [vue(), tailwindcss(), webBuild(), directServiceWorker()],
   // The repository's `.env` carries the local development account
   // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
   // during development only.

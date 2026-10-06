@@ -26,9 +26,41 @@ function within(path: string, root: string): boolean {
   return path === root || path.startsWith(prefix)
 }
 
+/** One connection of the watch, a WebSocket of the relay's or a direct channel's `watch`. */
+export interface WatchLink {
+  send(text: string): void
+  close(): void
+}
+
+/** What a watch's connection tells the watch. */
+export interface WatchLinkHandlers {
+  /** It opened: what it says from now on counts. */
+  opened(): void
+  message(data: unknown): void
+  /** It closed, or failed. */
+  closed(): void
+}
+
+/** Opens a connection of a conversation's watch. */
+export type OpenWatchLink = (conversationId: string, handlers: WatchLinkHandlers) => WatchLink
+
+/** The relay's watch, `WS /conversations/:id/fs/watch` (`web-api.md` § File watch). */
+export const relayWatchLink: OpenWatchLink = (conversationId, handlers) => {
+  const url = new URL(apiUrl(`/conversations/${encodeURIComponent(conversationId)}/fs/watch`), window.location.href)
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
+  const socket = new WebSocket(url)
+  socket.addEventListener('open', () => handlers.opened())
+  socket.addEventListener('message', (event) => handlers.message(event.data))
+  socket.addEventListener('close', () => handlers.closed())
+  return {
+    send: (text) => socket.send(text),
+    close: () => socket.close(1000),
+  }
+}
+
 /**
- * One socket of the watch, from its open to its close: what it covers once
- * it is live, and how far its `paths` messages have been answered.
+ * One connection of the watch, from its open to its close: what it covers
+ * once it is live, and how far its `paths` messages have been answered.
  */
 class WatchSocket {
   readonly coverage: Coverage
@@ -48,7 +80,10 @@ class WatchSocket {
   /** Watches the socket's silence from its open; a heartbeat comes after 30 s of nothing else. */
   silence: SilenceWatch | null = null
 
-  constructor(readonly socket: WebSocket, readonly target: WatchTarget) {
+  /** Set once the connection is made, before anything it says counts. */
+  link: WatchLink | null = null
+
+  constructor(readonly target: WatchTarget) {
     // The working tree's watch, which also follows its repository's `.git`,
     // and the watch of each folder or file named outside it.
     this.coverage = {
@@ -82,6 +117,7 @@ export class ConversationWatch implements FileFollower {
   constructor(
     private readonly conversationId: string,
     private readonly target: () => WatchTarget | null,
+    private readonly openLink: OpenWatchLink = relayWatchLink,
   ) {
     this.note = reactive({
       unavailable: null as string | null,
@@ -130,38 +166,55 @@ export class ConversationWatch implements FileFollower {
     this.connect()
   }
 
+  /**
+   * The path to the Host changed (`direct-channel.md` § Choosing the
+   * path): an open watch reopens on the other path at once, as after a lost
+   * connection but without its wait, and what it covered is unconfirmed
+   * until the new one says `live`.
+   */
+  move(): void {
+    const watch = this.current
+    if (!watch)
+      return
+    this.current = null
+    this.end(watch)
+    watch.link?.close()
+    this.connect()
+  }
+
   private connect(): void {
     const target = this.target()
     if (!target || this.shown.size === 0)
       return
-    const url = new URL(apiUrl(`/conversations/${encodeURIComponent(this.conversationId)}/fs/watch`), window.location.href)
-    url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    const watch = new WatchSocket(new WebSocket(url), target)
+    const watch = new WatchSocket(target)
     this.current = watch
-    watch.socket.addEventListener('open', () => {
-      if (this.current === watch)
-        watch.silence = watchSilence(() => this.lose(watch))
+    watch.link = this.openLink(this.conversationId, {
+      opened: () => {
+        if (this.current === watch)
+          watch.silence = watchSilence(() => this.lose(watch))
+      },
+      message: (data) => {
+        if (this.current !== watch)
+          return
+        watch.silence?.heard()
+        let value: unknown
+        try {
+          value = typeof data === 'string' ? JSON.parse(data) : null
+        } catch {
+          value = null
+        }
+        const parsed = fileWatchMessageSchema.safeParse(value)
+        if (!parsed.success) {
+          // What did not read is for a developer; the watch starts again.
+          reportError('Could not read a message of the file watch.', z.prettifyError(parsed.error))
+          watch.link?.close()
+          this.lose(watch)
+          return
+        }
+        this.receive(watch, parsed.data)
+      },
+      closed: () => this.lose(watch),
     })
-    watch.socket.addEventListener('message', (event) => {
-      if (this.current !== watch)
-        return
-      watch.silence?.heard()
-      let data: unknown
-      try {
-        data = typeof event.data === 'string' ? JSON.parse(event.data) : null
-      } catch {
-        data = null
-      }
-      const parsed = fileWatchMessageSchema.safeParse(data)
-      if (!parsed.success) {
-        // What did not read is for a developer; the watch starts again.
-        reportError('Could not read a message of the file watch.', z.prettifyError(parsed.error))
-        watch.socket.close()
-        return
-      }
-      this.receive(watch, parsed.data)
-    })
-    watch.socket.addEventListener('close', () => this.lose(watch))
   }
 
   /**
@@ -175,7 +228,7 @@ export class ConversationWatch implements FileFollower {
     this.current = null
     this.end(watch)
     // A broken socket's own close may come much later, or never.
-    watch.socket.close()
+    watch.link?.close()
     if (this.shown.size === 0)
       return
     this.failures += 1
@@ -253,7 +306,7 @@ export class ConversationWatch implements FileFollower {
     if (dropped.length > 0)
       watch.target.files.changed(dropped)
     const request: FileWatchRequest = { type: 'paths', paths }
-    watch.socket.send(JSON.stringify(request))
+    watch.link?.send(JSON.stringify(request))
     watch.sent += 1
     watch.last = paths
   }
@@ -275,6 +328,6 @@ export class ConversationWatch implements FileFollower {
     if (!watch)
       return
     this.end(watch)
-    watch.socket.close(1000)
+    watch.link?.close()
   }
 }

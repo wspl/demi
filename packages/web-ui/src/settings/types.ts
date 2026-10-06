@@ -46,6 +46,12 @@ export interface SettingsDevice {
   online: boolean
   /** When the host last connected; shown while it is offline. */
   seen?: string
+  /**
+   * The page's direct channel to the device (`direct-channel.md`):
+   * `connected` while this page has one, `blocked` while this browser
+   * blocks direct connections to devices on this computer and network.
+   */
+  direct?: 'connected' | 'blocked'
 }
 
 /** A plugin as the Plugins page lists it. */
