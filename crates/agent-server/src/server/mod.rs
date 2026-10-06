@@ -69,6 +69,14 @@ pub trait ProviderResolver {
     /// it (`models.md` § Context limit).
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32>;
 
+    /// The provider family of the entry that serves `model`, such as
+    /// `anthropic`, which the system prompt's model identity names
+    /// (`system-prompt.md` § Model identity).
+    fn family<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<String, ResolveError>>;
+
     /// The model selection a child of a profile with the model settings
     /// `model` infers with, built from the entry's current catalog as a
     /// conversation's is on a model switch (`subagents.md` § An unavailable
@@ -139,9 +147,13 @@ pub struct ServerDeps<H: HostResolver> {
     /// The user's Subagent switch and profiles, read at each spawn and each
     /// `demi agent profiles`.
     pub subagents: Rc<dyn SubagentSource>,
-    /// The instructions of every node's system prompt, which a profile's
-    /// replace.
+    /// The instructions of every node's system prompt, its identity, which a
+    /// profile's replace.
     pub instructions: Rc<str>,
+    /// The harness guide every node's system prompt carries after its
+    /// identity, which no profile replaces (`system-prompt.md` § Harness
+    /// guide).
+    pub guide: Rc<str>,
     /// Where a node's shell tools run.
     pub hosts: Rc<H>,
     /// What the model must learn before each request, in this order.
