@@ -2,7 +2,8 @@
 //! (`browser.md` § Installation): the libraries and fonts of the package's
 //! record that the Host lacks, and, on a Host that restricts user namespaces
 //! with AppArmor, the profile that lets Chrome's sandbox start. `install`
-//! names them; it installs none.
+//! names them, and a command that would start Chrome on a Host without the
+//! libraries names those; neither installs any.
 
 use std::path::Path;
 
@@ -18,7 +19,7 @@ use crate::driver::operation::Result;
 
 /// The record's libraries and fonts this Host lacks, and the AppArmor
 /// profile its sandbox lacks.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Missing {
     pub libraries: Vec<LinuxLibrary>,
     pub fonts: Vec<LinuxFont>,

@@ -4,6 +4,7 @@
 //! terminal sequences are escaped, so a page cannot forge a line of the
 //! result.
 
+use demi_command_package_browser_protocol::release::{LinuxFont, LinuxLibrary};
 use demi_command_protocol::ArtifactProgress;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
@@ -146,7 +147,7 @@ pub(crate) fn plain(value: &str) -> String {
 
 /// A page's text, which keeps its lines and tabs; every other control
 /// character is escaped.
-fn body(value: &str) -> String {
+pub(crate) fn body(value: &str) -> String {
     escaped(value, |character| matches!(character, '\n' | '\t'))
 }
 
@@ -840,6 +841,17 @@ pub fn install_progress(browser: &str, progress: ArtifactProgress) -> String {
     }
 }
 
+/// What a command that needs Chrome says on a Host without `browser`, whose
+/// archive is `size` bytes: that installing it is the next step
+/// (`browser.md` § Browser distribution).
+pub fn not_installed(browser: &str, size: u64) -> String {
+    format!(
+        "{} is not installed on this Host yet. Install it with `demi browser install` ({} MB), then run this command again.",
+        plain(browser),
+        megabytes(size)
+    )
+}
+
 /// `bytes` in whole megabytes of 2^20 bytes, rounded to the nearest.
 fn megabytes(bytes: u64) -> u64 {
     (bytes + (1 << 19)) >> 20
@@ -855,7 +867,7 @@ fn install(result: &InstallResult) -> String {
         plain(&result.path)
     );
     if !result.missing_libraries.is_empty() || !result.missing_fonts.is_empty() {
-        text.push_str(&packages(result));
+        text.push_str(&requirements(&result.missing_libraries, &result.missing_fonts));
     }
     if let Some(sandbox) = &result.sandbox_profile {
         let path = plain(&sandbox.path);
@@ -874,13 +886,14 @@ fn install(result: &InstallResult) -> String {
     text
 }
 
-/// The libraries and fonts the Host lacks, and the Ubuntu packages that
-/// provide them.
-fn packages(result: &InstallResult) -> String {
+/// The `libraries` and `fonts` a Host lacks for Chrome, and the command
+/// that installs the Ubuntu packages that provide them: what `install` ends
+/// with, and what a command that would start Chrome on a Host without its
+/// libraries fails with (`browser.md` § Browser distribution).
+pub fn requirements(libraries: &[LinuxLibrary], fonts: &[LinuxFont]) -> String {
     let mut text = String::new();
-    if !result.missing_libraries.is_empty() {
-        let names: Vec<&str> = result
-            .missing_libraries
+    if !libraries.is_empty() {
+        let names: Vec<&str> = libraries
             .iter()
             .map(|library| library.name.as_str())
             .collect();
@@ -889,30 +902,27 @@ fn packages(result: &InstallResult) -> String {
             plain(&names.join(", "))
         ));
     }
-    if !result.missing_fonts.is_empty() {
-        let purposes: Vec<&str> = result
-            .missing_fonts
-            .iter()
-            .map(|font| font.purpose.as_str())
-            .collect();
+    if !fonts.is_empty() {
+        let purposes: Vec<&str> = fonts.iter().map(|font| font.purpose.as_str()).collect();
         text.push_str(&format!(
             "Recommended fonts are missing: {}\n",
             plain(&purposes.join("; "))
         ));
     }
     let mut packages: Vec<&str> = Vec::new();
-    let wanted = result
-        .missing_libraries
+    let wanted = libraries
         .iter()
         .map(|library| library.package.as_str())
-        .chain(result.missing_fonts.iter().map(|font| font.package.as_str()));
+        .chain(fonts.iter().map(|font| font.package.as_str()));
     for package in wanted {
         if !packages.contains(&package) {
             packages.push(package);
         }
     }
+    // The Cloud image ships no package lists, so the command refreshes them
+    // first (`browser.md` § Installation).
     text.push_str(&format!(
-        "On Ubuntu, install them with:\n  sudo apt-get install -y {}\n",
+        "On Ubuntu, install them by running this command as printed:\n  sudo apt-get update && sudo apt-get install -y {}\n",
         plain(&packages.join(" "))
     ));
     text
@@ -1389,7 +1399,7 @@ mod tests {
                     "Chrome needs system libraries this Host lacks: libnss3.so, libnssutil3.so, libgbm.so.1\n",
                     "Recommended fonts are missing: color emoji; Chinese, Japanese and Korean text\n",
                     // Each package once, whatever it provides.
-                    "On Ubuntu, install them with:\n  sudo apt-get install -y libnss3 libgbm1 fonts-noto-color-emoji fonts-noto-cjk\n",
+                    "On Ubuntu, install them by running this command as printed:\n  sudo apt-get update && sudo apt-get install -y libnss3 libgbm1 fonts-noto-color-emoji fonts-noto-cjk\n",
                 ],
             ),
             (

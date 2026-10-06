@@ -34,7 +34,11 @@ impl DemiBrowser {
     /// The service, whose browsers start the pinned Chrome, which the
     /// runner installs (`browser.md` § Browser distribution).
     pub fn new() -> Self {
-        let chrome = Chrome::default();
+        Self::with_chrome(Chrome::default())
+    }
+
+    /// The service, whose browsers start `chrome`.
+    pub fn with_chrome(chrome: Chrome) -> Self {
         Self {
             browsers: Arc::new(conversations::Conversations::new(chrome.clone())),
             chrome,

@@ -471,3 +471,111 @@ async fn install_reports_its_download_in_its_output() {
     let document: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
     assert_eq!(document["path"], chrome.to_string_lossy().as_ref());
 }
+
+/// A command that would start Chrome on a Host that lacks it says that
+/// installing it is the next step, and on a Host that lacks a library
+/// Chrome loads, it fails before it starts Chrome with the lines `install`
+/// ends with (`browser.md` § Browser distribution).
+// Cost: about 0.1 s; the service runs in this process and no Chrome starts.
+#[tokio::test]
+async fn a_host_without_chrome_or_its_libraries_names_the_next_step() {
+    use demi_command_package_browser_chrome::driver::installation::Chrome;
+    use demi_command_package_browser_chrome::driver::requirements::Missing;
+    use demi_command_package_browser_protocol::release::{BrowserRelease, LinuxFont, LinuxLibrary};
+    use demi_command_protocol::{ArtifactAsk, ArtifactReply, InstalledArtifact};
+    use demi_command_sdk::serve;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use tokio_util::task::AbortOnDropHandle;
+
+    let release = BrowserRelease::pinned().unwrap();
+    let platform = release
+        .platform(demi_command_protocol::host_target())
+        .unwrap()
+        .clone();
+    let root = tempfile::tempdir().unwrap();
+    // No Chrome lies there: a command that started it would fail otherwise.
+    let chrome = root.path().join("chrome").to_string_lossy().into_owned();
+    let missing = Missing {
+        libraries: vec![LinuxLibrary {
+            name: "libnss3.so".into(),
+            package: "libnss3".into(),
+        }],
+        fonts: vec![LinuxFont {
+            purpose: "color emoji".into(),
+            file: "NotoColorEmoji.ttf".into(),
+            package: "fonts-noto-color-emoji".into(),
+        }],
+        sandbox: None,
+    };
+    let (client_io, server_io) = tokio::io::duplex(128 * 1024);
+    let _server = AbortOnDropHandle::new(tokio::spawn(serve(
+        server_io,
+        Arc::new(demi_browser::DemiBrowser::with_chrome(Chrome::lacking(missing))),
+    )));
+    let (client, connection) = Client::connect(client_io).await.unwrap();
+    let _driver = AbortOnDropHandle::new(tokio::spawn(connection));
+    let _numbers = demi_command_sdk::testing::answer_numbers(&client).await.unwrap();
+    // A runner that holds no installation until the agent installs one.
+    let installed = Arc::new(AtomicBool::new(false));
+    let holds = installed.clone();
+    let version = release.version.clone();
+    let sha256 = platform.sha256.clone();
+    let _artifacts = demi_command_sdk::testing::answer_artifacts(&client, move |ask| match ask {
+        ArtifactAsk::Installed(_) if holds.load(Ordering::SeqCst) => {
+            Ok(ArtifactReply::Installed(vec![InstalledArtifact {
+                version: version.clone(),
+                sha256: sha256.clone(),
+                path: chrome.clone(),
+            }]))
+        }
+        ArtifactAsk::Installed(_) => Ok(ArtifactReply::Installed(Vec::new())),
+        ArtifactAsk::Install(_) => Err("this runner installs nothing".into()),
+    })
+    .await
+    .unwrap();
+    let open = Invocation {
+        operation: "browser.open".into(),
+        invocation_id: uuid::Uuid::new_v4().to_string(),
+        cwd: root.path().to_str().unwrap().into(),
+        args: serde_json::json!({"url": "about:blank"}),
+        env: BTreeMap::new(),
+        edits: None,
+        json: None,
+        context: CommandContext {
+            conversation: uuid::Uuid::new_v4().to_string(),
+            caller: CommandCaller::agent(1),
+            locale: CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        },
+        stdout: None,
+    };
+
+    let (completion, _, stderr) = exchange(&client, &open, false).await;
+    assert_eq!(completion.exit_code, 1);
+    let megabytes = (platform.size as f64 / (1024.0 * 1024.0)).round();
+    assert_eq!(
+        String::from_utf8(stderr).unwrap(),
+        format!(
+            "Error: browser_unavailable\n\
+             {} is not installed on this Host yet. Install it with `demi browser install` ({megabytes} MB), then run this command again.\n\
+             Action: not_started.\n",
+            release.title()
+        )
+    );
+
+    installed.store(true, Ordering::SeqCst);
+    let (completion, _, stderr) = exchange(&client, &open, false).await;
+    assert_eq!(completion.exit_code, 1);
+    assert_eq!(
+        String::from_utf8(stderr).unwrap(),
+        "Error: browser_unavailable\n\
+         Chrome needs system libraries this Host lacks: libnss3.so\n\
+         Recommended fonts are missing: color emoji\n\
+         On Ubuntu, install them by running this command as printed:\n  \
+         sudo apt-get update && sudo apt-get install -y libnss3 fonts-noto-color-emoji\n\
+         Action: not_started.\n"
+    );
+}
