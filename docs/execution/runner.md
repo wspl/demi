@@ -33,6 +33,15 @@ claiming and user ownership. The runner opens an outbound WebSocket and sends it
 `hello` first; the backend closes a connection that has sent nothing within 30
 seconds of opening. The backend looks a hello's token up while it watches the
 connection, and lets a runner that goes away meanwhile go without adopting it.
+A hello for a device that already has a connection is the same runner
+coming back over a new one more often than a second runner: a network that
+drops a connection without closing it leaves the backend holding a socket
+nobody answers. So the backend pings the held connection and waits up to 5
+seconds: one that answers keeps the device, and the new hello is refused
+with `already_connected`, as a second runner sharing a token is; one that
+does not is closed, and the new hello is answered. For example, a laptop
+whose Wi-Fi blinked reconnects within about 5 seconds instead of being
+refused until the backend's heartbeat gives the old socket up.
 It answers a known token with `hello_ok` once it has bound the connection to
 the token's device, which is online from then until the connection ends. A
 hello that meets the backend's shutdown gets no answer: its connection closes,
@@ -132,6 +141,11 @@ A paired device's runner that receives an executable updates itself:
 5. It starts the new executable with its own arguments and environment but
    the new release: on Linux and macOS in its own process, on Windows beside
    it, and then it exits. The new runner connects.
+
+An update takes seconds: the download is one executable, and nothing else
+waits for it. While a runner updates, the backend shows its device as
+updating rather than offline, from the 409 that named the executable until
+the device's next hello or 5 minutes, whichever comes first.
 
 An update that fails, such as a download that breaks off or an executable
 whose SHA-256 differs, leaves the runner on its release. It writes the
