@@ -80,6 +80,56 @@ export function revealScroll(
   return Math.abs(target - view.scrollLeft) < 1 ? null : target
 }
 
+/** A mutation record of a strip, as `tabsChanged` reads it. */
+export interface StripMutation<T> {
+  type: string
+  target: unknown
+  addedNodes: Iterable<T>
+  removedNodes: Iterable<T>
+}
+
+/**
+ * Whether `records`, observed on `strip` and its tabs, hold a tab becoming
+ * active, coming or going: what moves the strip's view. A tab's own content
+ * changing, as a page's title does, is none of these. Nor is a node both
+ * added and removed in the same batch: a render that takes a tab out and
+ * puts it back, or the shallow copy of a tab that Vue's transition group puts
+ * in the strip for a moment on each render to read its move class. Either
+ * would pull the strip away from where the user scrolled it. `isTab` tells
+ * an element from a text or comment node.
+ */
+export function tabsChanged<T>(
+  strip: unknown,
+  records: readonly StripMutation<T>[],
+  isTab: (node: T) => boolean,
+): boolean {
+  if (records.some((record) => record.type === 'attributes')) {
+    return true
+  }
+  const own = records.filter((record) => record.target === strip)
+  const added = own.flatMap((record) => [...record.addedNodes]).filter(isTab)
+  const removed = own.flatMap((record) => [...record.removedNodes]).filter(isTab)
+  return added.some((node) => !removed.includes(node)) || removed.some((node) => !added.includes(node))
+}
+
+/**
+ * How far an edge fade stays solid before it fades, so that it covers a tab
+ * mark the edge cuts: at a scrolled edge a mark shows whole or not at all,
+ * never sliced. `edge` and `marks` are in the strip's view coordinates;
+ * `side` is the side of the view the edge is on.
+ */
+export function cutMarkCover(
+  edge: number,
+  side: 'start' | 'end',
+  marks: readonly { left: number; right: number }[],
+): number {
+  const cut = marks.find((mark) => mark.left < edge && edge < mark.right)
+  if (!cut) {
+    return 0
+  }
+  return Math.ceil(side === 'start' ? cut.right - edge : edge - cut.left)
+}
+
 function prefersReducedMotion(): boolean {
   return (
     typeof matchMedia === 'function' &&
