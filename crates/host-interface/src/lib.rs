@@ -33,7 +33,7 @@ pub mod text;
 pub mod testing;
 
 pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
-pub use commands::{Checked, CommandSet, Declared, RegisterError};
+pub use commands::{Checked, CommandSet, DEMI_ROOT, Declared, RegisterError};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES, DEFAULT_OBSERVATION,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, MAX_OBSERVATION, Newest,

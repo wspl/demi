@@ -67,17 +67,12 @@ pub(super) const DESCRIPTION: &str = "Short title of what this step does, as a c
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ShellExecInput {
     pub(super) script: String,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "String", description = DESCRIPTION)]
+    #[schemars(length(min = 1), description = DESCRIPTION)]
     #[expect(
         dead_code,
         reason = "the call's title, which the renderer reads from its input"
     )]
-    description: Option<String>,
+    description: NonEmpty,
     #[serde(default, deserialize_with = "some_numbered")]
     #[schemars(with = "u64")]
     pub(super) shell_id: Option<ShellId>,
@@ -110,19 +105,14 @@ pub(super) struct ShellWriteInput {
     #[serde(deserialize_with = "numbered")]
     #[schemars(with = "u64")]
     pub(super) command_id: CommandId,
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "String", description = DESCRIPTION)]
+    #[schemars(length(min = 1), description = DESCRIPTION)]
     #[expect(
         dead_code,
         reason = "the call's title, which the renderer reads from its input"
     )]
-    description: Option<String>,
+    description: NonEmpty,
     #[schemars(length(min = 1))]
-    pub(super) stdin: Stdin,
+    pub(super) stdin: NonEmpty,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
@@ -165,22 +155,23 @@ impl TryFrom<u32> for DelayMs {
     }
 }
 
-// What `shell_write` writes: not empty, since polling is another tool's.
-// (A doc comment would become the field's description in the model's
-// schema.)
+// Text a call must not leave empty: the title of a step that starts or
+// feeds work, and what `shell_write` writes, since polling is another
+// tool's. (A doc comment would become the field's description in the
+// model's schema.)
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(try_from = "String")]
 #[schemars(inline)]
-pub(super) struct Stdin(pub(super) String);
+pub(super) struct NonEmpty(pub(super) String);
 
-impl TryFrom<String> for Stdin {
+impl TryFrom<String> for NonEmpty {
     type Error = &'static str;
 
-    fn try_from(stdin: String) -> Result<Self, &'static str> {
-        if stdin.is_empty() {
-            return Err("must not be empty; use shell_status to poll");
+    fn try_from(text: String) -> Result<Self, &'static str> {
+        if text.is_empty() {
+            return Err("must not be empty");
         }
-        Ok(Self(stdin))
+        Ok(Self(text))
     }
 }
 
@@ -223,7 +214,10 @@ mod tests {
     fn a_schema_declares_integer_windows_string_handles_and_nothing_else() {
         let exec = schema::<ShellExecInput>();
         assert_eq!(exec["additionalProperties"], false);
-        assert_eq!(exec["required"], json!(["script", "timeoutMs"]));
+        assert_eq!(
+            exec["required"],
+            json!(["script", "description", "timeoutMs"])
+        );
         let properties = &exec["properties"];
         assert_eq!(properties["timeoutMs"]["type"], "integer");
         assert_eq!(properties["timeoutMs"]["minimum"], 1);
@@ -231,13 +225,19 @@ mod tests {
         assert_eq!(properties["shellId"]["type"], "integer");
         assert_eq!(
             properties["description"],
-            json!({"type": "string", "description": DESCRIPTION})
+            json!({"type": "string", "minLength": 1, "description": DESCRIPTION})
         );
         assert!(!exec.contains_key("$schema") && !exec.contains_key("title"));
+        let write = schema::<ShellWriteInput>();
         assert_eq!(
-            schema::<ShellWriteInput>()["properties"]["stdin"]["minLength"],
-            1
+            write["required"],
+            json!(["commandId", "description", "stdin"])
         );
+        assert_eq!(write["properties"]["stdin"]["minLength"], 1);
+        // The calls that act on a command that has its title, or only wait,
+        // may leave theirs out.
+        assert_eq!(schema::<CommandInput>()["required"], json!(["commandId"]));
+        assert_eq!(schema::<YieldInput>()["required"], json!(["durationMs"]));
     }
 
     #[test]
@@ -245,28 +245,37 @@ mod tests {
         let refusal = |input: Value| parse::<ShellExecInput>("shell_exec", input).unwrap_err();
         for (input, field) in [
             (
-                json!({"script": "true", "timeoutMs": 1, "shellId": "main"}),
+                json!({"script": "true", "timeoutMs": 1, "description": "Run", "shellId": "main"}),
                 "shellId: ",
             ),
             (
-                json!({"script": "true", "timeoutMs": 1, "shellId": null}),
+                json!({"script": "true", "timeoutMs": 1, "description": "Run", "shellId": null}),
                 "shellId: ",
             ),
             (
-                json!({"script": "true", "timeoutMs": 1, "maxOutputBytes": 10}),
+                json!({"script": "true", "timeoutMs": 1, "description": "Run", "maxOutputBytes": 10}),
                 "unknown field `maxOutputBytes`",
             ),
             (
-                json!({"script": "true", "timeoutMs": 1.5}),
+                json!({"script": "true", "timeoutMs": 1.5, "description": "Run"}),
                 "timeoutMs: invalid type: floating point",
             ),
             (
-                json!({"script": "true", "timeoutMs": 0}),
+                json!({"script": "true", "timeoutMs": 0, "description": "Run"}),
                 "timeoutMs: 0 is not a whole number of milliseconds from 1 to 600000",
             ),
             (
-                json!({"script": "true", "timeoutMs": 600_001}),
+                json!({"script": "true", "timeoutMs": 600_001, "description": "Run"}),
                 "timeoutMs: 600001 is not",
+            ),
+            // A step that starts work names it for the user.
+            (
+                json!({"script": "true", "timeoutMs": 1}),
+                "missing field `description`",
+            ),
+            (
+                json!({"script": "true", "timeoutMs": 1, "description": ""}),
+                "description: must not be empty",
             ),
             (
                 json!({"script": "true", "timeoutMs": 1, "description": null}),
@@ -278,12 +287,11 @@ mod tests {
             assert!(text.starts_with("shell_exec input is invalid:\n"), "{text}");
             assert!(text.contains(field), "{text}");
         }
-        let empty = parse::<ShellWriteInput>("shell_write", json!({"commandId": 7, "stdin": ""}));
-        assert!(
-            empty
-                .unwrap_err()
-                .contains("stdin: must not be empty; use shell_status to poll")
+        let empty = parse::<ShellWriteInput>(
+            "shell_write",
+            json!({"commandId": 7, "description": "Answer the prompt", "stdin": ""}),
         );
+        assert!(empty.unwrap_err().contains("stdin: must not be empty"));
         let exec: ShellExecInput = parse(
             "shell_exec",
             json!({"script": "ls", "timeoutMs": 600_000, "description": "List the files"}),

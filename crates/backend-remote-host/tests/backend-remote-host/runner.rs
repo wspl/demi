@@ -1071,7 +1071,7 @@ async fn declared_commands_call_back_with_arguments_input_and_cancellation() {
     let mut commands = CommandSet::new();
     commands
         .register(
-            GroupBuilder::new("note", "Notes.")
+            GroupBuilder::new("note", "Notes.").index_entry("Keeps notes.")
                 .leaf(
                     LeafBuilder::rpc("add", "Add a note.")
                         .input::<NoteArgs>()
@@ -1088,7 +1088,7 @@ async fn declared_commands_call_back_with_arguments_input_and_cancellation() {
         .unwrap();
     commands
         .register(
-            GroupBuilder::new("probe", "Probes.")
+            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
                 .leaf(
                     LeafBuilder::rpc("hold", "Wait.")
                         .input::<HoldArgs>()
@@ -1197,7 +1197,7 @@ async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_match
     let mut commands = CommandSet::new();
     commands
         .register(
-            GroupBuilder::new("probe", "Probes.").group(
+            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.").group(
                 GroupBuilder::new("json", "Output probes.").leaf(
                     LeafBuilder::rpc("emit", "Print a text.")
                         .input::<EmitArgs>()
@@ -1302,7 +1302,7 @@ pub(crate) fn native_leaf(native: &NativeFixture, name: &str, operation: &str) -
 
 /// A root `name` over the native fixture's operations.
 fn native_root(native: &NativeFixture, name: &str) -> CommandSet {
-    let mut root = GroupBuilder::new(name, "The native fixture.")
+    let mut root = GroupBuilder::new(name, "The native fixture.").index_entry("Runs the native fixture.")
         .leaf(native_leaf(native, "where", "where").input::<WhereArgs>());
     for operation in ["echo", "spin", "result", "number"] {
         root = root.leaf(native_leaf(native, operation, operation));
@@ -1444,7 +1444,7 @@ async fn a_running_command_shows_its_leafs_hint_until_the_leaf_ends() {
     let mut commands = CommandSet::new();
     commands
         .register(
-            GroupBuilder::new("attend", "Hint probes.")
+            GroupBuilder::new("attend", "Hint probes.").index_entry("Probes running hints.")
                 .leaf(native_leaf(&native, "native", "first").running_hint("native: do not poll"))
                 .leaf(native_leaf(&native, "plain", "first"))
                 .leaf(
