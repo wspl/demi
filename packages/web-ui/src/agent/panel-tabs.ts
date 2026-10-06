@@ -95,3 +95,21 @@ export function selectedTab(state: PanelState, kinds: readonly PanelTabKind[]): 
 export function removeTabs(state: PanelState, ids: readonly string[]): PanelState {
   return closeTabs(state.tabs, state.history, ids)
 }
+
+/**
+ * The tabs and pinned kinds whose contents the panel keeps on the page
+ * (`web-application.md` § Work panel, Contents stay): each one once shown,
+ * in the order first shown, until it leaves the panel (`present` lists the
+ * ids it has). The selection joins at the end.
+ */
+export function keptContents(
+  kept: readonly string[],
+  selection: string | null,
+  present: readonly string[],
+): readonly string[] {
+  const staying = kept.filter((id) => present.includes(id))
+  if (selection !== null && present.includes(selection) && !staying.includes(selection)) {
+    return [...staying, selection]
+  }
+  return staying.length === kept.length ? kept : staying
+}

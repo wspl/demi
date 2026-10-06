@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
@@ -12,14 +12,16 @@ import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import { appOverlayStore } from '../overlay/appOverlay'
 import type { TitleText } from '../ui/ui-text'
 import { tabsToClose, type TabCloseScope } from './tab-close'
-import { pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
+import { keptContents, pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
 import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
 
 /**
  * The work panel's frame (`web-application.md` § Work panel): the pinned
  * tab of each pinned kind, the strip of the user's tabs, and what the
  * selected one shows. Every tab is of a kind a plugin registers; the panel
- * shows it through its kind and knows nothing else about it.
+ * shows it through its kind and knows nothing else about it. A content once
+ * shown stays on the page, hidden and told it is not shown, until its tab
+ * closes or the panel binds other kinds, as for another conversation.
  */
 const props = defineProps<{
   /** The selection and the user's tabs. */
@@ -60,8 +62,27 @@ function pick(kind: PanelTabKind, data: unknown): void {
 
 /** Each tab with its kind and checked data, in the user's order. */
 const tabs = computed(() => props.panel.tabs.map((tab) => resolvePanelTab(tab, props.kinds)))
-const shownPinned = computed(() => pinnedTabs.value.find((item) => item.kind.kind === selection.value) ?? null)
 const shownTab = computed(() => tabs.value.find((item) => item.tab.id === selection.value) ?? null)
+/** The ids of what the panel has: its pinned kinds and its tabs. */
+const present = computed(() => [...pinnedTabs.value.map((item) => item.kind.kind), ...props.panel.tabs.map((tab) => tab.id)])
+/** Every content the panel keeps, by the id of its tab or pinned kind. */
+const kept = shallowRef<readonly string[]>(keptContents([], selection.value, present.value))
+watch([selection, present], ([shown, ids]) => {
+  kept.value = keptContents(kept.value, shown, ids)
+})
+// Kinds bound anew belong to another conversation, or another set of pages: nothing of the old ones stays.
+watch(() => props.kinds, () => {
+  kept.value = keptContents([], selection.value, present.value)
+})
+/** The kept contents, each with its kind and data. */
+const contents = computed(() => kept.value.flatMap((id) => {
+  const pinned = pinnedTabs.value.find((item) => item.kind.kind === id)
+  if (pinned) {
+    return [{ id, kind: pinned.kind, data: pinned.data, pinned: true }]
+  }
+  const tab = tabs.value.find((item) => item.tab.id === id)
+  return tab?.kind ? [{ id, kind: tab.kind, data: tab.data, pinned: false }] : []
+}))
 /** The kinds the strip's new-tab control offers. */
 const creatable = computed(() => props.kinds.filter((kind) => kind.create))
 
@@ -155,27 +176,25 @@ function closeScope(scope: TabCloseScope): void {
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
       <!-- A host that shows only the strip, as a specimen of it does, fills the body itself. -->
       <slot>
-      <component
-        :is="shownPinned.kind.content"
-        v-if="shownPinned"
-        :key="shownPinned.kind.kind"
-        :tab-id="shownPinned.kind.kind"
-        :data="shownPinned.data"
-        shown
-        @update="emit('updatePinned', shownPinned.kind.kind, $event)"
-      />
-      <component
-        :is="shownTab.kind.content"
-        v-else-if="shownTab?.kind"
-        :key="shownTab.tab.id"
-        :tab-id="shownTab.tab.id"
-        :data="shownTab.data"
-        shown
-        @update="emit('updateTab', shownTab.tab.id, $event)"
-        @close="emit('closeTabs', [shownTab.tab.id])"
-      />
+      <!-- Each content keeps what it shows while another tab is selected; only the shown one is told it is. -->
       <div
-        v-else-if="shownTab"
+        v-for="content in contents"
+        v-show="content.id === selection"
+        :key="content.id"
+        class="flex min-h-0 flex-1 flex-col"
+      >
+        <component
+          :is="content.kind.content"
+          :tab-id="content.id"
+          :data="content.data"
+          :shown="content.id === selection"
+          @update="content.pinned ? emit('updatePinned', content.id, $event) : emit('updateTab', content.id, $event)"
+          @close="content.pinned || emit('closeTabs', [content.id])"
+        />
+      </div>
+      <template v-if="!contents.some((content) => content.id === selection)">
+      <div
+        v-if="shownTab"
         class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-6 text-center text-[13px] text-fg-faint"
       >
         <span>This tab cannot be shown.</span>
@@ -187,6 +206,7 @@ function closeScope(scope: TabCloseScope): void {
       >
         <span>{{ beforeFirstMessage ? 'Files and changes appear after the first message.' : 'Nothing open' }}</span>
       </div>
+      </template>
       </slot>
     </div>
     <Popover
