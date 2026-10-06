@@ -68,6 +68,7 @@ pub async fn execute(
     if matches!(
         command,
         BrowserOperation::Open(_)
+            | BrowserOperation::Show(_)
             | BrowserOperation::Tabs(_)
             | BrowserOperation::Close(_)
             | BrowserOperation::Screenshot(_)
@@ -867,6 +868,7 @@ pub async fn command_admitted(
                 }))
             }),
             BrowserOperation::Open(_)
+            | BrowserOperation::Show(_)
             | BrowserOperation::Tabs(_)
             | BrowserOperation::Close(_)
             | BrowserOperation::Screenshot(_)
