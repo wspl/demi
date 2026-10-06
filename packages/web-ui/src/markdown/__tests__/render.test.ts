@@ -179,3 +179,20 @@ test('while a message streams, a lone image at its end waits for what follows', 
   // Text after it makes it a lone image, which shows.
   expect(holdUndecidedMedium(`${intro}${shot(1)}\n\nDone`)).toBe(`${intro}${shot(1)}\n\nDone`)
 })
+
+// Dollar signs follow Pandoc's rule (`file-previews.md` § Markdown); a file
+// renders math through the same syntax.
+
+test('prices stay text', () => {
+  // A closing `$` needs no space before it and no digit after it.
+  for (const text of ['Notion is $10 vs $12; Slack $7.25 vs $8.75', 'Plans cost $5/$6 a month'])
+    expect(renderMarkdown(text)).toBe(`<p>${text}</p>\n`)
+})
+
+test('math renders on its own, beside Chinese text, and as a display', () => {
+  expect(renderMarkdown('$x$')).toStartWith('<p><span class="katex">')
+  const beside = renderMarkdown('面积为$x^2$平方米')
+  expect(beside).toStartWith('<p>面积为<span class="katex">')
+  expect(beside).toEndWith('</span>平方米</p>\n')
+  expect(renderMarkdown('$$\\sum_i x_i$$')).toContain('<span class="katex-display">')
+})

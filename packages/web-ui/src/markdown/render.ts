@@ -1,19 +1,10 @@
 import { Marked, type RendererObject, type Token, type Tokens } from 'marked'
-import markedKatex from 'marked-katex-extension'
 import type { MarkdownRenderOptions, MessageAttachment } from './types'
 import { codeToHtml } from './highlight'
 import { attachmentId, isHttpUrl, messageHostPath, messageImage } from './filePath'
 import { escapeHtml } from './html'
+import { mathExtensions } from './math'
 import { declaredSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize, type ThumbnailKind } from '../files/thumbnail'
-
-// `$...$` inline / `$$...$$` block LaTeX, rendered to self-contained HTML (KaTeX CSS is loaded
-// by web-ui's base stylesheet). `nonStandard` lets inline math sit flush against CJK text the
-// model writes; `throwOnError` keeps malformed math from blowing up the whole message.
-const katexExtension = markedKatex({
-  throwOnError: false,
-  nonStandard: true,
-  output: 'html'
-})
 
 // Parsing is synchronous, so the renderers read the options of the parse in flight instead of
 // building a Marked instance (and re-registering KaTeX) per call.
@@ -271,7 +262,9 @@ function groupMediaRuns(blocks: Token[]): void {
 }
 
 const agentMarked = new Marked({ gfm: true, breaks: true, renderer: messageRenderer })
-agentMarked.use(katexExtension)
+// LaTeX math, rendered to self-contained HTML (KaTeX CSS is loaded by web-ui's base
+// stylesheet); `throwOnError` keeps malformed math from blowing up the whole message.
+agentMarked.use({ extensions: mathExtensions({ throwOnError: false, output: 'html' }) })
 agentMarked.use({
   hooks: {
     processAllTokens(tokens) {
