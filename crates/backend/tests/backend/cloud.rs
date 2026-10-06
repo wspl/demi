@@ -594,6 +594,16 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
         "{}",
         wrote.received[0]
     );
+    // The model learned its Host before its first request; a Cloud whose
+    // runner never connected is named without its system.
+    let unmade = format!(
+        "[Execution context 0]\\nPrimary host: Cloud. Shells start in /home/demi/sessions/{FIRST}.\\nAttached hosts: none."
+    );
+    assert!(
+        wrote.first_request().contains(&unmade),
+        "{}",
+        wrote.first_request()
+    );
     let before = status(&backend, &master)
         .await
         .device
@@ -637,6 +647,18 @@ async fn a_reset_keeps_the_clouds_files_and_identity_tells_the_model_and_is_the_
     assert!(
         next.first_request()
             .contains(&format!("[Cloud reset {RESET}]")),
+        "{}",
+        next.first_request()
+    );
+    // The block names the Cloud with the system its runner reported now.
+    let home = harness.manager.home(&the_cloud(&harness));
+    let named = format!(
+        " ({}). Shells start in {home}/sessions/{FIRST}.\\n[Cloud reset {RESET}]",
+        std::env::consts::ARCH
+    );
+    assert!(
+        next.first_request().contains("Primary host: Cloud, ")
+            && next.first_request().contains(&named),
         "{}",
         next.first_request()
     );

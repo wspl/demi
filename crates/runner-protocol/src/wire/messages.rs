@@ -1154,6 +1154,10 @@ pub struct StreamArtifactOwner {
 pub struct RunnerInfo {
     pub name: String,
     pub platform: RunnerPlatform,
+    /// The Host's operating system, which the agent reads in its context
+    /// block (`sessions-and-targets.md` § Switch the primary target).
+    #[garde(dive)]
+    pub os: OperatingSystem,
     pub version: String,
     #[serde(
         default,
@@ -1192,6 +1196,22 @@ pub enum RunnerPlatform {
     Darwin,
     Win32,
     Linux,
+}
+
+/// A Host's operating system as its runner reports it in its hello and a
+/// device keeps it: its name with its release and the machine's
+/// architecture.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OperatingSystem {
+    /// Such as `Ubuntu 26.04`, `macOS 26.5` or `Windows 11 Pro (build
+    /// 26100)`.
+    #[garde(length(chars, min = 1, max = 256))]
+    pub name: String,
+    /// The processor architecture as Rust names it, such as `x86_64` or
+    /// `aarch64`.
+    #[garde(length(chars, min = 1, max = 64))]
+    pub arch: String,
 }
 
 /// The account the runner works as.

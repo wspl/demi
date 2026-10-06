@@ -2561,6 +2561,7 @@ dependencies = [
  "sha2",
  "shlex",
  "subtle",
+ "sysinfo",
  "tempfile",
  "thiserror",
  "tokio",
