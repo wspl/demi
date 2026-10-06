@@ -274,15 +274,30 @@ impl Default for Opened {
     }
 }
 
-/// A `read`'s answer: the file's size and version; its bytes follow.
+/// A `read`'s answer: the file's size, version and modification time,
+/// which the relay's raw route answers in `Last-Modified`; its bytes follow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 #[garde(allow_unvalidated)]
 pub struct ReadOpened {
     pub ok: bool,
     #[garde(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub size: u64,
     pub version: String,
+    pub modified_at: demi_shared_types::Timestamp,
+}
+
+impl ReadOpened {
+    /// The answer for a file of `size` bytes at `version`, modified at
+    /// `modified`; none for a time out of range.
+    pub fn new(size: u64, version: String, modified: crate::wire::Timestamp) -> Option<Self> {
+        Some(Self {
+            ok: true,
+            size,
+            version,
+            modified_at: demi_shared_types::Timestamp::from_millisecond(modified.0).ok()?,
+        })
+    }
 }
 
 /// A `text`'s answer: the file's version, and whether it is the one the

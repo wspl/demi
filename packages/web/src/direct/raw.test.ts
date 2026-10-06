@@ -7,7 +7,7 @@ import { rangeAnswer, rawAnswer, type RawRequest } from './raw'
 // and working tree changes): the same status, headers and part, from the
 // relay's own cases (`RangeAnswer`, `content_headers`, `raw`).
 
-const file = { size: 1000, version: 'W/"3e8-18f"' }
+const file = { size: 1000, version: 'W/"3e8-18f"', modifiedAt: '2026-09-21T14:13:20.123Z' }
 
 function request(fields: Partial<RawRequest>): RawRequest {
   return { path: '/work/clip.mp4', version: null, download: false, range: null, ifNoneMatch: null, ...fields }
@@ -40,6 +40,7 @@ test('a video\'s part carries the relay\'s headers, its range and its version', 
       'x-content-type-options': 'nosniff',
       'content-type': 'video/mp4',
       etag: file.version,
+      'last-modified': 'Mon, 21 Sep 2026 14:13:20 GMT',
       'accept-ranges': 'bytes',
       'content-range': 'bytes 100-199/1000',
     },

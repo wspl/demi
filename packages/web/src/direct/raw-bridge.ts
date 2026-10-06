@@ -50,6 +50,9 @@ export function startRawBridge(): void {
       return
     void serve(request.data, port)
   })
+  // A listener added this way hears the worker only once the page starts
+  // its messages, which the worker's requests wait for.
+  container.startMessages()
 }
 
 /** Answers one request on `port`: over the direct channel when the page can, or by sending it to the network. */

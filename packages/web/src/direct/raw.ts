@@ -165,6 +165,8 @@ export interface RawRequest {
 export interface RawFile {
   size: number
   version: string
+  /** When it was last modified, an ISO time. */
+  modifiedAt: string
 }
 
 /** An answer to a raw request: its status, its headers, and the bytes it sends. */
@@ -190,6 +192,7 @@ export function rawAnswer(request: RawRequest, file: RawFile): RawAnswer {
     ...rawFileHeaders(versioned),
     ...contentHeaders(request.path, request.download),
     etag: file.version,
+    'last-modified': new Date(file.modifiedAt).toUTCString(),
     ...rangeHeaders(part),
   }
   const bytes = rangeBytes(part)

@@ -187,14 +187,7 @@ impl Peer {
                 Wake::Timeout => Input::Timeout(now()),
                 Wake::Output => continue,
             };
-            let received = matches!(input, Input::Receive(..));
             if let Err(error) = rtc.handle_input(input) {
-                tracing::debug!("a direct peer failed: {error}");
-                break "the connection failed";
-            }
-            // What the datagram calls for, such as the acknowledgement of a
-            // channel's opening, goes out now, not at str0m's next timer.
-            if received && let Err(error) = rtc.handle_input(Input::Timeout(now())) {
                 tracing::debug!("a direct peer failed: {error}");
                 break "the connection failed";
             }

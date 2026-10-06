@@ -178,18 +178,29 @@ async fn serve(
     let local = socket.local_addr().unwrap();
     let mut channels: HashMap<ChannelId, mpsc::UnboundedSender<Heard>> = HashMap::new();
     let mut opening: HashMap<ChannelId, oneshot::Sender<ChannelId>> = HashMap::new();
-    let mut unsent: Vec<(ChannelId, bool, Vec<u8>)> = Vec::new();
+    // What waits to go, in order: a message, or with none a channel's
+    // close, which follows the messages sent before it.
+    let mut unsent: Vec<(ChannelId, Option<(bool, Vec<u8>)>)> = Vec::new();
     let mut buffer = vec![0; 2048];
     loop {
         // What waits for room goes out first, in order.
         let waiting = std::mem::take(&mut unsent);
-        for (id, binary, data) in waiting {
+        for (id, message) in waiting {
+            // A channel's messages go in order: one that waits holds the rest.
+            if unsent.iter().any(|(waiting, _)| *waiting == id) {
+                unsent.push((id, message));
+                continue;
+            }
+            let Some((binary, data)) = message else {
+                rtc.direct_api().close_data_channel(id);
+                continue;
+            };
             let written = rtc
                 .channel(id)
                 .map(|mut channel| channel.write(binary, &data).unwrap_or(false))
                 .unwrap_or(true);
             if !written {
-                unsent.push((id, binary, data));
+                unsent.push((id, Some((binary, data))));
             }
         }
         let timeout = loop {
@@ -251,8 +262,8 @@ async fn serve(
                         channels.insert(id, heard);
                         opening.insert(id, opened);
                     }
-                    Some(Command::Send { id, binary, data }) => unsent.push((id, binary, data)),
-                    Some(Command::Close { id }) => rtc.direct_api().close_data_channel(id),
+                    Some(Command::Send { id, binary, data }) => unsent.push((id, Some((binary, data)))),
+                    Some(Command::Close { id }) => unsent.push((id, None)),
                     None => return,
                 }
                 // What the command queued goes out now, not at str0m's next
