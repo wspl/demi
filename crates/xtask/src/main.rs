@@ -1,6 +1,6 @@
 //! The repository's development commands (`crates-and-packages.md`
-//! § xtask). `cargo xtask` runs them; `bun run contracts` builds the
-//! workspace and runs `target/debug/xtask contracts`.
+//! § xtask). `bun xtask` builds the workspace and runs them
+//! (`builds-and-releases.md`).
 
 #[cfg(test)]
 mod boundaries;
