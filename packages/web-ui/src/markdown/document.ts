@@ -7,12 +7,12 @@ import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
 import katex from 'katex'
 import { Marked, type MarkedExtension, type Tokens } from 'marked'
 import { gfmHeadingId } from 'marked-gfm-heading-id'
-import markedKatex from 'marked-katex-extension'
 import { utf8Bytes } from '@demicodes/utils'
 import { joinPath, parentPath } from '../files/paths'
 import { decodedTarget } from './filePath'
 import { codeToHtml } from './highlight'
 import { escapeHtml } from './html'
+import { mathExtensions } from './math'
 
 /** Where a document sits, and how an image it names on the Host loads. */
 export interface DocumentPlace {
@@ -62,10 +62,10 @@ const ALLOWED_ATTR = [
 /** The classes the renderer gives; any other class a document names is dropped. */
 const RENDERER_CLASS = /^(math|math-inline|math-display|language-[\w+#.-]+)$/
 
-// Math placeholders keep the extension's syntax, standard `$` spacing
-// included, and hold the TeX as text until sanitizing is done.
+// Math placeholders keep the messages' math syntax and hold the TeX as text
+// until sanitizing is done.
 const mathPlaceholders: MarkedExtension = {
-  extensions: (markedKatex({ throwOnError: false }).extensions ?? []).map((extension) => ({
+  extensions: mathExtensions({ throwOnError: false }).map((extension) => ({
     ...extension,
     renderer: (token: Tokens.Generic) => {
       const tex = escapeHtml(String(token['text']))
