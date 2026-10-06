@@ -98,6 +98,13 @@ pub trait LinkPolicy {
         sequence: ServiceSequence,
         count: u32,
     ) -> LocalBoxFuture<'static, Result<u64, String>>;
+
+    /// A page's direct channel opened a stream of `conversation` on the
+    /// device (`direct-channel.md` § Operations on the channel): the lease
+    /// that holds the conversation active while it is open, as an open relay
+    /// stream's does, or why there is none.
+    fn direct_stream(&self, conversation: String)
+    -> LocalBoxFuture<'static, Result<GateLease, String>>;
 }
 
 /// Whose a job is, recorded when it starts and read by its calls.
@@ -201,6 +208,17 @@ struct State {
     pong_jobs: u64,
     /// The file watches the connection's Hosts follow.
     watches: LinkWatches,
+    /// The direct streams open on the device, by conversation.
+    direct_streams: HashMap<String, DirectStreams>,
+}
+
+/// One conversation's direct streams, as the runner reports their opening
+/// and closing, and the activity lease they hold together once the policy
+/// admitted the first.
+#[derive(Default)]
+struct DirectStreams {
+    open: usize,
+    lease: Option<GateLease>,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -762,6 +780,7 @@ impl Link {
                 let answer = Answer::Direct(DirectAnswer::Answer(sdp));
                 self.answer(&id, Expected::DirectOffer, answer);
             }
+            Outbound::DirectStream { conversation, open } => self.direct_stream(conversation, open),
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);
@@ -1110,6 +1129,49 @@ impl Link {
             // The answer goes only while the work it serves is live.
             if !grant.cancel.is_cancelled() {
                 link.answer_artifact(id, location).await;
+            }
+        });
+    }
+
+    /// Counts a conversation's open direct streams as the runner reports
+    /// them: the first one's opening asks the policy for the lease they hold
+    /// together, and the last one's closing drops it, as the connection's
+    /// end does with every one.
+    fn direct_stream(&self, conversation: String, open: bool) {
+        let mut state = self.0.state.borrow_mut();
+        if !open {
+            let Some(streams) = state.direct_streams.get_mut(&conversation) else {
+                return;
+            };
+            streams.open -= 1;
+            if streams.open == 0 {
+                state.direct_streams.remove(&conversation);
+            }
+            return;
+        }
+        let streams = state.direct_streams.entry(conversation.clone()).or_default();
+        streams.open += 1;
+        if streams.open > 1 {
+            return;
+        }
+        drop(state);
+        let admitted = self.0.policy.direct_stream(conversation.clone());
+        let link = self.clone();
+        let device = self.0.device.clone();
+        self.spawn(async move {
+            let lease = match admitted.await {
+                Ok(lease) => lease,
+                Err(error) => {
+                    tracing::warn!(device = %device, %conversation, "a direct stream was not admitted: {error}");
+                    return;
+                }
+            };
+            // Streams that all closed meanwhile hold nothing.
+            let mut state = link.0.state.borrow_mut();
+            if let Some(streams) = state.direct_streams.get_mut(&conversation)
+                && streams.lease.is_none()
+            {
+                streams.lease = Some(lease);
             }
         });
     }

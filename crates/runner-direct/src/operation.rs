@@ -23,6 +23,9 @@ pub type ByteStream = Pin<Box<dyn Stream<Item = io::Result<Bytes>> + Send>>;
 pub type Answer<T> = Pin<Box<dyn Future<Output = Result<T, ChannelError>> + Send>>;
 /// What a watch says, in order.
 pub type WatchStream = Pin<Box<dyn Stream<Item = FileWatchMessage> + Send>>;
+/// An open `stream` channel as its conversation's activity, which ends when
+/// it is dropped.
+pub type StreamActivity = Box<dyn Send>;
 
 /// The conversation an operation acts for, and the directory its work
 /// starts in.
@@ -88,6 +91,12 @@ pub trait Operations: Send + Sync + 'static {
     fn watch(&self, scope: Scope, paths: mpsc::UnboundedReceiver<Vec<String>>) -> WatchStream;
     /// Opens a user stream: its output bytes, once it opened.
     fn stream(&self, scope: Scope, request: StreamRequest) -> Answer<ByteStream>;
+    /// A `stream` channel of `conversation` opened: the runner tells the
+    /// backend, which counts it as the conversation's activity, and tells it
+    /// again when the answer is dropped, as the channel's end drops it on
+    /// every path: the stream's end, the page's, the peer's close and the
+    /// runner's.
+    fn stream_activity(&self, conversation: &str) -> StreamActivity;
 }
 
 /// What the page sends on a channel after its header.
@@ -309,6 +318,8 @@ async fn carry_out(
                 out.refuse(error).await;
                 return;
             };
+            // Held until the channel's operation ends, or is dropped.
+            let _activity = operations.stream_activity(&scope.conversation);
             let request = StreamRequest {
                 binding,
                 args,
