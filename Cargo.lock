@@ -1563,6 +1563,7 @@ version = "0.1.13"
 dependencies = [
  "argon2",
  "bytes",
+ "chromiumoxide",
  "clap",
  "data-encoding",
  "demi-agent-server",
@@ -1585,6 +1586,7 @@ dependencies = [
  "demi-command-package-claude-code-protocol",
  "demi-command-package-file-protocol",
  "demi-command-protocol",
+ "demi-command-sdk",
  "demi-conversation-socket-protocol",
  "demi-host-interface",
  "demi-machine-manager-protocol",
