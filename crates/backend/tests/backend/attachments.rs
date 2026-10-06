@@ -4,7 +4,8 @@
 //! it cannot copy fails with its own line while the others are stored; the
 //! page reads an attachment by its number from the conversation's database,
 //! and its bytes as a blob. A job `demi host shell` runs on an attached Host
-//! uploads that Host's files. The model is an Anthropic endpoint the test
+//! uploads that Host's files, and a file whose blob the namespace holds
+//! already is not read again. The model is an Anthropic endpoint the test
 //! scripts; the devices are real runners.
 
 use demi_agent_tools::testing::{field, shown_output};
@@ -13,7 +14,8 @@ use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, ConversationAttac
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 
-use crate::conversations::{anthropic_at, create, on_device};
+use crate::conversations::{anthropic_at, create, on_device, working_on};
+use crate::holding_edge::HoldingEdge;
 use crate::support::{Harness, eventually};
 use crate::uploads::PNG;
 use crate::work::{Driven, say, shell, switch};
@@ -180,5 +182,49 @@ async fn a_job_on_an_attached_host_uploads_that_hosts_file() {
         .get(&format!("/api/blobs/{}", attachment.blob), Some(&master))
         .await;
     assert_eq!(bytes.body, *PNG);
+    backend.close().await;
+}
+
+// About a second: a real device runs two shell jobs through an edge that
+// counts its pipe uploads.
+#[tokio::test]
+async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_again() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let edge = HoldingEdge::start(backend.address()).await;
+    let device = backend.pair_through(&master, "laptop", &edge.url).await;
+    let root = working_on(&harness, &device, CONVERSATION);
+    std::fs::write(format!("{root}/shot.png"), &*PNG).unwrap();
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+
+    let mut sent = Vec::new();
+    for (turn, number) in [("t1", "a1"), ("t2", "a2")] {
+        let before = edge.pipe_puts();
+        let uploaded = work
+            .turn(vec![shell(turn, "demi attachment upload shot.png", 30_000), say(turn)])
+            .await;
+        assert_eq!(
+            shown_output(&uploaded.received[0]),
+            format!("{number}  shot.png  image/png  {} bytes\n", PNG.len())
+        );
+        sent.push(edge.pipe_puts() - before);
+    }
+    // Each job sends the backend a pipe upload of its own; the file's bytes
+    // went in one more, the first time only.
+    assert_eq!(sent[0], sent[1] + 1, "{sent:?}");
+    let blob = async |number: &str| {
+        backend
+            .get(
+                &format!("/api/conversations/{CONVERSATION}/attachments/{number}"),
+                Some(&master),
+            )
+            .await
+            .json::<ConversationAttachment>()
+            .blob
+    };
+    assert_eq!(blob("a1").await, blob("a2").await);
     backend.close().await;
 }

@@ -54,16 +54,27 @@ impl UserBlobs {
     /// sends its bytes only when it does not, so repeated uploads of one file
     /// store it once and send it once.
     pub async fn put(&self, bytes: Bytes) -> Result<BlobRef, ObjectError> {
-        // Hashing an upload of 25 MiB takes tens of milliseconds, which would
-        // hold an async thread that long.
-        let (bytes, blob) = tokio::task::spawn_blocking(move || {
-            let blob = BlobRef::of(&bytes);
-            (bytes, blob)
-        })
-        .await?;
-        let location = self.location(&blob);
+        let (bytes, blob) = with_name(bytes).await?;
+        self.store(&blob, bytes).await?;
+        Ok(blob)
+    }
+
+    /// [`UserBlobs::put`] of bytes the caller names by their SHA-256: false,
+    /// and nothing stored, when they do not have it.
+    pub async fn put_named(&self, bytes: Bytes, named: &BlobRef) -> Result<bool, ObjectError> {
+        let (bytes, blob) = with_name(bytes).await?;
+        if blob != *named {
+            return Ok(false);
+        }
+        self.store(&blob, bytes).await?;
+        Ok(true)
+    }
+
+    /// Stores `bytes` under `blob`, their name.
+    async fn store(&self, blob: &BlobRef, bytes: Bytes) -> Result<(), ObjectError> {
+        let location = self.location(blob);
         match self.objects.head(&location).await {
-            Ok(_) => return Ok(blob),
+            Ok(_) => return Ok(()),
             Err(object_store::Error::NotFound { .. }) => {}
             Err(error) => return Err(error.into()),
         }
@@ -77,7 +88,7 @@ impl UserBlobs {
             .await
         {
             // A put of the same bytes may have created it since the HEAD.
-            Ok(_) | Err(object_store::Error::AlreadyExists { .. }) => Ok(blob),
+            Ok(_) | Err(object_store::Error::AlreadyExists { .. }) => Ok(()),
             Err(error) => Err(error.into()),
         }
     }
@@ -95,6 +106,17 @@ impl UserBlobs {
     fn location(&self, blob: &BlobRef) -> Path {
         self.namespace.clone().join(blob.as_str())
     }
+}
+
+/// `bytes` with their name. Hashing an upload of 25 MiB takes tens of
+/// milliseconds, which would hold an async thread that long.
+async fn with_name(bytes: Bytes) -> Result<(Bytes, BlobRef), ObjectError> {
+    let named = tokio::task::spawn_blocking(move || {
+        let blob = BlobRef::of(&bytes);
+        (bytes, blob)
+    })
+    .await?;
+    Ok(named)
 }
 
 /// The namespace as a session reaches it through its tree store: the

@@ -233,6 +233,24 @@ impl RemoteHost {
         )
     }
 
+    /// The size and SHA-256 of the file at `path` beside `cwd`, none of
+    /// whose bytes travel (`runner.md` § File contents).
+    pub async fn hash_file_in(&self, cwd: &str, path: &str) -> Result<wire::FileHash, HostError> {
+        let link = self.link()?;
+        let _lease = self.admit()?;
+        let hashed = link
+            .call(Expected::Fs("hashFile"), |id| Inbound::FsHashFile {
+                id,
+                path: path.into(),
+                cwd: Some(cwd.to_owned()),
+            })
+            .await?;
+        match hashed {
+            Answer::Fs(FsResult::HashFile(hash)) => Ok(hash),
+            _ => Err(mismatch()),
+        }
+    }
+
     /// [`RemoteHost::read_pipe`], except that a file that still has the
     /// version `held` streams nothing (`runner.md` § File contents).
     pub async fn read_pipe_unless(

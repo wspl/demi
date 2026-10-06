@@ -19,6 +19,7 @@ demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true
 filetime = "0.2"
 futures-util.workspace = true
+sha2 = "0.10"
 gix = { version = "0.87", default-features = false, features = ["status", "blob-diff", "sha1", "parallel"] }
 thiserror.workspace = true
 tokio.workspace = true

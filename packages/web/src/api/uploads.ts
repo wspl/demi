@@ -1,6 +1,6 @@
 import type { UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
-import { apiError, apiUrl, invalidResponse } from './client'
+import { ApiError, apiError, apiRequest, apiUrl, invalidResponse } from './client'
 import { attachmentAnswerSchema } from './generated/web-api'
 
 /**
@@ -9,6 +9,11 @@ import { attachmentAnswerSchema } from './generated/web-api'
  */
 export const blobUrl: BlobUrl = (ref, mediaType) =>
   apiUrl(`/blobs/${encodeURIComponent(ref)}?${new URLSearchParams({ type: mediaType })}`)
+
+/** The media type a file's bytes are sent as. */
+function sentMediaType(file: File): string {
+  return file.type || 'application/octet-stream'
+}
 
 /**
  * How long an upload may go without a byte moving before it fails, the
@@ -62,7 +67,7 @@ export function uploadBytes(
     }
     xhr.open(options.method ?? 'POST', apiUrl(path))
     xhr.withCredentials = true
-    xhr.setRequestHeader('Content-Type', options.mediaType ?? (file.type || 'application/octet-stream'))
+    xhr.setRequestHeader('Content-Type', options.mediaType ?? sentMediaType(file))
     xhr.upload.onprogress = (event) => {
       moved()
       options.progress(event.loaded)
@@ -92,14 +97,46 @@ export function uploadBytes(
   })
 }
 
+/** The SHA-256 of a file's bytes in lowercase hexadecimal, the name of its blob. */
+async function fileSha256(file: File): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', await file.arrayBuffer())
+  return new Uint8Array(digest).toHex()
+}
+
+/**
+ * Asks for an upload of the blob the user holds already, which sends no
+ * bytes; null when the user's blobs do not hold it and the bytes must go.
+ */
+async function uploadHeld(query: URLSearchParams, file: File, signal: AbortSignal): Promise<unknown> {
+  try {
+    const response = await apiRequest(`/attachments?${query}`, {
+      method: 'POST',
+      headers: { 'Content-Type': sentMediaType(file) },
+      signal,
+    })
+    return await response.json()
+  } catch (error) {
+    if (error instanceof ApiError && error.code === 'blob_missing') {
+      return null
+    }
+    throw error
+  }
+}
+
 /**
  * Uploads a file a message will carry (`web-api.md` § Uploads and media):
  * its bytes become a blob of the user's, and the answer names the upload a
  * frame refers to, with the media type and the opening the backend read.
- * The main composer and the edit composer both upload through this.
+ * A file whose blob the user holds already sends no bytes: the page names
+ * the file's SHA-256 first, and sends the bytes, naming it again, only when
+ * the backend does not hold them. The main composer and the edit composer
+ * both upload through this.
  */
 export const uploadAttachment: UploadFile = async (file, options) => {
-  const answer = await uploadBytes(`/attachments?${new URLSearchParams({ name: file.name })}`, file, {
+  const sha256 = await fileSha256(file)
+  const query = new URLSearchParams({ name: file.name, sha256 })
+  const held = await uploadHeld(query, file, options.signal)
+  const answer = held ?? await uploadBytes(`/attachments?${query}`, file, {
     signal: options.signal,
     progress: (sent) => options.progress(file.size ? sent / file.size : 1),
   })
