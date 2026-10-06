@@ -32,7 +32,8 @@ pub mod testing;
 
 pub use file_watch::{HostWatch, WatchUpdate};
 pub use link::{
-    JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions, LinkPolicy,
+    DirectAnswer, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
+    LinkPolicy,
     OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};

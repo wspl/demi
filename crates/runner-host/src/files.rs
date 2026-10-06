@@ -78,8 +78,9 @@ impl FileTransfers {
         let transfer = self.cancel.child_token();
         let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
-            let (file, stat) = match open_range(target, offset.unwrap_or(0), length, &transfer).await {
-                Ok(opened) => opened,
+            let read = open_read(target, offset.unwrap_or(0), length, held.as_deref(), &transfer).await;
+            let read = match read {
+                Ok(read) => read,
                 Err(error) => {
                     // Nothing moves; the pipe end is still reported, as every
                     // end named to the runner is.
@@ -88,26 +89,20 @@ impl FileTransfers {
                     return;
                 }
             };
-            let version = wire::file_version(stat.size, stat.mtime.0);
-            let unchanged = held.as_deref() == Some(version.as_str());
             let opened = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                 id,
-                result: wire::FsResult::ReadFile(wire::OpenedFile {
-                    stat,
-                    version,
-                    unchanged,
-                }),
+                result: wire::FsResult::ReadFile(read.opened),
             }));
             if !send(&reply, opened, &shutdown).await {
                 return;
             }
-            if unchanged {
+            let Some(body) = read.body else {
                 // Nothing moves; the pipe end is still reported.
                 let result = Err(io::Error::other("the file is unchanged"));
                 report_pipe(&reply, output.id, result, &shutdown).await;
                 return;
-            }
-            let result = pipes.put(&output.url, chunks(file), &transfer).await;
+            };
+            let result = pipes.put(&output.url, body, &transfer).await;
             report_pipe(&reply, output.id, result, &shutdown).await;
         });
         Ok(())
@@ -269,7 +264,10 @@ impl FileTransfers {
         let shutdown = self.cancel.clone();
         self.transfers.spawn(async move {
             let result = match target {
-                Ok(target) => write_from_pipe(&pipes, &input.url, &target, exists, &transfer).await,
+                Ok(target) => {
+                    let body = pipes.get(&input.url, transfer.clone());
+                    write_file(body, &target, exists, &transfer).await
+                }
                 Err(error) => Err(error),
             };
             let reported = result
@@ -370,6 +368,42 @@ impl FileTransfers {
         }
         Ok(())
     }
+}
+
+/// A file a read opened: what the read answers, and its bytes unless the
+/// file still has the version the read named.
+pub struct OpenedRead {
+    pub opened: wire::OpenedFile,
+    pub body: Option<FileBody>,
+}
+
+/// A file's bytes, one chunk at a time as the reader asks for them.
+pub type FileBody = std::pin::Pin<Box<dyn futures_util::Stream<Item = io::Result<Bytes>> + Send>>;
+
+/// Opens the range of a file a read names, the backend's `fs_readFile` or a
+/// direct channel's `read` and `text` (`runner.md` § File contents): the
+/// regular file at `target` positioned at `offset`, `length` bytes of it or
+/// to its end, with its metadata and version; a read that names the
+/// version the file still has gets no bytes.
+pub async fn open_read(
+    target: io::Result<PathBuf>,
+    offset: u64,
+    length: Option<u64>,
+    held: Option<&str>,
+    cancel: &CancellationToken,
+) -> io::Result<OpenedRead> {
+    let (file, stat) = open_range(target, offset, length, cancel).await?;
+    let version = wire::file_version(stat.size, stat.mtime.0);
+    let unchanged = held == Some(version.as_str());
+    let body: Option<FileBody> = (!unchanged).then(|| Box::pin(chunks(file)) as FileBody);
+    Ok(OpenedRead {
+        opened: wire::OpenedFile {
+            stat,
+            version,
+            unchanged,
+        },
+        body,
+    })
 }
 
 /// The regular file at `target`, positioned at `offset` and limited to
@@ -563,18 +597,22 @@ fn chunks(
     tokio_util::io::ReaderStream::with_capacity(file, CHUNK_BYTES)
 }
 
-/// Streams the pipe into a file staged beside `target`, making the
-/// directories above it that are missing, and publishes it there when the
-/// pipe ends cleanly, as `exists` says when the path is taken; any failure
-/// removes the staged file and leaves `target` as it was. Answers the name
-/// of the file written.
-async fn write_from_pipe(
-    pipes: &PipeClient,
-    url: &str,
+/// Writes a file the way every write of a page's does, the backend's
+/// `fs_writeFile` or a direct channel's `write` (`runner.md` § File
+/// contents): `body`, once it opens, streams into a file staged beside
+/// `target`, making the directories above it that are missing, and the file
+/// is published there when the body ends cleanly, as `exists` says when the
+/// path is taken; any failure removes the staged file and leaves `target`
+/// as it was. Answers the name of the file written.
+pub async fn write_file<B>(
+    body: impl std::future::Future<Output = io::Result<B>>,
     target: &Path,
     exists: wire::WriteExists,
     cancel: &CancellationToken,
-) -> io::Result<String> {
+) -> io::Result<String>
+where
+    B: futures_util::Stream<Item = io::Result<Bytes>> + Unpin,
+{
     let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
@@ -605,7 +643,7 @@ async fn write_from_pipe(
         demi_command_sdk::descriptors::retry(cancel, || Staged::new(target, publication))
             .await
             .map_err(io_error)?;
-    let mut body = pipes.get(url, cancel.clone()).await?;
+    let mut body = body.await?;
     while let Some(chunk) = body.next().await {
         staged.file().write_all(&chunk?).await?;
     }

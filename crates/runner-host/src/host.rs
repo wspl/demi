@@ -16,6 +16,9 @@ use crate::{
 
 pub struct HostServer {
     default_cwd: PathBuf,
+    /// The connection's file system watches, which a direct channel's
+    /// watches share (`runner.md` § Watching files).
+    shared_watches: Watches,
     output: mpsc::Sender<wire::Frame>,
     filesystem: TaskTracker,
     filesystem_capacity: Arc<Semaphore>,
@@ -41,6 +44,7 @@ impl HostServer {
         // watch per tree (`runner.md` § Watching files).
         let watches = Watches::default();
         Self {
+            shared_watches: watches.clone(),
             watches: WatchRequests::new(
                 watches.clone(),
                 output.clone(),
@@ -171,6 +175,12 @@ impl HostServer {
     /// tracker owns the socket until the connection closes or both pipes end.
     pub fn handle_net(&self, message: Inbound) -> io::Result<()> {
         self.net.handle_open(message)
+    }
+
+    /// The connection's file system watches, which every watch of a page's
+    /// follows.
+    pub fn watches(&self) -> &Watches {
+        &self.shared_watches
     }
 
     pub async fn close(&self) {

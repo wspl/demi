@@ -22,7 +22,7 @@ pub use artifacts::{
 pub use conversation::{ConversationRequest, ConversationStatus};
 pub use edits::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
-    EditFile, EditJournal, EditKind, is_text,
+    EditFile, EditJournal, EditKind, TextRefusal, is_text, text_of,
 };
 pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,

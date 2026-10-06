@@ -15,6 +15,7 @@ use std::{
 };
 
 use demi_runner_command_packages::ServiceHandle;
+use demi_runner_direct::{Addresses, Direct};
 use demi_runner_host::{
     files,
     host::HostServer,
@@ -48,6 +49,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::Transport;
 use crate::{
+    direct::HostOperations,
     host_log::{self, HostLogReader},
     management::{Management, Phase, Revocation},
     state::{RunnerConfig, RunnerState},
@@ -154,6 +156,9 @@ struct Owner<'r> {
     cached: watch::Receiver<Vec<wire::HostArtifact>>,
     /// Whether this connection asked the backend to revoke the device.
     revoke_asked: bool,
+    /// The pages' peers the backend introduced on this connection
+    /// (`direct-channel.md`), which end with it.
+    direct: Direct,
 }
 
 /// Serves one connection until it ends, then ends everything it owns.
@@ -162,6 +167,28 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
         ConnectionHandle::new(transport.control.clone(), transport.cancellation());
     let (installation, installations) = watch::channel(Installation::Absent);
     let directories = JobDirectories::open(registered.jobs.clone()).await;
+    let host = HostServer::new(
+        transport.output.clone(),
+        registered.cwd.clone(),
+        registered.pipes.clone(),
+    );
+    let streams = ServiceStreams::new(
+        handle.clone(),
+        registered.pipes.clone(),
+        registered.services.clone(),
+        registered.management.draining.clone(),
+        transport.cancellation().child_token(),
+    );
+    let operations = HostOperations {
+        home: registered.runner.identity.home_dir.clone(),
+        watches: host.watches().clone(),
+        streams: streams.opener(),
+        control: tokio::runtime::Handle::current(),
+        closed: handle.closed().clone(),
+    };
+    let (direct, driver) = demi_runner_direct::direct(Arc::new(operations), Addresses::Interfaces);
+    // The peers' thread ends once the connection lets go of `direct`.
+    driver.spawn()?;
     let mut owner = Owner {
         registered,
         directories: directories.clone(),
@@ -187,18 +214,8 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
         relay: Relay::default(),
         watches: JoinSet::new(),
         work: JoinSet::new(),
-        host: HostServer::new(
-            transport.output.clone(),
-            registered.cwd.clone(),
-            registered.pipes.clone(),
-        ),
-        streams: ServiceStreams::new(
-            handle.clone(),
-            registered.pipes.clone(),
-            registered.services.clone(),
-            registered.management.draining.clone(),
-            transport.cancellation().child_token(),
-        ),
+        host,
+        streams,
         volumes: Volumes::new(
             registered.volumes.clone(),
             transport.control.clone(),
@@ -207,6 +224,7 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
         handle,
         cached: registered.cached.clone(),
         revoke_asked: false,
+        direct,
     };
     let result = owner.run(&mut transport, &mut requests).await;
     // Requests still queued get no answer; their askers see the end.
@@ -547,6 +565,38 @@ impl Owner<'_> {
             Inbound::FsWatch { .. } | Inbound::FsUnwatch { .. } => self.host.handle_watch(message)?,
             Inbound::NetOpen { .. } => self.host.handle_net(message)?,
             Inbound::ServiceOpen { .. } => self.streams.handle_open(message)?,
+            Inbound::DirectOffer {
+                id,
+                peer,
+                sdp,
+                introduction,
+            } => {
+                let direct = self.direct.clone();
+                let control = self.handle.control.clone();
+                let closed = self.handle.closed().clone();
+                self.work.spawn(async move {
+                    let reply = match direct.offer(peer, sdp, introduction).await {
+                        Ok(sdp) => wire::Outbound::DirectAnswer { id, sdp },
+                        Err(refused) => wire::Outbound::DirectRefused {
+                            id,
+                            code: refused.code,
+                            message: refused.message,
+                        },
+                    };
+                    match wire::encode(&reply) {
+                        Ok(reply) => {
+                            tokio::select! {
+                                _ = closed.cancelled() => {},
+                                // A disconnected backend no longer waits for the answer.
+                                _ = control.send(reply) => {},
+                            }
+                        }
+                        Err(error) => tracing::warn!("direct answer encoding failed: {error}"),
+                    }
+                    Work::Done
+                });
+            }
+            Inbound::DirectClose { peer } => self.direct.close(&peer),
             Inbound::LogRead {
                 id,
                 since,
@@ -726,6 +776,9 @@ impl Owner<'_> {
     /// § Command lifetime).
     async fn close(&mut self) {
         self.handle.closed().cancel();
+        // Without the backend the runner can no longer hear that a page
+        // went away (`direct-channel.md` § Who may connect).
+        self.direct.close_all();
         tokio::join!(
             self.jobs.close(),
             self.host.close(),
