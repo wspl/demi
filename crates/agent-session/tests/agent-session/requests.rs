@@ -397,6 +397,8 @@ async fn conversation(family: Family) -> Vec<String> {
             source: MediaSource::Ref {
                 r#ref: BlobRef::of(&photo),
                 media_type: "image/png".into(),
+                width: None,
+                height: None,
             },
         },
     ];

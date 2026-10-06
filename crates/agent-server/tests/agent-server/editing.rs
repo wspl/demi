@@ -453,6 +453,8 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     let by_reference = |blob: &BlobRef, media_type: &str| MediaSource::Ref {
         r#ref: blob.clone(),
         media_type: media_type.into(),
+        width: None,
+        height: None,
     };
     let uploaded_image = UserContentBlock::Image {
         source: by_reference(&png_blob, "image/png"),

@@ -17,8 +17,8 @@ use demi_conversation_socket_protocol::{
 };
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{
-    Block, BlockId, GoneCause, MediaSource, ModelMediaKind, SessionPhase, ToolResultContentBlock,
-    TurnId, UserContentBlock,
+    Block, BlockId, GoneCause, MediaSource, ModelMediaKind, SessionPhase, ToolMediaSource,
+    ToolResultContentBlock, TurnId, UserContentBlock,
 };
 use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
 use demi_web_api_protocol::auth::Role;
@@ -468,7 +468,9 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     // An edit of the first message keeps its image by the reference the
     // page shows, and the model reads the image's bytes again.
     let UserContentBlock::Image {
-        source: MediaSource::Ref { r#ref, media_type },
+        source: MediaSource::Ref {
+            r#ref, media_type, ..
+        },
     } = &user.content[1]
     else {
         unreachable!()
@@ -687,18 +689,41 @@ async fn an_image_over_2000_px_enters_fitted_from_an_upload_and_a_tool_and_stays
         ),
         "{result}"
     );
-    // The message's image is the fitted one's blob, which the page reads.
+    // The message's image is the fitted one's blob, which the page reads,
+    // and its reference carries the size it entered at, as the tool's does.
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     let Some(Block::User(user)) = blocks.first() else {
         panic!("{blocks:?}");
     };
     let UserContentBlock::Image {
-        source: MediaSource::Ref { r#ref, .. },
+        source:
+            MediaSource::Ref {
+                r#ref,
+                width,
+                height,
+                ..
+            },
     } = &user.content[1]
     else {
         panic!("{:?}", user.content);
     };
     assert_ne!(r#ref.as_str(), image.sha256.as_str());
+    assert_eq!((*width, *height), (Some(2_000), Some(8)));
+    let tool_sizes: Vec<_> = blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::ToolCall(call) => Some(&call.output),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|part| match part {
+            ToolResultContentBlock::Image {
+                source: ToolMediaSource::Ref { width, height, .. },
+            } => Some((*width, *height)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(tool_sizes, [(Some(2_000), Some(8))]);
     let served = backend
         .get(&format!("/api/blobs/{}", r#ref.as_str()), Some(&master))
         .await;

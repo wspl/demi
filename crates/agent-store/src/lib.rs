@@ -9,13 +9,14 @@
 //! atomic commit, whatever the realization.
 //!
 //! Beside the contract: the media rules over the store's blob namespace
-//! (`media`), the fitting of an image as it enters a transcript (`images`)
-//! and what an upload becomes (`attachments`) (`crates-and-packages.md`
-//! § agent-store).
+//! (`media`), the fitting of an image as it enters a transcript (`images`),
+//! a medium's size in pixels (`pixels`) and what an upload becomes
+//! (`attachments`) (`crates-and-packages.md` § agent-store).
 
 pub mod attachments;
 pub mod images;
 pub mod media;
+pub mod pixels;
 #[cfg(feature = "testing")]
 pub mod testing;
 

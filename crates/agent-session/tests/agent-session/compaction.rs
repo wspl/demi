@@ -715,6 +715,8 @@ fn image_message(image: &BlobRef) -> Vec<UserContentBlock> {
             source: MediaSource::Ref {
                 r#ref: image.clone(),
                 media_type: "image/png".into(),
+                width: None,
+                height: None,
             },
         },
     ]
