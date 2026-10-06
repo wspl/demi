@@ -511,8 +511,9 @@ runner does not parse what flows through it. The backend uses it for the
 A page can reach the runner without the backend in the middle, over WebRTC
 data channels the backend introduces and authorizes
 ([Direct channel](direct-channel.md)). The backend forwards a page's offer as
-`direct_offer`, the runner answers with `direct_answer`, and `direct_close`
-ends a peer. The runner carries out a direct operation with the same
+`direct_offer`, the runner answers with `direct_answer`, `direct_close` ends a
+peer, and the runner reports each direct stream's opening and closing with
+`direct_stream`, which counts as the conversation's activity. The runner carries out a direct operation with the same
 functions as the backend's request for it, and closes every peer when its
 connection to the backend ends.
 
@@ -688,8 +689,9 @@ places command aliases first in PATH, and restores the requested cwd. A
 requested cwd that no longer exists, such as a `mktemp -d` directory under
 the previous job's scratch directory, which went with that job, does not fail
 the job: the job starts in the conversation's working directory instead, and
-its output begins with the line
-`demi: <cwd> no longer exists; starting in <directory>`. Shell
+its stderr begins with the line
+`demi: <cwd> no longer exists; starting in <directory>`. The job's start
+names that directory as its `workspace` beside the requested cwd. Shell
 variables and functions do not carry over to the next job; persisted profile
 changes do. The backend receives the final cwd and foreground exit status.
 
