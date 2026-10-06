@@ -130,7 +130,12 @@ operator does next, and exits with a status other than 0.
    distribution of the table below, and no installation yet: a machine whose
    `/opt/demi/current` exists is refused, and `demi-server upgrade` moves it.
 2. **Install the system packages** the machine manager runs: e2fsprogs,
-   bsdtar and nftables.
+   bsdtar and nftables. A new machine often runs its distribution's
+   automatic updates in its first minutes, which hold the package manager's
+   lock: on hel1, Ubuntu's unattended upgrades held it for several minutes
+   and a `setup` that did not wait failed at once. `setup` waits for the lock
+   up to ten minutes, saying that it waits and for which process, and fails
+   after that with the process that still holds it.
 3. **Fetch the release** into `/opt/demi/releases/<version>`, as an upgrade
    does ([Fetch](upgrades.md#fetch)), and the gVisor version its manager
    pins into `/opt/demi/gvisor/<version>/`
