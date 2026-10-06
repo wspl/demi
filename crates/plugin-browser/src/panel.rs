@@ -33,6 +33,10 @@ struct TabData {
     closed: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     failure: Option<Value>,
+    /// How many times the agent showed its browser tab, as the plugin last
+    /// wrote it; absent while it never did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    shows: Option<u64>,
 }
 
 impl TabData {
@@ -132,8 +136,10 @@ impl Work {
     }
 
     /// Reads the browser's tabs and updates the panel from them: a tab for
-    /// each tab the agent or a page opened, and every bound tab whose
-    /// browser tab is gone marked closed.
+    /// each tab the agent or a page opened, each bound tab's count of the
+    /// times the agent showed its browser tab when the count rose
+    /// (`live-view.md` § Showing a tab), and every bound tab whose browser
+    /// tab is gone marked closed.
     pub async fn sync(
         &self,
         conversation: &ConversationId,
@@ -165,11 +171,22 @@ impl Work {
             };
             port.create_panel_tab(create).await?;
         }
-        let present: HashSet<&str> = listed.iter().map(|tab| tab.id.as_str()).collect();
+        let present: HashMap<&str, &BrowserTab> =
+            listed.iter().map(|tab| (tab.id.as_str(), tab)).collect();
         for (id, data) in &bound {
-            if data.live().is_some_and(|tab| !present.contains(tab)) {
-                port.update_panel_tab(id.as_str(), fields([("closed", Value::Bool(true))]))
-                    .await?;
+            let Some(browser_tab) = data.live() else {
+                continue;
+            };
+            match present.get(browser_tab) {
+                None => {
+                    port.update_panel_tab(id.as_str(), fields([("closed", Value::Bool(true))]))
+                        .await?;
+                }
+                Some(tab) if tab.shows > data.shows.unwrap_or(0) => {
+                    port.update_panel_tab(id.as_str(), fields([("shows", Value::from(tab.shows))]))
+                        .await?;
+                }
+                Some(_) => {}
             }
         }
         Ok(())
@@ -199,12 +216,19 @@ async fn data_of(port: &PluginPort, id: &str) -> Result<Option<TabData>, PortFai
         .and_then(TabData::of))
 }
 
-/// The data of the panel tab the plugin adds for the browser's `tab`.
+/// The data of the panel tab the plugin adds for the browser's `tab`: its
+/// page's title names it in the strip until a view shows it, and the times
+/// the agent showed it, once it did.
 fn added(tab: &BrowserTab) -> Map<String, Value> {
-    fields([
+    let mut data = fields([
         ("url", Value::String(tab.url.clone())),
         ("tab", Value::String(tab.id.to_string())),
-    ])
+        ("title", Value::String(tab.title.clone())),
+    ]);
+    if tab.shows > 0 {
+        data.insert("shows".to_owned(), Value::from(tab.shows));
+    }
+    data
 }
 
 fn fields<const N: usize>(fields: [(&str, Value); N]) -> Map<String, Value> {

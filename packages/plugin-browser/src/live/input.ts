@@ -29,7 +29,37 @@ const BUTTONS: readonly PointerButton[] = ['left', 'middle', 'right']
 export interface PointerInput extends ModifierState {
   button: number
   buttons: number
-  detail: number
+}
+
+/** The longest pause between two presses of one double or triple click. */
+const CLICK_INTERVAL_MS = 500
+/** The farthest the pointer moves between two presses of one double or triple click, in CSS pixels. */
+const CLICK_DISTANCE = 4
+
+/**
+ * Counts the viewer's consecutive presses as the page's click count, which
+ * a pointer event does not carry: its `detail` is 0, so without this a
+ * double click reached the page as two single clicks and selected no word.
+ */
+export class ClickCount {
+  private last: { time: number; x: number; y: number; button: number; count: number } | null = null
+
+  /** The click count of a press at `event`: one more than the press before when it follows it closely. */
+  press(event: { timeStamp: number; clientX: number; clientY: number; button: number }): number {
+    const last = this.last
+    const follows = last !== null
+      && last.button === event.button
+      && event.timeStamp - last.time <= CLICK_INTERVAL_MS
+      && Math.hypot(event.clientX - last.x, event.clientY - last.y) <= CLICK_DISTANCE
+    const count = follows ? Math.min(3, last.count + 1) : 1
+    this.last = { time: event.timeStamp, x: event.clientX, y: event.clientY, button: event.button, count }
+    return count
+  }
+
+  /** The count of the last press, which its release carries. */
+  get current(): number {
+    return this.last?.count ?? 1
+  }
 }
 
 function pressedButton(event: PointerInput, action: 'move' | 'down' | 'up'): PointerButton {
@@ -45,12 +75,13 @@ function pressedButton(event: PointerInput, action: 'move' | 'down' | 'up'): Poi
   return event.buttons & 4 ? 'middle' : 'none'
 }
 
-/** A pointer event in the tab, at the tab's coordinates. */
+/** A pointer event in the tab, at the tab's coordinates, a press or release the `clicks`th of its click. */
 export function pointerMessage(
   tab: string,
   action: 'move' | 'down' | 'up',
   point: { x: number; y: number },
   event: PointerInput,
+  clicks = 1,
 ): LiveViewerMessage {
   return {
     type: 'pointer',
@@ -60,7 +91,7 @@ export function pointerMessage(
     y: point.y,
     button: pressedButton(event, action),
     buttons: event.buttons,
-    clickCount: action === 'move' ? 0 : Math.min(3, event.detail || 1),
+    clickCount: action === 'move' ? 0 : clicks,
     modifiers: modifiers(event),
   }
 }

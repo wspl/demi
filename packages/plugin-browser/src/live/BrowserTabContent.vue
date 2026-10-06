@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, shallowRef, watch, type Component } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { Monitor, Ruler, Smartphone } from '@lucide/vue'
 import { AddressBar } from '@demicodes/plugin-sdk'
 import { Button } from '@demicodes/plugin-sdk'
@@ -10,10 +10,9 @@ import { Popover } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
 import { usePage } from '@demicodes/plugin-sdk'
-import type { LiveTab } from '../generated/plugin'
 import LiveView from './LiveView.vue'
 import { NEW_TAB_URL, asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
-import { viewportChoices, type ViewportChoice } from './view'
+import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
  * A `browser` tab's content (`live-view.md` § A browser tab in the panel).
@@ -22,7 +21,9 @@ import { viewportChoices, type ViewportChoice } from './view'
  * and a blank page until its browser tab's first picture; an address the
  * user submits shows at once, with the page loading over the picture the tab
  * still shows. The plugin opens, binds and closes the browser tab on the
- * backend; only a failure interrupts, where it happened, with a way on.
+ * backend; only a failure interrupts, where it happened, with a way on. A
+ * content stays mounted while another tab is selected (`shown` false), so
+ * shown again it shows its picture, address and title at once.
  */
 const props = defineProps<{
   conversation: string
@@ -49,34 +50,25 @@ const { overlays } = usePage()
 const view = computed(() => props.session.session.value)
 /** The browser tab the panel tab shows, while the browser has it. */
 const bound = computed(() => (props.data.closed ? undefined : props.data.tab))
-/** The bound tab as the view reports it now. */
-const reported = computed(() => view.value?.state.tabs.find((tab) => tab.id === bound.value) ?? null)
-/** The bound tab as the view last reported it, kept while the view reconnects, so its picture stays. */
-const seen = shallowRef<LiveTab | null>(null)
-watch(reported, (tab) => {
-  if (tab) {
-    seen.value = tab
-  }
-})
-watch(bound, () => {
-  seen.value = null
-})
-const live = computed(() => reported.value ?? (seen.value?.id === bound.value ? seen.value : null))
+/** The bound tab as a view last reported it, kept while no view is open or the view reconnects. */
+const live = computed(() => props.session.tab(bound.value))
 const viewport = computed(() => live.value?.viewport ?? null)
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
 /**
  * The page loads: a request of the user's the browser has not taken up, a
- * page the browser says it loads, or an address the tab asks for before the
- * browser reported its tab, as for one whose browser tab is still opening.
+ * page the browser last said it loads, or an address the tab asks for
+ * before the browser ever reported its tab, as for one whose browser tab is
+ * still opening. A tab shown again keeps what the browser last said, so a
+ * page that had loaded shows no loading line.
  */
 const loading = computed(() =>
   navigating.value
   || (live.value ? live.value.loading : props.data.url !== NEW_TAB_URL),
 )
 
-// A shown tab with its browser tab is watched on the page's view.
+// A shown tab with its browser tab is watched on the page's view, once its area measured the panel.
 watch(
   [() => props.shown, bound],
   ([shown, tab], previous) => {
@@ -88,10 +80,61 @@ watch(
       props.session.show(tab)
     }
   },
-  { immediate: true },
+  { immediate: true, flush: 'post' },
 )
 
+/** The area the picture shows in, which the panel's size is: measured before any view exists. */
+const area = ref<HTMLElement | null>(null)
+const measured = ref<PanelSize>({ width: 1, height: 1 })
+/** What moves the picture onto the screen's pixel grid, from where the area stands. */
+const snap = ref({ x: 0, y: 0 })
+let observer: ResizeObserver | null = null
+let density: MediaQueryList | null = null
+
+/** The area as it stands now, for the picture and, while the tab is shown, for the view. */
+function measure(): void {
+  const bounds = area.value?.getBoundingClientRect()
+  // A hidden content measures nothing; its tab keeps the size it had.
+  if (!bounds || bounds.width < 1 || bounds.height < 1) {
+    return
+  }
+  measured.value = panelSize(bounds.width, bounds.height)
+  snap.value = { x: deviceSnap(bounds.left, devicePixelRatio), y: deviceSnap(bounds.top, devicePixelRatio) }
+  if (props.shown) {
+    props.session.resize({
+      panel: measured.value,
+      devicePixelRatio,
+      screen: panelSize(screen.width, screen.height),
+    })
+  }
+}
+
+/** The screen's density can change when the window moves to another display. */
+function watchDensity(): void {
+  density?.removeEventListener('change', watchDensity)
+  density = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
+  density.addEventListener('change', watchDensity)
+  measure()
+}
+
+onMounted(() => {
+  observer = new ResizeObserver(() => measure())
+  if (area.value) {
+    observer.observe(area.value)
+  }
+  watchDensity()
+})
+
+// Shown again, the tab's panel may have changed meanwhile.
+watch(() => props.shown, (shown) => {
+  if (shown) {
+    measure()
+  }
+}, { flush: 'post' })
+
 onBeforeUnmount(() => {
+  observer?.disconnect()
+  density?.removeEventListener('change', watchDensity)
   if (bound.value !== undefined) {
     props.session.hide(bound.value)
   }
@@ -107,18 +150,25 @@ watch(
   },
 )
 
-// The tab saves where the page went. A blank page the browser first reports while the tab asks for an
-// address is a browser tab that has not started on it yet, as one opened before its user typed.
+// The tab saves where the page went, with the page's title for the strip. A blank page the browser first
+// reports while the tab asks for an address is a browser tab that has not started on it yet, as one opened
+// before its user typed. A title names the address the tab asks for only: a page the user is leaving keeps
+// its title to itself.
 watch(
-  () => live.value?.url,
-  (url, before) => {
-    if (url === undefined || url === props.data.url) {
+  [() => live.value?.url, () => live.value?.title],
+  ([url, title], [before]) => {
+    if (url === undefined) {
       return
     }
-    if (before === undefined && url === NEW_TAB_URL) {
+    const moved = url !== props.data.url
+    if (moved && (url === before || (before === undefined && url === NEW_TAB_URL))) {
       return
     }
-    emit('update', { ...props.data, url })
+    if (!moved && (title ?? '') === (props.data.title ?? '')) {
+      return
+    }
+    const { title: _left, ...data } = props.data
+    emit('update', title ? { ...data, url, title } : { ...data, url })
   },
 )
 
@@ -153,7 +203,9 @@ function submit(): void {
   const url = new URL(candidate).href
   editing.value = false
   address.value = url
-  emit('update', { ...props.data, url })
+  // The page it leaves names the tab no more.
+  const { title: _left, ...data } = props.data
+  emit('update', { ...data, url })
   void request((tab) => props.session.api.navigate(tab, url))
 }
 
@@ -209,7 +261,7 @@ async function rebind(): Promise<void> {
     >
       {{ refused?.message ?? view?.state.notice?.message }}
     </p>
-    <div class="relative flex min-h-0 flex-1 flex-col border-t border-line">
+    <div ref="area" class="relative flex min-h-0 flex-1 flex-col border-t border-line">
       <ProgressLine :active="loading && !data.failure && !data.closed" />
       <div
         v-if="data.failure"
@@ -235,9 +287,12 @@ async function rebind(): Promise<void> {
         This browser cannot show the live view: it cannot decode H.264 video.
       </div>
       <LiveView
-        v-else-if="live && view"
+        v-else-if="live"
         :session="view"
         :tab="live"
+        :shown="shown"
+        :panel="measured"
+        :snap="snap"
       />
       <!-- What a tab shows before its picture: a blank page, as the browser's new tab is. -->
       <div

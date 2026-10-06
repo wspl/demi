@@ -17,6 +17,9 @@ const SUCCESS: &str = "readable page results; one validated JSON value with --js
 const FAILURE: &str =
     "a browser error on stderr with nonzero exit status; an action is never replayed automatically";
 
+/// When the agent shows a tab (`browser.md` § Tabs and navigation).
+const SHOW: &str = "Show a tab to the user: their work panel opens and selects it once this command’s job ends. Show a tab when the user is meant to look at it or act in it: the user asked to see a page, a sign-in or a choice needs the user’s hand, or the page is a result for the user. Do not show the tabs you open to check your own work. Showing does not bring the tab to the front of the Host’s browser, and the user may have looked away again by the time you continue; showing a tab again shows it again.";
+
 /// Declares each operation's leaf from its name, its input and result types
 /// and its summary; a dotted name is a leaf of a subgroup.
 macro_rules! operations {
@@ -29,7 +32,8 @@ macro_rules! operations {
 }
 
 operations! {
-    "open" => OpenInput, OpenResult, "Open a URL in a new tab on this Host; starts the conversation’s browser when needed.";
+    "open" => OpenInput, OpenResult, "Open a URL in a new tab on this Host; starts the conversation’s browser when needed. The tab joins the user’s work panel without taking the user’s view; --show also shows it, as show does.";
+    "show" => ShowInput, ShowResult, SHOW;
     "tabs" => TabsInput, TabsResult, "List the conversation’s live browser tabs without starting a browser.";
     "info" => InfoInput, InfoResult, "Read a tab’s URL, title and viewport.";
     "goto" => GotoInput, NavigationResult, "Navigate a tab to a URL.";

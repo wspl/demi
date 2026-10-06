@@ -35,6 +35,8 @@ const bound = shallowRef<BoundKinds | null>(null)
 const enabledPages = computed(() => PLUGIN_PAGES.map((page) => pluginEnabled(product.snapshot, page.plugin)).join())
 // Each source is compared on its own: any change of the product state, such as a summary the panel's
 // revision changed, must not end the pages' sessions, which would remount every tab's content.
+// The tabs are read with the panel closed too: a tab a kind asks to show opens it.
+watch([() => props.conversationId, recorded], ([conversationId]) => work.load(conversationId), { immediate: true })
 watch(
   [() => props.conversationId, () => state.value.open, recorded, enabledPages],
   ([conversationId, open, isRecorded]) => {
@@ -43,7 +45,6 @@ watch(
     if (!open || !isRecorded) {
       return
     }
-    work.load(conversationId)
     const pages = PLUGIN_PAGES.filter((page) => pluginEnabled(product.snapshot, page.plugin))
     bound.value = bindPages(pages, host, conversationId)
   },

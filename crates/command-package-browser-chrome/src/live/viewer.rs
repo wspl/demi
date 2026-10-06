@@ -14,8 +14,8 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result as BrowserResult};
 use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 use demi_command_package_browser_protocol::live::{
-    EndReason, LiveControl, LiveDialog, LiveModuleMessage, LiveTab, LiveViewerMessage, Platform,
-    PointerAction, STALL_MS, ViewerMode,
+    CursorRegion, EndReason, LiveControl, LiveDialog, LiveModuleMessage, LiveTab,
+    LiveViewerMessage, Platform, PointerAction, STALL_MS, ViewerMode,
 };
 use demi_command_protocol::{CommandError, Completion};
 use demi_command_sdk::{Input as ServiceInput, InvocationContext, ServiceError};
@@ -372,19 +372,23 @@ struct Watched {
 }
 
 struct Observing {
+    observed: Arc<Observed>,
     controls: watch::Receiver<Vec<LiveControl>>,
     cursor: watch::Receiver<(String, bool)>,
+    regions: watch::Receiver<Vec<CursorRegion>>,
     copies: broadcast::Receiver<String>,
     documents: watch::Receiver<u64>,
 }
 
 impl Observing {
-    fn new(observed: &Observed) -> Self {
+    fn new(observed: Arc<Observed>) -> Self {
         Self {
             controls: observed.controls.subscribe(),
             cursor: observed.cursor.subscribe(),
+            regions: observed.regions.subscribe(),
             copies: observed.copies.subscribe(),
             documents: observed.documents.subscribe(),
+            observed,
         }
     }
 }
@@ -395,6 +399,7 @@ enum Update {
     Dialog,
     Controls,
     Cursor,
+    Regions,
     Copied(String),
     Document,
 }
@@ -418,6 +423,7 @@ impl Watched {
                 tokio::select! {
                     Ok(()) = observed.controls.changed() => return Update::Controls,
                     Ok(()) = observed.cursor.changed() => return Update::Cursor,
+                    Ok(()) = observed.regions.changed() => return Update::Regions,
                     Ok(()) = observed.documents.changed() => return Update::Document,
                     copied = observed.copies.recv() => match copied {
                         Ok(text) => return Update::Copied(text),
@@ -582,7 +588,7 @@ impl Session<'_> {
             None => None,
             Some(tab) => {
                 let observed = match self.live.observer(&tab).await {
-                    Ok(observed) => Some(Observing::new(&observed)),
+                    Ok(observed) => Some(Observing::new(observed)),
                     Err(error) => {
                         // Without its observer the viewer gets no cursor, native
                         // controls or copied text of this tab.
@@ -602,7 +608,7 @@ impl Session<'_> {
             }
         };
         if self.watched.is_some() {
-            for update in [Update::Dialog, Update::Controls, Update::Cursor] {
+            for update in [Update::Dialog, Update::Controls, Update::Regions, Update::Cursor] {
                 self.update(update).await;
             }
         }
@@ -663,6 +669,17 @@ impl Session<'_> {
                 if let LiveViewerMessage::Paste { text, .. } = &message {
                     self.pasted = Some(text.clone());
                 }
+                // A new document resolves its cursor where the pointer is.
+                if let LiveViewerMessage::Pointer { tab, x, y, .. } = &message
+                    && let Some(Watched {
+                        tab: watched,
+                        observed: Some(observing),
+                        ..
+                    }) = &self.watched
+                    && watched.id() == tab
+                {
+                    observing.observed.pointer.send_replace(Some((*x, *y)));
+                }
                 // Moving the pointer is not operating.
                 if !matches!(
                     &message,
@@ -672,7 +689,7 @@ impl Session<'_> {
                     }
                 ) {
                     self.operated = Some(Instant::now());
-                    self.membership.operated().await;
+                    self.membership.operated();
                 }
                 self.input.send(Item::Message(message));
             }
@@ -692,6 +709,8 @@ impl Session<'_> {
                 epoch,
                 width,
                 height,
+                viewport,
+                scale,
             }) => {
                 let delivery = &mut self.delivery;
                 delivery.generation += 1;
@@ -706,6 +725,8 @@ impl Session<'_> {
                         generation: delivery.generation,
                         width,
                         height,
+                        viewport,
+                        scale,
                     })
                     .await;
             }
@@ -799,6 +820,15 @@ impl Session<'_> {
                         cursor,
                         editable,
                     })
+                    .await;
+            }
+            Update::Regions => {
+                let Some(observed) = &mut watched.observed else {
+                    return;
+                };
+                let regions = observed.regions.borrow_and_update().clone();
+                self.writer
+                    .control(&LiveModuleMessage::Cursors { tab, regions })
                     .await;
             }
             Update::Copied(text) => {

@@ -5,7 +5,7 @@
  */
 import { LIVE_VIDEO_CODEC } from '../generated/plugin'
 import type { LiveVideoFrame } from './frames'
-import type { PictureSink } from './session'
+import type { LiveStream, PictureSink } from './session'
 
 /** The live protocol's codec, as the Host's extension encodes it, decoded with the least delay. */
 const DECODER: VideoDecoderConfig = { codec: LIVE_VIDEO_CODEC, optimizeForLatency: true }
@@ -13,8 +13,8 @@ const DECODER: VideoDecoderConfig = { codec: LIVE_VIDEO_CODEC, optimizeForLatenc
 const DECODE_QUEUE = 12
 
 export interface PictureHandlers {
-  /** The page painted this frame. */
-  shown(generation: number, sequence: number, decodeQueue: number): void
+  /** The page painted this frame of `stream`'s generation. */
+  shown(stream: LiveStream, sequence: number, decodeQueue: number): void
   /** The stream cannot continue; the module must send a key frame. */
   lost(): void
 }
@@ -40,7 +40,8 @@ export async function picturesSupported(defect: (message: string, error: unknown
 
 export class CanvasPictures implements PictureSink {
   private decoder: VideoDecoder | null = null
-  private generation = 0
+  /** The generation whose frames follow; none before the first. */
+  private stream: LiveStream | null = null
   private latest: { frame: VideoFrame; sequence: number; generation: number } | null = null
   private readonly pending = new Map<number, { sequence: number; generation: number }>()
   private painting: number | null = null
@@ -55,13 +56,13 @@ export class CanvasPictures implements PictureSink {
    * first of them is painted, which also gives it their size: sizing or
    * clearing it here would show a black frame between two pictures.
    */
-  start(generation: number, _width: number, _height: number): void {
-    this.generation = generation
+  start(stream: LiveStream): void {
+    this.stream = stream
     this.release()
   }
 
   show(frame: LiveVideoFrame): void {
-    if (frame.generation !== this.generation) {
+    if (frame.generation !== this.stream?.generation) {
       return
     }
     if (!this.decoder) {
@@ -99,7 +100,7 @@ export class CanvasPictures implements PictureSink {
   private decoded(picture: VideoFrame): void {
     const about = this.pending.get(picture.timestamp)
     this.pending.delete(picture.timestamp)
-    if (!about || about.generation !== this.generation) {
+    if (!about || about.generation !== this.stream?.generation) {
       picture.close()
       return
     }
@@ -117,7 +118,8 @@ export class CanvasPictures implements PictureSink {
       return
     }
     try {
-      if (latest.generation !== this.generation) {
+      const stream = this.stream
+      if (!stream || latest.generation !== stream.generation) {
         return
       }
       const context = this.canvas.getContext('2d', { alpha: false })
@@ -126,7 +128,7 @@ export class CanvasPictures implements PictureSink {
         this.canvas.height = latest.frame.displayHeight
       }
       context?.drawImage(latest.frame, 0, 0)
-      this.handlers.shown(latest.generation, latest.sequence, this.decoder?.decodeQueueSize ?? 0)
+      this.handlers.shown(stream, latest.sequence, this.decoder?.decodeQueueSize ?? 0)
     } finally {
       latest.frame.close()
     }

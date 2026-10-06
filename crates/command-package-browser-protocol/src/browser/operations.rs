@@ -158,6 +158,11 @@ input!(@struct
         #[schemars(with = "Load")]
         #[garde(skip)]
         pub load: Option<Load>,
+        /// Also show the new tab to the user, as show does
+        #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+        #[schemars(with = "bool")]
+        #[garde(skip)]
+        pub show: Option<bool>,
     }
 );
 
@@ -191,6 +196,19 @@ pub struct OpenResult {
     )]
     #[schemars(with = "BrowserViewport")]
     pub viewport: Option<BrowserViewport>,
+}
+
+input! {
+    tab
+    /// `show`: asks the user's work panel to show a tab once the command's
+    /// job ends (`live-view.md` § Showing a tab).
+    pub struct ShowInput {}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ShowResult {
+    pub tab: TabId,
 }
 
 input! {
@@ -1482,6 +1500,7 @@ macro_rules! operations {
 
 operations! {
     "open" => Open(OpenInput),
+    "show" => Show(ShowInput),
     "tabs" => Tabs(TabsInput),
     "info" => Info(InfoInput),
     "goto" => Goto(GotoInput),

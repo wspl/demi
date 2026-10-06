@@ -245,6 +245,41 @@ async fn the_tab_list_shows_the_title_a_page_has_now() {
     .await;
 }
 
+/// `show` and `open --show` count the times the agent showed a tab, which
+/// the tab list carries to the user's work panel (`live-view.md` § Showing
+/// a tab); a tab never shown counts 0.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn showing_a_tab_raises_its_count_in_the_tab_list() {
+    with_browser_fixture(|fixture| async move {
+        let first = fixture.open("fixture.html").await;
+        let shows = async || {
+            let tabs = fixture.call("browser.tabs", json!({})).await;
+            tabs["tabs"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|tab| (tab["id"].as_str().unwrap().to_owned(), tab["shows"].as_u64().unwrap()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(shows().await, [(first.clone(), 0)]);
+        let shown = fixture.call("browser.show", json!({"tab": first})).await;
+        assert_eq!(shown, json!({"tab": first}));
+        fixture.call("browser.show", json!({"tab": first})).await;
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/browser/fixture.html");
+        let url = url::Url::from_file_path(path).unwrap();
+        let second = fixture
+            .call("browser.open", json!({"url": url.as_str(), "show": true}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        assert_eq!(shows().await, [(first, 2), (second, 1)]);
+        fixture
+    })
+    .await;
+}
+
 /// A command answers readable text unless the agent asks for JSON, as its
 /// shell's `--json` does, and an action's or a wait's text names the element
 /// its target resolved to (`browser.md` § Default text).

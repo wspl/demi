@@ -9,10 +9,11 @@ use chromiumoxide::{
             GetScreenInfosParams, ScreenId, SetDeviceMetricsOverrideParams,
             SetTouchEmulationEnabledParams, SetUserAgentOverrideParams, UserAgentMetadata,
         },
-        page::{CaptureScreenshotFormat, CaptureScreenshotParams},
+        page::{CaptureScreenshotFormat, CaptureScreenshotParams, EventFrameNavigated},
     },
     types::{Command, Method, MethodId},
 };
+use futures_util::StreamExt;
 use serde_json::Value;
 
 use crate::driver::{
@@ -63,12 +64,13 @@ pub(crate) const UNWATCHED: BrowserViewport = BrowserViewport {
 /// Mobile mode's size in CSS pixels.
 pub const PHONE: (u32, u32) = (390, 844);
 
-/// A viewport's picture size in device pixels at `scale`, even for the encoder.
+/// The size a viewport's capture takes in device pixels at `scale`: at
+/// scale 1 the page's own surface, which Chrome rounds up to whole pixels,
+/// so the capture copies the page's pixels without scaling them.
 pub fn pixels(viewport: &BrowserViewport, scale: f64) -> (u32, u32) {
-    let even = |length: u32| {
-        ((f64::from(length) * viewport.device_pixel_ratio * scale / 2.0).ceil() as u32) * 2
-    };
-    (even(viewport.width), even(viewport.height))
+    let side =
+        |length: u32| (f64::from(length) * viewport.device_pixel_ratio * scale).ceil() as u32;
+    (side(viewport.width), side(viewport.height))
 }
 
 /// A tab's viewport, and the Web viewport it returns to when the agent's
@@ -203,6 +205,7 @@ impl BrowserTab {
             touch.max_touch_points = mobile.then_some(5);
             self.page.execute(touch).await?;
         }
+        let mut navigations = self.page.event_listener::<EventFrameNavigated>().await?;
         // Resizing the native window after the emulated viewport can leave
         // macOS capture letterboxed at the old size, with mismatched input.
         self.fit_window(viewport).await?;
@@ -216,7 +219,22 @@ impl BrowserTab {
             .await?;
         // Metrics acknowledgement can precede the compositor's resized surface.
         // Publish only after it has painted, so capture cannot scale the old one.
-        paint(&self.page).await?;
+        // A document that replaces the page meanwhile is laid out at the new
+        // metrics from its start, and Chrome may never finish redrawing the
+        // one it left, of a tab nobody captures yet: its screenshot waited
+        // the whole request timeout.
+        let replaced = async {
+            while let Some(Ok(navigated)) = navigations.next().await {
+                if navigated.frame.parent_id.is_none() {
+                    return;
+                }
+            }
+            std::future::pending::<()>().await
+        };
+        tokio::select! {
+            painted = paint(&self.page) => painted?,
+            () = replaced => {}
+        }
         self.state.viewport.send_modify(|viewports| {
             viewports.current = viewport;
             if viewport.mode == ViewportMode::Web {
@@ -293,14 +311,16 @@ mod tests {
     }
 
     #[test]
-    fn a_picture_has_even_device_pixels() {
-        let viewport = BrowserViewport {
+    fn a_capture_takes_the_pages_whole_pixels() {
+        let mut viewport = BrowserViewport {
             mode: ViewportMode::Web,
             width: 701,
             height: 401,
             device_pixel_ratio: 1.5,
         };
         assert_eq!(pixels(&viewport, 1.0), (1052, 602));
-        assert_eq!(pixels(&viewport, 0.5), (526, 302));
+        assert_eq!(pixels(&viewport, 0.5), (526, 301));
+        viewport.device_pixel_ratio = 1.0;
+        assert_eq!(pixels(&viewport, 1.0), (701, 401));
     }
 }

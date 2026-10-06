@@ -1,10 +1,12 @@
 /**
  * Where a watched tab's picture sits in the panel, and what the viewer's
- * pointer means in the tab (`live-view.md` § Modes). A Web tab is the
- * panel's own size; Mobile and Custom keep theirs, scaled to fit and centred.
+ * pointer means in the tab (`live-view.md` § Modes), by the generation of
+ * the picture shown. A Web picture stands unscaled at the panel's top-left
+ * corner; Mobile and Custom keep their size, scaled to fit and centred.
  */
 import type { TitleText } from '@demicodes/plugin-sdk'
-import type { LiveTab, BrowserViewport } from '../generated/plugin'
+import type { BrowserViewport, CursorRegion } from '../generated/plugin'
+import type { LiveStream } from './session'
 
 export interface PanelSize {
   width: number
@@ -29,15 +31,34 @@ export function panelSize(width: number, height: number): PanelSize {
   return { width: side(width), height: side(height) }
 }
 
-/** The picture at its own size when it fits, scaled down when it does not. */
-export function placePicture(viewport: BrowserViewport, panel: PanelSize): Placement {
-  const scale = Math.min(1, panel.width / viewport.width, panel.height / viewport.height)
-  const width = viewport.width * scale
-  const height = viewport.height * scale
+/**
+ * The tab CSS pixels a generation's pictures cover: its viewport, less the
+ * last row or column of an odd side the encoder cut, at any scale.
+ */
+export function pictureExtent(stream: LiveStream): PanelSize {
+  const pixels = stream.viewport.devicePixelRatio * stream.scale
+  return { width: stream.width / pixels, height: stream.height / pixels }
+}
+
+/**
+ * Where a picture of `stream` sits in the panel. A Web picture stands at its
+ * own CSS size from the top-left corner, never scaled: the panel cuts it
+ * while it shrinks, and shows white beside it while it grows, until a
+ * picture at the new size arrives. Mobile and Custom keep their size, scaled
+ * down to fit and centred.
+ */
+export function placePicture(stream: LiveStream, panel: PanelSize): Placement {
+  const extent = pictureExtent(stream)
+  if (stream.viewport.mode === 'web') {
+    return { scale: 1, left: 0, top: 0, width: extent.width, height: extent.height }
+  }
+  const scale = Math.min(1, panel.width / stream.viewport.width, panel.height / stream.viewport.height)
+  const width = extent.width * scale
+  const height = extent.height * scale
   return {
     scale,
-    left: Math.max(0, (panel.width - width) / 2),
-    top: Math.max(0, (panel.height - height) / 2),
+    left: Math.max(0, (panel.width - stream.viewport.width * scale) / 2),
+    top: Math.max(0, (panel.height - stream.viewport.height * scale) / 2),
     width,
     height,
   }
@@ -65,6 +86,25 @@ export function tabPoint(
     x: inside((point.x - placement.left) / placement.scale, viewport.width),
     y: inside((point.y - placement.top) / placement.scale, viewport.height),
   }
+}
+
+/** CSS cursor keywords a page can name and this web browser shows; anything else, such as an image, is not one. */
+const CURSOR_KEYWORD = /^[a-z][a-z-]*$/
+
+/**
+ * The cursor the page shows at `point` of the tab (`live-view.md` § Input):
+ * the last region over the point decides; where none does, or one leaves
+ * the cursor to the browser, the observer's resolution at the pointer
+ * holds.
+ */
+export function cursorAt(point: { x: number; y: number }, regions: readonly CursorRegion[], resolved: string): string {
+  const region = regions.findLast((candidate) =>
+    point.x >= candidate.x
+    && point.x < candidate.x + candidate.width
+    && point.y >= candidate.y
+    && point.y < candidate.y + candidate.height)
+  const cursor = region && region.cursor !== 'auto' ? region.cursor : resolved
+  return CURSOR_KEYWORD.test(cursor) && cursor !== 'auto' ? cursor : 'default'
 }
 
 /** Where a rectangle of the tab lands in the panel, for a control over it. */
@@ -101,13 +141,4 @@ export function viewportChoices(viewport: BrowserViewport): ViewportChoice[] {
     })
   }
   return choices
-}
-
-/** The tab's address as the bar shows it, and its title for the strip. */
-export function tabTitle(tab: LiveTab): string {
-  if (tab.title) {
-    return tab.title
-  }
-  const url = URL.parse(tab.url)
-  return url ? url.host || url.href : 'New tab'
 }
