@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import EmailLoginPage from '@demicodes/web-ui/auth/EmailLoginPage.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import ChangeEmailDialog, {
   type ChangeEmailPhase,
 } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
@@ -72,14 +73,14 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
       title="Sign In"
       note="A rejected sign-in keeps both fields and puts the line under them."
     >
-      <div class="h-[28rem] overflow-auto rounded-xl border border-line bg-surface">
+      <ScrollArea axis="both" class="h-[28rem] rounded-xl border border-line bg-surface">
         <EmailLoginPage
           email="preview@example.test"
           password="preview-only"
           :phase="login"
           @submit="(address) => productWould(`Sign In as ${address}`)"
         />
-      </div>
+      </ScrollArea>
     </GallerySection>
     <GallerySection
       title="Dialogs"

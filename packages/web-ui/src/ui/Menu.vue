@@ -5,6 +5,7 @@ import { Search, CircleX } from '@lucide/vue'
 import { useTypeSelect } from '../composables/useTypeSelect'
 import HighlightText from './HighlightText.vue'
 import MenuItem from './MenuItem.vue'
+import ScrollArea from './ScrollArea.vue'
 import TypeSelectHint from './TypeSelectHint.vue'
 import {
   createSubmenuController,
@@ -65,7 +66,8 @@ const filterQuery = ref(props.initialQuery ?? '')
 const focusedIndex = ref(-1)
 const inputRef = ref<HTMLInputElement>()
 const panelRef = ref<HTMLElement>()
-const scrollRef = ref<HTMLElement>()
+const scrollArea = ref<InstanceType<typeof ScrollArea>>()
+const scrollRef = computed(() => scrollArea.value?.el)
 
 const listItems = computed(() => props.items ?? [])
 
@@ -273,10 +275,11 @@ function handleKeydown(event: KeyboardEvent) {
     >
       {{ emptyText }}
     </div>
-    <div
+    <ScrollArea
       v-else
-      ref="scrollRef"
-      class="overlay-menu-scroll p-1"
+      ref="scrollArea"
+      class="flex-auto"
+      viewport-class="overlay-menu-scroll p-1"
     >
       <template v-if="items != null && isVirtual">
         <div
@@ -347,7 +350,7 @@ function handleKeydown(event: KeyboardEvent) {
         </MenuItem>
       </template>
       <slot v-else />
-    </div>
+    </ScrollArea>
     <TypeSelectHint v-if="!filterable" :query="typeSelect.query.value" :matched="typeSelect.matched.value" />
   </div>
 </template>

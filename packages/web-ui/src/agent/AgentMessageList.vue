@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { useElementSize, useScroll } from '@vueuse/core'
+import { useElementSize } from '@vueuse/core'
 import type { Block, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { BLOCK_GAP, useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens, getVisibleBlocks } from './visible-blocks'
@@ -18,6 +18,7 @@ import AgentMessageVirtualBlock from './blocks/AgentMessageVirtualBlock.vue'
 import ActivitySlot from './blocks/ActivitySlot.vue'
 import SessionStatus from './SessionStatus.vue'
 import ErrorNotice from '../ui/ErrorNotice.vue'
+import ScrollArea from '../ui/ScrollArea.vue'
 import {
   sessionPaneStatus,
   type SessionFailureNotice,
@@ -161,7 +162,8 @@ function thinkingEndedAt(index: number): string | null {
   return next && 'createdAt' in next ? next.createdAt : null
 }
 
-const scrollContainer = ref<HTMLDivElement>()
+const scrollArea = ref<InstanceType<typeof ScrollArea>>()
+const scrollContainer = computed(() => scrollArea.value?.el)
 
 const {
   virtualItems,
@@ -178,8 +180,6 @@ const {
 onBeforeUnmount(() => {
   emit('saveScrollState', props.conversationId, getPersistedState())
 })
-
-const { isScrolling } = useScroll(scrollContainer, { idle: 1500 })
 
 // The part of the transcript the composer leaves visible, which caps a
 // message's image height (`file-previews.md` § Files named in messages). Until
@@ -214,11 +214,10 @@ defineExpose({
 
 <template>
   <div class="relative h-full">
-    <div
-      ref="scrollContainer"
-      class="h-full overflow-y-auto"
-      :class="[isScrolling ? 'scrollbar-active' : '', paneStatus ? 'flex flex-col' : '']"
-      style="overflow-anchor: none; scrollbar-gutter: stable;"
+    <ScrollArea
+      ref="scrollArea"
+      class="h-full"
+      :viewport-class="paneStatus ? '[overflow-anchor:none] flex flex-col' : '[overflow-anchor:none]'"
       :style="visibleHeightStyle"
       @scroll="onScroll"
     >
@@ -282,6 +281,6 @@ defineExpose({
           />
         </div>
       </div>
-    </div>
+    </ScrollArea>
   </div>
 </template>

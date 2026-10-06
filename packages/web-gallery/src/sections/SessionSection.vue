@@ -74,6 +74,7 @@ import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/age
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import {
   demoImageUrl,
   demoModel,
@@ -1799,10 +1800,10 @@ onBeforeUnmount(() => {
             <div
               class="gallery-frame flex h-[16rem] flex-col overflow-hidden bg-surface"
             >
-              <div class="min-h-0 flex-1 overflow-y-auto pt-2">
+              <ScrollArea class="flex-1" viewport-class="pt-2">
                 <UserBlock :content="userBubble" />
                 <ActivitySlot kind="connecting" :since="activitySince" />
-              </div>
+              </ScrollArea>
             </div>
           </GallerySpecimen>
           <GallerySpecimen
@@ -1829,12 +1830,13 @@ onBeforeUnmount(() => {
                 "
                 @retry="retrySession"
               />
-              <div
+              <ScrollArea
                 v-else
-                class="min-h-0 flex-1 overflow-y-auto pt-2"
+                class="flex-1"
+                viewport-class="pt-2"
               >
                 <UserBlock :content="userBubble" />
-              </div>
+              </ScrollArea>
             </div>
           </GallerySpecimen>
           <GallerySpecimen

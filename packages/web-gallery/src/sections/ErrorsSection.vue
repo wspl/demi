@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useGalleryView } from '../gallery-views'
 import AutofocusScope from '@demicodes/web-ui/ui/AutofocusScope.vue'
+import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import GalleryErrorSession from '../components/GalleryErrorSession.vue'
 import GalleryErrorMessages from '../components/GalleryErrorMessages.vue'
 import GalleryErrorForms from '../components/GalleryErrorForms.vue'
@@ -50,7 +51,7 @@ const rules = [
           surface is chosen by where the failure belongs, and a failure is named
           exactly once.
         </p>
-        <div class="overflow-x-auto rounded-xl border border-line">
+        <ScrollArea axis="x" class="rounded-xl border border-line">
           <table class="w-full min-w-[48rem] text-left text-[12px] leading-4">
             <thead class="bg-surface-raised text-fg-subtle">
               <tr>
@@ -69,7 +70,7 @@ const rules = [
               </tr>
             </tbody>
           </table>
-        </div>
+        </ScrollArea>
       </section>
       <GalleryErrorSession v-if="view === 'conversation'" />
       <GalleryErrorMessages v-else-if="view === 'messages'" />
