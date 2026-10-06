@@ -144,9 +144,10 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 | `mkdir`, `delete` | `{ path }` | `{ ok }` |
 | `watch` | `{ paths }` messages, as on the relay | The relay's `state`, `changed` and `heartbeat` messages |
 
-The runner tells the backend `direct_stream { stream, conversation, open }`
-once it accepts a stream channel's header, naming the stream with an id it
-gives it, and again when the channel ends, on every path. The backend then
+The runner tells the backend `direct_stream { stream, name, conversation,
+open }` once it accepts a stream channel's header, naming the stream with an
+id it gives it and the user stream's `name` the header asked for, and again
+when the channel ends, on every path. The backend then
 knows the stream as it knows a stream it opened:
 
 - **Activity.** It is conversation activity, as an open relay stream is
@@ -154,11 +155,13 @@ knows the stream as it knows a stream it opened:
   over the direct channel keeps the conversation from its idle release.
 - **Artifacts.** The runner asks the backend for the artifacts the stream
   needs, its service's executable or what its invocation asks for while it
-  runs, such as the browser its first tab needs, naming the stream as it
-  names a relay stream ([Service streams](runner.md#service-streams)). The
-  backend answers while the stream is open. For example, the first browser
-  tab on a device that never ran a browser installs it over the direct
-  channel's stream, as it would over the relay's.
+  runs, naming the stream as it names a relay stream
+  ([Service streams](runner.md#service-streams)). The backend answers while
+  the stream is open, for the artifacts a stream of that name may install,
+  as for a relay stream ([Install artifacts](native-runtime.md#install-artifacts)).
+  For example, a plugin's service that never ran on the device installs its
+  executable when its first stream opens over the direct channel, as it
+  would over the relay's.
 
 The runner carries each one out as it carries out the backend's request for
 the same thing ([Host operations](runner.md#host-operations)): the same
