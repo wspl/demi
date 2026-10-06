@@ -350,11 +350,14 @@ After it installs Chrome, `install` checks which of those libraries the Host
 lacks and which of those fonts it has no font of, and ends its output with
 what to install and the command that installs it
 ([Installation](#installation)). Every command that starts Chrome checks
-the same libraries first, since they can go missing after the installation,
-as a Cloud's system reset removes them while Chrome stays in the home: a
-command on a Host that lacks one fails before it starts Chrome, with the
-lines `install` would end with, so the agent reads one message and one
-command, never the loader's error inside a CDP connection failure. The program never downloads Chrome or looks for any other Chrome,
+what `install` checks first, the libraries and, on a Host that restricts
+user namespaces, the AppArmor profile, since either can be missing after the
+installation, as a Cloud's system reset removes the libraries while Chrome
+stays in the home: a command on a Host that lacks one fails before it starts
+Chrome, with the lines `install` would end with, so the agent reads one
+message and the commands to run, never the loader's error or "No usable
+sandbox!" inside a CDP connection failure. Missing fonts alone do not stop a
+start. The program never downloads Chrome or looks for any other Chrome,
 and an unsupported platform fails the installation explicitly rather than
 using a different browser.
 
@@ -723,7 +726,10 @@ the entire page tree or a screenshot after every action.
 
 Page titles, text, attributes, and errors are quoted data. Escape control
 characters, newlines inside values, and terminal sequences so page content
-cannot forge a result header or command status. Observation of a password field
+cannot forge a result header or command status. A `browser_unavailable`
+message keeps its lines: Demi writes it about the Host, before any page
+exists, and it carries the lines of what the Host lacks and the commands that
+supply it ([Browser distribution](#browser-distribution)). Observation of a password field
 shows `[protected]`; filling it does not echo its value.
 
 Text column widths and line numbers are not a parsing contract. Scripts use
