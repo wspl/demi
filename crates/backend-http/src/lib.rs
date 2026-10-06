@@ -14,6 +14,7 @@ mod content;
 mod conversations;
 mod cookies;
 mod devices;
+mod direct;
 mod drafts;
 mod error;
 mod expose;
@@ -320,6 +321,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(devices::browse).post(devices::make_directory),
         )
         .route("/devices/{id}/log", get(devices::log))
+        .route("/devices/{id}/direct", get(direct::open))
         .route(
             "/conversations/{id}/fs",
             get(files::list)
