@@ -95,3 +95,57 @@ export function selectedTab(state: PanelState, kinds: readonly PanelTabKind[]): 
 export function removeTabs(state: PanelState, ids: readonly string[]): PanelState {
   return closeTabs(state.tabs, state.history, ids)
 }
+
+/**
+ * Each tab's highest count of the times something asked that the user see
+ * it, as the page last applied it, by tab id (`web-application.md` § Work
+ * panel); it stands beside the page's selection history.
+ */
+export type AppliedShows = Readonly<Record<string, number>>
+
+/**
+ * The tabs whose kind counts more showings than the page applied
+ * (`plugin-pages.md` § Work panel kinds), in the panel's order, and the
+ * record once they are applied: the panel opens and selects each, so the
+ * last of them shows. Tabs the panel no longer has leave the record. Null
+ * when no tab asks; the record then stays as it is.
+ */
+export function pendingShows(
+  tabs: readonly PanelTab[],
+  pages: readonly AnyPluginPage[],
+  enabled: (plugin: string) => boolean,
+  applied: AppliedShows,
+): { shown: string[]; applied: AppliedShows } | null {
+  const kinds = pages.filter((page) => enabled(page.plugin)).flatMap((page) => page.kinds ?? [])
+  const counts = tabs.flatMap((tab) => {
+    const kind = kinds.find((candidate) => candidate.kind === tab.kind)
+    const data = kind?.shows ? kind.schema.safeParse(tab.data) : null
+    return kind?.shows && data?.success ? [[tab.id, kind.shows(data.data)] as const] : []
+  })
+  const shown = counts.filter(([id, count]) => count > (applied[id] ?? 0)).map(([id]) => id)
+  if (shown.length === 0) {
+    return null
+  }
+  const present = new Set(tabs.map((tab) => tab.id))
+  const kept = Object.entries(applied).filter(([id]) => present.has(id))
+  const raised = counts.filter(([id]) => shown.includes(id))
+  return { shown, applied: { ...Object.fromEntries(kept), ...Object.fromEntries(raised) } }
+}
+
+/**
+ * The tabs and pinned kinds whose contents the panel keeps on the page
+ * (`web-application.md` § Work panel, Contents stay): each one once shown,
+ * in the order first shown, until it leaves the panel (`present` lists the
+ * ids it has). The selection joins at the end.
+ */
+export function keptContents(
+  kept: readonly string[],
+  selection: string | null,
+  present: readonly string[],
+): readonly string[] {
+  const staying = kept.filter((id) => present.includes(id))
+  if (selection !== null && present.includes(selection) && !staying.includes(selection)) {
+    return [...staying, selection]
+  }
+  return staying.length === kept.length ? kept : staying
+}

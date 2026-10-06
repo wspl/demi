@@ -1,11 +1,11 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
 import { LiveFrameReader, encodeFile, encodeMessage, encodeVideo, type LiveFrame } from '../frames'
-import { keyMessage, localKey, modifiers, pointerMessage, wheelMessage } from '../input'
+import { ClickCount, keyMessage, localKey, modifiers, pointerMessage, wheelMessage } from '../input'
 import { pageReturned } from '@demicodes/plugin-sdk'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
-import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type PictureSink } from '../session'
-import { deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
+import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStream, type PanelReport, type PictureSink } from '../session'
+import { cursorAt, deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
 
 const WEB = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
 const PHONE = { width: 390, height: 844, devicePixelRatio: 2, mode: 'mobile' } as const
@@ -84,15 +84,51 @@ test('a viewer message and a file frame carry their kind and header', () => {
   expect([...file.subarray(13)]).toEqual([1, 2, 3])
 })
 
-test('a web tab fills the panel and a phone keeps its size in the middle', () => {
+/** A generation of `viewport`'s pictures, at the size the module encodes them. */
+function generation(viewport: LiveStream['viewport'], width = viewport.width * viewport.devicePixelRatio, height = viewport.height * viewport.devicePixelRatio): LiveStream {
+  return { tab: 't1', generation: 1, width, height, viewport, scale: 1 }
+}
+
+test('a web picture stands unscaled at the top-left corner, and a phone keeps its size in the middle', () => {
   const panel = panelSize(800.4, 600.6)
   expect(panel).toEqual({ width: 800, height: 601 })
-  const web = placePicture(WEB, { width: 800, height: 600 })
-  expect(web).toMatchObject({ scale: 1, left: 0, top: 0, width: 800, height: 600 })
-  const phone = placePicture(PHONE, { width: 800, height: 600 })
+  // The panel grew: the picture of the old size stands as it is, the rest is the frame's white.
+  expect(placePicture(generation(WEB), { width: 1000, height: 700 })).toEqual({ scale: 1, left: 0, top: 0, width: 800, height: 600 })
+  // The panel shrank: the panel cuts the picture.
+  expect(placePicture(generation(WEB), { width: 500, height: 400 })).toEqual({ scale: 1, left: 0, top: 0, width: 800, height: 600 })
+  // An odd width at ratio 1 is encoded a pixel narrower, and shown a pixel narrower, never stretched.
+  const odd = generation({ width: 701, height: 401, devicePixelRatio: 1, mode: 'web' }, 700, 400)
+  expect(placePicture(odd, { width: 701, height: 401 })).toMatchObject({ scale: 1, width: 700, height: 400 })
+  const phone = placePicture(generation(PHONE), { width: 800, height: 600 })
   expect(phone.scale).toBeCloseTo(600 / 844)
   expect(phone.left).toBeCloseTo((800 - 390 * phone.scale) / 2)
   expect(phone.top).toBe(0)
+})
+
+test('input maps by the picture shown, never by a viewport the tab list reports before its picture', () => {
+  // The tab list already says Mobile; the picture shown is still the Web one.
+  const shown = placePicture(generation(WEB), { width: 800, height: 600 })
+  expect(tabPoint({ x: 400, y: 300 }, WEB, shown)).toEqual({ x: 400, y: 300 })
+  const next = placePicture(generation(PHONE), { width: 800, height: 600 })
+  expect(tabPoint({ x: 400, y: 300 }, PHONE, next).x).toBeCloseTo(195, 0)
+})
+
+test('the cursor under the pointer comes from the page\'s regions, the last one over the point first', () => {
+  const regions = [
+    { x: 0, y: 0, width: 400, height: 300, cursor: 'pointer' },
+    { x: 100, y: 100, width: 50, height: 50, cursor: 'text' },
+    { x: 200, y: 100, width: 50, height: 50, cursor: 'auto' },
+  ]
+  const cases: Array<[string, { x: number; y: number }, string, string]> = [
+    ['over a button', { x: 10, y: 10 }, 'default', 'pointer'],
+    ['over a field in it', { x: 120, y: 120 }, 'default', 'text'],
+    ['where the page leaves it to the browser', { x: 220, y: 120 }, 'text', 'text'],
+    ['outside every region', { x: 500, y: 500 }, 'default', 'default'],
+    ['where the observer resolved a name this browser has no rule for', { x: 500, y: 500 }, 'url(x.png)', 'default'],
+  ]
+  for (const [where, point, resolved, cursor] of cases) {
+    expect({ where, cursor: cursorAt(point, regions, resolved) }).toEqual({ where, cursor })
+  }
 })
 
 test('a picture starts on a whole device pixel wherever its panel stands', () => {
@@ -105,7 +141,7 @@ test('a picture starts on a whole device pixel wherever its panel stands', () =>
 })
 
 test('panel points map to the tab and back, within the picture', () => {
-  const placement = placePicture(PHONE, { width: 800, height: 600 })
+  const placement = placePicture(generation(PHONE), { width: 800, height: 600 })
   const middle = tabPoint({ x: placement.left + placement.width / 2, y: placement.height / 2 }, PHONE, placement)
   expect(middle.x).toBeCloseTo(195)
   expect(middle.y).toBeCloseTo(422)
@@ -125,9 +161,9 @@ test('the viewport menu offers Web and Mobile, and shows what the agent set', ()
 
 test('pointer, wheel and key events carry what the page needs', () => {
   const none = { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false }
-  const down = pointerMessage('t_a', 'down', { x: 5, y: 6 }, { ...none, button: 2, buttons: 2, detail: 1 })
+  const down = pointerMessage('t_a', 'down', { x: 5, y: 6 }, { ...none, button: 2, buttons: 2 })
   expect(down).toMatchObject({ type: 'pointer', action: 'down', button: 'right', buttons: 2, clickCount: 1, modifiers: 0 })
-  const move = pointerMessage('t_a', 'move', { x: 1, y: 2 }, { ...none, button: 0, buttons: 1, detail: 0 })
+  const move = pointerMessage('t_a', 'move', { x: 1, y: 2 }, { ...none, button: 0, buttons: 1 })
   expect(move).toMatchObject({ button: 'left', clickCount: 0 })
   const lines = wheelMessage('t_a', { x: 0, y: 0 }, { ...none, deltaX: 0, deltaY: 3, deltaMode: 1 }, 600)
   expect(lines).toMatchObject({ deltaY: 48 })
@@ -144,6 +180,19 @@ test('pointer, wheel and key events carry what the page needs', () => {
   // The viewer's own paste reaches the page as a paste event.
   expect(localKey({ ...none, metaKey: true, key: 'v', code: 'KeyV', keyCode: 86, repeat: false, location: 0, getModifierState: () => false })).toBe(true)
   expect(localKey({ ...none, metaKey: true, key: 'c', code: 'KeyC', keyCode: 67, repeat: false, location: 0, getModifierState: () => false })).toBe(false)
+})
+
+test('presses close in time and place count as one double or triple click, as the page needs them', () => {
+  // A pointer event's own detail is 0, so the view counts.
+  const clicks = new ClickCount()
+  const press = (timeStamp: number, clientX = 10, button = 0) => clicks.press({ timeStamp, clientX, clientY: 10, button })
+  expect([press(0), press(200), press(400), press(600)]).toEqual([1, 2, 3, 3])
+  expect(press(2000)).toBe(1)
+  expect(press(2100, 30)).toBe(1)
+  expect(press(2200, 30, 2)).toBe(1)
+  expect(clicks.current).toBe(1)
+  expect(pointerMessage('t_a', 'down', { x: 1, y: 1 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1 }, 2))
+    .toMatchObject({ clickCount: 2 })
 })
 
 test('keyboard prototype getters preserve shortcuts and AltGraph text', () => {
@@ -177,7 +226,7 @@ function session(options: Partial<LiveSessionOptions> = {}) {
   let handlers: UserStreamHandlers | null = null
   let now = 0
   const sink: PictureSink = {
-    start: (generation, width, height) => pictures.push(['start', generation, width] as never) as never,
+    start: (stream) => pictures.push(['start', stream.generation, stream.width] as never) as never,
     show: (frame) => pictures.push(['show', frame.generation, frame.sequence] as never) as never,
     stop: () => pictures.push(['stop', 0, 0] as never) as never,
   }
@@ -194,6 +243,7 @@ function session(options: Partial<LiveSessionOptions> = {}) {
       }
     },
     platform: 'mac',
+    panel: () => null,
     now: () => now,
     // The defects these tests plant are the frames and messages they check the view's answer to.
     defect: () => {},
@@ -227,8 +277,7 @@ test('a view says hello, learns the tabs and acknowledges what it shows', () => 
   expect(view.sent[0]).toEqual({ type: 'hello', platform: 'mac' })
   view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
   expect(view.live.state).toMatchObject({ connection: 'live', running: true, watched: TAB.id })
-  expect(view.live.viewport).toEqual(WEB)
-  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200 }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.receive(video(TAB.id, 1, 4, true, [0, 0, 0, 1]))
   // Frames of an older generation are not shown.
   view.receive(video(TAB.id, 0, 5, true, [0, 0, 0, 1]))
@@ -241,24 +290,24 @@ test('a canvas that comes after its stream started shows it from a key frame it 
   // After a reload the stream starts, and a still page sends its one key frame, before the view has a canvas.
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
-  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 2, width: 1600, height: 1200 }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 2, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.receive(video(TAB.id, 2, 1, true, [0, 0, 0, 1]))
   const started: number[] = []
-  view.live.attach({ start: (generation) => started.push(generation), show: () => {}, stop: () => {} })
+  view.live.attach({ start: (stream) => started.push(stream.generation), show: () => {}, stop: () => {} })
   expect(started).toEqual([2])
   expect(view.sent.at(-1)).toEqual({ type: 'keyframe', generation: 2 })
   // The canvas of a tab the view moves to does not start on the pictures of the one it left.
   const other = { ...TAB, id: 't2' }
   view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB, other], watched: TAB.id }))
   view.live.watch(other.id)
-  view.live.attach({ start: (generation) => started.push(generation), show: () => {}, stop: () => {} })
+  view.live.attach({ start: (stream) => started.push(stream.generation), show: () => {}, stop: () => {} })
   expect(started).toEqual([2])
 })
 
 test('a stalled stream discards input and resumes from a key frame', () => {
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
-  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200 }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.advance(300)
   view.live.tick()
   expect(view.live.state.connection).toBe('live')
@@ -267,7 +316,7 @@ test('a stalled stream discards input and resumes from a key frame', () => {
   expect(view.live.state.connection).toBe('stalled')
   expect(view.sent.at(-1)).toEqual({ type: 'release' })
   const before = view.sent.length
-  view.live.input(pointerMessage(TAB.id, 'down', { x: 1, y: 2 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1, detail: 1 }))
+  view.live.input(pointerMessage(TAB.id, 'down', { x: 1, y: 2 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1 }))
   expect(view.sent).toHaveLength(before)
   view.receive(moduleFrame({ type: 'heartbeat' }))
   expect(view.live.state.connection).toBe('live')
@@ -291,7 +340,7 @@ test('a choice names the revision the viewer saw, and a dialog is answered once'
   // Rejoining a live tab sends its unchanged controls before the first stream.
   view.receive(moduleFrame({ type: 'controls', tab: TAB.id, controls: [control] }))
   for (const generation of [1, 2]) {
-    view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation, width: 1600, height: 1200 }))
+    view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
     expect(view.live.state.controls).toEqual([control])
   }
   view.live.choose(control, 'b', [1])
@@ -389,8 +438,8 @@ test('a view whose stream brings nothing for 75 seconds is broken and opens agai
 test('a view that ends opens again, watching what the viewer watched', () => {
   jest.useFakeTimers()
   try {
-    const view = session()
-    view.live.panel({ width: 800, height: 600 }, 2, { width: 1440, height: 900 })
+    const report: PanelReport = { panel: { width: 800, height: 600 }, devicePixelRatio: 2, screen: { width: 1440, height: 900 } }
+    const view = session({ panel: () => report })
     view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
     view.close('host_unreachable')
     expect(view.live.state).toMatchObject({ connection: 'opening', running: false })
@@ -464,7 +513,7 @@ test('a view the module ended and the socket then closed opens again once', () =
 test('a picture ends the notice that capture failed, and no other', () => {
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
-  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200 }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.receive(moduleFrame({ type: 'notice', code: 'capture_failed', message: 'the capture extension did not connect' }))
   expect(view.live.state.notice?.code).toBe('capture_failed')
   view.receive(video(TAB.id, 1, 1, true, [0, 0, 0, 1]))
@@ -481,7 +530,6 @@ test('a message the protocol refuses is never sent, so the module does not end t
   class Hover {
     get button() { return 0 }
     get buttons() { return 0 }
-    get detail() { return 0 }
     get altKey() { return false }
     get ctrlKey() { return false }
     get metaKey() { return false }

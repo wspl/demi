@@ -221,6 +221,13 @@ export interface PanelKind<Data, Session = undefined> {
   pinned?: { data(): Data }
   /** What a tab shows next when its user picks it in the strip, even while it is selected. */
   picked?(data: Data): Data
+  /**
+   * How many times something asked that the user see the tab, from its
+   * data. When the count rises above the one the page last applied for the
+   * tab, the panel opens and selects it, open or closed before
+   * (`plugin-pages.md` § Work panel kinds).
+   */
+  shows?(data: Data): number
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `conversation`, `data`. */
   badge?: Component
   /** The intents it opens: for each, the data its tab shows next, from the payload and what it shows now. */

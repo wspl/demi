@@ -2,7 +2,9 @@ import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
   openIntent,
+  pendingShows,
   type PanelState,
+  type PanelTab,
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
@@ -53,12 +55,34 @@ export const useWorkPanel = defineStore('work-panel', () => {
   function tabsOf(conversationId: string): PanelTabs {
     let tabs = panels.get(conversationId)
     if (!tabs) {
-      tabs = new PanelTabs(panelBackend(conversationId), (error) => {
+      const created = new PanelTabs(panelBackend(conversationId), (error) => {
         reportError('Could Not Change the Work Panel', error, { userVisible: true })
       })
-      panels.set(conversationId, tabs)
+      panels.set(conversationId, created)
+      // A tab whose kind asks that the user see it opens the panel, open or closed (`web-application.md` § Work panel).
+      watch(() => created.tabs.value, (current) => applyShows(conversationId, current))
+      tabs = created
     }
     return tabs
+  }
+
+  /**
+   * Opens the panel on each tab whose kind counts more showings than this
+   * page applied, once, and records the counts beside the selection history.
+   */
+  function applyShows(conversationId: string, tabs: readonly PanelTab[]): void {
+    const applied = resources.local.workPanelShown?.[conversationId] ?? {}
+    const pending = pendingShows(tabs, PLUGIN_PAGES, enabled, applied)
+    if (!pending) {
+      return
+    }
+    resources.local.workPanelShown ??= {}
+    resources.local.workPanelShown[conversationId] = { ...pending.applied }
+    const state = stateFor(conversationId)
+    for (const id of pending.shown) {
+      state.history = selectTab(state.history, id)
+    }
+    state.open = true
   }
 
   function stateFor(conversationId: string): WorkState {

@@ -4,8 +4,14 @@
 //! room.
 //!
 //! Nothing reaches a stream through a queue. The hub publishes who watches
-//! the tab; each viewer publishes its latest pacing, which supersedes the one
-//! before, and wakes the stream to read it.
+//! the tab and when its layout has sized the tab; each viewer publishes its
+//! latest pacing, which supersedes the one before, and wakes the stream to
+//! read it.
+//!
+//! A capture starts only once the hub sized the tab, so it never captures at
+//! a size it is about to replace, and a new size or pixel ratio starts a new
+//! capture (`live-view.md` § Delivery). Each size, viewport or scale is a new
+//! generation for the viewers, which its first frame announces.
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
 
@@ -17,7 +23,8 @@ use tokio_util::task::TaskTracker;
 
 use crate::driver::capture::{Capture, CaptureChannel, CaptureEvent, Frame};
 use crate::driver::operation::BrowserError;
-use crate::tabs::tab::BrowserTab;
+use crate::live::protocol::BrowserViewport;
+use crate::tabs::{tab::BrowserTab, viewport::pixels};
 
 use crate::live::rate::{self, FRAME_RATES, SCALES};
 
@@ -27,13 +34,17 @@ use crate::live::rate::{self, FRAME_RATES, SCALES};
 const VIEWER_QUEUE: usize = 8;
 const RETRY_LIMIT: Duration = Duration::from_secs(5);
 
+#[derive(Clone)]
 pub(crate) enum Event {
-    /// Pictures of this size follow, starting with a key frame; `epoch`
-    /// names this capture in the viewer's pace reports.
+    /// Pictures of this size in pixels follow, starting with a key frame,
+    /// showing `viewport` at `scale` of its device pixels; `epoch` names this
+    /// generation in the viewer's pace reports.
     Restart {
         epoch: u32,
         width: u32,
         height: u32,
+        viewport: BrowserViewport,
+        scale: f64,
     },
     Frame(Frame),
     /// This Host cannot capture, for this reason.
@@ -97,14 +108,26 @@ type Members = Arc<HashMap<u64, Member>>;
 pub(crate) struct StreamHandle {
     members: watch::Sender<Members>,
     wake: watch::Sender<u64>,
+    /// Whether the hub has given the tab the size its viewers' panels ask for.
+    sized: watch::Sender<bool>,
 }
 
 impl StreamHandle {
     pub fn start(tab: BrowserTab, captures: CaptureChannel, tasks: &TaskTracker) -> Self {
         let (members, watched) = watch::channel(Members::default());
         let (wake, woken) = watch::channel(0);
-        tasks.spawn(run(tab, captures, watched, woken, tasks.clone()));
-        Self { members, wake }
+        let (sized, laid_out) = watch::channel(false);
+        tasks.spawn(run(tab, captures, watched, woken, laid_out, tasks.clone()));
+        Self {
+            members,
+            wake,
+            sized,
+        }
+    }
+
+    /// The hub sized the tab for its viewers: the capture may start.
+    pub fn sized(&self) {
+        self.sized.send_if_modified(|sized| !std::mem::replace(sized, true));
     }
 
     /// Adds viewer `id`; its view carries the pictures and its pacing.
@@ -161,11 +184,35 @@ struct Viewer {
 
 struct Running {
     capture: Capture,
+    /// The generation the viewers last heard of.
     epoch: u32,
+    /// The size the capture was asked for, in pixels.
     size: (u32, u32),
+    /// The size of the generation's pictures, as its first frame came; none
+    /// until it comes. Chrome delivers even sides, scaling a tab with an odd
+    /// one to the nearest even size of its shape, so only a frame tells it.
+    shown: Option<(u32, u32)>,
+    /// The viewport and the scale its pictures show.
+    viewport: BrowserViewport,
+    scale: f64,
     encoding: (u32, u32),
     /// The newest frame's sequence.
     sequence: u32,
+}
+
+impl Running {
+    /// What tells a viewer about the generation the capture's pictures are
+    /// of, once its first frame gave its size.
+    fn restart(&self) -> Option<Event> {
+        let (width, height) = self.shown?;
+        Some(Event::Restart {
+            epoch: self.epoch,
+            width,
+            height,
+            viewport: self.viewport,
+            scale: self.scale,
+        })
+    }
 }
 
 async fn run(
@@ -173,6 +220,7 @@ async fn run(
     captures: CaptureChannel,
     mut members: watch::Receiver<Members>,
     mut wake: watch::Receiver<u64>,
+    mut sized: watch::Receiver<bool>,
     tasks: TaskTracker,
 ) {
     let mut viewers: HashMap<u64, Viewer> = HashMap::new();
@@ -198,7 +246,9 @@ async fn run(
             .values()
             .map(|viewer| viewer.scale)
             .fold(SCALES[0], f64::min);
-        let size = crate::tabs::viewport::pixels(&viewport.borrow_and_update().current, scale);
+        let current = viewport.borrow_and_update().current;
+        let size = pixels(&current, scale);
+        let ready = *sized.borrow_and_update();
         // The slowest viewer's budget; before any measured one, the budget a
         // sharp picture of this size needs.
         let bitrate = viewers
@@ -206,29 +256,42 @@ async fn run(
             .filter_map(|viewer| viewer.bitrate)
             .min()
             .unwrap_or_else(|| rate::initial_bitrate(u64::from(size.0) * u64::from(size.1), fps));
-        let restart = running.as_ref().is_none_or(|running| running.size != size);
+        // A running tab capture cannot take a new size: Chrome refuses
+        // `applyConstraints` that grow it ("Cannot satisfy constraints") and
+        // sends no frame after ones that shrink it. And a capture that runs
+        // while the screen's pixel ratio changes keeps a scale of its own on
+        // the page: a tab whose ratio went from 2 to 1 stayed at 1.0000000298
+        // until a new capture replaced it. Either change starts a new capture.
+        if running.as_ref().is_some_and(|running| {
+            running.size != size || running.viewport.device_pixel_ratio != current.device_pixel_ratio
+        }) {
+            running = None;
+        }
+        let changed = running
+            .as_mut()
+            .filter(|running| running.viewport != current || running.scale != scale);
         if viewers.is_empty() {
             running = None;
-        } else if restart && unavailable.is_none() && Instant::now() >= attempt {
-            running = None;
+        } else if let Some(running) = changed {
+            // The same pictures of another viewport, as a new generation that
+            // its first frame, a key frame, announces.
+            running.capture.key_frame();
+            running.shown = None;
+            running.viewport = current;
+            running.scale = scale;
+        } else if running.is_none() && ready && unavailable.is_none() && Instant::now() >= attempt {
             match captures
                 .start(tab.target_id(), size.0, size.1, fps, bitrate, &stop)
                 .await
             {
                 Ok(capture) => {
-                    epoch += 1;
-                    for viewer in viewers.values_mut() {
-                        viewer.floor = 0;
-                        let _behind = viewer.events.try_send(Event::Restart {
-                            epoch,
-                            width: size.0,
-                            height: size.1,
-                        });
-                    }
                     running = Some(Running {
                         capture,
                         epoch,
                         size,
+                        shown: None,
+                        viewport: current,
+                        scale,
                         encoding: (bitrate, fps),
                         sequence: 0,
                     });
@@ -264,6 +327,10 @@ async fn run(
         tokio::select! {
             _ = tab.ended().cancelled() => return,
             _ = viewport.changed() => {}
+            // The hub drops a stream nobody watches.
+            laid_out = sized.changed(), if !ready => if laid_out.is_err() {
+                return;
+            },
             _ = tokio::time::sleep_until(attempt), if waiting => {}
             changed = members.changed() => {
                 // The hub drops a stream nobody watches.
@@ -283,11 +350,9 @@ async fn run(
                         let _behind = member.events.try_send(Event::Failed(reason.clone()));
                     }
                     if let Some(running) = &running {
-                        let _behind = member.events.try_send(Event::Restart {
-                            epoch: running.epoch,
-                            width: running.size.0,
-                            height: running.size.1,
-                        });
+                        if let Some(restart) = running.restart() {
+                            let _behind = member.events.try_send(restart);
+                        }
                         running.capture.key_frame();
                     }
                     viewers.insert(*id, Viewer {
@@ -313,6 +378,23 @@ async fn run(
                     // Enqueuing a start does not mean Chrome acquired its stream.
                     retry = Duration::ZERO;
                     if let Some(running) = &mut running {
+                        // The first key frame of a generation, or of a size
+                        // Chrome changed by itself, announces its size; the
+                        // pictures before it belong to the generation before.
+                        let sides = (u32::from(frame.width), u32::from(frame.height));
+                        if running.shown != Some(sides) {
+                            if !frame.key {
+                                continue;
+                            }
+                            epoch += 1;
+                            running.epoch = epoch;
+                            running.shown = Some(sides);
+                            let restart = running.restart().expect("the generation has its size");
+                            for viewer in viewers.values_mut() {
+                                viewer.floor = running.sequence;
+                                let _behind = viewer.events.try_send(restart.clone());
+                            }
+                        }
                         running.sequence = frame.sequence;
                     }
                     failure = None;

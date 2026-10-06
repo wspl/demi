@@ -213,6 +213,15 @@ type and the snippet on the file's capsule
 ([Attachments](product.md#attachments)), so the capsule shows what the backend
 determined.
 
+The page sends no bytes the caller's namespace holds already. Before an upload
+it computes the file's SHA-256 and asks with
+`POST /attachments?name=<file name>&sha256=<hash>` and no body: when the
+caller's namespace holds that blob, the answer is 201 with `{ attachment }`
+for it, read from the stored bytes; otherwise 404 `blob_missing`, and the page
+then uploads the bytes as above, naming the same `sha256`, which the backend
+checks against what it received. The check reads only the caller's own
+namespace, so it says nothing of another user's files.
+
 `GET /api/conversations/:id/attachments/:attachment` answers an attachment
 the agent uploaded ([Attachment commands](../execution/commands.md#attachment-commands))
 as `{ id, name, mediaType, size, blob }`, where `attachment` is its number,

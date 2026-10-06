@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, jest, test } from 'bun:test'
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveViewerMessage } from '../../generated/plugin'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
@@ -64,6 +64,24 @@ function framed(message: LiveModuleMessage): Uint8Array {
 
 const VIEWPORT = { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' } as const
 
+/** The panel a shown content measures. */
+const PANEL = { panel: { width: 800, height: 600 }, devicePixelRatio: 2, screen: { width: 1440, height: 900 } }
+
+/** A stream that keeps what the view sends, as the module reads it. */
+function recordingStream(views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }>) {
+  const decoder = new TextDecoder()
+  return (handlers: UserStreamHandlers) => {
+    const view = { sent: [] as LiveViewerMessage[], closed: false, handlers }
+    views.push(view)
+    return {
+      send: (bytes: Uint8Array) => void view.sent.push(JSON.parse(decoder.decode(bytes.subarray(5))) as LiveViewerMessage),
+      close: () => {
+        view.closed = true
+      },
+    }
+  }
+}
+
 test('a new tab waits for the Host to hold the browser the tab list names', () => {
   const chrome = { name: 'Chrome for Testing', version: '153.0.8010.36' }
   const installed = shallowRef([{ package: 'demi.browser', name: 'program', version: '0.1.3' }])
@@ -83,24 +101,10 @@ test('a new tab waits for the Host to hold the browser the tab list names', () =
 
 test('a hidden page closes its view, and shown again watches the shown tab on a new view', async () => {
   const visibility = ref<DocumentVisibilityState>('visible')
-  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean }> = []
-  const decoder = new TextDecoder()
-  const { controller } = harness(
-    {
-      stream: () => {
-        const view = { sent: [] as LiveViewerMessage[], closed: false }
-        views.push(view)
-        return {
-          send: (bytes) => void view.sent.push(JSON.parse(decoder.decode(bytes.subarray(5))) as LiveViewerMessage),
-          close: () => {
-            view.closed = true
-          },
-        }
-      },
-    },
-    { visibility, pictures: async () => true },
-  )
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const { controller } = harness({ stream: recordingStream(views) }, { visibility, pictures: async () => true })
   await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
   controller.show('t1')
   expect(views).toHaveLength(1)
   // Nobody can watch a hidden page, and an open view would keep its Cloud awake.
@@ -113,7 +117,7 @@ test('a hidden page closes its view, and shown again watches the shown tab on a 
   expect(views).toHaveLength(1)
   visibility.value = 'visible'
   expect(views).toHaveLength(2)
-  expect(views[1]!.sent.map((message) => message.type)).toEqual(['hello', 'watch'])
+  expect(views[1]!.sent.map((message) => message.type)).toEqual(['hello', 'panel', 'watch'])
   expect(views[1]!.sent.at(-1)).toEqual({ type: 'watch', tab: 't2' })
   controller.dispose()
   expect(views[1]!.closed).toBe(true)
@@ -131,6 +135,7 @@ test('a view waiting to reconnect connects at once when a tab that just got its 
     { pictures: async () => true },
   )
   await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
   controller.show('t1')
   // The Cloud ran no browser yet, so the view ended; its next try is a wait away.
   opened[0]!.closed('host_stopped')
@@ -153,6 +158,7 @@ test('a view that finds its watched tab gone asks the plugin to look, once for t
     { pictures: async () => true },
   )
   await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
   controller.show('t1')
   const state = (tabs: string[]): LiveModuleMessage => ({
     type: 'state',
@@ -186,6 +192,7 @@ test('a web browser that cannot decode the pictures opens no view, and one that 
           return { send: () => {}, close: () => {} }
         },
       })
+      controller.resize(PANEL)
       controller.show('t1')
       await until(controller.pictures).not.toBe('checking')
       expect({ webBrowser, support: controller.pictures.value, views }).toEqual({ webBrowser, support, views: viewCount })
@@ -194,4 +201,60 @@ test('a web browser that cannot decode the pictures opens no view, and one that 
       restore()
     }
   }
+})
+
+test('a view opens once the shown content measured its panel, names the panel before the tab, and hears of a resize once it settles', async () => {
+  jest.useFakeTimers()
+  try {
+    const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+    const { controller, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true })
+    await until(controller.pictures).toBe('supported')
+    // A capture starts at the panel's size, which nobody knows before the content measures it.
+    controller.show('t1')
+    expect(views).toHaveLength(0)
+    controller.resize(PANEL)
+    expect(views[0]!.sent).toEqual([
+      { type: 'hello', platform: expect.any(String) },
+      { type: 'panel', width: 800, height: 600, devicePixelRatio: 2, screenWidth: 1440, screenHeight: 900 },
+      { type: 'watch', tab: 't1' },
+    ])
+    // A drag resizes the panel many times; the module hears of the size it settles at.
+    for (const width of [790, 780, 770]) {
+      controller.resize({ ...PANEL, panel: { width, height: 600 } })
+      jest.advanceTimersByTime(50)
+    }
+    expect(views[0]!.sent.filter((message) => message.type === 'panel')).toHaveLength(1)
+    jest.advanceTimersByTime(100)
+    expect(views[0]!.sent.at(-1)).toMatchObject({ type: 'panel', width: 770 })
+    // Another tab shown in the same view is the only watch the view hears: nothing watches nothing between them.
+    controller.hide('t1')
+    controller.show('t2')
+    expect(views[0]!.sent.filter((message) => message.type === 'watch')).toEqual([
+      { type: 'watch', tab: 't1' },
+      { type: 'watch', tab: 't2' },
+    ])
+    end()
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+test('a tab shown again shows what the browser last said of it, though no view is open', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const visibility = ref<DocumentVisibilityState>('visible')
+  const { controller, end } = harness({ stream: recordingStream(views) }, { visibility, pictures: async () => true })
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('t1')
+  const tab = { id: 't1', title: 'Orders', url: 'https://example.test/orders', createdBy: { kind: 'user' } as const, viewport: VIEWPORT, loading: false }
+  views[0]!.handlers.data(framed({ type: 'state', running: true, tabs: [tab], watched: 't1' }))
+  // The user's browser hides the page: the view closes, and the tab keeps its address and that it loaded.
+  visibility.value = 'hidden'
+  expect(controller.session.value).toBeNull()
+  expect(controller.tab('t1')).toEqual(tab)
+  // A view that reports the browser without it lets it go.
+  visibility.value = 'visible'
+  views[1]!.handlers.data(framed({ type: 'state', running: true, tabs: [], watched: null }))
+  expect(controller.tab('t1')).toBeNull()
+  end()
 })

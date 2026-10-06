@@ -12,11 +12,14 @@ use std::{
     collections::HashMap,
     future::Future,
     pin::Pin,
-    sync::{Arc, Mutex},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use futures_util::{FutureExt, StreamExt, stream::FuturesUnordered};
-use tokio::sync::{mpsc, oneshot, watch};
+use tokio::sync::{Notify, mpsc, oneshot, watch};
 use tokio_util::{
     sync::{CancellationToken, DropGuard},
     task::TaskTracker,
@@ -64,14 +67,12 @@ enum Request {
     Join {
         notices: mpsc::Sender<Notice>,
         left: CancellationToken,
+        operated: watch::Receiver<u64>,
         reply: oneshot::Sender<u64>,
     },
     Panel {
         viewer: u64,
         panel: Panel,
-    },
-    Operated {
-        viewer: u64,
     },
     Watch {
         viewer: u64,
@@ -89,9 +90,20 @@ enum Request {
 /// A tab's observer, once a viewer watched the tab.
 type Observer = Arc<tokio::sync::OnceCell<Arc<Observed>>>;
 
+/// When viewers operated, which never waits for the hub: each viewer keeps
+/// the stamp of its latest operation, newer than every earlier one of any
+/// viewer, and wakes the hub, which reads the stamps when it gets to them.
+/// A viewer is never held back while the hub sizes a tab.
+#[derive(Default)]
+struct Operations {
+    stamps: AtomicU64,
+    woken: Notify,
+}
+
 /// The way to one browser's live view hub.
 pub struct Hub {
     requests: mpsc::Sender<Request>,
+    operations: Arc<Operations>,
     /// What the browser shows changed.
     changes: watch::Sender<u64>,
     tasks: TaskTracker,
@@ -105,7 +117,9 @@ impl Hub {
     pub fn start(environment: &BrowserEnvironment) -> Self {
         let (requests, received) = mpsc::channel(REQUESTS);
         let tasks = environment.tasks().clone();
+        let operations = Arc::new(Operations::default());
         let owner = Owner {
+            operations: operations.clone(),
             captures: environment.captures().clone(),
             tasks: tasks.clone(),
             order: 0,
@@ -118,6 +132,7 @@ impl Hub {
         tasks.spawn(owner.run(received, environment.ended().clone()));
         Self {
             requests,
+            operations,
             changes: environment.changes().clone(),
             tasks,
             observers: Mutex::default(),
@@ -156,11 +171,13 @@ impl Hub {
         // Leaves even if this future is dropped before it returns.
         let leave = left.clone().drop_guard();
         let (notices, noticed) = mpsc::channel(NOTICES);
+        let (operated, stamps) = watch::channel(0);
         let (reply, answer) = oneshot::channel();
         self.requests
             .send(Request::Join {
                 notices,
                 left,
+                operated: stamps,
                 reply,
             })
             .await
@@ -169,6 +186,8 @@ impl Hub {
         Ok((
             Membership {
                 requests: self.requests.clone(),
+                operations: self.operations.clone(),
+                operated,
                 id,
                 _leave: leave,
             },
@@ -180,6 +199,9 @@ impl Hub {
 /// A viewer's place in the hub; dropping it leaves.
 pub(crate) struct Membership {
     requests: mpsc::Sender<Request>,
+    operations: Arc<Operations>,
+    /// The stamp of this viewer's latest operation.
+    operated: watch::Sender<u64>,
     id: u64,
     _leave: DropGuard,
 }
@@ -199,9 +221,12 @@ impl Membership {
     }
 
     /// The viewer pressed a button or a key, turned the wheel, pasted or
-    /// chose: it now decides the screen and the tabs it watches.
-    pub async fn operated(&self) {
-        self.tell(Request::Operated { viewer: self.id }).await;
+    /// chose: it now decides the screen and the tabs it watches. The hub
+    /// learns of it without a queue, so this never waits.
+    pub fn operated(&self) {
+        let stamp = self.operations.stamps.fetch_add(1, Ordering::Relaxed) + 1;
+        self.operated.send_replace(stamp);
+        self.operations.woken.notify_one();
     }
 
     /// Watches `tab`, or nothing; the tab's pictures arrive on the view.
@@ -233,8 +258,10 @@ impl Membership {
 struct Viewer {
     panel: Option<Panel>,
     watching: Option<BrowserTab>,
-    /// When the viewer last operated, in hub order; 0 if never.
+    /// The stamp of the viewer's latest operation the hub took in; 0 if never.
     operated: u64,
+    /// The stamp of its latest operation, as the viewer keeps it.
+    stamps: watch::Receiver<u64>,
     joined: u64,
     notices: mpsc::Sender<Notice>,
 }
@@ -242,6 +269,7 @@ struct Viewer {
 type Departure = Pin<Box<dyn Future<Output = u64> + Send>>;
 
 struct Owner {
+    operations: Arc<Operations>,
     captures: CaptureChannel,
     tasks: TaskTracker,
     order: u64,
@@ -260,11 +288,13 @@ impl Owner {
         // Each viewer's departure: the owner is shared with the layouts it
         // awaits, which these futures could not be.
         let mut departures = FuturesUnordered::<Departure>::new();
+        let operations = self.operations.clone();
         loop {
             tokio::select! {
                 biased;
                 _ = ended.cancelled() => break,
                 Some(viewer) = departures.next() => self.leave(viewer),
+                () = operations.woken.notified() => self.operated(),
                 request = requests.recv() => match request {
                     Some(request) => self.request(request, &mut departures).await,
                     None => break,
@@ -277,9 +307,14 @@ impl Owner {
             while let Some(Some(viewer)) = departures.next().now_or_never() {
                 self.leave(viewer);
             }
+            self.operated();
             if self.due && !ended.is_cancelled() {
                 self.due = false;
                 self.layout().await;
+            }
+            // A watched tab is captured only at the size its layout gave it.
+            for stream in self.streams.values() {
+                stream.sized();
             }
         }
     }
@@ -289,6 +324,7 @@ impl Owner {
             Request::Join {
                 notices,
                 left,
+                operated,
                 reply,
             } => {
                 self.order += 1;
@@ -299,6 +335,7 @@ impl Owner {
                         panel: None,
                         watching: None,
                         operated: 0,
+                        stamps: operated,
                         joined: id,
                         notices,
                     },
@@ -324,22 +361,6 @@ impl Owner {
                     self.driver = Some(viewer);
                 }
                 self.due = true;
-            }
-            Request::Operated { viewer } => {
-                self.order += 1;
-                let order = self.order;
-                let others = self.viewers.len() > 1;
-                let Some(entry) = self.viewers.get_mut(&viewer) else {
-                    return;
-                };
-                let decided = entry.operated;
-                entry.operated = order;
-                let driving = self.driver == Some(viewer);
-                self.driver = Some(viewer);
-                // Another viewer's panel may have decided until now.
-                if !driving || (decided == 0 && others) {
-                    self.due = true;
-                }
             }
             Request::Watch { viewer, tab, reply } => {
                 // A viewer that left watches nothing: its request, sent as it
@@ -371,6 +392,33 @@ impl Owner {
             } => {
                 let result = self.mode(viewer, &tab, mode).await;
                 let _left = reply.send(result);
+            }
+        }
+    }
+
+    /// Takes in the viewers' operations since it last looked, in the order
+    /// they happened: the latest operator drives the screen and decides the
+    /// tabs it watches.
+    fn operated(&mut self) {
+        let mut operated: Vec<(u64, u64)> = self
+            .viewers
+            .iter_mut()
+            .filter(|(_, viewer)| viewer.stamps.has_changed().unwrap_or(false))
+            .map(|(id, viewer)| (*viewer.stamps.borrow_and_update(), *id))
+            .collect();
+        operated.sort_unstable();
+        let others = self.viewers.len() > 1;
+        for (stamp, viewer) in operated {
+            let Some(entry) = self.viewers.get_mut(&viewer) else {
+                continue;
+            };
+            let decided = entry.operated;
+            entry.operated = stamp;
+            let driving = self.driver == Some(viewer);
+            self.driver = Some(viewer);
+            // Another viewer's panel may have decided until now.
+            if !driving || (decided == 0 && others) {
+                self.due = true;
             }
         }
     }

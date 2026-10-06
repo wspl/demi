@@ -25,6 +25,7 @@ where
     F: FnOnce(BrowserEnvironment, String) -> W,
     W: Future<Output = Result<()>>,
 {
+    let _turn = crate::families::browser_turn().await;
     let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
     let server = crate::server::Server::start(include_str!("repairs.html")).await;
     let base = server.base.clone();

@@ -12,6 +12,9 @@ use demi_shared_types::DecodeError;
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum CaptureCommand {
     /// Capture the tab of CDP target `target` at `width` × `height` pixels.
+    /// Chrome delivers even sides, which H.264 4:2:0 needs: for an odd side
+    /// it scales the tab to the nearest even size of the same shape, so the
+    /// frames' own size is the picture's.
     Start {
         capture: u32,
         target: String,

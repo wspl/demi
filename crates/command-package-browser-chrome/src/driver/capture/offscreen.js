@@ -28,15 +28,31 @@ function ask(message) {
   });
 }
 
+// H.264 4:2:0 encodes only even sides. Chrome already scales a tab with an
+// odd side to an even size of its shape; a picture that still has an odd
+// side is encoded without its last row or column.
+function even(length) {
+  return Math.max(2, length - (length % 2));
+}
+
+// The tab's size as a capture constrains it: exactly these pixels, so the
+// page is captured unscaled once its surface has this size.
+function size(width, height) {
+  return { width: { min: width, max: width }, height: { min: height, max: height } };
+}
+
 function pack(chunk, state) {
+  // The sides the picture was encoded at, which a newer picture may have changed.
+  const sides = state.sides.get(chunk.timestamp) ?? state;
+  state.sides.delete(chunk.timestamp);
   const data = new ArrayBuffer(HEADER + chunk.byteLength);
   const view = new DataView(data);
   view.setUint32(0, state.id);
   view.setUint32(4, ++state.sequence);
   view.setUint8(8, chunk.type === 'key' ? 1 : 0);
   view.setFloat64(12, chunk.timestamp);
-  view.setUint16(20, state.width);
-  view.setUint16(22, state.height);
+  view.setUint16(20, sides.width);
+  view.setUint16(22, sides.height);
   chunk.copyTo(new Uint8Array(data, HEADER));
   return data;
 }
@@ -98,7 +114,7 @@ async function open(message) {
   });
   const track = stream.getVideoTracks()[0];
   track.contentHint = 'detail';
-  return { tabId, stream, reader: new MediaStreamTrackProcessor({ track }).readable.getReader() };
+  return { tabId, stream, track, reader: new MediaStreamTrackProcessor({ track }).readable.getReader() };
 }
 
 async function stop(id) {
@@ -140,8 +156,6 @@ function encode(state) {
   const refine = !state.settled && performance.now() - state.lastCaptureAt >= 500;
   if (!state.dirty && !state.force && !refine) return;
   if (!state.encoder) {
-    state.width = state.latest.displayWidth;
-    state.height = state.latest.displayHeight;
     state.encoder = new VideoEncoder({
       output(chunk) {
         if (captures.get(state.id) !== state) return;
@@ -152,13 +166,25 @@ function encode(state) {
         void stop(state.id);
       },
     });
-    configure(state, false);
   }
-  if (state.still !== refine) {
+  const width = even(state.latest.displayWidth);
+  const height = even(state.latest.displayHeight);
+  // The first picture, or the first at a new size, starts the encoding at its sides.
+  if (state.width !== width || state.height !== height || state.still !== refine) {
+    state.width = width;
+    state.height = height;
     configure(state, refine);
     state.force = true;
   }
-  const frame = new VideoFrame(state.latest, { timestamp: Math.round(performance.now() * 1000) });
+  const visible = state.latest.visibleRect;
+  const timestamp = Math.round(performance.now() * 1000);
+  state.sides.set(timestamp, { width, height });
+  const frame = new VideoFrame(state.latest, {
+    timestamp,
+    visibleRect: { x: visible.x, y: visible.y, width, height },
+    displayWidth: width,
+    displayHeight: height,
+  });
   try {
     state.encoder.encode(frame, { keyFrame: state.force });
   } finally {
@@ -191,6 +217,10 @@ async function start(message) {
     nextEncode: 0,
     lastCaptureAt: 0,
     captured: 0,
+    width: 0,
+    height: 0,
+    // Each picture in the encoder's queue with the sides it is encoded at.
+    sides: new Map(),
   };
   captures.set(state.id, state);
   // The socket may have closed while Chrome was opening this media source.

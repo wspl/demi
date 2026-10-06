@@ -163,6 +163,7 @@ pub(crate) async fn open(port: &PluginPort, url: &str) -> Result<BrowserTab, Plu
     let input = OpenInput {
         url: url.to_owned(),
         load: None,
+        show: None,
         timeout: None,
     };
     let opened = run::<OpenResult, _>(port, BrowserOperation::Open, input, CallKind::Starts)
@@ -174,6 +175,7 @@ pub(crate) async fn open(port: &PluginPort, url: &str) -> Result<BrowserTab, Plu
         url: opened.url,
         created_by: BrowserCreatedBy::User {},
         loading: false,
+        shows: 0,
     })
 }
 

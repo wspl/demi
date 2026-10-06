@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { FolderTree } from '@lucide/vue'
 import { useElementSize, usePreferredReducedMotion } from '@vueuse/core'
 import IconButton from '../ui/IconButton.vue'
@@ -16,9 +16,13 @@ import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
  * control then shows it over the view at the same width, until the control,
  * a click on the view beside it or a pick in it (`dismiss`) puts it away.
  * Once the frame is wide enough again, the tree docks if `open`. Showing
- * and hiding move: a docked tree grows from the end and the view gives way,
- * and a tree over the view slides in from the end. A hidden tree stays
- * mounted, so it shows again as it was left, with no reading.
+ * and hiding by the frame's own control, or by a pick or a click beside a
+ * tree over the view, move: a docked tree grows from the end and the view
+ * gives way, and a tree over the view slides in from the end. Anything else
+ * that shows or hides the tree, such as the frame showing again in a work
+ * panel tab selected again, or its width becoming known, shows it at once.
+ * A hidden tree stays mounted, so it shows again as it was left, with no
+ * reading.
  */
 defineProps<{
   /** The tree in its control's words: `file tree` reads "Show file tree". */
@@ -51,24 +55,42 @@ watch(docks, () => {
   over.value = false
 })
 
+/** Whether the tree's next show or hide is the user's, which moves. */
+let requested = false
+
+/** Runs the user's `change` of the tree, whose show or hide moves; the flag ends with the render it causes. */
+function byUser(change: () => void): void {
+  requested = true
+  change()
+  void nextTick(() => {
+    requested = false
+  })
+}
+
 function toggle(): void {
-  if (docks.value)
-    open.value = !open.value
-  else
-    over.value = !over.value
+  byUser(() => {
+    if (docks.value)
+      open.value = !open.value
+    else
+      over.value = !over.value
+  })
 }
 
 /** Shows the tree: docked where it fits, otherwise over the view. */
 function show(): void {
-  if (docks.value)
-    open.value = true
-  else
-    over.value = true
+  byUser(() => {
+    if (docks.value)
+      open.value = true
+    else
+      over.value = true
+  })
 }
 
 /** Puts away a tree shown over the view, as a pick in it should; a docked tree stays. */
 function dismiss(): void {
-  over.value = false
+  byUser(() => {
+    over.value = false
+  })
 }
 
 const motion = usePreferredReducedMotion()
@@ -102,7 +124,7 @@ function move(element: Element, direction: PlaybackDirection, done: () => void):
   // The turned move's transition was cancelled before this one began, so its end is never reported.
   moving?.cancel()
   moving = null
-  if (motion.value === 'reduce') {
+  if (motion.value === 'reduce' || !requested) {
     done()
     return
   }

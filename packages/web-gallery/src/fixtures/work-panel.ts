@@ -1,7 +1,14 @@
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
-import { openIntent, shownSelection, type PanelState, type PinnedTabs } from '@demicodes/web-ui/agent/panel-tabs'
+import {
+  openIntent,
+  pendingShows,
+  shownSelection,
+  type AppliedShows,
+  type PanelState,
+  type PinnedTabs,
+} from '@demicodes/web-ui/agent/panel-tabs'
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import type { CallEditSelection } from '@demicodes/web-ui/files/changes'
 import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
@@ -64,7 +71,7 @@ export function useGalleryWork(
   if (shown.some((page) => page.plugin === 'browser')) {
     for (const tab of browser.listed.value.tabs) {
       const id = tab.createdBy.kind === 'user' ? `user-${tab.id}` : `browser-${tab.id}`
-      backend.apply({ type: 'create', tab: { id, kind: 'browser', data: { url: tab.url, tab: tab.id } } })
+      backend.apply({ type: 'create', tab: { id, kind: 'browser', data: { url: tab.url, tab: tab.id, title: tab.title } } })
     }
   }
   const tabs = new PanelTabs(backend, (error) => {
@@ -86,6 +93,22 @@ export function useGalleryWork(
   function select(id: string) {
     history.value = selectTab(history.value, id)
   }
+  /** Each tab's showings the panel applied, as the product keeps them beside the history. */
+  let applied: AppliedShows = {}
+  /** Whether the specimen's panel is open, which a tab its kind asks to show opens. */
+  const open = ref(true)
+  // A tab its kind asks to show opens the panel and is selected once, as the product's work store does it.
+  watch(() => tabs.tabs.value, (current) => {
+    const pending = pendingShows(current, shown, enabled, applied)
+    if (!pending) {
+      return
+    }
+    applied = pending.applied
+    for (const id of pending.shown) {
+      select(id)
+    }
+    open.value = true
+  })
   /** A new tab after the others, selected unless `options` says not; returns its id. */
   function add(kind: string, data: unknown, options = { select: true }): string {
     const id = crypto.randomUUID()
@@ -152,12 +175,29 @@ export function useGalleryWork(
     history.value = selection === null ? [] : [selection]
     pinned.value = {}
   }
+  /**
+   * The agent shows `tab` with `demi browser show`, and its job ends: the
+   * plugin reads the tab list and carries the count into the panel tab,
+   * which the panel then selects.
+   */
+  async function agentShows(tab: string) {
+    browser.show(tab)
+    await plugin.sync()
+  }
+  /** The agent opens a page, shown with `--show` or not, and its job ends: the plugin adds the tab. */
+  async function agentOpens(url: string, show: boolean) {
+    browser.agentOpens(url, { show })
+    await plugin.sync()
+  }
   return {
     panel,
     pinned,
+    open,
     kinds,
     selected,
     browser,
+    agentShows,
+    agentOpens,
     host,
     select,
     add,

@@ -86,7 +86,7 @@ async fn each_method_runs_its_operation_as_a_package_call_that_never_wakes_the_h
     let (plugin, demi) = world(Box::new(|operation, _| {
         Ok(match operation {
             "browser.tabs" => json!({
-                "tabs": [{ "id": "t1", "title": "", "url": "about:blank", "createdBy": { "kind": "user" }, "loading": false }],
+                "tabs": [{ "id": "t1", "title": "", "url": "about:blank", "createdBy": { "kind": "user" }, "loading": false, "shows": 0 }],
                 "truncated": false,
             }),
             _ => json!({}),
