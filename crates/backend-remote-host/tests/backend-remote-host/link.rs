@@ -637,7 +637,8 @@ async fn an_artifact_request_needs_the_live_job_and_an_artifact_of_its_manifest(
 }
 
 /// A policy that admits each direct stream once the test says so, with a
-/// demand lease of `gate` and the native catalog's package.
+/// demand lease of `gate` and, for its one user stream `live`, the native
+/// catalog's package; a stream of another name installs nothing.
 struct AdmitsDirectStreams {
     gate: ActivityGate,
     package: PackageDescriptor,
@@ -683,6 +684,7 @@ impl LinkPolicy for AdmitsDirectStreams {
     fn direct_stream(
         &self,
         _: String,
+        name: String,
     ) -> LocalBoxFuture<'static, Result<demi_backend_remote_host::DirectAdmission, String>> {
         let gate = self.gate.clone();
         let package = self.package.clone();
@@ -692,7 +694,7 @@ impl LinkPolicy for AdmitsDirectStreams {
             admit.wait_for(|admit| *admit).await.unwrap();
             Ok(demi_backend_remote_host::DirectAdmission {
                 lease: gate.enter(Purpose::Demand).await,
-                packages: vec![package],
+                package: (name == "live").then_some(package),
                 resolver,
             })
         })
@@ -703,7 +705,8 @@ impl LinkPolicy for AdmitsDirectStreams {
 /// opened (`direct-channel.md` § Operations on the channel): its artifact
 /// request, made before the policy admitted it, is answered once it is,
 /// while it holds its conversation active; once it closed, the lease is
-/// gone and a request naming it is refused.
+/// gone and a request naming it is refused. A stream of another name may
+/// not install that package.
 #[tokio::test(flavor = "local")]
 async fn a_direct_streams_artifact_requests_are_answered_once_admitted_and_refused_once_closed() {
     let resolver = Rc::new(Scripted {
@@ -721,21 +724,22 @@ async fn a_direct_streams_artifact_requests_are_answered_once_admitted_and_refus
         admit: admitting,
     }));
     let mut link = device.connect(None);
-    let stream = |open| Outbound::DirectStream {
-        stream: "direct-1".into(),
+    let stream = |id: &str, name: &str, open| Outbound::DirectStream {
+        stream: id.into(),
+        name: name.into(),
         conversation: "c1".into(),
         open,
     };
-    let request = || Outbound::ArtifactResolve {
+    let request = |id: &str| Outbound::ArtifactResolve {
         id: "request".into(),
         owner: ArtifactOwner::Stream(StreamArtifactOwner {
-            stream_id: "direct-1".into(),
+            stream_id: id.into(),
         }),
         sha256: package.targets[host_target()].sha256.clone(),
         target: host_target().into(),
     };
-    link.send(stream(true)).await;
-    link.send(request()).await;
+    link.send(stream("direct-1", "live", true)).await;
+    link.send(request("direct-1")).await;
     assert!(drain(&mut link).await.is_empty(), "the request waits for the admission");
     admit.send_replace(true);
     assert_eq!(
@@ -744,13 +748,21 @@ async fn a_direct_streams_artifact_requests_are_answered_once_admitted_and_refus
     );
     assert_eq!(gate.state().demand, 1, "the open stream is its conversation's activity");
 
-    link.send(stream(false)).await;
-    link.send(request()).await;
+    link.send(stream("direct-1", "live", false)).await;
+    link.send(request("direct-1")).await;
+    let refused = Some((None, Some("No matching live job or stream".into())));
+    assert_eq!(artifact_answer(&link.next().await), refused);
+    assert_eq!(gate.state().demand, 0);
+
+    link.send(stream("direct-2", "other", true)).await;
+    link.send(request("direct-2")).await;
     assert_eq!(
         artifact_answer(&link.next().await),
-        Some((None, Some("No matching live job or stream".into())))
+        Some((
+            None,
+            Some("Artifact does not belong to the live work's packages".into())
+        ))
     );
-    assert_eq!(gate.state().demand, 0);
     assert_eq!(resolver.calls.get(), 1);
 }
 
@@ -1670,6 +1682,7 @@ impl LinkPolicy for Refusing {
     }
     fn direct_stream(
         &self,
+        _: String,
         _: String,
     ) -> LocalBoxFuture<'static, Result<demi_backend_remote_host::DirectAdmission, String>> {
         Box::pin(async { Err("no".into()) })

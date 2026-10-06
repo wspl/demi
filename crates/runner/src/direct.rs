@@ -63,6 +63,7 @@ struct ReportedStream {
     control: Handle,
     closed: CancellationToken,
     stream: String,
+    name: String,
     conversation: String,
 }
 
@@ -73,6 +74,7 @@ impl ReportedStream {
     fn report(&self, open: bool) -> impl Future<Output = ()> + Send + 'static {
         let report = Outbound::DirectStream {
             stream: self.stream.clone(),
+            name: self.name.clone(),
             conversation: self.conversation.clone(),
             open,
         };
@@ -348,12 +350,13 @@ impl Operations for HostOperations {
         })
     }
 
-    fn stream_activity(&self, conversation: &str) -> BoxFuture<'static, StreamActivity> {
+    fn stream_activity(&self, conversation: &str, name: &str) -> BoxFuture<'static, StreamActivity> {
         let stream = ReportedStream {
             backend: self.backend.clone(),
             control: self.control.clone(),
             closed: self.closed.clone(),
             stream: uuid::Uuid::new_v4().simple().to_string(),
+            name: name.to_owned(),
             conversation: conversation.to_owned(),
         };
         Box::pin(async move {

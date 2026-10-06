@@ -1031,12 +1031,14 @@ pub enum Outbound {
         message: String,
     },
     /// A direct channel's `stream` of `conversation`, named by the id the
-    /// runner gave it, opened, or closed (`direct-channel.md` § Operations on
-    /// the channel): the backend knows each open one as a stream it opened,
+    /// runner gave it, of the user stream `name` its header asked for,
+    /// opened, or closed (`direct-channel.md` § Operations on the channel):
+    /// the backend knows each open one as a stream of that name it opened,
     /// counts it as the conversation's activity and answers its artifact
     /// requests.
     DirectStream {
         stream: String,
+        name: String,
         #[garde(custom(conversation_name))]
         conversation: String,
         open: bool,
