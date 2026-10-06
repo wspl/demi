@@ -244,6 +244,22 @@ export class HostFiles {
     }
   }
 
+  /**
+   * Edits what is kept of the entry `spec` names, as the page's own write
+   * tells it, without a read: an upload's new file in its folder's listing.
+   * Nothing kept, nothing to edit; whether it is confirmed stays as it was,
+   * since the Host's watch reports the write too.
+   */
+  amend<T>(spec: KeptSpec<T>, edit: (value: T) => T): void {
+    const entry = this.entry(spec)
+    const { value } = entry.state
+    if (value === undefined)
+      return
+    const edited = edit(value)
+    entry.state.value = edited
+    this.measure(entry, spec.size(edited))
+  }
+
   /** Reads the entry `spec` names again now, as a Refresh does. */
   retry<T>(spec: KeptSpec<T>): void {
     void this.read(this.entry(spec))
