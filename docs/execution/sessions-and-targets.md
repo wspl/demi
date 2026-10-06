@@ -296,7 +296,7 @@ saved.
 ### Every way to a Host
 
 The conversation's host access is the only way to a conversation's Host, in the
-three forms the first rows name. Two more ways reach a device for work that
+forms the first rows name. Two more ways reach a device for work that
 touches no conversation's files. This table names every way to a Host:
 
 | Way | Used by | Takes | A stopped Cloud |
@@ -305,6 +305,7 @@ touches no conversation's files. This table names every way to a Host:
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host; a plugin's [reads of the conversation's files](../architecture/plugins.md#reading-a-conversations-files) | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
 | Device access | The public relay of a [Host expose](expose.md#the-public-relay); the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |
+| A [direct channel](direct-channel.md)'s grant, a form of the conversation's host access | The page's user streams, file transfers, file text, listings and file watch of a conversation on a paired device, when the page and its runner connect directly | The file gate while admitting the grant only; a transition revokes the grant and ends its operations, as it ends file transfers | Not offered: a Cloud has no direct channel |
 | Machine access | Creating a Cloud project; [placing a provider's process](../providers/claude-code.md#where-it-runs) on the user's Cloud | The Cloud's admission; no file gate | Woken; a running reset is waited for |
 
 Device access and machine access touch no conversation's files, so they take no
