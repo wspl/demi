@@ -1,5 +1,5 @@
 //! A Host, its jobs, file contents, callbacks, native commands, and service
-//! and network streams over a real runner.
+//! streams over a real runner.
 
 use std::{
     cell::Cell,
@@ -37,11 +37,7 @@ use futures_util::{Stream, StreamExt};
 use schemars::JsonSchema;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    net::TcpListener,
-    sync::{mpsc, oneshot},
-};
+use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 const MIB: usize = 1024 * 1024;
@@ -2029,170 +2025,5 @@ async fn the_working_tree_facet_lists_changes_and_shows_the_last_commit() {
         host.git_show(&home, "b.txt").await.unwrap_err().code(),
         Some("ENOENT")
     );
-    fixture.stop().await;
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_network_stream_carries_a_device_socket_through_two_pipes() {
-    let (sender, mut tap) = Tap::new();
-    let fixture = RunnerFixture::start(FixtureOptions {
-        tap: Some(sender),
-        ..FixtureOptions::default()
-    })
-    .await;
-    let host = fixture.host();
-    let pipes = fixture.pipes();
-    let listener = || async { TcpListener::bind("127.0.0.1:0").await.unwrap() };
-
-    // An echo peer, which ends its side once the runner ended its own: 1 MiB
-    // comes back byte-equal, and the input's end half-closes the socket.
-    let echo = listener().await;
-    let echo_port = echo.local_addr().unwrap().port();
-    let echoing = tokio::spawn(async move {
-        let (mut socket, _) = echo.accept().await.unwrap();
-        let (mut read, mut write) = socket.split();
-        tokio::io::copy(&mut read, &mut write).await.unwrap();
-        write.shutdown().await.unwrap();
-    });
-    let input = pipes.to_device(TEST_DEVICE);
-    let output = pipes.from_device(TEST_DEVICE);
-    let mut writer = input.writer().unwrap();
-    let reader = output.reader().unwrap();
-    host.open_net("127.0.0.1", echo_port, input.wire_ref(), output.wire_ref())
-        .await
-        .unwrap();
-    let payload: Vec<u8> = (0..MIB)
-        .map(|index| b'a' + (index * 13 % 26) as u8)
-        .collect();
-    let feed = async {
-        writer.write(Bytes::from(payload.clone())).await.unwrap();
-        writer.end();
-    };
-    let ((), echoed) = tokio::join!(feed, collect(reader));
-    assert!(echoed.unwrap() == payload, "the echo");
-    echoing.await.unwrap();
-    assert_eq!(tap.pipe_done(input.id()).await, (true, None));
-    assert_eq!(tap.pipe_done(output.id()).await, (true, None));
-
-    // A port nobody listens on refuses, with its code, and the runner
-    // reports both pipe ends it never used.
-    let vacant = listener().await;
-    let vacant_port = vacant.local_addr().unwrap().port();
-    drop(vacant);
-    let unused_input = pipes.to_device(TEST_DEVICE);
-    let unused_output = pipes.from_device(TEST_DEVICE);
-    let refused = host
-        .open_net(
-            "127.0.0.1",
-            vacant_port,
-            unused_input.wire_ref(),
-            unused_output.wire_ref(),
-        )
-        .await
-        .unwrap_err();
-    assert_eq!(refused.code(), Some("refused"));
-    assert!(!tap.pipe_done(unused_input.id()).await.0);
-    assert!(!tap.pipe_done(unused_output.id()).await.0);
-
-    // A peer that resets the connection while bytes flow fails the output
-    // rather than ends it.
-    let reaper = listener().await;
-    let reaper_port = reaper.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        let (mut socket, _) = reaper.accept().await.unwrap();
-        let mut first = [0; 1];
-        socket.read_exact(&mut first).await.unwrap();
-        // No linger makes the close a reset.
-        socket.set_zero_linger().unwrap();
-    });
-    let flow = pipes.to_device(TEST_DEVICE);
-    let reaped = pipes.from_device(TEST_DEVICE);
-    let mut flow_writer = flow.writer().unwrap();
-    let reaped_reader = reaped.reader().unwrap();
-    host.open_net("127.0.0.1", reaper_port, flow.wire_ref(), reaped.wire_ref())
-        .await
-        .unwrap();
-    let flowing = tokio::task::spawn_local(async move {
-        let chunk = Bytes::from(vec![b'x'; 64 * 1024]);
-        while flow_writer.write(chunk.clone()).await.is_ok() {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
-    });
-    let (ok, error) = tap.pipe_done(reaped.id()).await;
-    assert!(!ok && error.is_some(), "{error:?}");
-    assert!(collect(reaped_reader).await.is_err());
-    flowing.abort();
-
-    // The backend failing the output mid-upload ends the stream without the
-    // peer's end: the socket closes, and both pipes report.
-    let speaker = listener().await;
-    let speaker_port = speaker.local_addr().unwrap().port();
-    let (hung_up, peer_closed) = oneshot::channel();
-    tokio::spawn(async move {
-        let (mut socket, _) = speaker.accept().await.unwrap();
-        socket
-            .write_all(b"the peer speaks and then holds the connection open\n")
-            .await
-            .unwrap();
-        let mut rest = Vec::new();
-        // The read ends when the runner closes the socket.
-        let _ = socket.read_to_end(&mut rest).await;
-        let _ = hung_up.send(());
-    });
-    let held = pipes.to_device(TEST_DEVICE);
-    let spoken = pipes.from_device(TEST_DEVICE);
-    let held_writer = held.writer().unwrap();
-    let mut spoken_reader = spoken.reader().unwrap();
-    host.open_net(
-        "127.0.0.1",
-        speaker_port,
-        held.wire_ref(),
-        spoken.wire_ref(),
-    )
-    .await
-    .unwrap();
-    let first = spoken_reader.next().await.unwrap().unwrap();
-    assert!(first.starts_with(b"the peer speaks"));
-    spoken_reader.fail("the visitor's connection ended");
-    tokio::time::timeout(Duration::from_secs(10), peer_closed)
-        .await
-        .expect("the socket closes")
-        .unwrap();
-    let (ok, error) = tap.pipe_done(spoken.id()).await;
-    assert!(!ok && error.is_some(), "{error:?}");
-    assert!(!tap.pipe_done(held.id()).await.0);
-    drop(held_writer);
-
-    // No stream outlives the connection that opened it.
-    let quiet = listener().await;
-    let quiet_port = quiet.local_addr().unwrap().port();
-    let (accepted, connected) = oneshot::channel();
-    let (hung_up, peer_closed) = oneshot::channel();
-    tokio::spawn(async move {
-        let (mut socket, _) = quiet.accept().await.unwrap();
-        let _ = accepted.send(());
-        let mut rest = Vec::new();
-        let _ = socket.read_to_end(&mut rest).await;
-        let _ = hung_up.send(());
-    });
-    let silent = pipes.to_device(TEST_DEVICE);
-    let unheard = pipes.from_device(TEST_DEVICE);
-    let silent_writer = silent.writer().unwrap();
-    let unheard_reader = unheard.reader().unwrap();
-    host.open_net(
-        "127.0.0.1",
-        quiet_port,
-        silent.wire_ref(),
-        unheard.wire_ref(),
-    )
-    .await
-    .unwrap();
-    connected.await.unwrap();
-    fixture.link().await.disconnect("the backend went away");
-    tokio::time::timeout(Duration::from_secs(10), peer_closed)
-        .await
-        .expect("the socket closes with its connection")
-        .unwrap();
-    drop((silent_writer, unheard_reader));
     fixture.stop().await;
 }

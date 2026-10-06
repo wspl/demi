@@ -260,8 +260,6 @@ watch(() => props.conversation.id, close)
         <div class="min-w-0 flex-1">
           <slot name="workspace" />
         </div>
-        <!-- The session tools button (expose.md § Product surface), between the host menu and the panel toggle. -->
-        <slot name="tools" />
         <!-- Only while the panel is closed: open, its own fold control closes it. -->
         <Tooltip
           v-if="asideOpen === false"
