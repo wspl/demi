@@ -154,6 +154,16 @@ width. A click shows the image whole: a Host image in the File
 view, a web image in a new tab of the user's browser. An image inside a link
 follows the link.
 
+Images that follow each other show side by side. For example, the agent
+replies with four screenshots, one per line, and nothing else between them:
+they stand in a row, left to right in their order, as many as the message's
+width holds, and the rest wrap onto the next row. A run is two or more
+images or videos with nothing but white space between them, in one
+paragraph or in paragraphs that follow each other; any text, list or heading
+ends it. In a run, each one is scaled down, its proportions kept, to the
+height of a tool's preview (below) and at most the message's width, and they
+stand 8 pixels apart in both directions. A lone image keeps the rule above.
+
 A link to a file opens the `file` intent, and so does a click on a Host image;
 while no plugin the user has on opens it, a file link is shown as text and a
 Host image only shows. A `:line` suffix on a path is dropped, since the File view opens a whole file.
@@ -189,8 +199,10 @@ open, and a click opens it large:
   `shell_write` or `shell_abort` that reports the exit carries it instead. A
   `yield` carries none. The generic tool card shows its result's media the
   same way.
-- **Where.** Under the call's row, in the order of the result and above the
-  files the call changed. Every medium takes the preview's height before its
+- **Where.** Under the call's row, above the files the call changed, side
+  by side in the order of the result and wrapping onto the next row when the
+  transcript's width runs out, as a run of images in a message does
+  ([Files named in messages](#files-named-in-messages)). Every medium takes the preview's height before its
   bytes arrive, so the transcript does not move when they load. The fold
   still shows the command's own output, whose lines
   `[medium 1: image/png, 412000 bytes]` and `<binary stdout: 412000 bytes>`
