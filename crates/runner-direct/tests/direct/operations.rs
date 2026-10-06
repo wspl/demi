@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
 use demi_runner_direct::{
-    Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamRequest,
-    WatchStream,
+    Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamActivity,
+    StreamRequest, WatchStream,
 };
 use demi_runner_protocol::direct::{ChannelError, ChannelErrorCode};
 use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage};
@@ -37,6 +37,9 @@ pub struct Fake {
     pub cut_writes: tokio::sync::watch::Sender<usize>,
     /// What each watch says, from the test.
     pub watch_says: Arc<Mutex<Option<mpsc::UnboundedReceiver<FileWatchMessage>>>>,
+    /// What the runner told the backend of its streams, in order: each
+    /// one's conversation, and whether it opened or closed.
+    pub activity: tokio::sync::watch::Sender<Vec<(String, bool)>>,
 }
 
 impl Default for Fake {
@@ -46,6 +49,7 @@ impl Default for Fake {
             started_writes: tokio::sync::watch::Sender::new(0),
             cut_writes: tokio::sync::watch::Sender::new(0),
             watch_says: Arc::default(),
+            activity: tokio::sync::watch::Sender::new(Vec::new()),
         }
     }
 }
@@ -215,6 +219,16 @@ impl Operations for Fake {
             Bytes::from(echoed)
         }));
         Box::pin(async move { Ok(Box::pin(echo) as ByteStream) })
+    }
+
+    fn stream_activity(&self, conversation: &str) -> StreamActivity {
+        let told = |open: bool| {
+            let activity = self.activity.clone();
+            let conversation = conversation.to_owned();
+            move || activity.send_modify(|told| told.push((conversation, open)))
+        };
+        told(true)();
+        Box::new(scopeguard(told(false)))
     }
 }
 

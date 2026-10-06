@@ -1030,6 +1030,14 @@ pub enum Outbound {
         code: crate::direct::OfferRefusal,
         message: String,
     },
+    /// A direct channel's `stream` of `conversation` opened, or closed
+    /// (`direct-channel.md` § Operations on the channel): the backend counts
+    /// each open one as the conversation's activity, as an open relay stream.
+    DirectStream {
+        #[garde(custom(conversation_name))]
+        conversation: String,
+        open: bool,
+    },
     /// Every artifact this runner's cache holds, once the connection is
     /// online and whenever an install or a retirement changes them
     /// (`native-runtime.md` § Installed artifacts).

@@ -11,6 +11,8 @@
 mod addresses;
 mod operation;
 mod peer;
+#[cfg(feature = "testing")]
+pub mod testing;
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -22,7 +24,8 @@ use tokio_util::sync::CancellationToken;
 
 pub use addresses::{Addresses, offered};
 pub use operation::{
-    Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamRequest, WatchStream,
+    Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamActivity,
+    StreamRequest, WatchStream,
 };
 
 use peer::{OfferError, Peer};

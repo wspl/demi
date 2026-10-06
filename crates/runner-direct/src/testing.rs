@@ -1,5 +1,7 @@
-//! A page in process: a str0m offerer on `127.0.0.1` that connects to the
-//! runner's peers as a browser does and speaks the channels' protocol.
+//! A page in process (`testing`): a str0m offerer on `127.0.0.1` that
+//! connects to a runner's peers as a browser does and speaks the channels'
+//! protocol, its offer delivered to the runner directly or through the
+//! backend's signaling.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -7,7 +9,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_runner_direct::{Direct, Refused};
 use demi_runner_protocol::direct::Introduction;
 use str0m::change::SdpAnswer;
 use str0m::channel::{ChannelConfig, ChannelId};
@@ -17,6 +18,8 @@ use tokio::net::UdpSocket;
 use tokio::sync::{mpsc, oneshot, watch};
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
+
+use crate::{Direct, Refused};
 
 fn now() -> std::time::Instant {
     Instant::now().into_std()
@@ -74,6 +77,13 @@ impl Page {
     /// Offers a peer `peer` to `direct`, as the backend's introduction
     /// carries it, and serves the connection the answer makes.
     pub async fn offer(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
+        Self::connect(async |offer| direct.offer(peer.into(), offer, introduction).await).await
+    }
+
+    /// Makes the page's offer, which `answer` takes to the runner and whose
+    /// answer it gives back, as the backend's signaling does, and serves the
+    /// connection the answer makes.
+    pub async fn connect<E>(answer: impl AsyncFnOnce(String) -> Result<String, E>) -> Result<Self, E> {
         let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
         let local = socket.local_addr().unwrap();
         let mut rtc = RtcConfig::new()
@@ -84,9 +94,7 @@ impl Page {
         // A first channel, so that the offer carries one, as the page's.
         changes.add_channel("first".into());
         let (offer, pending) = changes.apply().unwrap();
-        let answer = direct
-            .offer(peer.into(), offer.to_sdp_string(), introduction)
-            .await?;
+        let answer = answer(offer.to_sdp_string()).await?;
         let answer = SdpAnswer::from_sdp_string(&answer).unwrap();
         rtc.sdp_api().accept_answer(pending, answer).unwrap();
         let (commands, received) = mpsc::unbounded_channel();

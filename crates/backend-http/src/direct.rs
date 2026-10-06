@@ -2,7 +2,9 @@
 //! channel, `direct-channel.md` § Making the channel): the backend
 //! introduces the page to its paired device's runner, through device
 //! access, and is the only check. It relays each offer to the runner and
-//! its answer to the page; the socket's close closes the runner's peer.
+//! its answer to the page; the socket's close closes the runner's peer, and
+//! so does the user turning a plugin on or off, which the socket tells the
+//! page so that it offers again with the new introduction.
 
 use std::time::Duration;
 
@@ -21,6 +23,7 @@ use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::StreamExt as _;
 use futures_util::stream::SplitStream;
 use garde::Validate as _;
+use tokio_util::sync::CancellationToken;
 
 use super::AppState;
 use super::body::page_socket;
@@ -105,10 +108,29 @@ impl Signaling {
         let link_ended = self.link_ended();
         tokio::pin!(link_ended);
         let mut offered = false;
+        // What ends the introduction the runner's peer was made with: the
+        // user's next turn of a plugin on or off.
+        let mut introduced: Option<CancellationToken> = None;
         let end = loop {
+            let switched = introduced.clone();
             let request = tokio::select! {
                 biased;
                 () = &mut link_ended => break End::HostUnreachable,
+                () = async {
+                    match switched {
+                        Some(switched) => switched.cancelled_owned().await,
+                        None => std::future::pending().await,
+                    }
+                } => {
+                    // The peer's streams are no longer the user's: the
+                    // runner closes it, and the page offers again.
+                    introduced = None;
+                    self.close_peer().await;
+                    if page.send(text(&DirectMessage::Closed)).await.is_err() {
+                        break End::PageClosed;
+                    }
+                    continue;
+                }
                 message = from_page.next() => match message {
                     Some(Ok(Message::Text(text))) => match request_of(text.as_str()) {
                         Some(request) => request,
@@ -133,7 +155,13 @@ impl Signaling {
                 answer = self.offer(sdp) => answer,
             };
             let message = match answer {
-                Some(message) => message,
+                Some((message, switched)) => {
+                    // A new offer replaced the peer, and only an answered
+                    // one made another.
+                    let answered = matches!(message, DirectMessage::Answer { .. });
+                    introduced = answered.then_some(switched);
+                    message
+                }
                 None => break End::HostUnreachable,
             };
             if page.send(text(&message)).await.is_err() {
@@ -181,8 +209,10 @@ impl Signaling {
 
     /// Relays an offer to the runner, as the peer of this socket, with what
     /// the runner needs of the user: the streams of the plugins they have on
-    /// and their locale. None when the runner's connection ended.
-    async fn offer(&self, sdp: String) -> Option<DirectMessage> {
+    /// and their locale. Answers what to tell the page, and what is
+    /// cancelled once the introduction is out of date; none when the
+    /// runner's connection ended.
+    async fn offer(&self, sdp: String) -> Option<(DirectMessage, CancellationToken)> {
         let device = self.device.clone();
         let peer = self.peer.clone();
         let streams = self.state.services.user_streams.clone();
@@ -194,6 +224,9 @@ impl Signaling {
             .shards
             .of(&self.user)
             .call(move |shard, _| async move {
+                // Taken before the streams are read, so a change while they
+                // are read is not missed.
+                let switched = shard.plugins().next_switch();
                 let mut bound = std::collections::BTreeMap::new();
                 for (name, binding) in streams.iter() {
                     // A stream of a plugin the user has off does not exist.
@@ -207,16 +240,18 @@ impl Signaling {
                 };
                 let link = shard.devices().link(&device)?;
                 let offer = link.direct_offer(&peer, sdp, introduction);
-                match tokio::time::timeout(ANSWER_TIMEOUT, offer).await {
-                    Ok(Ok(answer)) => Some(Ok(answer)),
-                    Ok(Err(_)) => None,
-                    Err(_) => Some(Err(Unanswered::Timeout)),
-                }
+                let answered = match tokio::time::timeout(ANSWER_TIMEOUT, offer).await {
+                    Ok(Ok(answer)) => Ok(answer),
+                    Ok(Err(_)) => return None,
+                    Err(_) => Err(Unanswered::Timeout),
+                };
+                Some((answered, switched))
             })
             .await
             .ok()
             .flatten()?;
-        Some(match answered {
+        let (answered, switched) = answered;
+        let message = match answered {
             Ok(DirectAnswer::Answer(sdp)) => DirectMessage::Answer { sdp },
             Ok(DirectAnswer::Refused(code, message)) => {
                 tracing::debug!(device = %self.device, "a runner refused an offer: {message}");
@@ -227,7 +262,8 @@ impl Signaling {
                 DirectMessage::Unanswered { code }
             }
             Err(code) => DirectMessage::Unanswered { code },
-        })
+        };
+        Some((message, switched))
     }
 
     /// The page went: the runner closes its peer.

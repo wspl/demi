@@ -73,8 +73,9 @@ function use(deviceId: string): DeviceDirect {
   const state = states.get(deviceId) ?? reactive({ choice: 'relay' as const, blocked: false })
   states.set(deviceId, state)
   // The first open of the socket starts the first attempt, and each open
-  // after one closed is a reason to try again.
-  const signaling = new DeviceSignaling(deviceId, () => direct.tryNow())
+  // after one closed is a reason to try again; a peer the backend closed is
+  // made again at once.
+  const signaling = new DeviceSignaling(deviceId, () => direct.tryNow(), () => direct.reintroduce())
   const direct = new DeviceDirect(
     {
       ready: () => signaling.open,

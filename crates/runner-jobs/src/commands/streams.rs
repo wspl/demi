@@ -241,6 +241,13 @@ impl StreamOpener {
         }
     }
 
+    /// Whether a stream of `package` would first fetch its service's
+    /// executable, which only a stream the backend opened can ask it for
+    /// (`direct-channel.md` § Operations on the channel).
+    pub async fn fetches_program(&self, package: &PackageDescriptor) -> bool {
+        self.services.fetches_program(package).await
+    }
+
     /// Opens a stream at once: `begin`, then `open`.
     pub async fn open(
         &self,
