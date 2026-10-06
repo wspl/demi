@@ -542,7 +542,7 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     vendor.respond(tool_use(
         "mask",
         "shell_exec",
-        &json!({ "script": script, "timeoutMs": 60_000 }),
+        &json!({ "script": script, "description": "Show the mask", "timeoutMs": 60_000 }),
     ));
     vendor.respond(crate::conversations::answer(&["done"], 1, 1));
     socket.chat("m1", "show the mask").await;
