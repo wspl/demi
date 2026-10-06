@@ -12,7 +12,6 @@ use std::rc::Rc;
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::{Part, Registration};
-use demi_plugin_interface::Topic;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::state::SyncEvent;
@@ -20,7 +19,6 @@ use futures_util::StreamExt as _;
 use futures_util::stream::SplitStream;
 
 use crate::shard::{PageGone, PageSocket, Shard};
-use demi_backend_expose::relay::first_expiry;
 
 /// The close code of a channel whose session ended.
 const SESSION_ENDED: u16 = 4002;
@@ -69,8 +67,6 @@ impl End {
 enum Woke {
     Marked,
     Heartbeat,
-    /// The earliest of the user's exposes expired.
-    ExposeExpired,
 }
 
 impl Shard {
@@ -93,7 +89,6 @@ impl Shard {
                 shard: &self,
                 page: &mut page,
                 session,
-                expiry: None,
             };
             tokio::select! {
                 biased;
@@ -119,9 +114,6 @@ struct Channel<'a> {
     shard: &'a Shard,
     page: &'a mut PageSocket,
     session: ChannelSession,
-    /// The earliest expiry of the user's exposes when the page was last
-    /// sent a state that follows them; none while no plugin follows them.
-    expiry: Option<Timestamp>,
 }
 
 impl Channel<'_> {
@@ -149,15 +141,10 @@ impl Channel<'_> {
             state: Box::new(state),
         })
         .await?;
-        self.read_expiry().await?;
         loop {
-            let woke = {
-                let clock = &*self.shard.services().clock;
-                tokio::select! {
-                    () = self.registration.marked() => Woke::Marked,
-                    () = self.page.silent() => Woke::Heartbeat,
-                    () = first_expiry(clock, self.expiry) => Woke::ExposeExpired,
-                }
+            let woke = tokio::select! {
+                () = self.registration.marked() => Woke::Marked,
+                () = self.page.silent() => Woke::Heartbeat,
             };
             self.check_session().await?;
             match woke {
@@ -177,11 +164,6 @@ impl Channel<'_> {
                     }
                 }
                 Woke::Heartbeat => self.send(&SyncEvent::Heartbeat).await?,
-                Woke::ExposeExpired => {
-                    for part in self.expose_followers() {
-                        self.send_part(&part).await?;
-                    }
-                }
             }
         }
     }
@@ -229,43 +211,7 @@ impl Channel<'_> {
         if let SyncEvent::User { user } = &event {
             self.session.user = user.clone();
         }
-        self.send(&event).await?;
-        if self.expose_followers().contains(part) {
-            self.read_expiry().await?;
-        }
-        Ok(())
-    }
-
-    /// The parts of the plugins whose state follows the user's exposes.
-    fn expose_followers(&self) -> Vec<Part> {
-        self.shard
-            .services()
-            .plugins
-            .followers(Topic::Exposes)
-            .map(|plugin| Part::Plugin(plugin.as_str().to_owned()))
-            .collect()
-    }
-
-    /// Reads when the earliest of the user's exposes expires, so the
-    /// states that follow them are sent again then.
-    async fn read_expiry(&mut self) -> Result<(), End> {
-        if self.expose_followers().is_empty() {
-            return Ok(());
-        }
-        let exposes = self
-            .shard
-            .expose_shard()
-            .list_exposes()
-            .await
-            .map_err(|error| {
-                tracing::error!(
-                    error = &error as &dyn std::error::Error,
-                    "a page's exposes could not be read"
-                );
-                End::InternalError
-            })?;
-        self.expiry = exposes.iter().map(|expose| expose.record.expires_at).min();
-        Ok(())
+        self.send(&event).await
     }
 
     async fn send(&mut self, event: &SyncEvent) -> Result<(), End> {

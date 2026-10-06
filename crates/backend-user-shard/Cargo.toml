@@ -27,7 +27,6 @@ demi-agent-tools = { path = "../agent-tools" }
 demi-agent-transcript = { path = "../agent-transcript" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
-demi-backend-expose = { path = "../backend-expose" }
 demi-backend-host-access = { path = "../backend-host-access" }
 demi-backend-idle-watch = { path = "../backend-idle-watch" }
 demi-backend-blobs = { path = "../backend-blobs" }
@@ -53,7 +52,6 @@ demi-web-api-protocol = { path = "../web-api-protocol" }
 axum = { version = "0.8", features = ["ws"] }
 bytes.workspace = true
 futures-util.workspace = true
-jiff.workspace = true
 object_store.workspace = true
 rand = "0.9"
 reqwest = { workspace = true, features = ["rustls", "stream"] }

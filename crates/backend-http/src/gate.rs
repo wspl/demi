@@ -29,10 +29,10 @@ const SEC_FETCH_SITE: HeaderName = HeaderName::from_static("sec-fetch-site");
 /// Refuses a request that could act with the user's session and comes from
 /// a page other than the product's, with 403 `forbidden_origin`, before any
 /// route sees it. The user's browser sends the session cookie from every
-/// page of the product's site, an expose's among them, and lets such a page
-/// send a POST or open a WebSocket without asking the backend. A request
-/// could act when its method is unsafe or it upgrades the connection, as a
-/// WebSocket does. One without `Origin` passes: every web browser sends
+/// page of the product's site, one on another host of it such as
+/// `blog.demi.example` among them, and lets such a page send a POST or open
+/// a WebSocket without asking the backend. A request could act when its
+/// method is unsafe or it upgrades the connection, as a WebSocket does. One without `Origin` passes: every web browser sends
 /// `Origin` with such a request, so it comes from a program that is not a
 /// web browser, such as curl, which could send any origin it liked. A web
 /// browser's request without `Origin` lost it at a proxy, which turns the
@@ -217,7 +217,7 @@ mod tests {
         for (origin, host) in [
             (origin("https://elsewhere.example"), "127.0.0.1:3271"),
             (
-                origin("https://a1b2.expose.demi.example.com"),
+                origin("https://blog.demi.example.com"),
                 "demi.example.com",
             ),
             (origin("http://127.0.0.1:9999"), "127.0.0.1:3271"),

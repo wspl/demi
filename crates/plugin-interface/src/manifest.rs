@@ -295,9 +295,6 @@ impl State {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Topic {
-    /// The user's exposes: one is created, renewed or destroyed, or the
-    /// earliest one expires.
-    Exposes,
     /// A job of the conversation ends.
     Jobs,
 }
@@ -306,7 +303,6 @@ impl Topic {
     /// The scope of the state it marks.
     pub fn scope(self) -> Scope {
         match self {
-            Self::Exposes => Scope::User,
             Self::Jobs => Scope::Conversation,
         }
     }
@@ -317,7 +313,7 @@ impl Topic {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Method {
-    /// A snake_case word, such as `renew`.
+    /// A snake_case word, such as `navigate`.
     pub name: String,
     pub scope: Scope,
     pub params: Schema,
