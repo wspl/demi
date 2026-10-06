@@ -260,8 +260,6 @@ export interface PluginPage<Session extends PanelSession | undefined = undefined
   plugin: string
   /** A section of the settings dialog. */
   settings?: PluginSettingsSection
-  /** A component the conversation header shows. Props: `conversation`. */
-  headerTool?: Component
   /** The kinds of tab it shows in the work panel. */
   kinds?: readonly PanelKind<unknown, Session>[]
   /**

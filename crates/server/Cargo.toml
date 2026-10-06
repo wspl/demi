@@ -29,7 +29,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 url = "2"
-uuid = { version = "1", features = ["v4"] }
 which = "8"
 zstd = { version = "0.13", default-features = false }
 

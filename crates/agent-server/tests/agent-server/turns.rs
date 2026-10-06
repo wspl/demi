@@ -42,7 +42,11 @@ async fn a_message_runs_to_its_response_and_its_patches_rebuild_the_transcript()
             ProviderEvent::ThinkingSignature("anthropic:sig-1".into()),
             event::text("Checking "),
             event::text("the files."),
-            event::tool_call("call-1", "shell_exec", json!({ "script": "ls" })),
+            event::tool_call(
+                "call-1",
+                "shell_exec",
+                json!({ "script": "ls", "description": "List the files" }),
+            ),
             event::response(12, 8),
         ]),
         Turn::Events(vec![

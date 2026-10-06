@@ -71,9 +71,8 @@ pub struct Group<B = Binding> {
     pub name: String,
     pub summary: String,
     /// What the group is for and when to use it, as the model's capability
-    /// index shows it (`system-prompt.md` § Capability index); a group
-    /// without one, such as the `demi` root or a subgroup, is reached
-    /// through its parent.
+    /// index shows it (`system-prompt.md` § Capability index): every
+    /// top-level group has one, which the command set checks.
     #[serde(
         default,
         rename = "indexEntry",

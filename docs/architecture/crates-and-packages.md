@@ -207,7 +207,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   the argument check both ends run (`Leaf::check_arguments`); a group's
   [permission categories](../agent/permissions.md#categories) and a leaf's
   `permission`, with their registration checks and the help line; help
-  rendering (`Node::help`, `HELP_DEFAULTS`); and the settings every declaration's JSON
+  rendering (`Node::help`, `HELP_DEFAULTS`); a group's
+  [index entry](../agent/system-prompt.md) (`Group::index_entry`, at most
+  `MAX_INDEX_ENTRY` characters) and the capability index rendered from the
+  entries (`render_index`, opened by `INDEX_OPENER`); and the settings every declaration's JSON
   Schema is generated with (`command_schema_settings`).
 - **Public boundary:** the items above. This crate is the single
   implementation of argv parsing, help and the input subset: the runner parses
@@ -510,7 +513,10 @@ Each crate implements the provider contract for one vendor family.
     `process`), `HostFs`, `HostProcess` and `HostKey`, the value identity of an
     execution target (equal keys mean the same Host);
   - the command system: `CommandSet`, which pairs declarations with their
-    bindings and is what manifests and help read; the declaration builders; the
+    bindings and is what manifests, help and the capability index read
+    (`CommandSet::render_index`); the declaration builders, among them
+    `GroupBuilder::index_entry`; the name of the command root (`DEMI_ROOT`),
+    which decides what a top-level group is; the
     rpc handler interface (`RpcHandler`, `RpcInvocation`, `RpcPort`,
     `PortTransport`); the reserved command names;
   - the shell-environment contract behind the `shell_*` tools:
@@ -611,7 +617,8 @@ Each crate implements the provider contract for one vendor family.
   runs its tools through (`ToolInvocation`, `ToolOutcome`, `ToolEffect`,
   `ToolFailure`), which it defines and the tools implement.
 - **Public boundary:** the handle, its construction and restoration
-  (`SessionDeps`, `SessionInit`), its events, status and errors, the editing
+  (`SessionDeps`, `SessionInit`), the system prompt it sends for a model
+  (`SessionRuntime::system_prompt`), its events, status and errors, the editing
   types (`EditSubmission`, `EditCheck` and their outcomes), and the tool-call
   contract;
   `agent_session::testing` supplies the compaction request's instruction
@@ -630,7 +637,10 @@ Each crate implements the provider contract for one vendor family.
   answers for a node: the Host its shell tools reach now (`HostResolver`, with
   its `Host` type) and the context sources asked before each request
   (`ContextSource`), with the node a question is about (`NodeContext`), and
-  the subagent profiles as data (`Profile`).
+  the subagent profiles as data (`Profile`); and the assembly of a node's
+  system prompt from the identity, the harness guide, the capability index
+  and the model's identity line (`system_prompt`, `ModelIdentity`,
+  [System prompt](../agent/system-prompt.md)).
 - **Public boundary:** the items above; `agent_tools::testing` supplies a
   Host type for agents without shell tools (`NoHost`, `NoShells`) and the
   readers of a shell tool's result text (`field`, `shown_output`).
@@ -648,7 +658,8 @@ Each crate implements the provider contract for one vendor family.
     carries every server frame back;
   - the `demi agent` and `demi shell` command groups;
   - where a session's model selection and provider runtimes come from,
-    a child's from its profile's model settings (`ProviderResolver`), the
+    a child's from its profile's model settings, with the provider family
+    the model identity line names (`ProviderResolver`, `family`), the
     notice to the product that a live tree started or stopped working or was
     disposed (`ServerDeps::status_changed`), the resolution of the files a
     frame's content refers to, which the backend answers
@@ -661,7 +672,8 @@ Each crate implements the provider contract for one vendor family.
   runtimes that play scripts (`ScriptedProviders`), uploads a frame's files
   resolve to (`TestFiles`) and a test client that drives a connection
   (`TestClient`, and `waiting_frames` for what an outbox holds). A product supplies, in `ServerDeps`, the command set
-  nodes start from, its instructions for the system prompt, the profiles, the
+  nodes start from, its instructions for the system prompt and the harness
+guide (`ServerDeps::guide`), the profiles, the
   context sources, the Host resolver, the providers, a shell environment per
   Host and a tree store; the agent never knows which shell engine runs or
   which plugin a command, a text or a context source comes from.

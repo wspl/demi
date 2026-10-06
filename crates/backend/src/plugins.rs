@@ -4,7 +4,6 @@
 
 use demi_plugin_browser::Browser;
 use demi_plugin_changes::Changes;
-use demi_plugin_expose::Expose;
 use demi_plugin_file::File;
 use demi_plugin_file_browser::FileBrowser;
 use demi_plugin_interface::PluginFactory;
@@ -15,7 +14,6 @@ pub fn builtin() -> Vec<Box<dyn PluginFactory>> {
     vec![
         Box::new(File::new()),
         Box::new(Browser::new()),
-        Box::new(Expose::new()),
         Box::new(Skills::new()),
         Box::new(Changes::new()),
         Box::new(FileBrowser::new()),

@@ -37,6 +37,7 @@ async fn add(call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
 fn notes() -> GroupBuilder {
     GroupBuilder::new("demi", "Demi commands.").group(
         GroupBuilder::new("note", "Manage notes.")
+            .index_entry("Keeps notes.")
             .leaf(
                 LeafBuilder::rpc("add", "Add a note.")
                     .input::<AddArgs>()
@@ -274,22 +275,44 @@ fn the_index_opens_with_the_defaults_and_lists_each_group_with_an_entry_by_path(
 }
 
 #[test]
-fn an_index_entry_over_600_characters_is_refused_at_registration() {
-    let group = |entry: String| {
-        GroupBuilder::new("demi", "Demi commands.").group(
-            GroupBuilder::new("notes", "Notes.")
-                .index_entry(entry)
-                .leaf(read("read")),
-        )
+fn registration_refuses_a_top_level_group_without_an_index_entry_or_with_one_too_long() {
+    let notes = |entry: Option<String>| {
+        let group = GroupBuilder::new("notes", "Notes.")
+            .leaf(read("read"))
+            // A subgroup is reached through its group and needs no entry.
+            .group(GroupBuilder::new("content", "Content.").leaf(read("fetch")));
+        let group = match entry {
+            Some(entry) => group.index_entry(entry),
+            None => group,
+        };
+        GroupBuilder::new("demi", "Demi commands.").group(group)
     };
     // Characters, not bytes: 600 of a two-byte letter fit.
-    CommandSet::new().register(group("é".repeat(600))).unwrap();
-    let error = CommandSet::new()
-        .register(group("é".repeat(601)))
+    CommandSet::new()
+        .register(notes(Some("é".repeat(600))))
+        .unwrap();
+    let too_long = CommandSet::new()
+        .register(notes(Some("é".repeat(601))))
         .unwrap_err()
         .to_string();
-    assert!(error.contains("notes"), "{error}");
-    assert!(error.contains("601 characters"), "{error}");
+    assert!(too_long.contains("notes"), "{too_long}");
+    assert!(too_long.contains("601 characters"), "{too_long}");
+    let missing = CommandSet::new().register(notes(None)).unwrap_err().to_string();
+    assert!(missing.contains("\"demi notes\""), "{missing}");
+    assert!(missing.contains("needs an index entry"), "{missing}");
+    // A root of its own is a top-level group too, also when grafted onto.
+    let mut set = CommandSet::new();
+    let lint = set
+        .register(GroupBuilder::new("lint", "Lint.").leaf(read("run")))
+        .unwrap_err()
+        .to_string();
+    assert!(lint.contains("\"lint\": a top-level command group needs an index entry"), "{lint}");
+    set.register(notes(Some("Keeps notes.".into()))).unwrap();
+    let grafted = set
+        .graft(&["demi"], GroupBuilder::new("todo", "Todo.").leaf(read("list")))
+        .unwrap_err()
+        .to_string();
+    assert!(grafted.contains("\"demi todo\""), "{grafted}");
 }
 
 #[tokio::test(flavor = "current_thread")]
@@ -332,7 +355,7 @@ async fn grafting_replaces_or_appends_and_filtering_drops_emptied_groups() {
     let calls = Rc::new(RefCell::new(0));
     let counted = calls.clone();
     let agent =
-        GroupBuilder::new("agent", "Agents.").leaf(LeafBuilder::rpc("list", "List agents.").bind(
+        GroupBuilder::new("agent", "Agents.").index_entry("Runs agents.").leaf(LeafBuilder::rpc("list", "List agents.").bind(
             TypedRpc::new(move |_: Call<Map<String, Value>>, _: RpcPort| {
                 *counted.borrow_mut() += 1;
                 async { Ok(0) }
@@ -378,8 +401,9 @@ async fn grafting_replaces_or_appends_and_filtering_drops_emptied_groups() {
 #[test]
 fn a_permission_category_is_declared_once_in_the_set_and_its_leaves_check_answers_it() {
     let skills = |root: &str| {
-        GroupBuilder::new(root, "Roots.").group(
+        GroupBuilder::new(root, "Roots.").index_entry("Holds roots.").group(
             GroupBuilder::new("skills", "Skills.")
+                .index_entry("Manages skills.")
                 .permission("skills.manage", "manage skills", "Add and remove sources.")
                 .leaf(
                     LeafBuilder::rpc("add", "Add a note.")

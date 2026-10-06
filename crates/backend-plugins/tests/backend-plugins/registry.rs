@@ -47,7 +47,7 @@ impl Probe {
                 operation: "run".into(),
             },
         );
-        let group = GroupBuilder::new(group, "A native group.").leaf(leaf);
+        let group = GroupBuilder::new(group, "A native group.").index_entry("Runs native probes.").leaf(leaf);
         self.0.commands.push(tree(Placement::Demi, group));
         self
     }
@@ -91,7 +91,7 @@ impl Plugin for Printer {
 
 /// A group of one rpc leaf `run`, which nobody serves yet.
 fn rpc_group(name: &str) -> GroupBuilder {
-    GroupBuilder::new(name, "A group.").leaf(LeafBuilder::rpc("run", "Run.").bind(Unserved))
+    GroupBuilder::new(name, "A group.").index_entry("Runs probes.").leaf(LeafBuilder::rpc("run", "Run.").bind(Unserved))
 }
 
 struct Unserved;

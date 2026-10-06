@@ -122,7 +122,7 @@ mod tests {
             r#"{ "dependencies": { "@demicodes/utils": "workspace:^", "@demicodes/plugin-skills": "workspace:^", "@demicodes/plugin-browser": "workspace:^" } }"#,
         )
         .unwrap();
-        let registered = [pair("browser"), pair("expose"), pair("skills")];
+        let registered = [pair("browser"), pair("changes"), pair("skills")];
         let pages = pages_of(root.path(), "packages/app", &registered).unwrap();
         assert_eq!(pages, [pair("browser"), pair("skills")]);
         let module = module("", &pages);

@@ -201,7 +201,7 @@
               },
               "toolUseId": "call-1",
               "toolName": "shell_exec",
-              "input": "{\"script\":\"ls\"}",
+              "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
               "status": "executing",
               "output": [],
               "view": null
@@ -269,7 +269,7 @@
               },
               "toolUseId": "call-1",
               "toolName": "shell_exec",
-              "input": "{\"script\":\"ls\"}",
+              "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
               "status": "error",
               "output": [
                 {
@@ -463,7 +463,7 @@
         },
         "toolUseId": "call-1",
         "toolName": "shell_exec",
-        "input": "{\"script\":\"ls\"}",
+        "input": "{\"script\":\"ls\",\"description\":\"List the files\"}",
         "status": "error",
         "output": [
           {

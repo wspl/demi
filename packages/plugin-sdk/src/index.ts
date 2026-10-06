@@ -50,7 +50,6 @@ export {
   type SilenceWatch,
 } from '@demicodes/web-ui/transport/liveness'
 // Composables.
-export { formatTimeRemaining, useTimeRemaining } from '@demicodes/web-ui/composables/useRelativeTime'
 
 // Files: the shapes the conversation files service gives, and their paths.
 export {

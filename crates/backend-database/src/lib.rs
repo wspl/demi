@@ -15,7 +15,6 @@ pub mod conversation_index;
 pub mod conversations;
 pub mod devices;
 pub mod drafts;
-pub mod exposes;
 pub mod forks;
 pub mod managed;
 pub mod panels;

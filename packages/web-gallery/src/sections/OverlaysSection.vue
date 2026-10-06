@@ -24,12 +24,9 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { reactive, ref } from 'vue'
 import HostPicker from '@demicodes/web-ui/hosts/HostPicker.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
-import SessionToolsMenu from '@demicodes/plugin-expose/SessionToolsMenu.vue'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
-import type { ExposeMenuEntry } from '@demicodes/plugin-expose/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import { demoImageUrl } from '../fixtures/blocks'
-import { demoExposes } from '../fixtures/settings'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
@@ -82,31 +79,6 @@ function deviceName(id: string): string {
   return hostDevices.find(device => device.id === id)?.name ?? 'Cloud'
 }
 const statusSelected = ref('mac')
-
-// Session tools: live exposes across hosts (one under a minute). Removing the last one removes the button.
-const sessionExposes = ref<ExposeMenuEntry[]>(demoExposes())
-const sessionExposePending = ref<string[]>([])
-function sessionExposeWrite(id: string, apply: () => void) {
-  if (sessionExposePending.value.includes(id))
-    return
-  sessionExposePending.value.push(id)
-  window.setTimeout(() => {
-    apply()
-    sessionExposePending.value = sessionExposePending.value.filter(entry => entry !== id)
-  }, 600)
-}
-function renewSessionExpose(id: string) {
-  sessionExposeWrite(id, () => {
-    const expose = sessionExposes.value.find(entry => entry.id === id)
-    if (expose)
-      expose.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
-  })
-}
-function removeSessionExpose(id: string) {
-  sessionExposeWrite(id, () => {
-    sessionExposes.value = sessionExposes.value.filter(expose => expose.id !== id)
-  })
-}
 
 /** A menu row a specimen offers: its id and its label. */
 interface MenuChoice {
@@ -434,17 +406,6 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             @attach="productWould(`Attach ${deviceName($event)}`)"
             @detach="productWould(`Detach ${deviceName($event)}`)"
             @connect="productWould('Connect New Device')"
-          />
-        </GallerySpecimen>
-        <GallerySpecimen variant="session tools · live exposes with a countdown; gone with the last one">
-          <SessionToolsMenu
-            :overlay-store="appOverlayStore"
-            :exposes="sessionExposes"
-            :pending-ids="sessionExposePending"
-            @open="productWould(`Open ${$event.address} in a Work Panel Browser Tab`)"
-            @renew="renewSessionExpose"
-            @remove="removeSessionExpose"
-            @manage-devices="productWould('Open Devices Settings')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">

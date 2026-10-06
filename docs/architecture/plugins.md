@@ -90,8 +90,9 @@ Skills. A plugin that only gives the agent a `demi <group>`
 command group and shows nothing is named Demi *Group* Commands, such as Demi
 File Commands. The description is one full sentence, in sentence style, that
 says what the plugin does for the user and names its command when it has one,
-as plain text since settings show it as written, such as "Adds, updates and turns
-on skills that extend the agent, with demi skills." The gallery's
+as plain text since settings show it as written, such as "Teaches the agent
+workflows with skills from Git repositories you add with demi skills, and
+from your repository." The gallery's
 Writing page has the capitalization rules.
 
 ### Commands
