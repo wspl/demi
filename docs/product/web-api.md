@@ -226,7 +226,9 @@ namespace, so it says nothing of another user's files.
 
 `GET /api/conversations/:id/attachments/:attachment` answers an attachment
 the agent uploaded ([Attachment commands](../execution/commands.md#attachment-commands))
-as `{ id, name, mediaType, size, blob }`, where `attachment` is its number,
+as `{ id, name, mediaType, size, blob }`, with an image's `width` and `height`
+in pixels, which the backend reads from its header when it stores it, where
+`attachment` is its number,
 such as `a3`, and `blob` the hash its bytes are served under, below; a number
 the conversation does not have answers 404 `not_found`. It reads the
 conversation's database alone and wakes no Host.
