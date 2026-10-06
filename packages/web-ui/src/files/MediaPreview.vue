@@ -2,8 +2,12 @@
 import { onBeforeUnmount, ref } from 'vue'
 import { dropSource } from './preview'
 
-/** A video or audio file in the web browser's own player. */
-defineProps<{ src: string; kind: 'video' | 'audio'; name: string }>()
+/**
+ * A video or audio file in the web browser's own player, which plays at once
+ * when `autoplay` says so, as a video opened large does. Leaving the page
+ * stops it.
+ */
+defineProps<{ src: string; kind: 'video' | 'audio'; name: string; autoplay?: boolean }>()
 const emit = defineEmits<{ size: [width: number, height: number]; failed: [] }>()
 
 const media = ref<HTMLMediaElement | null>(null)
@@ -28,6 +32,7 @@ onBeforeUnmount(() => {
       :src="src"
       :aria-label="name"
       controls
+      :autoplay="autoplay"
       preload="metadata"
       class="max-h-full max-w-full"
       @loadedmetadata="metadata"

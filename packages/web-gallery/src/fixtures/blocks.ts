@@ -1,7 +1,7 @@
 import type { AgentMessage, Block, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import { editCopies, galleryBlobs, missingBlob } from './blobs'
+import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
 
 export type { ShellView }
 
@@ -296,7 +296,7 @@ function binaryStdoutCall(
 }
 
 function blobImage(ref: string): ToolResultContentBlock {
-  return { type: 'image', source: { type: 'ref', ref, mediaType: 'image/png' } }
+  return { type: 'image', source: { type: 'ref', ref, mediaType: 'image/png', ...galleryBlobSize(ref) } }
 }
 
 const screenshotInput = JSON.stringify({
@@ -426,7 +426,10 @@ export const smallImageTool = binaryStdoutCall(
   blobImage(galleryBlobs.icon),
 )
 
-/** A recording the agent printed: it plays in the web browser's player. */
+/**
+ * A recording the agent printed: its first frame with a play mark, which a
+ * click plays in the viewer.
+ */
 export const recordingTool = binaryStdoutCall(
   {
     id: 'tool-recording',
@@ -439,7 +442,26 @@ export const recordingTool = binaryStdoutCall(
   'cmd-record',
   23_336,
   'video/webm',
-  { type: 'video', source: { type: 'ref', ref: galleryBlobs.recording, mediaType: 'video/webm' } },
+  {
+    type: 'video',
+    source: { type: 'ref', ref: galleryBlobs.recording, mediaType: 'video/webm', ...galleryBlobSize(galleryBlobs.recording) },
+  },
+)
+
+/** A recording whose reference carries no size: its thumbnail is 16:9 until its first frame arrives. */
+export const unsizedRecordingTool = binaryStdoutCall(
+  {
+    id: 'tool-recording-unsized',
+    toolName: 'shell_exec',
+    input: JSON.stringify({
+      script: 'cat out/demo.mp4',
+      description: 'Show the demo of the checkout',
+    }),
+  },
+  'cmd-demo',
+  31_822,
+  'video/mp4',
+  { type: 'video', source: { type: 'ref', ref: galleryBlobs.unsizedRecording, mediaType: 'video/mp4' } },
 )
 
 /** A command that exited after its call returned: the status call that saw the exit carries the picture. */

@@ -11,9 +11,9 @@ import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import RestartScreen from '@demicodes/web-ui/ui/RestartScreen.vue'
-import ImageViewer from '@demicodes/web-ui/files/ImageViewer.vue'
+import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
-import { provideImageViewer } from '@demicodes/web-ui/files/image-viewer'
+import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
@@ -48,7 +48,7 @@ watch(
 function reload(): void {
   window.location.reload()
 }
-const imageViewer = provideImageViewer()
+const mediaViewer = provideMediaViewer()
 const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
@@ -231,5 +231,5 @@ useAppShortcuts(
     :failed="updateFailed"
     @reload="reload"
   />
-  <ImageViewer :viewer="imageViewer" />
+  <MediaViewer :viewer="mediaViewer" />
 </template>
