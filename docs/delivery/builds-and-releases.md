@@ -512,7 +512,7 @@ A release has these assets:
 | --- | --- |
 | `demi-<version>-server-linux-amd64.tar.zst`, `demi-<version>-server-linux-arm64.tar.zst` | The root of each architecture, without `image/`; runsc makes it about 60 MiB larger |
 | `demi-<version>-image-linux-amd64.tar`, `demi-<version>-image-linux-arm64.tar` | `image/` of each architecture |
-| `demi-runner-<target>`, `.exe` on Windows | The release's files: each target's runner executable, six files |
+| `demi-runner-<target>.zst`, `demi-runner-<target>.exe.zst` on Windows | The release's files: each target's runner executable compressed with zstd, six files; the runner manifest's size and SHA-256 are the decompressed executable's |
 | `<executable>-<target>.zst` | The release's files: each target's compressed copy of each command program, eighteen files |
 | `install.sh`, `demi-server-x86_64-unknown-linux-musl`, `demi-server-aarch64-unknown-linux-musl` | The installer's bootstrap and the program it runs ([Installation](installation.md#the-bootstrap)) |
 | `SHA256SUMS` | The SHA-256 of each asset above |
