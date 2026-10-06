@@ -2,10 +2,10 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { holdUndecidedMedium } from '@demicodes/web-ui/markdown/render'
-import { fitRunThumbnail, fitRunThumbnails } from '@demicodes/web-ui/markdown/media-run'
+import { fitMessageMedia, fitMessageMedium } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
-import { useImageViewer } from '@demicodes/web-ui/files/image-viewer'
+import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollbars } from '@demicodes/web-ui/composables/useContentScrollbars'
 import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
 import {
@@ -35,7 +35,7 @@ const visible = computed(() => {
 
 const renderVersion = useMarkdownRenderVersion()
 const files = useMessageFiles()
-const viewer = useImageViewer()
+const viewer = useMediaViewer()
 
 // Closers apply to finished text too: an aborted stream leaves the same half-open markers.
 // The render also follows the highlighter: its arrival and the document's theme.
@@ -88,16 +88,16 @@ function clearStreamMarks(): void {
   inkSpans = []
 }
 
-// A render replaces the images of a run, which take their thumbnail's box
-// before they paint; one still loading takes it again when it loads.
+// A render replaces the images and videos, which take their box before they
+// paint; one still loading takes it again when its size arrives.
 onMounted(() => {
   if (root.value)
-    fitRunThumbnails(root.value)
+    fitMessageMedia(root.value)
 })
 
-function onImageLoad(event: Event): void {
-  if (event.target instanceof HTMLImageElement)
-    fitRunThumbnail(event.target)
+function onMediumLoad(event: Event): void {
+  if (event.target instanceof HTMLImageElement || event.target instanceof HTMLVideoElement)
+    fitMessageMedium(event.target)
 }
 
 watch(
@@ -107,7 +107,7 @@ watch(
     const el = root.value
     if (!el)
       return
-    fitRunThumbnails(el)
+    fitMessageMedia(el)
     if (!props.streaming) {
       clearStreamMarks()
       return
@@ -126,6 +126,7 @@ watch(
     :aria-busy="streaming || undefined"
     v-html="renderedMarkdown"
     @click="openMessageLink($event, files(), viewer)"
-    @load.capture="onImageLoad"
+    @load.capture="onMediumLoad"
+    @loadedmetadata.capture="onMediumLoad"
   />
 </template>

@@ -4,10 +4,10 @@ import { useSavedScroll } from '@demicodes/web-ui/composables/useSavedScroll'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
-import ImageViewer from '@demicodes/web-ui/files/ImageViewer.vue'
+import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
-import { provideImageViewer } from '@demicodes/web-ui/files/image-viewer'
+import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import GalleryAppearanceMenu from './components/GalleryAppearanceMenu.vue'
 import { useGalleryView } from './gallery-views'
@@ -15,7 +15,7 @@ import { galleryBlobUrl } from './fixtures/blobs'
 import { NAV } from './router'
 
 provideBlobUrl(galleryBlobUrl)
-const imageViewer = provideImageViewer()
+const mediaViewer = provideMediaViewer()
 const route = useRoute()
 const main = ref<InstanceType<typeof ScrollArea>>()
 const viewport = computed(() => main.value?.el)
@@ -84,5 +84,5 @@ const mainClass = computed(() => {
     </ScrollArea>
   </SidebarLayout>
   <ToastHost />
-  <ImageViewer :viewer="imageViewer" />
+  <MediaViewer :viewer="mediaViewer" />
 </template>
