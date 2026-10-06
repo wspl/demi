@@ -283,6 +283,12 @@ same way and ends the same way: a transition ends it instead of waiting for it
 to finish. A call that operates the Host, such as closing a tab, is activity; a
 look at what runs there, such as listing the tabs, is not.
 
+The [file watch](../product/web-api.md#file-watch), which carries the Host's
+reports of changed files to a page, is admitted and ended as a user stream is,
+and never wakes a stopped Cloud, whose files cannot change. It is not
+activity: a page that shows files does not keep a Cloud awake. When a stopped
+Cloud wakes, the page opens its watch again.
+
 Backend shutdown ends every open transfer and user stream before it saves and
 stops the user's Cloud, so a download left open never keeps a Cloud from being
 saved.
