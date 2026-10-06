@@ -34,7 +34,10 @@ struct OnDevice {
 
 impl OnDevice {
     async fn start() -> Self {
-        let harness = Harness::new();
+        Self::start_with(Harness::new()).await
+    }
+
+    async fn start_with(harness: Harness) -> Self {
         let (backend, master) = harness.start_set_up().await;
         let paired = backend.pair(&master, "laptop").await;
         let created = backend
@@ -946,5 +949,28 @@ async fn pages_that_watch_the_files_hear_what_changed_and_a_text_they_hold_answe
         json!({ "path": a, "text": "1\n2\n" })
     );
     assert_ne!(header(&changed, "etag"), Some(version.as_str()));
+    device.backend.close().await;
+}
+
+/// A file watch that has sent nothing else for the heartbeat interval sends
+/// a `heartbeat`, so the page tells a quiet watch from a dead one
+/// (`web-api.md` § File watch); 0.2 s here.
+#[tokio::test]
+async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
+    let mut harness = Harness::new();
+    harness.pages.heartbeat = Duration::from_millis(200);
+    let device = OnDevice::start_with(harness).await;
+    let mut socket = watch_socket(&device).await;
+    assert_eq!(
+        watch_message(&mut socket).await,
+        json!({ "type": "state", "state": "live" })
+    );
+    let quiet = std::time::Instant::now();
+    // A hang guard: without a heartbeat the watch stays silent.
+    let heartbeat = tokio::time::timeout(Duration::from_secs(10), watch_message(&mut socket))
+        .await
+        .expect("a heartbeat comes");
+    assert_eq!(heartbeat, json!({ "type": "heartbeat" }));
+    assert!(quiet.elapsed() >= Duration::from_millis(200), "no heartbeat before the interval");
     device.backend.close().await;
 }

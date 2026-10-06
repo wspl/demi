@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { HostFiles, type KeptSpec } from '@demicodes/web-ui/files/file-cache'
 import type { FileWatchMessage, FileWatchRequest } from '../api/generated/web-api'
 import { ConversationWatch } from './file-watch'
@@ -23,6 +23,11 @@ class WatchSocket extends EventTarget {
 
   close(): void {
     this.closed = true
+  }
+
+  /** The upgrade succeeds. */
+  open(): void {
+    this.dispatchEvent(new Event('open'))
   }
 
   receive(message: FileWatchMessage): void {
@@ -56,6 +61,12 @@ afterEach(() => {
 /** Lets the reads and the page's queued messages land. */
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
 
+/** Lets the promises due run, without the clock. */
+async function flush(): Promise<void> {
+  for (let turn = 0; turn < 10; turn++)
+    await Promise.resolve()
+}
+
 /** The Host's kept files, each read counted and answered at once with its count. */
 function kept() {
   const files = new HostFiles()
@@ -80,6 +91,7 @@ test('a live watch confirms what is read, and a report has what it names read ag
   const unfollow = watch.show('/w/a.ts')
   const socket = sockets[0]!
   expect(new URL(socket.url).pathname).toBe('/api/conversations/c1/fs/watch')
+  socket.open()
   socket.receive(live)
 
   const shown = files.show(spec('text', '/w/a.ts'))
@@ -168,4 +180,37 @@ test('lost reports, a Host that cannot watch and a closed socket leave nothing c
   expect(watch.note.unavailable).toBeNull()
   watch.online()
   expect(sockets).toHaveLength(2)
+})
+
+test('a watch that brings nothing, not even a heartbeat, for 75 s is broken and connects again', async () => {
+  jest.useFakeTimers()
+  try {
+    const { files, reads, spec } = kept()
+    const watch = new ConversationWatch('c1', () => ({ files, root: '/w' }))
+    watch.show('/w/a.ts')
+    const first = sockets[0]!
+    first.open()
+    first.receive(live)
+    const shown = files.show(spec('text', '/w/a.ts'))
+    // The read lands; the clock is the test's, so only promises run.
+    await flush()
+    // Heartbeats keep a quiet watch.
+    jest.advanceTimersByTime(60_000)
+    first.receive({ type: 'heartbeat' })
+    jest.advanceTimersByTime(74_999)
+    expect(first.closed).toBe(false)
+    expect(sockets).toHaveLength(1)
+    // Silent for 75 s: broken, closed, and what it covered is unconfirmed.
+    jest.advanceTimersByTime(1)
+    expect(first.closed).toBe(true)
+    shown.release()
+    files.show(spec('text', '/w/a.ts')).release()
+    await flush()
+    expect(reads.filter((read) => read === 'text /w/a.ts').length).toBe(2)
+    // The first wait is at most a second.
+    jest.advanceTimersByTime(1_000)
+    expect(sockets).toHaveLength(2)
+  } finally {
+    jest.useRealTimers()
+  }
 })
