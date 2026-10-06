@@ -53,3 +53,6 @@ Thumbs.db
 
 # A local reference clone, not part of the repository
 packages/just-bash/
+
+# A parallel-development slot's claim (AGENTS.md § Parallel Development Mode).
+.slot-busy
