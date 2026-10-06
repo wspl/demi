@@ -46,7 +46,7 @@ export interface SettingsDevice {
   id: string
   name: string
   state: DeviceState
-  /** When the host last connected; shown while it is offline. */
+  /** When the host was last seen, as an ISO 8601 timestamp; shown while it is offline. */
   seen?: string
   /** How to start its runner again; shown while it is offline. */
   start?: DeviceStart | null

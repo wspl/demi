@@ -139,13 +139,13 @@ async fn a_switch_moves_the_work_and_attaches_the_device_it_leaves() {
             &attached[0]["deviceId"],
             &attached[0]["name"],
             &attached[0]["cwd"],
-            &attached[0]["online"]
+            &attached[0]["state"]
         ),
         (
             &json!(laptop.id()),
             &json!("laptop"),
             &json!(on_laptop.to_str().unwrap()),
-            &json!(true)
+            &json!("online")
         )
     );
     let left: Value = backend
@@ -309,8 +309,8 @@ async fn an_attached_host_is_attached_once_named_uniquely_and_detached() {
     );
     let first = attached.json::<Value>()["hosts"].clone();
     assert_eq!(
-        (&first[0]["name"], &first[0]["cwd"], &first[0]["online"]),
-        (&json!("ci"), &Value::Null, &json!(true))
+        (&first[0]["name"], &first[0]["cwd"], &first[0]["state"]),
+        (&json!("ci"), &Value::Null, &json!("online"))
     );
     let context = summary(&backend, &master).await["contextVersion"].clone();
     // Attached already, it stays as it is.
