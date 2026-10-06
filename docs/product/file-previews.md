@@ -131,7 +131,7 @@ The chart loads from the Host the way a document's image does, and a click on
 | Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view | Resolved the same way and loaded from the Host |
 | Absolute path, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
-| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video large, any other file as a download | An image shows; a video plays in place, in the player of the user's browser, at an image's bounds |
+| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image large, a video in the player of the user's browser in a new tab, any other file as a download | An image shows; a video plays in place, in the player of the user's browser, at an image's bounds |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
 

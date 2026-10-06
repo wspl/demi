@@ -290,9 +290,7 @@ dropped.
 
 **`std::sync::Mutex`** stays only where state is shared across threads for a
 short section that never awaits, such as the backend's pending runner claims,
-which edge threads share, and its record of blob uses, which the edge's
-uploads, the shards' collectors and the conversation databases' commits share
-([Collecting blobs](../backend/storage.md#collecting-blobs)). Each use says why in a comment. The native programs
+which edge threads share. Each use says why in a comment. The native programs
 keep a handful of these, for example the set of changed paths that a file
 watcher's own thread records.
 

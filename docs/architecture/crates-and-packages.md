@@ -1248,9 +1248,7 @@ demi-backend (executable: configuration, composition)
   ([Message editing](../agent/message-editing.md#durability-and-failure-boundaries)),
   `Backend::file_gate`, a conversation's file gate, whose lease is the
   conversation's work to the idle rules and whose waiting entrants show an
-  operation a transition holds, `Backend::run_retention`, which runs one
-  user's retention pass at once and answers when it has ended, for the
-  scenarios of [Retention](../backend/storage.md#acceptance), and two holds of a flow at one of its steps
+  operation a transition holds, and two holds of a flow at one of its steps
   until the test releases it (`StepHold`): `Backend::hold_hellos` holds
   runners' hellos (`HelloStep`: the token's lookup, or the shard's bind) for
   the scenarios that race a hello against its runner going away and against

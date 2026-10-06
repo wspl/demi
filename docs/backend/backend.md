@@ -60,7 +60,7 @@ over the manager's Unix socket.
 | `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
 | `expose` | `backend-expose` | Expose records and their lifetime, live relay connections | [Host expose](../execution/expose.md) |
 | `llm`, `vault`, `usage` | `backend-providers`, `backend` (`families`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (the backend's `families`) | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
-| `storage` | `backend-database`, `backend-blobs` | The control service, conversation databases and the tree store with its `blob_refs` index and its records of commands' outputs (`backend-database`); the object store with its record of blob uses (`backend-blobs`) | [Storage](storage.md) |
+| `storage` | `backend-database`, `backend-blobs` | The control service, conversation databases and the tree store with its records of commands' outputs and attachments (`backend-database`); the object store (`backend-blobs`) | [Storage](storage.md) |
 
 These are modules of one backend executable, not independently deployed
 services; each lives in the crate the table names, so that a change to one

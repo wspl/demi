@@ -405,9 +405,8 @@ operations, and the [topics](#topics) its changes fire. Exposes is such a
 service; one joins when a plugin needs it, and never as an operation shaped
 for one plugin among the others.
 
-Values and directories name the blobs they use, which keeps the blobs from
-[collection](../backend/storage.md#collecting-blobs) for as long as they are
-named. A value changes by versioned compare-and-set: a write names the
+Values and directories name the blobs they use; no blob is ever removed
+([Retention](../backend/storage.md#retention)). A value changes by versioned compare-and-set: a write names the
 revision it read and fails when another write came first.
 
 A plugin never receives a live object: no Host handle, no callback into the
