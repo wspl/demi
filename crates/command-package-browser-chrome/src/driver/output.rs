@@ -175,7 +175,16 @@ pub fn render(operation: &BrowserOperation, mut value: Value, json: bool) -> Res
 /// Render browser failures with the same progress and details as their JSON form.
 pub fn render_error(code: BrowserErrorCode, message: &str, details: &ErrorDetails) -> String {
     let action = details.action.unwrap_or(ActionProgress::NotStarted);
-    let message = crate::driver::text::plain(message);
+    // A browser that could not start says so in Demi's and Chrome's own
+    // words, written before any page exists, so its lines stand: the
+    // packages a Host lacks end with a command to run as printed
+    // (`browser.md` § Browser distribution). Any other message may carry a
+    // page's text and stays on its line.
+    let message = if code == BrowserErrorCode::BrowserUnavailable {
+        crate::driver::text::body(message)
+    } else {
+        crate::driver::text::plain(message)
+    };
     let mut text = format!("Error: {code}\n{message}\nAction: {action}.\n");
     // Details are plain data, which always serializes to an object.
     if let Ok(Value::Object(details)) = serde_json::to_value(details) {
