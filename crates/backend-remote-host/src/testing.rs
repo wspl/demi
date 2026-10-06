@@ -134,6 +134,7 @@ impl LinkPolicy for CommandPolicy {
     fn direct_stream(
         &self,
         _: String,
+        _: String,
     ) -> LocalBoxFuture<'static, Result<crate::DirectAdmission, String>> {
         Box::pin(async { Err("direct streams are not available".into()) })
     }
