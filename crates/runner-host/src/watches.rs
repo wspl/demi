@@ -19,6 +19,7 @@ use std::{
 };
 
 use demi_command_sdk::paths::resolve;
+use demi_runner_protocol::files::WatchReport;
 use demi_runner_protocol::wire::{self, Inbound};
 use tokio::sync::{mpsc, watch};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
@@ -292,7 +293,8 @@ impl WatchRequests {
     }
 }
 
-/// One `fs_watch`, as its task runs it.
+/// One `fs_watch`, as its task runs it: the watch's reports as messages of
+/// its id.
 struct Follow {
     id: String,
     requested: io::Result<PathBuf>,
@@ -304,20 +306,98 @@ struct Follow {
 
 impl Follow {
     async fn run(self) {
-        let requested = match &self.requested {
-            Ok(path) => path.clone(),
-            Err(error) => return self.failed(error.to_string()).await,
+        let watched = Watched {
+            watches: &self.watches,
+            requested: self.requested,
+            recursive: self.depth == Depth::Recursive,
+            cancel: &self.cancel,
+        };
+        let id = self.id;
+        let output = self.output;
+        let cancel = self.cancel.clone();
+        watched
+            .follow(|report| {
+                let message = match report {
+                    WatchReport::Ready => wire::Outbound::FsWatchReady { id: id.clone() },
+                    WatchReport::Changed(paths) => wire::Outbound::FsWatchChanged {
+                        id: id.clone(),
+                        paths,
+                    },
+                    WatchReport::Lost => wire::Outbound::FsWatchLost { id: id.clone() },
+                    WatchReport::Failed(reason) => wire::Outbound::FsWatchFailed {
+                        id: id.clone(),
+                        reason,
+                    },
+                };
+                let lost = wire::Outbound::FsWatchLost { id: id.clone() };
+                let frame = wire::encode(&message)
+                    .and_then(|frame| wire::within_limit(frame, |_| wire::encode(&lost)));
+                let output = output.clone();
+                let cancel = cancel.clone();
+                async move {
+                    let frame = match frame {
+                        Ok(frame) => frame,
+                        Err(error) => {
+                            tracing::warn!("a watch message could not be encoded: {error}");
+                            return false;
+                        }
+                    };
+                    tokio::select! {
+                        () = cancel.cancelled() => false,
+                        sent = output.send(frame) => sent.is_ok(),
+                    }
+                }
+            })
+            .await;
+    }
+}
+
+/// A watch of a page's (`runner.md` § Watching files): the path, and what
+/// lies below it when `recursive`, followed through the connection's shared
+/// watch of it.
+pub struct Watched<'a> {
+    pub watches: &'a Watches,
+    pub requested: io::Result<PathBuf>,
+    pub recursive: bool,
+    /// The connection's or the page's end, which ends the watch.
+    pub cancel: &'a CancellationToken,
+}
+
+impl Watched<'_> {
+    /// Follows the watch until it fails, `cancel` ends it, or `report`
+    /// answers false, which it does once nothing hears it: `report` hears
+    /// `Ready` once the watch runs, the paths that changed, gathered for
+    /// 100 ms and each once, `Lost`, also for more paths at once than one
+    /// report carries, and `Failed` last.
+    pub async fn follow<F>(self, mut report: impl FnMut(WatchReport) -> F)
+    where
+        F: std::future::Future<Output = bool>,
+    {
+        let depth = if self.recursive {
+            Depth::Recursive
+        } else {
+            Depth::Entries
+        };
+        let requested = match self.requested {
+            Ok(path) => path,
+            Err(error) => {
+                report(WatchReport::Failed(error.to_string())).await;
+                return;
+            }
         };
         let canonical = match tokio::fs::canonicalize(&requested).await {
             Ok(path) => path,
-            Err(error) => return self.failed(error.to_string()).await,
+            Err(error) => {
+                report(WatchReport::Failed(error.to_string())).await;
+                return;
+            }
         };
         let (events, mut received) = mpsc::unbounded_channel();
         let listener: Listener = Box::new(move |event| {
-            // The task's end drops the receiver and then the subscription.
+            // The follow's end drops the receiver and then the subscription.
             let _ = events.send(event.clone());
         });
-        let subscription = self.watches.subscribe(canonical.clone(), self.depth, listener);
+        let subscription = self.watches.subscribe(canonical.clone(), depth, listener);
         let mut statuses = subscription.statuses();
         let mut ready = false;
         let mut gathered: Vec<String> = Vec::new();
@@ -328,11 +408,14 @@ impl Follow {
             match status {
                 Status::Running if !ready => {
                     ready = true;
-                    if !self.send(wire::Outbound::FsWatchReady { id: self.id.clone() }).await {
+                    if !report(WatchReport::Ready).await {
                         return;
                     }
                 }
-                Status::Failed(reason) => return self.failed(reason).await,
+                Status::Failed(reason) => {
+                    report(WatchReport::Failed(reason)).await;
+                    return;
+                }
                 Status::Starting | Status::Running => {}
             }
             let deadline = due.unwrap_or_else(tokio::time::Instant::now);
@@ -357,64 +440,30 @@ impl Follow {
                         gathered.clear();
                         seen.clear();
                         due = None;
-                        if !self.send(wire::Outbound::FsWatchLost { id: self.id.clone() }).await {
+                        if !report(WatchReport::Lost).await {
                             return;
                         }
                     }
-                    Some(WatchEvent::Failed(reason)) => return self.failed(reason).await,
+                    Some(WatchEvent::Failed(reason)) => {
+                        report(WatchReport::Failed(reason)).await;
+                        return;
+                    }
                     None => return,
                 },
                 () = tokio::time::sleep_until(deadline), if due.is_some() => {
                     due = None;
                     seen.clear();
                     let paths = std::mem::take(&mut gathered);
-                    if !self.report(paths).await {
+                    let gathered = if paths.len() > wire::MAX_WATCH_PATHS {
+                        WatchReport::Lost
+                    } else {
+                        WatchReport::Changed(paths)
+                    };
+                    if !report(gathered).await {
                         return;
                     }
                 }
             }
-        }
-    }
-
-    /// Sends the paths gathered, or `lost` for more than a message holds.
-    async fn report(&self, paths: Vec<String>) -> bool {
-        let lost = || wire::Outbound::FsWatchLost { id: self.id.clone() };
-        if paths.len() > wire::MAX_WATCH_PATHS {
-            return self.send(lost()).await;
-        }
-        let changed = wire::Outbound::FsWatchChanged {
-            id: self.id.clone(),
-            paths,
-        };
-        let frame = wire::encode(&changed)
-            .and_then(|frame| wire::within_limit(frame, |_| wire::encode(&lost())));
-        self.send_frame(frame).await
-    }
-
-    async fn failed(&self, reason: String) {
-        self.send(wire::Outbound::FsWatchFailed {
-            id: self.id.clone(),
-            reason,
-        })
-        .await;
-    }
-
-    async fn send(&self, message: wire::Outbound) -> bool {
-        self.send_frame(wire::encode(&message)).await
-    }
-
-    /// Whether the message went out; a connection that closed takes none.
-    async fn send_frame(&self, frame: Result<wire::Frame, wire::WireError>) -> bool {
-        let frame = match frame {
-            Ok(frame) => frame,
-            Err(error) => {
-                tracing::warn!("a watch message could not be encoded: {error}");
-                return false;
-            }
-        };
-        tokio::select! {
-            () = self.cancel.cancelled() => false,
-            sent = self.output.send(frame) => sent.is_ok(),
         }
     }
 }

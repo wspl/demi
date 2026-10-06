@@ -7,17 +7,14 @@
 //! names; pages that watch the same Host paths share the Host's watches
 //! (`RemoteHost::watch`). The edge carries the messages, and holds the lease.
 //!
-//! The page learns which of its paths are covered from the order of the
-//! states: the first `live` covers the working tree; each `paths` message is
-//! answered by one `live` once every watch it names runs; a `lost` is
-//! followed by a `live` of its own once the watches run again. A Host that
-//! cannot watch a path says `unavailable` once, and the watch says no state
-//! after it.
+//! The order of the states the page hears is `PageWatch`'s, which a direct
+//! channel's watch on the runner keeps too.
 
 use std::collections::HashMap;
 
 use demi_backend_remote_host::{HostWatch, RemoteHost, WatchUpdate};
 use demi_host_interface::HostErrorKind;
+use demi_runner_protocol::files::{PageWatch, WatchReport};
 use demi_web_api_protocol::files::{FileWatchMessage, FileWatchState};
 use demi_web_api_protocol::ids::ConversationId;
 use tokio::sync::mpsc;
@@ -82,11 +79,7 @@ impl dyn HostShard + '_ {
             to_page,
             updates: mpsc::unbounded_channel(),
             followed: HashMap::new(),
-            tree: Coverage::Starting,
-            initial: false,
-            rescan: false,
-            answers: 0,
-            unavailable: false,
+            watch: PageWatch::new(),
         };
         self.tasks()
             .spawn_local(relay.run(tree, from_page, access.open, released));
@@ -98,23 +91,8 @@ impl dyn HostShard + '_ {
     }
 }
 
-/// Where one of the Host's watches is.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Coverage {
-    Starting,
-    Running,
-    Failed(String),
-}
-
 /// Which watch an update comes from: the working tree's, or a path's.
 type Source = Option<String>;
-
-/// A followed path outside the working tree: its watch's task, and where
-/// the watch is.
-struct Followed {
-    _task: AbortOnDropHandle<()>,
-    coverage: Coverage,
-}
 
 struct Relay {
     host: RemoteHost,
@@ -123,16 +101,10 @@ struct Relay {
         mpsc::UnboundedSender<(Source, WatchUpdate)>,
         mpsc::UnboundedReceiver<(Source, WatchUpdate)>,
     ),
-    followed: HashMap<String, Followed>,
-    tree: Coverage,
-    /// The first `live` went out.
-    initial: bool,
-    /// A `lost` went out whose `live` is owed.
-    rescan: bool,
-    /// `paths` messages taken whose `live` is owed.
-    answers: usize,
-    /// The page heard that the Host cannot watch; no state follows.
-    unavailable: bool,
+    /// The task following each path's watch outside the working tree.
+    followed: HashMap<String, AbortOnDropHandle<()>>,
+    /// The watches' states and what the page is owed of them.
+    watch: PageWatch,
 }
 
 /// Why the relay ended.
@@ -154,26 +126,34 @@ impl Relay {
         let _tree = self.follow(None, tree);
         tokio::pin!(released);
         let end = loop {
-            tokio::select! {
+            let said = tokio::select! {
                 () = &mut released => break End::Released,
                 () = open.ended.cancelled() => break End::Released,
                 paths = from_page.recv() => match paths {
-                    Some(paths) => self.paths(paths),
+                    Some(paths) => {
+                        self.paths(paths);
+                        Vec::new()
+                    }
                     None => break End::Released,
                 },
                 Some((source, update)) = self.updates.1.recv() => {
-                    match self.update(source, update).await {
-                        Some(end) => break end,
-                        None => {}
-                    }
+                    let report = match update {
+                        WatchUpdate::Ready => WatchReport::Ready,
+                        WatchUpdate::Changed(paths) => WatchReport::Changed(paths),
+                        WatchUpdate::Lost => WatchReport::Lost,
+                        WatchUpdate::Failed(reason) => WatchReport::Failed(reason),
+                        WatchUpdate::Ended => break End::Offline,
+                    };
+                    self.watch.report(source.as_deref(), report)
                 }
-            }
-            if !self.settle().await {
+            };
+            let owed = self.watch.settle();
+            if !self.send_all(said.into_iter().chain(owed)).await {
                 break End::Released;
             }
         };
         // A Host that cannot watch said so, and says no other state.
-        if matches!(end, End::Offline) && !self.unavailable {
+        if matches!(end, End::Offline) && !self.watch.unavailable() {
             let offline = FileWatchMessage::State {
                 state: FileWatchState::Offline,
                 reason: None,
@@ -204,106 +184,29 @@ impl Relay {
 
     /// Follows the paths of a `paths` message, and only them.
     fn paths(&mut self, paths: Vec<String>) {
-        self.followed.retain(|path, _| paths.contains(path));
-        for path in paths {
-            if self.followed.contains_key(&path) {
-                continue;
-            }
-            let coverage = match self.host.watch(&path, false) {
-                Ok(watch) => Followed {
-                    _task: self.follow(Some(path.clone()), watch),
-                    coverage: Coverage::Starting,
-                },
+        let changed = self.watch.paths(paths);
+        for path in changed.stop {
+            self.followed.remove(&path);
+        }
+        for path in changed.start {
+            match self.host.watch(&path, false) {
+                Ok(watch) => {
+                    let task = self.follow(Some(path.clone()), watch);
+                    self.followed.insert(path, task);
+                }
                 // The connection ended: the tree's watch says so.
-                Err(_) => continue,
-            };
-            self.followed.insert(path, coverage);
+                Err(_) => self.watch.forget(&path),
+            }
         }
-        self.answers += 1;
     }
 
-    /// Takes one watch's update; the end it brings, if any.
-    async fn update(&mut self, source: Source, update: WatchUpdate) -> Option<End> {
-        let coverage = match &source {
-            None => &mut self.tree,
-            Some(path) => match self.followed.get_mut(path) {
-                Some(followed) => &mut followed.coverage,
-                // A path the page no longer names.
-                None => return None,
-            },
-        };
-        match update {
-            WatchUpdate::Ready => *coverage = Coverage::Running,
-            WatchUpdate::Failed(reason) => *coverage = Coverage::Failed(reason),
-            WatchUpdate::Ended => return Some(End::Offline),
-            WatchUpdate::Changed(paths) => {
-                if !self.send(FileWatchMessage::Changed { paths }).await {
-                    return Some(End::Released);
-                }
-            }
-            WatchUpdate::Lost => {
-                // Before the first `live` nothing was covered.
-                if self.initial && !self.unavailable {
-                    self.rescan = true;
-                    let lost = FileWatchMessage::State {
-                        state: FileWatchState::Lost,
-                        reason: None,
-                    };
-                    if !self.send(lost).await {
-                        return Some(End::Released);
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// Sends the states the watches now owe the page; false once the edge
-    /// is gone.
-    async fn settle(&mut self) -> bool {
-        if self.unavailable {
-            return true;
-        }
-        let coverages = std::iter::once(&self.tree)
-            .chain(self.followed.values().map(|followed| &followed.coverage));
-        let mut starting = false;
-        let mut failed = None;
-        for coverage in coverages {
-            match coverage {
-                Coverage::Starting => starting = true,
-                Coverage::Failed(reason) => failed = failed.or(Some(reason.clone())),
-                Coverage::Running => {}
-            }
-        }
-        if let Some(reason) = failed {
-            self.unavailable = true;
-            return self
-                .send(FileWatchMessage::State {
-                    state: FileWatchState::Unavailable,
-                    reason: Some(reason),
-                })
-                .await;
-        }
-        if starting {
-            return true;
-        }
-        let owed = usize::from(!self.initial) + usize::from(self.rescan) + self.answers;
-        self.initial = true;
-        self.rescan = false;
-        self.answers = 0;
-        for _ in 0..owed {
-            let live = FileWatchMessage::State {
-                state: FileWatchState::Live,
-                reason: None,
-            };
-            if !self.send(live).await {
+    /// Sends `messages` in order; false once the edge is gone.
+    async fn send_all(&self, messages: impl IntoIterator<Item = FileWatchMessage>) -> bool {
+        for message in messages {
+            if self.to_page.send(message).await.is_err() {
                 return false;
             }
         }
         true
-    }
-
-    async fn send(&self, message: FileWatchMessage) -> bool {
-        self.to_page.send(message).await.is_ok()
     }
 }

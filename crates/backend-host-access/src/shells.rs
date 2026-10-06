@@ -312,7 +312,7 @@ async fn read_copies(
             .map(|(path, bytes)| {
                 let text = bytes
                     .map_err(|error| error.to_string())
-                    .and_then(|bytes| text_of(bytes).map_err(|refusal| refusal.to_string()));
+                    .and_then(|bytes| text_of(Vec::from(bytes)).map_err(|refusal| refusal.to_string()));
                 (path, text)
             })
             .collect(),

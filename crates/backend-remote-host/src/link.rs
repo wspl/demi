@@ -22,6 +22,7 @@ use demi_host_interface::{
     HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, ProcessEnd, ProcessOutput,
     RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
 };
+use demi_runner_protocol::direct::{Introduction, OfferRefusal};
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
     VolumeName,
@@ -224,6 +225,7 @@ pub(crate) enum Expected {
     Service,
     JobRead,
     JobMediaRead,
+    DirectOffer,
 }
 
 pub(crate) enum Answer {
@@ -232,7 +234,19 @@ pub(crate) enum Answer {
     Log { lines: Vec<LogLine>, next: u64 },
     /// Which files of a read of several were read.
     Read(Vec<FileRead>),
+    /// The runner's answer to a page's offer.
+    Direct(DirectAnswer),
     Done,
+}
+
+/// What a runner said to a page's offer (`direct-channel.md` § Making the
+/// channel).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DirectAnswer {
+    /// The runner's answer, with its candidates.
+    Answer(String),
+    /// The runner did not answer, for this reason.
+    Refused(OfferRefusal, String),
 }
 
 struct Waiting {
@@ -535,6 +549,39 @@ impl Link {
         }
     }
 
+    /// Introduces a page to the runner with its offer for peer `peer`,
+    /// which replaces the peer of that id, and waits for the runner's
+    /// answer; the caller bounds the wait.
+    pub async fn direct_offer(
+        &self,
+        peer: &str,
+        sdp: String,
+        introduction: Introduction,
+    ) -> Result<DirectAnswer, HostError> {
+        let answer = self
+            .call(Expected::DirectOffer, |id| Inbound::DirectOffer {
+                id,
+                peer: peer.to_owned(),
+                sdp,
+                introduction,
+            })
+            .await?;
+        match answer {
+            Answer::Direct(answer) => Ok(answer),
+            _ => Err(HostError::new(
+                HostErrorKind::Protocol,
+                "the runner answered an offer with another reply",
+            )),
+        }
+    }
+
+    /// The page's signaling socket closed: the runner closes peer `peer`.
+    pub fn direct_close(&self, peer: &str) {
+        self.post(&Inbound::DirectClose {
+            peer: peer.to_owned(),
+        });
+    }
+
     pub(crate) fn policy(&self) -> &Rc<dyn LinkPolicy> {
         &self.0.policy
     }
@@ -706,6 +753,14 @@ impl Link {
             }
             Outbound::VolumeGrow { id, volume, bytes } => self.grow_volume(id, volume, bytes),
             Outbound::Revoke {} => self.revoke(),
+            Outbound::DirectAnswer { id, sdp } => {
+                let answer = Answer::Direct(DirectAnswer::Answer(sdp));
+                self.answer(&id, Expected::DirectOffer, answer);
+            }
+            Outbound::DirectRefused { id, code, message } => {
+                let answer = Answer::Direct(DirectAnswer::Refused(code, message));
+                self.answer(&id, Expected::DirectOffer, answer);
+            }
             Outbound::FsOk(reply) => {
                 let op = reply.result.op();
                 self.answer(&reply.id, Expected::Fs(op), Answer::Fs(reply.result));
