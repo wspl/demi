@@ -5,6 +5,8 @@
 //! domains that Demi and chromiumoxide use and the domains their types refer
 //! to: the rest are about a third of the generated code and nothing reads
 //! them, and an event of a domain left out decodes as `CdpEvent::Other`.
+//!
+//! Both hold the numbers that Chrome writes as null ([`NULL_WHEN_INFINITE`]).
 use chromiumoxide_pdl::{
     build::Generator,
     pdl::{parser::parse_pdl, resolver::resolve_pdl},
@@ -45,6 +47,74 @@ const SENT_EMPTY: &[(&str, &str)] = &[
     // command without the parameter.
     ("DispatchTouchEventParams", "touch_points"),
 ];
+
+/// Number properties whose description says Chrome writes null for a value
+/// JSON cannot hold (±Inf), which PDL has no way to declare: each one's
+/// domain, type and name. The catalog marks each `"nullable": true` and
+/// admits null there; the bindings make each optional, so null decodes as
+/// `None`.
+const NULL_WHEN_INFINITE: &[(&str, &str, &str)] = &[
+    // A cookie whose Max-Age reaches beyond the times Chrome keeps.
+    ("Network", "Cookie", "expires"),
+];
+
+/// `protocol`, the catalog, with each [`NULL_WHEN_INFINITE`] property marked
+/// nullable.
+fn mark_nullable(protocol: &mut Value) -> Result<(), Box<dyn std::error::Error>> {
+    for (domain, shape, property) in NULL_WHEN_INFINITE {
+        let declared = protocol["domains"]
+            .as_array_mut()
+            .ok_or("PDL domains are not an array")?
+            .iter_mut()
+            .find(|candidate| candidate["domain"] == *domain)
+            .and_then(|found| found["types"].as_array_mut())
+            .and_then(|types| types.iter_mut().find(|candidate| candidate["id"] == *shape))
+            .and_then(|found| found["properties"].as_array_mut())
+            .and_then(|properties| {
+                properties
+                    .iter_mut()
+                    .find(|candidate| candidate["name"] == *property)
+            })
+            .and_then(Value::as_object_mut)
+            .ok_or_else(|| format!("the pinned protocol has no {domain}.{shape}.{property}"))?;
+        if declared.get("type").and_then(Value::as_str) != Some("number") {
+            return Err(format!("{domain}.{shape}.{property} is not a number").into());
+        }
+        declared.insert("nullable".into(), Value::Bool(true));
+    }
+    Ok(())
+}
+
+/// `source`, the PDL of `domain`, with each [`NULL_WHEN_INFINITE`] property
+/// of the domain declared optional, for the bindings.
+fn optional_nullable(domain: &str, source: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let mut lines: Vec<String> = source.lines().map(str::to_owned).collect();
+    for (_, shape, property) in NULL_WHEN_INFINITE
+        .iter()
+        .filter(|(named, _, _)| *named == domain)
+    {
+        let declared = format!("type {shape} extends object");
+        let start = lines
+            .iter()
+            .position(|line| line.trim_start().ends_with(&declared))
+            .ok_or_else(|| format!("{domain}.pdl declares no {shape}"))?;
+        // The type's members are indented deeper than the declarations
+        // around it.
+        let members = lines[start + 1..]
+            .iter()
+            .take_while(|line| line.is_empty() || line.starts_with("    "))
+            .count();
+        let line = lines[start + 1..start + 1 + members]
+            .iter_mut()
+            .find(|line| line.split_whitespace().rev().take(2).eq([*property, "number"]))
+            .ok_or_else(|| format!("{domain}.{shape} has no number {property}"))?;
+        let at = line
+            .find("number")
+            .expect("the line names its type");
+        line.insert_str(at, "optional ");
+    }
+    Ok(lines.join("\n") + "\n")
+}
 
 /// `bindings` with each [`SENT_EMPTY`] parameter serialized even when empty.
 fn send_empty(bindings: &str) -> Result<String, Box<dyn std::error::Error>> {
@@ -184,7 +254,10 @@ fn write_kept(
     for domain in kept {
         let file = root.join("pdl/domains").join(format!("{domain}.pdl"));
         if file.exists() {
-            fs::copy(&file, directory.join("domains").join(format!("{domain}.pdl")))?;
+            fs::write(
+                directory.join("domains").join(format!("{domain}.pdl")),
+                optional_nullable(domain, &fs::read_to_string(&file)?)?,
+            )?;
         }
     }
     let mut written = paths.clone();
@@ -243,6 +316,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     protocol_value(&mut value);
+    mark_nullable(&mut value)?;
     fs::write(root.join("pdl/protocol.json"), serde_json::to_vec(&value)?)?;
     let kept = kept(value["domains"].as_array().ok_or("PDL domains are not an array")?)?;
     let directory = std::env::temp_dir().join(format!("demi-cdp-{}", std::process::id()));
