@@ -4,7 +4,9 @@
 //! conversation of the Host that started it, and it reaches that job's agent
 //! node's commands. A native service's conversation numbers come only from a
 //! conversation of the user that reaches the device (`native-runtime.md`
-//! § Conversation numbers).
+//! § Conversation numbers), and a direct stream counts as the activity of
+//! such a conversation only (`direct-channel.md` § Operations on the
+//! channel).
 
 use std::rc::{Rc, Weak};
 
@@ -13,6 +15,7 @@ use demi_backend_remote_host::{JobOrigin, LinkPolicy};
 use demi_command_protocol::ServiceSequence;
 use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
+use demi_shared_gates::{GateLease, Purpose};
 use bytes::Bytes;
 use demi_shared_types::{BlobRef, Sequence};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -168,6 +171,37 @@ impl LinkPolicy for ShardPolicy {
                 .call(move |connection| sequences::reserve(connection, sequence, count))
                 .await
                 .map_err(|error| error.to_string())
+        })
+    }
+
+    /// Holds a conversation of the user that reaches this device active as
+    /// an open user stream does: a demand lease of its stream gate, and its
+    /// idle watch started, as a Host admission starts it
+    /// (`resource-lifecycle.md` § Activity).
+    fn direct_stream(
+        &self,
+        conversation: String,
+    ) -> LocalBoxFuture<'static, Result<GateLease, String>> {
+        let shard = self.shard();
+        let device = self.device.clone();
+        Box::pin(async move {
+            let shard = shard?;
+            let conversation = ConversationId::try_from(conversation.as_str())
+                .map_err(|_| format!("no conversation {conversation}"))?;
+            let hosts = reachable(shard.host_shard(), &conversation)
+                .await
+                .map_err(|error| error.to_string())?;
+            if !hosts.iter().any(|host| host.device == device) {
+                return Err("the conversation does not reach this device".into());
+            }
+            let lease = shard
+                .conversations()
+                .slot(&conversation)
+                .streams
+                .enter(Purpose::Demand)
+                .await;
+            shard.track_idle(&conversation);
+            Ok(lease)
         })
     }
 }

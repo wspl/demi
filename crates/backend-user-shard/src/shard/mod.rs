@@ -6,6 +6,8 @@
 //! runs on the shard and need not be, and the answer is `Send`.
 
 mod adoption;
+#[cfg(test)]
+pub(crate) use self::adoption::PlayedRunner;
 pub mod cloud;
 pub mod exposes;
 mod host;

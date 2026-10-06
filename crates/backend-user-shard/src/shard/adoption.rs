@@ -175,7 +175,8 @@ impl Shard {
     /// Connects `device` through a runner the test plays, working in `home`:
     /// it answers each ping, and each conversation release once
     /// `on_release` ran for the released conversation, so what that reads
-    /// is the state before the release was answered.
+    /// is the state before the release was answered. The answer says what
+    /// the runner says of its own accord.
     pub(crate) fn play_runner_for_tests(
         self: &Rc<Self>,
         device: &DeviceId,
@@ -184,7 +185,7 @@ impl Shard {
             demi_web_api_protocol::ids::ConversationId,
         ) -> futures_util::future::LocalBoxFuture<'static, ()>
         + 'static,
-    ) {
+    ) -> PlayedRunner {
         use demi_runner_protocol::wire::{self, Outbound};
         let driver = self.connect_for_tests(device, home);
         let (answers, answered) = tokio::sync::mpsc::channel::<Result<Vec<u8>, String>>(8);
@@ -200,6 +201,7 @@ impl Shard {
             Ok::<_, String>(frames)
         });
         tokio::task::spawn_local(driver.serve(incoming, outgoing));
+        let played = PlayedRunner(answers.clone());
         tokio::task::spawn_local(async move {
             while let Some(frame) = sent.recv().await {
                 let answer = match wire::decode::<Inbound>(&frame) {
@@ -221,5 +223,21 @@ impl Shard {
                 let _ = answers.send(Ok(answer.into_bytes())).await;
             }
         });
+        played
+    }
+}
+
+/// A runner a test plays, which says what the test has it say.
+#[cfg(test)]
+pub(crate) struct PlayedRunner(tokio::sync::mpsc::Sender<Result<Vec<u8>, String>>);
+
+#[cfg(test)]
+impl PlayedRunner {
+    pub(crate) async fn say(&self, message: &demi_runner_protocol::wire::Outbound) {
+        let frame = demi_runner_protocol::wire::encode(message).expect("the test runner's messages encode");
+        self.0
+            .send(Ok(frame.into_bytes()))
+            .await
+            .expect("the link hears the test runner");
     }
 }

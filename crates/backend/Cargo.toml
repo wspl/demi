@@ -93,6 +93,8 @@ demi-backend-remote-host = { path = "../backend-remote-host", features = ["testi
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-runner-protocol = { path = "../runner-protocol" }
+# The direct channel scenarios connect a page in process to a real runner.
+demi-runner-direct = { path = "../runner-direct", features = ["testing"] }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }
 demi-plugin-skills = { path = "../plugin-skills", features = ["testing"] }
 bytes.workspace = true

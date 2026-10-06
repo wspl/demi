@@ -3,7 +3,9 @@
 //! the same thing (`runner.md` § Host operations), with the same functions,
 //! limits, atomic writes and file watches, and opens a `stream` as a
 //! `service_open`, with a `user` caller in the conversation the header
-//! names.
+//! names. It tells the backend each stream's opening and closing, which the
+//! backend counts as the conversation's activity, and refuses a stream whose
+//! service must first fetch its executable with `needs_relay`.
 
 use std::{
     collections::HashMap,
@@ -15,8 +17,8 @@ use bytes::Bytes;
 use demi_command_protocol::{CommandCaller, CommandContext, EDIT_FILE_BYTES, TextRefusal, text_of};
 use demi_command_sdk::{InputSource, paths::resolve};
 use demi_runner_direct::{
-    Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamRequest,
-    WatchStream,
+    Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamActivity,
+    StreamRequest, WatchStream,
 };
 use demi_runner_host::{
     files::{open_read, write_file},
@@ -27,7 +29,7 @@ use demi_runner_jobs::commands::streams::{StreamOpener, StreamRefusal, StreamSta
 use demi_runner_protocol::{
     direct::{ChannelError, ChannelErrorCode},
     files::{DirectoryEntry, FileWatchMessage, FsFailure, PageWatch, WatchReport, protected_path},
-    wire::{self, FsResult, Inbound, ServiceErrorCode},
+    wire::{self, FsResult, Inbound, Outbound, ServiceErrorCode},
 };
 use futures_util::StreamExt;
 use tokio::{runtime::Handle, sync::mpsc};
@@ -48,6 +50,64 @@ pub struct HostOperations {
     pub control: Handle,
     /// The connection's end, which ends every operation.
     pub closed: CancellationToken,
+    /// The reports of the streams' openings and closings, which
+    /// [`report_streams`] sends the backend in order.
+    pub reports: mpsc::UnboundedSender<Outbound>,
+}
+
+/// Sends the backend the reports of the connection's direct streams, in
+/// the order the streams made them, until the connection ends.
+pub async fn report_streams(
+    mut reports: mpsc::UnboundedReceiver<Outbound>,
+    control: mpsc::Sender<wire::Frame>,
+    closed: CancellationToken,
+) {
+    loop {
+        let report = tokio::select! {
+            _ = closed.cancelled() => return,
+            report = reports.recv() => match report {
+                Some(report) => report,
+                None => return,
+            },
+        };
+        let frame = match wire::encode(&report) {
+            Ok(frame) => frame,
+            Err(error) => {
+                tracing::warn!("a direct stream's report encoding failed: {error}");
+                continue;
+            }
+        };
+        tokio::select! {
+            _ = closed.cancelled() => return,
+            // A backend that went counts the streams no more.
+            _ = control.send(frame) => {}
+        }
+    }
+}
+
+/// An open direct stream as the backend counts it: reported open as it is
+/// made, and closed as it is dropped.
+struct ReportedStream {
+    reports: mpsc::UnboundedSender<Outbound>,
+    conversation: String,
+}
+
+impl ReportedStream {
+    fn report(&self, open: bool) {
+        let report = Outbound::DirectStream {
+            conversation: self.conversation.clone(),
+            open,
+        };
+        // A connection that ended has no backend left to tell: the
+        // backend's end of it ended the stream's activity already.
+        let _ = self.reports.send(report);
+    }
+}
+
+impl Drop for ReportedStream {
+    fn drop(&mut self) {
+        self.report(false);
+    }
 }
 
 impl Operations for HostOperations {
@@ -224,6 +284,13 @@ impl Operations for HostOperations {
         let control = self.control.clone();
         let stream = self.closed.child_token();
         Box::pin(async move {
+            if opener.fetches_program(&request.binding.package).await {
+                return Err(ChannelError::new(
+                    ChannelErrorCode::NeedsRelay,
+                    409,
+                    "The stream's service must first fetch its executable, which only a stream the backend opened can ask for",
+                ));
+            }
             let start = StreamStart {
                 stream_id: uuid::Uuid::new_v4().simple().to_string(),
                 context: CommandContext {
@@ -292,6 +359,15 @@ impl Operations for HostOperations {
             );
             Ok(Box::pin(output) as ByteStream)
         })
+    }
+
+    fn stream_activity(&self, conversation: &str) -> StreamActivity {
+        let stream = ReportedStream {
+            reports: self.reports.clone(),
+            conversation: conversation.to_owned(),
+        };
+        stream.report(true);
+        Box::new(stream)
     }
 }
 

@@ -49,7 +49,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::Transport;
 use crate::{
-    direct::HostOperations,
+    direct::{HostOperations, report_streams},
     host_log::{self, HostLogReader},
     management::{Management, Phase, Revocation},
     state::{RunnerConfig, RunnerState},
@@ -179,12 +179,14 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
         registered.management.draining.clone(),
         transport.cancellation().child_token(),
     );
+    let (reports, reported) = mpsc::unbounded_channel();
     let operations = HostOperations {
         home: registered.runner.identity.home_dir.clone(),
         watches: host.watches().clone(),
         streams: streams.opener(),
         control: tokio::runtime::Handle::current(),
         closed: handle.closed().clone(),
+        reports,
     };
     let (direct, driver) = demi_runner_direct::direct(Arc::new(operations), Addresses::Interfaces);
     // The peers' thread ends once the connection lets go of `direct`.
@@ -226,6 +228,11 @@ pub async fn serve(registered: &Registered, mut transport: Transport) -> io::Res
         revoke_asked: false,
         direct,
     };
+    let reporting = report_streams(reported, transport.control.clone(), owner.handle.closed().clone());
+    owner.work.spawn(async move {
+        reporting.await;
+        Work::Done
+    });
     let result = owner.run(&mut transport, &mut requests).await;
     // Requests still queued get no answer; their askers see the end.
     drop(requests);
