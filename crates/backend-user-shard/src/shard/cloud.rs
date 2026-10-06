@@ -151,10 +151,6 @@ impl CloudShard for Shard {
             Some(held)
         })
     }
-
-    fn cloud_stopped<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, ()> {
-        Box::pin(self.expose_shard().destroy_exposes_on(device))
-    }
 }
 
 /// A conversation an idle stop of the Cloud holds: its tree and its file

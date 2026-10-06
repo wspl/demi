@@ -10,7 +10,6 @@ import {
   type StateFeed,
 } from '@demicodes/web-ui/plugins/page'
 import { bindTabSchema, navigateTabSchema, syncTabsSchema, tabHistorySchema } from '@demicodes/plugin-browser'
-import { exposeCallSchema, type ExposeState } from '@demicodes/plugin-expose'
 import {
   addSourceSchema,
   checkUpdatesSchema,
@@ -159,30 +158,6 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
     },
     streams: { browser: browser.stream },
     installed: () => browser.installed(),
-  }
-}
-
-/** The expose plugin over `state`: renew moves an expiry to an hour from now, remove drops the expose. */
-export function exposePlugin(state: ExposeState): GalleryPlugin {
-  return {
-    state: () => state,
-    call: async (method, params) => {
-      const { expose } = exposeCallSchema.parse(params)
-      await beat(600)
-      const index = state.exposes.findIndex((entry) => entry.id === expose)
-      if (index < 0) {
-        throw new PluginCallError('expose_not_found', `No expose ${expose}`)
-      }
-      if (method === 'renew') {
-        state.exposes[index]!.expiresAt = new Date(Date.now() + 60 * 60_000).toISOString()
-        return null
-      }
-      if (method === 'remove') {
-        state.exposes.splice(index, 1)
-        return null
-      }
-      return unknownMethod(method)
-    },
   }
 }
 

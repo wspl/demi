@@ -275,7 +275,7 @@ mod tests {
     fn no_budget_exceeds_what_the_codecs_level_carries() {
         // A 1920 × 1080 panel at ratio 2 would ask for 298 Mbps, which the
         // encoder refuses to start with.
-        let mut rate = Rate::new(3840 * 2160);
+        let rate = Rate::new(3840 * 2160);
         assert_eq!(rate.bitrate(), VIDEO_MAX_BITRATE);
         // A picture that uses its whole budget raises it no further.
         let mut rate = reference();
