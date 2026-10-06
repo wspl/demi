@@ -1,4 +1,5 @@
 import { inject, provide, type InjectionKey } from 'vue'
+import type { ImageViewerState } from '../files/image-viewer'
 import type { MessageFiles } from './types'
 
 const messageFilesKey: InjectionKey<() => MessageFiles | undefined> = Symbol('message-files')
@@ -17,9 +18,24 @@ export function useMessageFiles(): () => MessageFiles | undefined {
   return inject(messageFilesKey, () => undefined)
 }
 
-/** A click on a message's file link opens the file; any other click is the page's. */
-export function openFileLink(event: MouseEvent, files: MessageFiles | undefined): void {
-  const link = event.target instanceof Element ? event.target.closest('a[data-file-link]') : null
+/**
+ * A click on a message's file link opens the file, and one on an attachment's
+ * image or its link shows the image large in `viewer`; any other click is the
+ * page's.
+ */
+export function openMessageLink(
+  event: MouseEvent,
+  files: MessageFiles | undefined,
+  viewer: ImageViewerState,
+): void {
+  const target = event.target instanceof Element ? event.target : null
+  const image = target?.closest('a[data-attachment-image]')
+  if (image) {
+    event.preventDefault()
+    viewer.show(image.getAttribute('href') ?? '', image.getAttribute('data-attachment-image') ?? '')
+    return
+  }
+  const link = target?.closest('a[data-file-link]')
   if (!link || !files?.open)
     return
   event.preventDefault()

@@ -195,6 +195,10 @@ pub enum Sequence {
     /// reserves them a few at a time (`native-runtime.md` § Conversation
     /// numbers).
     Tab,
+    /// Attachments the agent uploaded, from 1: `a3`. `demi attachment
+    /// upload` takes one per file it stores (`commands.md` § Attachment
+    /// commands).
+    Attachment,
 }
 
 serde_plain::derive_display_from_serialize!(Sequence);

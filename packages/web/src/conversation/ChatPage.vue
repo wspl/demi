@@ -17,6 +17,7 @@ import { useWorkPanel } from './work'
 import { usePermissions } from './permissions'
 import { conversationFileRoutes, rawFileContents } from '../api/files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
+import { lookupAttachment } from '../api/attachments'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 
@@ -106,7 +107,11 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
   return (selection) => work.openIn(current.id, { intent: 'edit', payload: selection })
 })
 
-/** The Host files the conversation's messages name: images from its raw route, files opened through the `file` intent while a plugin opens it. */
+/**
+ * The Host files the conversation's messages name: images from its raw
+ * route, files opened through the `file` intent while a plugin opens it; and
+ * the attachments they name, from the attachment route.
+ */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
   if (!current) {
@@ -116,6 +121,7 @@ const files = computed<ConversationFiles | undefined>(() => {
   return {
     imageUrl: (path) => contents.url(path),
     open: work.canOpen('file') ? (path) => work.openIn(current.id, { intent: 'file', payload: { path } }) : undefined,
+    attachment: (id) => lookupAttachment(current.id, id),
   }
 })
 

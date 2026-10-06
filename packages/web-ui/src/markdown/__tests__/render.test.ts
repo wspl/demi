@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { renderMarkdown } from '../render'
-import type { MessageFiles } from '../types'
+import type { AttachmentLookup, MessageFiles } from '../types'
 
 // The files a message names (`file-previews.md` § Files named in messages).
 
@@ -68,4 +68,48 @@ test('task boxes are read-only, and HTML shows as text', () => {
   expect(html).toContain('<input type="checkbox" disabled checked>')
   expect(html).toContain('<input type="checkbox" disabled>')
   expect(html).toContain('&lt;b&gt;bold&lt;/b&gt;')
+})
+
+// The attachments the agent uploaded (`commands.md` § Attachment commands):
+// `attachment:a3` names one of the conversation's, whatever its file became.
+
+const attachments: Record<string, AttachmentLookup> = {
+  a1: { state: 'found', attachment: { name: 'login.png', mediaType: 'image/png', url: '/blobs/1?type=image%2Fpng' } },
+  a2: { state: 'found', attachment: { name: 'flow.mp4', mediaType: 'video/mp4', url: '/blobs/2?type=video%2Fmp4' } },
+  a3: { state: 'found', attachment: { name: 'report.pdf', mediaType: 'application/pdf', url: '/blobs/3?type=application%2Fpdf' } },
+  a4: { state: 'loading' },
+  a5: { state: 'failed' },
+}
+const withAttachments: MessageFiles = {
+  ...files,
+  attachment: (id) => attachments[id] ?? { state: 'missing' },
+}
+
+test('an attachment image shows, and a click on it shows it large', () => {
+  expect(renderMarkdown('![The fixed sign-in page](attachment:a1)', { files: withAttachments }))
+    .toBe('<p><a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"><img src="/blobs/1?type=image%2Fpng" alt="The fixed sign-in page" /></a></p>\n')
+})
+
+test('an attachment video plays in place', () => {
+  expect(renderMarkdown('![The flow](attachment:a2)', { files: withAttachments }))
+    .toBe('<p><video src="/blobs/2?type=video%2Fmp4" controls preload="metadata" aria-label="The flow"></video></p>\n')
+})
+
+test('a link opens an attachment: an image large, a video in a new tab, any other file as a download', () => {
+  const html = renderMarkdown('[shot](attachment:a1) [flow](attachment:a2) [report](attachment:a3) ![report](attachment:a3)', { files: withAttachments })
+  expect(html).toContain('<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png">shot</a>')
+  expect(html).toContain('<a href="/blobs/2?type=video%2Fmp4" target="_blank" rel="noopener noreferrer">flow</a>')
+  expect(html).toContain('<a href="/blobs/3?type=application%2Fpdf" download="report.pdf">report</a> <a href="/blobs/3?type=application%2Fpdf" download="report.pdf">report</a>')
+})
+
+test('an attachment number the conversation does not have says so beside its text', () => {
+  const html = renderMarkdown('![The page](attachment:a9) [notes](attachment:a9)', { files: withAttachments })
+  expect(html).toBe('<p>The page <span class="attachment-missing">No attachment a9 in this conversation</span> notes <span class="attachment-missing">No attachment a9 in this conversation</span></p>\n')
+})
+
+test('an attachment shows its text while the page asks for it, when asking failed, and outside a conversation', () => {
+  expect(renderMarkdown('![shot](attachment:a4) [flow](attachment:a5)', { files: withAttachments }))
+    .toBe('<p>shot flow</p>\n')
+  expect(renderMarkdown('![shot](attachment:a1)', { files })).toBe('<p>shot</p>\n')
+  expect(renderMarkdown('![shot](attachment:a1)')).toBe('<p>shot</p>\n')
 })
