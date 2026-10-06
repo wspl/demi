@@ -264,6 +264,7 @@ async fn serving() -> (
             profiles: Vec::new(),
         }),
         instructions: Rc::from("system prompt"),
+        guide: Rc::from("harness guide"),
         hosts: Rc::new(LiveHosts),
         context: Rc::new([]),
         providers,

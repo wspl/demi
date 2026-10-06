@@ -36,6 +36,10 @@ use crate::host_commands::{conversation_of, verb};
 
 const SUMMARY: &str = "Give the user files of this host as attachments of the conversation, which your messages show.";
 
+/// The group's entry in the model's capability index (`system-prompt.md`
+/// § Capability index).
+const ENTRY: &str = "Gives the user files from the Host as attachments of the conversation, which stay viewable whatever later becomes of the file. Use it to deliver a screenshot, a recording, a download or a file you made, and embed it in your reply as `![…](attachment:a3)`. A file the user should see as it changes on the Host is linked by its path instead.";
+
 const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Show one in a message as ![description](attachment:a3): an image shows and a video plays; link any other file as [name](attachment:a3). A file is at most 25 MiB. Returns no medium: an attachment is for the user, not for you to see.";
 
 /// What the media type falls back to when neither the bytes nor the file's
@@ -72,15 +76,17 @@ struct UploadedAttachment {
 
 /// The `attachment` group, whose handlers act in `shard`.
 pub fn attachment_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
-    GroupBuilder::new("attachment", SUMMARY).leaf(
-        LeafBuilder::rpc("upload", UPLOAD_SUMMARY)
-            .input::<UploadArgs>()
-            .positionals(["path"])
-            .json_output::<Uploaded>()
-            .success_output("one line per file: its number, path, media type and size, such as `a3  out/login.png  image/png  421888 bytes`")
-            .failure_output("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
-            .bind(TypedRpc::new(verb(shard, upload))),
-    )
+    GroupBuilder::new("attachment", SUMMARY)
+        .index_entry(ENTRY)
+        .leaf(
+            LeafBuilder::rpc("upload", UPLOAD_SUMMARY)
+                .input::<UploadArgs>()
+                .positionals(["path"])
+                .json_output::<Uploaded>()
+                .success_output("one line per file: its number, path, media type and size, such as `a3  out/login.png  image/png  421888 bytes`")
+                .failure_output("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
+                .bind(TypedRpc::new(verb(shard, upload))),
+        )
 }
 
 async fn upload(

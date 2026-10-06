@@ -29,6 +29,7 @@ use super::{
     media::{held, model_view},
     persist,
     runtime::{NewContext, SeenContext, SessionRuntime, ToolFailure, ToolInvocation, ToolOutcome},
+    turn,
 };
 
 /// The one text that exists for compaction: the user message a session copy
@@ -137,7 +138,7 @@ async fn over_a_threshold(
     if over_token_threshold(s, &request, window) {
         return Ok(true);
     }
-    let system_prompt = cancel.guard(s.runtime.system_prompt()).await?;
+    let system_prompt = turn::system_prompt(s, model, cancel).await?;
     let replayed = replay(&request);
     let size = request_size(&system_prompt, &replayed.items);
     Ok(s.config.compaction.size_reached(limits, size))
@@ -485,8 +486,11 @@ impl SessionRuntime for CopyRuntime {
         Box::pin(async { Err("A session copy is never edited".to_owned()) })
     }
 
-    fn system_prompt(&self) -> LocalBoxFuture<'_, String> {
-        self.session.system_prompt()
+    fn system_prompt<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<String, String>> {
+        self.session.system_prompt(model)
     }
 
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {

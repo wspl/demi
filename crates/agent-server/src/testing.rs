@@ -110,6 +110,15 @@ impl ProviderResolver for ScriptedProviders {
         Box::pin(async move { window })
     }
 
+    /// A scripted provider's family is its id.
+    fn family<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<String, ResolveError>> {
+        let family = model.provider_id.clone();
+        Box::pin(async move { Ok(family) })
+    }
+
     /// The selection the provider's catalog makes of `model`, as a backend
     /// makes it: an entry without a runtime is gone.
     fn profile_selection<'a>(

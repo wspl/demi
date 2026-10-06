@@ -55,7 +55,7 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
                 "demi file create ../relative.txt <<'EOF'\nnope\nEOF",
                 "demi file read shot.png",
                 "demi file read shot.png | wc -c",
-                "demi --help",
+                "demi file --help && demi file create --help",
             ],
             |workspace| std::fs::write(format!("{workspace}/shot.png"), PNG).unwrap(),
         )

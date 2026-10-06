@@ -155,6 +155,24 @@ impl ProviderResolver for ConversationProviders {
         })
     }
 
+    /// The family of `model`'s entry, read from the user's scope as a
+    /// request's admission reads it, and refused as admission refuses it.
+    fn family<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<String, ResolveError>> {
+        Box::pin(async move {
+            let provider = ProviderId::try_from(model.provider_id.as_str())
+                .map_err(|_| ResolveError::Unknown(model.provider_id.clone()))?;
+            let read = self.services.vault.visible(&self.user, &provider).await;
+            match read {
+                Ok(Some(entry)) => Ok(entry.family),
+                Ok(None) => Err(ResolveError::Failed(entry_gone(&provider))),
+                Err(error) => Err(ResolveError::Failed(entry_unreadable(&error))),
+            }
+        })
+    }
+
     /// The selection a profile's model settings make from the entry's
     /// catalog now, as a model switch makes one; what is missing when a part
     /// is gone.
@@ -232,6 +250,17 @@ struct Current {
     runtime: Box<dyn ProviderRuntime>,
 }
 
+/// Why a request of a conversation whose provider entry left the user's
+/// scope is refused.
+fn entry_gone(provider: &ProviderId) -> String {
+    format!("Provider \"{provider}\" is no longer available to this conversation")
+}
+
+/// Why a request is refused when its provider entry could not be read.
+fn entry_unreadable(error: &impl std::fmt::Display) -> String {
+    format!("The provider entry could not be read: {error}")
+}
+
 /// A failure of the inference boundary itself, before any vendor: it has no
 /// code, so the agent never retries it by itself.
 fn refused(message: impl Into<String>, code: Option<ErrorCode>) -> ProviderFailure {
@@ -265,19 +294,10 @@ impl ConversationRuntime {
             Ok(None) => {
                 // The entry is gone: its runtime has nothing left to serve.
                 self.close_current().await;
-                return Err(refused(
-                    format!(
-                        "Provider \"{}\" is no longer available to this conversation",
-                        scope.provider
-                    ),
-                    None,
-                ));
+                return Err(refused(entry_gone(&scope.provider), None));
             }
             Err(error) => {
-                return Err(refused(
-                    format!("The provider entry could not be read: {error}"),
-                    None,
-                ));
+                return Err(refused(entry_unreadable(&error), None));
             }
         };
         let requested = ModelSelection {

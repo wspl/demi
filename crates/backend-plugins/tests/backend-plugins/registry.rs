@@ -5,7 +5,7 @@
 use std::rc::Rc;
 
 use demi_backend_plugins::{Registry, RegistryError};
-use demi_command_declarations::NativeOperation;
+use demi_command_declarations::{NativeOperation, Node};
 use demi_host_interface::{
     CommandSet, GroupBuilder, LeafBuilder, RpcError, RpcHandler, RpcInvocation, RpcPort,
     testing::{MemoryPort, test_command_context},
@@ -135,6 +135,18 @@ async fn run(commands: &CommandSet, path: &[&str]) -> Result<String, RpcError> {
     Ok(String::from_utf8(memory.stdout()).unwrap())
 }
 
+/// The names of the groups under the `demi` root of `commands`.
+fn demi_groups(commands: &CommandSet) -> Vec<&str> {
+    let demi = commands
+        .declarations()
+        .find(|root| root.name() == "demi")
+        .expect("the set has a demi root");
+    let Node::Group(demi) = demi else {
+        panic!("the demi root is a group")
+    };
+    demi.subcommands.iter().map(Node::name).collect()
+}
+
 #[tokio::test(flavor = "local")]
 async fn groups_join_the_products_under_demi_roots_stand_alone_and_each_call_gets_the_plugins_own_path()
  {
@@ -153,9 +165,7 @@ async fn groups_join_the_products_under_demi_roots_stand_alone_and_each_call_get
 
     let roots: Vec<_> = commands.declarations().map(|root| root.name()).collect();
     assert_eq!(roots, ["demi", "lint"]);
-    let help = commands.render_help();
-    assert!(help.contains("agent: A group."), "{help}");
-    assert!(help.contains("notes: A group."), "{help}");
+    assert_eq!(demi_groups(&commands), ["agent", "notes"]);
     assert_eq!(
         run(&commands, &["demi", "notes", "run"]).await.unwrap(),
         "u1: notes run"
@@ -227,7 +237,5 @@ async fn a_tree_bound_to_a_package_the_catalog_does_not_serve_is_left_out_whole(
     let (plugins, _data) = user_plugins(registry).await;
     let commands = plugins.toolset(Vec::new()).await.unwrap().commands;
 
-    let help = commands.render_help();
-    assert!(help.contains("served: A native group."), "{help}");
-    assert!(!help.contains("unserved"), "{help}");
+    assert_eq!(demi_groups(&commands), ["served"]);
 }
