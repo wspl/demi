@@ -11,7 +11,7 @@ pub mod exposes;
 mod host;
 #[cfg(test)]
 mod host_tests;
-mod page_socket;
+pub mod page_socket;
 mod permissions;
 
 pub use self::permissions::deliver_decisions;
@@ -40,7 +40,7 @@ use demi_backend_remote_host::{ARRIVAL, Pipes};
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::router::CommandRouter;
 use demi_shared_gates::KeyedSerialGate;
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::UserId;
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot};
@@ -117,8 +117,6 @@ pub struct Shard {
     plugins: UserPlugins,
     /// What the shard remembers of its Hosts' plugin directories.
     plugin_installs: PluginInstalls,
-    /// How many jobs of each conversation ended since the shard started.
-    jobs_ended: RefCell<HashMap<ConversationId, u64>>,
     /// How many times each conversation's permission requests changed
     /// since the shard started.
     permission_revisions: demi_backend_permissions::Revisions,
@@ -174,7 +172,6 @@ impl Shard {
             exposes: Exposes::default(),
             plugins,
             plugin_installs: PluginInstalls::default(),
-            jobs_ended: RefCell::new(HashMap::new()),
             permission_revisions: demi_backend_permissions::Revisions::default(),
         }
     }

@@ -9,10 +9,13 @@ import {
   Lock,
   WifiOff,
 } from '@lucide/vue'
+import { useTypeSelect } from '../composables/useTypeSelect'
+import HighlightText from '../ui/HighlightText.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TextInput from '../ui/TextInput.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
+import TypeSelectHint from '../ui/TypeSelectHint.vue'
 import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { FileBrowserSort, FileBrowserSortKey } from './file-browser-state'
@@ -27,7 +30,9 @@ import type {
 /**
  * The detail view: sortable columns over the rows of one directory. A click selects,
  * a double click or Enter opens a folder or confirms a file; the arrows move the
- * selection, Backspace goes up. In directory mode files are shown but cannot be picked.
+ * selection, Backspace goes up. Typing a name selects the first row that starts with
+ * it (`useTypeSelect`), Backspace then taking back a letter. In directory mode files
+ * are shown but cannot be picked, nor reached by typing.
  */
 /** An entry with the glyph its place on the tree earns, when it earns one. */
 export interface FileBrowserRow extends FileBrowserEntry {
@@ -94,6 +99,30 @@ function activate(entry: FileBrowserEntry) {
   emit('activate', entry)
 }
 
+/** Scrolls the selected row into view once it shows as selected. */
+function revealSelected() {
+  nextTick(() => {
+    listEl.value
+      ?.querySelector<HTMLElement>('[data-selected]')
+      ?.scrollIntoView({ block: 'nearest' })
+  })
+}
+
+// Typing reaches the rows a click could select.
+const pickableEntries = computed(() => props.entries.filter(pickable))
+const typeSelect = useTypeSelect({
+  names: () => pickableEntries.value.map((entry) => entry.name),
+  select: (index) => {
+    selected.value = pickableEntries.value[index]!.name
+    revealSelected()
+  },
+})
+
+/** The letters to mark on a row's name: the typed prefix, on the selected row only. */
+function highlightOf(entry: FileBrowserEntry): readonly number[] | undefined {
+  return entry.name === selected.value ? (typeSelect.prefix(entry.name) ?? undefined) : undefined
+}
+
 function moveSelection(delta: number) {
   const list = props.entries
   if (!list.length) {
@@ -110,15 +139,15 @@ function moveSelection(delta: number) {
     return
   }
   selected.value = list[index]!.name
-  nextTick(() => {
-    listEl.value
-      ?.querySelector<HTMLElement>('[data-selected]')
-      ?.scrollIntoView({ block: 'nearest' })
-  })
+  revealSelected()
 }
 
 function onKeydown(event: KeyboardEvent) {
   if (props.creating) {
+    return
+  }
+  if (typeSelect.keydown(event)) {
+    event.preventDefault()
     return
   }
   const modifier = event.altKey || event.metaKey
@@ -296,7 +325,9 @@ defineExpose({
               :icon="entry.icon"
               :class="!pickable(entry) ? 'opacity-40' : isHiddenName(entry.name) ? 'faded' : ''"
             />
-            <TruncatedText :class="isHiddenName(entry.name) ? 'faded' : ''" :text="entry.name" />
+            <TruncatedText :class="isHiddenName(entry.name) ? 'faded' : ''" :text="entry.name">
+              <HighlightText :text="entry.name" :indexes="highlightOf(entry)" />
+            </TruncatedText>
           </span>
           <span
             class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block"
@@ -341,6 +372,7 @@ defineExpose({
           This folder is empty.
         </div>
       </div>
+      <TypeSelectHint :query="typeSelect.query.value" :matched="typeSelect.matched.value" />
     </ScrollArea>
   </div>
 </template>

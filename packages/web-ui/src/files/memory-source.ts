@@ -5,16 +5,26 @@
  * source given an upload rate takes uploads at that rate, each landing as a
  * file of its size; without one it takes no uploads. Directories are made
  * and entries deleted at once.
+ *
+ * The source keeps what it read as the product's does (`keptSource`), under a
+ * simulated watch of the tree: a live watch confirms what is read, so a file
+ * shown again shows at once, and a change made with `change` is reported, so
+ * the views that show it read it again; an unavailable one says so, as a Host
+ * that cannot watch does.
  */
+import { reactive } from 'vue'
 import { previewMediaType } from '@demicodes/protocol'
 import { delay } from '@demicodes/utils'
+import { HostFiles, type Coverage } from './file-cache'
+import { keptSource, type FileFollower, type FileReads } from './kept-source'
 import {
   FileBrowserError,
   type FileBrowserEntry,
   type FileBrowserFailure,
   type FileBrowserSource,
   type FileBrowserPlatform,
-  type FileContents
+  type FileContents,
+  type FileWatchNote,
 } from './types'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
 
@@ -48,6 +58,29 @@ export interface MemoryFileSourceOptions {
   offline?: boolean
   /** Bytes a second an upload moves at; without it the source takes no uploads. */
   uploadRate?: number
+  /**
+   * The simulated watch of the tree: `live`, the default, confirms what is
+   * read and reports each `change`; `unavailable` is a Host that cannot
+   * watch, whose views say they show files as last read.
+   */
+  watch?: 'live' | 'unavailable'
+}
+
+/** What a simulated Host says when it cannot watch its files. */
+export const UNWATCHED_REASON = 'The file system reports no changes.'
+
+/** A memory source, with its tree and what simulates the world changing it. */
+export interface MemoryFileSource extends FileBrowserSource {
+  root: MemoryDirectory
+  read(path: string): Promise<string>
+  contents: FileContents
+  /**
+   * Writes `content` to the file at `path` as something outside the page
+   * would, making it if missing; a live watch reports it.
+   */
+  change(path: string, content: string): void
+  /** The next read of `path` fails with `failure`, as a Host's might for a moment. */
+  failNext(path: string, failure: FileBrowserFailure): void
 }
 
 /** How often a simulated upload reports its progress. */
@@ -77,11 +110,23 @@ export function assetFile(url: string, size: number, modifiedAt: string): Memory
   return { kind: 'file', size, modifiedAt, url }
 }
 
-export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBrowserSource & {
-  root: MemoryDirectory
-  contents: FileContents
-} {
+/** A memory tree's reads and writes, each answering as a Host's would, and what changes the tree. */
+interface MemoryHost {
+  reads: FileReads
+  /** The directory at `path`, made down from the root with each one that is missing. */
+  makeDirectories(path: string): MemoryDirectory
+  /** Paths whose next read fails, as a Host's might for a moment. */
+  failing: Map<string, FileBrowserFailure>
+}
+
+/** The reads and writes of a memory tree, each a simulated request, without keeping what they answer. */
+export function memoryFileReads(options: MemoryFileSourceOptions): FileReads {
+  return memoryHost(options).reads
+}
+
+function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
   const { root, latencyMs = 0, uploadRate } = options
+  const failing = new Map<string, FileBrowserFailure>()
 
   function lookup(path: string): MemoryNode | null {
     let node: MemoryNode = root
@@ -96,16 +141,16 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
     return node
   }
 
-  async function wait(signal?: AbortSignal) {
-    if (latencyMs <= 0)
-      return
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(resolve, latencyMs)
-      signal?.addEventListener('abort', () => {
-        clearTimeout(timer)
-        reject(new DOMException('Aborted', 'AbortError'))
-      }, { once: true })
-    })
+  /** Waits a read's latency; then a path told to fail next fails, once. */
+  async function wait(path?: string) {
+    if (latencyMs > 0)
+      await delay(latencyMs)
+    const target = path === undefined ? undefined : normalizePath(path)
+    const failure = target === undefined ? undefined : failing.get(target)
+    if (target !== undefined && failure) {
+      failing.delete(target)
+      throw new FileBrowserError(failure.kind, failure.message)
+    }
   }
 
   function fileAt(path: string): MemoryFile {
@@ -167,27 +212,11 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
     }
   }
 
-  /** An asset's own URL, or a text file's content as a `data:` URL typed by its extension. */
-  const contents: FileContents = {
-    url(path) {
-      const node = lookup(path)
-      if (!node || node.kind !== 'file')
-        return ''
-      return node.url ?? `data:${previewMediaType(path) ?? 'text/plain'};charset=utf-8,${encodeURIComponent(node.content ?? '')}`
-    },
-    async describe(path, signal) {
-      await wait(signal)
-      const node = fileAt(path)
-      return { size: node.size, modifiedAt: node.modifiedAt, version: node.modifiedAt }
-    },
-  }
-
-  return {
-    root,
+  const reads: FileReads = {
     platform: options.platform,
     home: normalizePath(options.home),
-    async list(path, signal) {
-      await wait(signal)
+    async list(path) {
+      await wait(path)
       if (options.offline)
         throw new FileBrowserError('offline')
       const node = lookup(path)
@@ -210,22 +239,36 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
       )
       return entries
     },
-    async read(path, signal) {
-      await wait(signal)
+    async readText(path, held) {
+      await wait(path)
       const node = fileAt(path)
       if (node.url !== undefined && node.content === undefined)
         throw new FileBrowserError('binary', 'The file is not UTF-8 text')
-      return node.content ?? ''
+      // A file's version is when it was written.
+      return held === node.modifiedAt ? null : { text: node.content ?? '', version: node.modifiedAt }
     },
-    contents,
-    async createDirectory(path, signal) {
-      await wait(signal)
+    /** An asset's own URL, or a text file's content as a `data:` URL typed by its extension. */
+    contents: {
+      url(path) {
+        const node = lookup(path)
+        if (!node || node.kind !== 'file')
+          return ''
+        return node.url ?? `data:${previewMediaType(path) ?? 'text/plain'};charset=utf-8,${encodeURIComponent(node.content ?? '')}`
+      },
+      async describe(path) {
+        await wait(path)
+        const node = fileAt(path)
+        return { size: node.size, modifiedAt: node.modifiedAt, version: node.modifiedAt }
+      },
+    },
+    async createDirectory(path) {
+      await wait()
       if (options.offline)
         throw new FileBrowserError('offline')
       makeDirectories(path)
     },
-    async remove(path, signal) {
-      await wait(signal)
+    async remove(path) {
+      await wait()
       if (options.offline)
         throw new FileBrowserError('offline')
       const parent = lookup(parentPath(path))
@@ -239,4 +282,39 @@ export function createMemoryFileSource(options: MemoryFileSourceOptions): FileBr
     },
     ...(uploadRate === undefined ? {} : { upload: uploadAt(uploadRate) }),
   }
+  return { reads, makeDirectories, failing }
+}
+
+export function createMemoryFileSource(options: MemoryFileSourceOptions): MemoryFileSource {
+  const { root, watch = 'live' } = options
+  const { reads, makeDirectories, failing } = memoryHost(options)
+  // The simulated watch covers the whole tree while it is live.
+  const files = new HostFiles()
+  const everything: Coverage = { covers: () => true }
+  if (watch === 'live')
+    files.cover(everything)
+  const note: FileWatchNote = reactive({
+    unavailable: watch === 'unavailable' ? UNWATCHED_REASON : null,
+    refresh: () => files.refresh(),
+  })
+  const follower: FileFollower = { show: () => () => {}, note }
+  const source = keptSource(reads, { files, follower })
+  const { contents, read } = source
+  if (!contents || !read)
+    throw new Error('A memory source reads its files and serves their bytes.')
+  return Object.assign(source, {
+    root,
+    read,
+    contents,
+    change(path: string, content: string) {
+      const target = normalizePath(path)
+      const parent = makeDirectories(parentPath(target))
+      parent.children[baseName(target)] = textFile(content, new Date().toISOString())
+      if (watch === 'live')
+        files.changed([target])
+    },
+    failNext(path: string, failure: FileBrowserFailure) {
+      failing.set(normalizePath(path), failure)
+    },
+  })
 }

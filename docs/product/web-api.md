@@ -41,7 +41,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Subagents | `PUT /subagents { enabled }`; `POST /subagents/profiles`, `PATCH /subagents/profiles/:id`, `DELETE /subagents/profiles/:id`; the switch and the profiles are part of the product state ([Subagents](#subagents)) |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
-| Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
+| Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
 | Work panel | `GET /conversations/:id/panel` reads the [work panel's tabs](#work-panel-state); `POST /conversations/:id/panel/changes { changes }` changes them |
@@ -922,15 +922,14 @@ conversation's [work panel](#work-panel-state), 0 before its first change,
 read the same way. `pluginRevisions` does the same for each
 plugin's [conversation state](#conversation-state-of-plugins), as
 `{ plugin, revision }` for every plugin that declares one, in registration
-order, so turning a plugin on or off changes no summary. `workingTreeRevision`
-rises each time a job of the conversation ends, since any job may change the
-working tree, and the page lists the working tree again when it changes
-([File text and working tree changes](#file-text-and-working-tree-changes)).
+order, so turning a plugin on or off changes no summary. What changes in the
+conversation's files is not in the summary: the Host reports it on the
+[file watch](#file-watch).
 `permissionRequests` counts the conversation's undecided
 [permission requests](#conversation-permissions), which the sidebar shows as
 the needs-you mark, and `permissionsRevision` rises with each change of its
 requests; a page that shows the conversation reads them when it is newer
-than the revision it holds. `pluginRevisions`, `workingTreeRevision` and
+than the revision it holds. `pluginRevisions` and
 `permissionsRevision` are [counted in memory](#revisions-counted-in-memory).
 
 `POST /api/conversations/:id/title`, without a body, asks the conversation's
@@ -1076,9 +1075,9 @@ The channel never renews its session; only requests do
 
 ### Revisions counted in memory
 
-Three revisions of a conversation's summary count changes in the backend's
-memory rather than in storage: each of `pluginRevisions`,
-`workingTreeRevision` and `permissionsRevision`. The answers of the
+Two revisions of a conversation's summary count changes in the backend's
+memory rather than in storage: each of `pluginRevisions` and
+`permissionsRevision`. The answers of the
 permissions and plugin state reads carry the same counts. A backend that
 starts again counts from 0, so a count compares only with counts of the same
 run. The product state's `run` names the run: an id the backend chooses when
@@ -1222,7 +1221,12 @@ as `{ path, home, entries }`, with the same entry shape as device browsing.
 Omitting `path` selects the conversation's execution directory. `POST` to the
 same route with `{ path }` creates a directory recursively and returns `{ path }`
 with status 201. `GET /api/conversations/:id/fs/file?path=...` returns
-`{ path, text }`. Paths follow the Host's filesystem rules; the execution directory
+`{ path, text }` with the file's ETag, the one the raw route reports; a
+request whose `If-None-Match` names the file's current ETag answers 304
+without reading the text past the Host, since the runner compares the version
+before it streams ([File contents](../execution/runner.md#file-contents)). The
+files service checks a text it keeps this way
+([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)). Paths follow the Host's filesystem rules; the execution directory
 is a starting directory, not a permission boundary. Missing paths answer 404,
 and permission failures answer 403. A directory too large to list in one
 runner message ([Runner](../execution/runner.md#connection-and-identity))
@@ -1251,8 +1255,9 @@ file's size and modification time, and `If-None-Match` answers 304. A request
 that names the `version` it expects, an ETag it saw earlier, answers 412
 `file_changed` once the file no longer has it: a player's retries carry no
 validator, and they must never splice two versions of a file together. Every
-answer carries `X-Content-Type-Options: nosniff`,
-`Cache-Control: private, no-cache`, `Vary: Cookie` and
+answer carries `X-Content-Type-Options: nosniff`, `Vary: Cookie`, `Cache-Control:
+private, no-cache`, or `private, max-age=31536000, immutable` for a request
+that names its `version`, whose bytes can only be that version's, and
 `X-Accel-Buffering: no`, the last so that a proxy in front streams it instead
 of buffering it; an image served in place also carries the
 [content policy](file-previews.md#keeping-file-content-inert). `HEAD` answers
@@ -1317,11 +1322,49 @@ not have answers 404, and a file over 8 MiB answers 413 `file_too_large`,
 since git's copy is decoded whole before it is sent
 ([Runner](../execution/runner.md#working-tree)).
 
-The page lists the working tree again when the conversation's
-`workingTreeRevision` rises while a view of the working tree shows (a rise
-while no view shows marks the list stale for its next showing), when the page
-becomes visible again, since the user may have changed files outside Demi
-meanwhile, and on its Refresh control. It never polls while idle.
+The page lists the working tree again when the [file watch](#file-watch)
+reports a path in it or under its repository's `.git`, and on its Refresh
+control ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
+It never polls.
+
+### File watch
+
+`WS /api/conversations/:id/fs/watch` carries the Host's reports of what
+changed in the conversation's files to a page that shows them. The page holds
+one while a component shows the conversation's files, and closes it when none
+does. The upgrade checks the session cookie and the `Origin` header as the
+browser stream does, and is admitted through the conversation's host access
+without waking a stopped Cloud.
+
+The backend watches the conversation's working tree on the Host for it, and,
+non-recursively, each folder or file outside that tree the page names, up to
+64 ([Watching files](../execution/runner.md#watching-files)). Pages that watch
+the same Host paths share one watch on the Host. The page sends JSON text
+messages:
+
+| Message | Carries |
+| --- | --- |
+| `paths` | `paths`, the folders and files outside the working tree the page shows now; each message replaces the last |
+
+The backend sends:
+
+| Message | Carries | Sent when |
+| --- | --- | --- |
+| `state` | `state`: `live`, `lost`, `unavailable` or `offline`, and for `unavailable` the Host's `reason` | `live` once the Host's watches run, so what is read from then on is covered, and again once the watches of each `paths` message run, so the page trusts a path outside the working tree only after the `live` that answers the message naming it; `lost` when a watch lost reports, so nothing read before is confirmed, followed by `live` again; `unavailable` when the Host cannot watch, after which the socket sends no other state; `offline` while the Host is out of reach or a stopped Cloud |
+| `changed` | `paths`, absolute paths on the Host that changed | The Host reports them, at most every 100 ms, a path once per message. More than 1,000 paths at once come as `lost`. |
+| `heartbeat` | Nothing | 30 seconds pass without another message, so the page tells a quiet watch from a dead one ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
+
+The backend closes the socket with the user streams' codes: 1011
+`host_unreachable` when the Host became unreachable, 4000
+`conversation_changed` when an archive, a target or directory change, or a
+detach ended the watch, and 1003 `invalid_message` for a message the page
+should not have sent.
+
+A watch that ends, by a closed socket, a lost connection to the Host or an
+archive, a target change or a detach, ends with the socket; the page opens a
+new one after its [reconnect waits](web-application.md#liveness-and-reconnection),
+and treats what it read before as unconfirmed until `live` arrives again.
+
 
 ## Serving the web app build
 

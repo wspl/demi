@@ -22,6 +22,12 @@ const segmentOptions: readonly SegmentedOption<string>[] = [
   { value: 'second', label: 'Second' },
   { value: 'third', label: 'Third' },
 ]
+// Two labelled options, as the Changes view switches between Uncommitted and Conversation.
+const changes = ref('uncommitted')
+const changesOptions: readonly SegmentedOption<string>[] = [
+  { value: 'uncommitted', label: 'Uncommitted' },
+  { value: 'conversation', label: 'Conversation' },
+]
 // More segments than a narrow container holds, as the sign-in page's states on a phone.
 const step = ref('ended')
 const stepOptions: readonly SegmentedOption<string>[] = [
@@ -49,7 +55,7 @@ const surfaces = [
 <template>
   <GallerySection
     title="Control Layout"
-    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. In a container narrower than its segments, it keeps every label whole and scrolls in its own box, with the chosen segment in view. Command text and copy controls share a vertical center."
+    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. Icon segments are square, and a control with two options is one toggle: a click anywhere on it, the chosen segment and the frame included, switches to the other. In a container narrower than its segments, it keeps every label whole and scrolls in its own box, with the chosen segment in view. Command text and copy controls share a vertical center."
   >
     <div class="mb-6 flex flex-wrap gap-4">
       <div
@@ -63,6 +69,7 @@ const surfaces = [
         <Segmented v-model="selected" :options="segmentOptions" size="sm" />
         <Segmented v-model="selected" :options="segmentOptions" />
         <Segmented v-model="selected" :options="segmentOptions" disabled />
+        <Segmented v-model="changes" :options="changesOptions" size="sm" />
         <Segmented v-model="view" :options="viewOptions" size="sm" icon-only />
         <IconButton :icon="Search" variant="solid" circle aria-label="Solid icon button" />
       </div>

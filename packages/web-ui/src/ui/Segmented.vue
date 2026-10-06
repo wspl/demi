@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
 import { ICON_PX } from './icon-metrics'
+import { clickedChoice } from './segmented'
 import Tooltip from './Tooltip.vue'
 import type { SentenceText, TitleText } from './ui-text'
 
@@ -14,7 +15,11 @@ import type { SentenceText, TitleText } from './ui-text'
  * squeezing their labels into each other, and the chosen one scrolls into
  * view.
  * With `iconOnly`, each segment shows its icon alone and its label as the
- * tooltip and the accessible name.
+ * tooltip and the accessible name, and is square: as wide as it is tall, the
+ * icon in its centre.
+ * Two options are one toggle: a click anywhere on the control, the chosen
+ * segment and the frame around and between the segments included, switches
+ * to the other. With three or more, a click chooses the clicked segment.
  */
 export interface SegmentedOption<T extends string> {
   value: T
@@ -63,10 +68,12 @@ function revealChosen(): void {
 onMounted(revealChosen)
 watch([selectedIndex, () => props.options], () => nextTick(revealChosen))
 
-function select(value: T) {
+/** `clicked` is the segment's value, or undefined for the frame around and between them. */
+function choose(clicked: T | undefined) {
   if (props.disabled)
     return
-  model.value = value
+  const values = props.options.map((option) => option.value)
+  model.value = clickedChoice(values, model.value, clicked)
 }
 </script>
 
@@ -84,6 +91,7 @@ function select(value: T) {
       :class="disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : ''"
       role="radiogroup"
       :aria-disabled="disabled || undefined"
+      @click="choose(undefined)"
     >
       <span
         aria-hidden="true"
@@ -106,11 +114,11 @@ function select(value: T) {
         class="relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
         :class="[
           iconOnly
-            ? (size === 'sm' ? 'h-5 px-1.5' : 'h-6 px-2')
+            ? (size === 'sm' ? 'size-5' : 'size-6')
             : (size === 'sm' ? 'px-1.5 py-0.5 text-[11px] leading-4' : 'h-6 px-2 text-[12px]'),
           model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
         ]"
-        @click="select(option.value)"
+        @click.stop="choose(option.value)"
       >
         <component
           :is="option.icon"

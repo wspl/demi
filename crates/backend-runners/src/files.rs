@@ -8,7 +8,7 @@
 use bytes::{Bytes, BytesMut};
 use demi_command_protocol::EDIT_FILE_BYTES;
 use demi_command_protocol::is_text;
-use demi_host_interface::{ByteRange, FileKind, HostError, HostFs};
+use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, HostFs};
 use futures_util::StreamExt as _;
 use demi_web_api_protocol::files::DirectoryEntry;
 
@@ -42,16 +42,21 @@ pub fn text_of(bytes: Bytes) -> Result<String, TextRefusal> {
     Ok(String::from_utf8(bytes.to_vec()).expect("text is UTF-8"))
 }
 
+/// The range a text read asks for: one byte more than the limit, so a file
+/// whose bytes go past it is refused once that byte arrives.
+pub const TEXT_RANGE: ByteRange = ByteRange {
+    offset: 0,
+    length: Some(EDIT_FILE_BYTES as u64 + 1),
+};
+
 /// One file of a Host as text, with one request (`runner.md` § Host
-/// operations): it reads one byte more than the limit, and a file whose
-/// bytes go past it is refused once that byte arrives.
+/// operations), read as [`TEXT_RANGE`] says.
 pub async fn read_text_file(fs: &dyn HostFs, path: &str) -> Result<String, TextError> {
-    let limit = EDIT_FILE_BYTES as u64;
-    let range = ByteRange {
-        offset: 0,
-        length: Some(limit + 1),
-    };
-    let mut stream = fs.read_stream(path, range).await?;
+    text_of_stream(fs.read_stream(path, TEXT_RANGE).await?).await
+}
+
+/// The bytes of a [`TEXT_RANGE`] read as text, under the limits above.
+pub async fn text_of_stream(mut stream: ByteStream) -> Result<String, TextError> {
     let mut bytes = BytesMut::new();
     while let Some(chunk) = stream.next().await {
         bytes.extend_from_slice(&chunk?);

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { RefreshCw } from '@lucide/vue'
+import HighlightText from '../ui/HighlightText.vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
@@ -20,7 +21,8 @@ import type { HeadlineText } from '../ui/ui-text'
  * name is struck through, all as VS Code does. The caption row names the
  * workspace and, at its end, holds the control that lists the changes again
  * when the source can; it turns while a list is on its way. A list cut short
- * says so under its last row. A click on a file selects it.
+ * says so under its last row. A click on a file selects it, as Enter does
+ * on the row the keyboard is on; typing a name moves the keyboard to it (`Tree`).
  */
 const props = defineProps<{
   source: ChangeSetSource
@@ -83,8 +85,10 @@ function activate(row: ChangeTreeRow): void {
         />
       </Tooltip>
     </template>
-    <template #name="{ row }">
-      <TruncatedText :class="row.change && gitMark(row.change.status)?.strike ? 'line-through text-fg-muted' : ''" :text="row.name" />
+    <template #name="{ row, highlight }">
+      <TruncatedText :class="row.change && gitMark(row.change.status)?.strike ? 'line-through text-fg-muted' : ''" :text="row.name">
+        <HighlightText :text="row.name" :indexes="highlight" />
+      </TruncatedText>
     </template>
     <template #trailing="{ row }">
       <span v-if="row.change" class="ml-auto flex shrink-0 items-center gap-2 pl-2">

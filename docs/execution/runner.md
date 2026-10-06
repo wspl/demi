@@ -311,7 +311,10 @@ metadata.
   to the end when absent) and an output pipe. The runner opens the file and
   replies once it is open and positioned; only then does it stream the range
   into the pipe. A file that cannot be opened is an error reply, never an
-  empty stream.
+  empty stream. The reply carries the file's version, from its size and
+  modification time. A request may name the version it holds: when the file
+  still has it, the reply says it is unchanged and the runner streams
+  nothing.
 - `fs_writeFile` names a file, whether to create its parent directories, and an
   input pipe. The runner writes into a temporary file beside the destination
   and renames it into place only when the pipe ends cleanly, then replies. A
@@ -411,7 +414,8 @@ since that computation had already taken the paths the watch recorded.
 `watched` reports whether a watch is running.
 
 The runner keeps at most eight watched directories per connection and drops one
-after fifteen minutes without a request; closing the connection drops them all.
+after fifteen minutes without a request, unless a [watch](#watching-files)
+of the backend still uses it; closing the connection drops them all.
 
 Working-tree work runs on blocking threads off the connection's control thread.
 At most two computations run at a time; a request beyond that waits for one to
@@ -419,6 +423,35 @@ finish ([Load](#load)), and requests for the same directory share one
 computation. A computation stops at its next check when the connection closes
 or after thirty seconds of running (`timeout`). A failure inside the git
 library answers `internal` for that request and affects nothing else.
+
+### Watching files
+
+The backend asks the runner to watch paths and report what changes under
+them, so a page shows a Host's files as they are without asking again
+([File watch](../product/web-api.md#file-watch)). `fs_watch` names a watch id,
+a path and whether to watch what lies below it; `fs_unwatch` ends it. The
+runner reports, as messages of that watch:
+
+- `ready` once the file system watch runs: a change after it is reported.
+  FSEvents can take seconds to start a stream, so the request does not wait
+  for it.
+- `changed` with the paths something changed at: created, written, removed
+  or renamed, both names of a rename. A file opened or read reports nothing,
+  and neither does metadata alone under `.git`, as for the
+  [working tree](#working-tree). The runner gathers paths for 100 ms and sends
+  each once; more than 1,000 at once it sends as `lost`.
+- `lost` when the watch lost events or the platform asks for a rescan: what it
+  reported no longer tells what changed. It keeps running.
+- `failed` when the watch cannot be created or stops, with the reason: an
+  inotify limit, permissions, a file system that reports nothing. It reports
+  nothing more.
+
+A watch below a path is the same file system watch the working tree's
+changes use, one per tree: a working tree whose changes are listed and whose
+files a page shows is watched once, and both learn from it. A watch of one
+folder alone reports its entries, not what lies below them. The runner keeps
+the watches of a connection until the backend ends them or the connection
+closes.
 
 ### Network streams
 

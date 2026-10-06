@@ -13,7 +13,10 @@ use axum::extract::{ConnectInfo, Path, State};
 use axum::http::header::{CONTENT_LENGTH, ETAG, IF_NONE_MATCH, LAST_MODIFIED, RANGE};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
-use demi_backend_runners::files::{TextError, browse_directory, read_text_file, text_of};
+use demi_backend_remote_host::{ConditionalRead, byte_stream};
+use demi_backend_runners::files::{
+    TEXT_RANGE, TextError, browse_directory, read_text_file, text_of, text_of_stream,
+};
 use demi_host_interface::{FileStat, HostFs, MkdirOptions, RmOptions};
 use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
@@ -33,9 +36,7 @@ use super::listener::Peer;
 use super::query::QueryParams;
 use super::transfer::{TRANSFER_IDLE, UploadEnd, copy_upload, paced_body};
 use demi_backend_host_access::access::{ConversationHost, HostAccessError, Refusal};
-use demi_backend_host_access::transfer::{
-    Download, DownloadRequest, RangeAnswer, file_version,
-};
+use demi_backend_host_access::transfer::{Download, DownloadRequest, RangeAnswer};
 
 pub(super) async fn list(
     State(state): State<AppState>,
@@ -161,20 +162,55 @@ fn protected_path<'a>(path: &str, kept: impl IntoIterator<Item = &'a str>) -> bo
     })
 }
 
-/// A file's text: UTF-8 without a NUL byte, up to the size an edit keeps.
+/// What a text read answers: the text with its version, or that the file
+/// still has the version the request named.
+enum TextRead {
+    Text { version: String, file: FileText },
+    NotModified { version: String },
+}
+
+/// A file's text: UTF-8 without a NUL byte, up to the size an edit keeps,
+/// with its version as the ETag. A request whose `If-None-Match` names the
+/// file's version answers 304, and its text never leaves the Host
+/// (`runner.md` § File contents).
 pub(super) async fn text(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    headers: HeaderMap,
     Path(id): Path<String>,
     QueryParams(FileQuery { path }): QueryParams<FileQuery>,
-) -> Result<Json<FileText>, ApiError> {
-    let text = on_host(&state, &user.id, &id, None, async move |host| {
+) -> Result<Response, ApiError> {
+    let held = header(&headers, IF_NONE_MATCH).map(|held| held.trim().to_owned());
+    let read = on_host(&state, &user.id, &id, None, async move |host| {
         let path = path.as_str().to_owned();
-        let text = read_text_file(&host.host, &path).await?;
-        Ok(FileText { path, text })
+        let read = match held.as_deref() {
+            Some(held) => host.host.read_pipe_unless(&path, TEXT_RANGE, held).await,
+            None => host
+                .host
+                .read_pipe(&path, TEXT_RANGE)
+                .await
+                .map(ConditionalRead::Opened),
+        };
+        match read.map_err(TextError::Host)? {
+            ConditionalRead::Unchanged { version, .. } => Ok(TextRead::NotModified { version }),
+            ConditionalRead::Opened(opened) => {
+                let text = text_of_stream(byte_stream(opened.body)).await?;
+                Ok(TextRead::Text {
+                    version: opened.version,
+                    file: FileText { path, text },
+                })
+            }
+        }
     })
     .await?;
-    Ok(Json(text))
+    Ok(match read {
+        TextRead::Text { version, file } => {
+            ([(ETAG, header_value(&version))], Json(file)).into_response()
+        }
+        TextRead::NotModified { version } => {
+            (StatusCode::NOT_MODIFIED, [(ETAG, header_value(&version))]).into_response()
+        }
+    })
 }
 
 /// A file's bytes as a transfer (§ Host operations): by range, under the
@@ -191,6 +227,8 @@ pub(super) async fn raw(
 ) -> Result<Response, ApiError> {
     let conversation = conversation_id(&id)?;
     let path = query.path.as_str().to_owned();
+    // The bytes of a version a request names can only be that version's.
+    let versioned = query.version.is_some();
     let request = DownloadRequest {
         path: path.clone(),
         version: query.version.map(|version| version.as_str().to_owned()),
@@ -221,22 +259,39 @@ pub(super) async fn raw(
             "The file is no longer the version asked for",
         )),
         Download::NotModified { version } => {
-            let mut headers = raw_file_headers();
+            let mut headers = raw_file_headers(versioned);
             headers.insert(ETAG, header_value(&version));
             Ok((StatusCode::NOT_MODIFIED, headers).into_response())
         }
-        Download::Head { stat, part } => Ok((
-            part.status(),
-            file_headers(&path, download_flag, &stat, &part),
-        )
-            .into_response()),
+        Download::Head {
+            stat,
+            version,
+            part,
+        } => {
+            let file = FileAnswer {
+                path: &path,
+                download: download_flag,
+                stat: &stat,
+                version: &version,
+                versioned,
+            };
+            Ok((part.status(), file.headers(&part)).into_response())
+        }
         Download::Stream {
             stat,
+            version,
             part,
             body,
             lease,
         } => {
-            let mut headers = file_headers(&path, download_flag, &stat, &part);
+            let file = FileAnswer {
+                path: &path,
+                download: download_flag,
+                stat: &stat,
+                version: &version,
+                versioned,
+            };
+            let mut headers = file.headers(&part);
             // Streamed, the answer has no length, which a HEAD reports.
             headers.remove(CONTENT_LENGTH);
             // From here a connection nothing moves on is closed; a Cloud that
@@ -372,7 +427,7 @@ pub(super) async fn committed(
     .await?;
     let size = u64::try_from(bytes.len()).expect("a file held in memory fits u64");
     let part = RangeAnswer::of(header(&headers, RANGE).as_deref(), size);
-    let mut answer = raw_file_headers();
+    let mut answer = raw_file_headers(false);
     answer.extend(content_headers(
         preview_media_type(path.as_str()),
         download.0,
@@ -438,14 +493,20 @@ fn file_name(path: &str) -> Option<String> {
     Utf8TypedPath::derive(path).file_name().map(str::to_owned)
 }
 
-/// Headers every raw file answer carries: revalidated on each use, private
-/// to the signed-in user, and streamed rather than buffered by a proxy in
-/// front.
-fn raw_file_headers() -> HeaderMap {
+/// Headers every raw file answer carries: private to the signed-in user,
+/// revalidated on each use unless the request named the `versioned` bytes,
+/// which can only be that version's, and streamed rather than buffered by a
+/// proxy in front.
+fn raw_file_headers(versioned: bool) -> HeaderMap {
     let mut headers = HeaderMap::new();
+    let cache = if versioned {
+        "private, max-age=31536000, immutable"
+    } else {
+        "private, no-cache"
+    };
     headers.insert(
         axum::http::header::CACHE_CONTROL,
-        HeaderValue::from_static("private, no-cache"),
+        HeaderValue::from_static(cache),
     );
     headers.insert(axum::http::header::VARY, HeaderValue::from_static("Cookie"));
     headers.insert(
@@ -455,19 +516,31 @@ fn raw_file_headers() -> HeaderMap {
     headers
 }
 
-/// A file part's headers: how its bytes may be shown, their version, and
-/// the part.
-fn file_headers(path: &str, download: bool, stat: &FileStat, part: &RangeAnswer) -> HeaderMap {
-    let mut headers = raw_file_headers();
-    headers.extend(content_headers(
-        preview_media_type(path),
-        download,
-        file_name(path).as_deref(),
-    ));
-    headers.insert(ETAG, header_value(&file_version(stat)));
-    headers.insert(LAST_MODIFIED, last_modified(stat));
-    headers.extend(part.headers());
-    headers
+/// The file a raw answer serves a part of.
+struct FileAnswer<'a> {
+    path: &'a str,
+    download: bool,
+    stat: &'a FileStat,
+    version: &'a str,
+    /// The request named the version.
+    versioned: bool,
+}
+
+impl FileAnswer<'_> {
+    /// A part's headers: how its bytes may be shown, their version, and the
+    /// part.
+    fn headers(&self, part: &RangeAnswer) -> HeaderMap {
+        let mut headers = raw_file_headers(self.versioned);
+        headers.extend(content_headers(
+            preview_media_type(self.path),
+            self.download,
+            file_name(self.path).as_deref(),
+        ));
+        headers.insert(ETAG, header_value(self.version));
+        headers.insert(LAST_MODIFIED, last_modified(self.stat));
+        headers.extend(part.headers());
+        headers
+    }
 }
 
 /// When the file was last modified, as an HTTP date.
@@ -507,7 +580,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_is_versioned_by_its_size_and_time_and_named_by_its_last_segment() {
+    fn a_file_is_dated_by_its_time_and_named_by_its_last_segment() {
         let stat = FileStat {
             kind: FileKind::File,
             mode: 0o644,

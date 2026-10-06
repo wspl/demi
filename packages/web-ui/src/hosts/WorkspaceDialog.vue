@@ -17,6 +17,7 @@ import TextInput from '../ui/TextInput.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import InlineError from '../ui/InlineError.vue'
 import FileBrowser from '../files/FileBrowser.vue'
+import PathInput from '../files/PathInput.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
 import type { PairingDevice } from '../devices/pairing'
 import {
@@ -319,8 +320,11 @@ function selectDevice(id: string, close: () => void): void {
               <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
                 Directory
                 <span class="flex items-center gap-2">
-                  <TextInput
+                  <!-- Completes from the device's folders as it is typed; Enter still creates. -->
+                  <PathInput
                     v-model="path"
+                    :source="browserSource"
+                    kind="directory"
                     :disabled="pending"
                     placeholder="/path/to/project"
                     class="min-w-0 flex-1"
