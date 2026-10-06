@@ -10,6 +10,9 @@ const attachments: Record<string, { name: string; mediaType: string; blob: strin
   a1: { name: 'login.png', mediaType: 'image/png', blob: galleryBlobs.screenshot },
   a2: { name: 'checkout.webm', mediaType: 'video/webm', blob: galleryBlobs.recording },
   a3: { name: 'guide.pdf', mediaType: 'application/pdf', blob: galleryBlobs.guide },
+  a4: { name: 'dashboard-full.png', mediaType: 'image/png', blob: galleryBlobs.fullPage },
+  a5: { name: 'timeline.png', mediaType: 'image/png', blob: galleryBlobs.timeline },
+  a6: { name: 'chart.png', mediaType: 'image/png', blob: galleryBlobs.chart },
 }
 
 /**
@@ -27,14 +30,30 @@ export function galleryAttachment(id: string): AttachmentLookup {
   }
 }
 
-/** A reply that gives the user what the agent made: a screenshot, a recording and a file, and one number the conversation does not have. */
-export const attachmentMarkdown = `The sign-in page works again:
+/**
+ * A reply that gives the user what the agent made: four screenshots of
+ * different sizes in a run, a recording and a screenshot in a run, links to
+ * them and to a file, a number the conversation does not have, and a lone
+ * image after text.
+ */
+export const attachmentMarkdown = `The sign-in page works again. Each step, from the form to the chart:
 
 ![The fixed sign-in page](attachment:a1)
+![The whole dashboard, top to bottom](attachment:a4)
+![The timeline of the steps](attachment:a5)
+![The weekly chart](attachment:a6)
+
+The recording and the page it ends on:
 
 ![The flow from sign-in to the dashboard](attachment:a2)
+
+![The dashboard it ends on](attachment:a6)
 
 The [setup guide](attachment:a3) has the steps, and [the screenshot](attachment:a1) opens large.
 
 ![The old capture](attachment:a9)
+
+The chart on its own:
+
+![The weekly chart](attachment:a6)
 `
