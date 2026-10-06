@@ -1783,7 +1783,7 @@ review.
   CI, and its tests, benchmarks, fuzz targets and examples; its manifest stays
   as published. The root `Cargo.toml` declares its `[patch.crates-io]` path and
   excludes it from the workspace, so the workspace's formatting and tests
-  leave it as upstream wrote it. `cargo xtask vendor diff` downloads each
+  leave it as upstream wrote it. `bun xtask vendor diff` downloads each
   vendored crate's release from crates.io, checks it against the index's
   SHA-256 and lists every change from it (`--patch <crate>` prints the diff),
   which an upgrade reapplies and a review checks against the `patches`

@@ -29,10 +29,10 @@ SDK ([Builds and releases](../delivery/builds-and-releases.md)), and assemble
 a server release of them, which the backend on the Mac uses:
 
 ```sh
-cargo xtask native build \
+bun xtask native build \
   --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
-cargo xtask server-release --output .cache/release-<build> \
+bun xtask server-release --output .cache/release-<build> \
   --files .cache/release-<build>-files \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 ```
@@ -67,7 +67,7 @@ configuration file with the public URL, the socket and the state directory,
 and installs the service from the root through `/opt/demi/current`.
 
 ```sh
-cargo xtask native build --package demi-machine-manager --package demi-server \
+bun xtask native build --package demi-machine-manager --package demi-server \
   --target aarch64-unknown-linux-musl
 bash crates/machine-manager/scripts/lima-machines.sh \
   --manager .cache/native-target/aarch64-unknown-linux-musl/release/demi-machine-manager \

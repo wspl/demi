@@ -23,8 +23,8 @@ an arm64 image (use `x86_64-unknown-linux-musl` for amd64), with the Mac's
 target for its own runner:
 
 ```sh
-cargo xtask native build --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
-cargo xtask server-release --output .cache/release-<build> \
+bun xtask native build --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
+bun xtask server-release --output .cache/release-<build> \
   --files .cache/release-<build>-files \
   --target aarch64-unknown-linux-musl --target aarch64-apple-darwin
 cargo zigbuild --release --locked -p xtask \

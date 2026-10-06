@@ -58,8 +58,8 @@ it publishes those programs into the local store of its data directory and
 serves them to the runners itself:
 
 ```sh
-cargo xtask native build --target <triple>...
-cargo xtask server-release --output .cache/release-<build> \
+bun xtask native build --target <triple>...
+bun xtask server-release --output .cache/release-<build> \
   --files .cache/release-<build>-files --target <triple>...
 cargo build --workspace --all-targets --features demi-runner/test-fixtures
 DEMI_RELEASE=.cache/release-<build> DEMI_INSTANCE_MODE=isolated \
