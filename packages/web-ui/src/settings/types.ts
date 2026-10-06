@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import type { ModelSettings } from '../agent/model-selection'
 import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
+import type { DeviceStart } from '../devices/installation'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -46,6 +47,8 @@ export interface SettingsDevice {
   online: boolean
   /** When the host last connected; shown while it is offline. */
   seen?: string
+  /** How to start its runner again; shown while it is offline. */
+  start?: DeviceStart | null
   /**
    * The page's direct channel to the device (`direct-channel.md`):
    * `connected` while this page has one, `blocked` while this browser
