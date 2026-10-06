@@ -14,7 +14,7 @@ import type { ExposeState } from '@demicodes/plugin-expose'
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import { commitOf } from './plugins'
 import { createSubagentState } from './subagent-profiles'
-import { ahead } from './time'
+import { ago, ahead } from './time'
 import { demoDeviceStart } from './device-installation'
 
 /**
@@ -687,14 +687,14 @@ export function mockProviders(): MockProvider[] {
 /** The paired devices the devices page lists. */
 function galleryDevices(): SettingsDevice[] {
   return [
-    { id: 'mac', name: 'zan-mbp', state: 'online', seen: 'Now', direct: 'connected' },
-    { id: 'build', name: 'build-01', state: 'offline', seen: '3 days ago', start: demoDeviceStart('linux') },
-    { id: 'studio', name: 'studio-pc', state: 'offline', seen: 'Yesterday', start: demoDeviceStart('windows') },
+    { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), direct: 'connected' },
+    { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * 24 * 60 * 60 * 1000), start: demoDeviceStart('linux') },
+    { id: 'studio', name: 'studio-pc', state: 'offline', seen: ago(24 * 60 * 60 * 1000), start: demoDeviceStart('windows') },
     {
       id: 'lab',
       name: 'lab-workstation-with-a-long-hostname',
       state: 'updating',
-      seen: '2 minutes ago',
+      seen: ago(2 * 60 * 1000),
     },
   ]
 }

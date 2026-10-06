@@ -141,12 +141,31 @@ impl Installations {
         state
     }
 
+    /// The installation state the installer makes under the installation
+    /// ID `id`.
+    fn state_named(&self, id: &str) -> PathBuf {
+        let state = self.home.path().join(".demi/instances").join(id);
+        self.states.borrow_mut().push(state.clone());
+        state
+    }
+
     /// Fetches the backend's installer and runs it until it exits, pairing
     /// the runner with `session` when it shows a code; what it printed.
     async fn install(&self, backend: &TestBackend, session: &Session) -> String {
+        self.install_with(backend, session, &[]).await
+    }
+
+    /// [`Installations::install`], with the installer's environment
+    /// changed by `extra`.
+    async fn install_with(
+        &self,
+        backend: &TestBackend,
+        session: &Session,
+        extra: &[(&str, &str)],
+    ) -> String {
         let script = self.script(backend).await;
         let mut installer = self.shell();
-        installer.arg(&script);
+        installer.arg(&script).envs(extra.iter().copied());
         paired(installer, backend, session, 0).await
     }
 
@@ -536,8 +555,9 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
 }
 
 /// The command a paired device shows starts its stopped runner again in
-/// the background: `run start` of the installation the installer made for
-/// this backend (`runner.md` § Installation, pairing and removal).
+/// the background: `run start` of the installation its runner reported,
+/// here one the person named apart from the default (`runner.md`
+/// § Installation, pairing and removal).
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it, and the runner starts a second time.
 #[tokio::test]
@@ -547,26 +567,33 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
     let harness = Harness::new().with_runner_releases(releases.path());
     let (backend, master) = harness.start_set_up().await;
     let installations = Installations::new();
-    let state = installations.state(&format!("{}/", backend.url));
-    installations.install(&backend, &master).await;
+    let state = installations.state_named("elsewhere");
+    installations
+        .install_with(&backend, &master, &[("DEMI_INSTALLATION_ID", "elsewhere")])
+        .await;
     let devices = backend.devices(&master).await;
     let [device] = devices.as_slice() else {
         panic!("one paired device: {devices:?}");
     };
-    backend.until_online(&master, device.id.as_str(), true).await;
+    let id = device.id.clone();
+    backend.until_online(&master, id.as_str(), true).await;
     let drained = std::process::Command::new(state.join("run"))
         .arg("drain")
         .output()
         .unwrap();
     assert!(drained.status.success(), "{drained:?}");
-    backend.until_online(&master, device.id.as_str(), false).await;
+    backend.until_online(&master, id.as_str(), false).await;
 
-    // The command returns once the runner it started in the background is
-    // connected; the installations' drop drains it.
-    let command = device.start_command.clone().expect("a paired device has a start command");
+    // The command names the installation's launcher, and returns once the
+    // runner it started in the background is connected; the installations'
+    // drop drains it.
+    let devices = backend.devices(&master).await;
+    let command = devices[0].start_command.clone().expect("a paired device has a start command");
+    let launcher = state.join("run");
+    assert!(command.contains(launcher.to_str().unwrap()), "{command}");
     let started = installations.shell().arg("-c").arg(&command).output().await.unwrap();
     assert!(started.status.success(), "{started:?}");
-    assert!(backend.online(&master, device.id.as_str()).await);
+    assert!(backend.online(&master, id.as_str()).await);
     // Typed again, it leaves the running runner as it is.
     let endpoint = active(&state)["endpoint"].clone();
     let again = installations.shell().arg("-c").arg(&command).output().await.unwrap();
@@ -671,6 +698,7 @@ async fn ask_socket(
                 home_dir: "/home/raw".into(),
             },
             managed: None,
+            installation: None,
         },
     };
     let frame = wire::encode(&hello).unwrap().into_bytes();
@@ -692,9 +720,10 @@ async fn ask_socket(
 }
 
 /// A runner the backend sends to an update names its device with its token,
-/// and the device shows as updating until its next hello or the window
-/// ends; a runner of an earlier release names none, and its device shows as
-/// offline (`runner.md` § Runner updates).
+/// and the device shows as updating from that first 409 until its next hello
+/// or the window ends, which a retry does not extend; a runner of an earlier
+/// release names none, and its device shows as offline (`runner.md`
+/// § Runner updates).
 // Several seconds: the installer downloads this build's runner (170 MB)
 // and starts it, and the window passes once.
 #[tokio::test]
@@ -748,9 +777,11 @@ async fn a_runner_sent_to_an_update_shows_its_device_updating_until_its_next_hel
     .await;
     assert!(asked.elapsed() >= window, "{:?}", asked.elapsed());
 
-    // The runner of the new release says hello, which ends the update.
+    // A retry of the update does not show it again.
     assert_eq!(ask_socket(&backend, &initial, Some(token)).await.0, StatusCode::CONFLICT);
-    assert_eq!(device_state().await, DeviceState::Updating);
+    assert_eq!(device_state().await, DeviceState::Offline);
+
+    // The runner of the new release says hello, which ends the update.
     let (opened, socket) = ask_socket(&backend, &upgraded, Some(token)).await;
     assert_eq!(opened, StatusCode::SWITCHING_PROTOCOLS);
     assert_eq!(device_state().await, DeviceState::Online);

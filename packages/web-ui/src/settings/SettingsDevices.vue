@@ -16,6 +16,8 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
+import HelpPopover from '../ui/HelpPopover.vue'
+import RelativeTime from '../ui/RelativeTime.vue'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
@@ -100,15 +102,12 @@ function revoke() {
         <template v-for="device in devices" :key="device.id">
           <SettingsRow
             :label="device.name"
-            :description="
-              device.state !== 'offline'
-                ? DEVICE_STATE_LABEL[device.state]
-                : device.seen
-                  ? `Last seen ${device.seen}`
-                  : 'Offline'
-            "
+            :description="device.state !== 'offline' || !device.seen ? DEVICE_STATE_LABEL[device.state] : undefined"
             :statuses="device.direct === 'connected' ? [connectedDirectly] : undefined"
           >
+            <template v-if="device.state === 'offline' && device.seen" #description>
+              Last seen <RelativeTime :timestamp="device.seen" />
+            </template>
             <template #leading>
               <span class="relative flex">
                 <Monitor :size="ICON_PX.in28" />
@@ -118,22 +117,20 @@ function revoke() {
                 />
               </span>
             </template>
-            <template
-              v-if="device.direct === 'blocked' || (device.state === 'offline' && device.start)"
-              #detail
-            >
-              <div class="flex min-w-0 flex-col gap-2">
-                <DeviceStartHint
-                  v-if="device.state === 'offline' && device.start"
-                  :start="device.start"
-                />
-                <p v-if="device.direct === 'blocked'" class="text-[12px] leading-4 text-fg-subtle">
-                  This browser blocks direct connections to devices on this computer and network, so
-                  this device is reached through the server. To allow them, open this site’s settings
-                  in the browser and allow Local network access.
-                </p>
-              </div>
+            <template v-if="device.direct === 'blocked'" #detail>
+              <p class="text-[12px] leading-4 text-fg-subtle">
+                This browser blocks direct connections to devices on this computer and network, so
+                this device is reached through the server. To allow them, open this site’s settings
+                in the browser and allow Local network access.
+              </p>
             </template>
+            <HelpPopover
+              v-if="device.state === 'offline' && device.start"
+              label="How to Start Its Runner"
+              :overlay-store="overlayStore"
+            >
+              <DeviceStartHint :start="device.start" />
+            </HelpPopover>
             <Button
               size="sm"
               :loading="pendingIds?.includes(device.id)"

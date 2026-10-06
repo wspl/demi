@@ -52,6 +52,10 @@ struct DeviceSlot {
     /// The update the device's runner was last sent to, until its next
     /// hello.
     updating: RefCell<Option<Updating>>,
+    /// The installation directory its runner reported when it last
+    /// connected; none before it ever did since the backend started, or
+    /// when its runner reported none.
+    installation: RefCell<Option<String>>,
 }
 
 /// A runner's update as the backend shows it (`runner.md` § Runner
@@ -78,6 +82,7 @@ impl DeviceSlot {
             link: watch::Sender::new(DeviceLink::Offline { last: None }),
             revoked: RefCell::new(None),
             updating: RefCell::new(None),
+            installation: RefCell::new(None),
         })
     }
 
@@ -160,9 +165,18 @@ impl Devices {
         }
     }
 
-    /// Shows the device as updating, as `updating` says, from now on.
-    pub fn updating(&self, device: &DeviceId, updating: Updating) {
-        self.slot(device).updating.replace(Some(updating));
+    /// Shows the device as updating from now on, as `updating` makes it,
+    /// unless an update shows already or showed since the device's last
+    /// hello: the retries of an update do not extend its window. Whether it
+    /// began.
+    pub fn begin_update(&self, device: &DeviceId, updating: impl FnOnce() -> Updating) -> bool {
+        let slot = self.slot(device);
+        let mut current = slot.updating.borrow_mut();
+        if current.is_some() {
+            return false;
+        }
+        *current = Some(updating());
+        true
     }
 
     /// The device's runner said hello: an update it was sent to is over.
@@ -262,8 +276,10 @@ impl Devices {
         link: Link,
         driver: LinkDriver,
         seen: DeviceRecorder,
+        installation: Option<String>,
     ) -> Serving {
         let slot = self.slot(device);
+        slot.installation.replace(installation);
         slot.link.send_replace(DeviceLink::Online(link.clone()));
         tracing::info!(device = %device, "runner connected");
         Serving {
@@ -279,8 +295,17 @@ impl Devices {
     /// The device as the web app sees it, whose runner connects to
     /// `backend`, the backend's public URL once it listens.
     pub fn dto(&self, device: DeviceRecord, backend: Option<&BackendUrl>) -> DeviceDto {
+        let installation = self
+            .slots
+            .borrow()
+            .get(&device.id)
+            .and_then(|slot| slot.installation.borrow().clone());
         let start_command = match (device.kind, backend) {
-            (DeviceKind::User, Some(backend)) => Some(start_command(backend.url(), device.platform)),
+            (DeviceKind::User, Some(backend)) => Some(start_command(
+                backend.url(),
+                installation.as_deref(),
+                device.platform,
+            )),
             _ => None,
         };
         DeviceDto {
@@ -473,5 +498,47 @@ impl DeviceRecorder {
             tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "installed artifacts not recorded");
         }
         self.marks.mark(Part::Devices);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    const WINDOW: Duration = Duration::from_secs(5 * 60);
+
+    /// An update shown from now for the window, whose expiry does nothing.
+    fn updating() -> Updating {
+        let expiry = tokio::spawn(std::future::pending::<()>());
+        Updating::new(Instant::now() + WINDOW, AbortOnDropHandle::new(expiry))
+    }
+
+    /// A device whose update keeps failing shows as updating for the window
+    /// from the first 409, whatever its retries, and then as offline until
+    /// its next hello; after the hello an update shows again
+    /// (`runner.md` § Runner updates).
+    #[tokio::test(start_paused = true)]
+    async fn an_update_shows_from_its_first_409_for_the_window_and_retries_do_not_extend_it() {
+        let devices = Devices::default();
+        let device = DeviceId::try_from("6a50f29f-4ac3-4121-acac-b4200f48f915").unwrap();
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        assert!(devices.begin_update(&device, updating));
+        assert_eq!(devices.state(&device), DeviceState::Updating);
+        tokio::time::advance(WINDOW - Duration::from_secs(60)).await;
+        // A retry's 409 a minute before the window ends.
+        assert!(!devices.begin_update(&device, updating));
+        assert_eq!(devices.state(&device), DeviceState::Updating);
+        tokio::time::advance(Duration::from_secs(60)).await;
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        assert!(!devices.begin_update(&device, updating));
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        // The next hello ends the update; a later 409 shows a new one.
+        assert!(!devices.hello(&device));
+        assert!(devices.begin_update(&device, updating));
+        assert_eq!(devices.state(&device), DeviceState::Updating);
+        assert!(devices.hello(&device));
+        assert_eq!(devices.state(&device), DeviceState::Offline);
     }
 }

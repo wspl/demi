@@ -348,6 +348,13 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             .as_ref()
             .map(|_| true)
             .or_else(|| managed.map(|value| !value.is_empty())),
+        // A managed guest's state is temporary; nobody starts its runner.
+        installation: boot.is_none().then(|| {
+            std::path::absolute(&directory)
+                .unwrap_or_else(|_| directory.clone())
+                .to_string_lossy()
+                .into_owned()
+        }),
     };
     // A managed guest's state is temporary; its log and its job output stay
     // on the system layer, which a stop keeps (`runner.md` § Host log,

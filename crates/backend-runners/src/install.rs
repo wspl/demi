@@ -46,19 +46,27 @@ fn registration(backend: &Url) -> String {
 }
 
 /// The command that starts the runner of `backend`'s installation again on
-/// a device of `platform`, typed in a terminal there: the launcher the
-/// installers write, where they put it unless the person named another
-/// installation, with `start`, which starts the runner in the background
-/// (`runner.md` § Installation, pairing and removal). On Windows it runs
-/// through PowerShell with a policy that lets the launcher run.
-pub fn start_command(backend: &Url, platform: RunnerPlatform) -> String {
-    let installation = registration(backend);
-    match platform {
-        RunnerPlatform::Win32 => format!(
-            "powershell -ExecutionPolicy Bypass -File \"$env:USERPROFILE\\.demi\\instances\\{installation}\\run.ps1\" start"
+/// a device of `platform`, typed in a terminal there: the launcher of the
+/// installation, in `installation` as its runner reported it or where the
+/// installers put it by default, with `start`, which starts the runner in
+/// the background (`runner.md` § Installation, pairing and removal). On
+/// Windows it runs through PowerShell with a policy that lets the launcher
+/// run.
+pub fn start_command(backend: &Url, installation: Option<&str>, platform: RunnerPlatform) -> String {
+    let default = registration(backend);
+    match (platform, installation) {
+        (RunnerPlatform::Win32, Some(installation)) => format!(
+            "powershell -ExecutionPolicy Bypass -File {} start",
+            powershell(&format!("{installation}\\run.ps1"))
         ),
-        RunnerPlatform::Darwin | RunnerPlatform::Linux => {
-            format!("~/.demi/instances/{installation}/run start")
+        (RunnerPlatform::Win32, None) => format!(
+            "powershell -ExecutionPolicy Bypass -File \"$env:USERPROFILE\\.demi\\instances\\{default}\\run.ps1\" start"
+        ),
+        (RunnerPlatform::Darwin | RunnerPlatform::Linux, Some(installation)) => {
+            format!("{} start", sh(&format!("{installation}/run")))
+        }
+        (RunnerPlatform::Darwin | RunnerPlatform::Linux, None) => {
+            format!("~/.demi/instances/{default}/run start")
         }
     }
 }

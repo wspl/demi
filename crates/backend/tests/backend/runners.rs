@@ -232,6 +232,7 @@ fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -> Outbound 
                 home_dir: "/home/raw".into(),
             },
             managed,
+            installation: None,
         },
     }
 }
