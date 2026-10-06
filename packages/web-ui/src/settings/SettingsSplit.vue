@@ -29,14 +29,14 @@ const detailOpen = defineModel<boolean>('detailOpen', { default: false })
       <!-- Scroll regions clip both axes; the -mx/px pair leaves room for rings at the edges. -->
       <ScrollArea
         class="-mx-1 min-h-0"
-        :class="detailOpen ? 'hidden @md:block' : 'block'"
+        :class="detailOpen ? 'hidden @md:flex' : 'flex'"
         viewport-class="flex flex-col gap-0.5 px-1"
       >
         <slot name="list" />
       </ScrollArea>
       <ScrollArea
         class="-mx-1 min-h-0 min-w-0"
-        :class="detailOpen ? 'block' : 'hidden @md:block'"
+        :class="detailOpen ? 'flex' : 'hidden @md:flex'"
         viewport-class="px-1"
       >
         <div class="-mx-2 mb-3 flex h-10 items-center gap-1 @md:hidden">

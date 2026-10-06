@@ -4,6 +4,7 @@ import { Check, CircleX, RotateCw, X } from '@lucide/vue'
 import Button from '../ui/Button.vue'
 import IconButton from '../ui/IconButton.vue'
 import ProgressBar from '../ui/ProgressBar.vue'
+import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -95,67 +96,69 @@ const FAILURES_LISTED = 8
       <span class="min-w-0 flex-1 truncate">Uploads</span>
       <Button v-if="finished" size="sm" variant="ghost" class="shrink-0" @click="uploads.clearFinished()">Clear</Button>
     </div>
-    <ul class="min-h-0 flex-1 overflow-y-auto px-1 pb-1">
-      <!-- The name and its controls share the first line; what follows runs under the controls too. -->
-      <li
-        v-for="upload in ordered"
-        :key="upload.id"
-        class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 rounded-md py-1 pl-2 pr-1"
-      >
-        <FileIcon :name="baseName(upload.path)" :is-directory="upload.kind === 'folder'" />
-        <Tooltip tag="div" class="min-w-0 truncate text-chrome leading-5 text-fg-body" :content="upload.path">
-          {{ baseName(upload.path) }}
-        </Tooltip>
-        <div class="flex shrink-0 items-center">
-          <Tooltip v-if="upload.state.phase === 'failed'" content="Retry">
-            <IconButton :icon="RotateCw" size="xs" variant="ghost" aria-label="Retry" spin-on-click @click="uploads.retry(upload.id)" />
+    <ScrollArea class="flex-1" viewport-class="px-1 pb-1">
+      <ul>
+        <!-- The name and its controls share the first line; what follows runs under the controls too. -->
+        <li
+          v-for="upload in ordered"
+          :key="upload.id"
+          class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-x-1.5 rounded-md py-1 pl-2 pr-1"
+        >
+          <FileIcon :name="baseName(upload.path)" :is-directory="upload.kind === 'folder'" />
+          <Tooltip tag="div" class="min-w-0 truncate text-chrome leading-5 text-fg-body" :content="upload.path">
+            {{ baseName(upload.path) }}
           </Tooltip>
-          <Tooltip :content="underWay(upload) ? 'Cancel' : 'Dismiss'">
-            <IconButton
-              :icon="X"
-              size="xs"
-              variant="ghost"
-              :aria-label="underWay(upload) ? 'Cancel' : 'Dismiss'"
-              @click="stop(upload)"
-            />
-          </Tooltip>
-        </div>
-        <div class="col-span-2 col-start-2 min-w-0 text-[11px] leading-4">
-          <ProgressBar
-            v-if="upload.state.phase === 'uploading'"
-            class="my-1"
-            :value="upload.state.sent"
-            :max="uploadSize(upload)"
-            :label="baseName(upload.path)"
-          />
-          <div
-            class="flex min-w-0 items-center gap-1 tabular-nums"
-            :class="upload.state.phase === 'failed' ? 'text-on-danger' : 'text-fg-subtle'"
-          >
-            <Check v-if="upload.state.phase === 'done'" :size="ICON_PX.in20" class="shrink-0 text-on-success" />
-            <CircleX v-else-if="upload.state.phase === 'failed'" :size="ICON_PX.in20" class="shrink-0" />
-            <!-- A folder's failures are more than its line: they list in its tooltip. -->
-            <Tooltip
-              v-if="upload.state.phase === 'failed' && upload.state.failures.length > 1"
-              tag="span"
-              class="block min-w-0 truncate"
-            >
-              {{ facts(upload) }}
-              <template #overlay>
-                <ul>
-                  <li v-for="failure in upload.state.failures.slice(0, FAILURES_LISTED)" :key="failure.path" class="break-words">
-                    {{ failure.path }}: {{ failure.message }}
-                  </li>
-                  <li v-if="upload.state.failures.length > FAILURES_LISTED">
-                    and {{ upload.state.failures.length - FAILURES_LISTED }} more
-                  </li>
-                </ul>
-              </template>
+          <div class="flex shrink-0 items-center">
+            <Tooltip v-if="upload.state.phase === 'failed'" content="Retry">
+              <IconButton :icon="RotateCw" size="xs" variant="ghost" aria-label="Retry" spin-on-click @click="uploads.retry(upload.id)" />
             </Tooltip>
-            <TruncatedText v-else :text="facts(upload)" />
+            <Tooltip :content="underWay(upload) ? 'Cancel' : 'Dismiss'">
+              <IconButton
+                :icon="X"
+                size="xs"
+                variant="ghost"
+                :aria-label="underWay(upload) ? 'Cancel' : 'Dismiss'"
+                @click="stop(upload)"
+              />
+            </Tooltip>
           </div>
-        </div>
-      </li>
-    </ul>
+          <div class="col-span-2 col-start-2 min-w-0 text-[11px] leading-4">
+            <ProgressBar
+              v-if="upload.state.phase === 'uploading'"
+              class="my-1"
+              :value="upload.state.sent"
+              :max="uploadSize(upload)"
+              :label="baseName(upload.path)"
+            />
+            <div
+              class="flex min-w-0 items-center gap-1 tabular-nums"
+              :class="upload.state.phase === 'failed' ? 'text-on-danger' : 'text-fg-subtle'"
+            >
+              <Check v-if="upload.state.phase === 'done'" :size="ICON_PX.in20" class="shrink-0 text-on-success" />
+              <CircleX v-else-if="upload.state.phase === 'failed'" :size="ICON_PX.in20" class="shrink-0" />
+              <!-- A folder's failures are more than its line: they list in its tooltip. -->
+              <Tooltip
+                v-if="upload.state.phase === 'failed' && upload.state.failures.length > 1"
+                tag="span"
+                class="block min-w-0 truncate"
+              >
+                {{ facts(upload) }}
+                <template #overlay>
+                  <ul>
+                    <li v-for="failure in upload.state.failures.slice(0, FAILURES_LISTED)" :key="failure.path" class="break-words">
+                      {{ failure.path }}: {{ failure.message }}
+                    </li>
+                    <li v-if="upload.state.failures.length > FAILURES_LISTED">
+                      and {{ upload.state.failures.length - FAILURES_LISTED }} more
+                    </li>
+                  </ul>
+                </template>
+              </Tooltip>
+              <TruncatedText v-else :text="facts(upload)" />
+            </div>
+          </div>
+        </li>
+      </ul>
+    </ScrollArea>
   </section>
 </template>

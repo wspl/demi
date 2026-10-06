@@ -202,11 +202,11 @@ keeps looking at `t3`.
   agent's new tabs as before, and writes each tab's count into `shows` of the
   panel tab bound to it when the count is higher. A tab the user created is
   shown the same way.
-- **Each page shows it once.** The kind's panel session follows its panel
-  tabs. When one's `shows` is higher than the count the page last applied for
-  that tab, the session selects the tab, with the panel opened
-  ([The page context](../architecture/plugin-pages.md#the-page-context)), and
-  the page records the count beside its selection history
+- **Each page shows it once.** The `browser` kind's `shows` is the tab's
+  `data.shows` ([Work panel kinds](../architecture/plugin-pages.md#work-panel-kinds)),
+  and the panel applies it whether it is open or closed: when a tab's count is
+  higher than the one the page last applied for that tab, the panel opens and
+  selects the tab, and records the count beside its selection history
   ([Work panel](../product/web-application.md#work-panel)). A page that shows
   another conversation then applies it when it opens this one next; a page
   that applied it never applies it again, so the user's own selection after
@@ -413,8 +413,9 @@ keeps running. Booting the VM's kernel with `arm64.nosme` restores capture.
 - A capture starts at the viewport the watching viewer's panel gives the
   tab: the page sends its panel's size before it names a tab to watch, and
   the module sizes the tab before it captures it. The module never captures a
-  watched tab at a size it is about to replace, and a new size changes the
-  running capture rather than starting another.
+  watched tab at a size it is about to replace. A new size at the same pixel
+  ratio changes the running capture; a new pixel ratio starts another, since
+  a running capture keeps the ratio it started with.
 - The page acknowledges each frame it shows. The module adapts from
   end-to-end acknowledgement delay: queueing delay is the main signal. Under
   congestion it lowers the bit rate, then the frame rate, then the resolution.
@@ -557,9 +558,11 @@ buttons shows each one's cursor without a round trip. Where the page leaves
 the cursor to the browser, the observer resolves it, a text cursor over text,
 for the point the view asks about. A cursor list uses its last keyword. After
 a navigation the new document's cursor at the pointer replaces the old one.
-No local element over the picture, such as the hidden text field or a native
-control placed over the page's, shows a cursor of its own or takes the
-pointer's clicks from the picture.
+Every frame includes a cross-site frame, which runs in its own process and
+gets its own observer, and a shadow root's elements count as the page's. No
+local element over the picture shows a cursor of its own, and none but a
+native control placed over the page's own takes the pointer's clicks from the
+picture: that one takes the click that opens the viewer's picker.
 
 An open view is conversation activity, whether the user operates it or only
 watches ([Activity](../execution/resource-lifecycle.md#activity)).
@@ -652,7 +655,7 @@ browser is loading its top-level page.
 
 | State or method | Parameters | Does | A stopped Cloud |
 | --- | --- | --- | --- |
-| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading, shown }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
+| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading, shows }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
 | `bind` | `panelTab` | Opens a browser tab for a panel tab that has none, or whose browser tab is closed or failed to open, as for a new tab | Is woken: opening a tab is ordinary demand |
 | `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a job | Is not woken: every bound tab is closed |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |

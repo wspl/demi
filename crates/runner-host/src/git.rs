@@ -25,7 +25,8 @@ use demi_command_sdk::paths::resolve;
 use demi_runner_process::file_diff::line_counts;
 use demi_runner_protocol::wire::{self, ChangeKind, Frame, Inbound};
 
-use crate::tree_watch::{TreeWatch, WatchEvent};
+use crate::tree_watch::{Depth, WatchEvent};
+use crate::watches::{Status, Subscription, Watches};
 
 /// The list stops here and reports `truncated`.
 pub const MAX_FILES: usize = 5_000;
@@ -162,6 +163,7 @@ const REQUESTS: usize = 64;
 
 struct Owner {
     roots: HashMap<PathBuf, Root>,
+    watches: Watches,
     computations: Arc<Semaphore>,
     max_files: usize,
     /// Each computation hands back its root's state with the answer.
@@ -193,18 +195,32 @@ struct RootState {
     watch: Watch,
 }
 
-/// A root's watch, from its start to its end.
+/// A root's watch, from its start to its end: the connection's watch of the
+/// tree, which a backend's `fs_watch` of it shares (`runner.md` § Watching
+/// files).
 enum Watch {
     /// Not started: the directory has not been found in a repository yet.
     Unstarted,
-    /// Being set up on a blocking thread, which no request waits for: on
-    /// macOS, FSEvents can take seconds to start a stream when the system
-    /// is busy. A root dropped meanwhile drops the watch as the thread ends.
-    Starting(tokio::task::JoinHandle<Option<TreeWatch>>),
-    Running(#[allow(dead_code, reason = "held for its drop, which stops the watch")] TreeWatch),
+    /// Followed; `adopted` once a computation found it running. No request
+    /// waits for it to start: on macOS, FSEvents can take seconds to start a
+    /// stream when the system is busy.
+    Followed {
+        subscription: Subscription,
+        adopted: bool,
+    },
     /// It could not be set up, or it failed: every request walks the whole
     /// tree.
     Unavailable,
+}
+
+impl Watch {
+    /// Whether something besides this root follows its watch.
+    fn shared(&self) -> bool {
+        match self {
+            Watch::Followed { subscription, .. } => subscription.shared(),
+            Watch::Unstarted | Watch::Unavailable => false,
+        }
+    }
 }
 
 struct Baseline {
@@ -265,9 +281,15 @@ impl Default for GitService {
 
 impl GitService {
     pub fn with_limits(max_files: usize) -> Self {
+        Self::new(Watches::default(), max_files)
+    }
+
+    /// The service of a connection whose watches are `watches`.
+    pub fn new(watches: Watches, max_files: usize) -> Self {
         let (requests, received) = mpsc::channel(REQUESTS);
         let owner = Owner {
             roots: HashMap::new(),
+            watches,
             computations: Arc::new(Semaphore::new(CONCURRENT_COMPUTATIONS)),
             max_files,
             running: JoinSet::new(),
@@ -418,12 +440,14 @@ impl Owner {
         let touched = root.touched.clone();
         let computations = self.computations.clone();
         let max_files = self.max_files;
+        let watches = self.watches.clone();
         self.running.spawn(async move {
             let mut state = state;
             let result = changes(
                 &path,
                 &mut state,
                 &touched,
+                &watches,
                 &computations,
                 max_files,
                 &cancel,
@@ -456,11 +480,12 @@ impl Owner {
         self.start(path);
     }
 
-    /// Drops directories without a request for fifteen minutes.
+    /// Drops directories without a request for fifteen minutes, unless a
+    /// watch of the backend still uses theirs.
     fn expire(&mut self) {
         let now = Instant::now();
         self.roots.retain(|_, root| {
-            root.state.is_none()
+            root.state.as_ref().is_none_or(|state| state.watch.shared())
                 || !root.queued.is_empty()
                 || now.duration_since(root.last_used) < IDLE
         });
@@ -473,6 +498,7 @@ async fn changes(
     path: &Path,
     state: &mut RootState,
     touched_paths: &Arc<Mutex<Touched>>,
+    watches: &Watches,
     computations: &Arc<Semaphore>,
     max_files: usize,
     cancel: &CancellationToken,
@@ -497,30 +523,32 @@ async fn changes(
     let mut adopted = false;
     match &mut state.watch {
         Watch::Unstarted => {
-            let root_path = path.to_owned();
             let git_dir = located.git_dir.clone();
             let touched = touched_paths.clone();
-            state.watch = Watch::Starting(tokio::task::spawn_blocking(move || {
-                start_watch(&root_path, &git_dir, touched)
-            }));
-        }
-        Watch::Starting(start) if start.is_finished() => {
-            state.watch = match start.await {
-                Ok(Some(watch)) => {
-                    adopted = true;
-                    Watch::Running(watch)
-                }
-                // A panicked start is a watch that could not be set up.
-                Ok(None) | Err(_) => Watch::Unavailable,
+            let listener = Box::new(move |event: &WatchEvent| lock(&touched).record(event, &git_dir));
+            state.watch = Watch::Followed {
+                subscription: watches.subscribe(path.to_owned(), Depth::Recursive, listener),
+                adopted: false,
             };
         }
-        Watch::Starting(_) | Watch::Running(_) | Watch::Unavailable => {}
+        Watch::Followed {
+            subscription,
+            adopted: found,
+        } => match subscription.status() {
+            Status::Running if !*found => {
+                *found = true;
+                adopted = true;
+            }
+            Status::Failed(_) => state.watch = Watch::Unavailable,
+            Status::Starting | Status::Running => {}
+        },
+        Watch::Unavailable => {}
     }
     let touched = std::mem::take(&mut *lock(touched_paths));
     if touched.broken {
         state.watch = Watch::Unavailable;
     }
-    let watched = matches!(state.watch, Watch::Running(_));
+    let watched = matches!(state.watch, Watch::Followed { adopted: true, .. });
     let scope = match &state.baseline {
         Some(baseline)
             if watched && !adopted && !touched.whole && baseline.rules_above == rules =>
@@ -791,14 +819,14 @@ impl Touched {
     /// git lists; any other change there, or to a `.gitignore` or
     /// `.gitattributes`, can change what git lists anywhere, so the next walk
     /// is whole.
-    fn record(&mut self, event: WatchEvent, git_dir: &Path) {
+    fn record(&mut self, event: &WatchEvent, git_dir: &Path) {
         let (path, metadata) = match event {
-            WatchEvent::Changed { path, metadata } => (path, metadata),
+            WatchEvent::Changed { path, metadata } => (path, *metadata),
             WatchEvent::Lost => {
                 self.whole = true;
                 return;
             }
-            WatchEvent::Failed => {
+            WatchEvent::Failed(_) => {
                 self.broken = true;
                 return;
             }
@@ -807,10 +835,10 @@ impl Touched {
             if !metadata {
                 self.whole = true;
             }
-        } else if !metadata && rules_file(&path) {
+        } else if !metadata && rules_file(path) {
             self.whole = true;
         } else if !self.whole {
-            self.paths.insert(path);
+            self.paths.insert(path.clone());
             if self.paths.len() > MAX_TOUCHED {
                 self.whole = true;
                 self.paths.clear();
@@ -828,14 +856,10 @@ fn rules_file(path: &Path) -> bool {
     )
 }
 
-/// Watches the root, and the repository's `.git` when that lies outside it.
-fn start_watch(root: &Path, git_dir: &Path, touched: Arc<Mutex<Touched>>) -> Option<TreeWatch> {
-    let mut trees = vec![root];
-    if !git_dir.starts_with(root) {
-        trees.push(git_dir);
-    }
-    let git_dir = git_dir.to_path_buf();
-    TreeWatch::start(&trees, move |event| lock(&touched).record(event, &git_dir))
+/// The `.git` of the repository the canonical `root` lies in, if any, which
+/// a watch below the root also covers.
+pub(crate) fn git_dir(root: &Path) -> Option<PathBuf> {
+    locate(root).ok().flatten().map(|located| located.git_dir)
 }
 
 /// The `.gitignore` and `.gitattributes` of each directory above the root,

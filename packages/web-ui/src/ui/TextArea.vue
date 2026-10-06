@@ -1,6 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, useAttrs } from 'vue'
+import { computed, onMounted, ref, useAttrs, watch } from 'vue'
+import { useOverlayScrollbars } from 'overlayscrollbars-vue'
 import { disabledTooltip } from './disabled'
+import { scrollbarsOptions, scrollbarsTarget } from './scrollbars'
 import Tooltip from './Tooltip.vue'
 import { useAutofocus } from './autofocus'
 
@@ -42,6 +44,7 @@ const fieldAttrs = computed(
   )
 )
 const fieldRef = ref<HTMLTextAreaElement>()
+const frameRef = ref<HTMLElement>()
 const isFocused = ref(false)
 const autofocus = useAutofocus()
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
@@ -50,7 +53,14 @@ function input(event: Event): void {
   emit('update:modelValue', (event.target as HTMLTextAreaElement).value)
 }
 
+// The field scrolls past its rows with the app's scrollbar, in its frame.
+const [initializeScrollbars, scrollbars] = useOverlayScrollbars({ options: scrollbarsOptions('y') })
+// A field's text is no change OverlayScrollbars observes; it measures again for each new value.
+watch(() => props.modelValue, () => scrollbars()?.update(true), { flush: 'post' })
+
 onMounted(() => {
+  if (fieldRef.value && frameRef.value)
+    initializeScrollbars(scrollbarsTarget(fieldRef.value, frameRef.value))
   if (props.focused)
     autofocus(fieldRef.value)
 })
@@ -74,7 +84,8 @@ defineExpose({
     :open-delay-ms="80"
   >
     <div
-      class="flex min-w-0 flex-1 rounded-md bg-surface-raised ring-1 transition-[box-shadow] duration-200 ease-out"
+      ref="frameRef"
+      class="relative flex min-w-0 flex-1 rounded-md bg-surface-raised ring-1 transition-[box-shadow] duration-200 ease-out"
       :class="[
         isFocused ? 'ring-line-focus' : 'ring-line',
         disabled ? 'cursor-not-allowed opacity-40' : '',
@@ -82,6 +93,7 @@ defineExpose({
     >
       <textarea
         ref="fieldRef"
+        data-overlayscrollbars-initialize
         v-bind="fieldAttrs"
         :value="modelValue"
         :rows="rows"

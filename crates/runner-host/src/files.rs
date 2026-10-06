@@ -56,7 +56,8 @@ impl FileTransfers {
         }
     }
 
-    /// `fs_readFile`: the byte range into the output pipe, after the reply.
+    /// `fs_readFile`: the byte range into the output pipe, after the reply;
+    /// nothing when the file still has the version the request holds.
     pub fn read(&self, message: Inbound, default_cwd: &Path) -> io::Result<()> {
         let Inbound::FsReadFile {
             id,
@@ -64,6 +65,7 @@ impl FileTransfers {
             cwd,
             offset,
             length,
+            version: held,
             output,
         } = message
         else {
@@ -86,11 +88,23 @@ impl FileTransfers {
                     return;
                 }
             };
+            let version = wire::file_version(stat.size, stat.mtime.0);
+            let unchanged = held.as_deref() == Some(version.as_str());
             let opened = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                 id,
-                result: wire::FsResult::ReadFile(stat),
+                result: wire::FsResult::ReadFile(wire::OpenedFile {
+                    stat,
+                    version,
+                    unchanged,
+                }),
             }));
             if !send(&reply, opened, &shutdown).await {
+                return;
+            }
+            if unchanged {
+                // Nothing moves; the pipe end is still reported.
+                let result = Err(io::Error::other("the file is unchanged"));
+                report_pipe(&reply, output.id, result, &shutdown).await;
                 return;
             }
             let result = pipes.put(&output.url, chunks(file), &transfer).await;
