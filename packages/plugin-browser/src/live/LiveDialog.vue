@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import type { LiveDialog } from '../generated/plugin'
 import { Button } from '@demicodes/plugin-sdk'
+import { ScrollArea } from '@demicodes/plugin-sdk'
 import { TextInput } from '@demicodes/plugin-sdk'
 
 /**
@@ -33,9 +34,11 @@ function answer(accept: boolean): void {
   <div class="absolute inset-x-0 top-0 flex justify-center p-3">
     <div class="pointer-events-auto w-full max-w-md rounded-lg border border-line bg-surface p-3 shadow-lg">
       <p class="text-[12px] text-fg-subtle">{{ TITLES[dialog.type] }}</p>
-      <p class="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words text-[13px] text-fg">
-        {{ dialog.message }}
-      </p>
+      <ScrollArea class="mt-1 max-h-40">
+        <p class="whitespace-pre-wrap break-words text-[13px] text-fg">
+          {{ dialog.message }}
+        </p>
+      </ScrollArea>
       <TextInput
         v-if="dialog.type === 'prompt'"
         v-model="text"

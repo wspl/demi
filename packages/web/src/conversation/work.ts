@@ -16,13 +16,12 @@ import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
-import { createWorkingTreeSource, type WorkingTreeSource } from './changes'
 import { useConversations } from './store'
 
 /**
  * One conversation's work panel: whether it is open and what it selects,
- * both this page's own, its pinned tabs' data, the backend's tabs with this
- * page's changes over them, and its working tree.
+ * both this page's own, its pinned tabs' data, and the backend's tabs with
+ * this page's changes over them.
  */
 export interface WorkState {
   open: boolean
@@ -32,7 +31,6 @@ export interface WorkState {
   pinned: PinnedTabs
   /** The history and the tabs, as the panel shows them. */
   readonly panel: PanelState
-  changes: WorkingTreeSource
 }
 
 /**
@@ -41,7 +39,7 @@ export interface WorkState {
  * that conversation and what it selects, kept in the account's local
  * preferences; its pinned tabs' data, in memory; the backend's tabs, read
  * when their revision rises, with this page's changes shown at once over
- * them; and the working-tree source behind its files service.
+ * them.
  */
 export const useWorkPanel = defineStore('work-panel', () => {
   const resources = useResources()
@@ -90,7 +88,6 @@ export const useWorkPanel = defineStore('work-panel', () => {
         get panel(): PanelState {
           return { history: this.history, tabs: tabs.tabs.value }
         },
-        changes: createWorkingTreeSource(conversationId),
       })
     }
     // The map's own (reactive) view of the entry, never the plain object it was made from.

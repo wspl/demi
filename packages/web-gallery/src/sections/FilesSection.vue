@@ -39,7 +39,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Address',
-    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. A click anywhere on the bar but a crumb turns it into a text field with the full path, and Enter goes there.'
+    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. A click anywhere on the bar but a crumb turns it into a text field with the full path, and Enter goes there. The field completes the path: the text before the caret names a folder, ~ the home, and what follows its last slash filters that folder\'s entries in a menu under the field, fuzzily, so abc finds a_b_c.txt, best matches first with the matched letters marked; dot entries show once the query starts with a dot. ↓ and ↑ move through the menu, Tab completes the highlighted row or the first, Enter the highlighted one, a click the clicked one, and Escape puts the menu away. A folder completes with a slash and the menu goes on to list it; a file completes and goes there as Enter would.'
   ],
   [
     'Icons',
@@ -51,7 +51,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Keys',
-    'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history.'
+    'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history. Typing a name selects the first row that starts with it: the letters float at the list\'s top right and are marked on the row until a second passes without a key, faint while nothing matches; Backspace then takes back a letter and Escape ends the search.'
   ],
   [
     'Status row',
@@ -470,7 +470,7 @@ onMounted(() => {
     <template v-if="view === 'tree'">
       <GallerySection
         title="Rows"
-        note="The workspace tree: open and closed directories, files, the selected file, deep nesting, long names truncated. Directories come before files and each sorts as VS Code's explorer does, so hidden entries lead, drawn faded. Click a directory to fold it, a file to select it; the control at the caption's end lists the open directories again."
+        note="The workspace tree: open and closed directories, files, the selected file, deep nesting, long names truncated. Directories come before files and each sorts as VS Code's explorer does, so hidden entries lead, drawn faded. Click a directory to fold it, a file to select it; the control at the caption's end lists the open directories again. A click on a row or Tab gives the tree the keyboard: ↑ and ↓ move a ring between the rows, Home and End jump, → unfolds a folder, ← folds it or goes up to the folder a row is in, and Enter acts as a click. Typing a name moves the ring to the first row shown that starts with it, the letters floating at the top right, and opens nothing."
       >
         <GallerySpecimen variant="rows · live">
           <div class="gallery-frame h-[28rem] w-[220px] overflow-hidden bg-surface-editor">
@@ -680,7 +680,7 @@ onMounted(() => {
 
       <GallerySection
         title="New Project"
-        note="The working-environment dialog on its form: the Cloud or a device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one and a directory; Add Device after the menu pairs a simulated device with any code, and the menu selects it once the list shows it, a moment after pairing succeeds; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. A name already in the list is refused under the form."
+        note="The working-environment dialog on its form: the Cloud or a device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one and a directory; Add Device after the menu pairs a simulated device with any code, and the menu selects it once the list shows it, a moment after pairing succeeds; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. The directory completes from the device's folders as it is typed, as the address bar does, offering folders only; Enter on no highlighted row still creates. A name already in the list is refused under the form."
       >
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <WorkspaceDialog
@@ -740,7 +740,7 @@ onMounted(() => {
 
       <GallerySection
         title="Address Bar"
-        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file's crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner."
+        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file's crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. A click beside the crumbs turns the bar into a field that completes from the workspace, a relative path starting at its root."
       >
         <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
           <div class="flex" :style="{ width: entry.width }">
@@ -751,6 +751,8 @@ onMounted(() => {
               :root="addressWorkspace.root"
               :source="addressWorkspace.source"
               leaf="file"
+              @navigate="productWould(`Show ${$event}`)"
+              @open="productWould(`Open ${$event}`)"
             />
           </div>
         </GallerySpecimen>
@@ -763,6 +765,8 @@ onMounted(() => {
               :root="addressWorkspace.root"
               :source="addressWorkspace.source"
               leaf="file"
+              @navigate="productWould(`Show ${$event}`)"
+              @open="productWould(`Open ${$event}`)"
             />
           </div>
         </GallerySpecimen>

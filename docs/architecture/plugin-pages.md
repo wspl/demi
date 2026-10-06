@@ -144,7 +144,7 @@ calls.
 | --- | --- | --- |
 | `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls and its user streams ([Data a page shows](#data-a-page-shows)) | The sync channel, the conversation state route, the plugin call routes, the user stream route |
 | `intents` | Opening an [intent](#intents) for a conversation, as `{ intent, payload }`, and whether any page the user has on opens it | The shell |
-| `panel` | The tabs of the page's own kinds in a conversation's panel, adding one, selected with the panel opened or not, and selecting one, with the panel opened | The shell |
+| `panel` | The tabs of the page's own kinds in a conversation's panel, and adding one, selected with the panel opened or not | The shell |
 | `settings` | Opening a section of the settings dialog, such as Devices | The shell |
 | `errors` | Reporting an error the user sees, or a defect of the page, which only the console shows | The shell |
 | `overlays` | The overlay store a dialog or menu opens in | The shell |
@@ -169,6 +169,7 @@ its tabs.
 | `picked(data)` | What a tab shows next when its user picks it in the strip, even while it is selected: the Change view returns to Uncommitted ([Delivery to the conversation](../execution/edit-tracking.md#delivery-to-the-conversation)) |
 | `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
+| `shows(data)` | How many times something asked that the user see this tab, from its data. When the count is higher than the one the page last applied for the tab, the panel opens and selects the tab, whether the panel was open or closed, and records the count beside its selection history; the browser's agent-shown tabs use it ([Showing a tab](../browser/live-view.md#showing-a-tab)) |
 
 Because a kind is data on the page, the panel knows every kind of every page
 the user has on before it opens, and an intent can open a kind while the panel
@@ -209,8 +210,7 @@ otherwise.
 
 Intents and `panel.add` are the only ways a tab is opened from outside the
 strip, and `panel.add` adds only a tab of the page's own kinds: a page opens
-another plugin's tab only through an intent. Likewise `panel.select` selects
-only a tab of the page's own kinds.
+another plugin's tab only through an intent.
 
 ## Data a page shows
 
@@ -233,11 +233,10 @@ it changed; no page polls, and no page guesses when to read again.
   topic it follows fires: the user's exposes for the expose menu, a
   conversation's jobs ending for the browser's tabs, which the agent's
   commands open and close ([Topics](plugins.md#topics)).
-- **Product services keep themselves fresh.** While a component that shows
-  the working tree says so with `showChanges()`, the conversation's files
-  service lists it again when the conversation's working-tree revision
-  changes, after any job ended, and when the page is shown again, since the
-  user may have changed files outside Demi meanwhile. A page that shows the
+- **Product services keep themselves fresh.** While a component shows the
+  conversation's files, the conversation's files service follows the Host's
+  reports of what changed and reads again what they name
+  ([What the service keeps](#what-the-service-keeps)). A page that shows the
   files reads the service, and never decides when to read again.
 
 ## Calls and states
@@ -288,9 +287,68 @@ for whichever page shows them. `usePage().files(conversation)` gives:
 | `root` | Where the conversation's work runs, which a retained edit's paths are relative to |
 | `changes` | The working tree's uncommitted changes: the list, each file's two sides and the committed contents, with whether a listing is on its way or failed |
 | `edit(copies)` | The two sides of one call's retained edit |
-| `showChanges()` | The calling component shows the working tree: the service keeps `changes` fresh until the component's scope ends ([Data a page shows](#data-a-page-shows)) |
+| `showChanges()` | The calling component shows the working tree: the service follows the Host's reports for it and keeps `changes` current until the component's scope ends ([What the service keeps](#what-the-service-keeps)) |
 
 `changes` and `file-browser` show these; any other page may read them.
+
+### What the service keeps
+
+The service keeps what it read and learns from the Host's own file system
+when that changes, the way VS Code, JetBrains IDEs and Zed keep a remote
+workspace: the Host watches the files and reports every path that changed
+([Watching files](../execution/runner.md#watching-files)), and what was read is
+current until such a report names it. For example, the user reads
+`src/app.ts`, picks `README.md`, and picks `src/app.ts` again: its text shows
+at once, with its scroll where it was, and nothing is asked, since the Host
+reported no change to it. The agent then edits it: the Host reports
+`src/app.ts` changed, and the shown text is read again and replaced in place,
+without a loading state.
+
+- **What it keeps.** Directory listings, file texts, file descriptions, the
+  changes list, each changed file's two sides and its committed contents,
+  each as the last answer read, keyed by the Host and the absolute path.
+  Conversations on one Host share them. They live in the page's memory for
+  the signed-in page's lifetime and are gone after a reload, as the
+  conversation cache is
+  ([Backend communication](../product/web-application.md#backend-communication)).
+  At most 64 MiB of them stay, counted by their text; past that the ones shown
+  longest ago go first.
+- **Confirmed entries.** An entry read while a watch covering its path was
+  live, and that no report named since, is the Host's content as its file
+  system knows it. Showing it asks nothing.
+- **A report.** A changed path makes unconfirmed: its own text, description,
+  diff sides and, for a folder, its listing; its folder's listing, since a
+  file came, went or was renamed; and the changes list of the working tree
+  it lies in. A path under the repository's `.git`, such as `HEAD`, the index
+  or a ref, makes the changes list and every committed side unconfirmed. What
+  a report makes unconfirmed and something shows is read again at once; the
+  rest is read again when it is shown next.
+- **Unconfirmed entries are shown, then checked.** An entry read while no
+  watch covered it, or once the watch said it lost reports, or across a lost
+  connection to the Host or a watch stream that reconnected, may be out of
+  date without a report saying so. Showing it shows it at once and reads it
+  again in the background; an answer that differs replaces it in place.
+  Reads of one thing share one request.
+- **A Host that cannot watch**, past an inotify limit or on a file system that
+  reports nothing, is a fact the watch says. The view then says quietly that
+  it shows files as they were last read and offers Refresh, and every entry
+  stays unconfirmed, so each showing checks it.
+- **Replacing in place.** The view keeps its scroll, selection and folded
+  rows; a text view shows the new text as an editor reloads a file it has not
+  changed. An answer that the file or folder is gone shows that, as a first
+  read would. A read that fails keeps what it shows and says quietly that it
+  could not refresh, with Retry.
+- **The page's own writes** edit the listing they change at once, without
+  listing it: an upload adds the entry with the name and size it sent, a new
+  folder adds itself, a deletion removes its entry. The watch's report then
+  lists the folder once. A listing with no watch, as in a device's folder
+  dialog, so still shows what the page just did.
+- **Reading again costs little.** A file text is read again with the version
+  the service holds, and an unchanged file answers that it is unchanged
+  without its text
+  ([File text and working tree changes](../product/web-api.md#file-text-and-working-tree-changes)).
+  A preview's bytes come from a URL that names their version, which the user's
+  browser keeps, so a preview shown again needs no bytes.
 
 ## The plugin kit
 
