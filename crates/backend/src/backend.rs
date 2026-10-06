@@ -21,7 +21,6 @@ use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, web_build};
 use demi_backend_user_shard::conversation::{rearm_wakeups, recover_forks};
 use demi_backend_user_shard::shard::deliver_decisions;
-use demi_backend_user_shard::lifecycle::retention;
 use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
 };
@@ -41,8 +40,6 @@ pub struct Backend {
     edge: Edge,
     /// Routes the machine manager's death events to their owners' shards.
     deaths: AbortOnDropHandle<()>,
-    /// Runs the daily retention pass, when the configuration schedules it.
-    retention: Option<AbortOnDropHandle<()>>,
 }
 
 /// Why the backend did not start.
@@ -259,15 +256,6 @@ impl Backend {
                 });
             }
         };
-        // The first pass reads the references once the recovery above has
-        // published every Fork destination whose root committed.
-        let retention = services.lifecycle.retention_interval.map(|interval| {
-            AbortOnDropHandle::new(tokio::spawn(retention::schedule(
-                services.clone(),
-                shards.shards(),
-                interval,
-            )))
-        });
         Ok(Self {
             local_addr: edge.local_addr(),
             storage,
@@ -275,7 +263,6 @@ impl Backend {
             shards,
             edge,
             deaths,
-            retention,
         })
     }
 
@@ -363,18 +350,6 @@ impl Backend {
             .expect("the user's shard serves while the backend runs")
     }
 
-    /// Runs the user's retention pass at once (`storage.md` § The retention
-    /// pass) and answers once it has ended.
-    #[cfg(feature = "testing")]
-    pub async fn run_retention(&self, user: &demi_web_api_protocol::ids::UserId) {
-        self.shards
-            .shards()
-            .of(user)
-            .call(|shard, _| async move { shard.retention_pass().await })
-            .await
-            .expect("the user's shard serves while the backend runs");
-    }
-
     /// Shuts the backend down. The listener closes first, so no new work
     /// starts and a new request on an open connection answers 503
     /// `backend_closing`; every step runs even when an earlier one fails, and
@@ -382,8 +357,6 @@ impl Backend {
     pub async fn close(self) -> Result<(), ShutdownErrors> {
         let mut failures = Vec::new();
         self.edge.stop_accepting();
-        // No pass starts from now on; one under way ends with its shard.
-        drop(self.retention);
         self.services.logins.close().await;
         failures.extend(
             self.shards

@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use serde_with::rust::unwrap_or_skip;
 use sha2::{Digest, Sha256};
 
-use crate::{ModelMediaKind, Timestamp};
+use crate::ModelMediaKind;
 
 /// A blob's name: the SHA-256 of its bytes in lowercase hexadecimal
 /// (`storage.md` § Encodings and digests). A blob belongs to its owner's
@@ -310,9 +310,6 @@ pub enum GoneCause {
     /// Its bytes could not be stored when the result entered the
     /// transcript; `error` is the store's.
     NotStored { error: String },
-    /// It was retired at `at`, 30 days on (`runtime.md` § Retired tool
-    /// media).
-    Retired { at: Timestamp },
 }
 
 /// Where the bytes of a tool result's image or video are: in the

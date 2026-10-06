@@ -30,9 +30,8 @@ use demi_agent_server::{AgentServer, ServerConfig, ServerDeps, TreeStores};
 use demi_agent_store::AgentTreeStore;
 use demi_agent_tools::ContextSource;
 use demi_agent_transcript::RandomIds;
-use demi_backend_database::blob_refs::OwnerBlobs;
+use demi_agent_store::media::BlobStore;
 use demi_backend_database::tree::SqliteTreeStore;
-use demi_backend_host_access::blobs::ConversationBlobs;
 use demi_backend_host_access::shells::ShardShellEnvironments;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_backend_page_sync::Part;
@@ -76,8 +75,7 @@ pub(crate) fn conversation_parts(
         let marks = marks.clone();
         let shard = shard.clone();
         // The shard's user owns every conversation it hosts.
-        let blobs: Arc<dyn OwnerBlobs> =
-            Arc::new(ConversationBlobs(services.blobs.for_user(&user)));
+        let blobs: Arc<dyn BlobStore> = Arc::new(services.blobs.for_user(&user));
         Rc::new(move |root: &NodeId| {
             let conversation = conversation_of(root);
             let db = services.conversations.db(&conversation);
@@ -115,7 +113,6 @@ pub(crate) fn conversation_parts(
         marks.clone(),
         services.conversation_tuning.titles,
     );
-    let disposals = shard.clone();
     let hosts: Weak<dyn HostShard> = shard.clone();
     let agent = AgentServer::new(ServerDeps {
         toolsets: Rc::new(ShardToolsets {
@@ -139,16 +136,7 @@ pub(crate) fn conversation_parts(
         ids: Rc::new(RandomIds),
         config,
         status_changed: Rc::new(move |root: &NodeId| {
-            let conversation = conversation_of(root);
-            marks.mark(Part::Conversation(conversation.clone()));
-            // A tree the server no longer holds was disposed, and its
-            // conversation's tool media may be retired now (`storage.md`
-            // § Retiring tool media).
-            if let Some(shard) = disposals.upgrade()
-                && shard.agent().tree(root).is_none()
-            {
-                shard.tree_disposed(&conversation);
-            }
+            marks.mark(Part::Conversation(conversation_of(root)));
         }),
     });
     ConversationParts { agent, titles }

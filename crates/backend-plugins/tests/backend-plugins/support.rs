@@ -11,13 +11,11 @@ use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
     testing::{ScriptedProviders, TestClient, client_text},
 };
-use demi_agent_store::media::BlobStore;
-use demi_agent_store::{AgentTreeStore, StoreError, testing::MemoryTreeStore};
+use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{
     EnvironmentScope, HostResolver, NodeContext, ShellEnvironmentFactory, SubagentSettings, Toolset,
 };
 use demi_agent_transcript::testing::SequentialIds;
-use demi_backend_database::blob_refs::OwnerBlobs;
 use demi_backend_database::control::ControlService;
 use demi_backend_page_sync::SyncRegistry;
 use demi_backend_plugins::{ProductPort, Registry, UserPlugins};
@@ -265,33 +263,6 @@ pub async fn user_plugins(registry: Registry) -> (UserPlugins, TempDir) {
 /// A product with no conversation Host, no blobs and no exposes.
 struct NoProduct;
 
-/// A blob namespace the scenarios never reach: a value naming no blob uses
-/// none.
-struct NoBlobs;
-
-impl BlobStore for NoBlobs {
-    fn put(&self, _: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, StoreError>> {
-        Box::pin(async { Err(StoreError::Failed("the scenarios keep no blobs".into())) })
-    }
-
-    fn get<'a>(
-        &'a self,
-        _: &'a BlobRef,
-    ) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
-        Box::pin(async { Ok(None) })
-    }
-}
-
-impl OwnerBlobs for NoBlobs {
-    fn media(&self) -> &dyn BlobStore {
-        self
-    }
-
-    fn commit_uses(&self, _: &[BlobRef]) -> Result<(), StoreError> {
-        Ok(())
-    }
-}
-
 fn none<T>() -> LocalBoxFuture<'static, Result<T, PortFailure>> {
     Box::pin(async {
         Err(PortFailure::Port(PortError::Failed(
@@ -334,10 +305,6 @@ impl ProductPort for NoProduct {
 
     fn get_blob(&self, _: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>> {
         none()
-    }
-
-    fn blob_uses(&self) -> Arc<dyn OwnerBlobs> {
-        Arc::new(NoBlobs)
     }
 
     fn exposes(&self) -> LocalBoxFuture<'_, Result<ExposeList, PortFailure>> {

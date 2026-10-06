@@ -96,8 +96,7 @@ demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }
 demi-plugin-skills = { path = "../plugin-skills", features = ["testing"] }
 bytes.workspace = true
-# The upload and retention scenarios look for images' base64 in what a
-# provider was sent.
+# The upload scenarios look for images' base64 in what a provider was sent.
 data-encoding = "2"
 futures-util.workspace = true
 reqwest = { workspace = true, features = ["rustls", "stream"] }
