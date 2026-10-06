@@ -31,8 +31,9 @@ pub struct Held {
 #[derive(Clone)]
 pub struct Fake {
     pub held: Arc<Mutex<Held>>,
-    /// How many writes ended before their bytes were in place, as one cut
-    /// short does: dropped or failed.
+    /// How many writes started, and how many ended before their bytes were
+    /// in place, as one cut short does: dropped or failed.
+    pub started_writes: tokio::sync::watch::Sender<usize>,
     pub cut_writes: tokio::sync::watch::Sender<usize>,
     /// What each watch says, from the test.
     pub watch_says: Arc<Mutex<Option<mpsc::UnboundedReceiver<FileWatchMessage>>>>,
@@ -42,6 +43,7 @@ impl Default for Fake {
     fn default() -> Self {
         Self {
             held: Arc::default(),
+            started_writes: tokio::sync::watch::Sender::new(0),
             cut_writes: tokio::sync::watch::Sender::new(0),
             watch_says: Arc::default(),
         }
@@ -89,6 +91,7 @@ impl Operations for Fake {
             Ok(FileRange {
                 size: bytes.len() as u64,
                 version: version(number),
+                modified: demi_runner_protocol::wire::Timestamp(1_790_000_000_123),
                 body: Box::pin(futures_util::stream::iter(chunks)),
             })
         })
@@ -98,6 +101,7 @@ impl Operations for Fake {
         self.saw(scope);
         let fake = self.clone();
         Box::pin(async move {
+            fake.started_writes.send_modify(|started| *started += 1);
             // Counts the write as cut unless it puts its file in place.
             let cut = fake.cut_writes.clone();
             let guard = scopeguard(move || cut.send_modify(|cut| *cut += 1));
