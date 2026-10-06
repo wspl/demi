@@ -98,7 +98,7 @@ pub(crate) fn start(
                     upload,
                     files,
                 } => {
-                    membership.operated().await;
+                    membership.operated();
                     match prepare(&environment, upload, tab, token.clone(), revision, files).await {
                         Ok(upload) => {
                             pending = Some(upload);

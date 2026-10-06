@@ -12,6 +12,8 @@ use demi_shared_types::DecodeError;
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum CaptureCommand {
     /// Capture the tab of CDP target `target` at `width` × `height` pixels.
+    /// H.264 4:2:0 encodes only even sides: a capture of an odd side is
+    /// encoded without its last row or column, never scaled.
     Start {
         capture: u32,
         target: String,
@@ -35,6 +37,14 @@ pub enum CaptureCommand {
         capture: u32,
         bitrate: u32,
         fps: u32,
+    },
+    /// Capture the running capture's tab at `width` × `height` pixels from
+    /// now on, as the same capture: the frames at the new size start with a
+    /// key frame, and the frames in flight at the old size are given up.
+    Resize {
+        capture: u32,
+        width: u32,
+        height: u32,
     },
     Stop {
         capture: u32,
