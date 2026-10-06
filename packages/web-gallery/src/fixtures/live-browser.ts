@@ -7,6 +7,7 @@ import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/
 import type {
   BrowserTab,
   BrowserViewport,
+  CursorRegion,
   LiveControl,
   LiveModuleMessage,
   LiveTab,
@@ -71,6 +72,25 @@ const SELECT: LiveControl = {
   rect: { x: 24, y: 168, width: 180, height: 32 },
 }
 
+/** Where the drawn page shows which cursor, as a page's observer reports it: the button, the select and the field. */
+function pageCursors(viewport: BrowserViewport): CursorRegion[] {
+  return [
+    { x: 24, y: 96, width: 136, height: 40, cursor: 'pointer' },
+    { x: 24, y: 168, width: 180, height: 32, cursor: 'default' },
+    { x: 24, y: 216, width: viewport.width - 48, height: 36, cursor: 'text' },
+  ]
+}
+
+/** Where the drawn page's text stands, which the browser's own cursor resolves to a text cursor over. */
+function overText(x: number, y: number): boolean {
+  return (x >= 24 && x <= 110 && y >= 28 && y <= 54) || (x >= 24 && x <= 290 && y >= 62 && y <= 82)
+}
+
+/** H.264 encodes only even sides: an odd one loses its last row or column, as the Host's capture cuts it. */
+function even(length: number): number {
+  return Math.max(2, length - (length % 2))
+}
+
 /** How long the gallery's conversation browser takes over a request, as a Host takes a moment. */
 const REQUEST_DELAY_MS = 900
 /** How long a page the gallery's browser loads takes, so the page's loading shows. */
@@ -110,6 +130,7 @@ class GalleryBrowserView {
   private typed = 'Ship it'
   private selection: 'caret' | 'all' = 'caret'
   private pressed = false
+  private overText = false
   private status = 'open'
 
   constructor(
@@ -189,12 +210,12 @@ class GalleryBrowserView {
             this.send({ type: 'dialog', tab: tab.id, dialog: { type: 'confirm', message: 'Ship order 4711?', defaultText: '' } })
           }
         }
-        this.send({
-          type: 'cursor',
-          tab: tab?.id ?? '',
-          cursor: value.y > 96 && value.y < 136 ? 'pointer' : 'default',
-          editable: false,
-        })
+        // The observer resolves only what the page leaves to the browser, as text under the pointer; the
+        // regions decide the rest in the view, without a round trip.
+        if (tab && overText(value.x, value.y) !== this.overText) {
+          this.overText = overText(value.x, value.y)
+          this.send({ type: 'cursor', tab: tab.id, cursor: this.overText ? 'text' : 'default', editable: false })
+        }
         break
       case 'key':
         if (value.action !== 'down') {
@@ -237,17 +258,27 @@ class GalleryBrowserView {
     if (!tab) {
       return
     }
+    // The page's own pixels, as the Host captures them; an odd side loses its last row or column.
     const size = {
-      width: Math.ceil(tab.viewport.width * tab.viewport.devicePixelRatio / 2) * 2,
-      height: Math.ceil(tab.viewport.height * tab.viewport.devicePixelRatio / 2) * 2,
+      width: even(Math.ceil(tab.viewport.width * tab.viewport.devicePixelRatio)),
+      height: even(Math.ceil(tab.viewport.height * tab.viewport.devicePixelRatio)),
     }
     this.generation += 1
     this.sequence = 0
     this.canvas.width = size.width
     this.canvas.height = size.height
     this.send({ type: 'controls', tab: tab.id, controls: [{ ...SELECT, value: this.status }] })
+    this.send({ type: 'cursors', tab: tab.id, regions: pageCursors(tab.viewport) })
     // A real Host can report controls before its encoder starts a generation.
-    this.send({ type: 'stream', tab: tab.id, generation: this.generation, width: size.width, height: size.height })
+    this.send({
+      type: 'stream',
+      tab: tab.id,
+      generation: this.generation,
+      width: size.width,
+      height: size.height,
+      viewport: { ...tab.viewport },
+      scale: 1,
+    })
     const generation = this.generation
     this.encoder = new VideoEncoder({
       output: (chunk) => {
@@ -290,7 +321,7 @@ class GalleryBrowserView {
     if (!context) {
       return
     }
-    const ratio = this.canvas.width / viewport.width
+    const ratio = viewport.devicePixelRatio
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
     context.fillStyle = '#ffffff'
     context.fillRect(0, 0, viewport.width, viewport.height)
@@ -372,6 +403,8 @@ export interface GalleryBrowser {
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void>
   /** The tab closes on the device, as the agent's close or a browser that ended would close it. */
   closeOnDevice(tab: string): void
+  /** The agent shows the tab to the user, as `demi browser show` does: its count of showings rises. */
+  show(tab: string): void
   stream: OpenUserStream
   /** What the Host holds of the browser's package. */
   installed(): readonly HostArtifact[]
@@ -398,8 +431,11 @@ export function galleryBrowser(
     })
   }
 
+  /** How many times the agent showed each tab, as the Host's tab registry counts them. */
+  const shows = new Map<string, number>()
+
   function info(tab: LiveTab): BrowserTab {
-    return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy, loading: tab.loading }
+    return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy, loading: tab.loading, shows: shows.get(tab.id) ?? 0 }
   }
 
   /** The browser a tab needs, which the pinned Chrome for Testing is. */
@@ -484,6 +520,10 @@ export function galleryBrowser(
       }
     }),
     closeOnDevice: remove,
+    show: (id) => {
+      shows.set(id, (shows.get(id) ?? 0) + 1)
+      changed()
+    },
     stream,
     installed: () => held,
   }

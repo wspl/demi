@@ -1,6 +1,7 @@
 import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
+  applyRequest,
   openIntent,
   type PanelState,
   type PinnedTabs,
@@ -131,6 +132,27 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.history = selectTab(state.history, id)
   }
 
+  /**
+   * A plugin page's selection of tab `id`, with the panel opened
+   * (`web-application.md` § Work panel). With `request`, it applies only a
+   * request above the one this page recorded for the tab, and records it.
+   */
+  function show(conversationId: string, id: string, request?: number): void {
+    if (request !== undefined) {
+      const applied = resources.local.workPanelShown?.[conversationId] ?? {}
+      const present = tabsOf(conversationId).tabs.value.map((tab) => tab.id)
+      const next = applyRequest(applied, present, id, request)
+      if (!next) {
+        return
+      }
+      resources.local.workPanelShown ??= {}
+      resources.local.workPanelShown[conversationId] = { ...next }
+    }
+    const state = stateFor(conversationId)
+    state.history = selectTab(state.history, id)
+    state.open = true
+  }
+
   /** A new tab, selected unless `options` says not, with the panel opened for it; returns its id. */
   function add(conversationId: string, kind: string, data: unknown, options = { select: true }): string {
     const state = stateFor(conversationId)
@@ -183,5 +205,5 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return intentKind(PLUGIN_PAGES, enabled, intent) !== null
   }
 
-  return { stateFor, recorded, setOpen, load, select, add, update, closeTabs, updatePinned, openIn, canOpen }
+  return { stateFor, recorded, setOpen, load, select, show, add, update, closeTabs, updatePinned, openIn, canOpen }
 })
