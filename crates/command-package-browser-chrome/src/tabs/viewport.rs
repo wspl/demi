@@ -9,10 +9,11 @@ use chromiumoxide::{
             GetScreenInfosParams, ScreenId, SetDeviceMetricsOverrideParams,
             SetTouchEmulationEnabledParams, SetUserAgentOverrideParams, UserAgentMetadata,
         },
-        page::{CaptureScreenshotFormat, CaptureScreenshotParams},
+        page::{CaptureScreenshotFormat, CaptureScreenshotParams, EventFrameNavigated},
     },
     types::{Command, Method, MethodId},
 };
+use futures_util::StreamExt;
 use serde_json::Value;
 
 use crate::driver::{
@@ -212,6 +213,7 @@ impl BrowserTab {
             touch.max_touch_points = mobile.then_some(5);
             self.page.execute(touch).await?;
         }
+        let mut navigations = self.page.event_listener::<EventFrameNavigated>().await?;
         // Resizing the native window after the emulated viewport can leave
         // macOS capture letterboxed at the old size, with mismatched input.
         self.fit_window(viewport).await?;
@@ -225,7 +227,22 @@ impl BrowserTab {
             .await?;
         // Metrics acknowledgement can precede the compositor's resized surface.
         // Publish only after it has painted, so capture cannot scale the old one.
-        paint(&self.page).await?;
+        // A document that replaces the page meanwhile is laid out at the new
+        // metrics from its start, and Chrome may never finish redrawing the
+        // one it left, of a tab nobody captures yet: its screenshot waited
+        // the whole request timeout.
+        let replaced = async {
+            while let Some(Ok(navigated)) = navigations.next().await {
+                if navigated.frame.parent_id.is_none() {
+                    return;
+                }
+            }
+            std::future::pending::<()>().await
+        };
+        tokio::select! {
+            painted = paint(&self.page) => painted?,
+            () = replaced => {}
+        }
         self.state.viewport.send_modify(|viewports| {
             viewports.current = viewport;
             if viewport.mode == ViewportMode::Web {
