@@ -1,7 +1,7 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
 import { LiveFrameReader, encodeFile, encodeMessage, encodeVideo, type LiveFrame } from '../frames'
-import { keyMessage, localKey, modifiers, pointerMessage, wheelMessage } from '../input'
+import { ClickCount, keyMessage, localKey, modifiers, pointerMessage, wheelMessage } from '../input'
 import { pageReturned } from '@demicodes/plugin-sdk'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStream, type PanelReport, type PictureSink } from '../session'
@@ -161,9 +161,9 @@ test('the viewport menu offers Web and Mobile, and shows what the agent set', ()
 
 test('pointer, wheel and key events carry what the page needs', () => {
   const none = { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false }
-  const down = pointerMessage('t_a', 'down', { x: 5, y: 6 }, { ...none, button: 2, buttons: 2, detail: 1 })
+  const down = pointerMessage('t_a', 'down', { x: 5, y: 6 }, { ...none, button: 2, buttons: 2 })
   expect(down).toMatchObject({ type: 'pointer', action: 'down', button: 'right', buttons: 2, clickCount: 1, modifiers: 0 })
-  const move = pointerMessage('t_a', 'move', { x: 1, y: 2 }, { ...none, button: 0, buttons: 1, detail: 0 })
+  const move = pointerMessage('t_a', 'move', { x: 1, y: 2 }, { ...none, button: 0, buttons: 1 })
   expect(move).toMatchObject({ button: 'left', clickCount: 0 })
   const lines = wheelMessage('t_a', { x: 0, y: 0 }, { ...none, deltaX: 0, deltaY: 3, deltaMode: 1 }, 600)
   expect(lines).toMatchObject({ deltaY: 48 })
@@ -180,6 +180,19 @@ test('pointer, wheel and key events carry what the page needs', () => {
   // The viewer's own paste reaches the page as a paste event.
   expect(localKey({ ...none, metaKey: true, key: 'v', code: 'KeyV', keyCode: 86, repeat: false, location: 0, getModifierState: () => false })).toBe(true)
   expect(localKey({ ...none, metaKey: true, key: 'c', code: 'KeyC', keyCode: 67, repeat: false, location: 0, getModifierState: () => false })).toBe(false)
+})
+
+test('presses close in time and place count as one double or triple click, as the page needs them', () => {
+  // A pointer event's own detail is 0, so the view counts.
+  const clicks = new ClickCount()
+  const press = (timeStamp: number, clientX = 10, button = 0) => clicks.press({ timeStamp, clientX, clientY: 10, button })
+  expect([press(0), press(200), press(400), press(600)]).toEqual([1, 2, 3, 3])
+  expect(press(2000)).toBe(1)
+  expect(press(2100, 30)).toBe(1)
+  expect(press(2200, 30, 2)).toBe(1)
+  expect(clicks.current).toBe(1)
+  expect(pointerMessage('t_a', 'down', { x: 1, y: 1 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1 }, 2))
+    .toMatchObject({ clickCount: 2 })
 })
 
 test('keyboard prototype getters preserve shortcuts and AltGraph text', () => {
@@ -303,7 +316,7 @@ test('a stalled stream discards input and resumes from a key frame', () => {
   expect(view.live.state.connection).toBe('stalled')
   expect(view.sent.at(-1)).toEqual({ type: 'release' })
   const before = view.sent.length
-  view.live.input(pointerMessage(TAB.id, 'down', { x: 1, y: 2 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1, detail: 1 }))
+  view.live.input(pointerMessage(TAB.id, 'down', { x: 1, y: 2 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1 }))
   expect(view.sent).toHaveLength(before)
   view.receive(moduleFrame({ type: 'heartbeat' }))
   expect(view.live.state.connection).toBe('live')
@@ -517,7 +530,6 @@ test('a message the protocol refuses is never sent, so the module does not end t
   class Hover {
     get button() { return 0 }
     get buttons() { return 0 }
-    get detail() { return 0 }
     get altKey() { return false }
     get ctrlKey() { return false }
     get metaKey() { return false }

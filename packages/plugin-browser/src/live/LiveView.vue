@@ -6,7 +6,7 @@ import LiveDialog from './LiveDialog.vue'
 import { CanvasPictures } from './pictures'
 import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
-import { keyMessage, localKey, composingKey, pointerMessage, wheelMessage } from './input'
+import { ClickCount, keyMessage, localKey, composingKey, pointerMessage, wheelMessage } from './input'
 import { cursorAt, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
@@ -81,6 +81,7 @@ let move: { x: number; y: number; event: PointerEvent } | null = null
 let moving: ReturnType<typeof setInterval> | null = null
 let composing = false
 let committed: string | undefined
+const clicks = new ClickCount()
 
 function point(event: { clientX: number; clientY: number }): { x: number; y: number } {
   const bounds = frame.value?.getBoundingClientRect()
@@ -110,7 +111,7 @@ function pointerDown(event: PointerEvent): void {
   }
   canvas.value?.setPointerCapture(event.pointerId)
   flushMove()
-  props.session?.input(pointerMessage(props.tab.id, 'down', point(event), event))
+  props.session?.input(pointerMessage(props.tab.id, 'down', point(event), event, clicks.press(event)))
 }
 
 function pointerMove(event: PointerEvent): void {
@@ -130,7 +131,7 @@ function pointerUp(event: PointerEvent): void {
   if (canvas.value?.hasPointerCapture(event.pointerId)) {
     canvas.value.releasePointerCapture(event.pointerId)
   }
-  props.session?.input(pointerMessage(props.tab.id, 'up', point(event), event))
+  props.session?.input(pointerMessage(props.tab.id, 'up', point(event), event, clicks.current))
 }
 
 function wheel(event: WheelEvent): void {
