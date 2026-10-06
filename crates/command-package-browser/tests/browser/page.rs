@@ -31,6 +31,7 @@ const DEADLINE: Duration = Duration::from_secs(5);
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME pointing to an installed Chrome for Testing release"]
 async fn browser_contract_and_cleanup() {
+    let _turn = crate::families::browser_turn().await;
     let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
     let requests = Arc::new(AtomicUsize::new(0));
     let effects = requests.clone();

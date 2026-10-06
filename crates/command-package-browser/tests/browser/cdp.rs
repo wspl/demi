@@ -7,22 +7,22 @@ use tokio_util::sync::CancellationToken;
 async fn oversized_observation_ends_the_browser_and_allows_a_fresh_open() {
     with_browser_fixture(|fixture| async move {
         let tab = fixture.open("cdp.html").await;
-        fixture
-            .call(
+        // A console message larger than a CDP message may be arrives as an
+        // event the connection cannot read, which ends it (a larger answer
+        // only fails its own request).
+        // The connection reads messages of up to 64 MiB (chromiumoxide's `MAX_CDP_MESSAGE_BYTES`).
+        let expression = format!("console.log('x'.repeat({})); undefined", 64 * 1024 * 1024);
+        let (_, sent) = fixture
+            .result(
                 "browser.cdp.send",
-                json!({
-                    "tab":tab,
-                    "method":"Runtime.evaluate",
-                    "params":json!({
-                        "expression":"document.body.innerHTML = '<button>Large observation</button>'.repeat(20000); undefined"
-                    }).to_string()
-                }),
+                json!({"tab":tab,"method":"Runtime.evaluate","params":json!({"expression":expression}).to_string()}),
+                CancellationToken::new(),
             )
             .await;
         let (_, error) = fixture
-            .result("browser.inspect", json!({"tab":tab}), CancellationToken::new())
+            .result("browser.info", json!({"tab":tab}), CancellationToken::new())
             .await;
-        assert_eq!(error["error"]["code"], "browser_lost", "{error}");
+        assert_eq!(error["error"]["code"], "browser_lost", "{sent} then {error}");
         tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
                 let (code, opened) = fixture

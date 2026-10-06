@@ -95,23 +95,24 @@ impl Chrome {
 
     /// Where Chrome's executables live, its helpers' included, for finding
     /// its processes: each installation of the line the runner has, once
-    /// the service has its artifacts source.
-    pub async fn roots(&self) -> Vec<PathBuf> {
+    /// the service has its artifacts source; none when the runner could not
+    /// list them, as when it ended the service's streams first.
+    pub async fn roots(&self) -> Option<Vec<PathBuf>> {
         let mut attached = self.artifacts.subscribe();
         // The sender lives as long as this Chrome, so the wait ends only
         // with a source.
-        let Ok(artifacts) = attached.wait_for(Option::is_some).await else {
-            return Vec::new();
-        };
+        let artifacts = attached.wait_for(Option::is_some).await.ok()?;
         let artifacts = artifacts.clone().expect("the wait ends with a source");
         match artifacts.installed(ARTIFACT).await {
-            Ok(installed) => installed
-                .iter()
-                .map(|installed| installation_of(Path::new(&installed.path)))
-                .collect(),
+            Ok(installed) => Some(
+                installed
+                    .iter()
+                    .map(|installed| installation_of(Path::new(&installed.path)))
+                    .collect(),
+            ),
             Err(error) => {
                 tracing::warn!("the installed Chrome could not be listed: {error}");
-                Vec::new()
+                None
             }
         }
     }
