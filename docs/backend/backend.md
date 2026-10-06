@@ -56,7 +56,7 @@ over the manager's Unix socket.
 | `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` group | [Host operations](../execution/sessions-and-targets.md#host-operations) |
 | `plugins` | `backend-plugins`, `demi-backend` (`plugins`) | The plugin host: the registry and its checks, the command set, instructions and context sources the agent server is given, each user's instances, the port's operations, page state and page calls (`backend-plugins`); the built-in plugins, in their order of registration (the backend's `plugins`) | [Plugins](../architecture/plugins.md) |
 | `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication into the object store, the sourcing of each artifact when first needed, and the local store's artifact route | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
-| `lifecycle` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock, the conversation release, and the daily retention pass that retires expired tool media, removes expired command outputs and collects blobs (`backend-user-shard`) | [Conversation idle and Host resource release](../execution/resource-lifecycle.md), [Retention](storage.md#retention) |
+| `lifecycle` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock and the conversation release (`backend-user-shard`) | [Conversation idle and Host resource release](../execution/resource-lifecycle.md) |
 | `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
 | `expose` | `backend-expose` | Expose records and their lifetime, live relay connections | [Host expose](../execution/expose.md) |
 | `llm`, `vault`, `usage` | `backend-providers`, `backend` (`families`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (the backend's `families`) | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
@@ -456,8 +456,7 @@ At startup the backend:
    `hello` on the first connection names its wire version, so a manager of
    another release stops the start here
    ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
-7. Opens its listener, and starts the daily retention pass, whose first pass
-   runs at once ([The retention pass](storage.md#the-retention-pass)).
+7. Opens its listener.
 8. Reports readiness to systemd, whose unit waits for it without a timeout,
    since a migration can take minutes
    ([One release on a server](../delivery/upgrades.md#one-release-on-a-server)).
@@ -471,12 +470,10 @@ reconnects into a backend that is closing. A new request on a connection that
 is already open answers 503 `backend_closing`. Runner connections and pipes
 keep working, because the steps below need them:
 
-1. Login flows are cancelled, and no retention pass starts; one under way
-   ends with its shard.
+1. Login flows are cancelled.
 2. Each shard ends its user's work in this order. The synchronization
    channels close, so no page is sent what the steps below change; a page
-   reads the state again from the next backend. Idle watches stop, and a
-   retirement already running finishes. Title requests are aborted and expose
+   reads the state again from the next backend. Idle watches stop. Title requests are aborted and expose
    connections end. Open file transfers and user streams end. Conversation sockets
    close and the waits for saved wakeups end, so no tree opens and no frame
    reaches a tree after its shutdown. Agent turns are

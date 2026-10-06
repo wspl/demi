@@ -349,7 +349,6 @@ Only these change what a session has already sent:
 | A change of the thinking setting | What the vendor renders the setting into: the messages on the Anthropic API; everything on the OpenAI API, whose reasoning instructions come first | The user chose it, as with a model switch |
 | An edit of a configured model's accepted file types | The messages from the first medium whose replay the edit changes | Replay sends each medium as the request's model accepts it ([Replay](../agent/runtime.md#replay)) |
 | A new Demi release | The system prompt, the tools or the request format the release changed | Once per conversation |
-| A retired tool medium ([Retired tool media](../agent/runtime.md#retired-tool-media)) | The messages from the first result whose image or video became text | Only where no vendor can still hold a request that sent the medium: before a summary more than a day old, or after 30 idle days |
 
 `retry` and `resume` are not exceptions: they cut the history back, so their
 request is an earlier request of the session, or begins with one. A medium

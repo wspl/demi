@@ -720,10 +720,8 @@ namespace before any result reports the end, as it stores the output, and
 records the media with the command's output
 ([Command outputs](../backend/storage.md#command-outputs)). A medium the
 result attaches enters the transcript fitted, by reference, as every tool
-medium does ([Media](#media)), and is retired with the others after 30 days
-([Retired tool media](#retired-tool-media)). The original stays with the
-command's output for 30 days after the command ended, and
-`demi shell output 17 --medium 2` prints it.
+medium does ([Media](#media)). The original stays with the command's output,
+and `demi shell output 17 --medium 2` prints it.
 
 ### The whole output
 
@@ -776,8 +774,8 @@ model:
 - **A command that runs.** It reads what the command's Host has kept so far,
   through the conversation's host access
   ([Host operations](../execution/sessions-and-targets.md#host-operations)).
-- **A command that ended.** It reads the output the backend stored, for 30
-  days after the command ended ([Retention](../backend/storage.md#retention)).
+- **A command that ended.** It reads the output the backend stored, which
+  stays ([Retention](../backend/storage.md#retention)).
 - **What is kept.** A command's output up to 16 MiB, all of it; beyond that,
   its first 8 MiB and its last 8 MiB. Lines are numbered as kept, and the
   merged pages show an unnumbered line where the rest was left out,
@@ -796,7 +794,6 @@ model:
   `[medium 2: image/png, 412000 bytes]`.
 - **Failures** go to stderr with exit status 1:
   - `demi shell output: no command 17 in this conversation`;
-  - `demi shell output: the output of 17 was removed on 2026-10-28, 30 days after the command ended`;
   - `demi shell output: the output of 17 was not stored: <reason>`, when the
     backend could not store it;
   - `demi shell output: lines 5000-5100 are past the end: the output has 4720 lines`;
@@ -975,7 +972,7 @@ Words used for session data:
 | transcript | A session's history: its ordered blocks |
 | status | A point-in-time answer an operation returns, such as a command's status; never stored as history |
 | checkpoint | The durable, restorable state of one session ([Tree store](#tree-store)) |
-| whole output | A command's output as kept: on its Host while it runs, in the backend for 30 days after it ends ([The whole output](#the-whole-output)) |
+| whole output | A command's output as kept: on its Host while it runs, in the backend once it ends ([The whole output](#the-whole-output)) |
 | view | Bounded data a block carries for the user; never replayed to the model |
 | blob | Content-addressed bytes, such as media, edit copies and commands' outputs, in the conversation owner's blob namespace |
 
@@ -1159,23 +1156,15 @@ a block cannot hold bytes and a provider cannot receive a reference:
   holds already ([The object store](../backend/storage.md#the-object-store)).
   A tool's medium whose put fails is gone from its result (below), so the
   turn goes on and no block names a blob that was not stored.
-- **A medium that is gone.** A tool result's image or video that the result
-  no longer holds gives way, in its place, to a part of its own that says
+- **A medium that is gone.** A tool result's image or video whose bytes
+  could not be stored gives way, in its place, to a part of its own that says
   what it was and why it is gone:
   `{ type: "gone", kind, mediaType, cause }`, where `kind` is `image` or
-  `video` and `cause` is `{ type: "not_stored", error }` when its bytes could
-  not be stored, with the store's error, or `{ type: "retired", at }` when it
-  was retired, with the time ([Retired tool media](#retired-tool-media)). The
-  model reads the part as one line of text, which the agent renders in one
-  place:
-
-  | Why it is gone | The text the model reads |
-  | --- | --- |
-  | Its put failed | `[<kind> not stored: <reason>]` |
-  | Retired | `[<kind>:<media type>, removed on <date>: a tool result's images and videos are kept for 30 days]` |
-
-  The reason is the store's error, and the date is the UTC day of the
-  retirement, `YYYY-MM-DD`. The page shows the part where the medium was
+  `video` and `cause` is `{ type: "not_stored", error }`, with the store's
+  error. The model reads the part as one line of text, which the agent
+  renders in one place: `[<kind> not stored: <reason>]`. Nothing that was
+  stored is ever removed ([Retention](../backend/storage.md#retention)). The
+  page shows the part where the medium was
   ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
   A message's media are never gone: an upload is stored before a message can
   name it.
@@ -1214,9 +1203,8 @@ a block cannot hold bytes and a provider cannot receive a reference:
 - **Stable requests.** Within a live tree, a medium reaches the model in one
   form for as long as it is replayed: its held bytes, or the missing text for
   a blob found missing. Bytes the session let go of and reads again are the
-  same bytes, since a blob's name is their hash and a blob that a block, a
-  queued message or a pending steer references is never deleted
-  ([Collecting blobs](../backend/storage.md#collecting-blobs)). Media therefore never
+  same bytes, since a blob's name is their hash and no blob is ever deleted
+  ([Retention](../backend/storage.md#retention)). Media therefore never
   change the start a request shares with the previous one.
 - **Failures.** A read that fails, rather than finding the blob missing,
   fails the action before its request, as a failed save does; the next
@@ -1283,47 +1271,6 @@ stored ([Edit copies](../execution/edit-tracking.md#edit-copies)).
 The model's result and the view come from the same command status; the view
 shows nothing the model could not read from the command, except `files`, which
 exists only for the user.
-
-### Retired tool media
-
-A tool result's image or video stays in its block for 30 days. After that it
-is retired, once no request can send it while a vendor may still keep that
-request in its cache: it is gone from the result, and in its place a part
-says what it was and when it was removed ([Media](#media)). For example, a
-screenshot a command printed on 1 September, in history that compaction
-summarized on 3 September, is retired at the first daily pass after
-1 October, and the model then reads in its place:
-
-```text
-[image:image/png, removed on 2026-10-01: a tool result's images and videos are kept for 30 days]
-```
-
-A medium is retired when its `tool_call` block is more than 30 days old and
-one of these holds:
-
-| Where it lies | Why no cache can still hold a request that sent it |
-| --- | --- |
-| Before its node's last `compaction_boundary`, and that boundary is more than 24 hours old | Replay starts at the boundary, so no request has sent the medium since the summary request, more than a day ago, and no vendor keeps a cache entry longer than 24 hours. An edit or a retry that removes the boundary later sends the text into a cache that has ended |
-| Anywhere in a conversation that has been idle for 30 days | No request of the conversation has been sent for 30 days ([Retiring tool media](../backend/storage.md#retiring-tool-media) says how the backend knows) |
-
-- The retired part holds the medium's kind and media type and the time of
-  the retirement, and the model reads it as the text [Media](#media) gives a
-  retired medium. It replaces the image or video part of the block's
-  `output`; the result's other parts, its `view`, and the block's id, time
-  and status stay.
-- The model receives the text as any text of a result. The backend
-  retires only conversations without a live tree
-  ([Retiring tool media](../backend/storage.md#retiring-tool-media)), so
-  within a live tree a medium reaches the model in one form for as long as it
-  is replayed. A request after an idle month carries the text where the
-  previous one carried the image.
-- A message's images, videos and documents are never retired: they come from
-  the user's uploads.
-- The page shows, where the image or video was, that it was removed and on
-  which day ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).
-- The agent owns the rule: which media are retired, when, and the text. The
-  backend applies it to stored conversations
-  ([Retention](../backend/storage.md#retention)).
 
 ### Patches and versions
 
@@ -1758,7 +1705,6 @@ where a tool runs; no test calls a real model.
 | A command prints 20 MiB | The Host keeps 16 MiB of it while it runs, and the backend stores the same; `demi shell output` prints the first and last 8 MiB with the line where the rest was left out |
 | A binary stdout that the model does not accept | The result names `demi shell output 17 --raw --stdout`, which prints the bytes unchanged |
 | `demi shell output 17 --raw \| head -n 1` | The line, and nothing on stderr |
-| A command's output 30 days after the command ended, after the retention pass | `demi shell output` says the output was removed and on which day |
 | A subagent reads the output of a command its parent ran | The whole output |
 | A stored conversation with images is opened by two pages, and one asks for the transcript again after a gap | No blob is put: every frame carries the references its rows hold |
 | A restored conversation with images before and after its last `compaction_boundary` runs a turn of two requests | The first request reads the blob of each replayed medium once and none from before the boundary; the second reads none; both carry the replayed media's bytes |
