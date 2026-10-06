@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AnsiText from './AnsiText.vue'
@@ -45,6 +46,42 @@ watch(
   },
   { immediate: true },
 )
+
+/** How many lines the command shows until a click shows it whole: the template's `line-clamp-2`. */
+const COMMAND_LINES = 2
+
+const commandRef = ref<HTMLElement>()
+// Whether the command takes more lines than it shows clamped; only then is it a toggle.
+const commandOverflows = ref(false)
+const commandWhole = ref(false)
+
+// The element's scroll height is the command's full height, clamped or not.
+function measureCommand(): void {
+  const element = commandRef.value
+  if (!element) {
+    commandOverflows.value = false
+    return
+  }
+  const line = Number.parseFloat(getComputedStyle(element).lineHeight) || 0
+  commandOverflows.value = element.scrollHeight > COMMAND_LINES * line + 1
+}
+
+// Wrapping follows the width, and a clamped box keeps its size while the
+// command streams in, so the text is watched as well.
+useResizeObserver(commandRef, measureCommand)
+watch(command, measureCommand, { flush: 'post' })
+
+function toggleCommand(): void {
+  if (!commandOverflows.value) {
+    return
+  }
+  // A drag that selected part of the command is a selection, not a click.
+  const selection = window.getSelection()
+  if (selection && !selection.isCollapsed && commandRef.value?.contains(selection.anchorNode)) {
+    return
+  }
+  commandWhole.value = !commandWhole.value
+}
 </script>
 
 <template>
@@ -67,8 +104,23 @@ watch(
 
     <template #pinned>
       <div class="flex px-3 font-mono text-xs leading-5 text-fg-subtle">
-        <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><span
-          class="min-w-0 select-all whitespace-pre-wrap break-words"
+        <span class="mr-1 shrink-0 select-none text-fg-faint">$</span><!--
+          A command longer than two lines shows two, the second ending in an
+          ellipsis; a click shows it whole and another clamps it again. One
+          that fits is no control: a click selects it whole for copying.
+        --><span
+          ref="commandRef"
+          class="min-w-0 whitespace-pre-wrap break-words"
+          :class="[
+            commandOverflows ? 'select-text transition-colors duration-200 ease-out hover:text-fg-body' : 'select-all',
+            commandOverflows && commandWhole ? '' : 'line-clamp-2',
+          ]"
+          :role="commandOverflows ? 'button' : undefined"
+          :tabindex="commandOverflows ? 0 : undefined"
+          :aria-expanded="commandOverflows ? commandWhole : undefined"
+          @click="toggleCommand"
+          @keydown.enter.self.prevent="toggleCommand"
+          @keydown.space.self.prevent="toggleCommand"
         >{{ command }}</span>
       </div>
     </template>
