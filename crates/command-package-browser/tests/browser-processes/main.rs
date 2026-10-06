@@ -6,7 +6,9 @@
 //! had a browser open. Here they also take turns (`ONE_AT_A_TIME`).
 //! They start the pinned Chrome for Testing and are ignored unless asked for:
 //! `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
-//! demi-runner/test-fixtures --test browser-processes -- --include-ignored`.
+//! demi-runner/test-fixtures --test browser-processes -- --include-ignored`,
+//! on Linux with `DEMI_TEST_CHROME_RUNTIME=<directory>` too, the pinned
+//! Chrome runtime unpacked.
 #![cfg(unix)]
 // The service is `Send` and `Sync` deeper than the trait solver's default 128
 // steps, as in the library (`src/lib.rs`).
@@ -47,21 +49,20 @@ fn chrome_profiles() -> std::collections::BTreeMap<i32, PathBuf> {
 #[ignore = "requires DEMI_TEST_CHROME pointing to an installed Chrome for Testing release"]
 async fn chrome_process_tree_and_profile_retire_together() {
     let _turn = ONE_AT_A_TIME.lock().await;
-    let executable =
-        PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("installed Chrome executable"));
+    let installation = demi_command_package_browser_chrome::driver::testing::installation();
     for mode in ["success", "failure", "cancel", "killed"] {
         let directory = tempfile::tempdir().unwrap();
         let fixture = directory.path().join("retirement.html");
         std::fs::write(&fixture, "<!doctype html><h1>Retirement</h1>").unwrap();
         let fixture = url::Url::from_file_path(fixture).unwrap();
-        let chrome = executable.clone();
+        let chrome = installation.executable.clone();
         let stop = CancellationToken::new();
         let cancel = stop.clone();
         let mut observed = None;
         let observation = &mut observed;
         let result = with_browser(
             LaunchOptions::pinned(
-                executable.clone(),
+                installation.clone(),
                 demi_command_protocol::CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],

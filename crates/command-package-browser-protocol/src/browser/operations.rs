@@ -9,7 +9,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_with::rust::unwrap_or_skip;
 
-use crate::release::{LinuxFont, LinuxLibrary};
 
 use super::{
     AssetKind, BrowserFailure, BrowserNode, BrowserTab, BrowserTarget, BrowserTreeNode,
@@ -1330,8 +1329,7 @@ impl BrowserInput for InstallInput {
     }
 }
 
-/// What `install` answers: the installed browser, and on Linux what the
-/// Host still lacks for it, which `install` names but does not install.
+/// What `install` answers: the installed browser.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct InstallResult {
@@ -1339,28 +1337,6 @@ pub struct InstallResult {
     pub browser: String,
     /// The executable's path.
     pub path: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub missing_libraries: Vec<LinuxLibrary>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub missing_fonts: Vec<LinuxFont>,
-    /// The AppArmor profile Chrome's sandbox needs on a Host that restricts
-    /// user namespaces, such as Ubuntu 23.10 and later, when none is loaded.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "SandboxProfile")]
-    pub sandbox_profile: Option<SandboxProfile>,
-}
-
-/// An AppArmor profile that allows the installed Chrome the user namespaces
-/// its sandbox needs: the file it belongs in, and its text.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SandboxProfile {
-    pub path: String,
-    pub profile: String,
 }
 
 input! {

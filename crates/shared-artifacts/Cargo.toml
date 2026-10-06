@@ -29,6 +29,9 @@ serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
 tempfile = "3"
+# The Chrome runtime's archives are tar archives compressed with zstd
+# (`builds-and-releases.md` § Chrome runtime).
+tar = { version = "0.4", default-features = false }
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true

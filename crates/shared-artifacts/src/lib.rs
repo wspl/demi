@@ -17,7 +17,7 @@ pub mod receipt;
 mod release;
 
 pub use archive::{
-    Archive, ArchiveInstall, Unpacking, install_archive, installed, recorded, zip_holds,
+    Archive, ArchiveInstall, Unpacking, holds, install_archive, installed, recorded,
 };
 pub use coding::{
     CONTENT_CODING, Effort, check_encoded_blocking, decode_blocking, decode_stream, encode_blocking,
@@ -38,8 +38,8 @@ pub use reqwest::Client;
 
 #[cfg(feature = "testing")]
 pub mod testing {
-    //! Test support: a fixture HTTP server on `127.0.0.1` and the zip
-    //! archives it serves, which [`crate::client_allowing_http`] downloads
+    //! Test support: a fixture HTTP server on `127.0.0.1` and the zip and
+    //! tar archives it serves, which [`crate::client_allowing_http`] downloads
     //! from, the count of the process's waits for install locks, and the
     //! installation of a release a test was given unpacked.
 
@@ -90,6 +90,27 @@ pub mod testing {
             .into_inner()
     }
 
+    /// A tar archive of `entries` compressed with zstd, each a path and its
+    /// contents; a path that ends with `/` is a directory, which has none.
+    pub fn tar_zst(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(Vec::new());
+        for (path, contents) in entries {
+            let mut header = tar::Header::new_gnu();
+            if path.ends_with('/') {
+                header.set_entry_type(tar::EntryType::Directory);
+                header.set_mode(0o755);
+            } else {
+                header.set_mode(0o644);
+            }
+            header.set_size(contents.len() as u64);
+            builder
+                .append_data(&mut header, path, *contents)
+                .expect("a fixture entry is written");
+        }
+        let archive = builder.into_inner().expect("a fixture archive ends");
+        zstd::encode_all(archive.as_slice(), 0).expect("a fixture archive compresses")
+    }
+
     /// What a fixture server answers for one path.
     #[derive(Debug, Clone)]
     pub struct Answer {
@@ -102,6 +123,8 @@ pub mod testing {
         pub delay: Duration,
         /// The `Content-Encoding` the answer declares, if any.
         pub coding: Option<&'static str>,
+        /// The `Location` the answer declares, if any, as a redirect does.
+        pub location: Option<String>,
     }
 
     impl Answer {
@@ -113,6 +136,16 @@ pub mod testing {
                 length: true,
                 delay: Duration::ZERO,
                 coding: None,
+                location: None,
+            }
+        }
+
+        /// `302` to `location`, as GitHub answers for a release's asset.
+        pub fn redirect(location: impl Into<String>) -> Self {
+            Self {
+                status: 302,
+                location: Some(location.into()),
+                ..Self::ok(Vec::new())
             }
         }
     }
@@ -167,8 +200,13 @@ pub mod testing {
                                 .coding
                                 .map(|coding| format!("content-encoding: {coding}\r\n"))
                                 .unwrap_or_default();
+                            let location = answer
+                                .location
+                                .as_ref()
+                                .map(|location| format!("location: {location}\r\n"))
+                                .unwrap_or_default();
                             let head = format!(
-                                "HTTP/1.1 {} Fixture\r\n{length}{coding}connection: close\r\n\r\n",
+                                "HTTP/1.1 {} Fixture\r\n{length}{coding}{location}connection: close\r\n\r\n",
                                 answer.status
                             );
                             // The client may hang up first, as on a failed

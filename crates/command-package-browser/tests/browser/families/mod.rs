@@ -220,30 +220,55 @@ impl BrowserFixture {
     }
 }
 
-/// The answer a runner that has installed the pinned Chrome for Testing
-/// gives the browser's requests: the copy `DEMI_TEST_CHROME` names. No test
+/// The answer a runner that has installed the pinned Chrome for Testing,
+/// and on Linux the pinned Chrome runtime, gives the browser's requests: the
+/// copies `DEMI_TEST_CHROME` and `DEMI_TEST_CHROME_RUNTIME` name. No test
 /// downloads Chrome.
 pub fn answer_chrome(
     ask: demi_command_protocol::ArtifactAsk,
 ) -> Result<demi_command_protocol::ArtifactReply, String> {
-    let chrome = std::env::var("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME");
+    use demi_command_package_browser_protocol::release::{
+        ARTIFACT, BrowserRelease, RUNTIME_FONTS, RUNTIME_LIBRARIES, RUNTIME_LIBRARIES_ENTRY,
+    };
+    use demi_command_protocol::{ArtifactAsk, ArtifactReply, InstalledArtifact};
+
+    let installation = demi_command_package_browser_chrome::driver::testing::installation();
+    let executable = installation.executable.to_string_lossy().into_owned();
     Ok(match ask {
-        demi_command_protocol::ArtifactAsk::Install(_) => {
-            demi_command_protocol::ArtifactReply::Path(chrome)
-        }
-        demi_command_protocol::ArtifactAsk::Installed(_) => {
-            let pinned = demi_command_package_browser_protocol::release::BrowserRelease::pinned()
-                .expect("the pinned release");
+        ArtifactAsk::Install(_) => ArtifactReply::Path(executable),
+        ArtifactAsk::Installed(question) => {
+            let pinned = BrowserRelease::pinned().expect("the pinned release");
+            let target = demi_command_protocol::host_target();
             let platform = pinned
-                .platform(demi_command_protocol::host_target())
+                .platform(target)
                 .expect("the pinned release has this machine's target");
-            demi_command_protocol::ArtifactReply::Installed(vec![
-                demi_command_protocol::InstalledArtifact {
-                    version: pinned.version.clone(),
-                    sha256: platform.sha256.clone(),
-                    path: chrome,
-                },
-            ])
+            let archives = pinned.runtime_archives(target);
+            let runtime = installation.runtime.as_ref();
+            let release = pinned.runtime.release.to_string();
+            let held = match question.name.as_str() {
+                ARTIFACT => Some((pinned.version.clone(), &platform.sha256, executable)),
+                RUNTIME_LIBRARIES => archives.zip(runtime).map(|(archives, runtime)| {
+                    let library = std::path::Path::new(RUNTIME_LIBRARIES_ENTRY)
+                        .file_name()
+                        .expect("the entry names a library");
+                    let entry = runtime.libraries.join(library);
+                    (release, &archives.libraries.sha256, entry.to_string_lossy().into_owned())
+                }),
+                RUNTIME_FONTS => archives.zip(runtime).map(|(archives, runtime)| {
+                    let entry = runtime.fonts.to_string_lossy().into_owned();
+                    (release, &archives.fonts.sha256, entry)
+                }),
+                _ => None,
+            };
+            ArtifactReply::Installed(
+                held.into_iter()
+                    .map(|(version, sha256, path)| InstalledArtifact {
+                        version,
+                        sha256: sha256.clone(),
+                        path,
+                    })
+                    .collect(),
+            )
         }
     })
 }

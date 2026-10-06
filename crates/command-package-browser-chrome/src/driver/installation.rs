@@ -1,51 +1,67 @@
-//! The pinned Chrome for Testing release (`browser.md` § Browser
-//! distribution): `install` asks the runner to install it from its official
-//! URL over the artifacts stream (`native-runtime.md` § The artifacts
-//! stream), following how the download goes, and every other command starts
-//! it only from an installation the runner already holds, on a Host that has
-//! the libraries it loads. Nothing here downloads Chrome itself.
+//! The pinned Chrome for Testing release, and on Linux the Chrome runtime it
+//! starts with (`browser.md` § Browser distribution): `install` asks the
+//! runner to install each archive from its URL over the artifacts stream
+//! (`native-runtime.md` § The artifacts stream), following how the
+//! downloads go, and every other command starts Chrome only from an
+//! installation the runner already holds. Nothing here downloads anything
+//! itself.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use demi_command_package_browser_protocol::browser::InstallResult;
-use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease, ReleasePlatform};
+use demi_command_package_browser_protocol::release::{
+    ARTIFACT, BrowserRelease, ChromeRuntime, RUNTIME_FONTS, RUNTIME_FONTS_ENTRY,
+    RUNTIME_LIBRARIES, RUNTIME_LIBRARIES_ENTRY, ReleasePlatform, RuntimeArchive, RuntimeArchives,
+};
 use demi_command_protocol::{ArtifactForm, ArtifactInstall, ArtifactProgress, host_target};
 use demi_command_sdk::Artifacts;
 use tokio::sync::{mpsc, watch};
 
+use crate::driver::glibc::{self, GlibcVersion};
+use crate::driver::launch::Runtime;
 use crate::driver::operation::{BrowserError, Result};
-use crate::driver::requirements::{self, Missing};
 use crate::driver::text;
 
-/// What a Host lacks for the Chrome at an executable, which is an entry in
-/// its archive.
-type Requirements = dyn Fn(&Path, &str) -> Result<Missing> + Send + Sync;
+/// Reads the Host's glibc version, none on a Host without glibc.
+type GlibcReader = dyn Fn() -> std::io::Result<Option<GlibcVersion>> + Send + Sync;
 
 /// The Chrome a service starts, through the runner that installs it.
 /// Cloning shares the one source.
 #[derive(Clone)]
 pub struct Chrome {
     artifacts: Arc<watch::Sender<Option<Artifacts>>>,
-    requirements: Arc<Requirements>,
+    /// The target whose archives the Host takes: this program's own.
+    target: &'static str,
+    glibc: Arc<GlibcReader>,
 }
 
 impl Default for Chrome {
     fn default() -> Self {
         Self {
             artifacts: Arc::new(watch::Sender::new(None)),
-            requirements: Arc::new(requirements::missing),
+            target: host_target(),
+            glibc: Arc::new(glibc::host),
         }
     }
 }
 
+/// An installed Chrome to start: its executable, and on Linux the Chrome
+/// runtime it starts with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Installation {
+    pub executable: PathBuf,
+    pub runtime: Option<Runtime>,
+}
+
 impl Chrome {
-    /// A Chrome on a Host that lacks `missing` for it, whatever the Host's
-    /// own files say.
+    /// A Chrome on a Host of `target` whose glibc is `glibc`, whatever this
+    /// machine is.
     #[cfg(any(test, feature = "testing"))]
-    pub fn lacking(missing: Missing) -> Self {
+    pub fn on(target: &'static str, glibc: Option<GlibcVersion>) -> Self {
         Self {
-            requirements: Arc::new(move |_: &Path, _: &str| Ok(missing.clone())),
+            target,
+            glibc: Arc::new(move || Ok(glibc)),
             ..Self::default()
         }
     }
@@ -55,17 +71,24 @@ impl Chrome {
         self.artifacts.send_replace(Some(artifacts));
     }
 
-    /// Installs the pinned release for `invocation` from its official URL,
-    /// unless the Host has it, and names what the Host still lacks for it.
-    /// How its download goes reaches `progress`.
+    /// Installs the pinned release for `invocation`, and on Linux the
+    /// pinned runtime, unless the Host has them; a Linux Host with too old
+    /// a glibc installs nothing. The lines that say how the downloads go
+    /// reach `lines` (`browser.md` § Installation).
     pub async fn install(
         &self,
         invocation: &str,
-        progress: mpsc::Sender<ArtifactProgress>,
+        lines: mpsc::Sender<String>,
     ) -> Result<InstallResult> {
         let release = release()?;
-        let platform = platform(&release)?;
-        let install = ArtifactInstall {
+        let platform = platform(&release, self.target)?;
+        let runtime = release.runtime_archives(self.target);
+        if runtime.is_some() {
+            self.check_glibc().await?;
+        }
+        let source = self.source()?;
+        let title = release.title();
+        let chrome = ArtifactInstall {
             invocation: invocation.to_owned(),
             name: ARTIFACT.to_owned(),
             version: release.version.clone(),
@@ -76,53 +99,66 @@ impl Chrome {
             },
             url: Some(platform.url.clone()),
         };
-        let path = self.source()?.install(install, Some(progress)).await.map_err(|error| {
-            BrowserError::Installation(format!("{} could not be installed: {error}", release.title()))
-        })?;
-        let missing = self.missing(&path, &platform.executable).await?;
+        let line = |progress| Some(text::install_progress(&title, progress));
+        let path = install_reporting(&source, chrome, &lines, line)
+            .await
+            .map_err(|error| {
+                BrowserError::Installation(format!("{title} could not be installed: {error}"))
+            })?;
+        if let Some(archives) = runtime {
+            install_runtime(&source, invocation, &release.runtime, archives, &lines).await?;
+        }
         Ok(InstallResult {
-            browser: release.title(),
+            browser: title,
             path: path.to_string_lossy().into_owned(),
-            missing_libraries: missing.libraries,
-            missing_fonts: missing.fonts,
-            sandbox_profile: missing.sandbox,
         })
     }
 
-    /// The pinned release's executable, to start: when the Host has it
-    /// installed and has every library it loads; fonts the Host lacks do
-    /// not keep it from starting (`browser.md` § Browser distribution).
-    pub async fn executable(&self) -> Result<PathBuf> {
-        let release = release()?;
-        let platform = platform(&release)?;
-        let installed = self
-            .source()?
-            .installed(ARTIFACT)
-            .await
-            .map_err(|error| BrowserError::Installation(error.to_string()))?;
-        let path = installed
-            .into_iter()
-            .find(|installed| installed.sha256 == platform.sha256)
-            .map(|installed| PathBuf::from(installed.path))
-            .ok_or_else(|| {
-                BrowserError::Installation(text::not_installed(&release.title(), platform.size))
-            })?;
-        let missing = self.missing(&path, &platform.executable).await?;
-        if missing.libraries.is_empty() {
-            return Ok(path);
+    /// Fails unless the Host's glibc is one the runtime runs on, read on
+    /// the blocking pool: the check reads the loader.
+    async fn check_glibc(&self) -> Result<()> {
+        let glibc = self.glibc.clone();
+        let found = tokio::task::spawn_blocking(move || glibc()).await??;
+        if found.is_some_and(|found| found >= glibc::OLDEST) {
+            return Ok(());
         }
-        let lines = text::requirements(&missing.libraries, &missing.fonts);
-        Err(BrowserError::Installation(lines.trim_end().to_owned()))
+        let found = found.map_or_else(|| "none".to_owned(), |found| found.to_string());
+        Err(BrowserError::Installation(format!(
+            "Chrome on Linux needs glibc {} or newer; this Host has {found}",
+            glibc::OLDEST
+        )))
     }
 
-    /// What this Host lacks for the Chrome at `executable`, which is `entry`
-    /// in its archive, read on the blocking pool: the check reads the
-    /// Host's library and font directories.
-    async fn missing(&self, executable: &Path, entry: &str) -> Result<Missing> {
-        let requirements = self.requirements.clone();
-        let executable = executable.to_owned();
-        let entry = entry.to_owned();
-        tokio::task::spawn_blocking(move || requirements(&executable, &entry)).await?
+    /// The pinned release to start, and on Linux the pinned runtime, when
+    /// the Host has them installed (`browser.md` § Browser distribution).
+    pub async fn installation(&self) -> Result<Installation> {
+        let release = release()?;
+        let platform = platform(&release, self.target)?;
+        let archives = release.runtime_archives(self.target);
+        let source = self.source()?;
+        // Chrome and the runtime are downloaded together.
+        let size = platform.size
+            + archives.map_or(0, |archives| archives.libraries.size + archives.fonts.size);
+        let missing = || BrowserError::Installation(text::not_installed(&release.title(), size));
+        let executable = installed(&source, ARTIFACT, &platform.sha256)
+            .await?
+            .ok_or_else(missing)?;
+        let runtime = match archives {
+            Some(archives) => {
+                let libraries = installed(&source, RUNTIME_LIBRARIES, &archives.libraries.sha256)
+                    .await?
+                    .ok_or_else(missing)?;
+                let fonts = installed(&source, RUNTIME_FONTS, &archives.fonts.sha256)
+                    .await?
+                    .ok_or_else(missing)?;
+                Some(Runtime::installed(&libraries, fonts))
+            }
+            None => None,
+        };
+        Ok(Installation {
+            executable,
+            runtime,
+        })
     }
 
     /// Where Chrome's executables live, its helpers' included, for finding
@@ -158,6 +194,124 @@ impl Chrome {
     }
 }
 
+/// The path of the artifact of the line `name` whose digest is `sha256`,
+/// when the runner holds it.
+async fn installed(source: &Artifacts, name: &str, sha256: &str) -> Result<Option<PathBuf>> {
+    let installed = source
+        .installed(name)
+        .await
+        .map_err(|error| BrowserError::Installation(error.to_string()))?;
+    Ok(installed
+        .into_iter()
+        .find(|installed| installed.sha256 == sha256)
+        .map(|installed| PathBuf::from(installed.path)))
+}
+
+/// Installs `install`, sending to `lines` the line `line` makes of each
+/// report of how it goes, when it makes one.
+async fn install_reporting(
+    source: &Artifacts,
+    install: ArtifactInstall,
+    lines: &mpsc::Sender<String>,
+    mut line: impl FnMut(ArtifactProgress) -> Option<String>,
+) -> std::result::Result<PathBuf, demi_command_sdk::ServiceError> {
+    let (progress, mut reports) = Artifacts::progress();
+    let installing = source.install(install, Some(progress));
+    tokio::pin!(installing);
+    let installed = loop {
+        tokio::select! {
+            biased;
+            Some(report) = reports.recv() => send(lines, line(report)).await,
+            installed = &mut installing => break installed,
+        }
+    };
+    // What the runner reported before it answered.
+    while let Ok(report) = reports.try_recv() {
+        send(lines, line(report)).await;
+    }
+    installed
+}
+
+/// Sends `line`, if any, to `lines`. Their reader outlives every install,
+/// as the invocation awaits the install; once it stops reading, the lines
+/// have nowhere to go.
+async fn send(lines: &mpsc::Sender<String>, line: Option<String>) {
+    if let Some(line) = line {
+        let _sent = lines.send(line).await;
+    }
+}
+
+/// Installs the runtime's `archives` for `invocation`, each as an artifact
+/// of its own line, and reports them as one download: a line at each tenth
+/// of their total size, and one as the last is unpacked.
+async fn install_runtime(
+    source: &Artifacts,
+    invocation: &str,
+    runtime: &ChromeRuntime,
+    archives: RuntimeArchives<'_>,
+    lines: &mpsc::Sender<String>,
+) -> Result<()> {
+    let title = format!("the {}", runtime.title());
+    let total = archives.libraries.size + archives.fonts.size;
+    let parts = [
+        (RUNTIME_LIBRARIES, archives.libraries, RUNTIME_LIBRARIES_ENTRY),
+        (RUNTIME_FONTS, archives.fonts, RUNTIME_FONTS_ENTRY),
+    ];
+    let mut before = 0;
+    let mut shown = 0;
+    for (index, (name, archive, entry)) in parts.into_iter().enumerate() {
+        let last = index + 1 == parts.len();
+        let install = runtime_install(invocation, runtime, name, archive, entry);
+        let line = |progress| match progress {
+            ArtifactProgress::Download { done, .. } => {
+                let done = before + done;
+                let tenth = done.saturating_mul(10) / total;
+                if tenth <= shown {
+                    return None;
+                }
+                shown = tenth;
+                let progress = ArtifactProgress::Download { done, total };
+                Some(text::install_progress(&title, progress))
+            }
+            ArtifactProgress::Unpack => {
+                last.then(|| text::install_progress(&title, ArtifactProgress::Unpack))
+            }
+        };
+        install_reporting(source, install, lines, line)
+            .await
+            .map_err(|error| {
+                BrowserError::Installation(format!(
+                    "The {} could not be installed: {error}",
+                    runtime.title()
+                ))
+            })?;
+        before += archive.size;
+    }
+    Ok(())
+}
+
+/// The install of the runtime's `archive`, of the line `name`, whose entry
+/// is `entry`.
+fn runtime_install(
+    invocation: &str,
+    runtime: &ChromeRuntime,
+    name: &str,
+    archive: &RuntimeArchive,
+    entry: &str,
+) -> ArtifactInstall {
+    ArtifactInstall {
+        invocation: invocation.to_owned(),
+        name: name.to_owned(),
+        version: runtime.release.to_string(),
+        sha256: archive.sha256.clone(),
+        size: archive.size,
+        form: ArtifactForm::Archive {
+            entry: entry.to_owned(),
+        },
+        url: Some(archive.url.clone()),
+    }
+}
+
 /// The directory that holds `executable` and its helpers: macOS helpers live
 /// in the app's Frameworks directory, Linux helpers beside the main
 /// executable.
@@ -175,21 +329,11 @@ fn release() -> Result<BrowserRelease> {
     BrowserRelease::pinned().map_err(|error| BrowserError::Configuration(error.to_string()))
 }
 
-/// The release's archive for this Host.
-fn platform(release: &BrowserRelease) -> Result<&ReleasePlatform> {
-    release.platform(host_target()).ok_or_else(|| {
-        BrowserError::Installation(format!(
-            "{} is unavailable on {}",
-            release.title(),
-            host_target()
-        ))
+/// The release's archive for `target`.
+fn platform<'a>(release: &'a BrowserRelease, target: &str) -> Result<&'a ReleasePlatform> {
+    release.platform(target).ok_or_else(|| {
+        BrowserError::Installation(format!("{} is unavailable on {target}", release.title()))
     })
-}
-
-/// The line `install` prints for `progress` of the pinned release
-/// (`browser.md` § Installation).
-pub fn progress_line(progress: ArtifactProgress) -> Result<String> {
-    Ok(crate::driver::text::install_progress(&release()?.title(), progress))
 }
 
 /// The pinned release's version, such as `153.0.8010.36`.

@@ -83,7 +83,7 @@ operations! {
     "capabilities" => CapabilitiesInput, CapabilitiesResult, "Report the browser’s available observation and evaluation capabilities.";
     "webmcp.list" => WebmcpListInput, WebmcpListResult, "List tools registered by this page and their input schemas.";
     "webmcp.call" => WebmcpCallInput, WebmcpCallResult, "Call a registered page tool with JSON arguments from stdin.";
-    "install" => InstallInput, InstallResult, "Install the pinned Chrome for Testing on this Host, and name what Linux still lacks for it.";
+    "install" => InstallInput, InstallResult, "Install the pinned Chrome for Testing on this Host, on Linux with the libraries and fonts it needs.";
 }
 
 /// The `browser` group. A dotted operation name's first part is a subgroup,
