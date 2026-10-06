@@ -199,9 +199,10 @@ terminal early finds them there; closing it does not stop the runner.
 installer does, and returns once it is connected or has said why it cannot
 connect; a runner already running is left as it is. It is how a person
 starts a runner that a restart of the computer or a kill stopped, and the
-web app shows it under a paired device that is offline, ready to copy, as
-`<installation>/run start`, with the installation directory the runner
-reported in its last hello (on Windows,
+web app shows it in the help of a paired device that is offline, ready to
+copy, as `<installation>/run start`, with the installation directory the
+runner reported in its last hello since the backend started, or the default
+one before that, and the home directory written as `~` (on Windows,
 `powershell -ExecutionPolicy Bypass -File '<installation>\run.ps1' start`, so
 the default execution policy does not refuse it).
 
