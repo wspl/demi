@@ -4,11 +4,11 @@ import { ChevronRight } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Popover from '../ui/Popover.vue'
-import TextInput from '../ui/TextInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { menuRootKey } from '../ui/menu-context'
 import DirectoryMenu from './DirectoryMenu.vue'
 import FileIcon from './FileIcon.vue'
+import PathInput from './PathInput.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { fitCrumbs, type CrumbFit } from './crumb-fit'
 import { landmarkIcon } from './file-icons'
@@ -22,7 +22,9 @@ import type { FileBrowserSource } from './types'
  * another file is a pick away. In both, a click anywhere on the bar but a
  * crumb turns it into a text field with the full path, the way the Windows
  * address bar edits, and Enter asks the host to go where it says; a relative
- * path starts from `root`. A bar with a `root` starts its crumbs there, the
+ * path starts from `root`. While it is a field it completes the path from the
+ * source's listings (`PathInput`): a completed directory keeps the field
+ * open on its entries, a completed file goes there as Enter would. A bar with a `root` starts its crumbs there, the
  * way a file view shows a path inside its workspace; `leaf` says what the last
  * crumb is, so a file shows its file glyph.
  *
@@ -98,7 +100,7 @@ provide(menuRootKey, { dismiss: closeMenu })
 
 const editing = ref(false)
 const draft = ref('')
-const input = ref<InstanceType<typeof TextInput>>()
+const input = ref<InstanceType<typeof PathInput>>()
 const bar = ref<HTMLElement>()
 const ruler = ref<HTMLElement>()
 
@@ -176,13 +178,17 @@ watch(() => props.path, () => {
 </script>
 
 <template>
-  <TextInput
+  <PathInput
     v-if="editing"
     ref="input"
     v-model="draft"
+    :source="source"
+    :base="root"
+    kind="any"
     aria-label="Path"
     spellcheck="false"
     @keydown="onKeydown"
+    @complete-file="commit"
     @blur="editing = false"
   />
   <div

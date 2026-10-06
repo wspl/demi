@@ -1,14 +1,29 @@
 <script setup lang="ts" generic="T extends import('./menu-context').MenuListItem">
-import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
+import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { Search, CircleX } from '@lucide/vue'
+import { useTypeSelect } from '../composables/useTypeSelect'
 import HighlightText from './HighlightText.vue'
 import MenuItem from './MenuItem.vue'
-import { createSubmenuController, menuIconlessKey, menuSubmenuKey } from './menu-context'
+import TypeSelectHint from './TypeSelectHint.vue'
+import {
+  createSubmenuController,
+  menuIconlessKey,
+  menuSlotKeyboardKey,
+  menuSubmenuKey,
+  type MenuSlotRow
+} from './menu-context'
 import { provideLayerElevation } from '../overlay/layerElevation'
 import { ICON_PX } from './icon-metrics'
 import type { HeadlineText, PlaceholderText } from './ui-text'
 
+/**
+ * A menu: `items` it lays out itself, filterable and virtual when asked, or
+ * MenuItems in its slot. It takes the keyboard when it opens, unless it is a
+ * submenu or `autofocus` is off. Without a filter field, typing a name moves
+ * to the first row that starts with it (`useTypeSelect`), and Enter chooses
+ * the row the keys moved to.
+ */
 const props = withDefaults(defineProps<{
   items?: T[]
   selectedId?: string
@@ -43,6 +58,9 @@ defineSlots<{
   }): void
 }>()
 
+// A menu in another's submenu leaves the keyboard with the outermost one.
+const nested = inject(menuSubmenuKey, null) !== null
+
 const filterQuery = ref(props.initialQuery ?? '')
 const focusedIndex = ref(-1)
 const inputRef = ref<HTMLInputElement>()
@@ -73,6 +91,61 @@ provide(menuIconlessKey, iconless)
 
 const elevation = provideLayerElevation()
 
+// The MenuItems of a menu that lays out its slot, which its keyboard reaches through.
+const slotRows = shallowRef<MenuSlotRow[]>([])
+const focusedSlotRow = shallowRef<MenuSlotRow | null>(null)
+
+/** The slot's rows, top to bottom as they show. */
+function orderedSlotRows(): MenuSlotRow[] {
+  return slotRows.value
+    .flatMap((row) => {
+      const el = row.el()
+      return el ? [{ row, el }] : []
+    })
+    .sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+    .map(({ row }) => row)
+}
+
+/** Moves the keyboard to the row at `index` of the rows shown, and brings it into view. */
+function focusRow(index: number): void {
+  if (props.items == null) {
+    const row = orderedSlotRows()[index] ?? null
+    focusedSlotRow.value = row
+    row?.el()?.scrollIntoView({ block: 'nearest' })
+    return
+  }
+  focusedIndex.value = index
+  if (isVirtual.value)
+    virtualizer.value.scrollToIndex(index, { align: 'auto' })
+  else
+    scrollRef.value?.querySelectorAll('[data-menu-item]')[index]?.scrollIntoView({ block: 'nearest' })
+}
+
+const typeSelect = useTypeSelect({
+  names: () => props.items == null
+    ? orderedSlotRows().map((row) => row.label() ?? '')
+    : filteredItems.value.map((item) => item.label),
+  select: focusRow,
+})
+
+/** The typed prefix to mark on the row at `index`: only the focused one shows it. */
+function typedPrefix(index: number, label: string): readonly number[] | undefined {
+  return index === focusedIndex.value ? (typeSelect.prefix(label) ?? undefined) : undefined
+}
+
+provide(menuSlotKeyboardKey, {
+  register(row) {
+    slotRows.value = [...slotRows.value, row]
+    return () => {
+      slotRows.value = slotRows.value.filter((entry) => entry !== row)
+      if (focusedSlotRow.value === row)
+        focusedSlotRow.value = null
+    }
+  },
+  focused: focusedSlotRow,
+  highlight: typeSelect.prefix,
+})
+
 const submenus = createSubmenuController()
 provide(menuSubmenuKey, submenus)
 onBeforeUnmount(submenus.dispose)
@@ -100,7 +173,10 @@ watch(inputRef, (el) => {
 })
 
 watch(panelRef, (el) => {
-  if (!el || props.filterable || props.items == null || !props.autofocus)
+  if (!el || props.filterable || !props.autofocus)
+    return
+  // A slot's submenu leaves the keys with its parent; a slot that focused a field of its own keeps it.
+  if (props.items == null && (nested || el.contains(document.activeElement)))
     return
   focusedIndex.value = -1
   el.focus({ preventScroll: true })
@@ -123,29 +199,32 @@ function handleClear() {
 }
 
 function handleKeydown(event: KeyboardEvent) {
-  if (props.items == null)
+  // Type-select reads the keys the panel itself gets; a field in the header keeps its own.
+  if (!props.filterable && event.target === event.currentTarget && typeSelect.keydown(event)) {
+    event.preventDefault()
     return
+  }
+  if (props.items == null) {
+    if (event.key === 'Enter' && focusedSlotRow.value) {
+      event.preventDefault()
+      // As a click on it: the row does what a click does, closing its menu or opening its submenu.
+      focusedSlotRow.value.el()?.click()
+    }
+    return
+  }
   const count = filteredItems.value.length
   if (count === 0)
     return
 
   if (event.key === 'ArrowDown') {
     event.preventDefault()
-    focusedIndex.value = focusedIndex.value < count - 1
-      ? focusedIndex.value + 1
-      : 0
-    if (isVirtual.value)
-      virtualizer.value.scrollToIndex(focusedIndex.value, { align: 'auto' })
+    focusRow(focusedIndex.value < count - 1 ? focusedIndex.value + 1 : 0)
     return
   }
 
   if (event.key === 'ArrowUp') {
     event.preventDefault()
-    focusedIndex.value = focusedIndex.value > 0
-      ? focusedIndex.value - 1
-      : count - 1
-    if (isVirtual.value)
-      virtualizer.value.scrollToIndex(focusedIndex.value, { align: 'auto' })
+    focusRow(focusedIndex.value > 0 ? focusedIndex.value - 1 : count - 1)
     return
   }
 
@@ -229,11 +308,10 @@ function handleKeydown(event: KeyboardEvent) {
             >
               <span class="min-w-0 flex-1 truncate">
                 <HighlightText
-                  v-if="filterQuery"
                   :text="filteredItems[vItem.index]!.label"
                   :query="filterQuery"
+                  :indexes="typedPrefix(vItem.index, filteredItems[vItem.index]!.label)"
                 />
-                <template v-else>{{ filteredItems[vItem.index]!.label }}</template>
               </span>
             </slot>
           </MenuItem>
@@ -263,17 +341,13 @@ function handleKeydown(event: KeyboardEvent) {
             :is-selected="item.id === selectedId"
           >
             <span class="min-w-0 flex-1 truncate">
-              <HighlightText
-                v-if="filterQuery"
-                :text="item.label"
-                :query="filterQuery"
-              />
-              <template v-else>{{ item.label }}</template>
+              <HighlightText :text="item.label" :query="filterQuery" :indexes="typedPrefix(index, item.label)" />
             </span>
           </slot>
         </MenuItem>
       </template>
       <slot v-else />
     </div>
+    <TypeSelectHint v-if="!filterable" :query="typeSelect.query.value" :matched="typeSelect.matched.value" />
   </div>
 </template>
