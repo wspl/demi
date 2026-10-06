@@ -376,8 +376,8 @@ For example, 0.1.3 for x86_64:
   image/                        the Cloud image release of the target's architecture
 
 the release's files:
-  demi-runner-x86_64-unknown-linux-musl       a runner executable, per target
-  demi-runner-x86_64-pc-windows-msvc.exe
+  demi-runner-x86_64-unknown-linux-musl.zst   a runner executable's compressed copy,
+  demi-runner-x86_64-pc-windows-msvc.exe.zst  per target
   demi-file-x86_64-unknown-linux-musl.zst     a command program's compressed copy,
   demi-file-x86_64-pc-windows-msvc.exe.zst    per program and target
   ...
