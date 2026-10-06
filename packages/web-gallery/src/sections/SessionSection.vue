@@ -205,7 +205,6 @@ watch(
 // The Panel view: the whole app frame, with the work panel open beside the session.
 const panelSidebarWidth = ref<number>(SIDEBAR_WIDTH.default)
 const panelAsideShare = ref<number>(ASIDE_SHARE.default)
-const panelAsideOpen = ref(true)
 const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
@@ -317,6 +316,13 @@ function fileViewGoForward() {
 }
 // The frame's conversation has opened no browser tab yet: its strip starts empty.
 const panelWork = useWorkTabs('change', { browser: galleryBrowser([]) })
+/** Whether the frame's panel is open: the user closes it, and a tab the agent shows opens it. */
+const panelAsideOpen = panelWork.open
+/** The agent opens a page, showing it to the user or checking it itself, as `demi browser open [--show]` does. */
+function agentOpens(show: boolean) {
+  productWould(show ? 'The Agent Opens a Page and Shows It' : 'The Agent Opens a Page to Check It')
+  void panelWork.agentOpens(show ? 'https://example.test/orders' : 'https://example.test/docs', show)
+}
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
 const sessionFiles: ConversationFiles = {
   imageUrl: (path) => workspace.source.contents.url(path),
@@ -369,6 +375,17 @@ const shownBrowserTab = computed(() => {
   const parsed = tab?.kind === 'browser' ? browserTabDataSchema.safeParse(tab.data) : null
   return parsed?.success ? (parsed.data.tab ?? null) : null
 })
+/** The browser tab the panel does not show that the agent shows next, as `demi browser show` would. */
+const toShow = computed(() => browserWork.browser.listed.value.tabs.find((tab) => tab.id !== shownBrowserTab.value) ?? null)
+/** The agent shows that tab: once its job ends, the panel selects it, once per showing. */
+function agentShows() {
+  const tab = toShow.value
+  if (tab === null) {
+    return
+  }
+  productWould(`The Agent Shows ${tab.title || tab.id}`)
+  void browserWork.agentShows(tab.id)
+}
 /** Closes the page behind the panel's back, as the agent's `close` would; the view finds it gone and the plugin marks it. */
 function closeOnDevice() {
   const tab = shownBrowserTab.value
@@ -1952,12 +1969,15 @@ onBeforeUnmount(() => {
         </GallerySpecimen>
         <div class="flex gap-2">
           <Button size="sm" @click="panelWork.reset">Reset Panel</Button>
+          <!-- What the agent's `demi browser open` does, with `--show` or without, once its job ends. -->
+          <Button size="sm" @click="agentOpens(true)">Open and Show a Page as the Agent</Button>
+          <Button size="sm" @click="agentOpens(false)">Open a Page to Check as the Agent</Button>
           <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ Math.round(panelAsideShare * 100) }}% of the width it splits with the session · at least {{ ASIDE_SHARE.minWidth }}px, leaving the session {{ ASIDE_SHARE.mainMinWidth }}px</span>
         </div>
       </GallerySection>
       <GallerySection
         title="Work Panel"
-        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized buttons outside the tab strip that are never created, closed or saved, never shrink or scroll with the strip, and only compete with its tabs for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, as what a new tab is: its address bar on about:blank and a blank page, which its first picture replaces; the gallery's browser takes about a second, as a host takes a moment. An address typed before then shows at once with a thin loading line, and the tab opens there. A page that loads keeps the picture it had under the loading line until the browser says it stopped loading. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the host refuses shows its message with Retry. A view that reconnects keeps its last picture under a quiet note. On a host without the browser, which only the agent installs with demi browser install, the add control is disabled and its tip says so; the tabs already open stay. A viewer's browser that cannot decode the host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. Resizing keeps the previous picture's aspect ratio until the browser supplies a frame at the new size; the old picture is never stretched to the new viewport. The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. Beside a new conversation, before its first message, the panel binds no plugin and says that files and changes appear after the first message; Close is its only control."
+        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized buttons outside the tab strip that are never created, closed or saved, never shrink or scroll with the strip, and only compete with its tabs for the selection. The strip holds the user's tabs, content-sized and capped at 160px, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation's browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, as what a new tab is: its address bar on about:blank and a blank page, which its first picture replaces; the gallery's browser takes about a second, as a host takes a moment. An address typed before then shows at once with a thin loading line, and the tab opens there. A page that loads keeps the picture it had under the loading line until the browser says it stopped loading. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. A page the device closed keeps its tab, which says so and offers Close tab and Reload; a request the host refuses shows its message with Retry. A view that reconnects keeps its last picture under a quiet note. On a host without the browser, which only the agent installs with demi browser install, the add control is disabled and its tip says so; the tabs already open stay. A viewer's browser that cannot decode the host's H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen's does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. A Web picture stands at its own size from the panel's top-left corner and is never scaled: while the panel grows, the part it does not cover yet is white until a picture at the new size arrives, and while it shrinks, the panel cuts it; a phone's picture is scaled to fit and centred. The cursor over the page is the page's own, resolved here from where the page says each cursor applies, so moving across the button shows its pointer at once; no caret or local control shows over the picture. A tab selected again after another tab, or after File, shows its picture, address and title at once, with no loading line for a page that had loaded, and the File view's tree shows as it was, with no slide. The agent shows a tab with demi browser show, or opens one with --show: once its job ends, the panel opens, closed or not, and selects that tab, once per showing, and the user's own selection after it stands; a tab the agent opens only to check its own work joins the strip without taking the view (the app frame's controls show both). The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. A page tab opens only from an expose, with the expose glyph and the exposed address as its name, and frames its page in a sandbox: Refresh reloads it, the trailing control opens it in an ordinary browser tab, and Back and Forward stay unavailable because a framed page keeps its history to itself. Change groups its added/removed counts with a 2px gap and shows uncommitted totals and returns to Uncommitted when clicked; file pills still open retained edits there. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. Beside a new conversation, before its first message, the panel binds no plugin and says that files and changes appear after the first message; Close is its only control."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
@@ -1973,6 +1993,11 @@ onBeforeUnmount(() => {
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" :disabled="shownBrowserTab === null" @click="closeOnDevice">Close the Page on the Device</Button>
               <span>The shown browser tab stays, and says so.</span>
+            </div>
+            <!-- What the agent's `demi browser show` does once its job ends. -->
+            <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
+              <Button size="sm" :disabled="toShow === null" @click="agentShows">Show Another Tab as the Agent</Button>
+              <span>The panel selects the tab the agent shows, once per showing.</span>
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · a viewer's browser that cannot decode H.264 · live" wide>

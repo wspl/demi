@@ -731,15 +731,24 @@ pub enum BrowserCreatedBy {
 }
 
 /// A tab as `tabs` lists it and the conversation browser's tab methods return it.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserTab {
+    #[garde(skip)]
     pub id: TabId,
+    #[garde(skip)]
     pub title: String,
+    #[garde(skip)]
     pub url: String,
+    #[garde(dive)]
     pub created_by: BrowserCreatedBy,
     /// Whether the browser loads the tab's top-level page.
+    #[garde(skip)]
     pub loading: bool,
+    /// How many times the agent showed the tab to the user; 0 for one never
+    /// shown (`live-view.md` § Showing a tab).
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub shows: u64,
 }
 
 /// A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio

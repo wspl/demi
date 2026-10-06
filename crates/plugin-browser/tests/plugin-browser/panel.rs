@@ -232,7 +232,7 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
         "a",
         json!({ "url": "https://user.test/", "tab": "t1" }),
     );
-    let tab = |id: &str, by: Value| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false });
+    let tab = |id: &str, by: Value| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "shows": 0 });
     listed.replace(json!([
         tab("t1", json!({ "kind": "user" })),
         tab("t2", json!({ "kind": "agent", "number": 1 })),
@@ -248,7 +248,7 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
     assert_eq!(ids(&demi), ["a", "browser-t2", "browser-t3"]);
     assert_eq!(
         tab_data(&demi, "browser-t2"),
-        json!({ "url": "https://t2.test/", "tab": "t2" })
+        json!({ "url": "https://t2.test/", "tab": "t2", "title": "t2" })
     );
     // Reading the list again adds nothing, and a tab the user closed stays closed.
     let revision = demi.panel().revision;
@@ -275,4 +275,42 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
         tab_data(&demi, "a"),
         json!({ "url": "https://user.test/", "tab": "t4" })
     );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_tab_the_agent_showed_carries_the_count_into_its_panel_tab() {
+    let listed: Rc<RefCell<Value>> = Rc::new(RefCell::new(json!([])));
+    let browser = listed.clone();
+    let (plugin, demi) = world(Box::new(move |_, operation, _| match operation {
+        "browser.tabs" => Ok(json!({ "tabs": browser.borrow().clone(), "truncated": false })),
+        _ => Ok(json!({})),
+    }));
+    created(&demi, "a", json!({ "url": "https://t1.test/", "tab": "t1" }));
+    let tab = |id: &str, by: Value, shows: u64| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "shows": shows });
+    listed.replace(json!([
+        // A tab the user created is shown as the agent's are.
+        tab("t1", json!({ "kind": "user" }), 2),
+        tab("t2", json!({ "kind": "agent", "number": 1 }), 1),
+        tab("t3", json!({ "kind": "agent", "number": 1 }), 0),
+    ]));
+
+    job_ended(&plugin, &demi).await;
+    assert_eq!(tab_data(&demi, "a")["shows"], json!(2));
+    assert_eq!(
+        tab_data(&demi, "browser-t2"),
+        json!({ "url": "https://t2.test/", "tab": "t2", "title": "t2", "shows": 1 })
+    );
+    // A tab never shown has no count.
+    assert_eq!(tab_data(&demi, "browser-t3").get("shows"), None);
+    // The same counts change nothing; a higher one is written again.
+    let revision = demi.panel().revision;
+    job_ended(&plugin, &demi).await;
+    assert_eq!(demi.panel().revision, revision);
+    listed.replace(json!([
+        tab("t1", json!({ "kind": "user" }), 2),
+        tab("t2", json!({ "kind": "agent", "number": 1 }), 1),
+        tab("t3", json!({ "kind": "agent", "number": 1 }), 1),
+    ]));
+    job_ended(&plugin, &demi).await;
+    assert_eq!(tab_data(&demi, "browser-t3")["shows"], json!(1));
 }

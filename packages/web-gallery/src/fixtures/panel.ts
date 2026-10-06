@@ -164,17 +164,21 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
       const shown = new Set(bound.map((tab) => tab.data?.tab))
       for (const tab of listed) {
         if (tab.createdBy.kind !== 'user' && !shown.has(tab.id)) {
-          panel.apply({
-            type: 'create',
-            tab: { id: `browser-${tab.id}`, kind: 'browser', data: { url: tab.url, tab: tab.id } },
-          })
+          const data = { url: tab.url, tab: tab.id, title: tab.title, ...(tab.shows > 0 ? { shows: tab.shows } : {}) }
+          panel.apply({ type: 'create', tab: { id: `browser-${tab.id}`, kind: 'browser', data } })
         }
       }
-      const present = new Set(listed.map((tab) => tab.id))
       for (const { id, data } of bound) {
         const tab = data ? live(data) : undefined
-        if (tab !== undefined && !present.has(tab)) {
+        if (tab === undefined) {
+          continue
+        }
+        const present = listed.find((candidate) => candidate.id === tab)
+        if (!present) {
           panel.apply({ type: 'update', id, data: { closed: true } })
+        } else if (present.shows > (data?.shows ?? 0)) {
+          // The agent showed it: each page selects it once (`live-view.md` § Showing a tab).
+          panel.apply({ type: 'update', id, data: { shows: present.shows } })
         }
       }
     }),
