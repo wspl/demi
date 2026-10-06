@@ -521,6 +521,60 @@ returns as a medium instead ([Return media](#return-media)). So
 one script show it each image in order, and `demi file read shot.png > copy.png`
 still copies the bytes.
 
+## Attachment commands
+
+`demi attachment upload <path>...` gives the user files of the Host as
+attachments of the conversation, which the agent's messages then show. For
+example, the agent took a screenshot of a sign-in page and recorded a video
+of the flow:
+
+```text
+$ demi attachment upload out/login.png demo.mp4
+a3  out/login.png  image/png  412 KB
+a4  demo.mp4       video/mp4  8.2 MB
+```
+
+Its reply then shows both, the image as an image and the video playing in
+place ([Files named in messages](../product/file-previews.md#files-named-in-messages)):
+
+```markdown
+The sign-in page works again:
+
+![The fixed sign-in page](attachment:a3)
+
+![The flow from sign-in to the dashboard](attachment:a4)
+```
+
+- **A copy, kept.** An attachment is the file's bytes as they were when the
+  command ran, stored as a blob in the conversation owner's namespace, with a
+  record in the conversation: its number, the file's name, its media type,
+  which the backend reads from the bytes as it does for the user's uploads
+  ([Uploads and media](../product/web-api.md#uploads-and-media)), its size and
+  its blob. Nothing changes or removes it afterward
+  ([Retention](../backend/storage.md#retention)), so a message shows it
+  whatever becomes of the file, the Host or the conversation: a file
+  rewritten or deleted, a device offline, a Cloud stopped or reset, an
+  archive, a target change.
+- **Numbers.** Attachments are `a1`, `a2`, … in the conversation, from its
+  `attachment` sequence, never given twice
+  ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)).
+  A Fork's destination keeps its source's attachments, since its history
+  names them.
+- **Files.** A path resolves against the invocation's cwd. A path that is not
+  a regular file, or a file over 25 MiB, the user's own upload limit, fails
+  with a line on stderr that names the path and why; the command goes on with
+  the next path and exits with status 1, and the files it stored keep their
+  numbers and lines. `--json` prints `{ attachments: [{ id, path, mediaType,
+  size }] }`.
+- **No medium.** The command prints the numbers and returns no medium: the
+  attachment is for the user, and the model reads a file with `demi file read`
+  when it needs to see it.
+- **Where it runs.** `demi attachment` is the product's group beside
+  `demi host`, handled by the backend: the runner reads the file beside the
+  invocation and streams its bytes to the backend through a pipe
+  ([File contents](runner.md#file-contents)), and the backend stores the blob
+  and then the record.
+
 ## Acceptance
 
 Verify with a real runner and without calling a model:
