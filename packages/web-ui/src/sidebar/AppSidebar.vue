@@ -370,13 +370,12 @@ function selectProjectConversations(project: SidebarProject): void {
          starts 10px inside that, so the title, entries, headings, project headers and conversation
          rows align at one line while a lit row has room around its status dot. Row actions sit 2px
          inside the row's end, the same as their 2px above and below in the 28px row. -->
-    <!-- The entries: one primary action, then the settings sections a conversation reaches for. -->
+    <!-- The entries, all alike: New, then the settings sections a conversation reaches for. -->
     <div class="flex shrink-0 flex-col gap-px px-2">
       <SidebarNavItem
         :icon="SquarePen"
         label="New"
         shortcut="⌘N"
-        emphasis
         @click="emit('create', null)"
       />
       <SidebarNavItem
