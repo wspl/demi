@@ -684,7 +684,12 @@ Runner process
 
 Each job starts a fresh login shell. Brush loads the system profile and first
 readable user login profile. The runner then restores its execution context,
-places command aliases first in PATH, and restores the requested cwd. Shell
+places command aliases first in PATH, and restores the requested cwd. A
+requested cwd that no longer exists, such as a `mktemp -d` directory under
+the previous job's scratch directory, which went with that job, does not fail
+the job: the job starts in the conversation's working directory instead, and
+its output begins with the line
+`demi: <cwd> no longer exists; starting in <directory>`. Shell
 variables and functions do not carry over to the next job; persisted profile
 changes do. The backend receives the final cwd and foreground exit status.
 
