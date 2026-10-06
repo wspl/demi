@@ -322,6 +322,22 @@ fn a_hello_names_its_platform_as_a_device_stores_it_and_refuses_any_other_name()
     assert!(wire::decode::<Outbound>(&msgpack(&hello)).is_err());
 }
 
+#[test]
+fn a_hello_names_the_hosts_operating_system_and_is_refused_without_one() {
+    let mut hello: Value = rmp_serde::from_slice(&frame("runner-to-backend", "hello")).unwrap();
+    match wire::decode(&msgpack(&hello)).unwrap() {
+        Outbound::Hello { runner, .. } => {
+            assert_eq!(runner.os.name, "macOS 26.5");
+            assert_eq!(runner.os.arch, "aarch64");
+        }
+        other => panic!("{other:?}"),
+    }
+    hello["runner"]["os"]["name"] = json!("");
+    assert!(wire::decode::<Outbound>(&msgpack(&hello)).is_err());
+    hello["runner"].as_object_mut().unwrap().remove("os");
+    assert!(wire::decode::<Outbound>(&msgpack(&hello)).is_err());
+}
+
 /// A recorded manifest's trees as their declarations: without the descriptor
 /// hashes a build pins.
 fn declaration(mut tree: Value) -> Node<NativeOperation> {
@@ -552,4 +568,3 @@ fn a_delete_keeps_the_roots_and_every_directory_that_holds_a_kept_one() {
         assert!(!protected_path(path, kept), "{path}");
     }
 }
-

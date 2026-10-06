@@ -4,7 +4,7 @@
 //! its runner last reported its artifact cache holds. Whether a device is
 //! online is its runner connection's, not a record's.
 
-use demi_runner_protocol::wire::{HostArtifact, RunnerPlatform};
+use demi_runner_protocol::wire::{HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
@@ -45,13 +45,16 @@ pub struct DeviceRecord {
     /// What its runner last reported its artifact cache holds
     /// (`native-runtime.md` § Installed artifacts).
     pub installed: Vec<HostArtifact>,
+    /// The operating system its runner last reported; none before its
+    /// runner first connected.
+    pub os: Option<OperatingSystem>,
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os";
 
 /// The name and platform of the one device a user's Cloud is.
-const CLOUD_NAME: &str = "Cloud";
+pub const CLOUD_NAME: &str = "Cloud";
 const CLOUD_PLATFORM: RunnerPlatform = RunnerPlatform::Linux;
 
 impl ControlService {
@@ -88,6 +91,7 @@ impl ControlService {
                 claimed_at: now,
                 last_seen_at: None,
                 installed: Vec::new(),
+                os: None,
             })
         })
         .await
@@ -259,6 +263,23 @@ impl ControlService {
         .await
     }
 
+    /// Records the operating system `device`'s runner reported in its
+    /// hello.
+    pub async fn set_device_os(
+        &self,
+        device: DeviceId,
+        os: OperatingSystem,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE devices SET os = ?1 WHERE id = ?2",
+                params![to_json(&os), device.as_str()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Records that the device's runner was connected just now.
     pub async fn touch_device_seen(&self, device: DeviceId) -> Result<(), StorageError> {
         self.call(move |connection, now| {
@@ -322,5 +343,9 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
         claimed_at: instant(row, "devices", "claimed_at")?,
         last_seen_at,
         installed: json("devices", "installed", &row.get::<_, String>("installed")?)?,
+        os: match row.get::<_, Option<String>>("os")? {
+            Some(text) => Some(json("devices", "os", &text)?),
+            None => None,
+        },
     })
 }
