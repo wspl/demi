@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { md } from '@demicodes/web-ui/markdown/md'
+import { holdUndecidedMedium } from '@demicodes/web-ui/markdown/render'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { useImageViewer } from '@demicodes/web-ui/files/image-viewer'
@@ -23,10 +24,12 @@ const root = ref<HTMLElement>()
 useContentScrollbars(root)
 const { shown, frontier } = useStreamReveal(() => props.content, () => props.streaming)
 
+// The text is still arriving while the view catches up with it, which goes on
+// for a moment after the stream ends; what it cannot show yet waits until then.
 const visible = computed(() => {
-  if (!props.streaming)
+  if (!props.streaming && shown.value === props.content)
     return shown.value
-  return holdIncompleteMarkdown(shown.value).visible
+  return holdUndecidedMedium(holdIncompleteMarkdown(shown.value).visible)
 })
 
 const renderVersion = useMarkdownRenderVersion()

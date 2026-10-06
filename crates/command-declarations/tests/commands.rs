@@ -199,7 +199,8 @@ fn a_trailing_array_positional_takes_every_positional_argument_after_the_others(
             "to": {"type": "string"}}), &["from", "to"]),
         "positionals": ["from", "to"]}))
     .unwrap();
-    assert!(first.validate().is_err());
+    let refused = first.validate().unwrap_err().to_string();
+    assert!(refused.contains("only the last positional may be an array: from"), "{refused}");
 }
 
 #[test]
