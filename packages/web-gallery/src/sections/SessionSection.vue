@@ -28,7 +28,7 @@ import { browserTabDataSchema } from '@demicodes/plugin-browser/live/tabs'
 import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
-import { createGalleryChangeSet, createGalleryWorkspace } from '../fixtures/workspace'
+import { createGalleryChangeSet, createGalleryWorkspace, gallerySides } from '../fixtures/workspace'
 import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { productWould } from '../product-would'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
@@ -232,6 +232,34 @@ function useWorkTabs(
 }
 const workspace = createGalleryWorkspace()
 const files = galleryFiles(workspace)
+/** The same workspace on a Host that cannot watch its files. */
+const unwatchedWorkspace = createGalleryWorkspace(200, 'unavailable')
+/** The same workspace once more, for a refresh that fails. */
+const failingWorkspace = createGalleryWorkspace()
+const COOKIE = 'src/auth/cookie.ts'
+const cookiePath = `${workspace.root}/${COOKIE}`
+let outsideEdits = 0
+
+/**
+ * Simulates a program outside Demi writing cookie.ts on the Host: the
+ * simulated watch reports it, and the live specimen, shown on the file,
+ * reads it again and replaces its text in place.
+ */
+async function editCookieOutside(): Promise<void> {
+  showInFileView(cookiePath)
+  const text = await workspace.source.read(cookiePath)
+  outsideEdits += 1
+  workspace.source.change(cookiePath, `${text}\n// Edited outside Demi (${outsideEdits})\n`)
+  productWould('The Host Reported cookie.ts Changed')
+}
+
+/** Simulates the Host failing the next read of cookie.ts, and a report that has it read again. */
+async function failCookieRefresh(): Promise<void> {
+  const text = await failingWorkspace.source.read(cookiePath)
+  failingWorkspace.source.failNext(cookiePath, { kind: 'other', message: 'The Host did not answer in time.' })
+  failingWorkspace.source.change(cookiePath, text)
+  productWould('The Host Reported cookie.ts Changed; Reading It Again Failed')
+}
 const fileViewTree = ref(true)
 const changeViewTree = ref(true)
 const fileViewMode = ref<'preview' | 'source'>('preview')
@@ -316,7 +344,7 @@ const changeDocument = useChangeTab('conversation', 'README.md', {
   conversation: callChangeSource({
     commandId: 'gallery-readme-edit',
     file: editedFile({ path: 'README.md', kind: 'modified', added: 0, removed: 1 }),
-  }, (_copies, signal) => workspace.changes.read('README.md', signal)),
+  }, () => gallerySides('README.md')),
 })
 const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: workspace.changes })
 const changeNoRepository = useChangeTab('uncommitted', null, {
@@ -1957,10 +1985,11 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="File View"
-        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens read-only in the code editor, colored by its language, with folding. Mod-f in the text opens a find bar below it: the query with its match count, “Match case”, “Match whole word” and “Use regular expression”, and “Previous match” and “Next match”, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows a question mark while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the path, a relative one starting from the workspace, which completes from the workspace's folders and files as it is typed, a completed file opening at once: Enter opens a file, or finds a folder in the tree, unfolding down to it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. A click on a row gives the tree the keyboard: the arrows, Home, End and Enter move through it and act, and typing a name moves to the first row shown that starts with it, opening nothing. A right-click in the tree downloads a file, or uploads into a folder, or into the workspace from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left. A view that would keep less than 320px beside the tree hides it by itself; the control then slides the tree in over the file, which stays as it is, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture's latency, so the text and each directory show their loading state first."
+        note="A file of the workspace: the path as crumbs from the workspace root, the file itself, and the workspace tree beside it with the file selected. Text opens read-only in the code editor, colored by its language, with folding. Mod-f in the text opens a find bar below it: the query with its match count, “Match case”, “Match whole word” and “Use regular expression”, and “Previous match” and “Next match”, which Shift+Enter and Enter in the field also do. Typing selects the first match from the selection on, the count shows a question mark while the selection is on no match, a count past 9999 stops there with a +, and the scrollbar marks every match counted until Escape or Close shuts the bar. An image fits the pane without being enlarged, over a checkerboard where it is transparent, and a click shows it at its actual size; video and audio play in the browser's own player and PDF in its own viewer, each with its pixel size and file size under it. Markdown renders like a repository file on GitHub: its HTML sanitized, so the script and the handler at the end of the README never run, its math and code rendered, its front matter a YAML block, and its links opening files here, scrolling to headings, or leaving for the web. Markdown and SVG switch between Preview and Source. A file that is neither text nor previewable is a card with its facts and Download, and every file has Download in the header. A crumb opens a menu of what lies beside it, directories unfolding into their own; a file picked there, clicked in the tree or linked from a document replaces the one shown, and Back and Forward before the crumbs walk the files shown. A click on the crumb row anywhere but a crumb turns it into a text field with the path, a relative one starting from the workspace, which completes from the workspace's folders and files as it is typed, a completed file opening at once: Enter opens a file, or finds a folder in the tree, unfolding down to it and selecting it until another file opens; a folder outside the workspace says the tree shows the workspace only. A click on a row gives the tree the keyboard: the arrows, Home, End and Enter move through it and act, and typing a name moves to the first row shown that starts with it, opening nothing. A right-click in the tree downloads a file, or uploads into a folder, or into the workspace from the empty space; the uploads list under the tree, moving here at a pace slow enough to watch. The control at the end of the crumb row hides and shows the tree; it grows from the end as the file gives way, and shrinks back, and a tree hidden and shown again is as it was left. A view that would keep less than 320px beside the tree hides it by itself; the control then slides the tree in over the file, which stays as it is, and the control, a click beside the tree or a file picked in it slides it away. The tree docks again once the view is wide enough, and its divider stops where the file would get narrower than that; the narrow frame resizes from its corner. Reads carry the fixture's latency, so the text and each directory show their loading state the first time; the fixture's Host watches its files, as the product's does, so a file or folder shown again shows at once, scrolled where it was, and asks nothing. Edit cookie.ts Outside Demi writes the file as another program would: the Host reports it, and the text is read again and replaced in place, without a loading state, the scroll and folds staying. A read again that fails keeps the text and says so quietly over it, with Retry. A Host that cannot watch its files has the view say that it shows them as last read, with Refresh, and every file shown is checked."
       >
         <div class="flex flex-wrap gap-1">
           <Button v-for="file in previewFiles" :key="file" size="sm" @click="showInFileView(`${workspace.root}/${file}`)">{{ file }}</Button>
+          <Button size="sm" variant="ghost" @click="editCookieOutside">Edit cookie.ts Outside Demi</Button>
         </div>
         <GallerySpecimen
           v-for="specimen in [
@@ -1988,6 +2017,37 @@ onBeforeUnmount(() => {
               @open="showInFileView"
               @back="fileViewGoBack"
               @forward="fileViewGoForward"
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="a refresh that failed · the text stays, Retry reads it again" wide>
+          <div class="flex flex-col gap-2">
+            <div class="flex flex-wrap gap-1">
+              <Button size="sm" @click="failCookieRefresh">Fail the Next Refresh</Button>
+            </div>
+            <div class="gallery-frame flex h-[24rem] overflow-hidden">
+              <FileView
+                class="w-full"
+                :source="failingWorkspace.source"
+                :root="failingWorkspace.root"
+                :path="cookiePath"
+                @open="productWould('Open the File in This View')"
+                @back="productWould('Show the File Before')"
+                @forward="productWould('Show the File After')"
+              />
+            </div>
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="a Host that cannot watch · files as last read, Refresh" wide>
+          <div class="gallery-frame flex h-[24rem] overflow-hidden">
+            <FileView
+              class="w-full"
+              :source="unwatchedWorkspace.source"
+              :root="unwatchedWorkspace.root"
+              :path="cookiePath"
+              @open="productWould('Open the File in This View')"
+              @back="productWould('Show the File Before')"
+              @forward="productWould('Show the File After')"
             />
           </div>
         </GallerySpecimen>

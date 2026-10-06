@@ -65,8 +65,9 @@ export interface ConversationFileService {
   /** The two sides of one call's retained edit. */
   readonly edit: ReadCallChange
   /**
-   * The calling component shows the working tree: the service lists it again
-   * whenever it may have changed, until the component's scope ends.
+   * The calling component shows the working tree: the service follows the
+   * Host's reports for it and keeps `changes` current until the component's
+   * scope ends (`plugin-pages.md` § What the service keeps).
    */
   showChanges(): void
 }

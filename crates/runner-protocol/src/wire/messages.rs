@@ -12,7 +12,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use super::{FsOk, GitOk, LOG_READ_LINES, SERVICE_STDERR_CHARS, Timestamp, WireBytes};
+use super::{
+    FsOk, GitOk, LOG_READ_LINES, MAX_WATCH_PATHS, SERVICE_STDERR_CHARS, Timestamp, WireBytes,
+};
 use crate::values::DeviceToken;
 
 /// A message from the backend to the runner.
@@ -333,6 +335,9 @@ pub enum Inbound {
         error: Option<String>,
     },
     /// Stream `length` bytes from `offset`, or to the end, into `output`.
+    /// A request that names the `version` it holds streams nothing while
+    /// the file still has it: the reply says it is unchanged
+    /// (`runner.md` § File contents).
     #[serde(rename = "fs_readFile")]
     FsReadFile {
         id: String,
@@ -355,6 +360,12 @@ pub enum Inbound {
             with = "unwrap_or_skip"
         )]
         length: Option<u64>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        version: Option<String>,
         output: PipeRef,
     },
     /// Fill the file from `input`, making the directories above it that are
@@ -621,6 +632,18 @@ pub enum Inbound {
         root: String,
         path: String,
         output: PipeRef,
+    },
+    /// Watches `path`, and what lies below it when `recursive`, and reports
+    /// what changes there as messages of watch `id` until an `fs_unwatch`
+    /// of it or the connection's end (`runner.md` § Watching files).
+    FsWatch {
+        id: String,
+        path: String,
+        recursive: bool,
+    },
+    /// Ends watch `id`; one that ended already is ended.
+    FsUnwatch {
+        id: String,
     },
 }
 
@@ -901,6 +924,28 @@ pub enum Outbound {
         )]
         error: Option<String>,
     },
+    /// Watch `id` runs: a change from now on is reported.
+    FsWatchReady {
+        id: String,
+    },
+    /// The paths something changed at under watch `id`, each once: created,
+    /// written, removed or renamed (both names of a rename).
+    FsWatchChanged {
+        id: String,
+        #[garde(length(min = 1, max = MAX_WATCH_PATHS))]
+        paths: Vec<String>,
+    },
+    /// Watch `id` lost events: what it reported no longer tells what
+    /// changed. It keeps running.
+    FsWatchLost {
+        id: String,
+    },
+    /// Watch `id` could not be created or stopped, and reports nothing
+    /// more.
+    FsWatchFailed {
+        id: String,
+        reason: String,
+    },
     NetOpened {
         stream_id: String,
     },
@@ -1168,6 +1213,30 @@ pub struct FileStat {
         with = "unwrap_or_skip"
     )]
     pub is_fifo: Option<bool>,
+}
+
+/// A file an `fs_readFile` opened: its metadata then, its version, and
+/// whether that is the version the request named, in which case nothing
+/// streams (`runner.md` § File contents).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OpenedFile {
+    pub stat: FileStat,
+    pub version: String,
+    pub unchanged: bool,
+}
+
+/// A file's version, from its size and modification time in milliseconds:
+/// a weak ETag, the one the web app's file routes answer
+/// (`web-api.md` § File text and working tree changes). A negative time is
+/// written with a minus sign, as JavaScript's `toString(16)` writes it.
+pub fn file_version(size: u64, modified_ms: i64) -> String {
+    let time = if modified_ms < 0 {
+        format!("-{:x}", modified_ms.unsigned_abs())
+    } else {
+        format!("{modified_ms:x}")
+    };
+    format!("W/\"{size:x}-{time}\"")
 }
 
 /// One entry of a directory listing, with its type, size and modification
