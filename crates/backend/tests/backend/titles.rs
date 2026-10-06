@@ -253,7 +253,7 @@ async fn a_title_follows_the_first_message_and_a_rename_or_an_archive_while_one_
         // (`models.md` § Output limit).
         assert_eq!(
             asked[0].max_output_tokens().map(|limit| limit.get()),
-            Some(1_024)
+            Some(4_096)
         );
         assert!(asked[0].tools.is_empty() && asked[0].thinking.is_none());
     }
