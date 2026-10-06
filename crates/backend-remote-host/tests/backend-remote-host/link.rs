@@ -1550,6 +1550,12 @@ impl LinkPolicy for Refusing {
     ) -> LocalBoxFuture<'static, Result<u64, String>> {
         Box::pin(async { Err("no".into()) })
     }
+    fn direct_stream(
+        &self,
+        _: String,
+    ) -> LocalBoxFuture<'static, Result<demi_shared_gates::GateLease, String>> {
+        Box::pin(async { Err("no".into()) })
+    }
 }
 
 #[tokio::test(flavor = "local")]
