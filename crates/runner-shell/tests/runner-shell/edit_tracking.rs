@@ -13,6 +13,7 @@ async fn run(root: &Path, recorder: Recorder, script: &str) {
             scope: scope.clone(),
             login: false,
             cwd: root.to_owned(),
+            workspace: root.to_owned(),
             env: BTreeMap::from([
                 ("PATH".into(), "/usr/bin:/bin".into()),
                 // `mktemp` makes its file in the job's own temporary
