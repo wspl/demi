@@ -191,6 +191,10 @@ pub(crate) struct Shared {
     /// Cancelled when the user turns the plugin of its index off, which
     /// ends the plugin's open user streams.
     stream_ends: RefCell<Vec<CancellationToken>>,
+    /// Cancelled when the user next turns a plugin on or off, which makes
+    /// what a direct channel's introduction told of the user's streams out
+    /// of date (`direct-channel.md` § Who may connect).
+    switched: RefCell<CancellationToken>,
     /// Each plugin's Host directories for the user, by its index, once
     /// read: every change goes through this shard.
     directories: RefCell<Option<Vec<Vec<HostDirectory>>>>,
@@ -412,6 +416,7 @@ impl UserPlugins {
             marks,
             enabled: RefCell::new(None),
             stream_ends: RefCell::new(stream_ends),
+            switched: RefCell::default(),
             directories: RefCell::new(None),
             revisions: RefCell::new(HashMap::new()),
         }))
@@ -464,7 +469,8 @@ impl UserPlugins {
 
     /// Turns `plugin` on or off for the user, and marks the plugin list and
     /// the plugin's state as changed. A plugin turned off ends its open user
-    /// streams. Answers whether the choice changed.
+    /// streams, and any change ends what [`Self::next_switch`] gave. Answers
+    /// whether the choice changed.
     pub async fn switch(&self, plugin: &str, enabled: bool) -> Result<bool, SwitchError> {
         let Some((index, registered)) = self.0.registry.plugin(plugin) else {
             return Err(SwitchError::UnknownPlugin(plugin.to_owned()));
@@ -483,6 +489,8 @@ impl UserPlugins {
             let ended = std::mem::take(&mut self.0.stream_ends.borrow_mut()[index]);
             ended.cancel();
         }
+        let switched = std::mem::take(&mut *self.0.switched.borrow_mut());
+        switched.cancel();
         self.0.marks.mark(Part::Plugins);
         self.0
             .marks
@@ -576,6 +584,13 @@ impl UserPlugins {
                 (registered.id().clone(), set)
             })
             .collect())
+    }
+
+    /// What is cancelled when the user next turns a plugin on or off. Taken
+    /// before the user's streams are read, it tells that what was read is
+    /// out of date, such as a direct channel's introduction.
+    pub fn next_switch(&self) -> CancellationToken {
+        self.0.switched.borrow().clone()
     }
 
     /// What ends the user stream `name` once its plugin is turned off; none
