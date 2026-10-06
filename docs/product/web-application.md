@@ -143,6 +143,14 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   click only when a plugin's page asks to, as the browser does for a tab the
   agent shows ([Showing a tab](../browser/live-view.md#showing-a-tab)); it is
   an ordinary selection and enters the history.
+- **Contents stay.** A tab's content, once shown, stays on the page until
+  the tab closes, the panel closes or the panel shows another conversation.
+  Selecting another tab hides it with everything it shows: its scroll, its
+  folded and unfolded rows, its picture. Selecting it again shows it as it
+  was, with no entrance animation, since nothing in it changed. A hidden
+  content is told it is not shown and stops what costs while nobody sees it,
+  as the browser's live view does
+  ([Live browser view](../browser/live-view.md#ending-a-view)).
 - **Before the first send.** A new conversation has no backend record yet,
   and so no working directory on a Host
   ([Persistence and adapters](#persistence-and-adapters)). Its panel binds no
