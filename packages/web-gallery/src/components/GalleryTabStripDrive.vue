@@ -17,7 +17,16 @@ import { createGalleryWorkspace } from '../fixtures/workspace'
  * but the active), and a scripted run through them. The panel is the
  * product's; this holds its tabs the way the product does and drives them.
  */
-const props = withDefaults(defineProps<{ width?: string }>(), { width: '100%' })
+const props = withDefaults(
+  defineProps<{
+    width?: string
+    /** How many pages Reset opens. */
+    pages?: number
+    /** The page Reset selects. */
+    select?: 'first' | 'last'
+  }>(),
+  { width: '100%', pages: 6, select: 'first' },
+)
 
 const TITLES = [
   '127.0.0.1:5173', 'Pull request #42: Keep the session cookie on sign-out', 'Build log', 'API reference', 'Staging',
@@ -44,13 +53,13 @@ function closeTabs(ids: string[]): void {
   work.closeTabs(ids)
 }
 
-/** Six pages beside Change and File, the first selected. */
+/** The pages beside Change and File, the first or the last selected. */
 function reset(): void {
   work.reset()
   opened = 0
-  for (let i = 0; i < 6; i++)
+  for (let i = 0; i < props.pages; i++)
     openPage()
-  selectAt(0)
+  selectAt(props.select === 'first' ? 0 : -1)
 }
 reset()
 
