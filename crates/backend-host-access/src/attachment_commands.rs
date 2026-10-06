@@ -4,8 +4,9 @@
 //! `attachment:a3`. The runner of the invocation's Host, the conversation's
 //! primary Host or an attached one a `demi host shell` job runs on, first
 //! hashes each file beside the invocation, through the conversation's host
-//! access; a blob the conversation owner's namespace holds already is not
-//! read again. Otherwise the runner streams the file's bytes to the backend
+//! access, and refuses one over 25 MiB before reading a byte; a blob the
+//! conversation owner's namespace holds already is not read again, only its
+//! first 64 KiB from the object store for its media type. Otherwise the runner streams the file's bytes to the backend
 //! through a pipe (`runner.md` § File contents), and the backend stores the
 //! blob in that namespace. The backend reads the media type from the bytes
 //! as it does for the user's uploads, and stores the record under the next
@@ -19,6 +20,7 @@ use demi_agent_store::attachments::upload_media_type;
 use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 use demi_backend_database::sequences;
 use demi_backend_remote_host::collect_pipe;
+use demi_runner_protocol::wire::FileHash;
 use demi_host_interface::text::table;
 use demi_host_interface::{ByteRange, Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::{Sequence, preview_media_type};
@@ -152,19 +154,31 @@ async fn store(
     // Each admission waits only as long as the call: a stopped call drops it.
     let hash = shard
         .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
-            host.host.hash_file_in(cwd, path).await
+            host.host
+                .hash_file_in(cwd, path, ATTACHMENT_MAX_BYTES as u64)
+                .await
         })
         .await
         .map_err(|error| error.to_string())?
         .map_err(|error| error.message)?;
-    within_limit(hash.size)?;
+    let sha256 = match hash {
+        // A file that grew past the limit since the Host looked at its size
+        // is refused all the same.
+        FileHash::Hashed { size, sha256 } => {
+            within_limit(size)?;
+            sha256
+        }
+        FileHash::TooLarge { size } => return Err(over_limit(size)),
+    };
     let blobs = shard.blobs();
     let held = blobs
-        .get(&hash.sha256)
+        .opening(&sha256)
         .await
         .map_err(|error| error.to_string())?;
-    let (blob, bytes) = match held {
-        Some(bytes) => (hash.sha256, bytes),
+    // The media type comes from the file's opening, so a held blob is read
+    // only that far.
+    let (blob, opening, size) = match held {
+        Some(opening) => (sha256, opening.bytes, opening.size),
         None => {
             let bytes = shard
                 .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
@@ -172,16 +186,16 @@ async fn store(
                 })
                 .await
                 .map_err(|error| error.to_string())??;
+            let size = u64::try_from(bytes.len()).expect("an attachment's size fits u64");
             let blob = blobs
                 .put(bytes.clone())
                 .await
                 .map_err(|error| error.to_string())?;
-            (blob, bytes)
+            (blob, bytes, size)
         }
     };
     let sent = preview_media_type(path).unwrap_or(UNKNOWN_MEDIA_TYPE);
-    let media_type = upload_media_type(sent, &bytes);
-    let size = u64::try_from(bytes.len()).expect("an attachment's size fits u64");
+    let media_type = upload_media_type(sent, &opening);
     let db = shard.conversation_db(conversation);
     let number = db
         .call(|connection| sequences::next(connection, Sequence::Attachment))
@@ -209,13 +223,16 @@ async fn store(
 
 /// Refuses a file over the limit of the user's own uploads.
 fn within_limit(size: u64) -> Result<(), String> {
-    let limit = ATTACHMENT_MAX_BYTES as u64;
-    if size > limit {
-        return Err(format!(
-            "the file is {size} bytes; an attachment is at most 25 MiB ({limit} bytes)"
-        ));
+    if size > ATTACHMENT_MAX_BYTES as u64 {
+        return Err(over_limit(size));
     }
     Ok(())
+}
+
+/// Why a file of `size` bytes, over the limit, is not uploaded.
+fn over_limit(size: u64) -> String {
+    let limit = ATTACHMENT_MAX_BYTES;
+    format!("the file is {size} bytes; an attachment is at most 25 MiB ({limit} bytes)")
 }
 
 /// The bytes of the file at `path` beside `cwd`. A file that grew past the
