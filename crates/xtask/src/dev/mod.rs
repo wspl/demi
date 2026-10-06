@@ -213,8 +213,16 @@ async fn session(
     let mut models = String::new();
     if let Some(provider) = &seed.provider {
         let entry = create_entry(&http, &origin, &cookies, &provider.entry()).await?;
+        let reads = match provider.accepted_extensions() {
+            Some(types) => {
+                let names: Vec<String> = types.iter().map(ToString::to_string).collect();
+                format!("reads {} natively", names.join(", "))
+            }
+            None => "reads no file natively: its types are unknown".to_owned(),
+        };
         models.push_str(&format!(
-            "\x20 Model:   {} of the provider entry {entry}, a real model that calls tools\n",
+            "\x20 Model:   {} of the provider entry {entry}, a real model that calls tools\n\
+             \x20          and {reads}\n",
             provider.model()
         ));
     }
