@@ -68,15 +68,16 @@ reaches the next spawn ([Profiles](subagents.md#profiles)).
 | The product supplies | What it is | Where it comes from in Demi |
 | --- | --- | --- |
 | The command set | The commands every node starts from; the runtime adds its own groups per node ([Tools](#tools)) | The commands of the plugins the user has on, and the `demi host` and `demi attachment` groups ([Plugins](../architecture/plugins.md#commands)) |
-| Instructions | The text that opens the system prompt, before the runtime's rules for its tools | The product's instructions; a plugin adds only its commands' help ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
+| Instructions | The identity that opens the system prompt ([System prompt](system-prompt.md)) | The product's instructions; a plugin adds only its command groups' index entries ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)) |
 | Subagent settings | Whether subagents are on, and the named [subagent profiles](subagents.md#profiles) with whether each is enabled, as data, asked at each spawn and each `demi agent profiles` | The user's current settings, which the user edits in the Subagent section of settings |
 | Provider runtimes | A node's model selection and the runtime that serves it: the root's from the conversation's record, a child's from its profile's model settings or its parent's ([Runtime](subagents.md#runtime)) | The backend's provider assembly ([Inference admission and runtime ownership](../providers/providers.md#inference-admission-and-runtime-ownership)) |
 | The Host of a node | Where its shell tools run now, asked at each shell tool call | The conversation's host access ([Host operations](../execution/sessions-and-targets.md#host-operations)) |
 | Context sources | What the model must learn before a request, asked before each one ([Context](#context)) | The conversation's execution context, then each plugin that is a context source, while the user has it on |
 
-A node's system prompt is therefore the instructions (or a profile's, which
-replace them), the runtime's rules for its five tools, and the rendered help
-of the node's commands, in that order. It is rendered once, when the node is
+A node's system prompt is therefore its identity (the instructions, or a
+profile's, which replace them), the harness guide, the runtime's rules for
+its five tools, the capability index of the node's commands and the model
+identity, in that order ([System prompt](system-prompt.md)). It is rendered once, when the node is
 assembled, and holds no time, id, Host or state
 ([Prompt cache](../providers/providers.md#prompt-cache)).
 
