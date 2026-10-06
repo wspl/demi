@@ -31,7 +31,7 @@ impl Browser {
         let mut manifest = Manifest::new(
             PluginId::try_from("browser").expect("a valid plugin id"),
             "Browser",
-            "A browser on the conversation's host that the agent drives with demi browser and the user watches in the work panel.",
+            "Gives the agent a browser on the conversation's host, which it drives with demi browser and you watch and use in the work panel.",
         );
         manifest.commands = commands().manifest_commands();
         manifest.streams = vec![live_stream()];
