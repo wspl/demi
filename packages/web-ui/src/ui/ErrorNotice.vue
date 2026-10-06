@@ -6,6 +6,7 @@ import Button from './Button.vue'
 import Fold from './Fold.vue'
 import FoldChevron from './FoldChevron.vue'
 import IconButton from './IconButton.vue'
+import ScrollArea from './ScrollArea.vue'
 import { ICON_PX } from './icon-metrics'
 import Tooltip from './Tooltip.vue'
 import type { SentenceText, TitleText } from './ui-text'
@@ -83,9 +84,11 @@ const rawOpen = ref(false)
           </button>
           <!-- Mounted while closed so the height can animate both ways. -->
           <Fold :open="rawOpen">
-            <pre
-              class="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded-md bg-sunken p-2 font-mono text-[11px] leading-4 text-on-danger-muted"
-            >{{ raw }}</pre>
+            <ScrollArea class="mt-1 max-h-64 rounded-md bg-sunken" viewport-class="p-2">
+              <pre
+                class="whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-on-danger-muted"
+              >{{ raw }}</pre>
+            </ScrollArea>
           </Fold>
         </template>
       </div>
