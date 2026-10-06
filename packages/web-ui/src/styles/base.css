@@ -43,9 +43,11 @@
   --spacing-hit-sm: 24px;
   --spacing-hit: 28px;
   --spacing-hit-lg: 32px;
-  /* The height of a tool's preview of an image or a video, which a run of a
-     message's images shares (`file-previews.md` § Media a tool returned). */
-  --spacing-preview: 160px;
+  /* The height of the player of a video a tool returned, the least its
+     controls fit in, which a video in a run of a message's images shares
+     (`file-previews.md` § Media a tool returned). An image there is a
+     thumbnail, whose box `files/thumbnail.ts` owns. */
+  --spacing-video-player: 160px;
 }
 
 :root,
@@ -1039,8 +1041,11 @@ svg.lucide {
 }
 
 /* A run of a message's images and videos (`markdown/render.ts`) stands in a
-   row that wraps, 8px apart both ways, each at most a tool's preview high and
-   the message wide; a video takes that height before its bytes arrive. */
+   row that wraps, 8px apart both ways. An image is a thumbnail: its box, set
+   by `StreamedMarkdown` from `files/thumbnail.ts`, crops it to its top when
+   tall and to its middle when wide (`object-position: top` is `center top`).
+   A video is a tool's video player high, which it takes before its bytes
+   arrive. */
 .markdown-body .media-run {
   display: flex;
   flex-wrap: wrap;
@@ -1058,11 +1063,15 @@ svg.lucide {
 
 .markdown-body .media-run :is(img, video) {
   display: block;
-  max-height: var(--spacing-preview);
+}
+
+.markdown-body .media-run img {
+  object-fit: cover;
+  object-position: top;
 }
 
 .markdown-body .media-run video {
-  height: var(--spacing-preview);
+  height: var(--spacing-video-player);
 }
 
 /* What a message says of an attachment number its conversation does not
