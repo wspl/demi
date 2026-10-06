@@ -1573,7 +1573,6 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-expose",
  "demi-backend-host-access",
  "demi-backend-http",
  "demi-backend-providers",
@@ -1591,7 +1590,6 @@ dependencies = [
  "demi-machine-manager-protocol",
  "demi-plugin-browser",
  "demi-plugin-changes",
- "demi-plugin-expose",
  "demi-plugin-file",
  "demi-plugin-file-browser",
  "demi-plugin-interface",
@@ -1614,7 +1612,6 @@ dependencies = [
  "futures-util",
  "hex",
  "hkdf",
- "httparse",
  "jiff",
  "password-hash",
  "rand 0.9.5",
@@ -1738,23 +1735,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "demi-backend-expose"
-version = "0.1.13"
-dependencies = [
- "data-encoding",
- "demi-backend-database",
- "demi-shared-types",
- "demi-web-api-protocol",
- "jiff",
- "rand 0.9.5",
- "thiserror",
- "tokio",
- "tokio-util",
- "tracing",
- "url",
-]
-
-[[package]]
 name = "demi-backend-host-access"
 version = "0.1.13"
 dependencies = [
@@ -1800,7 +1780,6 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-expose",
  "demi-backend-host-access",
  "demi-backend-page-sync",
  "demi-backend-permissions",
@@ -2022,7 +2001,6 @@ dependencies = [
  "demi-backend-blobs",
  "demi-backend-cloud",
  "demi-backend-database",
- "demi-backend-expose",
  "demi-backend-host-access",
  "demi-backend-idle-watch",
  "demi-backend-page-sync",
@@ -2045,7 +2023,6 @@ dependencies = [
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
- "jiff",
  "object_store",
  "percent-encoding",
  "rand 0.9.5",
@@ -2361,22 +2338,6 @@ name = "demi-plugin-changes"
 version = "0.1.13"
 dependencies = [
  "demi-plugin-interface",
-]
-
-[[package]]
-name = "demi-plugin-expose"
-version = "0.1.13"
-dependencies = [
- "demi-command-declarations",
- "demi-host-interface",
- "demi-plugin-interface",
- "demi-shared-types",
- "demi-web-api-protocol",
- "futures-util",
- "schemars",
- "serde",
- "serde_json",
- "tokio",
 ]
 
 [[package]]
@@ -2848,7 +2809,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "url",
- "uuid",
  "which",
  "zstd 0.13.3",
 ]

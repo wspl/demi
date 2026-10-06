@@ -1,15 +1,12 @@
 //! The product's side of the plugins' port (`plugins.md` § The contract):
-//! package calls, reads and the Hosts of a conversation through its host
-//! access, the user's blobs, and the user's exposes, which the shard holds.
-//! The plugin host answers the rest itself.
+//! package calls and reads of a conversation through its host access, and
+//! the user's blobs. The plugin host answers the rest itself.
 
-use std::collections::HashMap;
 use std::rc::Weak;
 
 use bytes::Bytes;
-use demi_backend_expose::records::{Expose, ExposeError};
 use demi_backend_host_access::HostShard;
-use demi_backend_host_access::access::{self, HostAccessError};
+use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ServiceBinding, ServiceCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
@@ -17,15 +14,10 @@ use demi_backend_plugins::ProductPort;
 use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::PortError;
-use demi_plugin_interface::{
-    CallKind, ConversationHost, ExposeList, ExposeRecord, ExposeRefusal, HostFile, HostRead,
-    HostRole, PortFailure, PortRefusal,
-};
+use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure, PortRefusal};
 use demi_shared_types::{B64Bytes, BlobRef};
-use demi_web_api_protocol::exposes::ExposeAddress;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, ExposeId};
+use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
-use jiff::SignedDuration;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
@@ -89,32 +81,6 @@ impl ProductPort for ShardPort {
         })
     }
 
-    fn conversation_hosts<'a>(
-        &'a self,
-        conversation: &'a ConversationId,
-    ) -> LocalBoxFuture<'a, Result<Vec<ConversationHost>, PortFailure>> {
-        Box::pin(async move {
-            let shard = self.shard()?;
-            let hosts = shard
-                .host_shard()
-                .conversation_hosts(conversation)
-                .await
-                .map_err(access_refusal)?;
-            Ok(hosts
-                .into_iter()
-                .map(|host| ConversationHost {
-                    online: shard.devices().online(&host.device),
-                    name: host.name,
-                    device: host.device,
-                    role: match host.role {
-                        access::HostRole::Primary => HostRole::Primary,
-                        access::HostRole::Attached => HostRole::Attached,
-                    },
-                })
-                .collect())
-        })
-    }
-
     fn read_host_files<'a>(
         &'a self,
         conversation: &'a ConversationId,
@@ -151,137 +117,10 @@ impl ProductPort for ShardPort {
             Ok(bytes.map(B64Bytes::from))
         })
     }
-
-    fn exposes(&self) -> LocalBoxFuture<'_, Result<ExposeList, PortFailure>> {
-        Box::pin(async move {
-            let shard = self.shard()?;
-            let available = shard.services().expose_domain.is_some();
-            let exposes = shard.expose_shard().list_exposes().await.map_err(failed)?;
-            let mut names = HashMap::new();
-            let mut records = Vec::new();
-            for expose in exposes {
-                let name = device_name(&shard, &mut names, &expose.record.device).await?;
-                records.push(port_record(expose, name));
-            }
-            Ok(ExposeList {
-                available,
-                listed_at: shard.services().clock.now(),
-                exposes: records,
-            })
-        })
-    }
-
-    fn create_expose(
-        &self,
-        device: DeviceId,
-        address: String,
-        lifetime: u64,
-    ) -> LocalBoxFuture<'_, Result<ExposeRecord, PortFailure>> {
-        Box::pin(async move {
-            let shard = self.shard()?;
-            let address = ExposeAddress::try_from(address).map_err(|error| {
-                refused(
-                    ExposeRefusal::InvalidAddress,
-                    format!("the address {error}"),
-                )
-            })?;
-            let expose = shard
-                .expose_shard()
-                .add_expose(&device, address, seconds(lifetime))
-                .await
-                .map_err(expose_failure)?;
-            let name = device_name(&shard, &mut HashMap::new(), &device).await?;
-            Ok(port_record(expose, name))
-        })
-    }
-
-    fn renew_expose(
-        &self,
-        expose: ExposeId,
-        lifetime: u64,
-    ) -> LocalBoxFuture<'_, Result<ExposeRecord, PortFailure>> {
-        Box::pin(async move {
-            let shard = self.shard()?;
-            let renewed = shard
-                .expose_shard()
-                .renew_expose(&expose, seconds(lifetime))
-                .await
-                .map_err(expose_failure)?;
-            let device = renewed.record.device.clone();
-            let name = device_name(&shard, &mut HashMap::new(), &device).await?;
-            Ok(port_record(renewed, name))
-        })
-    }
-
-    fn remove_expose(&self, expose: ExposeId) -> LocalBoxFuture<'_, Result<(), PortFailure>> {
-        Box::pin(async move {
-            let shard = self.shard()?;
-            shard
-                .expose_shard()
-                .remove_expose(&expose)
-                .await
-                .map_err(expose_failure)
-        })
-    }
-}
-
-/// The name of `device`, read once per listing.
-async fn device_name(
-    shard: &Shard,
-    names: &mut HashMap<DeviceId, String>,
-    device: &DeviceId,
-) -> Result<String, PortFailure> {
-    if let Some(name) = names.get(device) {
-        return Ok(name.clone());
-    }
-    let record = shard
-        .services()
-        .control
-        .device(device.clone())
-        .await
-        .map_err(failed)?;
-    let name = record.map_or_else(|| device.to_string(), |record| record.name);
-    names.insert(device.clone(), name.clone());
-    Ok(name)
-}
-
-fn port_record(expose: Expose, device_name: String) -> ExposeRecord {
-    let Expose { record, url } = expose;
-    ExposeRecord {
-        id: record.id,
-        device: record.device,
-        device_name,
-        address: record.address,
-        url,
-        created_at: record.created_at,
-        expires_at: record.expires_at,
-    }
-}
-
-fn seconds(lifetime: u64) -> SignedDuration {
-    SignedDuration::from_secs(i64::try_from(lifetime).unwrap_or(i64::MAX))
 }
 
 fn failed(error: impl ToString) -> PortFailure {
     PortFailure::Port(PortError::Failed(error.to_string()))
-}
-
-fn refused(reason: ExposeRefusal, message: impl Into<String>) -> PortFailure {
-    PortFailure::Refused(PortRefusal::Expose {
-        reason,
-        message: message.into(),
-    })
-}
-
-fn expose_failure(error: ExposeError) -> PortFailure {
-    let reason = match &error {
-        ExposeError::Unavailable => ExposeRefusal::Unavailable,
-        ExposeError::DeviceNotFound => ExposeRefusal::DeviceNotFound,
-        ExposeError::DeviceOffline(_) => ExposeRefusal::DeviceOffline,
-        ExposeError::NotFound(_) => ExposeRefusal::NotFound,
-        ExposeError::Storage(_) => return failed(error),
-    };
-    refused(reason, error.to_string())
 }
 
 /// The conversation's host access refused, as its routes would answer.

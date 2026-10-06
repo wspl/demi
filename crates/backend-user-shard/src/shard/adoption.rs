@@ -175,13 +175,12 @@ impl Shard {
         }
     }
 
-    /// Revokes a device, which nothing refuses: its exposes end with their
-    /// connections, its row goes with its attachments and its workspaces,
-    /// whose conversations stay outside any workspace, and its runner hears
-    /// that it was revoked and removes itself. The user's revocation and the
+    /// Revokes a device, which nothing refuses: its row goes with its
+    /// attachments and its workspaces, whose conversations stay outside any
+    /// workspace, and its runner hears that it was revoked and removes
+    /// itself. The user's revocation and the
     /// runner's own request both come here.
     pub async fn revoke_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
-        self.expose_shard().destroy_exposes_on(&device).await;
         let removal = self
             .services()
             .control

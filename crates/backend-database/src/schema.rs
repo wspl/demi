@@ -40,14 +40,20 @@ pub(crate) enum Migration {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that shipped the current schema; 0.1.12 shipped
-/// it.
+/// release before the one that ships the current schema; 0.1.12 and 0.1.13
+/// shipped the last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
-    history: &[Shipped {
-        sql: include_str!("schema/control-0.1.11.sql"),
-        migration: Migration::Sql(CONTROL_FROM_0_1_11),
-    }],
+    history: &[
+        Shipped {
+            sql: include_str!("schema/control-0.1.11.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_11),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.13.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_13),
+        },
+    ],
 };
 
 /// Each conversation's database's. Its history holds the schema of each
@@ -65,6 +71,12 @@ pub(crate) const CONVERSATION: Schema = Schema {
 /// conversation was last live, is gone, and the column with it.
 const CONTROL_FROM_0_1_11: &str = "
 ALTER TABLE conversations DROP COLUMN live_at;
+";
+
+/// From 0.1.13's control schema: Host expose is gone, and its records with
+/// it.
+const CONTROL_FROM_0_1_13: &str = "
+DROP TABLE exposes;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -310,17 +322,6 @@ CREATE TABLE workspaces (
   created_at INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
-
-CREATE TABLE exposes (
-  id         TEXT PRIMARY KEY,
-  user_id    TEXT NOT NULL REFERENCES users (id),
-  device_id  TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
-  address    TEXT NOT NULL,
-  created_at INTEGER NOT NULL,
-  expires_at INTEGER NOT NULL
-) STRICT;
-CREATE INDEX exposes_expiry ON exposes (expires_at);
-CREATE INDEX exposes_owner ON exposes (user_id, expires_at);
 
 -- Each choice a user made about a plugin (`plugins.md` § A user's plugins):
 -- a plugin with no row is on.

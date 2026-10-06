@@ -56,20 +56,6 @@
         "typescript": "^6.0.3",
       },
     },
-    "packages/plugin-expose": {
-      "name": "@demicodes/plugin-expose",
-      "version": "0.0.0",
-      "dependencies": {
-        "@demicodes/plugin-sdk": "workspace:^",
-        "@lucide/vue": "^1.40.0",
-        "vue": "^3.5.38",
-        "zod": "^4.0.0",
-      },
-      "devDependencies": {
-        "@vue/tsconfig": "^0.9.1",
-        "typescript": "^6.0.3",
-      },
-    },
     "packages/plugin-file-browser": {
       "name": "@demicodes/plugin-file-browser",
       "version": "0.0.0",
@@ -127,7 +113,6 @@
       "dependencies": {
         "@demicodes/plugin-browser": "workspace:^",
         "@demicodes/plugin-changes": "workspace:^",
-        "@demicodes/plugin-expose": "workspace:^",
         "@demicodes/plugin-file-browser": "workspace:^",
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
@@ -156,7 +141,6 @@
       "dependencies": {
         "@demicodes/plugin-browser": "workspace:^",
         "@demicodes/plugin-changes": "workspace:^",
-        "@demicodes/plugin-expose": "workspace:^",
         "@demicodes/plugin-file-browser": "workspace:^",
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
@@ -377,8 +361,6 @@
     "@demicodes/plugin-browser": ["@demicodes/plugin-browser@workspace:packages/plugin-browser"],
 
     "@demicodes/plugin-changes": ["@demicodes/plugin-changes@workspace:packages/plugin-changes"],
-
-    "@demicodes/plugin-expose": ["@demicodes/plugin-expose@workspace:packages/plugin-expose"],
 
     "@demicodes/plugin-file-browser": ["@demicodes/plugin-file-browser@workspace:packages/plugin-file-browser"],
 

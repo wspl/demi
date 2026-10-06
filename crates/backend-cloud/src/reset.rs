@@ -164,9 +164,6 @@ impl dyn CloudShard {
         operation: ManagedOperation,
     ) -> Result<(), CloudError> {
         let device = &machine.device.id;
-        // The machine stops, and its exposes end with it (`expose.md`
-        // § Lifetime).
-        self.cloud_stopped(device).await;
         self.record_phase(machine, &operation, ResetPhase::Stopping, None)
             .await?;
         if let Some(transition) = machine.transition() {
@@ -242,17 +239,14 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation) -> ResetParams 
 
 /// Recovers before the backend serves (`backend.md` § Startup and shutdown):
 /// the manager stops and saves every machine and recovers its incomplete
-/// operations, so the exposes an earlier backend left on a Cloud end
-/// (`expose.md` § Lifetime), and each reset this backend left unfinished
-/// finishes its disk step, which is idempotent by its id, is announced, and
-/// is recorded as failed so that a retry boots the Cloud. Nothing boots
-/// here.
+/// operations, and each reset this backend left unfinished finishes its disk
+/// step, which is idempotent by its id, is announced, and is recorded as
+/// failed so that a retry boots the Cloud. Nothing boots here.
 pub async fn recover_resets(
     control: &ControlService,
     cloud: &CloudServices,
 ) -> Result<(), RecoveryError> {
     cloud.machines.call(ReconcileParams {}).await?;
-    control.delete_cloud_exposes().await?;
     for (device, operation) in control.unfinished_managed_operations().await? {
         let record = control
             .device(device.clone())

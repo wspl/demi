@@ -20,8 +20,8 @@ pub use manifest::{
 };
 pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PortHandled};
 pub use port::{
-    CallKind, ConversationHost, DirectoryFile, DirectoryPath, EntryKind, ExposeList, ExposeRecord,
-    ExposeRefusal, HostDirectory, HostEntry, HostFile, HostRead, HostRole, PluginPort,
-    PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal, StoredValue,
+    CallKind, DirectoryFile, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile,
+    HostRead, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
+    StoredValue,
 };
 pub use request::{PanelTabChange, PluginError, Reply, Request};

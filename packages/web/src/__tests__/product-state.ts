@@ -4,7 +4,7 @@ import { productStateSchema, type ConversationSummary, type ProductState } from 
 /**
  * A product state as the channel's snapshot carries it, for the page's tests: a master
  * of a shared instance with no providers, workspaces, devices or
- * conversations, without an expose domain, whose Cloud is not made yet. Each
+ * conversations, no skill source, whose Cloud is not made yet. Each
  * of `parts` replaces a whole top-level field.
  */
 export function productState(parts: Partial<z.input<typeof productStateSchema>> = {}): ProductState {
@@ -33,8 +33,8 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
       newerImage: false,
     },
     subagents: { enabled: true, profiles: [] },
-    plugins: [{ id: 'expose', name: 'Expose', description: 'Exposes a Host port.', enabled: true, packages: [] }],
-    pluginStates: { expose: { available: false, exposes: [] } },
+    plugins: [{ id: 'skills', name: 'Skills', description: 'Skills the agent follows.', enabled: true, packages: [] }],
+    pluginStates: { skills: { sources: [] } },
     run: 'run-1',
     ...parts,
   })

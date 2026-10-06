@@ -1,6 +1,5 @@
 //! The backend's public address (`native-runtime.md` § Backend deployment
-//! configuration): where runners, Cloud guests and expose visitors reach
-//! this backend.
+//! configuration): where runners and Cloud guests reach this backend.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::sync::{Arc, OnceLock};
@@ -10,8 +9,8 @@ use url::Url;
 
 /// `DEMI_BACKEND_PUBLIC_URL`, or without one (a test's backend) the
 /// listener's own address. The edge sets it once the backend listens,
-/// before it serves; a Cloud's boot, an expose's URL and a development
-/// store's downloads name it. Cloning it shares it.
+/// before it serves; a Cloud's boot and a development store's downloads
+/// name it. Cloning it shares it.
 #[derive(Clone, Default)]
 pub struct PublicUrl(Arc<OnceLock<BackendUrl>>);
 

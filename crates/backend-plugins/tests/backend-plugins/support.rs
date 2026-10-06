@@ -32,9 +32,7 @@ use demi_host_interface::{
 };
 use demi_plugin_file::File;
 use demi_plugin_interface::PluginFactory;
-use demi_plugin_interface::{
-    CallKind, ConversationHost, ExposeList, ExposeRecord, HostFile, HostRead, PortFailure,
-};
+use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart,
     testing::{ScriptedRuntime, TokioClock, Turn, event},
@@ -42,7 +40,7 @@ use demi_provider_common::{
 use demi_shared_types::SystemClock;
 use demi_shared_types::{B64Bytes, BlobRef};
 use demi_shared_types::{Block, CommandId, NodeId, SessionPhase, ToolView, TurnId};
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, ExposeId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::json;
 use serde_json::{Map, Value};
@@ -249,7 +247,7 @@ async fn demi_commands() -> (CommandSet, TempDir) {
 
 /// The plugins of `registry` for the user `u1`, over a control database of
 /// their own, which the returned directory holds, and a product that
-/// reaches no Host and has no exposes.
+/// reaches no Host.
 pub async fn user_plugins(registry: Registry) -> (UserPlugins, TempDir) {
     let data = tempfile::tempdir().unwrap();
     let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(SystemClock))
@@ -261,7 +259,7 @@ pub async fn user_plugins(registry: Registry) -> (UserPlugins, TempDir) {
     (plugins, data)
 }
 
-/// A product with no conversation Host, no blobs and no exposes.
+/// A product with no conversation Host and no blobs.
 struct NoProduct;
 
 fn none<T>() -> LocalBoxFuture<'static, Result<T, PortFailure>> {
@@ -284,13 +282,6 @@ impl ProductPort for NoProduct {
         none()
     }
 
-    fn conversation_hosts<'a>(
-        &'a self,
-        _: &'a ConversationId,
-    ) -> LocalBoxFuture<'a, Result<Vec<ConversationHost>, PortFailure>> {
-        none()
-    }
-
     fn read_host_files<'a>(
         &'a self,
         _: &'a ConversationId,
@@ -305,31 +296,6 @@ impl ProductPort for NoProduct {
     }
 
     fn get_blob(&self, _: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>> {
-        none()
-    }
-
-    fn exposes(&self) -> LocalBoxFuture<'_, Result<ExposeList, PortFailure>> {
-        none()
-    }
-
-    fn create_expose(
-        &self,
-        _: DeviceId,
-        _: String,
-        _: u64,
-    ) -> LocalBoxFuture<'_, Result<ExposeRecord, PortFailure>> {
-        none()
-    }
-
-    fn renew_expose(
-        &self,
-        _: ExposeId,
-        _: u64,
-    ) -> LocalBoxFuture<'_, Result<ExposeRecord, PortFailure>> {
-        none()
-    }
-
-    fn remove_expose(&self, _: ExposeId) -> LocalBoxFuture<'_, Result<(), PortFailure>> {
         none()
     }
 }

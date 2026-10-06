@@ -168,16 +168,8 @@ async fn the_snapshot_is_the_users_product_state() {
             },
             // Checked below by what the page needs of them.
             plugins: state.plugins.clone(),
-            // Without an expose domain the expose plugin has none to show,
-            // and a new user has no skill source.
-            plugin_states: [
-                (
-                    "expose".to_owned(),
-                    json!({ "available": false, "exposes": [] }),
-                ),
-                ("skills".to_owned(), json!({ "sources": [] })),
-            ]
-            .into(),
+            // A new user has no skill source.
+            plugin_states: [("skills".to_owned(), json!({ "sources": [] }))].into(),
             // The backend serves no web app.
             web_build: None,
             // An id chosen at start, checked below.
@@ -196,7 +188,6 @@ async fn the_snapshot_is_the_users_product_state() {
         [
             ("file", true),
             ("browser", true),
-            ("expose", true),
             ("skills", true),
             ("changes", true),
             ("file-browser", true),
@@ -498,7 +489,7 @@ async fn the_channel_opens_for_a_signed_in_page_of_the_product_and_ends_with_its
     let foreign = refusal(
         &backend,
         Some(&laptop),
-        Some("https://a1b2c3.expose.localhost"),
+        Some("https://blog.localhost"),
     )
     .await;
     assert_eq!(foreign, (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin));
