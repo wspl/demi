@@ -158,3 +158,34 @@ test('no attempt starts before the signaling socket is open, whose opening is th
   direct.tryNow()
   expect(attempts).toHaveLength(1)
 })
+
+test('a peer the backend closed is made again at once, in place of an attempt with the old introduction', async () => {
+  const { direct, attempts, choices, waiting } = device()
+  direct.tryNow()
+  const peer = new Peer()
+  attempts[0]!.resolve(peer)
+  await flush()
+  let closed = false
+  void peer.closed.then(() => {
+    closed = true
+  })
+
+  direct.reintroduce()
+  await flush()
+  expect(closed).toBe(true)
+  expect(choices).toEqual(['direct', 'relay'])
+  expect(attempts).toHaveLength(2)
+  expect(waiting()).toBeUndefined()
+
+  // An attempt under way was answered with the old introduction: a new one
+  // takes its place, and the old one's peer is not used.
+  direct.reintroduce()
+  expect(attempts).toHaveLength(3)
+  const stale = new Peer()
+  attempts[1]!.resolve(stale)
+  await flush()
+  expect(direct.choice).toBe('relay')
+  attempts[2]!.resolve(new Peer())
+  await flush()
+  expect(direct.choice).toBe('direct')
+})

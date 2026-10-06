@@ -31,6 +31,12 @@ tokio-util.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+demi-runner-direct = { path = ".", features = ["testing"] }
 demi-command-protocol = { path = "../command-protocol" }
 demi-shared-types = { path = "../shared-types" }
 tokio = { workspace = true, features = ["test-util"] }
+
+[features]
+# A page in process that connects to a runner's peers, for the tests of
+# this crate and the backend's.
+testing = []
