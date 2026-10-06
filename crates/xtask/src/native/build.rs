@@ -1,4 +1,4 @@
-//! `cargo xtask native build` (`builds-and-releases.md` § Executables and
+//! `xtask native build` (`builds-and-releases.md` § Executables and
 //! targets, § Cross builds): one release build per target. A target of the
 //! machine's own platform builds with that platform's toolchain, Apple's on
 //! a Mac and MSVC on Windows, checked against the pins; Linux keeps
@@ -280,8 +280,8 @@ impl Build<'_> {
 
     /// The build with this machine's cross tools.
     fn here(&self, target: &str, executables: &[Executable]) -> Command {
-        // `cargo xtask` names the toolchain's cargo; a direct run takes the
-        // one on PATH.
+        // `cargo run` names the toolchain's cargo; `bun xtask` takes the one
+        // on PATH.
         let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
         let mut command = Command::new(cargo);
         command

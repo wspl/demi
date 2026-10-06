@@ -1,4 +1,4 @@
-# Collects the executables the job's `cargo xtask native build` wrote, with
+# Collects the executables the job's `xtask native build` wrote, with
 # their paths in the Cargo target directory, as one workflow artifact.
 name: Collect programs
 description: Uploads the job's built executables as one tar archive.
