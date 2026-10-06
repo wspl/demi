@@ -787,7 +787,8 @@ async fn a_reader_that_leaves_stops_the_runners_read_and_the_host_keeps_serving(
         .unwrap()
         .set_len(64 * MIB as u64)
         .unwrap();
-    let (stat, mut reader) = host.read_pipe(&long, ByteRange::default()).await.unwrap();
+    let opened = host.read_pipe(&long, ByteRange::default()).await.unwrap();
+    let (stat, mut reader) = (opened.stat, opened.body);
     // The read answers the file's metadata, so no stat precedes it.
     assert_eq!(
         (stat.kind, stat.size),

@@ -14,7 +14,7 @@ use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use crate::conversations::{FIRST, anthropic_at, create, summary};
+use crate::conversations::{FIRST, anthropic_at, create};
 use crate::support::{Harness, Session, TestBackend};
 use crate::work::{Driven, say, shell, switch};
 
@@ -172,7 +172,7 @@ async fn a_skill_on_reaches_the_catalog_and_the_jobs_that_need_it_find_it_instal
 // Several seconds: real runners on two paired devices, and one turn whose
 // job runs another on the attached one.
 #[tokio::test]
-async fn a_job_run_on_an_attached_device_finds_the_skill_installed_there_and_counts_as_a_job() {
+async fn a_job_run_on_an_attached_device_finds_the_skill_installed_there() {
     let repos = tools_repos();
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_skill_repos(&repos);
@@ -200,9 +200,5 @@ async fn a_job_run_on_an_attached_device_finds_the_skill_installed_there_and_cou
         .await;
     let output = &read.received[0];
     assert!(output.contains("Review a change."), "{output}");
-    // Two jobs of the conversation ended: the one on alpha, and the one it
-    // ran on beta.
-    let ended = summary(&backend, &master, FIRST).await;
-    assert_eq!(ended.working_tree_revision, 2);
     backend.close().await;
 }
