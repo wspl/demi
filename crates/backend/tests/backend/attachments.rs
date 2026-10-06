@@ -22,8 +22,15 @@ use crate::work::{Driven, say, shell, switch};
 
 const CONVERSATION: &str = "6a1b2c3d-8f3a-4c1e-9d2b-7a1c2e3f4a06";
 
-// Several seconds: a real device runs two shell jobs, and one file is 25 MiB
-// and a byte, which the upload refuses unread.
+/// A file over the 25 MiB an attachment may have.
+const HUGE: u64 = 26 * 1024 * 1024;
+
+// Several seconds: a real device runs two shell jobs, and one file is 26 MiB,
+// which the upload refuses unread.
+//
+// Planted defect the large file catches: the Host hashes a file before it
+// looks at its size. The file may be written but not read, so a Host that
+// opens it to read fails with another reason.
 #[tokio::test]
 async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_cannot() {
     let vendor = MockVendor::start().await;
@@ -35,11 +42,10 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     std::fs::create_dir_all(format!("{root}/out")).unwrap();
     std::fs::write(format!("{root}/out/login.png"), &*PNG).unwrap();
     std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
-    std::fs::write(
-        format!("{root}/huge.bin"),
-        vec![0_u8; ATTACHMENT_MAX_BYTES + 1],
-    )
-    .unwrap();
+    let huge = std::fs::File::create(format!("{root}/huge.bin")).unwrap();
+    huge.set_len(HUGE).unwrap();
+    huge.set_permissions(std::os::unix::fs::PermissionsExt::from_mode(0o200))
+        .unwrap();
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
 
     // Paths resolve against the directory the command runs in.
@@ -71,8 +77,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     assert_eq!(
         *huge,
         format!(
-            "demi attachment upload: ../huge.bin: the file is {} bytes; an attachment is at most 25 MiB ({ATTACHMENT_MAX_BYTES} bytes)",
-            ATTACHMENT_MAX_BYTES + 1
+            "demi attachment upload: ../huge.bin: the file is {HUGE} bytes; an attachment is at most 25 MiB ({ATTACHMENT_MAX_BYTES} bytes)"
         )
     );
 
