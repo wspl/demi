@@ -452,7 +452,7 @@ prompt, on the conversation's Host with the root's commands, and its
 | Name | The `--profile` value: 1 to 40 lowercase letters, digits and hyphens, starting with a letter, unique among the user's profiles. `default` is reserved for the inherit profile below, and no profile can take it. |
 | Description | When the agent should use the profile: one line of 1 to 500 characters, which `demi agent profiles` shows the model ([What the model sees](#what-the-model-sees)). |
 | Model | Inherit, the parent's model selection; or model settings of the user's own: a provider entry of the user's scope, one model of its catalog, an effort the model lists or thinking off, and a service tier, with the meanings of a conversation's ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)). The effort is always explicit: a profile saved without one takes the first effort the model lists. The entry may be the parent's or any other. |
-| System prompt | Inherit, the parent's instructions; or replace, text of 1 to 65,536 characters that takes the place of the instructions in the child's system prompt ([Sessions and turns](runtime.md#sessions-and-turns)). The runtime's rules for its tools, the command help and the subagent preamble are still supplied. |
+| System prompt | Inherit, the parent's instructions; or replace, text of 1 to 65,536 characters that takes the place of the instructions in the child's system prompt ([Sessions and turns](runtime.md#sessions-and-turns)). The harness guide, the runtime's rules for its tools, the capability index, the model identity and the subagent preamble are still supplied ([System prompt](system-prompt.md)). |
 | Spawning | Whether children of this profile may spawn children of their own. |
 | Enabled | Whether the profile can be used now. A new profile starts enabled; the user turns it off to keep its configuration without letting agents use it. |
 
@@ -614,7 +614,7 @@ summarize the parent transcript into the child.
 
 | Layer | Owner | Content |
 | --- | --- | --- |
-| System prompt | The runtime, the product and the plugins, or the profile | The runtime's rules for its tools, the instructions (a profile's replace the parent's), and the rendered command help ([Sessions and turns](runtime.md#sessions-and-turns)). |
+| System prompt | The runtime, the product and the plugins, or the profile | The identity (a profile's instructions replace the parent's), the harness guide, the runtime's rules for its tools, the capability index of the node's commands and the model identity ([System prompt](system-prompt.md)). |
 | Preamble | The agent server, for every child | This session is a subagent; its ID and its parent's ID; ending the turn with nothing pending returns the last assistant text as the result; `demi agent send` reaches the parent (`parent`) and any agent in `demi agent list`; spawn delegates further, or this session may not spawn; the session is not talking to the product user and does not address them. |
 | First user message | The parent model | The spawn prompt from stdin. Demi does not inspect or pad it. |
 

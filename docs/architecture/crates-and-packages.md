@@ -212,7 +212,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 - **Public boundary:** the items above. This crate is the single
   implementation of argv parsing, help and the input subset: the runner parses
   argv and renders `--help` with it, and the backend renders the model's
-  command help and checks registrations with it. Argument validation is
+  capability index and checks registrations with it. Argument validation is
   `jsonschema` over the declaration's schema at both ends, through the one
   check and its one wording; the runner checks `--json` output against the
   leaf's output schema with the same check.

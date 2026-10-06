@@ -147,16 +147,19 @@ A node's system prompt is rendered once, when the node is assembled
 ([Prompt cache](../providers/providers.md#prompt-cache)):
 
 ```text
-the product's instructions
+the identity: the product's instructions, or a profile's
+the harness guide
 the agent runtime's rules for its tools
-the help of the node's commands
+the capability index of the node's commands
+the model identity
 ```
 
-A plugin adds nothing to it but its commands' help, which is fixed in its
-manifest. It changes only when the tree opens again with another set of
+A plugin adds nothing to it but the index entries of its command groups,
+fixed in its manifest; its commands' help is read on demand with `--help`
+([System prompt](../agent/system-prompt.md)). It changes only when the tree opens again with another set of
 plugins, or with a Demi release, which the prompt cache rule allows once per
 conversation. What a
-plugin needs the model to know beyond its commands' help reaches the model as
+plugin needs the model to know beyond its index entries and help reaches the model as
 a `context` block, and so does anything that differs by user or
 conversation, or changes while a conversation lives
 ([Transcript](../agent/runtime.md#block-types)). Before each provider request
@@ -534,7 +537,7 @@ moment that does not change something the model already relies on:
 | Commands | When a conversation's tree opens: a new conversation, a tree restored after it was disposed, or a reload |
 
 Commands wait for a tree to open because a tree takes them once: a node's
-command help is part of its system prompt, which is rendered once
+capability index is part of its system prompt, which is rendered once
 ([Prompt text and context](#prompt-text-and-context)). A change in the middle
 of a conversation would change what the model was told it may run.
 
