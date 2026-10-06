@@ -311,7 +311,10 @@ metadata.
   to the end when absent) and an output pipe. The runner opens the file and
   replies once it is open and positioned; only then does it stream the range
   into the pipe. A file that cannot be opened is an error reply, never an
-  empty stream.
+  empty stream. The reply carries the file's version, from its size and
+  modification time. A request may name the version it holds: when the file
+  still has it, the reply says it is unchanged and the runner streams
+  nothing.
 - `fs_writeFile` names a file, whether to create its parent directories, and an
   input pipe. The runner writes into a temporary file beside the destination
   and renames it into place only when the pipe ends cleanly, then replies. A

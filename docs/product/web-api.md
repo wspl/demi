@@ -1222,7 +1222,12 @@ as `{ path, home, entries }`, with the same entry shape as device browsing.
 Omitting `path` selects the conversation's execution directory. `POST` to the
 same route with `{ path }` creates a directory recursively and returns `{ path }`
 with status 201. `GET /api/conversations/:id/fs/file?path=...` returns
-`{ path, text }`. Paths follow the Host's filesystem rules; the execution directory
+`{ path, text }` with the file's ETag, the one the raw route reports; a
+request whose `If-None-Match` names the file's current ETag answers 304
+without reading the text past the Host, since the runner compares the version
+before it streams ([File contents](../execution/runner.md#file-contents)). The
+files service checks a text it keeps this way
+([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)). Paths follow the Host's filesystem rules; the execution directory
 is a starting directory, not a permission boundary. Missing paths answer 404,
 and permission failures answer 403. A directory too large to list in one
 runner message ([Runner](../execution/runner.md#connection-and-identity))
@@ -1251,8 +1256,9 @@ file's size and modification time, and `If-None-Match` answers 304. A request
 that names the `version` it expects, an ETag it saw earlier, answers 412
 `file_changed` once the file no longer has it: a player's retries carry no
 validator, and they must never splice two versions of a file together. Every
-answer carries `X-Content-Type-Options: nosniff`,
-`Cache-Control: private, no-cache`, `Vary: Cookie` and
+answer carries `X-Content-Type-Options: nosniff`, `Vary: Cookie`, `Cache-Control:
+private, no-cache`, or `private, max-age=31536000, immutable` for a request
+that names its `version`, whose bytes can only be that version's, and
 `X-Accel-Buffering: no`, the last so that a proxy in front streams it instead
 of buffering it; an image served in place also carries the
 [content policy](file-previews.md#keeping-file-content-inert). `HEAD` answers

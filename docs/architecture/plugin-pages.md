@@ -237,7 +237,9 @@ it changed; no page polls, and no page guesses when to read again.
   the working tree says so with `showChanges()`, the conversation's files
   service lists it again when the conversation's working-tree revision
   changes, after any job ended, and when the page is shown again, since the
-  user may have changed files outside Demi meanwhile. A page that shows the
+  user may have changed files outside Demi meanwhile. What it read before it
+  shows at once and checks in the background
+  ([What the service keeps](#what-the-service-keeps)). A page that shows the
   files reads the service, and never decides when to read again.
 
 ## Calls and states
@@ -291,6 +293,52 @@ for whichever page shows them. `usePage().files(conversation)` gives:
 | `showChanges()` | The calling component shows the working tree: the service keeps `changes` fresh until the component's scope ends ([Data a page shows](#data-a-page-shows)) |
 
 `changes` and `file-browser` show these; any other page may read them.
+
+### What the service keeps
+
+Picking a file the user saw a moment ago shows it at once, and so does a
+folder unfolded again or a changed file's diff picked again; then the service
+checks in the background whether it changed. For example, the user reads
+`src/app.ts`, picks `README.md`, and picks `src/app.ts` again: its text shows
+at once, with its scroll where it was, while one request asks the Host whether
+the file changed. It did not, so nothing more happens. Had the agent edited it
+meanwhile, the new text would replace the old in place, without a loading
+state.
+
+- **What it keeps.** Directory listings, file texts, file descriptions, the
+  changes list, each changed file's two sides and its committed contents,
+  each as the last answer read, keyed by the Host and the absolute path.
+  Conversations on one Host share them. They live in the page's memory for
+  the signed-in page's lifetime and are gone after a reload, as the
+  conversation cache is
+  ([Backend communication](../product/web-application.md#backend-communication)).
+  At most 64 MiB of them stay, counted by their text; past that the ones shown
+  longest ago go first.
+- **Shown at once, then checked.** A read of something the service keeps
+  answers at once with what it keeps and reads it again in the background. A
+  read of something it does not keep shows its loading, as before. Reads of one
+  thing share one request: a second read while one is on its way waits for
+  it rather than asking again.
+- **When it checks.** Each time a component starts showing an entry: picking a
+  file, unfolding a folder, showing a tab again. And, for the entries shown,
+  when the conversation's working-tree revision rises and when the page
+  becomes visible again, since the user may have changed files outside Demi.
+  An entry nobody shows is checked when it is shown next. Nothing polls.
+- **An answer that differs replaces the entry in place.** The view keeps its
+  scroll, selection and folded rows; a text view shows the new text as an
+  editor reloads a file it has not changed. An answer that the file or folder
+  is gone shows that, as a first read would.
+- **A check that fails keeps what it shows** and says quietly that it could
+  not refresh, with Retry, as the changes list does; the next occasion checks
+  again.
+- **Checking costs little.** A file text is read again with the version the
+  service holds, and an unchanged file answers that it is unchanged without
+  its text ([File text and working tree changes](../product/web-api.md#file-text-and-working-tree-changes)).
+  A preview's bytes come from a URL that names their version, which the user's
+  browser keeps, so a preview shown again needs no bytes; when the check finds
+  a new version, the preview's URL names it.
+- **The page's own writes** update what they change at once: a created folder,
+  an uploaded or deleted file checks its folder's listing immediately.
 
 ## The plugin kit
 
