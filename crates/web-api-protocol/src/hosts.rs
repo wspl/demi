@@ -6,6 +6,7 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::devices::DeviceState;
 use crate::ids::DeviceId;
 use crate::text::Trimmed;
 
@@ -25,8 +26,8 @@ pub struct AttachedHost {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub cwd: Option<String>,
-    /// Whether the device's runner is connected.
-    pub online: bool,
+    /// Whether the device's runner serves it, as the device list says.
+    pub state: DeviceState,
     pub attached_at: Timestamp,
 }
 
