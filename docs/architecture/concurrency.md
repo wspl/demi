@@ -53,7 +53,7 @@ connection's task to the runtime that created it.
 ```text
 edge: multi-threaded runtime with axum
   HTTP routes, the session gate, body limits, static files
-  byte paths: pipes, file transfers (60 s stall), user streams, the expose relay
+  byte paths: pipes, file transfers (60 s stall), user streams
   shared services: control records, conversation stores, blobs, the change
     store, the vault, provider assembly and catalogs, credential refresh gates,
     the machine-manager client, Cloud capacity, pending runner claims,
@@ -61,13 +61,13 @@ edge: multi-threaded runtime with axum
        |  shards.of(user).call(|shard, cancel| ...)  owned data in and out
        |  adopt(socket)                              conversation, synchronization
        |                                             and runner sockets
-       |  lease and pipe ends back to the edge       transfers, user streams, exposes
+       |  lease and pipe ends back to the edge       transfers, user streams
        |  a mark in the registry                     a part a page shows changed
        v
 shard threads: each a LocalRuntime hosting the shards of the users pinned to it
   one user's shard: conversations (file gates, transfers, idle watches),
     agent trees, runner connections, pipe records, the Cloud machine,
-    exposes, titles, forks, the command router, the request rate limit,
+    titles, forks, the command router, the request rate limit,
     the pages' synchronization channels
        |  owned data in and out
        v
@@ -178,7 +178,7 @@ and child of that process lives in it.
 A user's shard holds everything that belongs to one user: the user's
 conversations with their file gates, transfers and idle watches, the agent
 trees, the runner connections and pipe records of the user's devices, the
-user's Cloud machine, exposes, title requests, forks and the synchronization
+user's Cloud machine, title requests, forks and the synchronization
 channels of the user's pages. A shard thread hosts the shards of every user
 pinned to it.
 
@@ -195,11 +195,11 @@ cross-user state live at the edge and in shared services.
 
 | In the user's shard | At the edge or in shared services |
 |---|---|
-| File gates, transfer admission, idle watches, target switch, archive and detach | The bytes of downloads, uploads, user streams, pipes and the expose relay, with their stall and idle timers |
+| File gates, transfer admission, idle watches, target switch, archive and detach | The bytes of downloads, uploads, user streams and pipes, with their stall and idle timers |
 | Agent trees and their sessions | HTTP routing, the session gate, body limits and static files |
 | Runner connections, one task each, and pipe records | Runners not yet paired, which have no user |
 | The Cloud machine and its reset intent | Cloud capacity, counted across users, and the machine-manager client |
-| Live expose connections, titles, forks, the command router and the request rate limit | Storage, the vault, provider assembly and catalogs, credential refresh gates and the login limiter |
+| Titles, forks, the command router and the request rate limit | Storage, the vault, provider assembly and catalogs, credential refresh gates and the login limiter |
 | The pages' synchronization channels, each with its set of changed parts | The registry of each user's open channels, on which any thread marks a change |
 
 **Crossing the boundary.** The boundary is crossed per request, WebSocket
@@ -214,7 +214,7 @@ owned data in both directions, `Send` pipe ends, leases and marks:
   user's shard, which handles its messages one at a time. The edge reads a
   runner's first message: a known token moves the socket into its owner's
   shard, and an unpaired runner waits at the edge.
-- A transfer, user stream or expose connection returns a lease with its pipe
+- A transfer or user stream returns a lease with its pipe
   ends. The edge copies bytes while it holds the lease; dropping the lease
   releases the admission in the shard, and the shard can end the lease itself,
   for example when the conversation is archived.
@@ -396,7 +396,7 @@ document, for example the backend's in [Backend](../backend/backend.md).
   and durations use `tokio::time::Instant`. The test clock follows Tokio time
   (a start time plus elapsed Tokio time), so paused tests move record
   timestamps too; a settable clock serves tests that move only wall time, such
-  as expose expiry.
+  as a session's expiry.
 - **The backend runs inline.** A backend test without a real runner runs the
   shards on the test's own runtime instead of on shard threads, so the
   backend's tasks run on one current-thread runtime that the paused clock

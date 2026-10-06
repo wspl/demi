@@ -74,7 +74,6 @@ Each route authenticates its caller in one of these ways
 | Every other path under `/api`, unknown paths included, except the runner transport | The session cookie, which the session gate checks |
 | The runner transport, `WS /runner` and the pipes at `/pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
 | The public installation routes and the [web app build](#serving-the-web-app-build) | None |
-| Every path on an expose hostname | None; the public relay answers it, never a route of this API ([Expose hostnames](#expose-hostnames)) |
 
 The first three rows are the web app's routes. Such a route answers 403
 `forbidden_origin` to a request that could act with the user's session and
@@ -520,14 +519,6 @@ answer ends at the newest line. `limit` defaults to 200 and is at most 1000.
 stopped Cloud or an offline device answers 409 as
 [Host operations](../execution/sessions-and-targets.md#host-operations) do,
 and its log is read when it runs again, since the log outlives a restart.
-
-## Expose hostnames
-
-Requests whose `Host` header is an expose hostname are not part of this API:
-the backend answers them with the public relay, for every path and method,
-and never with product routes. The records, their lifetime, the relay, and the
-`expose` plugin's commands, state and page methods are defined in
-[Host expose](../execution/expose.md).
 
 ## Account API
 
@@ -1053,11 +1044,7 @@ part's messages come in the order of its changes, and a later one is never
 older than an earlier one.
 
 **Changes no write makes.** Each message follows a change the backend
-commits, except one: an expose expires when its time comes, so the channel
-also sends the `plugin` message of each plugin whose user state follows the
-`exposes` topic, the `expose` plugin, when the earliest expiry passes
-([Topics](../architecture/plugins.md#topics)). No other part
-changes with time alone. A provider entry's `details`
+commits; no part changes with time alone. A provider entry's `details`
 report each account's sign-in as it is stored, whether or not the vendor
 would still take it: an API key the vendor revoked, a Codex or Grok Build
 sign-in whose refresh the vendor refuses, and a Claude Code setup token past
