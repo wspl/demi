@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { TREE_ROW_PITCH_PX, TREE_ROW_PX, revealTreeRow, stickyTreeRows, treeBlock, type TreeRow } from '../tree'
+import { TREE_ROW_PITCH_PX, TREE_ROW_PX, revealTreeRow, stickyTreeRows, treeBlock, treeKeyEffect, type TreeRow } from '../tree'
 
 // src/, src/auth/, src/auth/cookie.ts, src/auth/session.ts, src/index.ts, tests/
 const rows: TreeRow[] = [
@@ -93,4 +93,35 @@ test('a directory\'s block runs from its row to the last row under it', () => {
   // A closed directory, or a file, holds no rows.
   expect(treeBlock(rows, '/w/tests')).toEqual({ first: 5, last: 5 })
   expect(treeBlock(rows, '/w/gone')).toBeNull()
+})
+
+describe('tree keys', () => {
+  const key = (cursor: string | null, name: string) => treeKeyEffect(rows, cursor, name)
+
+  test('Up, Down, Home and End move the cursor; with none yet, it starts at the top', () => {
+    expect(key(null, 'ArrowDown')).toEqual({ kind: 'cursor', path: '/w/src' })
+    expect(key('/w/src/auth', 'ArrowDown')).toEqual({ kind: 'cursor', path: '/w/src/auth/cookie.ts' })
+    expect(key('/w/src/auth', 'ArrowUp')).toEqual({ kind: 'cursor', path: '/w/src' })
+    expect(key('/w/tests', 'ArrowDown')).toEqual({ kind: 'cursor', path: '/w/tests' })
+    expect(key('/w/src/index.ts', 'Home')).toEqual({ kind: 'cursor', path: '/w/src' })
+    expect(key('/w/src', 'End')).toEqual({ kind: 'cursor', path: '/w/tests' })
+  })
+
+  test('Right unfolds a folded directory and nothing else', () => {
+    expect(key('/w/tests', 'ArrowRight')).toEqual({ kind: 'activate', path: '/w/tests' })
+    expect(key('/w/src', 'ArrowRight')).toBeNull()
+    expect(key('/w/src/index.ts', 'ArrowRight')).toBeNull()
+  })
+
+  test('Left folds an unfolded directory, and from any other row goes to its directory', () => {
+    expect(key('/w/src/auth', 'ArrowLeft')).toEqual({ kind: 'activate', path: '/w/src/auth' })
+    expect(key('/w/src/auth/session.ts', 'ArrowLeft')).toEqual({ kind: 'cursor', path: '/w/src/auth' })
+    expect(key('/w/tests', 'ArrowLeft')).toBeNull()
+  })
+
+  test('Enter activates the cursor\'s row, as a click does', () => {
+    expect(key('/w/src/auth/cookie.ts', 'Enter')).toEqual({ kind: 'activate', path: '/w/src/auth/cookie.ts' })
+    expect(key(null, 'Enter')).toBeNull()
+    expect(key('/w/src', 'a')).toBeNull()
+  })
 })

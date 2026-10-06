@@ -12,7 +12,7 @@ pub use kept::{
     encode_record,
 };
 pub use messages::{
-    ArtifactOwner, ChangeKind, DirEntry, DirectoryFile, FileRead, FileStat, GitChange, GitChanges,
+    ArtifactOwner, ChangeKind, DirEntry, DirectoryFile, FileRead, FileStat, OpenedFile, file_version, GitChange, GitChanges,
     HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine,
     LookPath, Looked, MAX_INSTALLED, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef,
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
@@ -26,7 +26,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 27;
+pub const VERSION: u32 = 28;
 /// The largest frame either end sends.
 pub const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
 /// How much of the start of each stream a job always sends, and how much of
@@ -51,6 +51,11 @@ pub const STREAM_PIPE_MESSAGE_BYTES: usize = 64 * 1024;
 pub const STREAM_PIPE_REASON_BYTES: usize = 123;
 /// The most bytes of one live stdin frame.
 pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
+/// The most paths one `fs_watch_changed` carries: more changed at once
+/// are reported as lost (`runner.md` § Watching files).
+pub const MAX_WATCH_PATHS: usize = 1000;
+/// How long a watch gathers changed paths before it reports them, each once.
+pub const WATCH_GATHER: Duration = Duration::from_millis(100);
 /// The most lines one `log_read` returns.
 pub const LOG_READ_LINES: usize = 1000;
 /// The most of an invocation's standard error a `service_done` carries, in

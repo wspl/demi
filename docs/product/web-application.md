@@ -140,8 +140,8 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   and closing A then shows File. The same holds for a tab another page
   closed or a plugin turned off. When no entry is left, the panel shows its
   first tab, the Change view. A page selects a tab without its user's
-  click only when a plugin's page asks to, as the browser does for a tab the
-  agent shows ([Showing a tab](../browser/live-view.md#showing-a-tab)); it is
+  click only when the tab's kind says that something asked that the user see
+  it, as the browser does for a tab the agent shows ([Showing a tab](../browser/live-view.md#showing-a-tab)); it is
   an ordinary selection and enters the history.
 - **Contents stay.** A tab's content, once shown, stays on the page until
   the tab closes, the panel closes or the panel shows another conversation.
@@ -299,20 +299,24 @@ work allows, and never one per item:
 - **Several uploads run at once,** up to four at a time: dropping a folder
   uploads its files, whose writes make their folders, and makes only its
   empty folders; no listing follows each file: the tree adds each entry it
-  uploaded, with the name and size it sent, when its upload succeeds.
+  uploaded, with the name and size it sent, when its upload succeeds, and the
+  Host's watch then reports the folder, which is listed once for the reports
+  of 100 ms ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
 
 ### Liveness and reconnection
 
-A page holds WebSockets of three kinds to the backend: the synchronization
-channel, a socket for each open conversation, and the stream of each
-[live browser view](../browser/live-view.md). All three tell a quiet socket
+A page holds WebSockets of four kinds to the backend: the synchronization
+channel, a socket for each open conversation, the stream of each
+[live browser view](../browser/live-view.md), and the
+[file watch](web-api.md#file-watch) of the conversation whose files it shows.
+All four tell a quiet socket
 from a dead one by one rule and connect again by another, and one module of
 `web-ui` implements both. For example, a laptop sleeps and its network drops
 without a close. Nothing tells the page: its sockets still look open, a
 conversation would go on showing a turn as running, and a live view would go
 on showing its stream as stalled. The far end of each socket sends a
 heartbeat once it has sent nothing else for a while: the backend on the
-channel and on each conversation socket after 30 seconds
+channel, on each conversation socket and on the file watch after 30 seconds
 ([Order and delivery](../agent/runtime.md#order-and-delivery),
 [Page synchronization](web-api.md#page-synchronization)), and a live view's
 module on its stream after a quarter of a second
@@ -372,7 +376,7 @@ Each synced state follows the copy with its own rule:
 | Model settings | Each summary's `model` | A change names only the part its user changed ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)) |
 | Drafts | Each summary's `draftRevision` | A page that shows the conversation reads the draft when the revision is higher than its own ([Drafts](#drafts)) |
 | Permission requests | Each summary's `permissionRequests` and `permissionsRevision` | The sidebar's needs-you mark follows the count; a page that shows the conversation reads its requests when the revision is newer than its own ([Conversation permissions](web-api.md#conversation-permissions), [Revisions counted in memory](web-api.md#revisions-counted-in-memory)) |
-| Work panel tabs | Each summary's `panelRevision` | A page whose panel is open reads the tabs when the revision is higher than its own, and shows its own changes over them ([Work panel](#work-panel)) |
+| Work panel tabs | Each summary's `panelRevision` | A page that shows the conversation reads the tabs when the revision is higher than its own, with its panel open or closed, since a tab a kind asks to show opens the panel, and shows its own changes over them ([Work panel](#work-panel)) |
 | Preferences | `preferences` | A change shows at once, and the part it changed stays as the user set it until its write is answered |
 | The account, workspaces, devices, providers, subagent settings, the Cloud and each plugin's state | Their parts | The page shows what the backend holds |
 

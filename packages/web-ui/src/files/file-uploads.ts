@@ -1,7 +1,7 @@
 import { reactive } from 'vue'
 import { createId } from '@demicodes/utils'
-import { baseName, joinPath, parentPath, relativePath } from './paths'
-import { FileBrowserError, type FileBrowserEntry, type FileBrowserSource } from './types'
+import { joinPath, relativePath } from './paths'
+import { FileBrowserError, type FileBrowserSource } from './types'
 
 /**
  * What a drop or a pick hands over: a file, or a folder with the folders and
@@ -110,14 +110,6 @@ export interface FileUpload {
 /** What an upload asks of: its files written, its empty folders made, what it replaces deleted. */
 export type UploadSource = Pick<FileBrowserSource, 'upload' | 'createDirectory' | 'remove'>
 
-/**
- * What an upload changed in a directory, as its answers tell it: an entry
- * that is there now, a file landed or a folder made, or a path deleted.
- */
-export type UploadChange =
-  | { kind: 'added'; directory: string; entry: FileBrowserEntry }
-  | { kind: 'removed'; path: string }
-
 export function uploadFiles(upload: FileUpload): UploadFileStep[] {
   return upload.steps.filter((step): step is UploadFileStep => step.kind === 'file')
 }
@@ -148,14 +140,13 @@ interface Run {
  * of it starts. A file of a folder that fails is noted and the folder goes
  * on; a folder that cannot be made, or what it replaces deleted, stops it.
  * A finished upload stays listed until it is dismissed or cleared; a
- * cancelled one goes at once. A tree hears what each answer changed, so it
- * shows the new entries without listing the directory again.
+ * cancelled one goes at once. What each answer changed, the source's write
+ * marks, so the views that show it read it again (`keptSource`).
  */
 export class FileUploads {
   readonly items: FileUpload[] = reactive([])
   readonly #runs = new Map<string, Run>()
   #active = 0
-  readonly #changed = new Set<(change: UploadChange) => void>()
 
   constructor(private readonly source: UploadSource) {}
 
@@ -204,16 +195,6 @@ export class FileUploads {
       if (item.state.phase === 'done' || item.state.phase === 'failed')
         this.#remove(item.id)
     }
-  }
-
-  /**
-   * Calls `listener` with each change an upload's answers make: a file
-   * landed or a folder made, with the folders above it the upload made, and
-   * a path deleted. The returned function stops it.
-   */
-  onChanged(listener: (change: UploadChange) => void): () => void {
-    this.#changed.add(listener)
-    return () => this.#changed.delete(listener)
   }
 
   #remove(id: string): void {
@@ -281,7 +262,6 @@ export class FileUploads {
       step.done = true
       current.running.delete(step)
       report(upload, current)
-      this.#announce(upload, step)
     }, (error: unknown) => {
       // A cancelled upload says nothing more; it has left the list.
       if (signal.aborted)
@@ -313,29 +293,6 @@ export class FileUploads {
       return message === undefined ? [] : [{ path: relativePath(upload.path, step.path), message }]
     })
     upload.state = failures.length === 0 ? { phase: 'done' } : { phase: 'failed', failures }
-  }
-
-  /** Tells the listeners what a step's answer changed. */
-  #announce(upload: FileUpload, step: UploadStep): void {
-    const changes: UploadChange[] = []
-    if (step.kind === 'remove') {
-      changes.push({ kind: 'removed', path: step.path })
-    } else {
-      // The folders between the upload's own place and the step's, which
-      // the step's write made when they were missing.
-      const inUpload = (at: string) => upload.kind === 'folder' && (at === upload.path || at.startsWith(`${upload.path}/`))
-      const folders: string[] = []
-      for (let at = step.kind === 'file' ? parentPath(step.path) : step.path; inUpload(at); at = parentPath(at))
-        folders.unshift(at)
-      for (const folder of folders)
-        changes.push({ kind: 'added', directory: parentPath(folder), entry: { name: baseName(folder), isDirectory: true } })
-      if (step.kind === 'file')
-        changes.push({ kind: 'added', directory: parentPath(step.path), entry: { name: baseName(step.path), isDirectory: false, size: step.file.size } })
-    }
-    for (const change of changes) {
-      for (const listener of this.#changed)
-        listener(change)
-    }
   }
 
   async #take(step: UploadStep, signal: AbortSignal, progress: (sent: number) => void): Promise<void> {

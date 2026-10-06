@@ -13,7 +13,7 @@ use std::future::Future;
 use std::rc::Rc;
 
 use bytes::Bytes;
-use demi_backend_remote_host::{PipeReader, PipeWriter};
+use demi_backend_remote_host::{OpenedRead, PipeReader, PipeWriter};
 use demi_host_interface::{
     ByteRange, FileStat, HostError, WhenExists, WriteOptions,
 };
@@ -49,11 +49,16 @@ pub enum Download {
     NotModified { version: String },
     /// The part's head alone: for a `HEAD`, a range past the end, or an
     /// empty part.
-    Head { stat: FileStat, part: RangeAnswer },
+    Head {
+        stat: FileStat,
+        version: String,
+        part: RangeAnswer,
+    },
     /// The part's bytes as the Host reads them; the edge holds the lease
     /// until it sent the last one.
     Stream {
         stat: FileStat,
+        version: String,
         part: RangeAnswer,
         body: PipeReader,
         lease: Lease,
@@ -107,12 +112,17 @@ impl dyn HostShard + '_ {
             offset: 0,
             length: Some(0),
         });
-        let (stat, mut body) = match waits.wait(host.read_pipe(&request.path, read)).await? {
+        let opened = match waits.wait(host.read_pipe(&request.path, read)).await? {
             Ok(opened) => opened,
             Err(error) if error.code() == Some("EISDIR") => return Ok(Download::NotAFile),
             Err(error) => return Err(error.into()),
         };
-        let version = file_version(&stat);
+        let OpenedRead {
+            stat,
+            version,
+            body,
+        } = opened;
+        let mut body = body;
         if request
             .version
             .as_ref()
@@ -126,17 +136,24 @@ impl dyn HostShard + '_ {
         let part = RangeAnswer::of(header, stat.size);
         let range = match part.range() {
             Some(range) if !request.head && range.length != Some(0) => range,
-            _ => return Ok(Download::Head { stat, part }),
+            _ => {
+                return Ok(Download::Head {
+                    stat,
+                    version,
+                    part,
+                });
+            }
         };
         // A part counted from the end, which the size decides, is read once
         // the size is known.
         if asked.map(|asked| asked.offset) != Some(range.offset) {
-            body = waits.wait(host.read_pipe(&request.path, range)).await??.1;
+            body = waits.wait(host.read_pipe(&request.path, range)).await??.body;
         }
         // The bytes move at the edge; the shard only holds the admission.
         let lease = self.lease_transfer(admitted, open, std::future::pending(), || {});
         Ok(Download::Stream {
             stat,
+            version,
             part,
             body,
             lease,
@@ -306,25 +323,6 @@ impl Drop for TransfersClosed {
     }
 }
 
-/// A file's version as an ETag: its size and modification time.
-pub fn file_version(stat: &FileStat) -> String {
-    format!(
-        "W/\"{:x}-{}\"",
-        stat.size,
-        hexadecimal(stat.modified.as_millisecond())
-    )
-}
-
-/// `value` in hexadecimal, a negative one with a minus sign, as
-/// JavaScript's `toString(16)` writes it.
-fn hexadecimal(value: i64) -> String {
-    if value < 0 {
-        format!("-{:x}", value.unsigned_abs())
-    } else {
-        format!("{value:x}")
-    }
-}
-
 /// Whether `If-None-Match` names `etag`, compared weakly (RFC 9110 § 13.1.2):
 /// the tags are equal once a `W/` prefix is set aside, and `*` names every
 /// version.
@@ -469,8 +467,6 @@ impl RangeAnswer {
 
 #[cfg(test)]
 mod tests {
-    use demi_host_interface::FileKind;
-    use demi_shared_types::Timestamp;
 
     use super::*;
 
@@ -581,24 +577,17 @@ mod tests {
     }
 
     #[test]
-    fn a_version_is_the_size_and_time_and_a_condition_compares_it_weakly() {
-        let stat = FileStat {
-            kind: FileKind::File,
-            mode: 0o644,
-            size: 300_000,
-            modified: Timestamp::from_millisecond(1_790_000_000_123).unwrap(),
-        };
-        let etag = file_version(&stat);
-        assert_eq!(etag, "W/\"493e0-1a0c4506c7b\"");
-        assert!(not_modified(Some(&etag), &etag));
-        assert!(not_modified(Some("\"493e0-1a0c4506c7b\""), &etag));
+    fn a_condition_compares_a_version_weakly() {
+        let etag = "W/\"493e0-1a0c4506c7b\"";
+        assert!(not_modified(Some(etag), etag));
+        assert!(not_modified(Some("\"493e0-1a0c4506c7b\""), etag));
         assert!(not_modified(
             Some("\"other\", W/\"493e0-1a0c4506c7b\""),
-            &etag
+            etag
         ));
-        assert!(not_modified(Some(" * "), &etag));
-        assert!(!not_modified(Some("W/\"493e0-0\""), &etag));
-        assert!(!not_modified(None, &etag));
+        assert!(not_modified(Some(" * "), etag));
+        assert!(!not_modified(Some("W/\"493e0-0\""), etag));
+        assert!(!not_modified(None, etag));
     }
 
     #[tokio::test(flavor = "local", start_paused = true)]

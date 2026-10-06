@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { getCurrentInstance, ref } from 'vue'
+import type { StateEffect } from '@codemirror/state'
 import { drawSelection, highlightActiveLine, highlightActiveLineGutter, keymap, lineNumbers } from '@codemirror/view'
 import { bracketMatching, foldGutter, foldKeymap } from '@codemirror/language'
 import { defaultKeymap } from '@codemirror/commands'
@@ -13,12 +14,21 @@ import { useCodeView } from '../useCodeView'
 
 /**
  * One file's text, read-only: syntax colors by the file's name, folding, and
- * Mod-f to find. Another file or text needs another editor.
+ * Mod-f to find. A new text of the file replaces the old in place; another
+ * file needs another editor, which can open where an earlier one of it was
+ * scrolled to (`scrollTo`, from `left`).
  */
 const props = defineProps<{
   /** The file's path, which selects its language. */
   path: string
   text: string
+  /** Where it opens scrolled to: what an earlier editor of the file said as it went. */
+  scrollTo?: StateEffect<unknown> | null
+}>()
+
+const emit = defineEmits<{
+  /** The editor of the file at `path` goes, scrolled to this. */
+  left: [path: string, snapshot: StateEffect<unknown>]
 }>()
 
 const container = ref<HTMLDivElement>()
@@ -36,7 +46,7 @@ useCodeView(container, props, [
   customScrollbarExtension(),
   searchExtension(getCurrentInstance()?.appContext ?? null),
   keymap.of([...defaultKeymap, ...foldKeymap]),
-])
+], { scrollTo: props.scrollTo, left: (snapshot) => emit('left', props.path, snapshot) })
 </script>
 
 <template>

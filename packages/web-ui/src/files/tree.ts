@@ -141,3 +141,46 @@ export function stickyTreeRows(
   }
   return { paths, offset }
 }
+
+/** What a key does in a tree: move the keyboard cursor to a row, or activate a row as a click would. */
+export type TreeKeyEffect = { kind: 'cursor'; path: string } | { kind: 'activate'; path: string }
+
+/**
+ * A key pressed in a tree whose keyboard cursor is on `cursor` (null for
+ * none yet), as WAI-ARIA's tree does it: Up and Down move the cursor a row,
+ * from the first row when there is none; Home and End to the first and the
+ * last. Right unfolds a folded directory; Left folds an unfolded one, and
+ * from any other row goes to its directory. Enter activates the cursor's
+ * row. Null for a key the tree leaves alone.
+ */
+export function treeKeyEffect(rows: readonly TreeRow[], cursor: string | null, key: string): TreeKeyEffect | null {
+  if (rows.length === 0)
+    return null
+  const index = cursor === null ? -1 : rows.findIndex((row) => row.path === cursor)
+  const row = index < 0 ? null : rows[index]!
+  const to = (at: number): TreeKeyEffect => ({ kind: 'cursor', path: rows[at]!.path })
+  switch (key) {
+    case 'ArrowDown':
+      return to(Math.min(rows.length - 1, index + 1))
+    case 'ArrowUp':
+      return to(Math.max(0, index - 1))
+    case 'Home':
+      return to(0)
+    case 'End':
+      return to(rows.length - 1)
+    case 'ArrowRight':
+      return row?.isDirectory && !row.open ? { kind: 'activate', path: row.path } : null
+    case 'ArrowLeft':
+      if (!row)
+        return null
+      if (row.isDirectory && row.open)
+        return { kind: 'activate', path: row.path }
+      return row.parent !== null && rows.some((entry) => entry.path === row.parent)
+        ? { kind: 'cursor', path: row.parent }
+        : null
+    case 'Enter':
+      return row ? { kind: 'activate', path: row.path } : null
+    default:
+      return null
+  }
+}

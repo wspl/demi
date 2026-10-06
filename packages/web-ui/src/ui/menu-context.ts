@@ -24,6 +24,25 @@ export interface MenuRoot {
 
 export const menuRootKey: InjectionKey<MenuRoot> = Symbol('menuRoot')
 
+/** A row of a Menu whose rows are its slot's rather than `items`: what the keyboard reads and acts on. */
+export interface MenuSlotRow {
+  label: () => string | undefined
+  el: () => HTMLElement | null
+}
+
+/**
+ * How a Menu's keyboard reaches the rows in its slot: each MenuItem
+ * registers itself, shows the focused look while it is `focused`, and marks
+ * the part of its label `highlight` gives (a type-select query's prefix).
+ */
+export interface MenuSlotKeyboard {
+  register: (row: MenuSlotRow) => () => void
+  focused: Readonly<Ref<MenuSlotRow | null>>
+  highlight: (label: string) => readonly number[] | null
+}
+
+export const menuSlotKeyboardKey: InjectionKey<MenuSlotKeyboard> = Symbol('menuSlotKeyboard')
+
 /** Delay before a submenu closes after the pointer leaves its row or panel. */
 export const SUBMENU_CLOSE_DELAY_MS = 120
 

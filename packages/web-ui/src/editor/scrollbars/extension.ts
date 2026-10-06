@@ -2,7 +2,9 @@ import type { EditorState, Text } from '@codemirror/state'
 import { ViewPlugin, type EditorView, type PluginValue, type ViewUpdate } from '@codemirror/view'
 import { getChunks, getOriginalDoc } from '@codemirror/merge'
 import { searchMatches } from '../searchMatches'
-import { mountScrollbarDom } from './dom'
+import type { OverlayScrollbars } from 'overlayscrollbars'
+import { attachScrollbars } from '../../ui/scrollbars'
+import { mountScrollbarRuler, type ScrollbarRuler } from './ruler'
 import { buildScrollbarMarkers, type DiffScrollbarInput, type LineRange } from './markers'
 
 function countLinesInRange(doc: Text, from: number, to: number) {
@@ -85,33 +87,23 @@ function collectSelections(state: EditorState, mapLine: (line: number) => number
     }))
 }
 
+/**
+ * The editor's scrollbars: OverlayScrollbars' on its scroller, as every
+ * scroller of the app has (`ui/scrollbars.ts`), placed in the editor's box,
+ * over the ruler of marks for the selection, the find bar's matches and a
+ * diff's changes.
+ */
 class CustomScrollbarPlugin implements PluginValue {
-  private mounted
+  private readonly ruler: ScrollbarRuler
+  private readonly scrollbars: OverlayScrollbars
   private frame = 0
-  private readonly view: EditorView
-  private readonly onScroll: () => void
-  private lastScrollTop: number
-  private lastScrollLeft: number
 
   constructor(view: EditorView) {
-    this.view = view
-    this.mounted = mountScrollbarDom(view, {
+    this.ruler = mountScrollbarRuler(view, {
       splitDiffLanes: getChunks(view.state) !== null,
     })
-    this.lastScrollTop = view.scrollDOM.scrollTop
-    this.lastScrollLeft = view.scrollDOM.scrollLeft
-    this.onScroll = () => {
-      const nextTop = view.scrollDOM.scrollTop
-      const nextLeft = view.scrollDOM.scrollLeft
-      this.mounted.setScrollActivity({
-        vertical: nextTop !== this.lastScrollTop,
-        horizontal: nextLeft !== this.lastScrollLeft,
-      })
-      this.lastScrollTop = nextTop
-      this.lastScrollLeft = nextLeft
-      this.schedule(view)
-    }
-    view.scrollDOM.addEventListener('scroll', this.onScroll, { passive: true })
+    // After the ruler, so the bars lie over its marks.
+    this.scrollbars = attachScrollbars(view.scrollDOM, 'both', view.dom)
     this.schedule(view)
   }
 
@@ -127,21 +119,19 @@ class CustomScrollbarPlugin implements PluginValue {
       this.frame = 0
       const layout = unifiedLayout(view.state)
       const mapLine = layout?.mapLine ?? ((line: number) => line)
-      this.mounted.update(view, buildScrollbarMarkers({
+      this.ruler.update(view, buildScrollbarMarkers({
         totalLines: layout?.totalLines ?? view.state.doc.lines,
         searches: collectSearchMatches(view.state, mapLine),
         selections: collectSelections(view.state, mapLine),
         diffs: layout?.diffs ?? [],
       }))
-      this.lastScrollTop = view.scrollDOM.scrollTop
-      this.lastScrollLeft = view.scrollDOM.scrollLeft
     })
   }
 
   destroy() {
     if (this.frame) cancelAnimationFrame(this.frame)
-    this.view.scrollDOM.removeEventListener('scroll', this.onScroll)
-    this.mounted.destroy()
+    this.scrollbars.destroy()
+    this.ruler.destroy()
   }
 }
 

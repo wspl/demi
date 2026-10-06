@@ -1765,3 +1765,54 @@ async fn input_written_while_a_command_acquires_its_host_reaches_it_once_it_star
         "{frames:?}"
     );
 }
+
+#[tokio::test(flavor = "local")]
+async fn pages_that_watch_one_path_share_the_runners_watch_which_the_last_one_ends() {
+    use demi_backend_remote_host::WatchUpdate;
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let mut first = host.watch("/work", true).unwrap();
+    let mut second = host.watch("/work", true).unwrap();
+    let id = match link.next().await {
+        Inbound::FsWatch {
+            id,
+            path,
+            recursive,
+        } => {
+            assert_eq!((path.as_str(), recursive), ("/work", true));
+            id
+        }
+        other => panic!("expected the watch, got {other:?}"),
+    };
+    // One watch on the runner for both.
+    assert!(link.try_next().is_none());
+
+    link.send(Outbound::FsWatchReady { id: id.clone() }).await;
+    assert_eq!(first.next().await, WatchUpdate::Ready);
+    assert_eq!(second.next().await, WatchUpdate::Ready);
+    let paths = vec!["/work/a.txt".to_owned()];
+    link.send(Outbound::FsWatchChanged {
+        id: id.clone(),
+        paths: paths.clone(),
+    })
+    .await;
+    assert_eq!(first.next().await, WatchUpdate::Changed(paths.clone()));
+    assert_eq!(second.next().await, WatchUpdate::Changed(paths));
+
+    // A page that comes later hears that the watch runs, without asking
+    // the runner again.
+    let mut third = host.watch("/work", true).unwrap();
+    assert_eq!(third.next().await, WatchUpdate::Ready);
+    drop(first);
+    drop(third);
+    assert!(link.try_next().is_none());
+    drop(second);
+    assert_eq!(link.next().await, Inbound::FsUnwatch { id });
+
+    // The connection's end ends a watch.
+    let mut last = host.watch("/work", false).unwrap();
+    assert!(matches!(link.next().await, Inbound::FsWatch { recursive: false, .. }));
+    link.close().await;
+    assert_eq!(last.next().await, WatchUpdate::Ended);
+}

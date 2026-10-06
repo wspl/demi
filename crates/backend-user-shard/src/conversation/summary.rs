@@ -71,7 +71,6 @@ impl Shard {
             None => false,
         };
         let plugin_revisions = self.plugins().plugin_revisions(&record.id);
-        let working_tree_revision = self.working_tree_revision(&record.id);
         let permissions_revision = self.permission_revisions().of(&record.id);
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision,
@@ -94,7 +93,6 @@ impl Shard {
             draft_revision: record.draft_revision,
             panel_revision: record.panel_revision,
             plugin_revisions,
-            working_tree_revision,
             permission_requests: record.permission_requests,
             permissions_revision,
         })

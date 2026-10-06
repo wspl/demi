@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Diff, Eye, FileOutput } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Diff, Eye, FileOutput, History, RefreshCw } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
 import type { DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
+import RegionNote from '../ui/RegionNote.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
+import { useShowing } from './showing'
 import FilePreview from './FilePreview.vue'
 import FileSummary from './FileSummary.vue'
 import ImagePreview from './ImagePreview.vue'
@@ -131,53 +133,86 @@ type State =
   | { phase: 'failed'; message: string }
   | { phase: 'unavailable' }
 
-const state = ref<State>({ phase: 'idle' })
+// A working-tree file's sides, as the change set keeps them: a file shown a
+// moment ago shows at once, and sides read again replace the diff in place.
+const workingSides = useShowing(
+  () => mode.value === 'uncommitted' && !mediaPair.value ? workingTree.value : null,
+  () => selectedChange.value?.path,
+  (source, path) => source.showSides(path),
+)
+
+/** The working-tree side's state, as the kept sides say. */
+const workingState = computed<State>(() => {
+  if (!selectedChange.value)
+    return { phase: 'idle' }
+  if (mediaPair.value)
+    return { phase: 'media' }
+  const entry = workingSides.entry.value
+  if (!entry)
+    return { phase: 'loading' }
+  if (entry.value !== undefined)
+    return { phase: 'ready', sides: entry.value }
+  const failure = entry.failure
+  if (!failure)
+    return { phase: 'loading' }
+  // A side that is not text: each version as a card of its own.
+  if (failure.kind === 'binary' || failure.kind === 'too-large')
+    return { phase: 'binary' }
+  return { phase: 'failed', message: failure.message ?? 'The change could not be read.' }
+})
+
+/** Why the last read of the sides shown failed, while the sides it had stay. */
+const staleBecause = computed(() => {
+  const entry = mode.value === 'uncommitted' ? workingSides.entry.value : null
+  return entry?.value !== undefined && entry.failure ? entry.failure.message ?? 'The read failed.' : null
+})
+
+// A call's retained edit, read from its copies, which never change.
+const callState = ref<State>({ phase: 'idle' })
 let controller: AbortController | null = null
 
-async function read(): Promise<void> {
+async function readCall(): Promise<void> {
   controller?.abort()
   controller = null
-  const path = selectedChange.value?.path
-  if (path === undefined) {
-    state.value = { phase: 'idle' }
+  const shown = call.value
+  if (!shown || !selectedChange.value) {
+    callState.value = { phase: 'idle' }
     return
   }
   // An edit without copies has no diff to show.
-  if (call.value && !segments.value[edit.value]?.copies) {
-    state.value = { phase: 'unavailable' }
-    return
-  }
-  if (mediaPair.value) {
-    state.value = { phase: 'media' }
+  if (!segments.value[edit.value]?.copies) {
+    callState.value = { phase: 'unavailable' }
     return
   }
   const current = new AbortController()
   controller = current
-  state.value = { phase: 'loading' }
+  callState.value = { phase: 'loading' }
   try {
-    const result = call.value
-      ? await call.value.read(edit.value, current.signal)
-      : await workingTree.value.read(path, current.signal)
+    const result = await shown.read(edit.value, current.signal)
     if (current.signal.aborted)
       return
-    state.value = result === null ? { phase: 'unavailable' } : { phase: 'ready', sides: result }
+    callState.value = result === null ? { phase: 'unavailable' } : { phase: 'ready', sides: result }
   } catch (error) {
     if (current.signal.aborted)
       return
-    // A side that is not text: each version as a card of its own.
     if (error instanceof FileBrowserError && (error.kind === 'binary' || error.kind === 'too-large')) {
-      state.value = { phase: 'binary' }
+      callState.value = { phase: 'binary' }
       return
     }
-    state.value = { phase: 'failed', message: error instanceof Error ? error.message : String(error) }
+    callState.value = { phase: 'failed', message: error instanceof Error ? error.message : String(error) }
   }
 }
 
-watch(
-  () => [mode.value === 'conversation' ? call.value : workingTree.value, selectedChange.value, edit.value, mediaPair.value],
-  read,
-  { immediate: true },
-)
+watch(() => [call.value, edit.value], readCall, { immediate: true })
+
+const state = computed<State>(() => mode.value === 'conversation' ? callState.value : workingState.value)
+
+function retry(): void {
+  if (mode.value === 'conversation')
+    void readCall()
+  else
+    workingSides.retry()
+}
 
 const frame = ref<InstanceType<typeof TreeFrame> | null>(null)
 
@@ -230,63 +265,83 @@ onBeforeUnmount(() => {
         </Tooltip>
       </div>
     </template>
-    <PreviewPair
-      v-if="state.phase === 'media' && mediaPair && contents && changes.uncommitted.committed"
-      :key="`${committedPath}:${absolutePath}`"
-      v-bind="labels"
-    >
-      <template v-if="hasBefore" #before>
-        <FilePreview
-          :path="committedPath"
-          :kind="mediaPair"
-          :contents="changes.uncommitted.committed"
-          :too-large="COMMITTED_TOO_LARGE"
-        />
-      </template>
-      <template v-if="hasAfter" #after>
-        <FilePreview :path="absolutePath" :kind="mediaPair" :contents="contents" />
-      </template>
-    </PreviewPair>
-    <PreviewPair v-else-if="state.phase === 'binary'" :key="`${committedPath}:${absolutePath}`" v-bind="labels">
-      <template v-if="hasBefore" #before>
-        <FileSummary :path="committedPath" :contents="changes.uncommitted.committed" :too-large="COMMITTED_TOO_LARGE" />
-      </template>
-      <template v-if="hasAfter" #after>
-        <FileSummary :path="absolutePath" :contents="contents" />
-      </template>
-    </PreviewPair>
-    <PreviewPair
-      v-else-if="state.phase === 'ready' && sourceView && presentation === 'preview'"
-      :key="`${call?.commandId ?? mode}:${absolutePath}:${edit}`"
-      v-bind="labels"
-    >
-      <template v-if="hasBefore" #before>
-        <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" @open="opens !== false && emit('open', $event)" />
-        <ImagePreview v-else :src="svgImageUrl(state.sides.original)" :name="baseName(committedPath)" />
-      </template>
-      <template v-if="hasAfter" #after>
-        <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" @open="opens !== false && emit('open', $event)" />
-        <ImagePreview v-else :src="svgImageUrl(state.sides.modified)" :name="baseName(absolutePath)" />
-      </template>
-    </PreviewPair>
-    <!-- A diff is built for one pair of texts: a new file is a new editor. -->
-    <DiffEditor
-      v-else-if="state.phase === 'ready' && selectedChange"
-      :key="`${call?.commandId ?? mode}:${selectedChange.path}:${edit}`"
-      :original="state.sides.original"
-      :modified="state.sides.modified"
-      :path="selectedChange.path"
-    />
-    <RegionStatus
-      v-else-if="state.phase !== 'unavailable'"
-      class="h-full"
-      :busy="state.phase === 'loading'"
-      :failed="state.phase === 'failed'"
-      :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
-      :detail="state.phase === 'failed' ? state.message : null"
-      :action="state.phase === 'failed' ? 'Retry' : undefined"
-      @action="read"
-    />
+    <div class="flex h-full min-h-0 flex-col">
+      <RegionNote
+        v-if="mode === 'uncommitted' && workingTree.watch?.unavailable"
+        :icon="History"
+        label="Showing files as they were last read."
+        :detail="workingTree.watch.unavailable"
+        action="Refresh"
+        @action="workingTree.watch.refresh()"
+      />
+      <RegionNote
+        v-if="staleBecause"
+        :icon="RefreshCw"
+        label="Could not refresh this change."
+        :detail="staleBecause"
+        action="Retry"
+        @action="retry"
+      />
+      <div class="min-h-0 flex-1">
+      <PreviewPair
+        v-if="state.phase === 'media' && mediaPair && contents && changes.uncommitted.committed"
+        :key="`${committedPath}:${absolutePath}`"
+        v-bind="labels"
+      >
+        <template v-if="hasBefore" #before>
+          <FilePreview
+            :path="committedPath"
+            :kind="mediaPair"
+            :contents="changes.uncommitted.committed"
+            :too-large="COMMITTED_TOO_LARGE"
+          />
+        </template>
+        <template v-if="hasAfter" #after>
+          <FilePreview :path="absolutePath" :kind="mediaPair" :contents="contents" />
+        </template>
+      </PreviewPair>
+      <PreviewPair v-else-if="state.phase === 'binary'" :key="`${committedPath}:${absolutePath}`" v-bind="labels">
+        <template v-if="hasBefore" #before>
+          <FileSummary :path="committedPath" :contents="changes.uncommitted.committed" :too-large="COMMITTED_TOO_LARGE" />
+        </template>
+        <template v-if="hasAfter" #after>
+          <FileSummary :path="absolutePath" :contents="contents" />
+        </template>
+      </PreviewPair>
+      <PreviewPair
+        v-else-if="state.phase === 'ready' && sourceView && presentation === 'preview'"
+        :key="`${call?.commandId ?? mode}:${absolutePath}:${edit}`"
+        v-bind="labels"
+      >
+        <template v-if="hasBefore" #before>
+          <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" @open="opens !== false && emit('open', $event)" />
+          <ImagePreview v-else :src="svgImageUrl(state.sides.original)" :name="baseName(committedPath)" />
+        </template>
+        <template v-if="hasAfter" #after>
+          <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" @open="opens !== false && emit('open', $event)" />
+          <ImagePreview v-else :src="svgImageUrl(state.sides.modified)" :name="baseName(absolutePath)" />
+        </template>
+      </PreviewPair>
+      <!-- A diff is built for one pair of texts: a new file is a new editor. -->
+      <DiffEditor
+        v-else-if="state.phase === 'ready' && selectedChange"
+        :key="`${call?.commandId ?? mode}:${selectedChange.path}:${edit}`"
+        :original="state.sides.original"
+        :modified="state.sides.modified"
+        :path="selectedChange.path"
+      />
+      <RegionStatus
+        v-else-if="state.phase !== 'unavailable'"
+        class="h-full"
+        :busy="state.phase === 'loading'"
+        :failed="state.phase === 'failed'"
+        :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
+        :detail="state.phase === 'failed' ? state.message : null"
+        :action="state.phase === 'failed' ? 'Retry' : undefined"
+        @action="retry"
+      />
+      </div>
+    </div>
     <template v-if="treeAvailable" #tree>
       <ChangeTree
         :source="workingTree"

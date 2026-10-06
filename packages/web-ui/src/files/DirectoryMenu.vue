@@ -1,22 +1,23 @@
 <script setup lang="ts">
-import { h, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, h } from 'vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import FileIcon from './FileIcon.vue'
-import { FileBrowserError, type FileBrowserEntry, type FileBrowserFailure, type FileBrowserSource } from './types'
+import type { FileBrowserEntry, FileBrowserSource } from './types'
 import { isHiddenName, joinPath } from './paths'
 import { DEFAULT_SORT, sortEntries } from './file-browser-state'
+import { useShowing } from './showing'
 
 /**
  * One directory as a menu: its entries, directories first, each directory
  * opening its own entries as a submenu, so a breadcrumb can offer the
  * files beside the one shown and everything under them. Choosing a file
- * reports it; a directory only unfolds. The listing loads when the menu
- * shows and is dropped when it goes.
+ * reports it; a directory only unfolds. The listing shows while the menu
+ * does, as the source keeps it.
  */
 const props = defineProps<{
-  source: Pick<FileBrowserSource, 'list'>
+  source: Pick<FileBrowserSource, 'showListing'>
   /** The directory listed. */
   path: string
   /** The entry on the way to what is shown, marked as current. */
@@ -27,42 +28,11 @@ const emit = defineEmits<{
   pick: [path: string]
 }>()
 
-const entries = ref<FileBrowserEntry[]>([])
-const loading = ref(true)
-const failure = ref<FileBrowserFailure | null>(null)
-let controller: AbortController | null = null
-
-async function load(): Promise<void> {
-  controller?.abort()
-  const current = new AbortController()
-  controller = current
-  loading.value = true
-  failure.value = null
-  try {
-    const list = await props.source.list(props.path, current.signal)
-    if (!current.signal.aborted) {
-      // A menu has no sort controls: folders first, then names.
-      entries.value = sortEntries(list, DEFAULT_SORT)
-    }
-  } catch (error) {
-    if (current.signal.aborted) {
-      return
-    }
-    failure.value = error instanceof FileBrowserError
-      ? { kind: error.kind, message: error.message }
-      : { kind: 'other', message: error instanceof Error ? error.message : String(error) }
-  } finally {
-    if (!current.signal.aborted) {
-      loading.value = false
-    }
-  }
-}
-
-watch(() => [props.source, props.path], load, { immediate: true })
-
-onBeforeUnmount(() => {
-  controller?.abort()
-})
+const shown = useShowing(() => props.source, () => props.path, (source, path) => source.showListing(path))
+// A menu has no sort controls: folders first, then names.
+const entries = computed(() => sortEntries(shown.entry.value?.value ?? [], DEFAULT_SORT))
+const loading = computed(() => shown.entry.value?.value === undefined && shown.entry.value?.failure == null)
+const failure = computed(() => shown.entry.value?.value === undefined ? shown.entry.value?.failure ?? null : null)
 
 function iconFor(entry: FileBrowserEntry) {
   return () => h(FileIcon, { name: entry.name, isDirectory: entry.isDirectory, size: 16 })

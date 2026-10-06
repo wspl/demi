@@ -466,10 +466,10 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="ScrollArea"
-        note="The bar takes no room: a thumb drawn over the content, shown on hover or while scrolling, draggable."
+        note="Every scrolling region is a ScrollArea; a scroller another library owns (the code editor's, a rendered document's code block, table or equation) gets the same bar through attachScrollbars. The bar floats over the content and takes no room on any system, so padding stays even whether or not the content overflows. It shows while the pointer is over that scroller, not one around it, while it scrolls and while its thumb is dragged, then hides; a click beside the thumb moves a page. A region scrolls vertically unless it says horizontal or both, and clips the other axis. Only a strip that scrolls with no bar at all (a tab row, a segmented control, the composer) hides it."
       >
         <div class="specimen-row">
-          <GallerySpecimen variant="overflowing">
+          <GallerySpecimen variant="vertical">
             <ScrollArea
               class="h-40 w-64 rounded-md ring-1 ring-line"
               viewport-class="flex flex-col gap-1 p-2"
@@ -479,6 +479,34 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                 :key="n"
                 class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover"
               >Row {{ n }}</div>
+            </ScrollArea>
+          </GallerySpecimen>
+          <GallerySpecimen variant="horizontal">
+            <ScrollArea
+              axis="x"
+              class="h-40 w-64 rounded-md ring-1 ring-line"
+              viewport-class="flex gap-1 p-2"
+            >
+              <div
+                v-for="n in 12"
+                :key="n"
+                class="flex w-20 shrink-0 items-center justify-center rounded-md bg-sunken text-chrome text-fg"
+              >Column {{ n }}</div>
+            </ScrollArea>
+          </GallerySpecimen>
+          <GallerySpecimen variant="both">
+            <ScrollArea
+              axis="both"
+              class="h-40 w-64 rounded-md ring-1 ring-line"
+              viewport-class="p-2"
+            >
+              <div class="grid w-max grid-cols-[repeat(10,5rem)] gap-1">
+                <div
+                  v-for="n in 100"
+                  :key="n"
+                  class="flex h-7 items-center justify-center rounded-md bg-sunken text-chrome text-fg"
+                >Cell {{ n }}</div>
+              </div>
             </ScrollArea>
           </GallerySpecimen>
           <GallerySpecimen variant="fits">
@@ -491,6 +519,29 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                 :key="n"
                 class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover"
               >Row {{ n }}</div>
+            </ScrollArea>
+          </GallerySpecimen>
+          <GallerySpecimen variant="nested">
+            <ScrollArea
+              class="h-40 w-64 rounded-md ring-1 ring-line"
+              viewport-class="flex flex-col gap-2 p-2"
+            >
+              <div class="px-2 text-chrome text-fg-muted">Outer</div>
+              <ScrollArea
+                class="h-20 shrink-0 rounded-md ring-1 ring-line"
+                viewport-class="flex flex-col gap-1 p-1"
+              >
+                <div
+                  v-for="n in 8"
+                  :key="n"
+                  class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover"
+                >Inner {{ n }}</div>
+              </ScrollArea>
+              <div
+                v-for="n in 8"
+                :key="n"
+                class="flex h-7 shrink-0 items-center rounded-md px-2 text-chrome text-fg hover:bg-hover"
+              >Outer {{ n }}</div>
             </ScrollArea>
           </GallerySpecimen>
         </div>

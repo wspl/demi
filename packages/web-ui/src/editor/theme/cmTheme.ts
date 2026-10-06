@@ -26,10 +26,8 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
     '.cm-scroller': {
       fontSize: '13px',
       lineHeight: '20px',
-      scrollbarWidth: 'none',
       boxSizing: 'border-box',
     },
-    '.cm-scroller::-webkit-scrollbar': { display: 'none' },
     '&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection': {
       backgroundColor: p.selection,
     },
@@ -56,50 +54,17 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
     // The find bar draws its own background and border.
     '.cm-panels': { backgroundColor: 'transparent', color: 'inherit' },
     '.cm-panels.cm-panels-bottom': { borderTop: 'none' },
-    '[data-editor-scrollbar="vertical"]': {
+    // The ruler of marks under the vertical scrollbar (`scrollbars/ruler.ts`).
+    '[data-scrollbar-markers="vertical"], [data-scrollbar-markers="vertical-split"]': {
       position: 'absolute',
       top: '0',
-      right: '0',
-      width: '10px',
+      right: '1px',
+      width: '8px',
       height: '100%',
-      // No track: only the thumb and its markers show over the text.
-      backgroundColor: 'transparent',
-      pointerEvents: 'auto',
-      zIndex: '3',
-      opacity: '1',
-      isolation: 'isolate',
+      pointerEvents: 'none',
     },
-    '[data-editor-scrollbar="horizontal"]': {
-      position: 'absolute',
-      left: '0',
-      bottom: '0',
-      height: '10px',
-      width: '100%',
-      // No track: only the thumb and its markers show over the text.
-      backgroundColor: 'transparent',
-      pointerEvents: 'auto',
-      zIndex: '3',
-      opacity: '1',
-      isolation: 'isolate',
-    },
-    '[data-editor-scrollbar][data-scrollbar-scrollable="false"]': {
+    '[data-scrollbar-markers][data-scrollbar-scrollable="false"]': {
       opacity: '0',
-    },
-    '[data-scrollbar-markers="vertical"]': {
-      position: 'absolute',
-      top: '0',
-      right: '1px',
-      width: '8px',
-      height: '100%',
-      pointerEvents: 'none',
-    },
-    '[data-scrollbar-markers="vertical-split"]': {
-      position: 'absolute',
-      top: '0',
-      right: '1px',
-      width: '8px',
-      height: '100%',
-      pointerEvents: 'none',
     },
     '[data-scrollbar-markers="vertical-left"], [data-scrollbar-markers="vertical-right"]': {
       position: 'absolute',
@@ -112,35 +77,6 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
     },
     '[data-scrollbar-markers="vertical-right"]': {
       right: '0',
-    },
-    // The thumb is the app's ScrollArea thumb: 6px, the overlay hue at 12%,
-    // 25% under the pointer, fading over 250ms.
-    '[data-scrollbar-thumb="vertical"], [data-scrollbar-thumb="horizontal"]': {
-      position: 'absolute',
-      borderRadius: '999px',
-      backgroundColor: 'color-mix(in srgb, var(--color-overlay) 12%, transparent)',
-      opacity: '0',
-      pointerEvents: 'auto',
-      transition: 'opacity 250ms ease-out, background-color 250ms ease-out',
-    },
-    '[data-editor-scrollbar][data-scrollbar-visible="true"] [data-scrollbar-thumb]': {
-      opacity: '1',
-    },
-    '[data-scrollbar-thumb]:hover': {
-      backgroundColor: 'color-mix(in srgb, var(--color-overlay) 25%, transparent)',
-    },
-    '[data-editor-scrollbar][data-scrollbar-scrollable="false"] [data-scrollbar-thumb]': {
-      opacity: '0',
-    },
-    '[data-scrollbar-thumb="vertical"]': {
-      top: '0',
-      left: '2px',
-      width: '6px',
-    },
-    '[data-scrollbar-thumb="horizontal"]': {
-      top: '2px',
-      left: '0',
-      height: '6px',
     },
     '[data-editor-scrollbar-marker="selection"]': {
       backgroundColor: 'var(--color-on-accent)',

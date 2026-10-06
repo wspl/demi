@@ -1,9 +1,20 @@
 <script setup lang="ts" generic="R extends Row">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
+import { useTypeSelect } from '../composables/useTypeSelect'
 import DropOutline from '../ui/DropOutline.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
+import TypeSelectHint from '../ui/TypeSelectHint.vue'
 import TreeRow from './TreeRow.vue'
-import { TREE_ROW_PITCH_PX, TREE_ROW_PX, revealTreeRow, stickyTreeRows, treeBlock, type TreeDropTarget, type TreeRow as Row } from './tree'
+import {
+  TREE_ROW_PITCH_PX,
+  TREE_ROW_PX,
+  revealTreeRow,
+  stickyTreeRows,
+  treeBlock,
+  treeKeyEffect,
+  type TreeDropTarget,
+  type TreeRow as Row
+} from './tree'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
@@ -24,6 +35,13 @@ import type { SentenceText } from '../ui/ui-text'
  * directory row with the rows it holds, its pinned copies too, or the whole
  * tree. The host follows the drag itself and asks which row an event
  * happened in (`rowAt`).
+ *
+ * The tree takes the keyboard, focused by Tab or by a click on a row. A
+ * cursor marks the row the keys act on, starting at the selected row: Up,
+ * Down, Home and End move it, Right unfolds a folded directory, Left folds
+ * an unfolded one or goes to the directory a row is in, and Enter activates
+ * its row as a click does. Typing a name moves the cursor to the first row
+ * shown that starts with it (`useTypeSelect`), opening nothing.
  */
 const props = defineProps<{
   rows: readonly R[]
@@ -49,7 +67,8 @@ defineSlots<{
   /** After the caption, at the row's end. */
   captionTrailing?(): unknown
   mark?(props: { row: R }): unknown
-  name?(props: { row: R }): unknown
+  /** `highlight`: the letters of the name to mark, as a type-select query's prefix. */
+  name?(props: { row: R; highlight: readonly number[] | undefined }): unknown
   trailing?(props: { row: R }): unknown
   empty?(): unknown
   /** Under the last row, when there is something to say about the list itself. */
@@ -191,8 +210,67 @@ function revealRow(path: string): void {
  * rest there instead, once the rows have changed.
  */
 function activatePinned(row: R): void {
-  emit('activate', row)
+  activateRow(row)
   void nextTick(() => revealRow(row.path))
+}
+
+// The keyboard: the row the keys act on, by path; until a key or a click
+// moves it, or once its row has gone, the selected row stands in.
+const treeEl = ref<HTMLElement | null>(null)
+const treeId = useId()
+const focused = ref(false)
+const cursor = ref<string | null>(null)
+const cursorPath = computed(() => {
+  const has = (path: string | null) => path !== null && props.rows.some((row) => row.path === path)
+  if (has(cursor.value))
+    return cursor.value
+  return has(props.selected) ? props.selected : null
+})
+const cursorIndex = computed(() => props.rows.findIndex((row) => row.path === cursorPath.value))
+
+function moveCursor(path: string): void {
+  cursor.value = path
+  void nextTick(() => revealRow(path))
+}
+
+const typeSelect = useTypeSelect({
+  names: () => props.rows.map((row) => row.name),
+  select: (index) => moveCursor(props.rows[index]!.path),
+})
+
+/** The letters to mark on a row's name: the typed prefix, on the cursor's row only. */
+function highlightOf(row: R): readonly number[] | undefined {
+  return row.path === cursorPath.value ? (typeSelect.prefix(row.name) ?? undefined) : undefined
+}
+
+/** A click on a row, listed or pinned, or Enter on it: the tree takes the keyboard there, and the row activates. */
+function activateRow(row: R): void {
+  cursor.value = row.path
+  treeEl.value?.focus({ preventScroll: true })
+  emit('activate', row)
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  // The tree's own keys; a control a slot put in a row keeps its own.
+  if (event.target !== event.currentTarget)
+    return
+  if (typeSelect.keydown(event)) {
+    event.preventDefault()
+    return
+  }
+  if (event.altKey || event.metaKey || event.ctrlKey)
+    return
+  const effect = treeKeyEffect(props.rows, cursorPath.value, event.key)
+  if (!effect)
+    return
+  event.preventDefault()
+  if (effect.kind === 'cursor') {
+    moveCursor(effect.path)
+    return
+  }
+  const row = props.rows.find((entry) => entry.path === effect.path)
+  if (row)
+    activateRow(row)
 }
 
 /** Moves the tree by `px`, for a host that sets up a scrolled state. */
@@ -255,7 +333,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
             @contextmenu.stop="emit('menu', row, $event)"
           >
             <template #mark><slot name="mark" :row="row" /></template>
-            <template #name><slot name="name" :row="row" /></template>
+            <template #name><slot name="name" :row="row" :highlight="undefined" /></template>
             <template #trailing><slot name="trailing" :row="row" /></template>
           </TreeRow>
           <div v-if="dropPaths.has(row.path)" class="pointer-events-none absolute inset-0 bg-drop-target" />
@@ -266,20 +344,33 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
     </div>
     <!-- The caption's room plus one gap; the pinned copy above covers it. -->
     <div class="h-[29px] shrink-0" aria-hidden="true" />
-    <div role="tree" :aria-label="caption" class="flex min-h-full flex-col gap-px">
+    <div
+      ref="treeEl"
+      role="tree"
+      :aria-label="caption"
+      :aria-activedescendant="cursorIndex >= 0 ? `${treeId}-${cursorIndex}` : undefined"
+      tabindex="0"
+      class="flex min-h-full flex-col gap-px outline-none"
+      @keydown="onKeydown"
+      @focus="focused = true"
+      @blur="focused = false"
+    >
       <TreeRow
-        v-for="row in rows"
+        v-for="(row, index) in rows"
+        :id="`${treeId}-${index}`"
         :key="row.path"
         :ref="(el) => bindRow(row.path, el)"
         :row="row"
         :selected="row.path === selected && !selectedUnderStack"
         :menu-open="row.path === menuRow"
+        :cursor="focused && index === cursorIndex"
+        :highlight="highlightOf(row)"
         :tooltip="tooltip?.(row)"
-        @activate="emit('activate', row)"
+        @activate="activateRow(row)"
         @contextmenu.stop="emit('menu', row, $event)"
       >
         <template #mark><slot name="mark" :row="row" /></template>
-        <template #name><slot name="name" :row="row" /></template>
+        <template #name><slot name="name" :row="row" :highlight="highlightOf(row)" /></template>
         <template #trailing><slot name="trailing" :row="row" /></template>
       </TreeRow>
       <slot v-if="rows.length === 0" name="empty" />
@@ -297,5 +388,6 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
     <div v-if="dropTarget?.kind === 'tree'" class="pointer-events-none absolute inset-1 z-[1] rounded-md bg-drop-target">
       <DropOutline radius="6px" />
     </div>
+    <TypeSelectHint :query="typeSelect.query.value" :matched="typeSelect.matched.value" />
   </ScrollArea>
 </template>

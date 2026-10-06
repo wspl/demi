@@ -1,9 +1,10 @@
-//! A socket to a page, which the shard serves: the synchronization channel or
-//! a conversation socket (`backend.md` § Page synchronization). Both send
-//! their protocol's heartbeat once they have sent nothing else for the
+//! A socket to a page: the synchronization channel and the conversation
+//! sockets, which the shard serves (`backend.md` § Page synchronization), and
+//! the file watch, which the edge relays (`web-api.md` § File watch). Each
+//! sends its protocol's heartbeat once it has sent nothing else for the
 //! heartbeat interval, so that the page can tell a quiet socket from one that
 //! died without a close (`web-application.md` § Liveness and reconnection),
-//! and both end with a close frame that a page which stopped reading cannot
+//! and each ends with a close frame that a page which stopped reading cannot
 //! hold up (`backend.md` § Startup and shutdown).
 
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
@@ -14,7 +15,7 @@ use tokio::time::{Instant, Sleep};
 use crate::tuning::PageTuning;
 
 /// The sending half of a socket to a page, which knows when it last sent.
-pub(crate) struct PageSocket {
+pub struct PageSocket {
     sink: SplitSink<WebSocket, Message>,
     tuning: PageTuning,
     /// When the socket last sent a message, or was opened.
@@ -23,7 +24,7 @@ pub(crate) struct PageSocket {
 
 /// A send failed: the page closed the socket, or it broke.
 #[derive(Debug)]
-pub(crate) struct PageGone;
+pub struct PageGone;
 
 impl PageSocket {
     pub fn new(sink: SplitSink<WebSocket, Message>, tuning: PageTuning) -> Self {
