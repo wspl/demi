@@ -230,7 +230,7 @@ defineExpose({
       />
       <div
         v-else
-        class="w-full pt-2"
+        class="w-full px-[var(--session-gutter,0px)] pt-2"
         :style="{ paddingBottom: `${props.bottomOffset + COMPOSER_CLEARANCE_PX}px` }"
       >
         <div class="relative w-full" :style="{ height: `${totalSize}px` }">
