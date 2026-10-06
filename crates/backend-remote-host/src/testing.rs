@@ -131,6 +131,12 @@ impl LinkPolicy for CommandPolicy {
         *next += u64::from(count);
         Box::pin(async move { Ok(first) })
     }
+    fn direct_stream(
+        &self,
+        _: String,
+    ) -> LocalBoxFuture<'static, Result<demi_shared_gates::GateLease, String>> {
+        Box::pin(async { Err("direct streams are not available".into()) })
+    }
 }
 
 /// A device whose runner is the test: connections to it are [`TestLink`]s.

@@ -217,6 +217,14 @@ impl ArtifactCache {
         });
     }
 
+    /// Whether the cache holds the file `artifact`, so that its install
+    /// fetches nothing. One whose metadata shows damage is not held: its
+    /// install reports the damage.
+    pub async fn holds_file(&self, artifact: &PackageArtifact) -> bool {
+        let destination = self.root.join(&artifact.sha256);
+        matches!(cached(&destination, artifact).await, Ok(Some(_)))
+    }
+
     /// The artifacts of the line `name` of `package` this cache installed,
     /// from a download or the image, the newest install first.
     pub async fn installed(

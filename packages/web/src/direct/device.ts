@@ -109,6 +109,22 @@ export class DeviceDirect {
     peer.close()
   }
 
+  /**
+   * The backend closed the peer, since the user turned a plugin on or off:
+   * the choice is `relay`, and an attempt with a new introduction starts at
+   * once, in place of one that runs with the old.
+   */
+  reintroduce(): void {
+    this.attempt?.abort()
+    this.attempt = null
+    const peer = this.peer
+    if (peer) {
+      this.lost(peer)
+      peer.close()
+    }
+    this.tryNow()
+  }
+
   /** The page no longer uses the device: its peer closes, and nothing tries again. */
   stop(): void {
     this.stopped = true

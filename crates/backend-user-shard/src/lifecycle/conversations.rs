@@ -169,6 +169,7 @@ mod tests {
 
     use super::*;
     use crate::services::Services;
+    use crate::shard::PlayedRunner;
     use crate::shard::{ShardPlacement, ShardPool};
     use crate::tuning::LifecycleTuning;
     use demi_backend_database::accounts::TokenHash;
@@ -176,7 +177,7 @@ mod tests {
     use demi_backend_database::conversation_index::{
         AttachedHostRecord, ConversationChange, Creation, RecordChange,
     };
-    use demi_runner_protocol::wire::RunnerPlatform;
+    use demi_runner_protocol::wire::{Outbound, RunnerPlatform};
 
     const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -235,18 +236,19 @@ mod tests {
 
     /// Connects each device through a runner the test plays, which records
     /// the releases it answers.
-    fn runners(shard: &Rc<Shard>, devices: &[DeviceId]) -> Released {
+    fn runners(shard: &Rc<Shard>, devices: &[DeviceId]) -> (Released, Vec<PlayedRunner>) {
         let released = Released::new(Vec::new());
+        let mut played = Vec::new();
         for device in devices {
             let (log, id) = (released.clone(), device.clone());
-            shard.play_runner_for_tests(device, "/home/ana", move |_| {
+            played.push(shard.play_runner_for_tests(device, "/home/ana", move |_| {
                 let (log, id) = (log.clone(), id.clone());
                 Box::pin(
                     async move { log.send_modify(|released| released.push((id, Instant::now()))) },
                 )
-            });
+            }));
         }
-        released
+        (released, played)
     }
 
     /// Waits until the runners answered `count` releases.
@@ -288,7 +290,7 @@ mod tests {
             .of(&owner)
             .call(move |shard, _| async move {
                 let id = ConversationId::try_from(ID).unwrap();
-                let released = runners(&shard, &devices);
+                let (released, _) = runners(&shard, &devices);
                 let [primary, attached] = [devices[0].clone(), devices[1].clone()];
                 shard.transition(&id, on(&primary)).await.unwrap();
                 let attach = RecordChange::Attach(AttachedHostRecord {
@@ -329,6 +331,41 @@ mod tests {
         pool.close().await;
     }
 
+    // Three windows of real time: a direct stream stays open for two, and
+    // the release comes a full window after it closed.
+    #[tokio::test(flavor = "local")]
+    async fn a_direct_stream_keeps_the_conversation_from_its_release_until_it_closes() {
+        let data = tempfile::tempdir().unwrap();
+        let (services, owner, devices) = fixture(data.path(), &["laptop"]).await;
+        let pool = ShardPool::start(ShardPlacement::Inline, services)
+            .await
+            .unwrap();
+        pool.shards()
+            .of(&owner)
+            .call(move |shard, _| async move {
+                let id = ConversationId::try_from(ID).unwrap();
+                let (released, played) = runners(&shard, &devices);
+                shard.transition(&id, on(&devices[0])).await.unwrap();
+                // Only the page's direct stream reaches the device: nothing
+                // the backend admitted started the idle watch.
+                let stream = |open| Outbound::DirectStream {
+                    conversation: ID.to_owned(),
+                    open,
+                };
+                played[0].say(&stream(true)).await;
+                tokio::time::sleep(WINDOW * 2).await;
+                assert_eq!(released.borrow().len(), 0, "an open direct stream is activity");
+                let closed = Instant::now();
+                played[0].say(&stream(false)).await;
+                until_released(&released, 1).await;
+                let at = released.borrow()[0].1;
+                assert!(at - closed >= WINDOW, "{:?}", at - closed);
+            })
+            .await
+            .unwrap();
+        pool.close().await;
+    }
+
     // A window and a half of real time: the switch comes half a window after
     // the activity, and the release it leads to a full window after it.
     #[tokio::test(flavor = "local")]
@@ -343,7 +380,7 @@ mod tests {
             .of(&owner)
             .call(move |shard, _| async move {
                 let id = ConversationId::try_from(ID).unwrap();
-                let released = runners(&shard, &devices);
+                let (released, _) = runners(&shard, &devices);
                 let [old, new] = [devices[0].clone(), devices[1].clone()];
                 shard.transition(&id, on(&old)).await.unwrap();
                 let operate = async || {

@@ -5,7 +5,6 @@
 //! heartbeat tests pause the clock.
 
 mod operations;
-mod page;
 
 use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
@@ -23,7 +22,7 @@ use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
 use operations::Fake;
-use page::{Heard, Page};
+use demi_runner_direct::testing::{Heard, Page};
 
 fn introduction() -> Introduction {
     let package = PackageDescriptor {
@@ -202,6 +201,23 @@ async fn a_stream_carries_bytes_both_ways_and_an_unknown_name_is_refused() {
 
     let mut unknown = page.open(header("stream", json!({ "stream": "terminal" }))).await;
     assert_eq!(unknown.next().await.json()["error"]["code"], "unknown_stream");
+    // The open stream is the conversation's activity until the page closes
+    // it; the refused one never was.
+    assert_eq!(*fake.activity.borrow(), [told("c1", true)]);
+    stream.close();
+    until_told(&fake, 2).await;
+    assert_eq!(*fake.activity.borrow(), [told("c1", true), told("c1", false)]);
+}
+
+fn told(conversation: &str, open: bool) -> (String, bool) {
+    (conversation.to_owned(), open)
+}
+
+/// Waits until the runner told the backend `count` openings and closings
+/// of streams.
+async fn until_told(fake: &Fake, count: usize) {
+    let mut activity = fake.activity.subscribe();
+    activity.wait_for(|told| told.len() >= count).await.unwrap();
 }
 
 #[tokio::test]
@@ -270,16 +286,23 @@ async fn closing_a_peer_ends_its_connection_and_closing_all_ends_every_one() {
     let mut second = connected(&direct, "p2").await;
     let mut stream = first.open(header("stream", json!({ "stream": "browser" }))).await;
     assert_eq!(stream.next().await.json(), json!({ "ok": true }));
+    let mut other = second.open(header("stream", json!({ "stream": "browser" }))).await;
+    assert_eq!(other.next().await.json(), json!({ "ok": true }));
 
+    // The streams end with their peers, and the backend hears each end.
     direct.close("p1");
     assert_eq!(stream.next().await, Heard::Closed, "its channels end");
     first.wait_closed().await;
     let mut peers = direct.peers();
     peers.wait_for(|peers| *peers == 1).await.unwrap();
+    until_told(&fake, 3).await;
+    assert_eq!(fake.activity.borrow()[2], told("c1", false));
 
     direct.close_all();
     second.wait_closed().await;
     peers.wait_for(|peers| *peers == 0).await.unwrap();
+    until_told(&fake, 4).await;
+    assert_eq!(fake.activity.borrow()[3], told("c1", false));
 }
 
 #[tokio::test(start_paused = true)]

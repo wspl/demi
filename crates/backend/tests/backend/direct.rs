@@ -2,7 +2,10 @@
 //! the backend introduces a page to its paired device's real runner, which
 //! answers the page's offer; the socket's close closes the runner's peer;
 //! the Cloud and an offline device are refused; a quiet socket hears a
-//! heartbeat, and the runner's connection ending closes it.
+//! heartbeat, and the runner's connection ending closes it. A page in
+//! process opens the user's streams on the channel: the relay opens one
+//! whose service the runner must fetch first, and a plugin turned off ends
+//! its streams with the peer, whose next introduction lacks them.
 
 use std::time::Duration;
 
@@ -11,6 +14,11 @@ use serde_json::{Value, json};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 
+use bytes::Bytes;
+use demi_runner_direct::testing::{Heard, Page};
+use reqwest::StatusCode;
+
+use crate::streams::{CONVERSATION, answered, conversation};
 use crate::support::{Harness, Paired, Session, TestBackend};
 
 type Socket =
@@ -92,6 +100,24 @@ async fn next(socket: &mut Socket) -> Result<Value, u16> {
 async fn send_offer(socket: &mut Socket) {
     let offer = json!({ "type": "offer", "sdp": offer() }).to_string();
     socket.send(Message::Text(offer.into())).await.unwrap();
+}
+
+/// A page in process connected to the device's runner, introduced through
+/// `socket`.
+async fn connected_page(socket: &mut Socket) -> Page {
+    let mut page = Page::connect(async |sdp| {
+        let offer = json!({ "type": "offer", "sdp": sdp }).to_string();
+        socket.send(Message::Text(offer.into())).await.unwrap();
+        let answer = next(socket).await.unwrap();
+        match answer["sdp"].as_str() {
+            Some(sdp) => Ok(sdp.to_owned()),
+            None => Err(answer),
+        }
+    })
+    .await
+    .expect("the runner answers");
+    assert!(page.wait_connected().await, "the peer connects");
+    page
 }
 
 // A second: a paired device's real runner answers nine offers.
@@ -187,6 +213,46 @@ async fn a_quiet_socket_hears_a_heartbeat_and_closes_when_the_runner_goes() {
         }
     };
     assert_eq!(closed, 1011);
+    backend.close().await;
+}
+
+// Half a second: a paired device's real runner installs the fixture
+// package for a relay stream, and two pages in process connect to it over
+// loopback.
+#[tokio::test]
+async fn a_stream_whose_service_is_not_fetched_yet_goes_to_the_relay_and_a_plugin_turned_off_ends_it() {
+    let harness = Harness::new().with_native_fixture();
+    let (backend, master, laptop) = conversation(&harness).await;
+    let mut socket = signaling(&backend, &master, &laptop).await;
+    let page = connected_page(&mut socket).await;
+    let cwd = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let echo = json!({ "op": "stream", "conversation": CONVERSATION, "cwd": cwd, "stream": "echo" });
+
+    // The device has not fetched the fixture's service yet, which only a
+    // stream the backend opened can ask for.
+    let mut refused = page.open(echo.clone()).await;
+    let refusal = refused.next().await.json();
+    assert_eq!(refusal["error"]["code"], "needs_relay", "{refusal}");
+    let mut relayed = crate::streams::socket(&backend, &master, CONVERSATION, "echo").await;
+    answered(&mut relayed).await;
+    relayed.close(None).await.unwrap();
+    let mut direct = page.open(echo.clone()).await;
+    assert_eq!(direct.next().await.json(), json!({ "ok": true }));
+    direct.binary(b"ping");
+    assert_eq!(direct.next().await, Heard::Binary(Bytes::from_static(b"ping")));
+
+    // Turned off, the plugin's stream ends with the peer, and the socket
+    // tells the page to offer again.
+    let switched = backend
+        .put("/api/plugins/fixture", &master, json!({ "enabled": false }))
+        .await;
+    assert_eq!(switched.status, StatusCode::NO_CONTENT);
+    assert_eq!(direct.next().await, Heard::Closed);
+    assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "closed" }));
+    // The next introduction carries the user's streams as they are now.
+    let page = connected_page(&mut socket).await;
+    let mut gone = page.open(echo).await;
+    assert_eq!(gone.next().await.json()["error"]["code"], "unknown_stream");
     backend.close().await;
 }
 

@@ -1604,6 +1604,7 @@ dependencies = [
  "demi-provider-grok-build",
  "demi-provider-openai-api",
  "demi-runner-command-packages",
+ "demi-runner-direct",
  "demi-runner-protocol",
  "demi-shared-artifacts",
  "demi-shared-cli",
@@ -2641,6 +2642,7 @@ version = "0.1.11"
 dependencies = [
  "bytes",
  "demi-command-protocol",
+ "demi-runner-direct",
  "demi-runner-protocol",
  "demi-shared-types",
  "futures-util",
