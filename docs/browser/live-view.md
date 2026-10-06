@@ -87,6 +87,7 @@ panel's tabs ([Work panel state](../product/web-api.md#work-panel-state)), and
 | `tab` | The plugin | The id of the conversation browser's tab it shows, once it has one |
 | `closed` | The plugin | The browser no longer has that tab |
 | `failure` | The plugin | `{ code, message }`: why the plugin could not open a browser tab for it |
+| `shown` | The plugin | How many times the agent showed the browser tab, as the tab list counts it; absent while it never did ([Showing a tab](#showing-a-tab)) |
 
 ```text
 page                         backend (panel, plugin-browser)            Host
@@ -137,6 +138,7 @@ page                         backend (panel, plugin-browser)            Host
   tab it did not open for a panel tab, with the id `browser-<tab>`, after the
   others. A tab id is used once per conversation, so a tab the user closed
   never comes back, and a tab is added once however often the list is read.
+  Adding a tab does not select it; only [showing](#showing-a-tab) does.
 - **A tab gone from the Host.** The agent closed it, the browser ended, the
   Cloud stopped, or the Host restarted. When the plugin reads the list and a
   panel tab's browser tab is missing, it sets `closed`. The panel tab stays:
@@ -179,6 +181,33 @@ starts a new stream generation and sends the new tab's dialog, controls and
 cursor, and the page discards frames of older generations. A view carries one
 watched tab at a time: nothing of one tab can reach another. Selecting Change,
 File or another kind closes the view, so the Host captures nothing.
+
+### Showing a tab
+
+The agent decides whether the user sees a tab it opens
+([Tabs and navigation](browser.md#tabs-and-navigation)). For example, the
+user asks the agent to open the application's sign-in page. The agent runs
+`demi browser open http://localhost:3000/login --show`, and when that command
+ends, the user's panel opens on the new tab `t3`. While the agent later checks
+its own work in `t4` without `--show`, `t4` only joins the strip, and the user
+keeps looking at `t3`.
+
+- **The request.** `show`, and `open --show`, raise the tab's `shown` count in
+  the browser's tab list. Nothing else changes in the browser.
+- **The panel tab.** When the plugin reads the list after a job, it adds the
+  agent's new tabs as before, and writes each tab's count into `shown` of the
+  panel tab bound to it when the count is higher. A tab the user created is
+  shown the same way.
+- **Each page shows it once.** The kind's panel session follows its panel
+  tabs. When one's `shown` is higher than the count the page last applied for
+  that tab, the session selects the tab, with the panel opened
+  ([The page context](../architecture/plugin-pages.md#the-page-context)), and
+  the page records the count beside its selection history
+  ([Work panel](../product/web-application.md#work-panel)). A page that shows
+  another conversation then applies it when it opens this one next; a page
+  that applied it never applies it again, so the user's own selection after
+  it stands, across reloads too. Pages applying the same show do not affect
+  each other.
 
 ## The stream
 
@@ -597,7 +626,7 @@ browser is loading its top-level page.
 
 | State or method | Parameters | Does | A stopped Cloud |
 | --- | --- | --- | --- |
-| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
+| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading, shown }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
 | `bind` | `panelTab` | Opens a browser tab for a panel tab that has none, or whose browser tab is closed or failed to open, as for a new tab | Is woken: opening a tab is ordinary demand |
 | `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a job | Is not woken: every bound tab is closed |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |
