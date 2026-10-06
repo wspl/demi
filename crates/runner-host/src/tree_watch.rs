@@ -1,9 +1,11 @@
 //! A watch of directory trees that reports each path something changed at
-//! (`runner.md` § Working tree); reading a file changes nothing. On macOS it
-//! is an FSEvents stream, one per watch whatever the size of the trees:
-//! notify's recommended backend there is kqueue, which the vendored `tail`
-//! selects and which holds a descriptor for every file of a tree, more than
-//! a repository and the usual limit of 256 allow; with kqueue selected,
+//! (`runner.md` § Working tree, § Watching files); reading a file changes
+//! nothing. A watch covers what lies below each of its trees, or, for one
+//! folder alone, its direct entries, or one file. On macOS it is an
+//! FSEvents stream, one per watch whatever the size of the trees: notify's
+//! recommended backend there is kqueue, which the vendored `tail` selects
+//! and which holds a descriptor for every file of a tree, more than a
+//! repository and the usual limit of 256 allow; with kqueue selected,
 //! notify builds no FSEvents watcher. `tail` needs kqueue: FSEvents reports
 //! an append through an open descriptor only once the writer closes the
 //! file, and names a file by its real path, so `tail -f` on FSEvents prints
@@ -13,22 +15,31 @@
 use std::path::{Path, PathBuf};
 
 /// What a watch saw.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum WatchEvent {
     /// Something changed at `path`; `metadata` when only its metadata did,
     /// such as its mode or its times.
     Changed { path: PathBuf, metadata: bool },
     /// The watch lost events: what it reported no longer tells what changed.
     Lost,
-    /// The watch failed and reports nothing more.
+    /// The watch failed, for this reason, and reports nothing more.
     #[cfg_attr(
         target_os = "macos",
         allow(dead_code, reason = "FSEvents reports no failure once its stream runs")
     )]
-    Failed,
+    Failed(String),
 }
 
 type Report = Box<dyn FnMut(WatchEvent) + Send>;
+
+/// What a watch covers.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum Depth {
+    /// Each tree and everything below it.
+    Recursive,
+    /// One folder's direct entries, or one file; one tree only.
+    Entries,
+}
 
 /// A running watch of some directory trees; it stops when dropped.
 pub(crate) struct TreeWatch {
@@ -36,13 +47,14 @@ pub(crate) struct TreeWatch {
 }
 
 impl TreeWatch {
-    /// Watches each of `trees` and what is under it, handing `report` what
-    /// changes; `None` when the watch cannot be set up.
+    /// Watches each of `trees` to `depth`, handing `report` what changes;
+    /// why it could not when the watch cannot be set up.
     pub(crate) fn start(
         trees: &[&Path],
+        depth: Depth,
         report: impl FnMut(WatchEvent) + Send + 'static,
-    ) -> Option<TreeWatch> {
-        platform::Watch::start(trees, Box::new(report)).map(|watch| TreeWatch { _watch: watch })
+    ) -> Result<TreeWatch, String> {
+        platform::Watch::start(trees, depth, Box::new(report)).map(|watch| TreeWatch { _watch: watch })
     }
 }
 
@@ -66,7 +78,7 @@ fn from_notify(event: notify::Event) -> Vec<WatchEvent> {
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use super::{Report, WatchEvent, from_notify};
+    use super::{Depth, Report, WatchEvent, from_notify};
     use notify::Watcher as _;
     use std::path::Path;
 
@@ -75,18 +87,22 @@ mod platform {
     }
 
     impl Watch {
-        pub(super) fn start(trees: &[&Path], mut report: Report) -> Option<Watch> {
+        pub(super) fn start(trees: &[&Path], depth: Depth, mut report: Report) -> Result<Watch, String> {
             let mut watcher = notify::recommended_watcher(
                 move |event: notify::Result<notify::Event>| match event {
                     Ok(event) => from_notify(event).into_iter().for_each(&mut report),
-                    Err(_) => report(WatchEvent::Failed),
+                    Err(error) => report(WatchEvent::Failed(error.to_string())),
                 },
             )
-            .ok()?;
+            .map_err(|error| error.to_string())?;
+            let mode = match depth {
+                Depth::Recursive => notify::RecursiveMode::Recursive,
+                Depth::Entries => notify::RecursiveMode::NonRecursive,
+            };
             for tree in trees {
-                watcher.watch(tree, notify::RecursiveMode::Recursive).ok()?;
+                watcher.watch(tree, mode).map_err(|error| error.to_string())?;
             }
-            Some(Watch { _watcher: watcher })
+            Ok(Watch { _watcher: watcher })
         }
     }
 }
@@ -118,7 +134,7 @@ fn from_flags(path: PathBuf, flags: fsevent_sys::FSEventStreamEventFlags) -> Wat
 
 #[cfg(target_os = "macos")]
 mod platform {
-    use super::{Report, from_flags};
+    use super::{Depth, Report, WatchEvent, from_flags};
     use fsevent_sys as fs;
     use fsevent_sys::core_foundation as cf;
     use std::ffi::{CStr, OsStr, c_char, c_void};
@@ -147,15 +163,19 @@ mod platform {
     }
 
     impl Watch {
-        pub(super) fn start(trees: &[&Path], report: Report) -> Option<Watch> {
-            let trees: Vec<PathBuf> = trees.iter().map(|tree| tree.to_path_buf()).collect();
+        pub(super) fn start(trees: &[&Path], depth: Depth, report: Report) -> Result<Watch, String> {
+            let (trees, report) = match (depth, trees) {
+                (Depth::Recursive, _) => (trees.iter().map(|tree| tree.to_path_buf()).collect(), report),
+                (Depth::Entries, [path]) => entries_of(path, report),
+                (Depth::Entries, _) => return Err("a watch of entries covers one path".into()),
+            };
             let (sender, receiver) = mpsc::channel();
             let thread = thread::Builder::new()
                 .name("fsevents".into())
                 .spawn(move || run(&trees, report, &sender))
-                .ok()?;
+                .map_err(|error| error.to_string())?;
             match receiver.recv() {
-                Ok(Some(run_loop)) => Some(Watch {
+                Ok(Some(run_loop)) => Ok(Watch {
                     run_loop,
                     thread: Some(thread),
                 }),
@@ -163,10 +183,36 @@ mod platform {
                     // The thread has ended or is about to, having sent that
                     // its stream did not start.
                     let _ = thread.join();
-                    None
+                    Err("FSEvents could not start a stream for the path".into())
                 }
             }
         }
+    }
+
+    /// The tree a stream watches for the direct entries of the folder
+    /// `path`, or for the file `path`, and the report that passes on only
+    /// what concerns them: FSEvents watches only whole trees, and only
+    /// directories.
+    fn entries_of(path: &Path, mut report: Report) -> (Vec<PathBuf>, Report) {
+        let folder = path.is_dir();
+        let tree = if folder {
+            path.to_path_buf()
+        } else {
+            path.parent().unwrap_or(path).to_path_buf()
+        };
+        let path = path.to_path_buf();
+        let filtered: Report = Box::new(move |event| {
+            let concerns = match &event {
+                WatchEvent::Changed { path: changed, .. } => {
+                    *changed == path || (folder && changed.parent() == Some(path.as_path()))
+                }
+                WatchEvent::Lost | WatchEvent::Failed(_) => true,
+            };
+            if concerns {
+                report(event);
+            }
+        });
+        (vec![tree], filtered)
     }
 
     impl Drop for Watch {

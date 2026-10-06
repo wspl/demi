@@ -45,7 +45,7 @@ fn msgpack(value: &Value) -> Vec<u8> {
 #[test]
 fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("backend-to-runner");
-    assert_eq!(frames.len(), 60);
+    assert_eq!(frames.len(), 63);
     for (name, bytes) in frames {
         let message: Inbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -60,7 +60,7 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("runner-to-backend");
-    assert_eq!(frames.len(), 57);
+    assert_eq!(frames.len(), 62);
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -523,4 +523,14 @@ fn a_backend_url_names_a_host_without_credentials_or_a_fragment() {
     ] {
         assert!(refused.parse::<BackendUrl>().is_err(), "{refused}");
     }
+}
+
+
+#[test]
+fn a_files_version_is_its_size_and_time_in_hexadecimal_as_a_weak_etag() {
+    assert_eq!(
+        wire::file_version(300_000, 1_790_000_000_123),
+        "W/\"493e0-1a0c4506c7b\""
+    );
+    assert_eq!(wire::file_version(0, -16), "W/\"0--10\"");
 }
