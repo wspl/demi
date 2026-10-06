@@ -144,16 +144,21 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 | `mkdir`, `delete` | `{ path }` | `{ ok }` |
 | `watch` | `{ paths }` messages, as on the relay | The relay's `state`, `changed` and `heartbeat` messages |
 
-A direct `stream` is conversation activity, as an open relay stream is
-([Activity](resource-lifecycle.md#activity)): the runner tells the backend
-`direct_stream { conversation, open }` once it accepts a stream channel's
-header and again when the channel ends, on every path, so a live view
-watched only over the direct channel keeps the conversation from its idle
-release. Only a stream the backend opened can ask it for artifacts, so a
-direct stream that needs one goes to the relay with `needs_relay` (status
-409): before it starts when its service's executable is not installed, and
-when its invocation asks for an artifact while it runs, such as the browser
-its first tab needs. The page opens that stream on the relay.
+The runner tells the backend `direct_stream { stream, conversation, open }`
+once it accepts a stream channel's header, naming the stream with an id it
+gives it, and again when the channel ends, on every path. The backend then
+knows the stream as it knows a stream it opened:
+
+- **Activity.** It is conversation activity, as an open relay stream is
+  ([Activity](resource-lifecycle.md#activity)), so a live view watched only
+  over the direct channel keeps the conversation from its idle release.
+- **Artifacts.** The runner asks the backend for the artifacts the stream
+  needs, its service's executable or what its invocation asks for while it
+  runs, such as the browser its first tab needs, naming the stream as it
+  names a relay stream ([Service streams](runner.md#service-streams)). The
+  backend answers while the stream is open. For example, the first browser
+  tab on a device that never ran a browser installs it over the direct
+  channel's stream, as it would over the relay's.
 
 The runner carries each one out as it carries out the backend's request for
 the same thing ([Host operations](runner.md#host-operations)): the same
