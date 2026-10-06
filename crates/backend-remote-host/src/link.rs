@@ -101,23 +101,25 @@ pub trait LinkPolicy {
         count: u32,
     ) -> LocalBoxFuture<'static, Result<u64, String>>;
 
-    /// A page's direct channel opened a stream of `conversation` on the
-    /// device (`direct-channel.md` § Operations on the channel): what the
-    /// backend knows the stream with while it is open, as a stream it opened,
-    /// or why it does not know it.
-    fn direct_stream(&self, conversation: String)
-    -> LocalBoxFuture<'static, Result<DirectAdmission, String>>;
+    /// A page's direct channel opened the user stream `name` of
+    /// `conversation` on the device (`direct-channel.md` § Operations on the
+    /// channel): what the backend knows the stream with while it is open, as
+    /// a stream of that name it opened, or why it does not know it.
+    fn direct_stream(
+        &self,
+        conversation: String,
+        name: String,
+    ) -> LocalBoxFuture<'static, Result<DirectAdmission, String>>;
 }
 
 /// What the backend knows an open direct stream with: the lease that holds
-/// its conversation active, as an open relay stream's does, and where the
-/// artifacts it asks for come from (`native-runtime.md` § Install
-/// artifacts).
+/// its conversation active, as an open relay stream's does, and what a relay
+/// stream of its name may install: the executable of the package the name
+/// binds, none for a name that binds none, from where `resolver` locates it
+/// (`native-runtime.md` § Install artifacts).
 pub struct DirectAdmission {
     pub lease: GateLease,
-    /// The packages whose executables it may install: those of the user's
-    /// streams, of which it runs one.
-    pub packages: Vec<PackageDescriptor>,
+    pub package: Option<PackageDescriptor>,
     pub resolver: Rc<dyn crate::ArtifactResolver>,
 }
 
@@ -806,9 +808,10 @@ impl Link {
             }
             Outbound::DirectStream {
                 stream,
+                name,
                 conversation,
                 open,
-            } => self.direct_stream(stream, conversation, open),
+            } => self.direct_stream(stream, name, conversation, open),
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);
@@ -1190,7 +1193,7 @@ impl Link {
     /// admitted the stream holds its conversation active and its artifact
     /// requests are answered; its closing, or the connection's end, ends both
     /// and cancels the requests in flight.
-    fn direct_stream(&self, stream: String, conversation: String, open: bool) {
+    fn direct_stream(&self, stream: String, name: String, conversation: String, open: bool) {
         if !open {
             let closed = self.0.state.borrow_mut().direct_streams.remove(&stream);
             if let Some(closed) = closed {
@@ -1212,7 +1215,7 @@ impl Link {
             };
             state.direct_streams.insert(stream.clone(), opened);
         }
-        let admission = self.0.policy.direct_stream(conversation.clone());
+        let admission = self.0.policy.direct_stream(conversation.clone(), name);
         let link = self.clone();
         self.spawn(async move {
             let admission = tokio::select! {
@@ -1228,7 +1231,7 @@ impl Link {
                 Ok(admission) => {
                     open.lease = Some(admission.lease);
                     open.admitted.send_replace(Admitted::Yes(Grant {
-                        packages: admission.packages,
+                        packages: admission.package.into_iter().collect(),
                         resolver: admission.resolver,
                         attached: Vec::new(),
                         cancel,

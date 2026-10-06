@@ -199,9 +199,9 @@ pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
 });
 
 /// A second package of the fixture plugin's user streams, which serves
-/// nothing: its artifact for this machine's target is a small file, which
-/// the fixture's `install` asks the backend for during a stream, as an
-/// invocation asks for an artifact of the work it serves.
+/// nothing: its artifact for this machine's target is a small file, which a
+/// stream of the fixture's may not install, since only the extra stream
+/// binds its package.
 pub static EXTRA: LazyLock<Built> = LazyLock::new(|| {
     let program = PathBuf::from(RELEASES).join("extra-artifact");
     std::fs::create_dir_all(RELEASES).unwrap();
@@ -398,8 +398,8 @@ impl Harness {
 
     /// Beside the native fixture's streams, its `install`, which installs
     /// the artifact its arguments name and prints its path, and `extra`, a
-    /// stream of the extra package, whose artifact a stream of the user's
-    /// may then ask the backend for.
+    /// stream of the extra package, whose artifact only a stream of that
+    /// name may install.
     pub fn with_extra_package(mut self) -> Self {
         let streams = self
             .user_streams

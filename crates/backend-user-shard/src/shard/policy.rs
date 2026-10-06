@@ -12,7 +12,7 @@ use std::rc::{Rc, Weak};
 
 use demi_backend_database::sequences;
 use demi_backend_remote_host::{DirectAdmission, JobOrigin, LinkPolicy};
-use demi_command_protocol::{PackageDescriptor, ServiceSequence};
+use demi_command_protocol::ServiceSequence;
 use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
 use demi_shared_gates::Purpose;
@@ -178,11 +178,13 @@ impl LinkPolicy for ShardPolicy {
     /// this device as an open user stream: it holds the conversation active
     /// with a demand lease of its stream gate, and its idle watch started, as
     /// a Host admission starts it (`resource-lifecycle.md` § Activity), and
-    /// installs the executable of a package of the user's streams, which the
-    /// runner fetches from where the published catalog says.
+    /// installs what a relay stream of the user stream `name` may: the
+    /// executable of the package the name binds, which the runner fetches
+    /// from where the published catalog says.
     fn direct_stream(
         &self,
         conversation: String,
+        name: String,
     ) -> LocalBoxFuture<'static, Result<DirectAdmission, String>> {
         let shard = self.shard();
         let device = self.device.clone();
@@ -204,15 +206,13 @@ impl LinkPolicy for ShardPolicy {
                 .await;
             shard.track_idle(&conversation);
             let services = shard.services();
-            let mut packages: Vec<PackageDescriptor> = Vec::new();
-            for (_, binding) in services.user_streams.iter() {
-                if !packages.contains(&binding.package) {
-                    packages.push(binding.package.clone());
-                }
-            }
+            let package = services
+                .user_streams
+                .get(&name)
+                .map(|binding| binding.package.clone());
             Ok(DirectAdmission {
                 lease,
-                packages,
+                package,
                 resolver: services.native.resolver(&services.public_url),
             })
         })

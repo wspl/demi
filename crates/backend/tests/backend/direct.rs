@@ -4,9 +4,9 @@
 //! the Cloud and an offline device are refused; a quiet socket hears a
 //! heartbeat, and the runner's connection ending closes it. A page in
 //! process opens the user's streams on the channel: one installs its service
-//! and what its invocation asks for from the backend as a relay stream
-//! does, and a plugin turned off ends its streams with the peer, whose next
-//! introduction lacks them.
+//! from the backend as a relay stream does, but not another stream's
+//! package, and a plugin turned off ends its streams with the peer, whose
+//! next introduction lacks them.
 
 use std::time::Duration;
 
@@ -219,10 +219,10 @@ async fn a_quiet_socket_hears_a_heartbeat_and_closes_when_the_runner_goes() {
 }
 
 // About a second: a paired device's real runner installs the fixture's
-// service and a file of 100 KB from the backend for a direct stream, and
-// two pages in process connect to it over loopback.
+// service from the backend for a direct stream, and two pages in process
+// connect to it over loopback.
 #[tokio::test]
-async fn a_direct_stream_installs_its_service_and_what_it_asks_for_and_a_plugin_turned_off_ends_it() {
+async fn a_direct_stream_installs_its_service_but_not_another_streams_and_a_plugin_turned_off_ends_it() {
     let harness = Harness::new().with_native_fixture().with_extra_package();
     let (backend, master, laptop) = conversation(&harness).await;
     let mut socket = signaling(&backend, &master, &laptop).await;
@@ -232,17 +232,18 @@ async fn a_direct_stream_installs_its_service_and_what_it_asks_for_and_a_plugin_
         json!({ "op": "stream", "conversation": CONVERSATION, "cwd": cwd, "stream": stream, "args": args })
     };
 
-    // The device holds neither the fixture's service nor the extra
-    // package's artifact: the direct stream asks the backend for both, the
-    // service before it starts and the artifact its invocation installs,
-    // as a stream the backend opened would. No relay stream opens.
+    // The device does not hold the fixture's service: the direct stream
+    // asks the backend for it before it starts, as a stream the backend
+    // opened would, and no relay stream opens. While it runs, it may
+    // install only what a relay stream of its name may: the artifact of
+    // the extra package, which another of the user's streams binds, is
+    // refused, so the invocation prints no path.
     let extra = &EXTRA.descriptor.targets[host_target()];
     let args = json!({ "sha256": extra.sha256, "size": extra.size });
     let mut install = page.open(header("install", args)).await;
     assert_eq!(install.next().await.json(), json!({ "ok": true }));
     let printed = String::from_utf8(install.bytes_to_end().await).unwrap();
-    let installed = printed.lines().last().unwrap();
-    assert_eq!(std::fs::read(installed).unwrap(), std::fs::read(&EXTRA.program).unwrap());
+    assert_eq!(printed, "", "nothing was installed");
     let mut direct = page.open(header("echo", json!({}))).await;
     assert_eq!(direct.next().await.json(), json!({ "ok": true }));
     direct.binary(b"ping");
