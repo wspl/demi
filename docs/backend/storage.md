@@ -139,7 +139,7 @@ input, which the multi-worker control service also relies on
   a new row is. A patch merges the fields it names in one transaction, and
   checks the name's uniqueness in the same one.
 - **Devices and workspaces:** `devices` stores ownership, kind, name,
-  platform and the operating system its runner last reported, the hash of the device's current token, claim and last-seen
+  platform, the operating system and architecture its runner last reported, the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
   holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)).
   The token hash is unique, so a runner's token finds its device

@@ -33,7 +33,7 @@ claiming and user ownership. The runner opens an outbound WebSocket and sends it
 `hello` first; the backend closes a connection that has sent nothing within 30
 seconds of opening. Besides its token, version and platform, the hello names
 the Host's operating system with its release, such as `Ubuntu 26.04` or
-`macOS 26.5`, which the backend keeps on the device record and the agent
+`macOS 26.5`, and its architecture, such as `x86_64`, which the backend keeps on the device record and the agent
 reads in its context block
 ([Switch the primary target](sessions-and-targets.md#switch-the-primary-target)). The backend looks a hello's token up while it watches the
 connection, and lets a runner that goes away meanwhile go without adopting it.

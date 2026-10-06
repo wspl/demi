@@ -29,6 +29,15 @@ Open [auth.test.ts](packages/web/src/auth.test.ts) and fix the assertion.
 `
 
 /**
+ * A reply with prices and math side by side: dollar signs before amounts stay
+ * text, and math renders on its own and flush against Chinese text.
+ */
+export const dollarMarkdown = `Notion is $10 vs $12 a month; Slack $7.25 vs $8.75, and Zoom $13.33/$15.99.
+
+The energy is $E = mc^2$, and 面积为$x^2$平方米.
+`
+
+/**
  * A reply whose lines outrun a narrow column: an address, a path, a long line of
  * code beside a short one, a wide table and a wide equation.
  */

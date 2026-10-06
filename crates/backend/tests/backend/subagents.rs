@@ -1,5 +1,7 @@
 //! Subagents through a conversation (`subagents.md`, `sessions-and-targets.md`
-//! § Host operations, `conversation-fork.md`): a child works on the
+//! § Host operations, § Switch the primary target, `conversation-fork.md`):
+//! the root and its child each learn the Host they work on before their
+//! first request, once; a child works on the
 //! conversation's Host in its parent's files, keeps its own identity even
 //! for a command it runs through `demi host shell`, and runs on after
 //! its spawn command has exited; a Fork taken while a child runs leaves the
@@ -350,7 +352,28 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
     std::fs::write(format!("{root}/go"), "").unwrap();
     socket.until_idle().await;
 
+    // The root learned its Host before its first request, and the child
+    // before its own: its system as the runner reported it, and the
+    // directory its shells start in.
+    let host = "[Execution context 0]\\nPrimary host: laptop, ";
+    let started = format!(
+        " ({}). Shells start in {root}.\\nAttached hosts: none.",
+        std::env::consts::ARCH
+    );
+    let roots = scripts.asked(|session| session == FIRST);
     let children = scripts.asked(|session| session != FIRST);
+    for first in [&roots[0], &children[0]] {
+        let block = first.find(&host).map(|at| &first[at + host.len()..]);
+        let system = block.and_then(|block| block.find(&started).map(|end| &block[..end]));
+        assert!(
+            system.is_some_and(|system| !system.is_empty() && !system.contains("\\n")),
+            "{first}"
+        );
+    }
+    // The root saw this revision: its later requests carry the one block
+    // its history holds.
+    let latest = roots.last().unwrap();
+    assert_eq!(latest.matches("[Execution context ").count(), 1, "{latest}");
     let read = children.last().unwrap();
     // The tree is the root and the child: the caller is the child.
     assert!(

@@ -340,6 +340,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         } else {
             RunnerPlatform::Linux
         },
+        os: operating_system(),
         version: installation
             .release
             .unwrap_or_else(|| env!("CARGO_PKG_VERSION").into()),
@@ -495,6 +496,37 @@ fn uninstalled(directory: &Path, revocation: &Revocation) -> io::Result<u8> {
     let removed = removal::remove(directory)?;
     println!("{}", removed.told(directory));
     Ok(0)
+}
+
+/// The Host's operating system as the hello names it (`runner.md`
+/// § Connection and identity). A release the system does not tell leaves
+/// its name alone.
+fn operating_system() -> wire::OperatingSystem {
+    use sysinfo::System;
+    let named = |name: String, release: Option<String>| match release {
+        Some(release) => format!("{name} {release}"),
+        None => name,
+    };
+    // Darwin's own name is the kernel's; the product version is macOS's.
+    #[cfg(target_os = "macos")]
+    let name = named("macOS".to_owned(), System::os_version());
+    // The product name, such as `Windows 11 Pro`, with its build number.
+    #[cfg(windows)]
+    let name = named(
+        System::long_os_version().unwrap_or_else(|| "Windows".to_owned()),
+        System::kernel_version().map(|build| format!("(build {build})")),
+    );
+    // The distribution's name and version from os-release, such as
+    // `Ubuntu 26.04`.
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let name = named(
+        System::name().unwrap_or_else(|| "Linux".to_owned()),
+        System::os_version(),
+    );
+    wire::OperatingSystem {
+        name,
+        arch: std::env::consts::ARCH.to_owned(),
+    }
 }
 
 fn identity(home_dir: String) -> io::Result<wire::HostIdentity> {
