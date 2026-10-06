@@ -944,7 +944,6 @@ that replays it, and a short number is copied without a slip.
 | A conversation browser tab | `t7` | The conversation | The backend, when the tab is registered ([One tab registry](../browser/browser.md#one-tab-registry)) |
 | An attachment the agent uploaded | `a3` | The conversation | The backend, when `demi attachment upload` stores it ([Attachment commands](../execution/commands.md#attachment-commands)) |
 | An element reference | `e37` | Its tab | The conversation browser, as it observes the tab |
-| An expose | `2` | The user | The backend, when the expose is added ([Commands](../execution/expose.md#commands)) |
 | A host | Its name, as `demi host list` shows it | The conversation's hosts | The user ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
 
 - **Never twice.** A number is not given again after a crash, a restore or a
@@ -956,9 +955,6 @@ that replays it, and a short number is copied without a slip.
   no use for: a yield's result names no wakeup, an agent message names no
   message id, and a missing medium is named by its kind, not by its blob's
   hash.
-- **Credentials stay long.** An identifier that is also a credential stays
-  unguessable, and the model names the thing by a short number: an expose's
-  host label is its URL's secret, and `demi expose remove 2` names it.
 - **Paths stay whole.** A path keeps the identifiers it is made of, since
   several backends and users can share one machine: an attachment's path on a
   Host names its conversation's full id

@@ -39,15 +39,14 @@ runs that process on the user's Cloud
 ([Claude Code](../providers/claude-code.md#where-it-runs)). The same
 conversation keeps its history if its target changes.
 
-Besides the web app, three kinds of client reach the backend: runners, over a
-WebSocket and HTTP pipes authenticated by their device token; anonymous
-visitors of an expose hostname, whom the public relay serves; and anyone who
+Besides the web app, two kinds of client reach the backend: runners, over a
+WebSocket and HTTP pipes authenticated by their device token; and anyone who
 downloads the runner installers. The backend itself calls the machine manager
 over the manager's Unix socket.
 
 | Module | Crate | Responsibility | Design contract |
 |---|---|---|---|
-| `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes, user streams and the expose relay | [Web API](../product/web-api.md) |
+| `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes and user streams | [Web API](../product/web-api.md) |
 | `shard` | `backend-user-shard` | Shard threads, each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
 | `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
 | `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences and subagent settings | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system), [Web API](../product/web-api.md#user-preferences) |
@@ -58,7 +57,6 @@ over the manager's Unix socket.
 | `runner` | `backend-runners` | Pairing, device links and runner connections with the Host handles made over them, the lease of a conversation's file gate a conversation's Host is made against, the rpc relay and each session's commands, installer scripts, native artifact publication into the object store, the sourcing of each artifact when first needed, and the local store's artifact route | [Runner](../execution/runner.md), [Commands](../execution/commands.md), [Native runtime](../execution/native-runtime.md#backend-deployment-configuration) |
 | `lifecycle` | `backend-idle-watch`, `backend-user-shard` | The idle watch (`backend-idle-watch`); the conversation idle clock and the conversation release (`backend-user-shard`) | [Conversation idle and Host resource release](../execution/resource-lifecycle.md) |
 | `managed` | `backend-cloud` | Cloud policy and capacity, machine transitions, reset and recovery, the machine manager's client | [Managed hosts](../cloud/managed-hosts.md) |
-| `expose` | `backend-expose` | Expose records and their lifetime, live relay connections | [Host expose](../execution/expose.md) |
 | `llm`, `vault`, `usage` | `backend-providers`, `backend` (`families`) | Provider assembly and model catalogs; credential records, scope and login flows; metering and the request rate limit; the built-in provider families (the backend's `families`) | [Providers](../providers/providers.md), [Models](../providers/models.md), [Usage and quota](../providers/usage-and-quota.md) |
 | `storage` | `backend-database`, `backend-blobs` | The control service, conversation databases and the tree store with its records of commands' outputs and attachments (`backend-database`); the object store (`backend-blobs`) | [Storage](storage.md) |
 
@@ -90,9 +88,9 @@ Each module's state lives in one of these places:
 
 | Place | Holds | Examples |
 |---|---|---|
-| Edge | No per-user state | Request parsing and authentication, ownership checks, and the byte copies of file transfers (with their 60-second stall rule), pipes, user streams and the expose relay |
+| Edge | No per-user state | Request parsing and authentication, ownership checks, and the byte copies of file transfers (with their 60-second stall rule), pipes and user streams |
 | Shared services | State that spans users, or that is needed before the user is known | The control service, the conversation stores, the object store, the vault, provider assembly with model catalogs and one credential refresh at a time per account, the machine manager's client, [Cloud capacity](../cloud/managed-hosts.md#lifecycle-and-capacity) across users, runners waiting to be paired, login lockout, the registry of each user's open synchronization channels |
-| A user's shard | Everything the backend decides for that user | Each conversation's file gate, open transfers and user streams, and idle watch; agent trees; device links and one task per runner connection; pipe records; the Cloud machine; live expose connections; title requests; Fork requests, one at a time per destination; each session's command router for the rpc relay; the request rate limit; the pages' synchronization channels |
+| A user's shard | Everything the backend decides for that user | Each conversation's file gate, open transfers and user streams, and idle watch; agent trees; device links and one task per runner connection; pipe records; the Cloud machine; title requests; Fork requests, one at a time per destination; each session's command router for the rpc relay; the request rate limit; the pages' synchronization channels |
 | Database threads | One per open SQLite connection | The control database; up to 64 conversation writer connections ([Storage](storage.md#conversation-state-and-transactions)) |
 | Blocking pool | Work that would stall an async thread | Disk IO; password and blob hashing; serializing request bodies with media and large transcript frames; read-only conversation reads |
 
@@ -117,13 +115,10 @@ ownership, then call a shared service or a shard. axum's requirement that a
 handler's future be `Send` therefore costs nothing, and its extractors, tower
 middleware and socket-free router tests come with it. The edge serves the
 connections of the backend's own listener itself, with hyper's HTTP/1
-server: it keeps each header name's case, which the expose relay passes on
-and axum's `serve` cannot, and it answers a request for an expose hostname
-with the relay before the router sees it. The listener gives every
-connection an idle deadline and a close handle and exposes the peer address.
-A download arms the 60-second deadline, a lease the shard ends closes the
-connection at once even when the user's browser has stopped reading, and the
-expose relay forwards the peer address.
+server, because the listener gives every connection an idle deadline and a
+close handle, which axum's `serve` cannot. A download arms the 60-second
+deadline, and a lease the shard ends closes the connection at once even when
+the user's browser has stopped reading.
 
 The listener turns off Nagle's algorithm (`TCP_NODELAY`) on every connection
 it accepts. The runner and conversation sockets carry small messages whose
@@ -162,8 +157,8 @@ as a wrong password and its timing does not reveal which addresses have
 accounts.
 
 Setup and login are public entrances. Runner and pipe routes use device
-credentials instead of the session cookie. Public installer downloads and the
-expose relay carry no credential. The synchronization channel checks the
+credentials instead of the session cookie. Public installer downloads carry no
+credential. The synchronization channel checks the
 session cookie itself, since the gate would renew the session and the channel
 never does ([Page synchronization](#page-synchronization)). All other
 `/api` resources, unknown paths included, pass through the session
@@ -174,13 +169,12 @@ insufficient role returns 403, and missing authentication returns 401.
 
 A request that could act with the user's session must come from a page of
 the product. The user's browser sends the `SameSite=Lax` cookie with a request
-from any page of the product's site, not only from the product's own pages. An
-expose's page is such a page: `<id>.expose.demi.example` is on the site of
-`demi.example` ([Host expose](../execution/expose.md#deployment)), and it may
-be another user's. The user's browser keeps such a page from reading the
+from any page of the product's site, not only from the product's own pages. A page
+on another host of the same site is such a page: `blog.demi.example` is on
+the site of `demi.example`, and someone else may write its scripts. The user's browser keeps such a page from reading the
 backend's answers, since the backend lets no other origin read them (it sends no
 CORS headers), but not from sending requests. For example, without a check, a
-script on an expose could pair its author's runner to a signed-in visitor's
+script on such a page could pair its author's runner to a signed-in visitor's
 account with a `POST /api/devices/claim` whose JSON body it labels
 `text/plain`, which the visitor's browser sends without asking the backend
 first; or it could open the visitor's conversation socket, read the transcript
@@ -189,8 +183,8 @@ and send messages.
 So the edge checks the `Origin` of each request to a web app route that could
 act: a request whose method is unsafe (any but GET, HEAD, OPTIONS and TRACE),
 and every upgrade, such as a WebSocket's. The web app's routes are setup,
-login and every route the session cookie authenticates; a runner's routes,
-public downloads and the expose relay have no such check, since no cookie
+login and every route the session cookie authenticates; a runner's routes
+and public downloads have no such check, since no cookie
 authenticates them. The origin must be the public URL's
 (`DEMI_BACKEND_PUBLIC_URL`), or have the host and port the request was sent to
 (the `Host` header), as when a development server passes the page's requests
@@ -304,8 +298,7 @@ task of each channel reads the summary and sends it to its page.
 - **Marks.** Every change a page shows is marked where it commits, after the
   commit. The shard marks what it changes: conversations, titles, devices
   and the Cloud, and a plugin's state when the plugin marks it or a change it
-  follows happens, such as one of the user's exposes being created or
-  destroyed. A conversation's tree store marks it when a
+  follows happens, such as a job of the conversation ending. A conversation's tree store marks it when a
   checkpoint is saved, and the agent's notice marks it when its tree starts or
   stops working or is disposed. A shared service marks what it changes for a
   user, such as the vault when it renews an account's credential.
@@ -443,8 +436,7 @@ At startup the backend:
    ([The plugin host](../architecture/plugins.md#the-plugin-host)). Then it
    starts the shard threads.
 6. Recovers before it serves: the machine manager reconciles its machines,
-   which stops every Cloud, so the exposes an earlier backend left on a Cloud
-   are destroyed ([Host expose](../execution/expose.md#lifetime)), an
+   which stops every Cloud, an
    interrupted Cloud reset finishes committing its disks and is marked failed
    so that a retry starts the Cloud
    ([Managed hosts](../cloud/managed-hosts.md#system-reset)), and Fork
@@ -473,8 +465,7 @@ keep working, because the steps below need them:
 1. Login flows are cancelled.
 2. Each shard ends its user's work in this order. The synchronization
    channels close, so no page is sent what the steps below change; a page
-   reads the state again from the next backend. Idle watches stop. Title requests are aborted and expose
-   connections end. Open file transfers and user streams end. Conversation sockets
+   reads the state again from the next backend. Idle watches stop. Title requests are aborted. Open file transfers and user streams end. Conversation sockets
    close and the waits for saved wakeups end, so no tree opens and no frame
    reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and its
@@ -532,12 +523,11 @@ the same flag.
 | `DEMI_RELEASE` | The [server release](../delivery/builds-and-releases.md#server-release) root. The backend serves its `web/` when it has one, installs runners from its `runners/` (without it, the installer routes answer 503), and publishes its `commands/`. Default: the directory above the one that holds the running executable, its real path with every symbolic link resolved, so `/opt/demi/current/bin/demi-backend` uses `/opt/demi/releases/0.2.0` while `current` points there. A server leaves it out, so that the backend and the machine manager run the release of their own executables ([One release on a server](../delivery/upgrades.md#one-release-on-a-server)). The machine manager reads it too. | [Builds and releases](../delivery/builds-and-releases.md#server-release) |
 | `DEMI_BACKEND_DATA` | The data directory. Default `~/.demi/backend`. | [Storage](storage.md#ownership-and-layout) |
 | `DEMI_BACKEND_LISTEN` | The address and port the backend listens on, as `<address>:<port>`. Default `0.0.0.0:3271`. | [Public URL and listening address](#public-url-and-listening-address) |
-| `DEMI_BACKEND_PUBLIC_URL` | The URL at which browsers, runners and Cloud guests reach the backend: installers embed it, the page's install command fetches them from it, expose URLs take their scheme and port from it, and a local store's downloads are on it. Required. The machine manager reads it too, as the one endpoint its Clouds may reach on the host or a private address. | [Public URL and listening address](#public-url-and-listening-address) |
+| `DEMI_BACKEND_PUBLIC_URL` | The URL at which browsers, runners and Cloud guests reach the backend: installers embed it, the page's install command fetches them from it, and a local store's downloads are on it. Required. The machine manager reads it too, as the one endpoint its Clouds may reach on the host or a private address. | [Public URL and listening address](#public-url-and-listening-address) |
 | `DEMI_MACHINE_MANAGER_SOCKET` | The machine manager's Unix socket, which the manager listens on and the backend connects to. Default `/run/demi-cloud/machines.sock`. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required: whoever deploys decides it, and nothing chooses for them. | [Product](../product/product.md#instance-mode-shared-vs-isolated) |
 | `DEMI_STORAGE` | `local` or `s3`: where the one object store lives. Default `local`. With `s3`, the `DEMI_S3_*` settings name the bucket. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
-| `DEMI_EXPOSE_DOMAIN` | The domain of expose hostnames. Optional: without it, exposes are unavailable. | [Host expose](../execution/expose.md#deployment) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
 | `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
 
@@ -632,7 +622,6 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    DEMI_BACKEND_DATA=~/.demi/development \
    DEMI_INSTANCE_MODE=isolated \
    DEMI_BACKEND_PUBLIC_URL=http://<address the guest reaches>:3271 \
-   DEMI_EXPOSE_DOMAIN=expose.localhost \
    target/debug/demi-backend
    ```
 
@@ -650,8 +639,7 @@ The variables left out keep their defaults ([Configuration](#configuration)):
 the backend listens on `0.0.0.0:3271` and connects to the manager's default
 socket, the object store is local in the data directory, and the instance
 secret is generated there. The root has no `web/`, so the backend serves no
-web app and Vite serves the page. `DEMI_EXPOSE_DOMAIN` is optional; without
-it, exposes are off.
+web app and Vite serves the page.
 
 On a Mac, the machine manager runs in a Lima VM instead; the optional
 [Develop on a Mac with Lima](../guides/mac-development.md) guide gives the
@@ -773,9 +761,7 @@ The single-backend deployment runs one backend process that owns every user.
 Its control service runs in process, its conversation databases are local, its
 object store is the data directory or an S3 bucket, and the machine manager
 supplies [Cloud](../cloud/managed-hosts.md), which every deployment has. It
-can serve the built web app directory alongside the API, and with
-`DEMI_EXPOSE_DOMAIN` configured it answers expose hostnames with the public
-relay. [Cloud setup](../cloud/setup.md) describes installing the machine
+can serve the built web app directory alongside the API. [Cloud setup](../cloud/setup.md) describes installing the machine
 manager.
 
 A user is the unit of placement at both levels. Inside a process, all of a
@@ -824,6 +810,5 @@ transparently.
 Storage publication and control-service requirements are defined in
 [Storage](storage.md#multi-worker-storage-placement). The decisions still open
 for this deployment, among them how a worker is fenced, how a claim reaches
-the worker that holds its unclaimed runner, and how an expose hostname reaches
-its owner's worker, are listed in the
+and how a claim reaches the worker that holds its unclaimed runner, are listed in the
 [Roadmap](../delivery/roadmap.md#decisions-before-expanding-deployment).

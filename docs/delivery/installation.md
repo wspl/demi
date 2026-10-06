@@ -85,7 +85,6 @@ and composes the command.
 | `--listen <address:port>` | Required: where the backend listens, which the proxy in front of it reaches ([HTTPS](#https)). |
 | `--storage local\|s3` | Where the object store lives ([The object store](../backend/storage.md#the-object-store)). Default `local`. |
 | `--s3-bucket`, `--s3-region`, `--s3-endpoint`, `--s3-force-path-style` | The bucket, with `s3`. The credentials come from `setup`'s own `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, never from the command line, which other users of the machine can read. |
-| `--expose-domain <name>` | The domain of expose hostnames ([Host expose](../execution/expose.md#deployment)). Optional: without it, exposes are off. |
 | `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/opt/demi/data/cloud`. |
 | `--cloud-limits on\|off` | Whether Clouds run under cgroup limits. Default `on`; a machine without the cgroup v2 controllers is refused unless it is `off`. |
 | `--version <version>` | The release to set up. Default the release of the running `demi-server`. |
@@ -113,10 +112,7 @@ the backend listens. The two usual arrangements differ only in that address:
   serve. The backend's unit lets it listen on a port below 1024.
 
 `--help` gives both, and what the proxy must do: pass `Origin` and `Host`
-unchanged and allow WebSocket upgrades. An expose domain needs the same proxy
-to serve `*.<expose domain>` with a wildcard certificate; Cloudflare's free
-certificate covers one level of wildcard below a zone, so behind Cloudflare
-the expose domain is a zone of its own or the zone itself.
+unchanged and allow WebSocket upgrades.
 
 ## The steps
 
@@ -156,8 +152,7 @@ operator does next, and exits with a status other than 0.
    ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)).
    A proxy that is not set up yet fails this step with what it must do; the
    run stops with the server running, and the same command checks again once
-   the proxy is there. With an expose domain, a random name under it is
-   checked the same way.
+   the proxy is there.
 
 ## Distributions
 

@@ -304,8 +304,8 @@ which the request that names it decides:
   command's edit copies or media. The runner sends it as the body of `PUT
   /api/pipes/:id` on its pooled connection.
 - A **stream pipe** carries bytes that must arrive as they are written, for
-  as long as they flow: the output of a network stream or a service stream
-  ([Network streams](#network-streams), [Service streams](#service-streams)).
+  as long as they flow: the output of a service stream
+  ([Service streams](#service-streams)).
   The runner sends it over a WebSocket it opens at `/api/pipes/:id`, its
   bytes in binary messages and its end in the close frame. A TLS edge in
   front of the backend, such as Cloudflare's, holds a request's body until it
@@ -492,23 +492,6 @@ folder alone reports its entries, not what lies below them. The runner keeps
 the watches of a connection until the backend ends them or the connection
 closes.
 
-### Network streams
-
-A `net_open` request asks the runner to connect to a TCP address on the
-device's network and carry bytes both ways. It names the stream, the
-`host` and `port` to connect to, and two pipes ([Pipes and output](#pipes-and-output)):
-`input`, whose bytes the runner writes to the socket, and `output`, into
-which it writes what the socket sends. The runner resolves the host name on
-the device, connects within 10 seconds, and answers `net_opened`, or
-`net_error` with `refused`, `unreachable`, `resolve_failed`, or `timeout`;
-no bytes move before that answer. The input pipe ending shuts the socket's
-write side; the socket's end-of-stream ends the output pipe; a pipe failing
-or the connection to the backend closing closes the socket. The runner
-tracks each open socket and reports its two pipe ends with `pipe_done` like
-any other pipe. The stream is generic mechanism: the runner does not parse
-what flows through it. The backend uses it for the public relay of
-[Host expose](expose.md#the-public-relay).
-
 ### Service streams
 
 A `service_open` request asks the runner to open a
@@ -537,7 +520,7 @@ backend closing cancels the invocation. The runner reports each pipe end with `p
 pipe. When the invocation completes, the runner also sends `service_done` with
 the stream, the invocation's exit code and the bounded tail of its standard
 error: a one-shot call has no page to tell, so its caller learns a failure
-and its words from this message, not from a stream that merely ended. Like a network stream, the service stream is generic mechanism: the
+and its words from this message, not from a stream that merely ended. The service stream is generic mechanism: the
 runner does not parse what flows through it. The backend uses it for the
 [live browser view](../browser/live-view.md).
 
@@ -640,10 +623,10 @@ misbehave with a very high one: a program that uses `select()` cannot watch a
 descriptor numbered 1024 or above, and some programs close every descriptor up
 to their limit before they start. Windows has no such limit.
 
-Every pipe, local command connection and open file holds one while it lasts,
-and a network stream holds three: its socket and two pipes. When none is left,
+Every pipe, local command connection and open file holds one while it lasts.
+When none is left,
 whatever needs one waits until another closes, instead of failing: pipes,
-network streams, local command connections, filesystem and working-tree
+local command connections, filesystem and working-tree
 requests, file transfers, process and job starts, and native service starts.
 Inside a running job, every descriptor its shell makes waits too: pipes and
 redirections, the copies it makes for subshells, pipeline stages, builtins and
@@ -676,11 +659,9 @@ its start fails. Every process the runner starts waits this way: services, raw
 processes, a job's commands and the programs its utilities start, such as
 `env` and `xargs`.
 
-Two refusals remain. A conversation browser command that conflicts with
+One refusal remains. A conversation browser command that conflicts with
 another command on the same tab answers `tab_busy`; that is about the tab, not
-load ([Conversation browser](../browser/browser.md#one-tab-registry)). An expose answers 503
-beyond 64 concurrent connections: anyone on the internet can reach it, so it
-sheds load instead of queuing it ([Host expose](expose.md#the-public-relay)).
+load ([Conversation browser](../browser/browser.md#one-tab-registry)).
 
 ## Shell jobs
 

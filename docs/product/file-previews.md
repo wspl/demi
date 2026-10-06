@@ -49,8 +49,7 @@ lifetime. Every file in the File view can be downloaded, whatever its kind.
 These show the card: HEIC, TIFF and JPEG XL images, which only Safari
 displays; MKV, AVI and WMV video, which web browsers play unreliably; Office
 documents. HTML and MDX show as source: a page needs its scripts and relative
-files in an origin of its own, which an [expose](../execution/expose.md) of a
-server on the Host gives it. Mermaid diagrams, CSV tables, Jupyter notebooks
+files in an origin of its own, which the File view does not give it. Mermaid diagrams, CSV tables, Jupyter notebooks
 and image comparison modes such as swipe and onion skin are not designed yet.
 
 ## Choosing a view
