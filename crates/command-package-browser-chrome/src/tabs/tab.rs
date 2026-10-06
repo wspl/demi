@@ -47,6 +47,9 @@ pub struct TabState {
     pub viewport: watch::Sender<crate::tabs::viewport::Viewports>,
     /// Whether the tab loads its top-level page.
     pub loading: watch::Sender<bool>,
+    /// How many times the agent showed the tab to the user
+    /// (`live-view.md` § Showing a tab).
+    pub shows: watch::Sender<u64>,
     /// Counts the changes to what the browser shows, the environment's.
     pub changes: watch::Sender<u64>,
     /// The environment's tasks, which retirement joins: work for the tab that
@@ -77,6 +80,7 @@ impl TabState {
             dialog,
             viewport: watch::channel(Default::default()).0,
             loading,
+            shows: watch::channel(0).0,
             changes,
             tasks: tasks.clone(),
         }))
@@ -155,6 +159,19 @@ impl BrowserTab {
     /// What the tab keeps: its operation lock and each command family's data.
     pub fn state(&self) -> &TabState {
         &self.state
+    }
+
+    /// How many times the agent showed the tab to the user.
+    pub fn shows(&self) -> u64 {
+        *self.state.shows.borrow()
+    }
+
+    /// Shows the tab to the user once more: its count rises, and the
+    /// user's work panel selects it when it learns of the count
+    /// (`live-view.md` § Showing a tab). Nothing else changes in the browser.
+    pub fn show(&self) {
+        self.state.shows.send_modify(|shows| *shows += 1);
+        self.state.changes.send_modify(|revision| *revision += 1);
     }
 
     /// Who opened the tab.

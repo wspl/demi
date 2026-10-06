@@ -510,6 +510,28 @@ pub struct LiveControl {
     pub rect: ControlRect,
 }
 
+/// The most cursor regions a view hears of for a tab, from all its frames.
+pub const MAX_CURSOR_REGIONS: usize = 4000;
+
+/// Where on the visible page a cursor applies, in tab CSS pixels
+/// (`live-view.md` § Input).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct CursorRegion {
+    #[garde(skip)]
+    pub x: f64,
+    #[garde(skip)]
+    pub y: f64,
+    #[garde(range(min = f64::MIN_POSITIVE))]
+    pub width: f64,
+    #[garde(range(min = f64::MIN_POSITIVE))]
+    pub height: f64,
+    /// A CSS cursor keyword; `auto` leaves it to the browser, which the
+    /// observer resolves for the pointer's point.
+    #[garde(length(chars, max = 200))]
+    pub cursor: String,
+}
+
 /// A tab as the view lists it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -556,7 +578,12 @@ pub enum LiveModuleMessage {
         #[garde(skip)]
         watched: Option<TabId>,
     },
-    /// Video frames of this generation follow, starting with a key frame.
+    /// Video frames of this generation follow, starting with a key frame:
+    /// `width` × `height` pixels of `viewport`, at `scale` of its device
+    /// pixels. The page places a picture, and maps input on it, by its own
+    /// generation's viewport (`live-view.md` § Modes). At scale 1 a picture
+    /// is the page's own pixels, less the last row or column of an odd side,
+    /// which H.264 cannot encode; below 1 congestion lowered its resolution.
     Stream {
         #[garde(skip)]
         tab: TabId,
@@ -566,8 +593,24 @@ pub enum LiveModuleMessage {
         width: u32,
         #[garde(range(min = 1))]
         height: u32,
+        #[garde(dive)]
+        viewport: BrowserViewport,
+        #[garde(range(min = f64::MIN_POSITIVE, max = 1.0))]
+        scale: f64,
     },
     Heartbeat {},
+    /// Where on the watched tab's visible page each cursor applies, in
+    /// document order: a later region over an earlier one wins. The view
+    /// resolves the cursor under its pointer from them; where none applies,
+    /// or one leaves the cursor to the browser, the last `cursor` holds.
+    Cursors {
+        #[garde(skip)]
+        tab: TabId,
+        #[garde(length(max = MAX_CURSOR_REGIONS), dive)]
+        regions: Vec<CursorRegion>,
+    },
+    /// The cursor the watched tab shows at the viewer's pointer, as its
+    /// observer resolved it there.
     Cursor {
         #[garde(skip)]
         tab: TabId,
