@@ -241,16 +241,6 @@ pub enum Inbound {
         call_id: String,
         exit_code: u8,
     },
-    /// Open a TCP stream on the device's network between the socket and the
-    /// two pipes.
-    NetOpen {
-        stream_id: String,
-        host: String,
-        #[garde(range(min = 1))]
-        port: u16,
-        input: PipeRef,
-        output: PipeRef,
-    },
     /// Open a user stream: invoke `operation` of `package` in its resident
     /// service.
     ServiceOpen {
@@ -984,14 +974,6 @@ pub enum Outbound {
         id: String,
         reason: String,
     },
-    NetOpened {
-        stream_id: String,
-    },
-    NetError {
-        stream_id: String,
-        code: NetErrorCode,
-        message: String,
-    },
     ServiceOpened {
         stream_id: String,
     },
@@ -1120,16 +1102,6 @@ pub enum VolumeName {
 pub enum OutputStream {
     Stdout,
     Stderr,
-}
-
-/// Why a `net_open` stream could not connect.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum NetErrorCode {
-    Refused,
-    Unreachable,
-    ResolveFailed,
-    Timeout,
 }
 
 /// Why a `service_open` stream never opened: the package lacks the operation,
@@ -1568,7 +1540,6 @@ serde_plain::derive_display_from_serialize!(HelloErrorCode);
 serde_plain::derive_display_from_serialize!(Signal);
 serde_plain::derive_display_from_serialize!(VolumeName);
 serde_plain::derive_display_from_serialize!(OutputStream);
-serde_plain::derive_display_from_serialize!(NetErrorCode);
 serde_plain::derive_display_from_serialize!(ServiceErrorCode);
 serde_plain::derive_display_from_serialize!(ChangeKind);
 serde_plain::derive_display_from_serialize!(SpawnErrorKind);

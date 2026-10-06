@@ -29,7 +29,6 @@ mod direct;
 mod drafts;
 mod edge;
 mod editing;
-mod exposes;
 mod families;
 mod files;
 mod forks;

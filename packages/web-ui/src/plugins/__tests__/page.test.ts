@@ -50,7 +50,7 @@ test("a plugin's section joins the end of its group, or a group of its own, whil
   const pages = [
     definePage({ plugin: 'skills', settings: section('skills', 'Agent') }),
     definePage({ plugin: 'notes', settings: section('notes', 'Notes') }),
-    definePage({ plugin: 'expose' }),
+    definePage({ plugin: 'browser' }),
   ]
   const rail: SettingsNavGroup[] = [
     { label: 'Agent', items: [{ id: 'models', label: 'Models', icon: nothing }] },

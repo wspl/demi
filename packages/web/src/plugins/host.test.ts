@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { z } from 'zod'
-import { exposeStateSchema, type ExposeState } from '@demicodes/plugin-expose'
+import { skillsStateSchema, type SkillsState } from '@demicodes/plugin-skills'
 import { PluginCallError, definePage, pageContext } from '@demicodes/web-ui/plugins/page'
 import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
@@ -12,25 +12,25 @@ const realFetch = globalThis.fetch
 const CONVERSATION = '0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b'
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
-/** The `expose` plugin's state the channel brings. */
-let expose: ExposeState
+/** The `skills` plugin's state the channel brings. */
+let skills: SkillsState
 /** Each call the backend received: its path and body. */
 let calls: [string, unknown][]
 
 beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
-  expose = {
-    available: true,
-    exposes: [
+  skills = {
+    sources: [
       {
-        id: 'k7x2maqw4p3s6tavaw2y4z6aab',
-        number: 1,
-        deviceId: 'laptop',
-        deviceName: 'laptop',
-        address: '127.0.0.1:5173',
-        url: 'https://k7x2maqw4p3s6tavaw2y4z6aab.expose.demi.example/',
-        expiresAt: '2026-09-17T00:59:00.000Z',
+        id: 'src_1',
+        origin: 'acme/tools',
+        commit: 'a1b2c3d',
+        fetchedAt: '2026-09-17T00:59:00.000Z',
+        fetching: false,
+        updateAvailable: false,
+        skills: [{ name: 'review', description: 'Review a change.', warnings: [], enabled: false, disableModelInvocation: false }],
+        skipped: [],
       },
     ],
   }
@@ -41,15 +41,15 @@ beforeEach(() => {
       return Response.json({ providers: [] })
     }
     calls.push([path, JSON.parse(String(init?.body))])
-    if (path === '/api/plugins/expose/calls/renew') {
+    if (path === '/api/plugins/skills/calls/set_enabled') {
       return Response.json(null)
     }
     if (path === `/api/conversations/${CONVERSATION}/plugins/browser/calls/open`) {
       return Response.json({ tab: { id: 't1', title: '', url: 'about:blank', createdBy: { kind: 'user' } } })
     }
-    if (path === '/api/plugins/expose/calls/remove') {
+    if (path === '/api/plugins/skills/calls/remove_source') {
       return Response.json(
-        { code: 'plugin_refused', reason: 'expose_not_found', message: 'No expose k7x2' },
+        { code: 'plugin_refused', reason: 'source_not_found', message: 'No skill source "src_2"' },
         { status: 409 },
       )
     }
@@ -58,7 +58,7 @@ beforeEach(() => {
   channels = playChannels()
   const product = useProduct()
   product.start()
-  channels.last().connect(productState({ pluginStates: { expose } }))
+  channels.last().connect(productState({ pluginStates: { skills } }))
 })
 
 afterEach(() => {
@@ -74,29 +74,30 @@ function page(plugin: string) {
 }
 
 test("a plugin's user state is the product state's: its snapshot, each later message, and none once it is off", () => {
-  const state = page('expose').plugin.state(exposeStateSchema)
-  expect(state.value?.exposes.map((entry) => entry.id)).toEqual(['k7x2maqw4p3s6tavaw2y4z6aab'])
-  channels.last().send({ type: 'plugin', plugin: 'expose', state: { available: true, exposes: [] } })
-  expect(state.value?.exposes).toEqual([])
+  const state = page('skills').plugin.state(skillsStateSchema)
+  expect(state.value?.sources.map((source) => source.id)).toEqual(['src_1'])
+  channels.last().send({ type: 'plugin', plugin: 'skills', state: { sources: [] } })
+  expect(state.value?.sources).toEqual([])
   const entry = productState().plugins[0]!
   channels.last().send({ type: 'plugins', plugins: [{ ...entry, enabled: false }] })
   expect(state.value).toBeNull()
 })
 
 test('a call goes to its plugin route, for the user or for a conversation, and answers its checked result', async () => {
-  expect(await page('expose').plugin.call('renew', { expose: 'k7x2maqw4p3s6tavaw2y4z6aab' }, z.null())).toBeNull()
+  const review = { source: 'src_1', skill: 'review', enabled: true }
+  expect(await page('skills').plugin.call('set_enabled', review, z.null())).toBeNull()
   const opened = await page('browser').plugin.conversation(CONVERSATION).call('open', {}, z.object({ tab: z.object({ id: z.string() }) }))
   expect(opened.tab.id).toBe('t1')
   expect(calls).toEqual([
-    ['/api/plugins/expose/calls/renew', { expose: 'k7x2maqw4p3s6tavaw2y4z6aab' }],
+    ['/api/plugins/skills/calls/set_enabled', review],
     [`/api/conversations/${CONVERSATION}/plugins/browser/calls/open`, {}],
   ])
 })
 
 test("a refusal rejects with the plugin's own reason", async () => {
-  const refused = page('expose').plugin.call('remove', { expose: 'k7x2maqw4p3s6tavaw2y4z6aab' }, z.null())
+  const refused = page('skills').plugin.call('remove_source', { source: 'src_2' }, z.null())
   await expect(refused).rejects.toBeInstanceOf(PluginCallError)
-  await expect(refused).rejects.toMatchObject({ reason: 'expose_not_found', message: 'No expose k7x2' })
+  await expect(refused).rejects.toMatchObject({ reason: 'source_not_found', message: 'No skill source "src_2"' })
 })
 
 test("what a conversation holds is its primary Host's, of the plugin's packages", () => {

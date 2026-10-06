@@ -226,20 +226,20 @@ async fn post_from(
 }
 
 /// The user's browser sends the session cookie from every page of the
-/// product's site, an expose's among them, so a page of another site or an
-/// expose may neither set the instance up, nor sign the user in, nor act
-/// with the user's session. The product's page may, and so may a program
+/// product's site, one on another host of it among them, so a page of
+/// another site or another host may neither set the instance up, nor sign
+/// the user in, nor act with the user's session. The product's page may, and so may a program
 /// that sends no origin, such as curl calling the setup API.
 #[tokio::test]
 async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_page() {
-    let harness = Harness::new().with_expose_domain("expose.localhost");
+    let harness = Harness::new();
     let backend = harness.start().await;
     let product = backend.url.clone();
-    // An expose's origin as the backend prints its URLs: the public URL's
-    // scheme and port under the expose domain.
+    // A page on another host of the product's site: the public URL's scheme
+    // and port, another host name.
     let port = backend.url.rsplit(':').next().unwrap();
-    let expose = format!("http://a1b2c3d4e5.expose.localhost:{port}");
-    let others = ["https://elsewhere.example", expose.as_str(), "null"];
+    let sibling = format!("http://blog.localhost:{port}");
+    let others = ["https://elsewhere.example", sibling.as_str(), "null"];
     let forbidden = (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin);
     let credentials = json!({ "email": MASTER_EMAIL, "password": MASTER_PASSWORD });
     let setup_body =
@@ -278,7 +278,7 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
 
     let login = post_from(
         &backend,
-        Some(&expose),
+        Some(&sibling),
         "/api/auth/login",
         None,
         Some(credentials.clone()),

@@ -16,13 +16,12 @@ use demi_backend::{Backend, BackendConfig, publish_commands};
 use demi_backend_accounts::email_change::{AccountMail, MailError, VerificationMail};
 use demi_backend_blobs::counting::ObjectCounts;
 use demi_backend_cloud::tuning::CloudTuning;
-use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_remote_host::testing::{
     NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary,
 };
 use demi_backend_user_shard::tuning::{
-    ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning,
+    ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning,
 };
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::{
@@ -32,7 +31,8 @@ use demi_command_protocol::testing::built_program;
 use demi_command_protocol::{PackageDescriptor, host_target};
 use demi_runner_protocol::release::{SERVER_RELEASE, ServerRelease, compressed_file};
 use demi_plugin_interface::{
-    Manifest, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply, Request, Stream,
+    Manifest, Page, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply, Request,
+    Stream,
 };
 use demi_plugin_skills::testing::Repos;
 pub use demi_provider_common::testing::ManualClock;
@@ -278,13 +278,14 @@ pub struct Harness {
     /// publish (`native-runtime.md` § Backend deployment configuration),
     /// instead of a package the workspace built.
     pub server_release: Option<PathBuf>,
-    expose_domain: Option<ExposeDomain>,
-    pub exposes: ExposeTuning,
     /// Counts what reaches the object store of every backend this harness
     /// starts.
     objects: Option<ObjectCounts>,
     /// The repositories the skills plugin fetches instead of the internet's.
     skill_repos: Option<Arc<Repos>>,
+    /// Whether the backends have the `fixture-panel` plugin and its `page`
+    /// kind.
+    panel_fixture: bool,
 }
 
 impl Harness {
@@ -326,10 +327,9 @@ impl Harness {
             manager: ScriptedManager::start(),
             machines: None,
             server_release: None,
-            expose_domain: None,
-            exposes: ExposeTuning::default(),
             objects: None,
             skill_repos: None,
+            panel_fixture: false,
         }
     }
 
@@ -340,16 +340,17 @@ impl Harness {
         self
     }
 
-    /// Backends whose object store counts what reaches it in `counts`.
-    pub fn with_object_counts(mut self, counts: &ObjectCounts) -> Self {
-        self.objects = Some(counts.clone());
+    /// Backends with a plugin of the work panel kind `page`, which does
+    /// nothing with a tab: the panel's own rules, with no plugin's work
+    /// beside them.
+    pub fn with_panel_fixture(mut self) -> Self {
+        self.panel_fixture = true;
         self
     }
 
-    /// Exposes under `domain`, whose hostnames the backend answers with the
-    /// public relay.
-    pub fn with_expose_domain(mut self, domain: &str) -> Self {
-        self.expose_domain = Some(domain.parse().unwrap());
+    /// Backends whose object store counts what reaches it in `counts`.
+    pub fn with_object_counts(mut self, counts: &ObjectCounts) -> Self {
+        self.objects = Some(counts.clone());
         self
     }
 
@@ -542,8 +543,6 @@ impl Harness {
         config.cloud = self.cloud;
         config.clock = self.clock.clone();
         config.web_directory = self.web_directory.clone();
-        config.expose_domain = self.expose_domain.clone();
-        config.exposes = self.exposes;
         config.families = self.families.clone();
         config.runners = self.runners;
         config.runner_releases = self.runner_releases.clone();
@@ -568,6 +567,9 @@ impl Harness {
             config
                 .plugins
                 .push(Box::new(StreamsPlugin::new(streams.clone())));
+        }
+        if self.panel_fixture {
+            config.plugins.push(Box::new(PanelPlugin::new()));
         }
         if let Some(repos) = &self.skill_repos {
             let skills = config
@@ -795,18 +797,6 @@ impl TestBackend {
         self.backend
             .file_gate(&session.user.id, &conversation)
             .await
-    }
-
-    /// A new expose of `address` on the user's `device` for an hour, as the
-    /// `expose` plugin makes it.
-    pub async fn create_expose(
-        &self,
-        user: &demi_web_api_protocol::ids::UserId,
-        device: &demi_web_api_protocol::ids::DeviceId,
-        address: &str,
-    ) -> Result<demi_backend_expose::records::Expose, demi_backend_expose::records::ExposeError>
-    {
-        self.backend.create_expose(user, device, address).await
     }
 
     /// The `ws://` URL of `path`.
@@ -1116,6 +1106,46 @@ impl PluginFactory for StreamsPlugin {
 
     fn instance(&self) -> Rc<dyn Plugin> {
         Rc::new(NoRequests)
+    }
+}
+
+/// A plugin of the work panel kind `page`, which does nothing with a tab.
+struct PanelPlugin(Manifest);
+
+impl PanelPlugin {
+    fn new() -> Self {
+        let mut manifest = Manifest::new(
+            PluginId::try_from("fixture-panel").unwrap(),
+            "Fixture panel",
+            "A work panel kind whose tabs the scenarios change.",
+        );
+        manifest.page = Some(Page::new("@demicodes/plugin-fixture-panel").panel_kind("page"));
+        Self(manifest)
+    }
+}
+
+impl PluginFactory for PanelPlugin {
+    fn manifest(&self) -> &Manifest {
+        &self.0
+    }
+
+    fn instance(&self) -> Rc<dyn Plugin> {
+        Rc::new(PanelTabs)
+    }
+}
+
+/// An instance told of each tab its user creates or removes, which does
+/// nothing with it.
+struct PanelTabs;
+
+impl Plugin for PanelTabs {
+    fn call(&self, request: Request, _: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
+        Box::pin(async move {
+            match request {
+                Request::PanelTab { .. } => Ok(Reply::Done),
+                _ => unreachable!("a plugin of a panel kind only is told of its tabs"),
+            }
+        })
     }
 }
 

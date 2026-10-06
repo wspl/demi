@@ -2,11 +2,11 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import WorkPanel from '@demicodes/web-ui/agent/WorkPanel.vue'
+import { browserPage } from '@demicodes/plugin-browser'
+import { browserTabKind } from '@demicodes/plugin-browser/live/kind'
 import { changesPage } from '@demicodes/plugin-changes'
-import { exposePage } from '@demicodes/plugin-expose'
 import { fileBrowserPage } from '@demicodes/plugin-file-browser'
-import { pageTabKind } from '@demicodes/plugin-expose/page/page'
-import { exposePageTab } from '@demicodes/plugin-expose/page/page-data'
+import { galleryBrowser } from '../fixtures/live-browser'
 import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
 import { createGalleryWorkspace } from '../fixtures/workspace'
 
@@ -34,19 +34,21 @@ const TITLES = [
 ]
 
 const workspace = createGalleryWorkspace()
-// Change and File pinned before the pages, as the product's panel has them.
+// Change and File pinned before the pages, as the product's panel has them; the
+// pages are the conversation browser's, which has none open before Reset opens them.
 const work = useGalleryWork(null, {
   files: galleryFiles(workspace),
-  pages: [changesPage, fileBrowserPage, exposePage],
+  browser: galleryBrowser([]),
+  pages: [changesPage, fileBrowserPage, browserPage()],
 })
 const { panel, pinned, kinds } = work
 let opened = 0
 
 function openPage(): void {
-  const address = TITLES[opened % TITLES.length]!
+  const title = TITLES[opened % TITLES.length]!
   opened += 1
-  // The body never shows here, so the page is never loaded; the address names the tab.
-  work.add(pageTabKind.kind, exposePageTab({ url: 'https://example.test/', address }))
+  // The body never shows here, so no picture is shown; the title names the tab.
+  work.add(browserTabKind.kind, { url: 'https://example.test/', title })
 }
 
 function closeTabs(ids: string[]): void {

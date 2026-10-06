@@ -10,9 +10,7 @@ use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{PortError, PortTransport};
-use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
-use demi_web_api_protocol::exposes::ExposeAddress;
-use demi_web_api_protocol::ids::{DeviceId, ExposeId};
+use demi_shared_types::{B64Bytes, BlobRef};
 use demi_web_api_protocol::panel::{Applied, PanelChange, PanelDocument, PanelTab, WorkPanel};
 use futures_util::future::LocalBoxFuture;
 use serde::{Serialize, de::DeserializeOwned};
@@ -20,9 +18,9 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    CallKind, ConversationHost, DirectoryPath, EntryKind, ExposeList, ExposeRecord, ExposeRefusal,
-    HostDirectory, HostEntry, HostFile, HostRead, Plugin, PluginError, PluginId, PluginPort,
-    PluginTransport, PortAnswer, PortMessage, PortRefusal, Reply, Request, StoredValue,
+    CallKind, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile, HostRead, Plugin,
+    PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortMessage, PortRefusal,
+    Reply, Request, StoredValue,
 };
 
 /// `plugin` behind the JSON loopback.
@@ -88,7 +86,6 @@ pub struct PackageCall {
 /// Demi's side of a plugin's port, in memory: an rpc transport, the
 /// plugin's values and the blobs they name, the user's blobs, the plugin's
 /// Host directories, the files of the conversation's primary Host, the
-/// conversation's Hosts, the user's exposes on a clock the test sets, the
 /// package calls a test answers, how often the plugin marked its state
 /// as changed, and the conversation's work panel.
 pub struct TestDemi {
@@ -104,12 +101,6 @@ pub struct TestDemi {
     /// The files of the conversation's primary Host by absolute path, its
     /// directories being their parents; none while the Host is not running.
     pub host_files: RefCell<Option<BTreeMap<String, Vec<u8>>>>,
-    pub hosts: RefCell<Vec<ConversationHost>>,
-    /// Whether the instance has an expose domain.
-    pub exposes_available: Cell<bool>,
-    exposes: RefCell<Vec<ExposeRecord>>,
-    exposes_made: Cell<u64>,
-    pub now: Cell<Timestamp>,
     pub package_calls: RefCell<Option<PackageCalls>>,
     /// Each package call the plugin made.
     pub called: RefCell<Vec<PackageCall>>,
@@ -139,11 +130,6 @@ impl TestDemi {
             blobs: RefCell::default(),
             directories: RefCell::default(),
             host_files: RefCell::default(),
-            hosts: RefCell::default(),
-            exposes_available: Cell::new(true),
-            exposes: RefCell::default(),
-            exposes_made: Cell::new(0),
-            now: Cell::new(Timestamp::UNIX_EPOCH),
             package_calls: RefCell::default(),
             called: RefCell::default(),
             changed: Cell::new(0),
@@ -230,22 +216,6 @@ impl TestDemi {
             panel.0 += 1;
         }
         applied
-    }
-
-    /// The live exposes, as the port lists them.
-    pub fn live_exposes(&self) -> Vec<ExposeRecord> {
-        let now = self.now.get();
-        let mut exposes = self.exposes.borrow_mut();
-        exposes.retain(|expose| expose.expires_at > now);
-        exposes.sort_by_key(|expose| expose.expires_at);
-        exposes.clone()
-    }
-
-    /// Ends every expose on `device`, as a Cloud's stop does.
-    pub fn end_exposes_on(&self, device: &DeviceId) {
-        self.exposes
-            .borrow_mut()
-            .retain(|expose| expose.device != *device);
     }
 
     fn panel_answer(&self, change: PanelChange) -> Result<PortAnswer, PortRefusal> {
@@ -359,107 +329,8 @@ impl TestDemi {
                 self.panel_answer(PanelChange::Update { id, data })?
             }
             PortMessage::RemovePanelTab { id } => self.panel_answer(PanelChange::Remove { id })?,
-            PortMessage::ConversationHosts => PortAnswer::Hosts {
-                hosts: self.hosts.borrow().clone(),
-            },
-            PortMessage::ListExposes => PortAnswer::Exposes {
-                list: ExposeList {
-                    available: self.exposes_available.get(),
-                    listed_at: self.now.get(),
-                    exposes: if self.exposes_available.get() {
-                        self.live_exposes()
-                    } else {
-                        Vec::new()
-                    },
-                },
-            },
-            PortMessage::CreateExpose {
-                device,
-                address,
-                lifetime,
-            } => PortAnswer::Expose {
-                expose: self.create_expose(device, address, lifetime)?,
-            },
-            PortMessage::RenewExpose { expose, lifetime } => {
-                self.live(&expose)?;
-                let mut exposes = self.exposes.borrow_mut();
-                let record = exposes
-                    .iter_mut()
-                    .find(|record| record.id == expose)
-                    .expect("a live expose is listed");
-                record.expires_at = self.after(lifetime);
-                PortAnswer::Expose {
-                    expose: record.clone(),
-                }
-            }
-            PortMessage::RemoveExpose { expose } => {
-                self.live(&expose)?;
-                self.exposes
-                    .borrow_mut()
-                    .retain(|record| record.id != expose);
-                PortAnswer::Done
-            }
         };
         Ok(answer)
-    }
-
-    fn create_expose(
-        &self,
-        device: DeviceId,
-        address: String,
-        lifetime: u64,
-    ) -> Result<ExposeRecord, PortRefusal> {
-        if !self.exposes_available.get() {
-            return Err(expose_refusal(
-                ExposeRefusal::Unavailable,
-                "no expose domain",
-            ));
-        }
-        let address = ExposeAddress::try_from(address)
-            .map_err(|error| expose_refusal(ExposeRefusal::InvalidAddress, error.to_string()))?;
-        let hosts = self.hosts.borrow();
-        let host = hosts
-            .iter()
-            .find(|host| host.device == device)
-            .ok_or_else(|| expose_refusal(ExposeRefusal::DeviceNotFound, "No such device"))?;
-        if !host.online {
-            return Err(expose_refusal(ExposeRefusal::DeviceOffline, "offline"));
-        }
-        let made = self.exposes_made.get() + 1;
-        self.exposes_made.set(made);
-        let id = test_expose_id(made);
-        let record = ExposeRecord {
-            url: format!("http://{id}.expose.localhost:3271/"),
-            id,
-            device,
-            device_name: host.name.clone(),
-            address,
-            created_at: self.now.get(),
-            expires_at: self.after(lifetime),
-        };
-        self.exposes.borrow_mut().push(record.clone());
-        Ok(record)
-    }
-
-    fn live(&self, expose: &ExposeId) -> Result<(), PortRefusal> {
-        if self
-            .live_exposes()
-            .iter()
-            .any(|record| record.id == *expose)
-        {
-            Ok(())
-        } else {
-            Err(expose_refusal(
-                ExposeRefusal::NotFound,
-                format!("No expose {expose}"),
-            ))
-        }
-    }
-
-    fn after(&self, seconds: u64) -> Timestamp {
-        let millis = i64::try_from(seconds).expect("a test lifetime fits") * 1000;
-        Timestamp::from_millisecond(self.now.get().as_millisecond() + millis)
-            .expect("a test expiry is a timestamp")
     }
 }
 
@@ -513,26 +384,6 @@ fn host_file(files: &BTreeMap<String, Vec<u8>>, read: &HostRead) -> HostFile {
     } else {
         HostFile::Directory { entries }
     }
-}
-
-fn expose_refusal(reason: ExposeRefusal, message: impl Into<String>) -> PortRefusal {
-    PortRefusal::Expose {
-        reason,
-        message: message.into(),
-    }
-}
-
-/// The `n`th expose id a [`TestDemi`] draws: 26 base32 characters.
-fn test_expose_id(n: u64) -> ExposeId {
-    const ALPHABET: &[u8; 32] = b"abcdefghijklmnopqrstuvwxyz234567";
-    let mut text = vec![b'a'; 26];
-    let mut rest = n;
-    for byte in text.iter_mut().rev() {
-        *byte = ALPHABET[usize::try_from(rest % 32).expect("a digit fits")];
-        rest /= 32;
-    }
-    ExposeId::try_from(String::from_utf8(text).expect("base32 is ASCII"))
-        .expect("26 base32 characters are an expose id")
 }
 
 /// A plugin's command lines as a runner reads them, for the plugins' tests:

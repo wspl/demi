@@ -45,7 +45,7 @@ fn msgpack(value: &Value) -> Vec<u8> {
 #[test]
 fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("backend-to-runner");
-    assert_eq!(frames.len(), 63);
+    assert_eq!(frames.len(), 62);
     for (name, bytes) in frames {
         let message: Inbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -60,7 +60,7 @@ fn every_backend_frame_decodes_and_encodes_to_the_same_bytes() {
 #[test]
 fn every_runner_frame_decodes_and_encodes_to_the_same_bytes() {
     let frames = corpus("runner-to-backend");
-    assert_eq!(frames.len(), 62);
+    assert_eq!(frames.len(), 60);
     for (name, bytes) in frames {
         let message: Outbound =
             wire::decode(&bytes).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -115,8 +115,7 @@ fn refuses_disguised_binary_unknown_fields_trailing_data_and_optional_nulls() {
         json!({"type": "fs_stat", "id": "file", "path": "/work", "cwd": null}),
         json!({"type": "hello_error", "code": "unknown", "reason": "no"}),
         json!({"type": "rpc_exit", "callId": "call", "exitCode": 1.5}),
-        json!({"type": "net_open", "streamId": "net", "host": "h", "port": 0,
-            "input": {"id": "i", "url": "/i"}, "output": {"id": "o", "url": "/o"}}),
+        json!({"type": "log_read", "id": "log", "limit": 0}),
     ];
     for message in invalid {
         assert!(

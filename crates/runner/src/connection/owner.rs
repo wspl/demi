@@ -564,7 +564,6 @@ impl Owner<'_> {
             message if message.fs_request_id().is_some() => self.host.handle_filesystem(message)?,
             message if message.git_request_id().is_some() => self.host.handle_git(message)?,
             Inbound::FsWatch { .. } | Inbound::FsUnwatch { .. } => self.host.handle_watch(message)?,
-            Inbound::NetOpen { .. } => self.host.handle_net(message)?,
             Inbound::ServiceOpen { .. } => self.streams.handle_open(message)?,
             Inbound::DirectOffer {
                 id,

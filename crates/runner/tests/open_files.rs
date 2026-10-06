@@ -1,9 +1,9 @@
 #![cfg(all(unix, feature = "test-fixtures"))]
 //! With no open file left, each of these waits until one closes, then
 //! finishes (`runner.md` § Load): pipes, filesystem and working-tree
-//! requests, file transfers, network streams, process and job starts, a
-//! running job's pipelines, redirections and utilities, native service starts
-//! and local command connections; a cancelled job stops waiting. Last, the
+//! requests, file transfers, process and job starts, a running job's
+//! pipelines, redirections and utilities, native service starts and local
+//! command connections; a cancelled job stops waiting. Last, the
 //! runner raises its open-file limit, and what it starts gets the one it was
 //! started with. One test in its own binary: it changes the process's
 //! open-file limit and holds every remaining descriptor.
@@ -407,43 +407,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         })
         .await;
     }
-    let service = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let service_port = service.local_addr().unwrap().port();
-    tokio::spawn(async move {
-        let mut held = Vec::new();
-        loop {
-            match service.accept().await {
-                Ok((socket, _)) => held.push(socket),
-                Err(_) => tokio::time::sleep(Duration::from_millis(5)).await,
-            }
-        }
-    });
-    {
-        let host = host.clone();
-        let replies = replies.clone();
-        starved("network stream", Freed::Some, async move {
-            host.handle_net(Inbound::NetOpen {
-                stream_id: "n".into(),
-                host: "127.0.0.1".into(),
-                port: service_port,
-                input: PipeRef {
-                    id: "in".into(),
-                    url: "/pipe/net-in".into(),
-                },
-                output: PipeRef {
-                    id: "out".into(),
-                    url: "/pipe/net-out".into(),
-                },
-            })
-            .map_err(|error| error.to_string())?;
-            let value = reply_for(&replies, "streamId", "n").await;
-            (value["type"] == "net_opened")
-                .then_some(())
-                .ok_or(value.to_string())
-        })
-        .await;
-    }
-
     // Processes and shell jobs.
     {
         let cwd = root_path.clone();

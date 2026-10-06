@@ -56,11 +56,11 @@ test("a control's call is pending until it is answered, success or failure, and 
 
 test('a call the end of its scope aborts reports nothing', async () => {
   const { pending, reported, scope } = calls()
-  const renewing = pending.run('k7x2', 'Could not renew expose', (signal) =>
+  const updating = pending.run('src_1', 'Could not update the source', (signal) =>
     new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason))),
   )
   scope.stop()
-  await renewing
+  await updating
   expect(pending.pending.value).toEqual([])
   expect(reported).toEqual([])
 })
