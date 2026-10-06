@@ -413,9 +413,10 @@ keeps running. Booting the VM's kernel with `arm64.nosme` restores capture.
 - A capture starts at the viewport the watching viewer's panel gives the
   tab: the page sends its panel's size before it names a tab to watch, and
   the module sizes the tab before it captures it. The module never captures a
-  watched tab at a size it is about to replace. A new size at the same pixel
-  ratio changes the running capture; a new pixel ratio starts another, since
-  a running capture keeps the ratio it started with.
+  watched tab at a size it is about to replace. A new size or pixel ratio
+  starts a new capture, since Chrome cannot resize a running tab capture: a
+  larger size fails and a smaller one delivers no frames. Each new capture is
+  a stream generation, and its first key frame names the size it really has.
 - The page acknowledges each frame it shows. The module adapts from
   end-to-end acknowledgement delay: queueing delay is the main signal. Under
   congestion it lowers the bit rate, then the frame rate, then the resolution.
@@ -454,7 +455,9 @@ of the tab being watched.
 - The Mobile client hints keep the browser's own brands and set `mobile` and
   the Android platform, so the user agent and the hints agree.
 - In Web mode a picture is shown at its own CSS size from the panel's
-  top-left corner and is never scaled. While the panel grows, the part a
+  top-left corner and is never scaled, but for one case: Chrome encodes an
+  odd side at the nearest even size of the same shape, so a picture of a panel
+  with an odd side is scaled by less than a pixel. While the panel grows, the part a
   picture does not cover yet shows white until a picture at the new size
   arrives, as a local window does while it resizes; while it shrinks, the
   panel cuts the picture. It never shows bars around a smaller picture.
@@ -490,8 +493,13 @@ publishing the viewport to capture. Chrome acknowledging the metrics does not
 mean its compositor has applied them; starting a new capture earlier can scale
 and letterbox the old surface into the new dimensions.
 
-- The screen is shared by the environment's windows. The ratio follows the
-  viewer that operated most recently.
+- The screen is shared by the environment's windows. Each page's ratio
+  follows the viewer that operated most recently. The screen's ratio only
+  rises: it is the highest ratio a viewer of the environment used. When the
+  screen's ratio falls, Chrome keeps painting a cross-site frame at the old
+  scale until the page loads again, so a frame from another site would show
+  only its top-left part; a screen above the page's ratio paints the page as
+  it should.
 - macOS accepts only whole screen ratios. A fractional viewer ratio, such as
   1.5, rounds up, and the page scales the picture down.
 - The ratio stays as it is when viewers leave; only the next viewer's
@@ -559,7 +567,9 @@ the cursor to the browser, the observer resolves it, a text cursor over text,
 for the point the view asks about. A cursor list uses its last keyword. After
 a navigation the new document's cursor at the pointer replaces the old one.
 Every frame includes a cross-site frame, which runs in its own process and
-gets its own observer, and a shadow root's elements count as the page's. No
+gets its own observer, and an open shadow root's elements count as the page's;
+an element inside a closed shadow root, which no script outside it can reach,
+shows its host's cursor. No
 local element over the picture shows a cursor of its own, and none but a
 native control placed over the page's own takes the pointer's clicks from the
 picture: that one takes the click that opens the viewer's picker.
