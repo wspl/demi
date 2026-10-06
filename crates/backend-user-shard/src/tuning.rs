@@ -23,22 +23,6 @@ impl Default for LifecycleTuning {
     }
 }
 
-/// How the public relay treats a relayed connection (`expose.md` § The
-/// public relay). Tests shorten the time.
-#[derive(Debug, Clone, Copy)]
-pub struct ExposeTuning {
-    /// A relayed connection on which no byte moved for this long is closed.
-    pub idle: Duration,
-}
-
-impl Default for ExposeTuning {
-    fn default() -> Self {
-        Self {
-            idle: Duration::from_secs(10 * 60),
-        }
-    }
-}
-
 /// How the backend serves conversations (`runtime.md` § Order and delivery,
 /// `usage-and-quota.md` § Rate limit). Tests lower the bounds.
 #[derive(Debug, Clone, Copy)]

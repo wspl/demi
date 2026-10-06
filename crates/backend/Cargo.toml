@@ -37,7 +37,6 @@ demi-shared-cli = { path = "../shared-cli" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
 demi-backend-http = { path = "../backend-http" }
-demi-backend-expose = { path = "../backend-expose" }
 demi-backend-host-access = { path = "../backend-host-access" }
 demi-backend-blobs = { path = "../backend-blobs" }
 demi-backend-providers = { path = "../backend-providers" }
@@ -45,7 +44,6 @@ demi-backend-runners = { path = "../backend-runners" }
 demi-backend-user-shard = { path = "../backend-user-shard" }
 demi-backend-database = { path = "../backend-database" }
 demi-plugin-browser = { path = "../plugin-browser" }
-demi-plugin-expose = { path = "../plugin-expose" }
 demi-plugin-file = { path = "../plugin-file" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-plugin-skills = { path = "../plugin-skills" }
@@ -66,8 +64,6 @@ demi-web-api-protocol = { path = "../web-api-protocol" }
 clap = { version = "4", features = ["derive", "env"] }
 hex = "0.4"
 hkdf = "0.12"
-# The scenarios' expose hook names an expose's lifetime.
-jiff.workspace = true
 rand = "0.9"
 sd-notify = "0.5"
 sha2 = "0.10"
@@ -113,8 +109,8 @@ password-hash = { version = "0.5", features = ["getrandom"] }
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
 tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
-# The expose scenarios read HTTP heads byte for byte, header case included.
-httparse = "1"
+# The scenarios move the injected clock by a duration.
+jiff.workspace = true
 tokio-tungstenite = { version = "0.29", default-features = false, features = ["connect"] }
 # The browser suite reads the process table for Chrome's processes; the
 # browser package's stand-in Chrome archive and the real Chrome the suite

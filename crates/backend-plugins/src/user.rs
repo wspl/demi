@@ -5,9 +5,8 @@
 //! user streams exist; the context sources among them; the Host directories
 //! of the plugins on; and the answers to their port operations. The plugin
 //! host answers values, directories and changes itself; what reaches the
-//! user's blobs, a conversation's Hosts or the user's exposes goes to the
-//! product, which owns the blob namespace and the conversation's host
-//! access.
+//! user's blobs or a conversation's Hosts goes to the product, which owns
+//! the blob namespace and the conversation's host access.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -22,14 +21,14 @@ use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{CommandSet, GroupBuilder, PortError, RpcPort};
 use demi_plugin_interface::{
-    CallKind, ConversationHost, DirectoryPath, ExposeList, ExposeRecord, HostDirectory, HostFile,
-    HostRead, PanelTabChange, Plugin, PluginError, PluginId, PluginPort, PluginTransport,
-    PortAnswer, PortFailure, PortMessage, PortRefusal, Reply, Request, Scope, StoredValue, Topic,
+    CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, PanelTabChange, Plugin,
+    PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
+    PortRefusal, Reply, Request, Scope, StoredValue, Topic,
 };
 use demi_shared_types::{B64Bytes, BlobRef, NodeId, TurnId};
 use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId, ExposeId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::panel::{PanelChange, PanelEffect, WorkPanel};
 use demi_web_api_protocol::plugins::{PluginEntry, PluginStateAnswer};
 use futures_util::future::LocalBoxFuture;
@@ -40,7 +39,7 @@ use crate::Registry;
 use crate::commands::compose;
 
 /// What the product does for the plugins' port: the operations that reach
-/// a conversation's Hosts through its host access, and the user's exposes.
+/// a conversation's Hosts through its host access, and the user's blobs.
 /// The user's shard implements it.
 pub trait ProductPort {
     /// Runs `operation` once on the conversation's primary Host for the user,
@@ -53,11 +52,6 @@ pub trait ProductPort {
         kind: CallKind,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Value, PortFailure>>;
-
-    fn conversation_hosts<'a>(
-        &'a self,
-        conversation: &'a ConversationId,
-    ) -> LocalBoxFuture<'a, Result<Vec<ConversationHost>, PortFailure>>;
 
     /// Reads `reads` on the conversation's primary Host in the form that never
     /// wakes it; [`PortRefusal::NotRunning`] when it is not running.
@@ -72,23 +66,6 @@ pub trait ProductPort {
     fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>>;
 
     fn get_blob(&self, blob: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>>;
-
-    fn exposes(&self) -> LocalBoxFuture<'_, Result<ExposeList, PortFailure>>;
-
-    fn create_expose(
-        &self,
-        device: DeviceId,
-        address: String,
-        lifetime: u64,
-    ) -> LocalBoxFuture<'_, Result<ExposeRecord, PortFailure>>;
-
-    fn renew_expose(
-        &self,
-        expose: ExposeId,
-        lifetime: u64,
-    ) -> LocalBoxFuture<'_, Result<ExposeRecord, PortFailure>>;
-
-    fn remove_expose(&self, expose: ExposeId) -> LocalBoxFuture<'_, Result<(), PortFailure>>;
 }
 
 /// A page's call of a plugin method.
@@ -975,26 +952,6 @@ impl RequestPort {
                     .package_call(conversation, &operation, args, kind, &self.cancel)
                     .await?;
                 PortAnswer::Called { result }
-            }
-            PortMessage::ConversationHosts => PortAnswer::Hosts {
-                hosts: product.conversation_hosts(self.conversation()?).await?,
-            },
-            PortMessage::ListExposes => PortAnswer::Exposes {
-                list: product.exposes().await?,
-            },
-            PortMessage::CreateExpose {
-                device,
-                address,
-                lifetime,
-            } => PortAnswer::Expose {
-                expose: product.create_expose(device, address, lifetime).await?,
-            },
-            PortMessage::RenewExpose { expose, lifetime } => PortAnswer::Expose {
-                expose: product.renew_expose(expose, lifetime).await?,
-            },
-            PortMessage::RemoveExpose { expose } => {
-                product.remove_expose(expose).await?;
-                PortAnswer::Done
             }
             PortMessage::PanelTabs => {
                 let registered = &shared.registry.plugins[self.plugin];

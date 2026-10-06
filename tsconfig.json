@@ -24,7 +24,6 @@
     "packages/plugin-sdk",
     "packages/plugin-browser",
     "packages/plugin-changes",
-    "packages/plugin-expose",
     "packages/plugin-file-browser",
     "packages/plugin-skills",
     "packages/web-gallery",
