@@ -360,7 +360,7 @@ happened to use, and the SDK's entry exports them by these groups:
 | Navigation | `AddressBar` |
 | Files | `FileIcon`, `FileView`, `ChangeView`, and the shapes and paths the conversation files service gives |
 | Icons | `ICON_PX`, the icon sizes, and Demi's own icons, such as `GlobePlus` |
-| Composables | `useTimeRemaining` and its formatter; `pendingCalls`, the calls a page's controls wait for ([Calls and states](#calls-and-states)) |
+| Composables | `pendingCalls`, the calls a page's controls wait for ([Calls and states](#calls-and-states)) |
 | Streams | The liveness helpers a stream's protocol uses to tell a silent stream, and the waits before opening one again |
 
 A primitive joins the kit when a page needs it and another page could use it;

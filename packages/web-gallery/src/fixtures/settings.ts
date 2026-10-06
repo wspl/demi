@@ -686,13 +686,13 @@ export function createSettingsState() {
       {
         id: 'browser',
         name: 'Browser',
-        description: 'A browser on the conversation’s host that the agent drives with demi browser and the user watches in the work panel.',
+        description: 'Gives the agent a browser on the conversation’s host, which it drives with demi browser and you watch and use in the work panel.',
         enabled: true,
       },
       {
         id: 'skills',
         name: 'Skills',
-        description: 'Workflows the agent follows: skills from Git repositories you add, and those your repository carries.',
+        description: 'Teaches the agent workflows with skills from Git repositories you add with demi skills, and from your repository.',
         enabled: true,
       },
       {
