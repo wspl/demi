@@ -313,9 +313,6 @@ CREATE TABLE conversations (
   titled_messages     INTEGER NOT NULL,
   created_at          INTEGER NOT NULL,
   updated_at          INTEGER NOT NULL,
-  -- When the conversation's agent tree was last seen live, from which the
-  -- retention pass reads how long the conversation has been idle.
-  live_at             INTEGER NOT NULL,
   -- When the earliest yield wakeup its tree saved is due, which the next
   -- start restores the tree at: 0 for one whose action had not ended, due
   -- at start; null when it saved none.
@@ -538,25 +535,8 @@ CREATE TABLE blocks (
   PRIMARY KEY (node_id, idx)
 ) STRICT;
 
--- An index of the blobs the blocks reference, one row per reference, media
--- and edit copies: derived from each block in the transaction that writes
--- it, never written on its own. The retention pass finds expired tool media
--- and referenced blobs here, which SQLite cannot index inside a block's JSON.
-CREATE TABLE blob_refs (
-  node_id TEXT NOT NULL,
-  idx     INTEGER NOT NULL,
-  part    INTEGER NOT NULL CHECK (part >= 0),
-  blob    TEXT NOT NULL,
-  holder  TEXT NOT NULL CHECK (holder IN ('message', 'tool_result', 'edit_copy')),
-  at      INTEGER NOT NULL,
-  PRIMARY KEY (node_id, idx, part),
-  FOREIGN KEY (node_id, idx) REFERENCES blocks (node_id, idx) ON DELETE CASCADE
-) STRICT;
-CREATE INDEX blob_refs_expiry ON blob_refs (holder, at);
-
 -- Each ended command's whole output: stored as a blob, with the bytes at
--- its end the backend does not have and why; not stored, and why; or
--- removed by the retention pass, and when.
+-- its end the backend does not have and why; or not stored, and why.
 CREATE TABLE command_outputs (
   command_id     TEXT PRIMARY KEY,
   ended_at       INTEGER NOT NULL,
@@ -566,13 +546,11 @@ CREATE TABLE command_outputs (
   -- The command's media, a JSON array, beside a stored output.
   media          TEXT,
   not_stored     TEXT,
-  removed_at     INTEGER,
-  CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) + (removed_at IS NOT NULL) = 1),
+  CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
   CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
   CHECK (missing_bytes IS NULL OR blob IS NOT NULL),
   CHECK ((media IS NULL) = (blob IS NULL))
 ) STRICT;
-CREATE INDEX command_outputs_expiry ON command_outputs (ended_at) WHERE blob IS NOT NULL;
 ";
 
 #[cfg(test)]

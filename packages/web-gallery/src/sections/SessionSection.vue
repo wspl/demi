@@ -86,7 +86,6 @@ import {
   missingImageTool,
   notStoredVideoTool,
   recordingTool,
-  removedImageTool,
   runningShellTool,
   screenshotTool,
   screenshotsTool,
@@ -558,7 +557,6 @@ const toolMediaSpecimens = [
   { variant: 'shell · tall image', block: fullPageTool },
   { variant: 'shell · video', block: recordingTool },
   { variant: 'status · image', block: statusImageTool },
-  { variant: 'shell · image removed', block: removedImageTool },
   { variant: 'shell · video not stored', block: notStoredVideoTool },
   { variant: 'shell · image cannot load', block: missingImageTool },
 ]

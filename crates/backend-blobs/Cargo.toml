@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [lib]
-# Its tests reach the record of blob uses, so they are unit tests and the
+# Its tests reach the stores' private parts, so they are unit tests and the
 # crate has no integration tests (`crates-and-packages.md` § Module layout);
 # no doc examples.
 doctest = false
@@ -27,16 +27,13 @@ async-trait = "0.1"
 axum = { version = "0.8", optional = true }
 bytes.workspace = true
 futures-util.workspace = true
-jiff.workspace = true
 object_store = { workspace = true, features = ["aws", "fs"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
-tracing.workspace = true
 url = { version = "2", features = ["serde"] }
 
 [dev-dependencies]
-demi-provider-common = { path = "../provider-common", features = ["testing"] }
 axum = "0.8"
 tempfile = "3"

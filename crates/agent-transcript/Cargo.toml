@@ -21,7 +21,6 @@ demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-store = { path = "../agent-store" }
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
-jiff.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
