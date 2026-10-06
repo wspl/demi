@@ -1212,7 +1212,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Attachments in a Message"
-        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video plays in place at an image's bounds, a link opens the attachment, any other file downloads, and a number the conversation does not have says so."
+        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video plays in place at an image's bounds, a link opens the attachment, any other file downloads, and a number the conversation does not have says so. Images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap, each at most a tool preview's height and the message's width: the tall page shows narrow, the wide timeline fits the width. A lone image after text keeps the message's width and 60% of the visible height."
       >
         <GallerySpecimen variant="attachments" wide>
           <GalleryAttachmentMessage :files="sessionFiles" :cwd="workspace.root" />
