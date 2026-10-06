@@ -125,7 +125,7 @@ happens when the command set is built, before any call.
 One implementation of everything this section describes, the command-tree
 library ([Crates](../architecture/crates-and-packages.md#crates)), serves both
 the runner and the backend. The runner parses argv and answers `--help` with it;
-the backend renders the model's command help and checks registrations with it.
+the backend renders the model's capability index and checks registrations with it.
 Both validate arguments with the `jsonschema` validator over the schema
 schemars derived, so a usage error reads the same wherever it is raised, and no
 second set of rules exists to drift from the declaration.
@@ -207,9 +207,11 @@ the web app validates count the same unit
 
 ### Help
 
-The model's command help and every `--help` come from one renderer over the
-declarations. The model's help opens with one paragraph of defaults that every
-command follows unless its own help says otherwise: success prints raw text on
+Every `--help` and the model's capability index come from one renderer over
+the declarations ([System prompt](../agent/system-prompt.md#capability-index)).
+A group's declaration carries its index entry, at most 600 characters,
+refused at registration when longer. The index opens with one paragraph of
+defaults that every command follows unless its own help says otherwise: success prints raw text on
 stdout; failure writes an error message to stderr and exits non-zero; `--help`
 works at any level; usage writes `<placeholders>` for values and `[brackets]`
 for optional arguments; values containing spaces are quoted; stdin bodies use a
@@ -217,8 +219,8 @@ quoted heredoc, pipe, or input redirection and have no option;
 `--name=value` and `--` pass values that begin with `--`; and a command
 marked as returning media attaches its images and videos to the result when
 its stdout is the job's output, and otherwise writes a single one's bytes as
-its stdout. Each root's help
-follows. An empty command set renders no help.
+its stdout. Each group's entry, its operations' names and the pointer to its
+`--help` follow. An empty command set renders no index.
 
 Help displays a complete usage template, value placeholders, required and
 optional arguments, enum choices, and repeatable options. A leaf with a
