@@ -2,7 +2,8 @@
 import { computed, ref } from 'vue'
 import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document'
 import { useMarkdownRenderVersion } from '../markdown/highlight'
-import { useScrollThumbs } from '../composables/useScrollThumbs'
+import { useContentScrollbars } from '../composables/useContentScrollbars'
+import ScrollArea from '../ui/ScrollArea.vue'
 
 /**
  * A Markdown file rendered as a document (`file-previews.md` § Markdown). A
@@ -18,8 +19,9 @@ const html = computed(() => {
   void renderVersion.value
   return renderMarkdownDocument(props.text, props.place)
 })
-const root = ref<HTMLElement | null>(null)
-useScrollThumbs(root)
+const scrollArea = ref<InstanceType<typeof ScrollArea>>()
+const root = computed(() => scrollArea.value?.el)
+useContentScrollbars(root)
 
 function follow(event: MouseEvent): void {
   const link = event.target instanceof Element ? event.target.closest('a') : null
@@ -46,8 +48,8 @@ function follow(event: MouseEvent): void {
 </script>
 
 <template>
-  <div ref="root" class="h-full overflow-y-auto" @click="follow">
+  <ScrollArea ref="scrollArea" class="h-full" @click="follow">
     <!-- eslint-disable-next-line vue/no-v-html -- sanitized by the document renderer -->
     <article class="markdown-body markdown-document mx-auto max-w-[860px] select-text px-8 py-6 text-conversation text-fg-body" v-html="html" />
-  </div>
+  </ScrollArea>
 </template>
