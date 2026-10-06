@@ -130,7 +130,7 @@ pub(super) async fn hosts(
             let hosts = listed
                 .into_iter()
                 .map(|(host, attached_at)| AttachedHost {
-                    online: shard.devices().online(&host.device),
+                    state: shard.devices().state(&host.device),
                     device_id: host.device,
                     name: host.name,
                     cwd: host.cwd,

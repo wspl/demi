@@ -21,7 +21,7 @@ use demi_backend_user_shard::tuning::LifecycleTuning;
 use demi_provider_common::testing::MockVendor;
 use demi_shared_gates::Purpose;
 use demi_web_api_protocol::cloud::{CloudResetAnswer, CloudState, CloudStatus, ResetPhase};
-use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::devices::{DeviceKind, DeviceState};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{Directory, FileText};
 use demi_web_api_protocol::hosts::AttachedHosts;
@@ -80,7 +80,7 @@ pub(crate) async fn cloud_online(backend: &TestBackend, session: &Session) -> bo
         .devices(session)
         .await
         .iter()
-        .any(|device| device.kind == DeviceKind::Managed && device.online)
+        .any(|device| device.kind == DeviceKind::Managed && device.state == DeviceState::Online)
 }
 
 /// The one device the manager made, the user's Cloud.

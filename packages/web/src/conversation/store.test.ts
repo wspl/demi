@@ -199,7 +199,7 @@ beforeEach(async () => {
         records.unshift(created)
       }
       const hosts = (body.hosts ?? []).map((host: { deviceId: string; name: string }) => ({
-        ...host, cwd: null, online: true, attachedAt: '2026-09-09T00:00:00.000Z',
+        ...host, cwd: null, state: 'online', attachedAt: '2026-09-09T00:00:00.000Z',
       }))
       return Response.json({ conversation: created, hosts }, { status: existing ? 200 : 201 })
     }
@@ -625,7 +625,7 @@ test('the first send creates the conversation with its settings and hosts in one
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  conversation.attachedHosts = [{ deviceId: 'laptop', name: 'build', cwd: null, online: true }]
+  conversation.attachedHosts = [{ deviceId: 'laptop', name: 'build', cwd: null }]
   useProduct().snapshot!.providers.push(stubProvider)
   const originalFetch = globalThis.fetch
   const readBack: string[] = []
@@ -661,7 +661,7 @@ test('the first send creates the conversation with its settings and hosts in one
 test('an attach and a rename show the hosts their answers list, and a detach the one it removed, with no read', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  const host = (name: string) => ({ deviceId: 'laptop', name, cwd: null, online: true, attachedAt: '2026-09-09T00:00:00.000Z' })
+  const host = (name: string) => ({ deviceId: 'laptop', name, cwd: null, state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' })
   const originalFetch = globalThis.fetch
   const sent: string[] = []
   globalThis.fetch = (async (input, init) => {

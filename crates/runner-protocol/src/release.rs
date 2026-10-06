@@ -142,10 +142,13 @@ pub fn release_file(executable: &str, target: &str) -> String {
     format!("{executable}-{target}{suffix}")
 }
 
+/// What a compressed copy's name adds to its file's.
+pub const COMPRESSED_SUFFIX: &str = ".zst";
+
 /// The name of the compressed copy of `executable`'s file for `target`,
-/// which is how a release's files hold a command program.
+/// which is how a release's files hold a command program and a runner.
 pub fn compressed_file(executable: &str, target: &str) -> String {
-    format!("{}.zst", release_file(executable, target))
+    format!("{}{COMPRESSED_SUFFIX}", release_file(executable, target))
 }
 
 /// The variable that names the release a runner was installed from: an
@@ -158,6 +161,10 @@ pub const RELEASE_HEADER: &str = "demi-runner-release";
 
 /// The request header that names a runner's target.
 pub const TARGET_HEADER: &str = "demi-runner-target";
+
+/// The request header that carries a paired runner's device token, by which
+/// the backend knows which device a 409 sends to an update.
+pub const TOKEN_HEADER: &str = "demi-runner-token";
 
 /// The backend's 409 answer to a runner of another release than its own:
 /// the backend's runner release and, when it carries one for the runner's

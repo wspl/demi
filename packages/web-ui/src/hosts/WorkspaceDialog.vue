@@ -20,6 +20,7 @@ import FileBrowser from '../files/FileBrowser.vue'
 import PathInput from '../files/PathInput.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
 import type { PairingDevice } from '../devices/pairing'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import {
   openingChoice,
   usePairedSelection,
@@ -98,12 +99,12 @@ const browserHosts = computed(() =>
   props.devices.map((entry) => ({
     id: entry.id,
     label: entry.name,
-    online: entry.online,
+    state: entry.state,
   })),
 )
 const browserSource = computed(() => props.sourceFor(deviceId.value))
 const browserPlaces = computed(() => props.placesFor?.(deviceId.value) ?? [])
-const online = computed(() => !!device.value?.online)
+const online = computed(() => device.value?.state === 'online')
 /** What a device project will be called: the directory's name. */
 const projectName = computed(() => baseName(path.value.replace(/\/$/, '')))
 const canCreate = computed(
@@ -289,10 +290,10 @@ function selectDevice(id: string, close: () => void): void {
                           :key="entry.id"
                           :icon="hostIcon(entry)"
                           :label="entry.name"
-                          :indicator="entry.online ? 'success' : 'muted'"
-                          :indicator-label="entry.online ? 'Online' : 'Offline'"
-                          :note="entry.online ? undefined : 'Offline'"
-                          :disabled="!entry.online"
+                          :indicator="DEVICE_STATE_TONE[entry.state]"
+                          :indicator-label="DEVICE_STATE_LABEL[entry.state]"
+                          :note="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
+                          :disabled="entry.state !== 'online'"
                           disabled-reason="This device is offline."
                           choice
                           :is-selected="deviceId === entry.id"

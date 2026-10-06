@@ -14,7 +14,8 @@ import type { ExposeState } from '@demicodes/plugin-expose'
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import { commitOf } from './plugins'
 import { createSubagentState } from './subagent-profiles'
-import { ahead } from './time'
+import { ago, ahead } from './time'
+import { demoDeviceStart } from './device-installation'
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
@@ -686,13 +687,14 @@ export function mockProviders(): MockProvider[] {
 /** The paired devices the devices page lists. */
 function galleryDevices(): SettingsDevice[] {
   return [
-    { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now', direct: 'connected' },
-    { id: 'build', name: 'build-01', online: false, seen: '3 days ago' },
+    { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), direct: 'connected' },
+    { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * 24 * 60 * 60 * 1000), start: demoDeviceStart('linux') },
+    { id: 'studio', name: 'studio-pc', state: 'offline', seen: ago(24 * 60 * 60 * 1000), start: demoDeviceStart('windows') },
     {
       id: 'lab',
       name: 'lab-workstation-with-a-long-hostname',
-      online: true,
-      seen: '2 minutes ago',
+      state: 'updating',
+      seen: ago(2 * 60 * 1000),
     },
   ]
 }

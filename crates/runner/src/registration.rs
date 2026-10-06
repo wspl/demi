@@ -316,9 +316,10 @@ enum Attempt {
 /// Opens one backend connection and serves it until it ends.
 async fn connection(registered: &Registered) -> io::Result<Attempt> {
     let management = &registered.management;
+    let token = registered.token.borrow().clone();
     let connected = tokio::select! {
         _ = management.draining.cancelled() => return Ok(Attempt::Ended(End::Stopped)),
-        result = Transport::connect(&registered.backend, &registered.runner.version, management.stop.clone()) => result?,
+        result = Transport::connect(&registered.backend, &registered.runner.version, token.as_ref(), management.stop.clone()) => result?,
     };
     match connected {
         Connected::Open(transport) => connection::serve(registered, transport)

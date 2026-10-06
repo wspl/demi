@@ -29,14 +29,16 @@ const FILE_BROWSER_PLATFORMS: Record<DeviceDto['platform'], Device['platform']> 
 
 /** A snapshot device as the file browser and the work panel take it. */
 function productDevice(device: DeviceDto): Device {
+  const platform = FILE_BROWSER_PLATFORMS[device.platform]
   return {
     id: device.id,
     kind: device.kind,
     name: device.name,
-    online: device.online,
+    state: device.state,
     home: device.home,
     seen: device.lastSeenAt ?? undefined,
-    platform: FILE_BROWSER_PLATFORMS[device.platform],
+    platform,
+    start: device.startCommand ? { command: device.startCommand, system: platform } : null,
   }
 }
 
@@ -146,7 +148,7 @@ export const useResources = defineStore('resources', () => {
         ...checkout,
         host: device?.name ?? 'Unavailable device',
         hostKind: 'device',
-        online: device?.online ?? false,
+        state: device?.state ?? 'offline',
       }
     }),
   )

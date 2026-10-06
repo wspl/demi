@@ -22,9 +22,9 @@ use demi_machine_manager_protocol::image::{
     Os, RUNNER_PATH, RootfsArchive, RootfsFile,
 };
 use demi_runner_protocol::image::ARTIFACTS_PATH;
-use demi_runner_protocol::release::{RUNNER, RunnerRelease, compressed_file, release_file};
+use demi_runner_protocol::release::{RUNNER, RunnerRelease, compressed_file};
 use demi_shared_artifacts::{
-    Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord, Staged,
+    Digest, Mode, Permissions, Publication, ReleaseFile, ReleaseRecord,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -140,7 +140,7 @@ async fn package(
     }
 
     let mut executables = BTreeMap::new();
-    install_runner(&root, &files, &runner, &runner_artifact, target, cancel).await?;
+    install_runner(&root, &files, &runner, &runner_artifact, target).await?;
     executables.insert(RUNNER_PATH.to_owned(), runner_artifact);
     for (executable, descriptor, artifact) in &releases {
         let path = install_package(&root, &files, executable, descriptor, artifact, target).await?;
@@ -275,7 +275,7 @@ async fn command_packages(commands: &Path) -> Result<Vec<(String, PathBuf)>, Err
     Ok(packages)
 }
 
-/// Installs the runner of `release`, whose executable is among `files`, as
+/// Installs the runner of `release`, whose compressed copy is among `files`, as
 /// `/opt/demi/bin/demi-runner` with `demi` as its alias beside it, and links
 /// both from `/usr/bin`: everything of Demi's lies under `/opt/demi`, which
 /// a Cloud takes from the configured image (`images.md` § Root filesystem
@@ -286,15 +286,14 @@ async fn install_runner(
     release: &RunnerRelease,
     artifact: &PackageArtifact,
     target: &str,
-    cancel: &CancellationToken,
 ) -> Result<(), Error> {
-    let source = files.join(release_file(RUNNER, target));
+    let source = files.join(compressed_file(RUNNER, target));
     let installed = in_tree(root, RUNNER_PATH);
     let directory = installed.parent().expect("the runner's path has a directory");
     tokio::fs::create_dir_all(directory)
         .await
         .map_err(at(directory))?;
-    install_executable(&source, artifact, &installed, cancel).await?;
+    install_decoded(&source, artifact, &installed).await?;
     // `demi` is the runner by another name, beside it.
     let name = installed
         .file_name()
@@ -332,7 +331,22 @@ async fn install_package(
     tokio::fs::create_dir_all(parent)
         .await
         .map_err(at(parent))?;
-    let encoded = tokio::fs::read(&source).await.map_err(at(&source))?;
+    install_decoded(&source, artifact, &installed).await?;
+    eprintln!(
+        "Cloud image: command package {}@{}",
+        descriptor.id, descriptor.version
+    );
+    Ok(path)
+}
+
+/// Installs the executable whose compressed copy is at `source` as
+/// `destination`: nothing is there unless the copy decodes to `artifact`.
+async fn install_decoded(
+    source: &Path,
+    artifact: &PackageArtifact,
+    destination: &Path,
+) -> Result<(), Error> {
+    let encoded = tokio::fs::read(source).await.map_err(at(source))?;
     let expected = Digest {
         size: artifact.size,
         sha256: artifact.sha256.clone(),
@@ -343,7 +357,7 @@ async fn install_package(
     .await
     .map_err(std::io::Error::other)?
     .map_err(|error| Error::File {
-        path: source.clone(),
+        path: source.to_owned(),
         source: error,
     })?;
     let publication = Publication {
@@ -351,42 +365,9 @@ async fn install_package(
         permissions: Permissions::Executable,
         durable: false,
     };
-    demi_shared_artifacts::publish_bytes(&installed, &decoded, publication)
+    demi_shared_artifacts::publish_bytes(destination, &decoded, publication)
         .await
-        .map_err(at(&installed))?;
-    eprintln!(
-        "Cloud image: command package {}@{}",
-        descriptor.id, descriptor.version
-    );
-    Ok(path)
-}
-
-/// Copies the executable at `source` to `destination`, checking its bytes
-/// against `artifact` as they are copied: nothing is at `destination` unless
-/// they match.
-async fn install_executable(
-    source: &Path,
-    artifact: &PackageArtifact,
-    destination: &Path,
-    cancel: &CancellationToken,
-) -> Result<(), Error> {
-    let expected = Digest {
-        size: artifact.size,
-        sha256: artifact.sha256.clone(),
-    };
-    let mut input = tokio::fs::File::open(source).await.map_err(at(source))?;
-    let publication = Publication {
-        mode: Mode::CreateNew,
-        permissions: Permissions::Executable,
-        durable: false,
-    };
-    let mut staged = Staged::new(destination, publication)
-        .await
-        .map_err(at(destination))?;
-    demi_shared_artifacts::copy(&mut input, &expected, staged.file(), cancel)
-        .await
-        .map_err(at(source))?;
-    staged.publish().await.map_err(at(destination))
+        .map_err(at(destination))
 }
 
 /// Makes `alias` a symbolic link to `target`, where images are built.
@@ -703,7 +684,10 @@ Version: 0.19.0-3
                 targets: BTreeMap::from([(TARGET.to_owned(), measured(b"runner").await)]),
             };
             let record = crate::record(&runner).unwrap();
-            write(&files.join(release_file(RUNNER, TARGET)), b"runner");
+            let runner_copy =
+                demi_shared_artifacts::encode_blocking(b"runner", demi_shared_artifacts::Effort::Fast)
+                    .unwrap();
+            write(&files.join(compressed_file(RUNNER, TARGET)), &runner_copy);
             write(&runners.join(&runner.release).join(MANIFEST), &record);
             write(&runners.join(MANIFEST), &record);
             let browser_release = command_package(

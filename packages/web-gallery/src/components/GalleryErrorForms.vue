@@ -158,7 +158,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               :is-open="open"
               :overlay-store="appOverlayStore"
               :devices="[
-                { id: 'preview-device', name: 'Preview laptop', online: true },
+                { id: 'preview-device', name: 'Preview laptop', state: 'online' },
               ]"
               :source-for="() => hosts[0]!.source"
               :last-host="failedProjectHost"

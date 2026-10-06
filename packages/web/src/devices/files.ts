@@ -36,6 +36,6 @@ export function browserHosts(devices: Device[]): FileBrowserHost[] {
   return devices.map((device) => ({
     id: device.id,
     label: device.name,
-    online: device.online,
+    state: device.state,
   }))
 }

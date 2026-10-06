@@ -26,6 +26,8 @@ import type { ContextLimitChange } from './context-limit'
 import SessionNoticeBar from './SessionNoticeBar.vue'
 import ReplacedDraftNotice from './ReplacedDraftNotice.vue'
 import PluginsChangedNotice from './PluginsChangedNotice.vue'
+import HostOfflineNotice from './HostOfflineNotice.vue'
+import type { DeviceStart } from '../devices/installation'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -69,6 +71,8 @@ const props = withDefaults(
      * offers to restore: its Markdown and the names of its files.
      */
     replaced?: { markdown: string; fileNames: readonly string[] } | null
+    /** The conversation's primary Host is a paired device that is offline: says how to start its runner again. */
+    offlineHost?: { name: string; start: DeviceStart } | null
     /** The conversation runs with commands of plugins since turned on or off: offers a reload. */
     pluginsChanged?: boolean
     /** The reload the composer offered is under way. */
@@ -350,6 +354,12 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         class="hidden"
         multiple
         @change="fileChange"
+      />
+      <HostOfflineNotice
+        v-if="offlineHost"
+        class="mb-2"
+        :name="offlineHost.name"
+        :start="offlineHost.start"
       />
       <PluginsChangedNotice
         v-if="pluginsChanged"

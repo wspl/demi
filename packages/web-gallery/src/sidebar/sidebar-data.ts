@@ -29,7 +29,7 @@ export function demoProjects(): SidebarProject[] {
       name: 'demi',
       host: 'zan-mbp',
       hostKind: 'device',
-      online: true,
+      state: 'online',
       path: '/Users/zan/Projects/demi'
     },
     {
@@ -37,7 +37,7 @@ export function demoProjects(): SidebarProject[] {
       name: 'assetsfactory',
       host: 'build-01',
       hostKind: 'device',
-      online: false,
+      state: 'offline',
       path: '/srv/assetsfactory'
     },
     {
@@ -47,7 +47,8 @@ export function demoProjects(): SidebarProject[] {
       name: 'dotfiles-and-machine-setup-scripts',
       host: 'ZandeMacBook-Pro.local',
       hostKind: 'device',
-      online: true,
+      // Its runner replaces itself with the server's release.
+      state: 'updating',
       path: '/Users/zan/dotfiles-and-machine-setup-scripts'
     },
     {

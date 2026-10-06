@@ -25,7 +25,7 @@ const primaryHost = computed<HostMenuHost>(() => {
     id: execution.deviceId ?? 'cloud',
     name: execution.name,
     kind: execution.kind,
-    online: execution.online,
+    state: execution.state,
   }
 })
 const attachedHosts = computed<HostMenuHost[]>(() =>
@@ -35,7 +35,7 @@ const attachedHosts = computed<HostMenuHost[]>(() =>
       id: host.deviceId,
       name: host.name,
       kind: device?.kind === 'managed' ? 'cloud' : 'device',
-      online: device?.online ?? false,
+      state: device?.state ?? 'offline',
     }
   }),
 )

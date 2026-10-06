@@ -43,7 +43,7 @@ export function directRoute(conversationId: string): DirectRoute | null {
   if (!summary)
     return null
   const execution = executionFor(summary)
-  if (execution.kind !== 'device' || !execution.deviceId || !execution.online || !execution.path)
+  if (execution.kind !== 'device' || !execution.deviceId || execution.state !== 'online' || !execution.path)
     return null
   return {
     device: use(execution.deviceId),
@@ -118,7 +118,7 @@ function follow(): void {
     // A runner that left ends the device's use; its next use, once the
     // runner connected again, starts anew and tries at once.
     watch(
-      () => (product.snapshot?.devices ?? []).filter((device) => device.online).map((device) => device.id),
+      () => (product.snapshot?.devices ?? []).filter((device) => device.state === 'online').map((device) => device.id),
       (online) => {
         for (const deviceId of [...used.keys()]) {
           if (!online.includes(deviceId))

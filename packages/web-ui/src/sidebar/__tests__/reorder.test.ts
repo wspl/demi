@@ -7,7 +7,7 @@ const projects: SidebarProject[] = ['a', 'b'].map((id) => ({
   name: id,
   host: 'mac',
   hostKind: 'device',
-  online: true,
+  state: 'online',
   path: `/${id}`,
 }))
 const conversations: SidebarConversation[] = [

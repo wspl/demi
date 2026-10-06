@@ -15,6 +15,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
 import HostPicker from './HostPicker.vue'
 import type { HostDeviceOption, HostMenuHost } from './types'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 
 const props = defineProps<{
   primaryHost: HostMenuHost
@@ -91,8 +92,8 @@ function connect() {
             />
             <CornerDot
               v-if="primaryHost.kind === 'device'"
-              :tone="primaryHost.online ? 'success' : 'muted'"
-              :label="primaryHost.online ? 'Online' : 'Offline'"
+              :tone="DEVICE_STATE_TONE[primaryHost.state]"
+              :label="DEVICE_STATE_LABEL[primaryHost.state]"
             />
           </span>
           <span
@@ -111,8 +112,8 @@ function connect() {
         <MenuItem
           :icon="primaryHost.kind === 'cloud' ? Cloud : Monitor"
           label="Primary Host"
-          :indicator="primaryHost.kind === 'cloud' ? undefined : primaryHost.online ? 'success' : 'muted'"
-          :indicator-label="primaryHost.online ? 'Online' : 'Offline'"
+          :indicator="primaryHost.kind === 'cloud' ? undefined : DEVICE_STATE_TONE[primaryHost.state]"
+          :indicator-label="DEVICE_STATE_LABEL[primaryHost.state]"
           :value="primaryHost.name"
           :disabled="primaryLocked"
           has-submenu
@@ -133,9 +134,9 @@ function connect() {
             :key="host.id"
             :icon="host.kind === 'cloud' ? Cloud : Monitor"
             :label="host.name"
-            :indicator="host.kind === 'cloud' ? undefined : host.online ? 'success' : 'muted'"
-            :indicator-label="host.online ? 'Online' : 'Offline'"
-            :note="host.kind === 'device' && !host.online ? 'Offline' : undefined"
+            :indicator="host.kind === 'cloud' ? undefined : DEVICE_STATE_TONE[host.state]"
+            :indicator-label="DEVICE_STATE_LABEL[host.state]"
+            :note="host.kind === 'device' && host.state !== 'online' ? DEVICE_STATE_LABEL[host.state] : undefined"
             has-submenu
           >
             <template #submenu>
@@ -143,7 +144,7 @@ function connect() {
                 <MenuItem
                   label="Use as Primary Environment…"
                   :icon="host.kind === 'cloud' ? Cloud : Monitor"
-                  :disabled="primaryLocked || (host.kind === 'device' && !host.online)"
+                  :disabled="primaryLocked || (host.kind === 'device' && host.state !== 'online')"
                   @select="selectPrimary(host.id)"
                 />
 

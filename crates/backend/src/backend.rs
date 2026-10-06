@@ -40,6 +40,9 @@ pub struct Backend {
     edge: Edge,
     /// Routes the machine manager's death events to their owners' shards.
     deaths: AbortOnDropHandle<()>,
+    /// Sources the runner executables of the paired devices' systems
+    /// (`native-runtime.md` § Runner releases); a close ends it.
+    runners: Option<AbortOnDropHandle<()>>,
 }
 
 /// Why the backend did not start.
@@ -236,6 +239,17 @@ impl Backend {
                 "the undelivered permission decisions cannot be listed"
             );
         }
+        let runners = config.runner_releases.clone().map(|releases| {
+            let services = services.clone();
+            AbortOnDropHandle::new(tokio::spawn(async move {
+                // The handle's drop aborts the task, which drops its need.
+                let cancel = tokio_util::sync::CancellationToken::new();
+                services
+                    .native
+                    .source_paired_runners(&releases, &services.control, &cancel)
+                    .await;
+            }))
+        });
         let state = AppState {
             services: services.clone(),
             shards: shards.shards(),
@@ -263,6 +277,7 @@ impl Backend {
             shards,
             edge,
             deaths,
+            runners,
         })
     }
 
@@ -368,6 +383,8 @@ impl Backend {
         self.services.claims.close();
         // No shard is left to route a death to.
         drop(self.deaths);
+        // A runner executable still being sourced is no longer needed.
+        drop(self.runners);
         if let Err(error) = self.services.cloud.machines.close().await {
             failures.push(ShutdownError::Machines(error.to_string()));
         }

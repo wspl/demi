@@ -6,12 +6,13 @@
 //! `commands/`; an executable enters the store the first time a runner asks
 //! for it, and a runner then downloads it from S3 through a URL signed for
 //! five minutes or, with a local store, from this backend, which serves the
-//! stored object at `/native-artifacts/<sha256>`. The installers' runner
-//! executables are sourced the same way. Each shard thread builds its own
+//! stored object at `/native-artifacts/<sha256>`. The runner executables
+//! are sourced the same way, as their compressed copies. Each shard thread builds its own
 //! `CommandCatalog` from the catalog, since a catalog's artifact resolver
 //! lives on one thread.
 
 use std::collections::HashMap;
+use std::path::Path;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -20,12 +21,15 @@ use axum::http::Method;
 use demi_backend_remote_host::{ArtifactResolver, CommandCatalog};
 use demi_command_protocol::{ArtifactLocation, ArtifactUrl, PackageArtifact, PackageDescriptor};
 use demi_runner_protocol::manifest::ManifestError;
-use demi_runner_protocol::release::{RUNNER, release_file};
+use demi_backend_database::control::ControlService;
+use demi_runner_protocol::release::{RUNNER, compressed_file};
+use demi_runner_protocol::wire::RunnerPlatform;
 use futures_util::future::LocalBoxFuture;
 use object_store::signer::Signer;
 use object_store::{GetResult, ObjectStoreExt as _};
 use tokio_util::sync::CancellationToken;
 
+use crate::install::read_runner_release;
 use crate::public_url::PublicUrl;
 use crate::publication::blob;
 use crate::sourcing::{ReleaseArtifact, Sourcing};
@@ -171,25 +175,42 @@ impl NativeCatalog {
         }
     }
 
-    /// The stored runner executable `artifact` of `target`, a runner
-    /// release's, sourced first when the store lacks it, for an installer's
-    /// download (`native-runtime.md` § Runner releases).
+    /// Makes sure the store holds the runner executable `artifact` of
+    /// `target`, a runner release's, as its compressed copy, taking it from
+    /// the release's files when it does not (`native-runtime.md` § Runner
+    /// releases).
+    pub async fn source_runner(
+        &self,
+        target: &str,
+        artifact: &PackageArtifact,
+        cancel: &CancellationToken,
+    ) -> Result<(), String> {
+        let artifacts = self
+            .artifacts
+            .as_ref()
+            .ok_or("this backend loaded no server release")?;
+        let wanted = ReleaseArtifact {
+            file: compressed_file(RUNNER, target),
+            artifact: artifact.clone(),
+            encoded: true,
+        };
+        artifacts.sourcing.ensure(&wanted, cancel).await
+    }
+
+    /// The stored runner executable `artifact` of `target`, its compressed
+    /// copy in the content coding, sourced first when the store lacks it,
+    /// for a runner's update or an installer's download.
     pub async fn runner_executable(
         &self,
         target: &str,
         artifact: &PackageArtifact,
         cancel: &CancellationToken,
     ) -> Result<GetResult, String> {
+        self.source_runner(target, artifact, cancel).await?;
         let artifacts = self
             .artifacts
             .as_ref()
             .ok_or("this backend loaded no server release")?;
-        let wanted = ReleaseArtifact {
-            file: release_file(RUNNER, target),
-            artifact: artifact.clone(),
-            encoded: false,
-        };
-        artifacts.sourcing.ensure(&wanted, cancel).await?;
         let key = blob(&artifact.sha256).map_err(|error| error.to_string())?;
         artifacts
             .sourcing
@@ -197,6 +218,50 @@ impl NativeCatalog {
             .get(&key)
             .await
             .map_err(|error| error.to_string())
+    }
+
+    /// Sources the runner executables of the current release in `runners`,
+    /// a server release's `runners/`, for the targets of the systems of the
+    /// paired devices `control` lists, one after another, so that an update
+    /// never waits on the release's origin (`native-runtime.md` § Runner
+    /// releases). The device records name a system, not a target, so each
+    /// of the system's targets is sourced. A failure is logged: a runner's
+    /// update sources its executable again.
+    pub async fn source_paired_runners(
+        &self,
+        runners: &Path,
+        control: &ControlService,
+        cancel: &CancellationToken,
+    ) {
+        let release = match read_runner_release(&runners.join("manifest.json")).await {
+            Ok(Some(release)) => release,
+            Ok(None) => return,
+            Err(error) => {
+                tracing::warn!("the runner release to source cannot be read: {error}");
+                return;
+            }
+        };
+        let platforms = match control.paired_platforms().await {
+            Ok(platforms) => platforms,
+            Err(error) => {
+                tracing::warn!(
+                    error = &error as &dyn std::error::Error,
+                    "the paired devices' systems cannot be listed"
+                );
+                return;
+            }
+        };
+        for (target, artifact) in &release.targets {
+            if !platforms.iter().any(|platform| runs(*platform, target)) {
+                continue;
+            }
+            match self.source_runner(target, artifact, cancel).await {
+                Ok(()) => tracing::info!(target = %target, "the runner executable is in the store"),
+                Err(error) => {
+                    tracing::warn!(target = %target, "the runner executable was not sourced: {error}")
+                }
+            }
+        }
     }
 
     /// The loaded package `id`.
@@ -214,6 +279,15 @@ impl NativeCatalog {
                     .any(|served| served == operation)
             })
         })
+    }
+}
+
+/// Whether a runner for `target` runs on a device of `platform`.
+fn runs(platform: RunnerPlatform, target: &str) -> bool {
+    match platform {
+        RunnerPlatform::Darwin => target.contains("apple-darwin"),
+        RunnerPlatform::Win32 => target.contains("windows"),
+        RunnerPlatform::Linux => target.contains("linux"),
     }
 }
 

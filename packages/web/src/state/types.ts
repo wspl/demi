@@ -1,5 +1,7 @@
 import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
+import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
+import type { DeviceState } from '@demicodes/web-ui/devices/state'
 import type {
   SidebarConversation,
   SidebarProject,
@@ -61,7 +63,6 @@ export interface Conversation extends SidebarConversation {
     deviceId: string
     name: string
     cwd: string | null
-    online: boolean
   }[]
   subagents: SubagentRecord[]
   terminals: TerminalRecord[]
@@ -76,10 +77,12 @@ export interface Device {
   id: string
   kind: DeviceKind
   name: string
-  online: boolean
+  state: DeviceState
   platform: FileBrowserPlatform
   home: string | null
   seen?: string
+  /** How to start a paired device's runner again; null for the Cloud. */
+  start: DeviceStart | null
 }
 
 export type Project = SidebarProject & {

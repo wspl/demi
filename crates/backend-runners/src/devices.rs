@@ -2,9 +2,9 @@
 //! identity): each device has one slot holding its connection, `Online` with
 //! the connection's link or `Offline` with the account its runner last
 //! reported, and every Host handle of the device watches that slot. A device
-//! holds one live connection; a second runner with its token is refused
-//! until the first is gone, and one reconnecting is adopted once the old
-//! connection finished tearing down. A Host handle is made here only for one
+//! holds one live connection; a new hello with its token is refused while
+//! the held connection answers its ping, and adopted once a silent one
+//! finished tearing down. A Host handle is made here only for one
 //! of the ways to a Host (`sessions-and-targets.md` § Every way to a Host):
 //! a conversation's against a lease of its file gate, device access while
 //! the runner is connected, and machine access under the Cloud's admission.
@@ -21,14 +21,18 @@ use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::{Admission, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost};
 use demi_host_interface::{HostIdentity, HostKey};
 use demi_runner_protocol::wire::{self, HostArtifact, Inbound};
-use demi_web_api_protocol::devices::DeviceDto;
+use demi_runner_protocol::values::BackendUrl;
+use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceState};
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::ready;
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::sync::watch;
+use tokio::time::Instant;
+use tokio_util::task::AbortOnDropHandle;
 
 use crate::file_gate::FileLease;
 use crate::host_key::{HostOwner, host_key};
+use crate::install::start_command;
 
 /// Why a revoked device's connection ended.
 const REVOKED: &str = "device revoked";
@@ -45,6 +49,31 @@ struct DeviceSlot {
     /// Set once the device is revoked: the projects that went with it,
     /// which its runner hears of as its connection ends.
     revoked: RefCell<Option<Vec<String>>>,
+    /// The update the device's runner was last sent to, until its next
+    /// hello.
+    updating: RefCell<Option<Updating>>,
+    /// The installation directory its runner reported when it last
+    /// connected; none before it ever did since the backend started, or
+    /// when its runner reported none.
+    installation: RefCell<Option<String>>,
+}
+
+/// A runner's update as the backend shows it (`runner.md` § Runner
+/// updates): until `until`, unless the device's next hello comes first.
+pub struct Updating {
+    until: Instant,
+    /// Ends the window for the device's pages; dropped, it stops.
+    _expiry: AbortOnDropHandle<()>,
+}
+
+impl Updating {
+    /// An update shown until `until`, whose end `expiry` announces.
+    pub fn new(until: Instant, expiry: AbortOnDropHandle<()>) -> Self {
+        Self {
+            until,
+            _expiry: expiry,
+        }
+    }
 }
 
 impl DeviceSlot {
@@ -52,6 +81,8 @@ impl DeviceSlot {
         Rc::new(Self {
             link: watch::Sender::new(DeviceLink::Offline { last: None }),
             revoked: RefCell::new(None),
+            updating: RefCell::new(None),
+            installation: RefCell::new(None),
         })
     }
 
@@ -113,6 +144,50 @@ impl Devices {
 
     pub fn online(&self, device: &DeviceId) -> bool {
         self.link(device).is_some()
+    }
+
+    /// Whether the device's runner serves it now, replaces itself, or
+    /// neither.
+    pub fn state(&self, device: &DeviceId) -> DeviceState {
+        if self.online(device) {
+            return DeviceState::Online;
+        }
+        let updating = self.slots.borrow().get(device).is_some_and(|slot| {
+            slot.updating
+                .borrow()
+                .as_ref()
+                .is_some_and(|updating| Instant::now() < updating.until)
+        });
+        if updating {
+            DeviceState::Updating
+        } else {
+            DeviceState::Offline
+        }
+    }
+
+    /// Shows the device as updating from now on, as `updating` makes it,
+    /// unless an update shows already or showed since the device's last
+    /// hello: the retries of an update do not extend its window. Whether it
+    /// began.
+    pub fn begin_update(&self, device: &DeviceId, updating: impl FnOnce() -> Updating) -> bool {
+        let slot = self.slot(device);
+        let mut current = slot.updating.borrow_mut();
+        if current.is_some() {
+            return false;
+        }
+        *current = Some(updating());
+        true
+    }
+
+    /// The device's runner said hello: an update it was sent to is over.
+    /// Whether one was shown.
+    pub fn hello(&self, device: &DeviceId) -> bool {
+        let ended = self
+            .slots
+            .borrow()
+            .get(device)
+            .and_then(|slot| slot.updating.take());
+        ended.is_some_and(|updating| Instant::now() < updating.until)
     }
 
     /// Resolves once a live connection serves the device, as a Cloud's
@@ -201,8 +276,10 @@ impl Devices {
         link: Link,
         driver: LinkDriver,
         seen: DeviceRecorder,
+        installation: Option<String>,
     ) -> Serving {
         let slot = self.slot(device);
+        slot.installation.replace(installation);
         slot.link.send_replace(DeviceLink::Online(link.clone()));
         tracing::info!(device = %device, "runner connected");
         Serving {
@@ -215,10 +292,25 @@ impl Devices {
         }
     }
 
-    /// The device as the web app sees it.
-    pub fn dto(&self, device: DeviceRecord) -> DeviceDto {
+    /// The device as the web app sees it, whose runner connects to
+    /// `backend`, the backend's public URL once it listens.
+    pub fn dto(&self, device: DeviceRecord, backend: Option<&BackendUrl>) -> DeviceDto {
+        let installation = self
+            .slots
+            .borrow()
+            .get(&device.id)
+            .and_then(|slot| slot.installation.borrow().clone());
+        let start_command = match (device.kind, backend) {
+            (DeviceKind::User, Some(backend)) => Some(start_command(
+                backend.url(),
+                installation.as_deref(),
+                self.home(&device.id).as_deref(),
+                device.platform,
+            )),
+            _ => None,
+        };
         DeviceDto {
-            online: self.online(&device.id),
+            state: self.state(&device.id),
             home: self.home(&device.id),
             installed: device.installed,
             id: device.id,
@@ -227,6 +319,7 @@ impl Devices {
             platform: device.platform,
             claimed_at: device.claimed_at,
             last_seen_at: device.last_seen_at,
+            start_command,
         }
     }
 
@@ -236,12 +329,16 @@ impl Devices {
         &self,
         control: &ControlService,
         user: &UserId,
+        backend: Option<&BackendUrl>,
     ) -> Result<Vec<DeviceDto>, StorageError> {
         let mut devices = control.paired_devices(user.clone()).await?;
         if let Some(cloud) = control.managed_device(user.clone()).await? {
             devices.push(cloud);
         }
-        Ok(devices.into_iter().map(|device| self.dto(device)).collect())
+        Ok(devices
+            .into_iter()
+            .map(|device| self.dto(device, backend))
+            .collect())
     }
 
     /// Ends the device's connection, whose runner then reconnects.
@@ -402,5 +499,47 @@ impl DeviceRecorder {
             tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "installed artifacts not recorded");
         }
         self.marks.mark(Part::Devices);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use super::*;
+
+    const WINDOW: Duration = Duration::from_secs(5 * 60);
+
+    /// An update shown from now for the window, whose expiry does nothing.
+    fn updating() -> Updating {
+        let expiry = tokio::spawn(std::future::pending::<()>());
+        Updating::new(Instant::now() + WINDOW, AbortOnDropHandle::new(expiry))
+    }
+
+    /// A device whose update keeps failing shows as updating for the window
+    /// from the first 409, whatever its retries, and then as offline until
+    /// its next hello; after the hello an update shows again
+    /// (`runner.md` § Runner updates).
+    #[tokio::test(start_paused = true)]
+    async fn an_update_shows_from_its_first_409_for_the_window_and_retries_do_not_extend_it() {
+        let devices = Devices::default();
+        let device = DeviceId::try_from("6a50f29f-4ac3-4121-acac-b4200f48f915").unwrap();
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        assert!(devices.begin_update(&device, updating));
+        assert_eq!(devices.state(&device), DeviceState::Updating);
+        tokio::time::advance(WINDOW - Duration::from_secs(60)).await;
+        // A retry's 409 a minute before the window ends.
+        assert!(!devices.begin_update(&device, updating));
+        assert_eq!(devices.state(&device), DeviceState::Updating);
+        tokio::time::advance(Duration::from_secs(60)).await;
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        assert!(!devices.begin_update(&device, updating));
+        assert_eq!(devices.state(&device), DeviceState::Offline);
+        // The next hello ends the update; a later 409 shows a new one.
+        assert!(!devices.hello(&device));
+        assert!(devices.begin_update(&device, updating));
+        assert_eq!(devices.state(&device), DeviceState::Updating);
+        assert!(devices.hello(&device));
+        assert_eq!(devices.state(&device), DeviceState::Offline);
     }
 }

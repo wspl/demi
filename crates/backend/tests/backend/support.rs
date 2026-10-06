@@ -38,7 +38,7 @@ use demi_plugin_skills::testing::Repos;
 pub use demi_provider_common::testing::ManualClock;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::auth::{Identity, Role, UserDto};
-use demi_web_api_protocol::devices::{ClaimedDevice, DeviceDto, Devices};
+use demi_web_api_protocol::devices::{ClaimedDevice, DeviceDto, DeviceState, Devices};
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
@@ -831,7 +831,7 @@ impl TestBackend {
         self.devices(session)
             .await
             .iter()
-            .any(|device| device.id.as_str() == id && device.online)
+            .any(|device| device.id.as_str() == id && device.state == DeviceState::Online)
     }
 
     /// Waits until the device's online state is `online`.

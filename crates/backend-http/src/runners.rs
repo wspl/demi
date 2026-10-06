@@ -22,8 +22,12 @@ use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_remote_host::{DeviceSource, PipeRefusal, accept_stream_pipe};
-use demi_runner_protocol::release::{RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, UpdateExecutable};
+use demi_runner_protocol::release::{
+    RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER, UpdateExecutable,
+};
+use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
+use demi_web_api_protocol::devices::DeviceKind;
 
 use super::AppState;
 use super::error::ApiError;
@@ -40,6 +44,9 @@ pub(super) async fn socket(
     upgrade: WebSocketUpgrade,
 ) -> Result<Response, ApiError> {
     if let Some(update) = runner_update(&state, &headers).await? {
+        if update.executable.is_some() {
+            updating(&state, &headers).await;
+        }
         let answer = (
             StatusCode::CONFLICT,
             [(CONTENT_TYPE, "application/json")],
@@ -76,6 +83,45 @@ async fn runner_update(
         release: current.release,
         executable,
     }))
+}
+
+/// Shows the device the request's token names as updating, since the 409
+/// sends its runner to an update (`runner.md` § Runner updates). A request
+/// without a token, from a runner of a release before 0.1.14, or with one
+/// no paired device holds, shows nothing.
+async fn updating(state: &AppState, headers: &HeaderMap) {
+    let Some(token) = headers
+        .get(TOKEN_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| DeviceToken::try_from(value.to_owned()).ok())
+    else {
+        return;
+    };
+    let device = match state
+        .services
+        .control
+        .device_by_token(TokenHash::of(token.expose()))
+        .await
+    {
+        Ok(Some(device)) if device.kind == DeviceKind::User => device,
+        Ok(_) => return,
+        Err(error) => {
+            // The update goes ahead; its device shows as offline meanwhile.
+            tracing::warn!(
+                error = &error as &dyn std::error::Error,
+                "the device of a runner sent to an update could not be read"
+            );
+            return;
+        }
+    };
+    let id = device.id;
+    let shown = state
+        .shards
+        .of(&device.user)
+        .call(move |shard, _| async move { shard.runner_updating(&id) })
+        .await;
+    // A closing backend shows nothing more.
+    let _ = shown;
 }
 
 /// `PUT /api/pipes/:id`: the source's bytes, forwarded as the sink takes
