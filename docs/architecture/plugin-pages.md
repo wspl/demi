@@ -144,7 +144,7 @@ calls.
 | --- | --- | --- |
 | `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls and its user streams ([Data a page shows](#data-a-page-shows)) | The sync channel, the conversation state route, the plugin call routes, the user stream route |
 | `intents` | Opening an [intent](#intents) for a conversation, as `{ intent, payload }`, and whether any page the user has on opens it | The shell |
-| `panel` | The tabs of the page's own kinds in a conversation's panel, and adding one, selected with the panel opened or not | The shell |
+| `panel` | The tabs of the page's own kinds in a conversation's panel, adding one, selected with the panel opened or not, and selecting one, with the panel opened | The shell |
 | `settings` | Opening a section of the settings dialog, such as Devices | The shell |
 | `errors` | Reporting an error the user sees, or a defect of the page, which only the console shows | The shell |
 | `overlays` | The overlay store a dialog or menu opens in | The shell |
@@ -209,7 +209,8 @@ otherwise.
 
 Intents and `panel.add` are the only ways a tab is opened from outside the
 strip, and `panel.add` adds only a tab of the page's own kinds: a page opens
-another plugin's tab only through an intent.
+another plugin's tab only through an intent. Likewise `panel.select` selects
+only a tab of the page's own kinds.
 
 ## Data a page shows
 

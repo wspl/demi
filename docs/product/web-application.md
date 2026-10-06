@@ -139,7 +139,10 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   before it: a user who went from File to tab A to tab B and closes B sees A,
   and closing A then shows File. The same holds for a tab another page
   closed or a plugin turned off. When no entry is left, the panel shows its
-  first tab, the Change view.
+  first tab, the Change view. A page selects a tab without its user's
+  click only when a plugin's page asks to, as the browser does for a tab the
+  agent shows ([Showing a tab](../browser/live-view.md#showing-a-tab)); it is
+  an ordinary selection and enters the history.
 - **Before the first send.** A new conversation has no backend record yet,
   and so no working directory on a Host
   ([Persistence and adapters](#persistence-and-adapters)). Its panel binds no
