@@ -22,6 +22,10 @@ use crate::numbers::{Numbered, numbered};
 const SUMMARY: &str =
     "Give a service on a host a public URL for one hour: add, list, renew, remove.";
 
+/// The group's entry in the model's capability index (`system-prompt.md`
+/// § Capability index).
+const ENTRY: &str = "Gives a server running on a Host a public HTTPS URL for an hour, so the user can open it from their own browser or phone, or share it. Use it when the user wants to reach something you started, such as a dev server, a preview or a webhook receiver, from outside. Not needed for the work panel's browser, which reaches the Host directly.";
+
 const ADD_SUMMARY: &str = "Expose a service on a host under a fresh public URL for one hour: `demi expose add <host:port|port> [--host <name|id>]`.";
 
 const LIST_SUMMARY: &str = "Every expose of this user across devices, soonest expiry first.";
@@ -83,6 +87,7 @@ pub struct ExposeLines {
 /// The `expose` group, whose leaves the plugin answers with its port.
 pub(crate) fn commands() -> CommandPlugin {
     let group = GroupBuilder::new("expose", SUMMARY)
+        .index_entry(ENTRY)
         .leaf(
             LeafBuilder::rpc("add", ADD_SUMMARY)
                 .input::<AddArgs>()
