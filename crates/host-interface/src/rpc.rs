@@ -30,6 +30,11 @@ pub struct RpcInvocation {
     pub args: Map<String, Value>,
     /// Whether the caller passed `--json`.
     pub json: bool,
+    /// The id of the device whose Host the invoking job runs on: the
+    /// conversation's primary Host, or an attached Host for a job `demi host
+    /// shell` started there. A handler that reads or writes the invoker's
+    /// files does so on this Host, beside `cwd`.
+    pub host: String,
     pub cwd: String,
     pub env: BTreeMap<String, String>,
     /// The invoking job's command context, from the backend's record of it.

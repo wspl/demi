@@ -250,6 +250,9 @@ async fn run(
         argv: call.argv,
         args: call.args,
         json: call.json,
+        // A job's calls come over the connection of the device it runs on,
+        // whose state holds the job's record.
+        host: link.device().to_owned(),
         cwd: call.cwd,
         env: call.env,
         context: origin.context.clone(),

@@ -67,6 +67,7 @@ fn invocation(path: &[&str], args: Value) -> RpcInvocation {
         argv: Vec::new(),
         args,
         json: false,
+        host: "laptop".into(),
         cwd: "/".into(),
         env: BTreeMap::new(),
         context: test_command_context(),

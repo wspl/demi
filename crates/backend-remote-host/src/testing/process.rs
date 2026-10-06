@@ -170,6 +170,22 @@ impl RunnerProcess {
         }
     }
 
+    /// The running runner's process id, which a script can signal.
+    pub fn pid(&self) -> u32 {
+        self.child
+            .as_ref()
+            .and_then(Child::id)
+            .expect("the runner runs")
+    }
+
+    /// Lets a runner that a script stopped with `SIGSTOP` go on.
+    #[cfg(unix)]
+    pub fn resume(&self) {
+        let pid = rustix::process::Pid::from_raw(self.pid() as i32).expect("a process id");
+        rustix::process::kill_process(pid, rustix::process::Signal::CONT)
+            .expect("the runner can be signalled");
+    }
+
     /// Kills the runner at once, as a crash would.
     pub async fn kill(&mut self) {
         if let Some(mut child) = self.child.take() {
