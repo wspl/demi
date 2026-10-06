@@ -308,15 +308,18 @@ work allows, and never one per item:
 A page holds WebSockets of four kinds to the backend: the synchronization
 channel, a socket for each open conversation, the stream of each
 [live browser view](../browser/live-view.md), and the
-[file watch](web-api.md#file-watch) of the conversation whose files it shows.
-All four tell a quiet socket
+[file watch](web-api.md#file-watch) of the conversation whose files it shows,
+and the signaling socket of each device it has a
+[direct channel](../execution/direct-channel.md) to, whose long-lived
+operations keep the same heartbeats over the channel. All of them tell a quiet socket
 from a dead one by one rule and connect again by another, and one module of
 `web-ui` implements both. For example, a laptop sleeps and its network drops
 without a close. Nothing tells the page: its sockets still look open, a
 conversation would go on showing a turn as running, and a live view would go
 on showing its stream as stalled. The far end of each socket sends a
 heartbeat once it has sent nothing else for a while: the backend on the
-channel, on each conversation socket and on the file watch after 30 seconds
+channel, on each conversation socket, on the file watch and on a direct
+channel's signaling socket after 30 seconds
 ([Order and delivery](../agent/runtime.md#order-and-delivery),
 [Page synchronization](web-api.md#page-synchronization)), and a live view's
 module on its stream after a quarter of a second
