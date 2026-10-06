@@ -2,8 +2,7 @@
  * The `browser` page's panel session (`live-view.md` § A browser tab in the
  * panel): what a tab keeps, the conversation browser's tab list, which the
  * plugin's conversation state brings, the requests that move a bound tab,
- * the panel's size, each browser tab as a view last reported it, the tabs
- * the agent shows, and the one view a page keeps while a `browser` tab is
+ * the panel's size, each browser tab as a view last reported it, and the one view a page keeps while a `browser` tab is
  * shown and the page is visible. Which browser tab a panel tab shows is the
  * plugin's work on the backend; the session never opens, closes or adds a
  * tab.
@@ -15,11 +14,8 @@ import { z } from 'zod'
 import type { BrowserTab, LiveTab, NeededBrowser } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from './pictures'
-import type { HostArtifact, OpenUserStream, PanelKindTab, SentenceText } from '@demicodes/plugin-sdk'
+import type { HostArtifact, OpenUserStream, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession, type PanelReport } from './session'
-
-/** The work panel kind the page shows the conversation browser's tabs as. */
-export const BROWSER_KIND = 'browser'
 
 /** What a new tab shows before the user goes anywhere. */
 export const NEW_TAB_URL = 'about:blank'
@@ -82,10 +78,6 @@ export interface BrowserTabsApi {
   stream: OpenUserStream
   /** What the Host holds of the browser's package, read reactively. */
   installed(): readonly HostArtifact[]
-  /** The panel's `browser` tabs, read reactively. */
-  panelTabs(): PanelKindTab[]
-  /** Selects the panel tab with the panel opened, as the agent's `request`th showing of it, which the page applies once. */
-  show(panelTab: string, request: number): void
 }
 
 /** Answers that will not change by asking again. */
@@ -179,22 +171,6 @@ export class BrowserTabsController {
         this.closeView()
       }
     })
-    // The agent showed a tab: this page selects it once per showing (`live-view.md` § Showing a tab).
-    watch(
-      () => api.panelTabs().flatMap((tab) => {
-        const data = browserTabDataSchema.safeParse(tab.data)
-        return data.success && data.data.shows !== undefined ? [[tab.id, data.data.shows] as const] : []
-      }),
-      (shown, before) => {
-        for (const [panelTab, shows] of shown) {
-          // The page records what it applied; a showing it has seen here needs no second look.
-          if (!before?.some(([seen, count]) => seen === panelTab && count === shows)) {
-            api.show(panelTab, shows)
-          }
-        }
-      },
-      { immediate: true },
-    )
     const pictures = options.pictures ?? (() => picturesSupported(defect))
     void pictures().then((supported) => {
       if (this.disposed) {

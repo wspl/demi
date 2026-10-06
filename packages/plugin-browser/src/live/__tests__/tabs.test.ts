@@ -1,8 +1,8 @@
 import { expect, jest, test } from 'bun:test'
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveViewerMessage } from '../../generated/plugin'
-import type { PanelKindTab, UserStreamHandlers } from '@demicodes/plugin-sdk'
+import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
-import { effectScope, nextTick, ref, shallowRef } from 'vue'
+import { effectScope, ref, shallowRef } from 'vue'
 import {
   NO_BROWSER,
   BrowserTabsController,
@@ -28,8 +28,6 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {})
       history: async () => {},
       stream: () => ({ send: () => {}, close: () => {} }),
       installed: () => [],
-      panelTabs: () => [],
-      show: () => {},
       ...api,
     },
     () => {},
@@ -258,19 +256,5 @@ test('a tab shown again shows what the browser last said of it, though no view i
   visibility.value = 'visible'
   views[1]!.handlers.data(framed({ type: 'state', running: true, tabs: [], watched: null }))
   expect(controller.tab('t1')).toBeNull()
-  end()
-})
-
-test('a tab the agent showed is selected once per showing, each time the panel learns of a new one', async () => {
-  const tabs = shallowRef<PanelKindTab[]>([
-    { id: 'browser-t1', data: { url: 'https://a.test/', tab: 't1', shows: 1 } },
-    { id: 'browser-t2', data: { url: 'https://b.test/', tab: 't2' } },
-  ])
-  const asked: Array<[string, number]> = []
-  const { end } = harness({ panelTabs: () => tabs.value, show: (tab, request) => void asked.push([tab, request]) })
-  expect(asked).toEqual([['browser-t1', 1]])
-  tabs.value = [tabs.value[0]!, { id: 'browser-t2', data: { url: 'https://b.test/', tab: 't2', shows: 1 } }]
-  await nextTick()
-  expect(asked).toEqual([['browser-t1', 1], ['browser-t2', 1]])
   end()
 })

@@ -3,7 +3,6 @@ import { MonitorDot } from '@lucide/vue'
 import { GlobePlus, ICON_PX, type PanelKind } from '@demicodes/plugin-sdk'
 import BrowserTabContent from './BrowserTabContent.vue'
 import {
-  BROWSER_KIND,
   NEW_TAB_URL,
   browserTabDataSchema,
   type BrowserTabData,
@@ -35,9 +34,11 @@ function browserTabTitle(data: BrowserTabData): string {
  * session; the panel sees only this declaration.
  */
 export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = {
-  kind: BROWSER_KIND,
+  kind: 'browser',
   schema: browserTabDataSchema,
   title: (data) => browserTabTitle(data),
+  // The agent's showings, which the plugin carries from the tab list (`live-view.md` § Showing a tab).
+  shows: (data) => data.shows ?? 0,
   mark: BrowserTabMark,
   content: BrowserTabContent,
   create: {
