@@ -4,6 +4,7 @@ import type { MarkdownRenderOptions, MessageAttachment } from './types'
 import { codeToHtml } from './highlight'
 import { attachmentId, isHttpUrl, messageHostPath, messageImage } from './filePath'
 import { escapeHtml } from './html'
+import { declaredSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize, type ThumbnailKind } from '../files/thumbnail'
 
 // `$...$` inline / `$$...$$` block LaTeX, rendered to self-contained HTML (KaTeX CSS is loaded
 // by web-ui's base stylesheet). `nonStandard` lets inline math sit flush against CJK text the
@@ -19,6 +20,8 @@ const katexExtension = markedKatex({
 let activeOptions: MarkdownRenderOptions | undefined
 /** Links open around the renderer: an image inside one follows it instead of opening itself. */
 let openLinks = 0
+/** Whether the renderer is inside a run of a message's media, where each one is a thumbnail. */
+let inRun = false
 
 /** A link that leaves for the web, in a new tab. */
 function webLink(url: string): string {
@@ -31,18 +34,60 @@ function fileLink(path: string): string {
 }
 
 /**
- * A link that opens an attachment: an image large in the page's viewer, a
- * video in the player of a new tab, any other file as a download under its
+ * A link that opens an attachment: an image or a video large in the page's
+ * viewer, where a video plays, and any other file as a download under its
  * name.
  */
-function attachmentLink(attachment: MessageAttachment): string {
+function attachmentLink(attachment: MessageAttachment, attributes = ''): string {
   const url = escapeHtml(attachment.url)
   const name = escapeHtml(attachment.name)
   if (attachment.mediaType.startsWith('image/'))
-    return `<a href="${url}" data-attachment-image="${name}">`
+    return `<a href="${url}" data-attachment-image="${name}"${attributes}>`
   if (attachment.mediaType.startsWith('video/'))
-    return webLink(attachment.url)
-  return `<a href="${url}" download="${name}">`
+    return `<a href="${url}" data-attachment-video="${name}"${attributes}>`
+  return `<a href="${url}" download="${name}"${attributes}>`
+}
+
+/**
+ * The size an attachment's record carries, which a medium's box is taken
+ * from before its bytes arrive, as attributes that `media-run.ts` reads
+ * again once a render is in the page.
+ */
+function sizeAttributes(size: PixelSize | null): string {
+  return size ? ` data-width="${size.width}" data-height="${size.height}"` : ''
+}
+
+/** A thumbnail's box, as the inline style of a medium in a run. */
+function thumbnailStyle(size: PixelSize | null, kind: ThumbnailKind): string {
+  const box = thumbnailBox(size, kind)
+  return ` style="width: ${box.width}px; height: ${box.height}px"`
+}
+
+/**
+ * A lone video's first frame, sized as a lone image is, by the proportions
+ * and the width its record carries: 16:9 and the message's width while they
+ * are unknown (`media-run.ts` sets them once its first frame arrives).
+ */
+function loneVideoStyle(size: PixelSize | null): string {
+  if (!size)
+    return ''
+  return ` style="--media-ratio: ${size.width / size.height}; --media-width: ${size.width}px"`
+}
+
+/**
+ * An attachment's video as its first frame with a play mark over it, which
+ * a click opens in the viewer to play; inside a link, it follows the link.
+ * In a run it is a thumbnail.
+ */
+function attachmentVideo(attachment: MessageAttachment, alt: string, title: string): string {
+  const size = declaredSize(attachment)
+  const frame = inRun ? thumbnailStyle(size, 'video') : ''
+  const video = `<video src="${escapeHtml(attachment.url)}" muted playsinline preload="metadata" aria-label="${alt}"${title}${sizeAttributes(size)}${frame}></video>`
+  const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
+  const wrapper = ` class="message-video"${inRun ? '' : loneVideoStyle(size)}`
+  if (openLinks > 0)
+    return `<span${wrapper}>${video}${mark}</span>`
+  return `${attachmentLink(attachment, wrapper)}${video}${mark}</a>`
 }
 
 /**
@@ -87,19 +132,22 @@ function imageSource(target: string): { src: string; link: string | null } | nul
 }
 
 /**
- * An attachment an image names: an image that a click shows large, a video
- * that plays in place at an image's bounds, and any other file as a link
- * that downloads it, named by the alt text.
+ * An attachment an image names: an image that a click shows large, a video's
+ * first frame that a click plays large, each at an image's bounds and in a
+ * run as a thumbnail whose box its record's size gives before its bytes
+ * arrive, and any other file as a link that downloads it, named by the alt
+ * text.
  */
 function attachmentMedium(attachment: MessageAttachment, token: Tokens.Image): string {
   const alt = escapeHtml(token.text)
   const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-  const url = escapeHtml(attachment.url)
   if (attachment.mediaType.startsWith('video/'))
-    return `<video src="${url}" controls preload="metadata" aria-label="${alt}"${title}></video>`
+    return attachmentVideo(attachment, alt, title)
   if (!attachment.mediaType.startsWith('image/'))
     return openLinks > 0 ? alt : `${attachmentLink(attachment)}${alt}</a>`
-  const image = `<img src="${url}" alt="${alt}"${title} />`
+  const size = declaredSize(attachment)
+  const box = inRun ? thumbnailStyle(size, 'image') : ''
+  const image = `<img src="${escapeHtml(attachment.url)}" alt="${alt}"${title}${sizeAttributes(size)}${box} />`
   return openLinks > 0 ? image : `${attachmentLink(attachment)}${image}</a>`
 }
 
@@ -143,7 +191,8 @@ const messageRenderer: RendererObject = {
     if (source === null)
       return escapeHtml(token.text)
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-    const image = `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title} />`
+    const box = inRun ? thumbnailStyle(null, 'image') : ''
+    const image = `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title}${box} />`
     return openLinks > 0 || source.link === null ? image : `${source.link}${image}</a>`
   },
 }
@@ -233,7 +282,13 @@ agentMarked.use({
   extensions: [{
     name: MEDIA_RUN,
     renderer(token) {
-      const items = (token.tokens ?? []).map((medium) => `<span>${this.parser.parseInline([medium])}</span>`)
+      inRun = true
+      let items: string[]
+      try {
+        items = (token.tokens ?? []).map((medium) => `<span style="height: ${THUMBNAIL_HEIGHT}px">${this.parser.parseInline([medium])}</span>`)
+      } finally {
+        inRun = false
+      }
       return `<p class="media-run">${items.join('')}</p>\n`
     },
   }],

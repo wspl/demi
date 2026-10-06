@@ -9,27 +9,45 @@ import type { ReadCallChange } from '@demicodes/web-ui/files/changes'
  */
 const blobs = new Map<string, string>()
 
-function fixture(ref: string, url: string): string {
+/** The pixel size of each image and video the gallery holds, as the backend reads it from its header. */
+const sizes = new Map<string, { width: number; height: number }>()
+
+function fixture(ref: string, url: string, size?: { width: number; height: number }): string {
   blobs.set(ref, url)
+  if (size)
+    sizes.set(ref, size)
   return ref
 }
 
 /** The fixture media a transcript's specimens reference, by their blob names. */
 export const galleryBlobs = {
   /** A 480 × 300 screenshot of the login page. */
-  screenshot: fixture('5c'.repeat(32), '/fixtures/preview/photo.png'),
+  screenshot: fixture('5c'.repeat(32), '/fixtures/preview/photo.png', { width: 480, height: 300 }),
   /** A 360 × 2400 capture of a whole page. */
-  fullPage: fixture('9f'.repeat(32), '/fixtures/preview/page-full.png'),
+  fullPage: fixture('9f'.repeat(32), '/fixtures/preview/page-full.png', { width: 360, height: 2400 }),
   /** A 480 × 300 chart. */
-  chart: fixture('3d'.repeat(32), '/fixtures/preview/photo-before.png'),
+  chart: fixture('3d'.repeat(32), '/fixtures/preview/photo-before.png', { width: 480, height: 300 }),
   /** A 48 × 48 icon, smaller than a thumbnail. */
-  icon: fixture('4e'.repeat(32), '/fixtures/preview/icon-small.png'),
+  icon: fixture('4e'.repeat(32), '/fixtures/preview/icon-small.png', { width: 48, height: 48 }),
   /** A 1600 × 300 timeline, wider than a message. */
-  timeline: fixture('6b'.repeat(32), '/fixtures/preview/timeline-wide.png'),
+  timeline: fixture('6b'.repeat(32), '/fixtures/preview/timeline-wide.png', { width: 1600, height: 300 }),
   /** A three-second 320 × 180 recording, as WebM, which every web browser plays. */
-  recording: fixture('a7'.repeat(32), '/fixtures/preview/recording.webm'),
+  recording: fixture('a7'.repeat(32), '/fixtures/preview/recording.webm', { width: 320, height: 180 }),
+  /**
+   * A 320 × 180 recording as MP4 whose reference and record carry no size,
+   * as when its header was not read: 16:9 until its first frame arrives.
+   */
+  unsizedRecording: fixture('b8'.repeat(32), '/fixtures/preview/demo.mp4'),
   /** A one-page PDF, for the documents a message carries. */
   guide: fixture('c4'.repeat(32), '/fixtures/preview/guide.pdf'),
+}
+
+/**
+ * The pixel size a reference to a gallery blob carries, as `width` and
+ * `height`; nothing for one whose size is unknown.
+ */
+export function galleryBlobSize(ref: string): { width?: number; height?: number } {
+  return sizes.get(ref) ?? {}
 }
 
 /** A blob name the gallery does not hold: its medium cannot load. */

@@ -6,7 +6,7 @@ import { attachmentMarkdown } from '../fixtures/attachments'
 
 /**
  * A reply that shows the attachments the agent uploaded: an image a click
- * shows large, a video that plays in place, links that open them, a file that
+ * shows large, a video whose first frame a click plays large, links that open them, a file that
  * downloads, and a number the conversation does not have.
  */
 const props = defineProps<{
