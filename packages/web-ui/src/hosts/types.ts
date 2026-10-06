@@ -1,7 +1,9 @@
+import type { DeviceState } from '../devices/state'
+
 export interface HostDeviceOption {
   id: string
   name: string
-  online: boolean
+  state: DeviceState
 }
 
 export interface HostMenuHost extends HostDeviceOption {

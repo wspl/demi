@@ -10,15 +10,20 @@ use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceRecord, DeviceRemoval};
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Link, LinkOptions, host_identity};
-use demi_backend_runners::devices::{DeviceRecorder, Serving, send};
+use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
 use demi_host_interface::HostIdentity;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::DeviceId;
 use tokio::sync::oneshot;
+use tokio_util::task::AbortOnDropHandle;
 
 use super::Shard;
 use super::policy::ShardPolicy;
+
+/// Why a connection that did not answer its ping ended when a new one of
+/// its device arrived.
+const REPLACED: &str = "replaced by a new connection of the device's runner";
 
 impl Shard {
     /// Takes the socket of a runner that presented `device`'s token.
@@ -33,34 +38,55 @@ impl Shard {
             .hellos
             .pass(crate::holds::HelloStep::Bind)
             .await;
-        self.devices().settled(&device.id).await;
-        // From this check until the link is published nothing awaits, so two
-        // runners of one device never both become online.
-        if self.devices().online(&device.id) {
-            tracing::warn!(
+        // The update the runner was sent to is over, whatever this hello
+        // comes to.
+        if self.devices().hello(&device.id) {
+            self.mark(Part::Devices);
+        }
+        // A held connection that answers its ping keeps the device; one
+        // that does not is the same runner's, lost without a close, and
+        // gives way.
+        loop {
+            self.devices().settled(&device.id).await;
+            // From this check until the link is published nothing awaits, so
+            // two runners of one device never both become online.
+            let Some(held) = self.devices().link(&device.id) else {
+                break;
+            };
+            if held.answers(self.services().runners.probe).await {
+                tracing::warn!(
+                    device = %device.id,
+                    "runner hello refused (already_connected): device {} already has a live connection [{}, {}]",
+                    device.id,
+                    runner.name,
+                    runner.platform
+                );
+                let refusal = Inbound::HelloError {
+                    code: HelloErrorCode::AlreadyConnected,
+                    reason: format!("device {} already has a live connection", device.id),
+                };
+                // A runner that went away needs no refusal.
+                if send(&mut socket, &refusal).await.is_ok() {
+                    let _ = socket.send(Message::Close(None)).await;
+                }
+                return;
+            }
+            tracing::info!(
                 device = %device.id,
-                "runner hello refused (already_connected): device {} already has a live connection [{}, {}]",
-                device.id,
+                "the device's connection did not answer its ping and gives way to a new one [{}, {}]",
                 runner.name,
                 runner.platform
             );
-            let refusal = Inbound::HelloError {
-                code: HelloErrorCode::AlreadyConnected,
-                reason: format!("device {} already has a live connection", device.id),
-            };
-            // A runner that went away needs no refusal.
-            if send(&mut socket, &refusal).await.is_ok() {
-                let _ = socket.send(Message::Close(None)).await;
-            }
-            return;
+            held.disconnect(REPLACED);
         }
         let identity = host_identity(&runner.identity);
+        let installation = runner.installation.clone();
         let welcome = Inbound::HelloOk {
             device_id: device.id.to_string(),
             device_name: device.name.clone(),
         };
         // A closing shard takes no runner; dropping the socket closes it.
-        let Some(serving) = self.bind(&device.id, identity) else {
+        let Some(serving) = self.bind(&device.id, identity, installation) else {
             return;
         };
         // A runner that went away before its welcome ends its connection at
@@ -81,19 +107,28 @@ impl Shard {
     ) {
         // A closing shard takes no runner, and the claim that waits for the
         // answer deletes the device it made.
-        let Some(serving) = self.bind(&device.id, host_identity(&runner.identity)) else {
+        let identity = host_identity(&runner.identity);
+        let Some(serving) = self.bind(&device.id, identity, runner.installation.clone()) else {
             return;
         };
         // The claim that waits for this answer may have gone; the runner is
         // paired all the same.
-        let _ = bound.send(self.devices().dto(device));
+        let _ = bound.send(
+            self.devices()
+                .dto(device, self.services().public_url.get()),
+        );
         serving.serve(socket).await;
     }
 
     /// Publishes a new connection of the device under the shard's policy,
     /// and records that the device was seen. None once the shard is
     /// closing, whose close ends every connection it published before.
-    fn bind(self: &Rc<Self>, device: &DeviceId, identity: HostIdentity) -> Option<Serving> {
+    fn bind(
+        self: &Rc<Self>,
+        device: &DeviceId,
+        identity: HostIdentity,
+        installation: Option<String>,
+    ) -> Option<Serving> {
         if self.is_closing() {
             return None;
         }
@@ -108,11 +143,36 @@ impl Shard {
             self.services().control.clone(),
             self.services().sync.of(self.user()),
         );
-        let serving = self.devices().bind(device, link, driver, seen.clone());
+        let serving = self
+            .devices()
+            .bind(device, link, driver, seen.clone(), installation);
         let device = device.clone();
         self.tasks()
             .spawn_local(async move { seen.touch(device).await });
         Some(serving)
+    }
+
+    /// Shows `device` as updating: its runner was just sent to the
+    /// backend's runner release (`runner.md` § Runner updates), from the
+    /// first such 409 until its next hello or the window of the runners'
+    /// tuning ends; a retry's 409 changes nothing.
+    pub fn runner_updating(self: &Rc<Self>, device: &DeviceId) {
+        let until = tokio::time::Instant::now() + self.services().runners.updating;
+        let shard = Rc::downgrade(self);
+        let began = self.devices().begin_update(device, || {
+            // The device's pages see the window end; the slot's drop of the
+            // window stops this first, as the next hello does.
+            let expiry = tokio::task::spawn_local(async move {
+                tokio::time::sleep_until(until).await;
+                if let Some(shard) = shard.upgrade() {
+                    shard.mark(Part::Devices);
+                }
+            });
+            Updating::new(until, AbortOnDropHandle::new(expiry))
+        });
+        if began {
+            self.mark(Part::Devices);
+        }
     }
 
     /// Revokes a device, which nothing refuses: its exposes end with their
@@ -146,7 +206,11 @@ impl Shard {
     /// The user's devices as the web app sees them.
     pub async fn device_list(&self) -> Result<Vec<DeviceDto>, StorageError> {
         self.devices()
-            .device_list(&self.services().control, self.user())
+            .device_list(
+                &self.services().control,
+                self.user(),
+                self.services().public_url.get(),
+            )
             .await
     }
 }
@@ -167,7 +231,7 @@ impl Shard {
             hostname: "test".into(),
             home_dir: home.into(),
         };
-        self.bind(device, identity)
+        self.bind(device, identity, None)
             .expect("an open shard binds")
             .into_driver()
     }
