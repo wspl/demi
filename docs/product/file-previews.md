@@ -131,7 +131,7 @@ The chart loads from the Host the way a document's image does, and a click on
 | Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view | Resolved the same way and loaded from the Host |
 | Absolute path, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
-| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image large, a video in the player of the user's browser in a new tab, any other file as a download | An image shows; a video plays in place, in the player of the user's browser, at an image's bounds |
+| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video large, in the viewer, any other file as a download | An image shows; a video shows its first frame with a play mark, at an image's bounds, and a click plays it in the viewer |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
 
@@ -160,10 +160,10 @@ they stand in a row, left to right in their order, as many as the message's
 width holds, and the rest wrap onto the next row. A run is two or more
 images or videos with nothing but white space between them, in one
 paragraph or in paragraphs that follow each other; any text, list or heading
-ends it. In a run, each image is a thumbnail, as a tool's images are
-([Media a tool returned](#media-a-tool-returned)), and each video a player at
-a tool's video height; they stand 8 pixels apart in both directions. A lone
-image keeps the rule above.
+ends it. In a run, each image and each video is a thumbnail, as a tool's are
+([Media a tool returned](#media-a-tool-returned)); they stand 8 pixels apart
+in both directions. A lone image, and a lone video's first frame, keep the
+rule above.
 
 A link to a file opens the `file` intent, and so does a click on a Host image;
 while no plugin the user has on opens it, a file link is shown as text and a
@@ -213,19 +213,29 @@ open, and a click opens it large:
   proportions fall outside that range is cropped to it: a tall one, such as
   a whole page's screenshot, keeps its top, and a wide one its middle. For
   example, a 1280 × 720 screenshot is 142 × 80, and a 360 × 2400 page shows
-  the top 64 × 80 of it scaled down. It is small because it is a step of the
+  the top 64 × 80 of it scaled down. Never enlarged wins over the range: the
+  box is no larger than the image either way, so a 50 × 50 icon stays
+  50 × 50 and a 300 × 40 strip shows its middle 200 × 40. The medium's
+  reference, and an attachment's record, carry an image's pixel size, so its
+  box is known before its bytes arrive. It is small because it is a step of the
   work, not something the agent chose to show. A click opens it large over the dimmed page, as the File view shows an image:
   scaled down to fit and never enlarged, a click toggles actual size,
   transparency shows over a checkerboard, and its pixel size shows beneath
   it. Escape, the close control or a click on the dimmed page closes it; it
   stays open while the transcript changes beneath it.
-- **A video** plays in place, in the player built into the user's browser,
-  160 pixels tall, the least its controls fit in. The player's full-screen control shows it large.
+- **A video** never plays in place. Its thumbnail is its first frame, sized
+  as an image's, with a play mark over its middle. A click opens it in the
+  viewer over the dimmed page, scaled down to fit and never enlarged, where it
+  plays at once in the player built into the user's browser, whose controls
+  and full-screen control it keeps; closing the viewer stops it. A video's
+  reference carries its pixel size where the backend reads it from the
+  container's header (MP4 and QuickTime, WebM), and a thumbnail of unknown
+  size is 16:9 until its first frame arrives.
 - **On a phone**, the preview fits the conversation's width. An image opened
   large fills the screen: a tap toggles actual size, at actual size a drag
   moves the picture, a pinch zooms as anywhere on the page, and the close
-  control closes it. A video plays in the player of the user's browser, which an
-  iPhone shows full screen.
+  control closes it. A video opened from its thumbnail plays in the player of
+  the user's browser, which an iPhone shows full screen.
 - **A medium that is gone.** A result can hold, in a medium's place, a part
   that says its bytes could not be stored ([Media](../agent/runtime.md#media)).
   The page shows one line where the medium was, with the store's reason, such
