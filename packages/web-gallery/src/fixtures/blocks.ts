@@ -378,7 +378,7 @@ export const screenshotsTool = returnedMediaCall(
   ['[medium 4: not attached: the model does not accept image/webp; save it: demi shell output 18 --medium 4 > <file>]'],
 )
 
-/** A capture of a whole page: taller than wide, shown whole, never cropped. */
+/** A capture of a whole page: taller than a thumbnail's proportions, so the thumbnail keeps its top. */
 export const fullPageTool = binaryStdoutCall(
   {
     id: 'tool-full-page',
@@ -392,6 +392,38 @@ export const fullPageTool = binaryStdoutCall(
   8_035,
   'image/png',
   blobImage(galleryBlobs.fullPage),
+)
+
+/** A timeline wider than a thumbnail's proportions: the thumbnail keeps its middle. */
+export const wideImageTool = binaryStdoutCall(
+  {
+    id: 'tool-wide-image',
+    toolName: 'shell_exec',
+    input: JSON.stringify({
+      script: 'cat out/timeline.png',
+      description: 'Show the timeline of the run',
+    }),
+  },
+  'cmd-timeline',
+  5_883,
+  'image/png',
+  blobImage(galleryBlobs.timeline),
+)
+
+/** An icon smaller than a thumbnail: it keeps its own size, never enlarged. */
+export const smallImageTool = binaryStdoutCall(
+  {
+    id: 'tool-small-image',
+    toolName: 'shell_exec',
+    input: JSON.stringify({
+      script: 'cat public/favicon.png',
+      description: 'Show the favicon',
+    }),
+  },
+  'cmd-favicon',
+  972,
+  'image/png',
+  blobImage(galleryBlobs.icon),
 )
 
 /** A recording the agent printed: it plays in the web browser's player. */
