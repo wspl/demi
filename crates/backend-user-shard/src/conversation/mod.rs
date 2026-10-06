@@ -42,7 +42,9 @@ use demi_web_api_protocol::ids::UserId;
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub(crate) use self::product::ShardHosts;
-use self::product::{ExecutionContext, INSTRUCTIONS, PluginContext, ShardSubagents, ShardToolsets};
+use self::product::{
+    ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardSubagents, ShardToolsets,
+};
 use self::providers::ConversationProviders;
 use self::titles::Titles;
 use self::wakeups::IndexedWakeup;
@@ -122,6 +124,7 @@ pub(crate) fn conversation_parts(
             shard: shard.clone(),
         }),
         instructions: Rc::from(INSTRUCTIONS),
+        guide: Rc::from(HARNESS_GUIDE),
         hosts: Rc::new(ShardHosts {
             shard: shard.clone(),
         }),
