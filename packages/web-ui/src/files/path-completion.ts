@@ -4,11 +4,11 @@
  * become a menu, and accepting one writes its name in place of the query.
  * Gallery: Files › Address Bar, and the New Project dialog's Directory.
  */
-import { computed, ref, shallowReactive } from 'vue'
-import { tryOnScopeDispose } from '@vueuse/core'
+import { computed, ref } from 'vue'
 import fuzzysort from 'fuzzysort'
 import { compareFileNames } from './file-browser-state'
 import { isHiddenName, normalizePath, resolveHostPath } from './paths'
+import { useShowing } from './showing'
 import type { FileBrowserEntry, FileBrowserSource } from './types'
 
 /** What a field offers: directories only, as a project's folder, or files too, as an address bar. */
@@ -98,8 +98,8 @@ export function completeWith(text: string, caret: number, spot: CompletionSpot, 
 }
 
 export interface PathCompletionOptions {
-  /** Lists the directories and names the home; without `list` nothing is offered. */
-  source: () => Pick<FileBrowserSource, 'home'> & Partial<Pick<FileBrowserSource, 'list'>>
+  /** Lists the directories and names the home; without `showListing` nothing is offered. */
+  source: () => Pick<FileBrowserSource, 'home'> & Partial<Pick<FileBrowserSource, 'showListing'>>
   /** Where a relative path starts; without it a relative path is offered nothing. */
   base: () => string | undefined
   kind: () => PathCompletionKind
@@ -112,62 +112,34 @@ export type PathCompletionKey =
   | { kind: 'accept'; edit: PathEdit; entry: FileBrowserEntry }
 
 /**
- * The menu of a path field, following its caret. Each directory lists once
- * for the field's life (once per source), a listing the caret has left for
- * another directory is aborted, and filtering is local. A directory that
- * fails to list, or a query that matches nothing, shows no menu.
+ * The menu of a path field, following its caret. The directory the caret
+ * stands in shows its listing as the source keeps it, so a directory listed
+ * a moment ago, by this field or any view, offers its entries at once, and
+ * filtering is local. A directory that fails to list, or a query that
+ * matches nothing, shows no menu.
  */
 export function usePathCompletion(options: PathCompletionOptions) {
   const spot = ref<CompletionSpot | null>(null)
-  // Each directory's entries, or null for one that failed to list.
-  const listings = shallowReactive(new Map<string, readonly FileBrowserEntry[] | null>())
   const highlighted = ref(-1)
   // Escape put the menu away until the caret's spot changes.
   const dismissed = ref(false)
-  let pending: { directory: string; controller: AbortController } | null = null
-  let listedFrom: unknown = null
+  const listing = useShowing(
+    () => options.source(),
+    () => spot.value?.directory,
+    (source, directory) => source.showListing?.(directory),
+  )
 
   const rows = computed(() => {
     const at = spot.value
-    const entries = at ? listings.get(at.directory) : undefined
+    // A directory that cannot be listed offers nothing; why is the file browser's to say.
+    const entries = listing.entry.value?.value
     return at && entries ? rankCompletions(entries, at.query, options.kind()) : []
   })
   const isOpen = computed(() => !dismissed.value && rows.value.length > 0)
 
-  function abortPending(): void {
-    pending?.controller.abort()
-    pending = null
-  }
-
-  async function list(directory: string): Promise<void> {
-    const source = options.source()
-    if (!source.list || listings.has(directory) || pending?.directory === directory)
-      return
-    abortPending()
-    const controller = new AbortController()
-    pending = { directory, controller }
-    let entries: readonly FileBrowserEntry[] | null
-    try {
-      entries = await source.list(directory, controller.signal)
-    } catch {
-      // A directory that cannot be listed offers nothing; why is the file browser's to say.
-      entries = null
-    }
-    if (controller.signal.aborted)
-      return
-    pending = null
-    listings.set(directory, entries)
-  }
-
   /** Follows the caret: `caret` is null while the field has no caret, a range selected or focus gone. */
   function follow(text: string, caret: number | null): void {
     const source = options.source()
-    // Listings belong to the source that made them; another source lists anew.
-    if (listedFrom !== source) {
-      listedFrom = source
-      abortPending()
-      listings.clear()
-    }
     const next = caret === null ? null : completionSpot(text, caret, { home: source.home, base: options.base() })
     const current = spot.value
     if (next?.directory === current?.directory && next?.query === current?.query && next?.start === current?.start)
@@ -175,8 +147,6 @@ export function usePathCompletion(options: PathCompletionOptions) {
     spot.value = next
     highlighted.value = -1
     dismissed.value = false
-    if (next)
-      void list(next.directory)
   }
 
   /** The text with the row at `index` accepted. */
@@ -216,8 +186,6 @@ export function usePathCompletion(options: PathCompletionOptions) {
     }
     return { kind: 'pass' }
   }
-
-  tryOnScopeDispose(abortPending)
 
   return { rows, highlighted, isOpen, follow, keydown, accept }
 }

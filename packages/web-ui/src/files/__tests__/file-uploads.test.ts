@@ -1,6 +1,6 @@
 import { expect, jest, test } from 'bun:test'
 import { deferred, type Deferred } from '@demicodes/utils'
-import { FileUploads, clashPlacement, type UploadChange, type UploadItem } from '../file-uploads'
+import { FileUploads, clashPlacement, type UploadItem } from '../file-uploads'
 import { FileBrowserError, type FileUploadOptions } from '../types'
 
 /**
@@ -48,11 +48,9 @@ function folder(name: string, directories: string[], files: [string, number][]):
 
 const paths = (calls: { path: string }[]) => calls.map((call) => call.path)
 
-test('up to four steps run at once, taken in the order asked, and each landing tells its entry', async () => {
+test('up to four steps run at once, taken in the order asked', async () => {
   const source = fakeSource()
   const uploads = new FileUploads(source)
-  const changes: UploadChange[] = []
-  uploads.onChanged((change) => changes.push(change))
   uploads.add('/w/assets', added(bytes('a.png', 10), bytes('b.png', 20), bytes('c.png', 1), bytes('d.png', 1), bytes('e.png', 1)))
   expect(paths(source.calls)).toEqual(['/w/assets/a.png', '/w/assets/b.png', '/w/assets/c.png', '/w/assets/d.png'])
   expect(uploads.items.map((item) => item.state.phase)).toEqual(['uploading', 'uploading', 'uploading', 'uploading', 'waiting'])
@@ -66,8 +64,6 @@ test('up to four steps run at once, taken in the order asked, and each landing t
   await settle()
   expect(uploads.items.map((item) => item.state.phase)).toEqual(['uploading', 'done', 'uploading', 'uploading', 'uploading'])
   expect(paths(source.calls).at(-1)).toBe('/w/assets/e.png')
-  // The file is in its directory as the answer says, with no listing.
-  expect(changes).toEqual([{ kind: 'added', directory: '/w/assets', entry: { name: 'b.png', isDirectory: false, size: 20 } }])
 })
 
 test('an upload that overwrites is sent with replace; one that adds is not', () => {
@@ -139,8 +135,6 @@ test('an upload on its way tells its pace once it has moved for a moment', () =>
 test('a folder sends its files at once, whose writes make its folders, makes only its empty folders, and counts its bytes across them', async () => {
   const source = fakeSource()
   const uploads = new FileUploads(source)
-  const changes: UploadChange[] = []
-  uploads.onChanged((change) => changes.push(change))
   uploads.add('/w', [{
     item: folder('photos', ['2024', '2024/raw', 'empty'], [['a.jpg', 100], ['2024/raw/b.jpg', 50]]),
     placement: 'add',
@@ -157,17 +151,6 @@ test('a folder sends its files at once, whose writes make its folders, makes onl
   source.calls[0]!.done.resolve()
   await settle()
   expect(uploads.items[0]!.state).toEqual({ phase: 'done' })
-  const folderEntry = (directory: string, name: string): UploadChange => ({ kind: 'added', directory, entry: { name, isDirectory: true } })
-  expect(changes).toEqual([
-    folderEntry('/w', 'photos'),
-    folderEntry('/w/photos', 'empty'),
-    folderEntry('/w', 'photos'),
-    folderEntry('/w/photos', '2024'),
-    folderEntry('/w/photos/2024', 'raw'),
-    { kind: 'added', directory: '/w/photos/2024/raw', entry: { name: 'b.jpg', isDirectory: false, size: 50 } },
-    folderEntry('/w', 'photos'),
-    { kind: 'added', directory: '/w/photos', entry: { name: 'a.jpg', isDirectory: false, size: 100 } },
-  ])
 })
 
 test('an empty folder makes itself', async () => {
@@ -201,8 +184,6 @@ test('a file of a folder that fails is noted and the rest go on; a retry sends o
 test('replacing deletes what is there before anything else starts, and a delete that fails stops the folder', async () => {
   const source = fakeSource(new Set(['/w/src/auth']))
   const uploads = new FileUploads(source)
-  const changes: UploadChange[] = []
-  uploads.onChanged((change) => changes.push(change))
   uploads.add('/w/src', [
     { item: folder('auth', [], [['token.ts', 1]]), placement: 'replace' },
     { item: folder('http', [], [['client.ts', 1]]), placement: 'replace' },
@@ -211,7 +192,6 @@ test('replacing deletes what is there before anything else starts, and a delete 
   await settle()
   expect(uploads.items[0]!.state).toEqual({ phase: 'failed', failures: [{ path: '', message: 'Permission denied' }] })
   expect(source.log).toEqual(['remove /w/src/auth', 'remove /w/src/http', 'upload /w/src/http/client.ts'])
-  expect(changes).toEqual([{ kind: 'removed', path: '/w/src/http' }])
 })
 
 test('Replace and Merge place an item by what meets what', () => {
