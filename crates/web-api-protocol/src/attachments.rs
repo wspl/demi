@@ -13,13 +13,24 @@ use crate::ids::AttachmentId;
 /// The most bytes an upload holds.
 pub const ATTACHMENT_MAX_BYTES: usize = 25 * 1024 * 1024;
 
-/// `POST /attachments?name=`: the file's name, which decides whether the
-/// answer carries a text file's opening, as a message with the file does.
+/// `POST /attachments?name=&sha256=`: the file's name, which decides
+/// whether the answer carries a text file's opening, as a message with the
+/// file does, and the SHA-256 of its bytes. With a SHA-256 and no body, the
+/// upload is of the blob the caller holds already; with a body, the bytes
+/// must have it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct UploadQuery {
     #[garde(length(chars, min = 1, max = 255))]
     pub name: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlobRef")]
+    #[garde(skip)]
+    pub sha256: Option<BlobRef>,
 }
 
 /// The answer of an upload.

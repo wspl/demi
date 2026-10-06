@@ -2,12 +2,13 @@
 //! commands): `upload` copies files of the Host into the conversation as
 //! attachments `a1`, `a2`, …, which the agent's messages then show as
 //! `attachment:a3`. The runner of the invocation's Host, the conversation's
-//! primary Host or an attached one a `demi host shell` job runs on, reads
-//! each file beside the invocation, through the conversation's host access,
-//! and streams its bytes to the backend through a pipe (`runner.md` § File
-//! contents); the backend reads the media type from the
-//! bytes as it does for the user's uploads, stores the blob in the
-//! conversation owner's namespace, and then the record, under the next
+//! primary Host or an attached one a `demi host shell` job runs on, first
+//! hashes each file beside the invocation, through the conversation's host
+//! access; a blob the conversation owner's namespace holds already is not
+//! read again. Otherwise the runner streams the file's bytes to the backend
+//! through a pipe (`runner.md` § File contents), and the backend stores the
+//! blob in that namespace. The backend reads the media type from the bytes
+//! as it does for the user's uploads, and stores the record under the next
 //! number of the conversation's `attachment` sequence. The command returns
 //! no medium: the attachment is for the user.
 
@@ -136,9 +137,11 @@ async fn upload(
     Ok(u8::from(failed))
 }
 
-/// Reads the file at `path`, beside `cwd`, from the conversation's Host on
-/// `device`, and stores it as the conversation's next attachment: its blob first, then
-/// its record. Answers why when it cannot.
+/// Copies the file at `path`, beside `cwd`, from the conversation's Host on
+/// `device`, and stores it as the conversation's next attachment: its blob
+/// first, then its record. The Host hashes the file first, and sends its
+/// bytes only when the namespace does not hold them already. Answers why
+/// when it cannot.
 async fn store(
     shard: &dyn HostShard,
     conversation: &ConversationId,
@@ -146,21 +149,39 @@ async fn store(
     cwd: &str,
     path: &str,
 ) -> Result<AttachmentRow, String> {
-    // The admission waits only as long as the call: a stopped call drops it.
-    let bytes = shard
+    // Each admission waits only as long as the call: a stopped call drops it.
+    let hash = shard
         .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
-            read(&host.host, cwd, path).await
+            host.host.hash_file_in(cwd, path).await
         })
         .await
-        .map_err(|error| error.to_string())??;
+        .map_err(|error| error.to_string())?
+        .map_err(|error| error.message)?;
+    within_limit(hash.size)?;
+    let blobs = shard.blobs();
+    let held = blobs
+        .get(&hash.sha256)
+        .await
+        .map_err(|error| error.to_string())?;
+    let (blob, bytes) = match held {
+        Some(bytes) => (hash.sha256, bytes),
+        None => {
+            let bytes = shard
+                .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
+                    read(&host.host, cwd, path).await
+                })
+                .await
+                .map_err(|error| error.to_string())??;
+            let blob = blobs
+                .put(bytes.clone())
+                .await
+                .map_err(|error| error.to_string())?;
+            (blob, bytes)
+        }
+    };
     let sent = preview_media_type(path).unwrap_or(UNKNOWN_MEDIA_TYPE);
     let media_type = upload_media_type(sent, &bytes);
     let size = u64::try_from(bytes.len()).expect("an attachment's size fits u64");
-    let blob = shard
-        .blobs()
-        .put(bytes)
-        .await
-        .map_err(|error| error.to_string())?;
     let db = shard.conversation_db(conversation);
     let number = db
         .call(|connection| sequences::next(connection, Sequence::Attachment))
@@ -186,8 +207,19 @@ async fn store(
     Ok(row)
 }
 
-/// The bytes of the file at `path` beside `cwd`: a file over the limit of the
-/// user's own uploads is refused before a byte is read.
+/// Refuses a file over the limit of the user's own uploads.
+fn within_limit(size: u64) -> Result<(), String> {
+    let limit = ATTACHMENT_MAX_BYTES as u64;
+    if size > limit {
+        return Err(format!(
+            "the file is {size} bytes; an attachment is at most 25 MiB ({limit} bytes)"
+        ));
+    }
+    Ok(())
+}
+
+/// The bytes of the file at `path` beside `cwd`. A file that grew past the
+/// limit since it was hashed is refused before a byte is read.
 async fn read(
     host: &demi_backend_remote_host::RemoteHost,
     cwd: &str,
@@ -197,14 +229,8 @@ async fn read(
         .read_pipe_in(cwd, path, ByteRange::default())
         .await
         .map_err(|error| error.message)?;
-    let limit = ATTACHMENT_MAX_BYTES as u64;
-    if opened.stat.size > limit {
-        // Dropping the reader stops the read.
-        return Err(format!(
-            "the file is {} bytes; an attachment is at most 25 MiB ({limit} bytes)",
-            opened.stat.size
-        ));
-    }
+    // Dropping the reader stops the read.
+    within_limit(opened.stat.size)?;
     collect_pipe(opened.body, ATTACHMENT_MAX_BYTES)
         .await
         .map_err(|error| error.message)

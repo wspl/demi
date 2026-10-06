@@ -11,7 +11,7 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::{DirEntry, FileRead, FileStat, GitChanges, Looked, OpenedFile};
+use super::{DirEntry, FileHash, FileRead, FileStat, GitChanges, Looked, OpenedFile};
 
 /// A successful fs call's reply.
 #[derive(Debug, Clone, PartialEq)]
@@ -27,6 +27,7 @@ pub enum FsResult {
     /// The file as it was opened; its bytes follow in the pipe unless it is
     /// unchanged.
     ReadFile(OpenedFile),
+    HashFile(FileHash),
     /// The name of the file written: its path's, or the free one it took.
     WriteFile(String),
     Look(Vec<Looked>),
@@ -54,6 +55,7 @@ impl FsResult {
     pub fn op(&self) -> &'static str {
         match self {
             Self::ReadFile(_) => "readFile",
+            Self::HashFile(_) => "hashFile",
             Self::WriteFile(_) => "writeFile",
             Self::Look(_) => "look",
             Self::ReadFiles(_) => "readFiles",
@@ -113,6 +115,7 @@ impl Serialize for FsOk {
             FsResult::ReadFiles(read) => reply.serialize_field("result", read)?,
             FsResult::Exists(exists) => reply.serialize_field("result", exists)?,
             FsResult::ReadFile(opened) => reply.serialize_field("result", opened)?,
+            FsResult::HashFile(hash) => reply.serialize_field("result", hash)?,
             FsResult::Stat(stat) | FsResult::Lstat(stat) => {
                 reply.serialize_field("result", stat)?;
             }
@@ -176,6 +179,7 @@ impl ReplyResult for FsResult {
     fn read<'de, A: MapAccess<'de>>(op: &str, map: &mut A) -> Result<Self, A::Error> {
         Ok(match op {
             "readFile" => Self::ReadFile(map.next_value()?),
+            "hashFile" => Self::HashFile(map.next_value()?),
             "writeFile" => Self::WriteFile(map.next_value()?),
             "look" => Self::Look(map.next_value()?),
             "readFiles" => Self::ReadFiles(map.next_value()?),
