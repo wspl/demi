@@ -87,6 +87,7 @@ impl Job {
     pub async fn start(
         script: String,
         cwd: PathBuf,
+        workspace: PathBuf,
         mut env: BTreeMap<String, String>,
         live: bool,
         output: bool,
@@ -147,6 +148,7 @@ impl Job {
                         scope: scope.clone(),
                         login: true,
                         cwd,
+                        workspace,
                         env,
                         stdin,
                         stdout,

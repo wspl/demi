@@ -146,6 +146,7 @@ async fn ready_job(cwd: &Path, script: &str) -> Job {
     let mut job = Job::start(
         script.into(),
         cwd.to_owned(),
+        cwd.to_owned(),
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
         true,
@@ -474,6 +475,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
             let mut job = Job::start(
                 "true".into(),
                 cwd.clone(),
+                cwd.clone(),
                 BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
                 false,
                 true,
@@ -685,6 +687,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
     std::fs::create_dir_all(&cwd).unwrap();
     let mut job = Job::start(
         "/bin/sh -c 'ulimit -n'; env /bin/sh -c 'ulimit -n'".into(),
+        cwd.clone(),
         cwd.clone(),
         BTreeMap::from([("HOME".to_owned(), cwd.to_string_lossy().into_owned())]),
         false,
