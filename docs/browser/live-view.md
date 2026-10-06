@@ -218,7 +218,9 @@ keeps looking at `t3`.
 ### Opening a view
 
 1. The page opens `WS /api/conversations/:id/streams/browser` on the product
-   origin. The backend's edge checks the session cookie, the `Origin` header,
+   origin, or, with a [direct channel](../execution/direct-channel.md) to the
+   conversation's device, a `stream` channel that carries the same bytes;
+   the steps below are the relay's. The backend's edge checks the session cookie, the `Origin` header,
    and that the conversation belongs to the user, and passes the request to
    the user's shard.
 2. The shard admits the stream through the conversation's host access,

@@ -781,7 +781,7 @@ or on another plugin.
 
 ### Runner libraries
 
-The runner is one executable built from six crates, so that a change to one
+The runner is one executable built from seven crates, so that a change to one
 part of it recompiles only that part and what composes it, and a test of one
 part links only that part's dependencies. The standard utilities are the
 heaviest of them: only `runner-shell` links brush, the uutils, ripgrep, jaq,
@@ -790,6 +790,7 @@ sed, findutils and diffutils, and nothing below the executable depends on it.
 ```text
 demi-runner (executable: connection, registration, Host log, composition)
    |-- runner-jobs ------> runner-command-packages ---.
+   |-- runner-direct
    |-- runner-host ---------------------------+--> runner-process
    |-- runner-shell --------------------------'
    `-- (all of the above)
@@ -834,6 +835,20 @@ demi-runner (executable: connection, registration, Host log, composition)
   the working tree's watch.
 - **Must not:** know jobs, commands or the connection that carries the
   requests.
+
+#### `runner-direct`
+
+- **Owns:** the runner's side of [direct channels](../execution/direct-channel.md):
+  the peers the backend introduces, their UDP sockets on `127.0.0.1` and the
+  local network's addresses, ICE, DTLS and SCTP through str0m, the grants,
+  the operations' headers and flow control, on a thread of its own off the
+  runner's control thread.
+- **Public boundary:** the peers' handle the runner drives with the backend's
+  `direct_*` messages, and the trait through which it carries out an
+  operation: the Host operations and service streams the runner supplies.
+- **Must not:** know the backend connection, jobs or commands; carry out an
+  operation in a way of its own, rather than through what the runner
+  supplies.
 
 #### `runner-command-packages`
 
@@ -1046,7 +1061,9 @@ demi-backend (executable: configuration, composition)
   uploads, remote files and user streams, with the leases the edge holds of
   them; the shell environments of agent nodes over it, which keep the
   commands' outputs and edit copies as the user's blobs;
-  the product's `demi host` and `demi attachment` groups; the installation
+  the product's `demi host` and `demi attachment` groups; the grants of
+  [direct channels](../execution/direct-channel.md) and their revocation with
+  the transitions; the installation
   of the user's [Host directories](plugins.md#host-directories) before a job
   runs, once per runner connection, the reads of a conversation's files and
   the package calls plugins make; and `HostShard`,
@@ -1145,7 +1162,8 @@ demi-backend (executable: configuration, composition)
   extractors and body limits, the mapping of errors to `ErrorCode`, the
   installer, native artifact and web app asset routes, the plugins' page call
   routes, the conversation permissions routes, runner acceptance, and
-  the byte copies of file transfers, pipes, user streams and the expose relay
+  the byte copies of file transfers, pipes, user streams and the expose relay,
+  and the signaling socket of [direct channels](../execution/direct-channel.md)
   ([Web API](../product/web-api.md)).
 - **Public boundary:** the edge the executable starts (`Edge`), with the
   state its routes reach (`AppState`, `Site`). Its `testing` feature holds
@@ -1491,7 +1509,10 @@ under `packages/`.
   containers; `api/` validated HTTP and agent wire adapters and upload
   requests; `state/` the product state its synchronization channel keeps,
   preferences and per-user local state;
-  `devices/` pairing and filesystem adapters; `plugins/` the page context
+  `devices/` pairing and filesystem adapters; `direct/` the
+  [direct channel](../execution/direct-channel.md): the peer, the choice of
+  path, the operations' clients and the service worker that answers the raw
+  route's requests over it; `plugins/` the page context
   over the page call routes, the conversation state route, the
   synchronization channel and the file routes, and the registry `xtask
   contracts` generates into `plugins/generated/` from the backend's plugins
@@ -1610,6 +1631,7 @@ plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
 runner-process -> shared-artifacts, command-protocol, command-sdk, runner-protocol
 runner-host -> shared-artifacts, command-sdk, runner-process, runner-protocol
+runner-direct -> runner-protocol
 runner-command-packages -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
 runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
 runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages
@@ -1631,7 +1653,7 @@ backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, bac
 backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, shared-artifacts
-runner -> command-protocol, command-sdk, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts
+runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk

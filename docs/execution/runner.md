@@ -504,6 +504,17 @@ and its words from this message, not from a stream that merely ended. Like a net
 runner does not parse what flows through it. The backend uses it for the
 [live browser view](../browser/live-view.md).
 
+### Direct channels
+
+A page can reach the runner without the backend in the middle, over WebRTC
+data channels the backend introduces and authorizes
+([Direct channel](direct-channel.md)). The backend forwards a page's offer as
+`direct_offer`, the runner answers with `direct_answer`, and
+`direct_grant`, `direct_revoke` and `direct_close` say what each peer may do
+and when it ends. The runner carries out a direct operation with the same
+functions as the backend's request for it, and closes every peer when its
+connection to the backend ends.
+
 ## Host log
 
 A Host that cannot say what went wrong cannot be debugged. For example, the
