@@ -53,8 +53,8 @@ the storage module's schema.
 ### Schemas and migrations
 
 Each kind of database has its schema, a SQL text, and the history of the
-schemas that formal releases shipped before it, each with the migration that
-leads from it to the next. A schema's version is a digest of its text: the
+schemas that published releases shipped before it, each with the migration
+that leads from it to the next. A schema's version is a digest of its text: the
 first 31 bits of its SHA-256, which a database records in SQLite's own
 `user_version` field.
 
@@ -95,9 +95,13 @@ A migration is tested once: a database of each schema in the history,
 migrated, has the same tables, columns and indexes as a new one, and a
 migration that rewrites values is tested on its rows.
 
-The history starts with the first formal release. Until then it is empty: an
-edited schema means a new data directory, and a database that records
-another version, such as one a build of another schema made, stops the open.
+Every published release's schema is in the history, the releases before the
+first formal one included, so that migrations are written and tested on real
+upgrades, such as a server going from 0.1.11 to the next release, long before
+a user depends on them. The first formal release clears the history: its
+schemas start a new one, and the pre-release migrations go. A database that
+records another version, such as one a development build of an unpublished
+schema made, stops the open.
 
 ## Control records
 
