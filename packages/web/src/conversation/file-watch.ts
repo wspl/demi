@@ -113,13 +113,17 @@ export class ConversationWatch implements FileFollower {
     }
   }
 
-  /** The Host came back online: a watch waiting to connect again connects now. */
+  /**
+   * The Host came online, or became known: a watch that something shows
+   * and that is not open, waiting to connect again or never connected,
+   * connects now.
+   */
   online(): void {
-    if (this.waiting) {
-      this.waiting.cancel()
-      this.waiting = null
-      this.connect()
-    }
+    if (this.current)
+      return
+    this.waiting?.cancel()
+    this.waiting = null
+    this.connect()
   }
 
   private connect(): void {
