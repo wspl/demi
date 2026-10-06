@@ -1009,7 +1009,7 @@ later one is the current value of one part of it that changed:
 | `preferences` | `preferences` | A preferences patch |
 | `user` | `user` | The nickname or the email address changes |
 | `workspaces` | `workspaces`, in the user's order | A workspace is created, renamed, moved or deleted |
-| `devices` | `devices`, the paired ones and the Cloud's, each with its state, `online`, `updating` or `offline` ([Runner updates](../execution/runner.md#runner-updates)), and for a paired device its `startCommand`, the command that starts its runner again ([Installation, pairing and removal](../execution/runner.md#installation-pairing-and-removal)) | A device is paired or revoked, its runner connects, disconnects or starts or ends an update, its runner's installed artifacts change, or the Cloud's device is made |
+| `devices` | `devices`, the paired ones and the Cloud's, each with its state, `online`, `updating` or `offline` ([Runner updates](../execution/runner.md#runner-updates)), as an attached Host's state also reads, and for a paired device its `startCommand`, the command that starts its runner again ([Installation, pairing and removal](../execution/runner.md#installation-pairing-and-removal)) | A device is paired or revoked, its runner connects, disconnects or starts or ends an update, its runner's installed artifacts change, or the Cloud's device is made |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off |
