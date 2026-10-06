@@ -1,9 +1,10 @@
 import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
-  applyRequest,
   openIntent,
+  pendingShows,
   type PanelState,
+  type PanelTab,
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
@@ -54,12 +55,34 @@ export const useWorkPanel = defineStore('work-panel', () => {
   function tabsOf(conversationId: string): PanelTabs {
     let tabs = panels.get(conversationId)
     if (!tabs) {
-      tabs = new PanelTabs(panelBackend(conversationId), (error) => {
+      const created = new PanelTabs(panelBackend(conversationId), (error) => {
         reportError('Could Not Change the Work Panel', error, { userVisible: true })
       })
-      panels.set(conversationId, tabs)
+      panels.set(conversationId, created)
+      // A tab whose kind asks that the user see it opens the panel, open or closed (`web-application.md` § Work panel).
+      watch(() => created.tabs.value, (current) => applyShows(conversationId, current))
+      tabs = created
     }
     return tabs
+  }
+
+  /**
+   * Opens the panel on each tab whose kind counts more showings than this
+   * page applied, once, and records the counts beside the selection history.
+   */
+  function applyShows(conversationId: string, tabs: readonly PanelTab[]): void {
+    const applied = resources.local.workPanelShown?.[conversationId] ?? {}
+    const pending = pendingShows(tabs, PLUGIN_PAGES, enabled, applied)
+    if (!pending) {
+      return
+    }
+    resources.local.workPanelShown ??= {}
+    resources.local.workPanelShown[conversationId] = { ...pending.applied }
+    const state = stateFor(conversationId)
+    for (const id of pending.shown) {
+      state.history = selectTab(state.history, id)
+    }
+    state.open = true
   }
 
   function stateFor(conversationId: string): WorkState {
@@ -129,27 +152,6 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.history = selectTab(state.history, id)
   }
 
-  /**
-   * A plugin page's selection of tab `id`, with the panel opened
-   * (`web-application.md` § Work panel). With `request`, it applies only a
-   * request above the one this page recorded for the tab, and records it.
-   */
-  function show(conversationId: string, id: string, request?: number): void {
-    if (request !== undefined) {
-      const applied = resources.local.workPanelShown?.[conversationId] ?? {}
-      const present = tabsOf(conversationId).tabs.value.map((tab) => tab.id)
-      const next = applyRequest(applied, present, id, request)
-      if (!next) {
-        return
-      }
-      resources.local.workPanelShown ??= {}
-      resources.local.workPanelShown[conversationId] = { ...next }
-    }
-    const state = stateFor(conversationId)
-    state.history = selectTab(state.history, id)
-    state.open = true
-  }
-
   /** A new tab, selected unless `options` says not, with the panel opened for it; returns its id. */
   function add(conversationId: string, kind: string, data: unknown, options = { select: true }): string {
     const state = stateFor(conversationId)
@@ -202,5 +204,5 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return intentKind(PLUGIN_PAGES, enabled, intent) !== null
   }
 
-  return { stateFor, recorded, setOpen, load, select, show, add, update, closeTabs, updatePinned, openIn, canOpen }
+  return { stateFor, recorded, setOpen, load, select, add, update, closeTabs, updatePinned, openIn, canOpen }
 })

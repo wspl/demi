@@ -405,6 +405,8 @@ export interface GalleryBrowser {
   closeOnDevice(tab: string): void
   /** The agent shows the tab to the user, as `demi browser show` does: its count of showings rises. */
   show(tab: string): void
+  /** The agent opens a tab, as `demi browser open` does, and shows it with `show`, as `--show` does. */
+  agentOpens(url: string, options: { show: boolean }): void
   stream: OpenUserStream
   /** What the Host holds of the browser's package. */
   installed(): readonly HostArtifact[]
@@ -522,6 +524,21 @@ export function galleryBrowser(
     closeOnDevice: remove,
     show: (id) => {
       shows.set(id, (shows.get(id) ?? 0) + 1)
+      changed()
+    },
+    agentOpens: (url, options) => {
+      const tab: LiveTab = {
+        id: `t${next++}`,
+        title: URL.parse(url)?.host ?? url,
+        url,
+        createdBy: { kind: 'agent', number: 0 },
+        viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+        loading: false,
+      }
+      tabs.push(tab)
+      if (options.show) {
+        shows.set(tab.id, 1)
+      }
       changed()
     },
     stream,

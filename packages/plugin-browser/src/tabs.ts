@@ -1,7 +1,7 @@
 import { computed } from 'vue'
 import { z } from 'zod'
-import { BROWSER_KIND, BrowserTabsError, type BrowserTabsApi } from './live/tabs'
-import { PluginCallError, type ConversationPlugin, type PageContext } from '@demicodes/plugin-sdk'
+import { BrowserTabsError, type BrowserTabsApi } from './live/tabs'
+import { PluginCallError, type ConversationPlugin } from '@demicodes/plugin-sdk'
 import {
   browserTabsSchema,
   type BindTab,
@@ -25,11 +25,10 @@ function tabsError(error: PluginCallError): BrowserTabsError {
 
 /**
  * The conversation browser's tab list, its tab methods and its `browser`
- * user stream over the plugin (`live-view.md` § The tab methods), and the
- * conversation's `browser` panel tabs, for a panel session, whose effect
- * scope the tab list is followed in.
+ * user stream over the plugin (`live-view.md` § The tab methods), for a
+ * panel session, whose effect scope the tab list is followed in.
  */
-export function browserTabsApi(plugin: ConversationPlugin, panel: PageContext['panel'], conversation: string): BrowserTabsApi {
+export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
   const tabs = plugin.state(browserTabsSchema)
   async function call(method: string, params: object, timeoutMs?: number): Promise<void> {
     try {
@@ -52,7 +51,5 @@ export function browserTabsApi(plugin: ConversationPlugin, panel: PageContext['p
     history: (tab, action) => call('history', { tab, action } satisfies TabHistory),
     stream: plugin.stream('browser'),
     installed: () => plugin.installed.value,
-    panelTabs: () => panel.tabs(conversation, BROWSER_KIND),
-    show: (panelTab, request) => panel.select(conversation, panelTab, request),
   }
 }
