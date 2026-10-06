@@ -36,7 +36,7 @@ conversation's host access; they are not conversation database content.
 
 | Store | Owns | Writer |
 |---|---|---|
-| `control.sqlite` | Accounts, auth sessions, preferences, subagent settings, devices, workspaces, exposes, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories, conversations' permission requests and grants | The control service, on its database thread |
+| `control.sqlite` | Accounts, auth sessions, preferences, subagent settings, devices, workspaces, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories, conversations' permission requests and grants | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, the records of commands' outputs | The shard of the user who owns the conversation |
 | User blob namespace | Uploaded bytes, transcript media, edit copies, commands' whole outputs and the files plugins keep, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
 
@@ -148,12 +148,7 @@ input, which the multi-worker control service also relies on
   devices are listed by claim time, oldest first, and two claimed within one
   millisecond by id. `workspaces` names directories on devices; deleting a
   workspace never deletes its files. Online status comes from live
-  connections, not the last-seen time. `exposes` stores
-  each [Host expose](../execution/expose.md#the-expose-record): id, owner,
-  device, target address, creation and expiry time; the numbers the model
-  sees are the `expose` plugin's values. Expiry, removal, a Cloud
-  stop and device revocation delete rows; nothing updates a row except
-  renewal.
+  connections, not the last-seen time.
 - **Conversation index:** `conversations` stores ownership, title and its
   [origin](../product/product.md#conversation-titles), archive and pin state,
   ordering, read revision, target selection, target context revision, last

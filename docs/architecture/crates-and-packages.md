@@ -54,7 +54,7 @@ change. A proposal that adds a tool-specific message, adapter or lifecycle
 hook to any of those crates violates this contract and is redesigned at the
 plugin contract or the runner's port instead. A generic mechanism is
 different: a message the runner answers without knowing who asked or why,
-such as a filesystem operation, a working-tree listing or a network stream,
+such as a filesystem operation, a working-tree listing or a service stream,
 belongs to the runner wire like the others, and an operation any plugin could
 use, such as a Host directory, belongs to the plugin contract.
 
@@ -754,17 +754,6 @@ or on another plugin.
 - **Must not:** implement a browser operation or hold browser state; the
   conversation browser's crates do.
 
-#### `plugin-expose`
-
-- **Owns:** the `demi expose` group and its `rpc` handlers, the numbers the
-  model sees and the values that keep them, the one-hour policy, and its page
-  state and the `renew` and `remove` methods
-  ([Host expose](../execution/expose.md)).
-- **Public boundary:** its factory, whose manifest names its page package,
-  `@demicodes/plugin-expose`, which `xtask contracts` generates the page's
-  types into.
-- **Must not:** hold an expose record or relay a byte; `backend-expose` does.
-
 #### `plugin-skills`
 
 - **Owns:** [skills](../agent/skills.md): sources with their fetch, pin and
@@ -827,7 +816,7 @@ demi-runner (executable: connection, registration, Host log, composition)
 - **Owns:** the Host operations the backend asks for
   ([Host operations](../execution/runner.md#host-operations)): filesystem
   operations and file contents through pipes, the working tree with its
-  status, diffs and change watch (gix and notify), network streams, and the
+  status, diffs and change watch (gix and notify), and the
   volumes a Host reports. It resolves a request's paths and waits out a lack
   of open files with `command-sdk`, as every native program does, and
   writes a file's contents through `shared-artifacts`'s staged publication.
@@ -909,7 +898,7 @@ demi-runner (executable: connection, registration, Host log, composition)
 The backend is one executable built from layered crates. Each layer knows
 only the layers beneath it. A domain whose operations need another domain's
 state does not reach for the user's shard: it defines the narrow trait of what
-it needs (`CloudShard`, `ExposeShard`, `HostShard`, `PermissionShard`, `PluginShard`), writes its operations as
+it needs (`CloudShard`, `HostShard`, `PermissionShard`, `PluginShard`), writes its operations as
 methods of that trait object, and `backend-user-shard` implements the trait for
 `Shard` ([Composition](concurrency.md#the-user-shard)). No crate below
 `backend-user-shard` sees `Shard` or `Services`; each receives the handles it uses,
@@ -922,7 +911,7 @@ demi-backend (executable: configuration, composition)
         `-- backend-user-shard (the user's shard, conversations)
               |-- backend-plugins (the plugin host)
               |-- backend-permissions (conversation permissions)
-              |-- backend-host-access --> backend-cloud, backend-expose, backend-runners
+              |-- backend-host-access --> backend-cloud, backend-runners
               |-- backend-cloud --------> backend-runners, backend-providers, backend-idle-watch
               |-- backend-accounts
               `-- (each as it needs) --> backend-database, backend-blobs, backend-page-sync
@@ -1013,7 +1002,7 @@ demi-backend (executable: configuration, composition)
   conversation's files. Its `testing` feature gives a bound connection's
   driver without a socket, for tests that play a runner.
 - **Must not:** reach a conversation's Host except through host access, or
-  know conversations, the Cloud or exposes.
+  know conversations or the Cloud.
 
 #### `backend-idle-watch`
 
@@ -1036,21 +1025,7 @@ demi-backend (executable: configuration, composition)
   whether someone attends them, and the notice that a Cloud stopped.
 - **Public boundary:** the Cloud component, its operations on
   `dyn CloudShard`, and the manager client.
-- **Must not:** see `Shard`, conversations' state or exposes.
-
-#### `backend-expose`
-
-- **Owns:** the expose mechanism ([Host expose](../execution/expose.md)):
-  expose records and their lifetime, and the live relay connections with
-  their admission up to the device; and `ExposeShard`, what an expose needs of
-  its user's shard: whether a device takes a new expose, its runner connected
-  and, for a Cloud, the Cloud running.
-- **Public boundary:** the exposes component and its operations on
-  `dyn ExposeShard`, which the plugin host's exposes operation reaches through
-  the shard. The `demi expose` commands, their numbers and the product surface
-  are `plugin-expose`'s; the network stream of an admitted connection is
-  opened by `backend-user-shard` through device access.
-- **Must not:** see `Shard` or reach a Host.
+- **Must not:** see `Shard` or conversations' state.
 
 #### `backend-host-access`
 
@@ -1091,7 +1066,7 @@ demi-backend (executable: configuration, composition)
   sources in registration order; each user's instances, with the `rpc`
   handlers that forward a command to its plugin; the port's operations over
   the user's plugin values, blobs, Host directory sets, Host file reads,
-  package calls, conversation hosts, exposes and page-state marks; the
+  package calls and page-state marks; the
   plugins' user stream declarations; the marks of a plugin's page state when
   a product change it follows happens;
   and page state and page calls, with the validation of a call's parameters
@@ -1100,8 +1075,7 @@ demi-backend (executable: configuration, composition)
   them, and the operations on `dyn PluginShard`, what the host needs of its
   user's shard: the control service, the user's blobs, the user's change
   marks, the reads of a conversation's files on its running primary Host and
-  the package calls, which the shard makes through host access, the
-  conversation's Hosts, and the user's exposes.
+  the package calls, which the shard makes through host access.
 - **Must not:** see `Shard`, reach a Host, know an agent's session, or hold
   the logic of one plugin.
 
@@ -1143,8 +1117,7 @@ demi-backend (executable: configuration, composition)
   and its failure facts; the conversations' idle watches, release and the daily retention
   pass; the pages' product state and synchronization channels; the Claude Code
   CLI's work on the user's Cloud; runner adoption and the runner link's
-  policy; the network stream of a relayed expose connection, opened through
-  device access; and the implementations of `CloudShard`, `ExposeShard`,
+  policy; and the implementations of `CloudShard`,
   `HostShard`, `PermissionShard` and `PluginShard` for `Shard`.
 - **Public boundary:** the shard pool, the shared services, the times and
   bounds, and the calls the edge makes into a shard. Its `testing` feature
@@ -1160,7 +1133,7 @@ demi-backend (executable: configuration, composition)
   extractors and body limits, the mapping of errors to `ErrorCode`, the
   installer, native artifact and web app asset routes, the plugins' page call
   routes, the conversation permissions routes, runner acceptance, and
-  the byte copies of file transfers, pipes, user streams and the expose relay,
+  the byte copies of file transfers, pipes and user streams,
   and the signaling socket of [direct channels](../execution/direct-channel.md),
   with its device access check ([Web API](../product/web-api.md)).
 - **Public boundary:** the edge the executable starts (`Edge`), with the
@@ -1558,7 +1531,6 @@ Each plugin page package is **private** and has the same boundary:
 | Package | Owns |
 | --- | --- |
 | `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its page context, with the plugin's page types and the live view's messages generated into `src/generated/` |
-| `@demicodes/plugin-expose` | The conversation header's expose menu and the `page` work panel kind ([Host expose](../execution/expose.md#product-surface)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
 | `@demicodes/plugin-file-browser` | The pinned `file` kind, the File view, over the conversation files service ([File previews](../product/file-previews.md)) |
@@ -1622,7 +1594,6 @@ agent-server -> conversation-socket-protocol, agent-session, agent-store, agent-
 plugin-interface -> command-declarations, shared-types, host-interface, web-api-protocol
 plugin-file -> plugin-interface, command-declarations, command-package-file-protocol, host-interface
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
-plugin-expose -> plugin-interface, host-interface, shared-types, web-api-protocol
 plugin-skills -> plugin-interface, host-interface, shared-types
 plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
@@ -1642,13 +1613,12 @@ backend-providers -> backend-database, backend-page-sync, command-package-claude
 backend-runners -> shared-artifacts, backend-blobs, backend-database, backend-page-sync, command-protocol, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol
 backend-idle-watch -> shared-gates
 backend-cloud -> backend-idle-watch, backend-providers, backend-runners, backend-database, backend-page-sync, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol
-backend-expose -> backend-database, shared-types, web-api-protocol
 backend-plugins -> plugin-interface, command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol
 backend-permissions -> command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
-backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
-backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-expose, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-expose, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-expose, plugin-skills
+backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
+backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, shared-artifacts
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts
@@ -1670,11 +1640,10 @@ web-ui -> conversation-client, protocol, utils
 plugin-sdk -> web-ui
 plugin-browser -> plugin-sdk, utils
 plugin-changes -> plugin-sdk
-plugin-expose -> plugin-sdk
 plugin-file-browser -> plugin-sdk
 plugin-skills -> plugin-sdk
-web -> plugin-browser, plugin-changes, plugin-expose, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
-web-gallery -> plugin-browser, plugin-changes, plugin-expose, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
+web -> plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
+web-gallery -> plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
 ```
 
 ## Module layout

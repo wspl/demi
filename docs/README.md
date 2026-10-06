@@ -47,7 +47,6 @@ layout and interaction; these documents do not repeat it.
 - [Commands](execution/commands.md): declarations, input and help, dispatch surfaces and manifests, rpc calls, [external command clients](execution/commands.md#external-command-clients), IO, and the file commands.
 - [Native command execution](execution/native-runtime.md): command packages, installation, resident services, the command context, conversation-scoped state, user streams, the invocation protocol and publication.
 - [Edit tracking](execution/edit-tracking.md): recording what a job edited, the report, its copies as blobs and delivery to the conversation.
-- [Host expose](execution/expose.md): public URLs for services on a Host, their lifetime, relay and commands.
 
 ## How does the agent use a web browser?
 

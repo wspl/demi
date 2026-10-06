@@ -37,7 +37,6 @@ Contracts and crate boundaries
 | Web app | Shared UI has real product adapters and gallery examples; backend persistence and authorization are verified through the product | [Web architecture](../product/web-application.md) |
 | Browser automation | Conversation-owned browser, shell commands, observations, screenshots, and lifecycle satisfy their contracts on paired devices and Cloud | [Conversation browser](../browser/browser.md#acceptance) |
 | Live browser view | The user watches and operates the conversation's tabs in the work panel on paired devices and Cloud | [Live browser view](../browser/live-view.md#acceptance) |
-| Host expose | A device service gets a one-hour public URL; HTTP, streaming, and WebSocket relay byte-faithfully on paired devices and Cloud; expiry, removal, Cloud stop, and revocation destroy it | [Host expose](../execution/expose.md#acceptance) |
 | Packaging | The released runner, command programs, backend, and machine manager install and start on their targets; shipped images run under gVisor/systrap on supported Linux hosts | [Builds and releases](builds-and-releases.md), [Cloud setup](../cloud/setup.md) |
 | Upgrades | A server moves between formal releases with one command, paired devices and Clouds follow without their users, data migrates, and a failed upgrade or a rollback leaves the server on the earlier release with its data | [Upgrades](upgrades.md) |
 | Distributed deployment | Ownership loss fences stale writers before reassignment; metadata and disk generations recover consistently | [Backend](../backend/backend.md#deployment-and-user-ownership), [Storage](../backend/storage.md#multi-worker-storage-placement) |
@@ -49,9 +48,9 @@ delivered in this order, each a checkpoint of its own. The dependency graphs
 in [Crates and packages](../architecture/crates-and-packages.md#dependency-graphs),
 which the boundary checks hold the code to, list the edges the code has: each
 step adds the lines of the crates and packages it builds, such as
-`plugin-expose`, `plugin-skills` and the `@demicodes/plugin-*` packages, and
+`plugin-skills` and the `@demicodes/plugin-*` packages, and
 removes the edges it retires, such as `web-api-protocol`'s and `backend-http`'s
-on the browser protocol and `backend-host-access`'s on `backend-expose`.
+on the browser protocol.
 
 1. **The contract and the command plugins.** `plugin-interface` with its
    loopback transport, `backend-plugins` with the rule that leaves out a
@@ -62,9 +61,8 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    and `plugin-browser`. `agent-coding-harness` is removed.
    Done.
 2. **The page-facing plugins.** `plugin-browser`'s `browser` user stream and
-   its tab methods over package calls; and `plugin-expose` with `demi expose`, its numbers, the conversation hosts and
-   exposes operations and a page state that follows the user's exposes. The
-   plugin call routes replace the browser tab routes and `/api/exposes`, and
+   its tab methods over package calls. The
+   plugin call routes replace the browser tab routes, and
    `web` calls them, with the plugins' types generated into their page
    packages' `src/generated`.
 3. **A user's plugins.** Each user's plugin choices with the plugin switch
@@ -80,13 +78,12 @@ on the browser protocol and `backend-host-access`'s on `backend-expose`.
    file reads that never wake a Host, project skills, the catalog, and the
    page call route with the `plugin` sync message. Done.
 5. **The plugins' pages.** `PluginClient`, `usePlugin()` and the slots in
-   `web-ui`; `@demicodes/plugin-browser` (the `browser` work panel kind),
-   `@demicodes/plugin-expose` (the conversation header tool) and
+   `web-ui`; `@demicodes/plugin-browser` (the `browser` work panel kind) and
    `@demicodes/plugin-skills` (the settings section); their registration in
    `web` and their specimens in `web-gallery`. Done.
 6. **The page platform.** The manifest naming its page package, with page
    state of two scopes, the topics each follows and the operations each
-   reads; the topics `exposes` and `jobs`; the conversation state route and the summary's
+   reads; the topic `jobs`; the conversation state route and the summary's
    `pluginRevisions` and `workingTreeRevision`; `definePage` and `usePage()`;
    kinds as data with intents for pinned and unpinned kinds and panel
    sessions; the plugin kit; types and the registry generated from the
@@ -153,10 +150,6 @@ reverse proxy pins each user to one backend worker
   worker. When the two workers differ, the claim cannot reach the waiting
   connection. The routing must keep a pairing code and its connection on one
   worker; how it does so is undecided.
-- **Expose routing.** An expose hostname carries the expose id and nothing
-  else, so the proxy cannot tell from it which worker owns the user. Either the
-  route map gains an id-to-user lookup, or the hostname carries the user's
-  routing key ([Host expose](../execution/expose.md#deployment)).
 - **Changes across workers.** A change can concern users whom another worker
   serves: a shared instance's provider entries serve every user, and each
   worker keeps its own quota snapshots. A worker marks such a change only on

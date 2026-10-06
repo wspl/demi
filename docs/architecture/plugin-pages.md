@@ -4,7 +4,7 @@ The web app is a shell, and plugins fill it. The shell holds what every
 conversation needs: the application frame, the sidebar, the transcript and the
 composer, the settings dialog with its core sections, and the frame of the
 work panel. Every other surface is a plugin's **page**: the conversation
-browser's tabs, the expose menu, the Skills settings and their sidebar entry,
+browser's tabs, the Skills settings and their sidebar entry,
 the Change view and the File view. A page is written only against the
 **plugin SDK**, `@demicodes/plugin-sdk`, so the shell knows no plugin and a
 plugin knows no part of the shell beyond the SDK.
@@ -77,7 +77,7 @@ web (the product)                         web-gallery
          \                                    /
           +--> generated registry <----------+
                      |
-          plugin-browser  plugin-expose  plugin-skills  plugin-changes  plugin-file-browser
+          plugin-browser  plugin-skills  plugin-changes  plugin-file-browser
                      |    a plugin's feature UI: its components and its state
                      v
                plugin-sdk     definePage, usePage, intents, services, the plugin kit
@@ -108,8 +108,7 @@ what it contributes:
 | `plugin` | Its plugin's id, imported from the generated module | — |
 | `settings` | A section of the settings dialog: its entry in a group of the rail, and its page | `skills` |
 | `settings.sidebar` | An entry in the sidebar's top group that opens the settings dialog on the section | `skills` |
-| `headerTool` | A component the conversation header shows; it shows nothing while it has nothing to show | `expose` |
-| `kinds` | The [kinds](#work-panel-kinds) of tab it shows in the work panel | `browser`, `page`, `change`, `file` |
+| `kinds` | The [kinds](#work-panel-kinds) of tab it shows in the work panel | `browser`, `change`, `file` |
 | `panel` | What runs for a conversation while its panel is open with the plugin on, such as binding the tabs the agent opened ([Panel sessions](#panel-sessions)) | `browser` |
 
 Every field but `plugin` is optional, and all of them are fixed: a page
@@ -220,7 +219,7 @@ it changed; no page polls, and no page guesses when to read again.
 - **User state.** A plugin's state for its user reaches every page on the
   sync channel, as part of the product state, whenever the plugin marks it
   changed ([Page synchronization](../product/web-api.md#page-synchronization)).
-  The Skills settings and the expose menu show it.
+  The Skills settings show it.
 - **Conversation state.** A plugin's state for one conversation, such as the
   conversation browser's tab list, can be large, and only the pages that show
   that conversation need it. So it travels as a conversation's draft does:
@@ -230,8 +229,7 @@ it changed; no page polls, and no page guesses when to read again.
   ([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins)).
 - **When a plugin's state changes.** A plugin marks a scope of its state
   changed through its port, after a call of its own changed it, or when a
-  topic it follows fires: the user's exposes for the expose menu, a
-  conversation's jobs ending for the browser's tabs, which the agent's
+  topic it follows fires: a conversation's jobs ending for the browser's tabs, which the agent's
   commands open and close ([Topics](plugins.md#topics)).
 - **Product services keep themselves fresh.** While a component shows the
   conversation's files, the conversation's files service follows the Host's
@@ -272,8 +270,7 @@ developer: the page writes it to the browser console, never into the toast.
   and the control shows the plugin's last state again. When the component
   that showed the control goes, the calls it still waits for are aborted and
   nothing reports them. The SDK's `pendingCalls` is that rule, by the key of
-  what each control acts on: the Skills page's switches by their source and
-  the expose menu's rows by their expose.
+  what each control acts on: the Skills page's switches by their source.
 
 ## The conversation files service
 
