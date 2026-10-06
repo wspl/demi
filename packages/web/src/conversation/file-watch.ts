@@ -103,10 +103,13 @@ export class ConversationWatch implements FileFollower {
         this.shown.set(path, left)
       else
         this.shown.delete(path)
-      if (this.shown.size === 0)
-        this.stop()
-      else
-        this.pathsChanged()
+      // A view that shows another entry lets the last one go first: the
+      // watch closes only when nothing shows once the views have settled.
+      queueMicrotask(() => {
+        if (this.shown.size === 0)
+          this.stop()
+      })
+      this.pathsChanged()
     }
   }
 
