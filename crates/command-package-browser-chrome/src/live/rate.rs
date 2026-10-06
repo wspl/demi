@@ -2,7 +2,10 @@
 //! End-to-end acknowledgement delay is the main signal: queueing anywhere on
 //! the path shows as a round trip above the smallest one seen. Under
 //! congestion the bit rate falls first, then the frame rate, then the
-//! resolution; each comes back once the path has room again.
+//! resolution; each comes back once the path has room again. No budget
+//! exceeds what the codec's level carries.
+
+use demi_command_package_browser_protocol::live::VIDEO_MAX_BITRATE;
 
 /// Bits per pixel per frame for sharp scrolling text, calibrated in the Tab
 /// Lab's scrolling-text comparison.
@@ -13,6 +16,8 @@ const LOW_BITS: f64 = 0.05;
 /// this many bits, well above `LOW_BITS`, so the two never alternate.
 const RECOVERED_BITS: f64 = 0.15;
 const MIN_BITRATE: f64 = 100_000.0;
+/// The codec's level carries no more.
+const MAX_BITRATE: f64 = VIDEO_MAX_BITRATE as f64;
 pub(crate) const FRAME_RATES: [u32; 3] = [60, 30, 15];
 pub(crate) const SCALES: [f64; 3] = [1.0, 0.75, 0.5];
 
@@ -41,7 +46,7 @@ pub(crate) struct Sample {
 /// The budget a sharp picture of `pixels` device pixels needs at `fps`.
 pub(crate) fn initial_bitrate(pixels: u64, fps: u32) -> u32 {
     (pixels as f64 * f64::from(fps) * SHARP_BITS)
-        .max(MIN_BITRATE)
+        .clamp(MIN_BITRATE, MAX_BITRATE)
         .round() as u32
 }
 
@@ -160,7 +165,9 @@ impl Rate {
             if sample.active_frames >= 10 && demand >= self.bitrate * 0.65 {
                 let recovering =
                     self.backoff_until > 0.0 && sample.now < self.backoff_until + 10_000.0;
-                self.bitrate = (self.bitrate * if recovering { 1.1 } else { 1.5 }).round();
+                self.bitrate = (self.bitrate * if recovering { 1.1 } else { 1.5 })
+                    .min(MAX_BITRATE)
+                    .round();
             }
             // Pixels come back before frames, the reverse of their loss.
             if self.scale > 0 && self.bits(self.fps(), SCALES[self.scale - 1]) >= RECOVERED_BITS {
@@ -248,7 +255,7 @@ mod tests {
     }
 
     #[test]
-    fn the_first_budget_scales_with_device_pixels_without_a_ceiling() {
+    fn the_first_budget_scales_with_device_pixels() {
         // 766 × 431 CSS pixels at ratio 2, 60 frames per second.
         let mut rate = Rate::new(1532 * 862);
         assert_eq!(rate.bitrate(), 47_541_024);
@@ -262,6 +269,22 @@ mod tests {
         let constrained = rate.bitrate();
         rate.resize(2800 * 1800);
         assert_eq!(rate.bitrate(), constrained);
+    }
+
+    #[test]
+    fn no_budget_exceeds_what_the_codecs_level_carries() {
+        // A 1920 × 1080 panel at ratio 2 would ask for 298 Mbps, which the
+        // encoder refuses to start with.
+        let mut rate = Rate::new(3840 * 2160);
+        assert_eq!(rate.bitrate(), VIDEO_MAX_BITRATE);
+        // A picture that uses its whole budget raises it no further.
+        let mut rate = reference();
+        rate.bitrate = 200_000_000.0;
+        rate.update(&Sample {
+            encoded_bitrate: 200_000_000.0,
+            ..healthy()
+        });
+        assert_eq!(rate.bitrate(), VIDEO_MAX_BITRATE);
     }
 
     #[test]
