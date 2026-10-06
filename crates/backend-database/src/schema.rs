@@ -554,14 +554,18 @@ CREATE TABLE command_outputs (
 
 -- Each attachment the agent uploaded, by its number in the conversation's
 -- attachment sequence: the file's name, the media type read from its bytes,
--- its size and its blob in the owner's namespace. A row never changes; a
--- Fork's seed copies the rows, and the blobs stay shared.
+-- its size, an image's or a video's width and height in pixels when its
+-- header gives them, and its blob in the owner's namespace. A row never
+-- changes; a Fork's seed copies the rows, and the blobs stay shared.
 CREATE TABLE attachments (
   number     INTEGER PRIMARY KEY CHECK (number >= 1),
   name       TEXT NOT NULL,
   media_type TEXT NOT NULL,
   size       INTEGER NOT NULL CHECK (size >= 0),
-  blob       TEXT NOT NULL
+  width      INTEGER CHECK (width >= 1),
+  height     INTEGER CHECK (height >= 1),
+  blob       TEXT NOT NULL,
+  CHECK ((width IS NULL) = (height IS NULL))
 ) STRICT;
 ";
 

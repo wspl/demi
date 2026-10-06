@@ -144,6 +144,9 @@ pub enum Inbound {
         context: CommandContext,
         script: String,
         cwd: String,
+        /// The conversation's working directory, where the job starts when
+        /// `cwd` no longer exists (`runner.md` § Shell jobs).
+        workspace: String,
         env: BTreeMap<String, String>,
         #[serde(
             default,

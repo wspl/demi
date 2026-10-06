@@ -34,6 +34,9 @@ pub struct JobCommands {
 pub struct JobStart {
     pub script: String,
     pub cwd: PathBuf,
+    /// Where the job starts instead when `cwd` no longer exists: the
+    /// conversation's working directory (`runner.md` § Shell jobs).
+    pub workspace: PathBuf,
     pub env: BTreeMap<String, String>,
     /// Whether the job's input is its live terminal rather than a finite body.
     pub live: bool,
