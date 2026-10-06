@@ -936,7 +936,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         output.push_str(&shown_output(result));
     }
 
-    let write = json!({ "commandId": command, "stdin": "hello\n" });
+    let write = json!({ "commandId": command, "description": "Answer the prompt", "stdin": "hello\n" });
     work.turn(vec![tool_use("t2", "shell_write", &write), say("fed")])
         .await;
     let got = a.join("got.txt");

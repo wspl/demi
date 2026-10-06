@@ -14,17 +14,16 @@ pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prin
 /// entries (`system-prompt.md` § Capability index).
 pub const INDEX_OPENER: &str = "Demi's own capabilities are `demi` commands you run in the shell. Each group below says what it is for; read its `--help` before you first use it, and an operation's `--help` for its arguments.";
 
-/// The model's capability index of the command trees `roots`: the defaults
-/// and the opener, then each group that carries an index entry, sorted by
-/// its path, with its entry, its operations' names and where its details
-/// are. Nothing when there is no tree.
-pub fn render_index<B>(roots: &[Node<B>]) -> String {
-    if roots.is_empty() {
+/// The model's capability index of `groups`, each a top-level group with
+/// its path and its entry: the defaults and the opener, then each group,
+/// sorted by its path, with its entry, its operations' names and where its
+/// details are. Nothing when there is no group.
+pub fn render_index<'a, B: 'a>(
+    groups: impl IntoIterator<Item = (Vec<&'a str>, &'a str, &'a Group<B>)>,
+) -> String {
+    let mut groups: Vec<_> = groups.into_iter().collect();
+    if groups.is_empty() {
         return String::new();
-    }
-    let mut groups = Vec::new();
-    for root in roots {
-        indexed_groups(root, &mut Vec::new(), &mut groups);
     }
     groups.sort_by(|(left, _, _), (right, _, _)| left.cmp(right));
     let mut sections = vec![HELP_DEFAULTS.to_owned(), INDEX_OPENER.to_owned()];
@@ -40,26 +39,6 @@ pub fn render_index<B>(roots: &[Node<B>]) -> String {
         ));
     }
     sections.join("\n\n")
-}
-
-/// Collects each group at or below `node` that carries an index entry, with
-/// its path and its entry; `path` names the groups above `node`.
-fn indexed_groups<'a, B>(
-    node: &'a Node<B>,
-    path: &mut Vec<&'a str>,
-    groups: &mut Vec<(Vec<&'a str>, &'a str, &'a Group<B>)>,
-) {
-    let Node::Group(group) = node else {
-        return;
-    };
-    path.push(&group.name);
-    if let Some(entry) = &group.index_entry {
-        groups.push((path.clone(), entry, group));
-    }
-    for child in &group.subcommands {
-        indexed_groups(child, path, groups);
-    }
-    path.pop();
 }
 
 /// The path of each leaf at or below `node` from the group whose operations

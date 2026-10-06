@@ -14,7 +14,6 @@ use demi_backend_cloud::CloudServices;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::{self, ConversationStores};
-use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_host_access::stream::UserStreams;
 use demi_backend_page_sync::SyncRegistry;
 use demi_backend_plugins::{Registry, RegistryError};
@@ -38,7 +37,7 @@ use demi_web_api_protocol::settings::InstanceMode;
 use object_store::ObjectStore;
 
 use crate::conversation::claude_cli::CliInstalls;
-use crate::tuning::{ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning};
+use crate::tuning::{ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
 const CONVERSATION_DATABASES: &str = "conversations";
@@ -80,7 +79,7 @@ pub struct Services {
     /// The machine manager's client, the Cloud capacity across users and
     /// the Cloud's settings.
     pub cloud: CloudServices,
-    /// Where runners, Cloud guests and expose visitors reach this backend.
+    /// Where runners and Cloud guests reach this backend.
     pub public_url: PublicUrl,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
@@ -90,10 +89,6 @@ pub struct Services {
     pub run: String,
     /// When a conversation's Host resources are reclaimed.
     pub lifecycle: LifecycleTuning,
-    /// The domain of expose hostnames; without it, exposes are unavailable.
-    pub expose_domain: Option<ExposeDomain>,
-    /// How the public relay treats its connections.
-    pub expose_tuning: ExposeTuning,
     /// Each user's open synchronization channels, which every change a
     /// page shows marks.
     pub sync: SyncRegistry,
@@ -140,8 +135,6 @@ pub struct ServiceSettings {
     pub plugins: Vec<Box<dyn PluginFactory>>,
     pub cloud: CloudServices,
     pub lifecycle: LifecycleTuning,
-    pub expose_domain: Option<ExposeDomain>,
-    pub exposes: ExposeTuning,
 }
 
 /// Why the services did not start.
@@ -315,8 +308,6 @@ impl Services {
             web_build: settings.web_build,
             run: uuid::Uuid::new_v4().to_string(),
             lifecycle: settings.lifecycle,
-            expose_domain: settings.expose_domain,
-            expose_tuning: settings.exposes,
             sync,
             #[cfg(feature = "testing")]
             hellos: crate::holds::StepHolds::default(),
@@ -379,8 +370,6 @@ impl Services {
             plugins: Vec::new(),
             cloud: CloudServices::new(machines, demi_backend_cloud::tuning::CloudTuning::default()),
             lifecycle,
-            expose_domain: None,
-            exposes: ExposeTuning::default(),
         };
         let services = Self::start(storage, keys, providers, settings).await;
         Arc::new(services.unwrap())

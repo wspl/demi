@@ -8,10 +8,8 @@ use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{PortError, PortRequest, PortResponse, PortTransport, RpcPort};
-use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
+use demi_shared_types::{B64Bytes, BlobRef};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::exposes::ExposeAddress;
-use demi_web_api_protocol::ids::{DeviceId, ExposeId};
 use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
 use crate::{PluginId, Scope};
@@ -85,26 +83,6 @@ pub enum PortMessage {
         args: Map<String, Value>,
         kind: CallKind,
     },
-    /// The request's conversation's primary and attached Hosts.
-    ConversationHosts,
-    /// The user's live exposes, soonest expiry first.
-    ListExposes,
-    /// A new expose of `address` on the user's `device`, for `lifetime`
-    /// seconds.
-    CreateExpose {
-        device: DeviceId,
-        address: String,
-        lifetime: u64,
-    },
-    /// Moves the expose's expiry to `lifetime` seconds from now.
-    RenewExpose {
-        expose: ExposeId,
-        lifetime: u64,
-    },
-    /// Destroys the expose at once.
-    RemoveExpose {
-        expose: ExposeId,
-    },
     /// The request's conversation's work panel, with only the tabs of the
     /// plugin's own panel kinds.
     PanelTabs,
@@ -168,15 +146,6 @@ pub enum PortAnswer {
     Called {
         result: Value,
     },
-    Hosts {
-        hosts: Vec<ConversationHost>,
-    },
-    Exposes {
-        list: ExposeList,
-    },
-    Expose {
-        expose: ExposeRecord,
-    },
     Panel {
         panel: WorkPanel,
     },
@@ -202,9 +171,6 @@ impl PortAnswer {
             Self::HostFiles { .. } => "host_files",
             Self::Done => "done",
             Self::Called { .. } => "called",
-            Self::Hosts { .. } => "hosts",
-            Self::Exposes { .. } => "exposes",
-            Self::Expose { .. } => "expose",
             Self::Panel { .. } => "panel",
             Self::PanelRevision { .. } => "panel_revision",
             Self::Refused { .. } => "refused",
@@ -384,51 +350,6 @@ pub enum CallKind {
     Looks,
 }
 
-/// A Host of the request's conversation.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ConversationHost {
-    /// Its name as `demi host list` shows it.
-    pub name: String,
-    pub device: DeviceId,
-    pub role: HostRole,
-    pub online: bool,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum HostRole {
-    Primary,
-    Attached,
-}
-
-/// The user's live exposes.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ExposeList {
-    /// Whether the instance has an expose domain; without one there are no
-    /// exposes.
-    pub available: bool,
-    /// When Demi listed them, by the clock their expiries are read by.
-    pub listed_at: Timestamp,
-    /// Soonest expiry first.
-    pub exposes: Vec<ExposeRecord>,
-}
-
-/// An expose as the port shows it (`expose.md` § The expose record).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ExposeRecord {
-    pub id: ExposeId,
-    pub device: DeviceId,
-    /// The device's name, the Cloud's as `Cloud`.
-    pub device_name: String,
-    pub address: ExposeAddress,
-    pub url: String,
-    pub created_at: Timestamp,
-    pub expires_at: Timestamp,
-}
-
 /// Why Demi refused a port operation.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(
@@ -453,12 +374,6 @@ pub enum PortRefusal {
     /// Another write of the value came first.
     #[error("the value changed since it was read")]
     Conflict,
-    /// An expose operation was refused.
-    #[error("{message}")]
-    Expose {
-        reason: ExposeRefusal,
-        message: String,
-    },
     /// The operation needs a conversation, and the request has none.
     #[error("the request has no conversation")]
     NoConversation,
@@ -470,21 +385,6 @@ pub enum PortRefusal {
     /// it, such as `panel_full` (`web-api.md` § Work panel state).
     #[error("{message}")]
     Panel { code: ErrorCode, message: String },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ExposeRefusal {
-    /// The instance has no expose domain.
-    Unavailable,
-    /// The address is not `host:port` or a port.
-    InvalidAddress,
-    /// The device is not the user's.
-    DeviceNotFound,
-    /// The device's runner is not connected, or its Cloud is not running.
-    DeviceOffline,
-    /// The user has no live expose of that id.
-    NotFound,
 }
 
 /// Why a typed port operation did not answer.
@@ -674,48 +574,6 @@ impl PluginPort {
         }
     }
 
-    pub async fn conversation_hosts(&self) -> Result<Vec<ConversationHost>, PortFailure> {
-        match self.ask(PortMessage::ConversationHosts).await? {
-            PortAnswer::Hosts { hosts } => Ok(hosts),
-            answer => Err(unexpected("conversation_hosts", &answer)),
-        }
-    }
-
-    pub async fn exposes(&self) -> Result<ExposeList, PortFailure> {
-        match self.ask(PortMessage::ListExposes).await? {
-            PortAnswer::Exposes { list } => Ok(list),
-            answer => Err(unexpected("list_exposes", &answer)),
-        }
-    }
-
-    pub async fn create_expose(
-        &self,
-        device: DeviceId,
-        address: String,
-        lifetime: u64,
-    ) -> Result<ExposeRecord, PortFailure> {
-        let message = PortMessage::CreateExpose {
-            device,
-            address,
-            lifetime,
-        };
-        self.expose("create_expose", message).await
-    }
-
-    pub async fn renew_expose(
-        &self,
-        expose: ExposeId,
-        lifetime: u64,
-    ) -> Result<ExposeRecord, PortFailure> {
-        let message = PortMessage::RenewExpose { expose, lifetime };
-        self.expose("renew_expose", message).await
-    }
-
-    pub async fn remove_expose(&self, expose: ExposeId) -> Result<(), PortFailure> {
-        self.done("remove_expose", PortMessage::RemoveExpose { expose })
-            .await
-    }
-
     /// The request's conversation's work panel, with the tabs of the
     /// plugin's own panel kinds.
     pub async fn panel_tabs(&self) -> Result<WorkPanel, PortFailure> {
@@ -759,17 +617,6 @@ impl PluginPort {
     ) -> Result<u64, PortFailure> {
         match self.ask(message).await? {
             PortAnswer::PanelRevision { revision } => Ok(revision),
-            answer => Err(unexpected(asked, &answer)),
-        }
-    }
-
-    async fn expose(
-        &self,
-        asked: &'static str,
-        message: PortMessage,
-    ) -> Result<ExposeRecord, PortFailure> {
-        match self.ask(message).await? {
-            PortAnswer::Expose { expose } => Ok(expose),
             answer => Err(unexpected(asked, &answer)),
         }
     }

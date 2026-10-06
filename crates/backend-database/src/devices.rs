@@ -183,8 +183,8 @@ impl ControlService {
     }
 
     /// Deletes the device with its attachments to conversations and its
-    /// workspaces, one transaction; its exposes go with it. The workspaces'
-    /// conversations first move off them, each to its workspace's directory
+    /// workspaces, one transaction. The workspaces' conversations first move
+    /// off them, each to its workspace's directory
     /// on the device as a direct device target, which no longer runs
     /// (`web-api.md` § Workspaces, devices, and attached hosts). A
     /// workspace is a pointer: no file goes.

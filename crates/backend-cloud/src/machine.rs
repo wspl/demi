@@ -132,13 +132,6 @@ impl Cloud {
         self.closed.get()
     }
 
-    /// Whether the machine of `device` runs, which a new expose on it needs
-    /// (`expose.md` § Lifetime).
-    pub fn runs(&self, device: &DeviceId) -> bool {
-        self.machine()
-            .is_some_and(|machine| machine.device.id == *device && machine.is_running())
-    }
-
     /// Admits nothing more and ends the running machine's schedules, as the
     /// shard's close does first; a retirement already running finishes.
     pub fn stop(&self) {
@@ -224,9 +217,7 @@ pub(crate) enum Phase {
 }
 
 /// A running machine: its permit, when it started and was last saved, and
-/// the schedules that end with the phase. Its exposes end with the phase
-/// too: each transition out of it (a stop, a death, a recovery's boot, a
-/// reset) destroys them, and a checkpoint, which keeps it, keeps them.
+/// the schedules that end with the phase.
 pub(crate) struct Running {
     pub(crate) permit: CapacityPermit,
     pub(crate) started_at: Instant,
@@ -633,9 +624,6 @@ impl dyn CloudShard {
                 }
             }
         }
-        // The machine stopped, and its exposes end with it (`expose.md`
-        // § Lifetime).
-        self.cloud_stopped(device).await;
         let booted = self.boot(machine).await;
         self.finish_boot(machine, &booted);
         booted
@@ -643,10 +631,9 @@ impl dyn CloudShard {
 
     /// The manager reported that the device's sandbox exited without being
     /// asked to stop (`managed-hosts.md` § Lifecycle and capacity). A running
-    /// machine is off: its runner goes, its exposes end (`expose.md`
-    /// § Lifetime), and the death counts for the crash loop, as one during a
-    /// boot does. One while the backend saves or resets the machine is its
-    /// own doing and is ignored.
+    /// machine is off: its runner goes, and the death counts for the crash
+    /// loop, as one during a boot does. One while the backend saves or resets
+    /// the machine is its own doing and is ignored.
     pub async fn cloud_died(&self, device: &DeviceId) {
         let Some(machine) = self
             .cloud()
@@ -673,13 +660,12 @@ impl dyn CloudShard {
         tracing::warn!(device = %device, "the Cloud's sandbox stopped by itself");
         self.devices()
             .disconnect(device, "the Cloud's sandbox stopped");
-        self.cloud_stopped(device).await;
     }
 
     /// Stops a running machine and saves it, under a reservation of its gate
-    /// that the caller holds: its exposes end (`expose.md` § Lifetime), its
-    /// runner flushes the filesystems, best effort, the manager saves and
-    /// stops it, and it is off, with the error kept when the save failed.
+    /// that the caller holds: its runner flushes the filesystems, best
+    /// effort, the manager saves and stops it, and it is off, with the error
+    /// kept when the save failed.
     pub(crate) async fn hibernate_reserved(&self, machine: &Rc<Machine>) -> Result<(), CloudError> {
         if let Some(transition) = machine.transition() {
             // A boot that failed left the machine off; one that succeeded is
@@ -699,7 +685,6 @@ impl dyn CloudShard {
         let shard = self.this();
         let target = machine.clone();
         let save = self.spawn_transition(machine, async move {
-            shard.cloud_stopped(&target.device.id).await;
             let saved = shard.save(&target).await;
             let mut phase = target.phase();
             if matches!(&*phase, Phase::Saving(_)) {

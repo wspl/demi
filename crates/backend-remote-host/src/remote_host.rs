@@ -572,31 +572,6 @@ impl RemoteHost {
         }
     }
 
-    /// Opens a TCP stream on the device's network between the socket and the
-    /// two pipes (`runner.md` § Network streams). It resolves when the runner
-    /// connected; a refusal carries its code.
-    pub async fn open_net(
-        &self,
-        host: &str,
-        port: u16,
-        input: PipeRef,
-        output: PipeRef,
-    ) -> Result<(), HostError> {
-        let link = self.link()?;
-        let _lease = self.admit()?;
-        let stream_id = uuid::Uuid::new_v4().simple().to_string();
-        let opened = link.wait_for(stream_id.clone(), Expected::Net)?;
-        link.send(&Inbound::NetOpen {
-            stream_id,
-            host: host.into(),
-            port,
-            input,
-            output,
-        })
-        .await?;
-        opened.receive().await.map(|_| ())
-    }
-
     /// Opens a user stream: `request`'s operation in the resident service
     /// that holds the conversation's state, its input and output the two
     /// pipes (`runner.md` § Service streams). It admits no work: a stream is
