@@ -34,13 +34,29 @@ export function svgImageUrl(text: string): string {
  * Ends what an image or a player still loads when it leaves the page:
  * removing the element leaves its fetch running, and a player keeps
  * downloading, so the element drops its source, and a player loads nothing.
+ * A player stops at once. The source goes only once the element has left
+ * the document: a component unmounts when its leave transition starts, as a
+ * dialog's content does when the dialog starts to fade out, and an element
+ * without its source would show a broken image in the picture's place until
+ * the fade ends.
  */
 export function dropSource(element: HTMLImageElement | HTMLMediaElement): void {
-  if (element instanceof HTMLMediaElement) {
+  if (element instanceof HTMLMediaElement)
     element.pause()
+  const drop = (): void => {
     element.removeAttribute('src')
-    element.load()
+    if (element instanceof HTMLMediaElement)
+      element.load()
+  }
+  if (!element.isConnected) {
+    drop()
     return
   }
-  element.removeAttribute('src')
+  const left = new MutationObserver(() => {
+    if (element.isConnected)
+      return
+    left.disconnect()
+    drop()
+  })
+  left.observe(element.ownerDocument, { childList: true, subtree: true })
 }
