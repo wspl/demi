@@ -574,8 +574,10 @@ The sign-in page works again:
 - **Where it runs.** `demi attachment` is the product's group beside
   `demi host`, handled by the backend: the runner of the invocation's Host
   ([Handle an rpc call](#handle-an-rpc-call)) first hashes the file beside the
-  invocation (`fs_hashFile`); a blob the conversation owner's namespace holds
-  already is not read again, and the record names it. Otherwise the runner
+  invocation (`fs_hashFile`, with the 25 MiB limit, so a larger file is
+  refused before a byte is read); a blob the conversation owner's namespace
+  holds already is not read again, and the record names it, with the media
+  type the backend reads from the blob's first 64 KiB. Otherwise the runner
   streams the file's bytes to the backend through a pipe
   ([File contents](runner.md#file-contents)), and the backend stores the blob
   and then the record.
