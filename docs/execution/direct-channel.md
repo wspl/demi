@@ -146,11 +146,14 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 
 A direct `stream` is conversation activity, as an open relay stream is
 ([Activity](resource-lifecycle.md#activity)): the runner tells the backend
-`direct_stream { conversation, open }` when a stream channel opens and when
-it closes, so a live view watched only over the direct channel keeps the
-conversation from its idle release. A stream whose service must first fetch
-an executable is refused with `needs_relay`, since only a stream the backend
-opened can ask it for artifacts, and the page opens that stream on the relay.
+`direct_stream { conversation, open }` once it accepts a stream channel's
+header and again when the channel ends, on every path, so a live view
+watched only over the direct channel keeps the conversation from its idle
+release. Only a stream the backend opened can ask it for artifacts, so a
+direct stream that needs one goes to the relay with `needs_relay` (status
+409): before it starts when its service's executable is not installed, and
+when its invocation asks for an artifact while it runs, such as the browser
+its first tab needs. The page opens that stream on the relay.
 
 The runner carries each one out as it carries out the backend's request for
 the same thing ([Host operations](runner.md#host-operations)): the same

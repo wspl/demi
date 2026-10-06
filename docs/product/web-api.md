@@ -1408,6 +1408,7 @@ The backend sends:
 | --- | --- | --- |
 | `answer` | `sdp` | The runner answered the offer |
 | `unanswered` | `code` | The runner refused the offer (`busy`) or did not answer within 10 seconds |
+| `closed` | Nothing | The runner closed the socket's peer because the user turned a plugin on or off; the page offers again at once |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
 A new `offer` replaces the socket's peer: the runner closes the old one. The
