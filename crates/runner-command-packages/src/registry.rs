@@ -99,7 +99,7 @@ impl ServiceRegistry {
         #[cfg(feature = "testing")]
         let (decisions, _) = tokio::sync::broadcast::channel(DECISIONS);
         let owner = Owner {
-            cache: cache.clone(),
+            cache,
             invocations: invocations.clone(),
             cwd,
             env,
@@ -117,7 +117,6 @@ impl ServiceRegistry {
             handle: ServiceHandle {
                 requests,
                 invocations,
-                cache,
             },
             contents,
             owner: tokio::spawn(owner.run(receiver)),
@@ -198,7 +197,6 @@ struct Acquired {
 pub struct ServiceHandle {
     requests: mpsc::Sender<Request>,
     invocations: Invocations,
-    cache: Arc<ArtifactCache>,
 }
 
 impl ServiceHandle {
@@ -214,16 +212,6 @@ impl ServiceHandle {
         resolver: Arc<dyn ArtifactResolver>,
     ) -> Invoking {
         self.invocations.register(invocation, package, resolver)
-    }
-
-    /// Whether starting `descriptor`'s service would first fetch its
-    /// executable for this host, which the cache does not hold.
-    pub async fn fetches_program(&self, descriptor: &PackageDescriptor) -> bool {
-        match descriptor.targets.get(host_target()) {
-            Some(artifact) => !self.cache.holds_file(artifact).await,
-            // Nothing could be fetched: the start fails on its own.
-            None => false,
-        }
     }
 
     /// A lease that keeps the service of `digest` resident until it drops,

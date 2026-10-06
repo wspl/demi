@@ -104,34 +104,40 @@ impl Built {
     /// runner, a paired device's or the Cloud's, downloads its program from
     /// the backend.
     fn release(&self) -> &std::path::Path {
-        self.release.get_or_init(|| self.write_release())
+        self.release.get_or_init(|| {
+            let executable = self.program.file_name().unwrap().to_str().unwrap();
+            write_release(executable, &[self])
+        })
     }
+}
 
-    /// Writes the release's root, which holds the package's descriptor and
-    /// names its files, and the files, which hold the program's compressed
-    /// copy, and answers the root. Each file is replaced whole, so a backend
-    /// of another test process that reads it meanwhile reads it whole.
-    fn write_release(&self) -> PathBuf {
-        let executable = self.program.file_name().unwrap().to_str().unwrap();
-        let root = PathBuf::from(RELEASES).join(format!("release-{executable}"));
-        let files = PathBuf::from(RELEASES).join(format!("files-{executable}"));
+/// Writes the root of the release `name` of `packages`, which holds their
+/// descriptors and names their files, and the files, which hold their
+/// programs' compressed copies, and answers the root. Each file is replaced
+/// whole, so a backend of another test process that reads it meanwhile
+/// reads it whole.
+fn write_release(name: &str, packages: &[&Built]) -> PathBuf {
+    let root = PathBuf::from(RELEASES).join(format!("release-{name}"));
+    let files = PathBuf::from(RELEASES).join(format!("files-{name}"));
+    std::fs::create_dir_all(&files).unwrap();
+    for built in packages {
+        let executable = built.program.file_name().unwrap().to_str().unwrap();
         let package = root.join("commands").join(executable);
         std::fs::create_dir_all(&package).unwrap();
-        std::fs::create_dir_all(&files).unwrap();
         // A test's copy is made fast: the backend checks only that it
         // decodes to the program.
-        let bytes = std::fs::read(&self.program).unwrap();
+        let bytes = std::fs::read(&built.program).unwrap();
         let encoded =
             demi_shared_artifacts::encode_blocking(&bytes, demi_shared_artifacts::Effort::Fast)
                 .unwrap();
         replace(&files.join(compressed_file(executable, host_target())), &encoded);
         replace(
             &package.join("descriptor.json"),
-            &serde_json::to_vec(&self.descriptor).unwrap(),
+            &serde_json::to_vec(&built.descriptor).unwrap(),
         );
-        write_server_release(&root, &files);
-        root
     }
+    write_server_release(&root, &files);
+    root
 }
 
 /// Writes `root`'s `release.json`, which names `files` as where the
@@ -192,6 +198,22 @@ pub static FIXTURE: LazyLock<Built> = LazyLock::new(|| Built {
     release: OnceLock::new(),
 });
 
+/// A second package of the fixture plugin's user streams, which serves
+/// nothing: its artifact for this machine's target is a small file, which
+/// the fixture's `install` asks the backend for during a stream, as an
+/// invocation asks for an artifact of the work it serves.
+pub static EXTRA: LazyLock<Built> = LazyLock::new(|| {
+    let program = PathBuf::from(RELEASES).join("extra-artifact");
+    std::fs::create_dir_all(RELEASES).unwrap();
+    let bytes: Vec<u8> = (0..100_000u32).map(|index| (index * 13) as u8).collect();
+    replace(&program, &bytes);
+    Built::new("demicodes.runner-test-extra", program, ["extra"])
+});
+
+/// The release of the fixture's package and the extra one.
+static FIXTURE_AND_EXTRA: LazyLock<PathBuf> =
+    LazyLock::new(|| write_release("fixture-and-extra", &[&FIXTURE, &EXTRA]));
+
 /// Captures verification mail, or refuses it while `failing` is set.
 #[derive(Default)]
 pub struct Mailbox {
@@ -236,8 +258,9 @@ pub struct Harness {
     pub conversations: ConversationTuning,
     pub pages: PageTuning,
     runner_releases: Option<PathBuf>,
-    /// The package whose development release the backends load.
-    release: Option<&'static Built>,
+    /// The development release of the workspace's packages the backends
+    /// load.
+    release: Option<fn() -> &'static std::path::Path>,
     /// The URL runners connect to; without it, the listener's own address.
     pub public_url: Option<url::Url>,
     /// The user streams of a test plugin registered beside the built-in
@@ -333,14 +356,14 @@ impl Harness {
     /// Conversations whose `demi file` commands bind to the `demi.file`
     /// package the workspace built, which runners install from the backend.
     pub fn with_file_package(mut self) -> Self {
-        self.release = Some(&*FILE);
+        self.release = Some(|| FILE.release());
         self
     }
 
     /// Conversations whose `demi browser` commands and `browser` user
     /// stream bind to the `demi.browser` package the workspace built.
     pub fn with_browser_package(mut self) -> Self {
-        self.release = Some(&*BROWSER);
+        self.release = Some(|| BROWSER.release());
         self
     }
 
@@ -369,7 +392,29 @@ impl Harness {
             .map(|name| Stream::new::<Value, Value>(name, stream(name)))
             .into(),
         );
-        self.release = Some(&*FIXTURE);
+        self.release = Some(|| FIXTURE.release());
+        self
+    }
+
+    /// Beside the native fixture's streams, its `install`, which installs
+    /// the artifact its arguments name and prints its path, and `extra`, a
+    /// stream of the extra package, whose artifact a stream of the user's
+    /// may then ask the backend for.
+    pub fn with_extra_package(mut self) -> Self {
+        let streams = self
+            .user_streams
+            .as_mut()
+            .expect("the native fixture's streams come first");
+        let stream = |package: &Built, operation: &str| {
+            let binding = NativeOperation {
+                package: package.descriptor.id.clone(),
+                operation: operation.into(),
+            };
+            Stream::new::<Value, Value>(operation, binding)
+        };
+        streams.push(stream(&FIXTURE, "install"));
+        streams.push(stream(&EXTRA, "extra"));
+        self.release = Some(|| FIXTURE_AND_EXTRA.as_path());
         self
     }
 
@@ -403,7 +448,7 @@ impl Harness {
     /// `demi.claude-code` package the workspace built, which a Cloud's runner
     /// installs from the backend.
     pub fn with_claude_package(mut self) -> Self {
-        self.release = Some(&*CLAUDE);
+        self.release = Some(|| CLAUDE.release());
         self
     }
 
@@ -511,7 +556,7 @@ impl Harness {
             "a harness loads a workspace package or a server release, not both"
         );
         let release = match (self.release, &self.server_release) {
-            (Some(built), _) => Some(built.release()),
+            (Some(release), _) => Some(release()),
             (None, release) => release.as_deref(),
         };
         if let Some(release) = release {
