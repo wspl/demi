@@ -31,7 +31,11 @@ A paired device stores its device token in private installation state. A managed
 guest receives a token at boot and keeps temporary state. The backend owns device
 claiming and user ownership. The runner opens an outbound WebSocket and sends its
 `hello` first; the backend closes a connection that has sent nothing within 30
-seconds of opening. The backend looks a hello's token up while it watches the
+seconds of opening. Besides its token, version and platform, the hello names
+the Host's operating system with its release, such as `Ubuntu 26.04` or
+`macOS 26.5`, which the backend keeps on the device record and the agent
+reads in its context block
+([Switch the primary target](sessions-and-targets.md#switch-the-primary-target)). The backend looks a hello's token up while it watches the
 connection, and lets a runner that goes away meanwhile go without adopting it.
 A hello for a device that already has a connection is the same runner
 coming back over a new one more often than a second runner: a network that

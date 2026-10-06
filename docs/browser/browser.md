@@ -328,12 +328,16 @@ user its progress
 Every other command finds the installation without downloading anything: the
 program asks the runner which installations of the line it holds, and starts
 Chrome only from the path of the pinned version. A Host without it fails the
-command at once, telling the agent what to run:
+command at once, telling the agent that installing is its next step, how
+large the download is, and to run the command again afterwards:
 
 ```text
 $ demi browser open https://example.com
-Chrome for Testing 153.0.8010.36 is not installed on this Host: run `demi browser install`
+Chrome for Testing 153.0.8010.36 is not installed on this Host yet. Install it with `demi browser install` (182 MB), then run this command again.
 ```
+
+Every new Host needs this once, so the group's help says so in its first
+lines, before the agent's first browser command.
 
 The installation is shared by every conversation and every service of the
 runner. On Linux, Chrome needs system libraries and fonts that Demi does not
@@ -345,9 +349,12 @@ packages that let pages show emoji and Chinese, Japanese and Korean text.
 After it installs Chrome, `install` checks which of those libraries the Host
 lacks and which of those fonts it has no font of, and ends its output with
 what to install and the command that installs it
-([Installation](#installation)). A library still missing later makes Chrome
-fail to start, and the command reports Chrome's own message, which names the
-library. The program never downloads Chrome or looks for any other Chrome,
+([Installation](#installation)). Every command that starts Chrome checks
+the same libraries first, since they can go missing after the installation,
+as a Cloud's system reset removes them while Chrome stays in the home: a
+command on a Host that lacks one fails before it starts Chrome, with the
+lines `install` would end with, so the agent reads one message and one
+command, never the loader's error inside a CDP connection failure. The program never downloads Chrome or looks for any other Chrome,
 and an unsupported platform fails the installation explicitly rather than
 using a different browser.
 
@@ -1073,13 +1080,15 @@ Unpacking Chrome for Testing 153.0.8010.36
 Installed Chrome for Testing 153.0.8010.36 at /home/demi/.demi/artifacts/<sha256>/chrome-linux64/chrome
 Chrome needs system libraries this Host lacks: libnss3.so, libgbm.so.1, libasound.so.2
 Recommended fonts are missing: color emoji; Chinese, Japanese and Korean text
-On Ubuntu, install them with:
-  sudo apt-get install -y libnss3 libgbm1 libasound2t64 fonts-noto-color-emoji fonts-noto-cjk
+On Ubuntu, install them by running this command as printed:
+  sudo apt-get update && sudo apt-get install -y libnss3 libgbm1 libasound2t64 fonts-noto-color-emoji fonts-noto-cjk
 ```
 
 On a Host that has everything, the first line is the whole output. The
-package names are Ubuntu's, the distribution of the Cloud image; on another
-distribution the libraries' names tell the user what to look for.
+package names are Ubuntu's, the distribution of the Cloud image, and the
+command refreshes the package lists first, since the Cloud image ships none;
+on another distribution the libraries' names tell the user what to look
+for.
 
 Chrome keeps its sandbox, which needs user namespaces. Ubuntu 23.10 and
 later restrict them with AppArmor
