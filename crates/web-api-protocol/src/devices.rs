@@ -196,6 +196,10 @@ pub enum DirectMessage {
     Unanswered { code: Unanswered },
     /// Nothing else was sent for 30 seconds: the socket is quiet, not dead.
     Heartbeat,
+    /// The runner closed the socket's peer, since the user turned a plugin
+    /// on or off: the page makes a new offer at once, whose introduction
+    /// carries the user's streams as they are now.
+    Closed,
 }
 
 /// Why an offer has no answer.

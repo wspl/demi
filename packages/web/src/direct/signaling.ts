@@ -4,7 +4,9 @@
  * its answer; a socket that brings nothing, not even a heartbeat, for as
  * long as the page's sockets may is broken, and a closed or broken socket
  * connects again after the page's reconnect waits (`web-application.md`
- * § Liveness and reconnection). Its close closes the runner's peer.
+ * § Liveness and reconnection). Its close closes the runner's peer, and the
+ * backend closes the peer too when the user turns a plugin on or off, which
+ * the socket says so that the page offers again at once.
  */
 import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -38,10 +40,12 @@ export class DeviceSignaling {
   /**
    * @param deviceId The paired device the socket introduces the page to.
    * @param opened Called each time the socket opens: first, and again after it closed.
+   * @param peerClosed Called when the backend closed the runner's peer, whose introduction is out of date.
    */
   constructor(
     private readonly deviceId: string,
     private readonly opened: () => void,
+    private readonly peerClosed: () => void,
   ) {
     this.connect()
   }
@@ -118,6 +122,10 @@ export class DeviceSignaling {
   private answer(message: DirectMessage): void {
     if (message.type === 'heartbeat')
       return
+    if (message.type === 'closed') {
+      this.peerClosed()
+      return
+    }
     const answering = this.answering
     this.answering = null
     if (message.type === 'answer')

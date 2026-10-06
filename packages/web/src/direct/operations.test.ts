@@ -190,3 +190,22 @@ test('a stream moves to the other path when the choice changes, and its view con
   open({ data: () => {}, closed: () => {} })
   expect(relayOpened).toEqual(['relay'])
 })
+
+test('a stream whose service the runner must fetch first opens on the relay, and the channel stays the choice', async () => {
+  const peer = new ScriptedPeer([{ fails: new ChannelRefused('needs_relay', 409, 'The service must be fetched first') }])
+  const route = await directOver(peer)
+  const relayOpened: string[] = []
+  const relay = (handlers: UserStreamHandlers) => {
+    relayOpened.push('relay')
+    void handlers
+    return { send: () => {}, close: () => {} }
+  }
+  const closed: string[] = []
+  directStream(() => route, 'browser', relay)({ data: () => {}, closed: (reason) => closed.push(reason) })
+  for (let turn = 0; turn < 5; turn++)
+    await Promise.resolve()
+  expect(peer.headers[0]).toMatchObject({ op: 'stream', stream: 'browser' })
+  expect(relayOpened).toEqual(['relay'])
+  expect(closed).toEqual([])
+  expect(route.device.choice).toBe('direct')
+})
