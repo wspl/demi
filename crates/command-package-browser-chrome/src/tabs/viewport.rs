@@ -63,12 +63,21 @@ pub(crate) const UNWATCHED: BrowserViewport = BrowserViewport {
 /// Mobile mode's size in CSS pixels.
 pub const PHONE: (u32, u32) = (390, 844);
 
-/// A viewport's picture size in device pixels at `scale`, even for the encoder.
+/// The size a viewport's capture takes in device pixels at `scale`: at
+/// scale 1 the page's own surface, which Chrome rounds up to whole pixels,
+/// so the capture copies the page's pixels without scaling them.
 pub fn pixels(viewport: &BrowserViewport, scale: f64) -> (u32, u32) {
-    let even = |length: u32| {
-        ((f64::from(length) * viewport.device_pixel_ratio * scale / 2.0).ceil() as u32) * 2
-    };
-    (even(viewport.width), even(viewport.height))
+    let side =
+        |length: u32| (f64::from(length) * viewport.device_pixel_ratio * scale).ceil() as u32;
+    (side(viewport.width), side(viewport.height))
+}
+
+/// The size a capture of `pixels` is encoded at. H.264 4:2:0 encodes only
+/// even sides, so an odd side loses its last row or column, which is never
+/// scaled into the rest (`live-view.md` § Modes).
+pub fn encoded(pixels: (u32, u32)) -> (u32, u32) {
+    let even = |length: u32| (length - length % 2).max(2);
+    (even(pixels.0), even(pixels.1))
 }
 
 /// A tab's viewport, and the Web viewport it returns to when the agent's
@@ -293,14 +302,19 @@ mod tests {
     }
 
     #[test]
-    fn a_picture_has_even_device_pixels() {
-        let viewport = BrowserViewport {
+    fn a_picture_keeps_the_pages_pixels_and_cuts_an_odd_one() {
+        let mut viewport = BrowserViewport {
             mode: ViewportMode::Web,
             width: 701,
             height: 401,
             device_pixel_ratio: 1.5,
         };
         assert_eq!(pixels(&viewport, 1.0), (1052, 602));
-        assert_eq!(pixels(&viewport, 0.5), (526, 302));
+        assert_eq!(encoded(pixels(&viewport, 1.0)), (1052, 602));
+        assert_eq!(pixels(&viewport, 0.5), (526, 301));
+        assert_eq!(encoded(pixels(&viewport, 0.5)), (526, 300));
+        viewport.device_pixel_ratio = 1.0;
+        assert_eq!(pixels(&viewport, 1.0), (701, 401));
+        assert_eq!(encoded(pixels(&viewport, 1.0)), (700, 400));
     }
 }

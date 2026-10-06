@@ -672,7 +672,7 @@ impl Session<'_> {
                     }
                 ) {
                     self.operated = Some(Instant::now());
-                    self.membership.operated().await;
+                    self.membership.operated();
                 }
                 self.input.send(Item::Message(message));
             }
@@ -692,6 +692,8 @@ impl Session<'_> {
                 epoch,
                 width,
                 height,
+                viewport,
+                scale,
             }) => {
                 let delivery = &mut self.delivery;
                 delivery.generation += 1;
@@ -706,6 +708,8 @@ impl Session<'_> {
                         generation: delivery.generation,
                         width,
                         height,
+                        viewport,
+                        scale,
                     })
                     .await;
             }
