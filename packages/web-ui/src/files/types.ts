@@ -7,7 +7,10 @@
  * convention translates at its boundary.
  */
 import type { Component } from 'vue'
+import type { Showing } from './file-cache'
 import type { SentenceText, TitleText } from '../ui/ui-text'
+
+export type { Showing, ShownEntry } from './file-cache'
 
 /** One row of a directory listing. Size and time are shown when the source knows them. */
 export interface FileBrowserEntry {
@@ -56,27 +59,59 @@ export interface FileContents {
    * opened, and `download` asks for it as an attachment.
    */
   url(path: string, options?: { version?: string; download?: boolean }): string
-  describe(path: string, signal?: AbortSignal): Promise<FileDescription>
+  /** The file's description once, as kept or read. */
+  describe(path: string): Promise<FileDescription>
+  /** Shows the file's description until released, kept current as its source keeps it. */
+  showDescription(path: string): Showing<FileDescription>
+}
+
+/** A file's text and the version it was read at; null when its source has no versions. */
+export interface FileText {
+  text: string
+  version: string | null
+}
+
+/**
+ * What a source says of the Host's watch of what it shows (`plugin-pages.md`
+ * § What the service keeps); reactive.
+ */
+export interface FileWatchNote {
+  /** Why the Host cannot watch; null while it can, or no watch says. The views then show files as last read. */
+  readonly unavailable: string | null
+  /** Reads everything shown again now. */
+  refresh(): void
 }
 
 /** The operating system behind a source; picks the root glyph. */
 export type FileBrowserPlatform = 'macos' | 'linux' | 'windows'
 
-/** The directory tree behind one file browser: where it starts, what runs it and how it reads. */
+/**
+ * The directory tree behind one file browser: where it starts, what runs it
+ * and how it reads. It keeps what it read (`keptSource`): a view shows an
+ * entry with `showListing`, `showText` or `showDescription` and sees it
+ * replaced in place when it is read again; a one-shot read answers from what
+ * is kept while the Host confirms it.
+ */
 export interface FileBrowserSource {
   platform: FileBrowserPlatform
   /** The directory the file browser opens in when the caller names none, and where Home goes. */
   home: string
-  /** Lists one directory. Rejects with a `FileBrowserError` for a known failure; anything else reads as `other`. */
-  list(path: string, signal?: AbortSignal): Promise<FileBrowserEntry[]>
+  /** What the source says of the Host's watch; null without one. */
+  readonly watch: FileWatchNote | null
+  /** Lists one directory once. Rejects with a `FileBrowserError` for a known failure; anything else reads as `other`. */
+  list(path: string): Promise<FileBrowserEntry[]>
+  /** Shows one directory's listing until released. */
+  showListing(path: string): Showing<FileBrowserEntry[]>
   /**
    * Makes the directory at `path` and any missing above it; one already
    * there is left as it is. Absent when the source cannot create
    * directories; the file browser then offers no New folder.
    */
   createDirectory?(path: string, signal?: AbortSignal): Promise<void>
-  /** Reads one file as text. Absent when the source cannot read files; a file view then has nothing to show. */
-  read?(path: string, signal?: AbortSignal): Promise<string>
+  /** Reads one file as text once. Absent when the source cannot read files; a file view then has nothing to show. */
+  read?(path: string): Promise<string>
+  /** Shows one file's text until released; present with `read`. */
+  showText?(path: string): Showing<FileText>
   /** The files' bytes for previews and Download; absent when the source serves none. */
   contents?: FileContents
   /**

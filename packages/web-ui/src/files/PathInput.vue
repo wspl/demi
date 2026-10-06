@@ -25,7 +25,7 @@ import type { FileBrowserEntry, FileBrowserSource } from './types'
 defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(defineProps<{
-  source: Pick<FileBrowserSource, 'home'> & Partial<Pick<FileBrowserSource, 'list'>>
+  source: Pick<FileBrowserSource, 'home'> & Partial<Pick<FileBrowserSource, 'showListing'>>
   /** Where a relative path starts; without it only absolute and `~/` paths complete. */
   base?: string
   kind?: PathCompletionKind
