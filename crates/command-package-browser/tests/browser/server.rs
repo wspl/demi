@@ -89,6 +89,10 @@ impl Server {
                         "/500" => ("500 Internal Server Error", "", "<!doctype html><title>HTTP error document</title><h1>Received 500</h1>"),
                         "/redirect" => ("302 Found", "Location: /destination\r\n", ""),
                         "/destination" => ("200 OK", "", "<!doctype html><title>Destination</title><h1>Arrived</h1>"),
+                        // A cookie whose Max-Age reaches below the earliest
+                        // time Chrome keeps, blocked over HTTP for SameSite=None:
+                        // Chrome reports it with an expiry it writes as null.
+                        "/unbounded-cookie" => ("200 OK", "Set-Cookie: unbounded=1; Max-Age=-99999999999999999999; SameSite=None\r\n", "<!doctype html><title>Unbounded cookie</title>"),
                         _ => ("200 OK", "", fixture),
                     };
                     let response = format!("HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n{headers}\r\n{body}", body.len());
