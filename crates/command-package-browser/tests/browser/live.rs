@@ -1173,25 +1173,33 @@ async fn a_narrow_still_picture_matches_the_page_coordinates() {
         view.send(json!({"type": "hello", "platform": "mac"}));
         view.message("state").await;
         view.send(json!({"type": "watch", "tab": tab}));
-        // Each size resizes the running capture; an odd side at ratio 1 is
-        // encoded without its last column or row, never scaled.
-        for (width, height, ratio) in [(409, 632, 2), (800, 600, 2), (500, 400, 2), (409, 632, 2), (409, 631, 1)] {
+        // Each size starts a capture whose stream names its pictures' size.
+        // Chrome captures an odd side at ratio 1 at the nearest even size of
+        // the page's shape, so both sides may lose a pixel: 537 × 912 came
+        // as 536 × 910.
+        for (width, height, ratio) in [(409, 632, 2), (800, 600, 2), (500, 400, 2), (409, 632, 2), (537, 912, 1)] {
             view.send(json!({
                 "type": "panel", "width": width, "height": height, "devicePixelRatio": ratio,
-                "screenWidth": 1280, "screenHeight": 720,
+                "screenWidth": 1920, "screenHeight": 1080,
             }));
-            let (pixels_wide, pixels_high) = ((width * ratio) & !1, (height * ratio) & !1);
             let stream = view
                 .until("a resized stream", |message| {
                     message["type"] == "stream"
-                        && message["width"] == pixels_wide
-                        && message["height"] == pixels_high
                         && message["viewport"]["width"] == width
                         && message["viewport"]["height"] == height
+                        && message["viewport"]["devicePixelRatio"].as_f64() == Some(f64::from(ratio))
                 })
                 .await;
-            let (_, key, _, _, frame) = view.picture(stream["generation"].as_u64().unwrap()).await;
+            let pixels_wide = stream["width"].as_u64().unwrap() as u32;
+            let pixels_high = stream["height"].as_u64().unwrap() as u32;
+            let (wide, high): (u32, u32) = (width * ratio, height * ratio);
+            assert!(
+                pixels_wide % 2 == 0 && pixels_high % 2 == 0 && wide.abs_diff(pixels_wide) <= 2 && high.abs_diff(pixels_high) <= 2,
+                "the stream of {wide} × {high} pixels is {pixels_wide} × {pixels_high}",
+            );
+            let (_, key, frame_wide, frame_high, frame) = view.picture(stream["generation"].as_u64().unwrap()).await;
             assert!(key);
+            assert_eq!((u32::from(frame_wide), u32::from(frame_high)), (pixels_wide, pixels_high), "the stream names its pictures' size");
             let (decoded_width, pixels) = decoded(&fixture, &tab, &frame).await;
             assert_eq!(decoded_width, pixels_wide);
             let rgb = |x: u32, y: u32| {
@@ -1206,9 +1214,19 @@ async fn a_narrow_still_picture_matches_the_page_coordinates() {
                 assert!(white(rgb(x, y)), "white page corner at {x},{y}: {:?}", rgb(x, y));
             }
             // The rectangle's edges, at CSS 10 and 110 across, fall on the
-            // page's own device pixels: nothing scaled the picture.
+            // page's own device pixels when the sides are even, and within
+            // the pixel Chrome's scaling blends when one is odd.
+            let at = |css: u32| f64::from(css * ratio) * f64::from(pixels_wide) / f64::from(wide);
             let row = 115 * ratio;
-            for (x, inside) in [(10 * ratio - 1, false), (10 * ratio, true), (110 * ratio - 1, true), (110 * ratio, false)] {
+            let left = at(10);
+            let right = at(110);
+            let edges = [
+                (left.floor() as u32 - 1, false),
+                (left.ceil() as u32, true),
+                (right.floor() as u32 - 1, true),
+                (right.ceil() as u32, false),
+            ];
+            for (x, inside) in edges {
                 let pixel = rgb(x, row);
                 assert!(if inside { red(pixel) } else { white(pixel) }, "the rectangle's edge at {x}, ratio {ratio}: {pixel:?}");
             }
@@ -1407,4 +1425,3 @@ async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
     })
     .await;
 }
-
