@@ -3,6 +3,7 @@
 //! the command alias that forwards one command line to it.
 
 mod connection;
+mod direct;
 mod host_log;
 mod management;
 mod registration;

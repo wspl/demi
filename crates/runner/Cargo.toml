@@ -18,6 +18,7 @@ test-fixtures = [
 bytes.workspace = true
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
+demi-runner-direct = { path = "../runner-direct" }
 demi-runner-host = { path = "../runner-host" }
 demi-runner-jobs = { path = "../runner-jobs" }
 demi-runner-process = { path = "../runner-process" }

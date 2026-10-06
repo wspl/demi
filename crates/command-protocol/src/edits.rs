@@ -106,3 +106,28 @@ fn absolute_path(value: &str, context: &()) -> garde::Result {
 pub fn is_text(bytes: &[u8]) -> bool {
     !bytes.contains(&0) && std::str::from_utf8(bytes).is_ok()
 }
+
+/// Why a file is not shown as text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum TextRefusal {
+    #[error("The file is too large to show")]
+    TooLarge,
+    #[error("The file is not UTF-8 text")]
+    NotText,
+}
+
+/// A file's bytes as the text the product shows, which edit tracking and
+/// line counts read as text: UTF-8 without a NUL byte, up to the size an
+/// edit snapshot keeps (`web-api.md` § File text and working tree changes).
+/// The backend's file route and a runner's direct `text` channel both read
+/// a file's text through it.
+pub fn text_of(bytes: Vec<u8>) -> Result<String, TextRefusal> {
+    if bytes.len() > EDIT_FILE_BYTES {
+        return Err(TextRefusal::TooLarge);
+    }
+    if !is_text(&bytes) {
+        return Err(TextRefusal::NotText);
+    }
+    // `is_text` checked the encoding.
+    Ok(String::from_utf8(bytes).expect("text is UTF-8"))
+}

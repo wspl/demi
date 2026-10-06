@@ -5,6 +5,8 @@
 
 pub mod boot;
 pub mod console;
+pub mod direct;
+pub mod files;
 pub mod image;
 pub mod manifest;
 pub mod release;
