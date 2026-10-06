@@ -34,6 +34,13 @@ fn values(tree: &Node, argv: &[&str], stdin: Option<&str>) -> Value {
     Value::Object(parsed.values)
 }
 
+/// What `--help` prints for the command `argv` names below `tree`.
+fn help(tree: &Node, argv: &[&str]) -> String {
+    let argv: Vec<String> = argv.iter().map(|token| (*token).to_owned()).collect();
+    let selected = tree.select(&argv).unwrap();
+    selected.node.help(&selected.path.join(" "))
+}
+
 /// Why a command line is refused.
 fn refusal(tree: &Node, argv: &[&str], stdin: Option<&str>) -> String {
     read(tree, argv, stdin)
@@ -46,7 +53,12 @@ fn help_and_command_lines_match_the_recorded_cases() {
     let fixture = fixture();
     let tree = fixture_tree();
     tree.validate().unwrap();
-    assert_eq!(tree.help("fixture"), fixture["help"].as_str().unwrap());
+    // A group's help lists its operations; a command's gives its usage.
+    assert_eq!(
+        tree.help("fixture"),
+        "fixture: CLI fixture.\n\nSubcommands:\n  fixture read — Read a native file."
+    );
+    assert_eq!(help(&tree, &["read"]), fixture["help"].as_str().unwrap());
     for case in fixture["cases"].as_array().unwrap() {
         let argv: Vec<&str> = case["argv"]
             .as_array()
@@ -161,7 +173,7 @@ fn each_field_takes_its_value_from_its_one_source() {
         "{error}"
     );
     // Help shows each field in its source's form, never a body as an option.
-    let help = filer.help("filer");
+    let help = [help(&filer, &["create"]), help(&filer, &["forward"])].join("\n\n");
     assert!(
         help.contains("  filer create <path> <<'EOF'\n  <content>\n  EOF\n"),
         "{help}"
@@ -189,7 +201,7 @@ fn a_trailing_array_positional_takes_every_positional_argument_after_the_others(
     );
     let error = refusal(&filer, &["upload"], None);
     assert!(error.contains("\"path\""), "{error}");
-    let help = filer.help("filer");
+    let help = help(&filer, &["upload"]);
     assert!(help.contains("  filer upload <path>...\n"), "{help}");
     assert!(help.contains("      <path>... (required, repeatable)"), "{help}");
     // Only the last positional may take the rest.
@@ -323,8 +335,8 @@ fn a_command_is_found_and_named_by_its_full_path() {
 #[test]
 fn json_output_is_offered_and_accepted_only_where_declared() {
     let filer = filer();
-    let help = filer.help("filer");
     // Help shows an enum's choices, and --json only where an output schema is.
+    let help = [help(&filer, &["status"]), help(&filer, &["list"])].join("\n\n");
     assert!(
         help.contains("  filer status [--status <pending|in_progress|done>]\n"),
         "{help}"
@@ -492,7 +504,7 @@ fn a_leaf_names_a_permission_category_one_of_its_groups_declares_and_its_help_sa
     let declared = tree(json!([manage.clone()]), add.clone());
     declared.validate().unwrap();
     assert_eq!(declared.categories()[0].title(), "Manage skills");
-    let help = declared.help("demi");
+    let help = help(&declared, &["skills", "add"]);
     assert!(
         help.contains("    Permission: needs the user's permission (skills.manage) in each conversation; without it, the command fails at once and the user is asked."),
         "{help}"

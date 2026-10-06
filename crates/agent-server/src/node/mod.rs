@@ -15,8 +15,9 @@ use demi_agent_session::{
 };
 use demi_agent_store::{AgentTreeStore, Checkpoint, NodeRecord, StoreError};
 use demi_agent_tools::{
-    CallError, ContextSource, Environments, HostResolver, NodeContext, ShellAccess,
-    ShellEnvironmentFactory, StoreNumbers, definitions, stored_running_commands, system_prompt,
+    CallError, ContextSource, Environments, HostResolver, ModelIdentity, NodeContext,
+    ShellAccess, ShellEnvironmentFactory, StoreNumbers, definitions, stored_running_commands,
+    system_prompt,
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
@@ -196,9 +197,8 @@ impl<H: HostResolver> Node<H> {
 }
 
 /// What the session calls in its node: the tree's admission, the system
-/// prompt rendered at assembly, the preamble, the context sources, the
-/// tools, the window its model is used with, and the hold on its children
-/// that an edit needs.
+/// prompt, the preamble, the context sources, the tools, the window its
+/// model is used with, and the hold on its children that an edit needs.
 pub(crate) struct NodeRuntime<H: HostResolver> {
     node: NodeId,
     root: NodeId,
@@ -206,10 +206,12 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     providers: Rc<dyn ProviderResolver>,
     cwd: String,
     hosts: Rc<H>,
-    /// The instructions of its system prompt.
+    /// The instructions of its system prompt, its identity.
     instructions: Rc<str>,
-    /// Its system prompt, rendered once.
-    system_prompt: String,
+    /// The product's harness guide.
+    guide: Rc<str>,
+    /// The capability index of its commands, rendered once.
+    index: String,
     /// A child's identity, the text before each of its user turns.
     preamble: Option<String>,
     /// The product's context sources, in their order.
@@ -281,9 +283,30 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         })
     }
 
-    fn system_prompt(&self) -> LocalBoxFuture<'_, String> {
-        let text = self.system_prompt.clone();
-        Box::pin(async move { text })
+    /// The layers rendered at assembly, and the line naming `model` with
+    /// the family of the entry that serves it.
+    fn system_prompt<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<String, String>> {
+        Box::pin(async move {
+            let family = self
+                .providers
+                .family(model)
+                .await
+                .map_err(|error| error.to_string())?;
+            let identity = ModelIdentity {
+                name: &model.model.name,
+                family: &family,
+                id: &model.model.id,
+            };
+            Ok(system_prompt(
+                &self.instructions,
+                &self.guide,
+                &self.index,
+                identity,
+            ))
+        })
     }
 
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
@@ -414,6 +437,8 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) providers: Rc<dyn ProviderResolver>,
     pub(crate) hosts: Rc<H>,
     pub(crate) instructions: Rc<str>,
+    /// The product's harness guide, which every node carries.
+    pub(crate) guide: Rc<str>,
     /// A child's identity, the text before each of its user turns.
     pub(crate) preamble: Option<String>,
     pub(crate) context: Rc<[Rc<dyn ContextSource>]>,
@@ -465,6 +490,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         providers,
         hosts,
         instructions,
+        guide,
         preamble,
         context,
         inherited,
@@ -483,7 +509,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         Origin::New { cwd, .. } => cwd.clone(),
         Origin::Stored { checkpoint, .. } => checkpoint.state.cwd.clone(),
     };
-    let system_prompt = system_prompt(&instructions, &commands.render_help());
+    let index = commands.render_index();
     let node_runtime = Rc::new(NodeRuntime {
         node: record.id.clone(),
         root,
@@ -491,7 +517,8 @@ pub(crate) async fn assemble<H: HostResolver>(
         cwd: cwd.clone(),
         hosts,
         instructions,
-        system_prompt,
+        guide,
+        index,
         preamble,
         context,
         inherited,
