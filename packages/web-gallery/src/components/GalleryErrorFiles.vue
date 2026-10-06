@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
+import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { keptSource } from '@demicodes/web-ui/files/kept-source'
 import {
   FileBrowserError,
   type FileBrowserFailure,
@@ -47,34 +49,32 @@ const failures: {
       'The directory service returned an incomplete response. Request preview-files-27 could not be completed.',
   },
 ]
+// Sources that keep what they read, as the product's do, over no watch.
 function failingSource(failure: (typeof failures)[number]): FileBrowserSource {
-  return {
+  return keptSource({
     platform: 'linux',
     home: failure.home,
-    async list(_path, signal) {
-      signal?.throwIfAborted()
+    async list() {
       throw new FileBrowserError(failure.kind, failure.message)
     },
-  }
+  }, { files: new HostFiles() })
 }
-const readOnlySource: FileBrowserSource = {
+const readOnlySource: FileBrowserSource = keptSource({
   platform: 'linux',
   home: '/workspace',
-  async list(_path, signal) {
-    signal?.throwIfAborted()
+  async list() {
     return [
       { name: 'src', isDirectory: true },
       { name: 'README.md', isDirectory: false, size: 1280 },
     ]
   },
-  async createDirectory(_path, signal) {
-    signal?.throwIfAborted()
+  async createDirectory() {
     throw new FileBrowserError(
       'permission',
       'Could not create the folder: this workspace is read-only.',
     )
   },
-}
+}, { files: new HostFiles() })
 </script>
 
 <template>

@@ -4,7 +4,6 @@ import {
   h,
   onBeforeUnmount,
   ref,
-  shallowRef,
   watch,
   type Component,
 } from 'vue'
@@ -45,6 +44,7 @@ import {
   type FileBrowserSortKey,
 } from './file-browser-state'
 import { baseName, joinPath, normalizePath, parentPath } from './paths'
+import { useShowing } from './showing'
 import {
   FileBrowserError,
   type FileBrowserEntry,
@@ -102,9 +102,12 @@ const path = ref(normalizePath(props.initialPath ?? props.source.home))
 const history = createFileBrowserHistory(path.value)
 const canBack = ref(false)
 const canForward = ref(false)
-const entries = shallowRef<FileBrowserEntry[]>([])
-const loading = ref(false)
-const failure = ref<FileBrowserFailure | null>(null)
+// The directory's listing as the source keeps it: a directory seen a moment
+// ago shows at once, and one read again replaces its rows in place.
+const listing = useShowing(() => props.source, () => path.value, (source, shown) => source.showListing(shown))
+const entries = computed(() => listing.entry.value?.value ?? [])
+const loading = computed(() => listing.entry.value?.value === undefined && listing.entry.value?.failure == null)
+const failure = computed(() => listing.entry.value?.value === undefined ? listing.entry.value?.failure ?? null : null)
 const sort = ref<FileBrowserSort>(DEFAULT_SORT)
 const selected = ref<string | null>(null)
 const error = ref<string | null>(null)
@@ -200,31 +203,6 @@ function toFailure(err: unknown): FileBrowserFailure {
   }
 }
 
-async function load(target: string) {
-  pending?.abort()
-  const controller = new AbortController()
-  pending = controller
-  loading.value = true
-  failure.value = null
-  entries.value = []
-  try {
-    const listed = await props.source.list(target, controller.signal)
-    if (controller.signal.aborted) {
-      return
-    }
-    entries.value = listed
-  } catch (err) {
-    if (controller.signal.aborted) {
-      return
-    }
-    failure.value = toFailure(err)
-  } finally {
-    if (!controller.signal.aborted) {
-      loading.value = false
-    }
-  }
-}
-
 function syncHistory() {
   canBack.value = history.canBack
   canForward.value = history.canForward
@@ -235,7 +213,6 @@ function show(target: string) {
   selected.value = null
   error.value = null
   folderCreation.value = 'idle'
-  void load(target)
 }
 
 function goTo(target: string) {
@@ -316,7 +293,7 @@ async function createFolder(folderName: string) {
       folderCreation.value = 'idle'
     }
   }
-  await load(path.value)
+  // The source's write has the listing read again.
   showHidden.value ||= folderName.startsWith('.')
   selected.value = folderName
   list.value?.focus()
@@ -338,8 +315,6 @@ watch(
     show(start)
   },
 )
-
-void load(path.value)
 
 onBeforeUnmount(() => pending?.abort())
 </script>

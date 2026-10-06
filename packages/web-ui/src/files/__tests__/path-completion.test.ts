@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import { nextTick } from 'vue'
+import { HostFiles } from '../file-cache'
+import { keptSource } from '../kept-source'
 import { completionSpot, rankCompletions, usePathCompletion, type PathCompletionKind } from '../path-completion'
 import type { FileBrowserEntry } from '../types'
 
@@ -64,14 +66,20 @@ describe('ranking a directory\'s entries', () => {
   })
 })
 
-/** A source over fixed directories, counting each listing and keeping its signal. */
+/**
+ * A kept source over fixed directories under a live watch, counting each
+ * listing, whose listings land when the test says.
+ */
 function fakeSource(tree: Record<string, FileBrowserEntry[]>) {
-  const calls: { path: string; signal: AbortSignal | undefined }[] = []
+  const calls: { path: string }[] = []
   const pending: (() => void)[] = []
-  const source = {
+  const files = new HostFiles()
+  files.cover({ covers: () => true })
+  const source = keptSource({
+    platform: 'macos',
     home,
-    list(path: string, signal?: AbortSignal): Promise<FileBrowserEntry[]> {
-      calls.push({ path, signal })
+    list(path: string): Promise<FileBrowserEntry[]> {
+      calls.push({ path })
       return new Promise((resolve, reject) => {
         pending.push(() => {
           const entries = tree[path]
@@ -82,12 +90,14 @@ function fakeSource(tree: Record<string, FileBrowserEntry[]>) {
         })
       })
     },
-  }
+  }, { files })
   /** Answers every listing asked for so far, and lets their results land. */
   async function answer(): Promise<void> {
+    // The field shows the directory once its watcher has run.
+    await nextTick()
     for (const settle of pending.splice(0))
       settle()
-    await nextTick()
+    await new Promise((resolve) => setTimeout(resolve, 0))
   }
   return { source, calls, answer }
 }
@@ -144,23 +154,25 @@ describe('a path field\'s menu', () => {
     expect(completion.keydown('Escape', '/Users/zan/', 11)).toEqual({ kind: 'pass' })
     // Typing on brings it back.
     completion.follow('/Users/zan/D', 12)
+    await answer()
     expect(completion.isOpen.value).toBe(true)
   })
 
-  test('a directory lists once, a listing the caret has left is aborted, and a failed one shows nothing', async () => {
+  test('a directory listed while the Host confirms it asks nothing again, and a failed one shows nothing', async () => {
     const { source, calls, answer } = fakeSource(tree)
     const completion = usePathCompletion({ source: () => source, base: () => undefined, kind: () => 'any' })
     completion.follow('/Users/zan/', 11)
     // The caret moves on before the listing lands.
     completion.follow('/Users/zan/Projects/', 20)
-    expect(calls[0]!.signal?.aborted).toBe(true)
     await answer()
     // Back and forth between listed directories asks for nothing again.
     completion.follow('/Users/zan/', 11)
     await answer()
     completion.follow('/Users/zan/Projects/d', 21)
     completion.follow('/Users/zan/Pr', 13)
-    expect(calls.map((call) => call.path)).toEqual(['/Users/zan', '/Users/zan/Projects', '/Users/zan'])
+    await answer()
+    expect(calls.map((call) => call.path)).toEqual(['/Users/zan/Projects', '/Users/zan'])
+    expect(completion.rows.value.map((row) => row.entry.name)).toEqual(['Projects'])
     completion.follow('/nowhere/', 9)
     await answer()
     expect(completion.rows.value).toEqual([])

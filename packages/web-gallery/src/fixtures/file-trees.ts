@@ -1,7 +1,9 @@
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 import type { UploadItem } from '@demicodes/web-ui/files/file-uploads'
-import { createMemoryFileSource, dir, file, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
+import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { keptSource } from '@demicodes/web-ui/files/kept-source'
+import { createMemoryFileSource, dir, file, memoryFileReads, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import { baseName } from '@demicodes/web-ui/files/paths'
 
 /**
@@ -80,18 +82,11 @@ export function screenshotsSource(): FileBrowserSource {
 
 /** The rows workspace, where listing `slowPath` never finishes. */
 export function stuckSource(slowPath: string): FileBrowserSource {
-  const inner = wrap(rowsTree())
-  return {
-    ...inner,
-    list(path, signal) {
-      if (path === slowPath) {
-        return new Promise((_resolve, reject) => {
-          signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')), { once: true })
-        })
-      }
-      return inner.list(path, signal)
-    },
-  }
+  const reads = memoryFileReads({ platform: 'macos', home: '/w', root: dir({ w: rowsTree() }) })
+  return keptSource({
+    ...reads,
+    list: (path) => path === slowPath ? new Promise(() => {}) : reads.list(path),
+  }, { files: new HostFiles() })
 }
 
 /** The rows workspace with `src/auth` refusing and `tests` failing. */
