@@ -1,20 +1,27 @@
-//! The context block a node reads before its next request once the
-//! conversation's execution context changed (`sessions-and-targets.md`
-//! § Switch the primary target): after a switch, the departed and current
-//! targets, that no files moved, and the departed device under the name it
-//! stays attached as; after a change of the attached hosts, that change.
-//! Either block ends with the attached hosts as they now stand, and a block
-//! after a reset of the user's Cloud says so first. What a node saw is the
-//! context blocks of its own transcript: each block names the revision it
-//! describes, and a switch and a reset are each announced to a node once.
+//! The context block a node reads before its first request, and before
+//! its next one once the conversation's execution context changed
+//! (`sessions-and-targets.md` § Switch the primary target). Every block
+//! names the primary Host with its system and the directory its shells
+//! start in. Then, after a switch, the departed and current targets, that
+//! no files moved, and the departed device under the name it stays
+//! attached as; after a change of the attached hosts, that change. Every
+//! block ends with the attached hosts as they now stand, and a block after
+//! a reset of the user's Cloud says so before what changed. What a node saw
+//! is the context blocks of its own transcript: each block names the
+//! revision it describes, and a switch and a reset are each announced to a
+//! node once.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, TargetSwitch,
 };
+use demi_backend_database::devices::CLOUD_NAME;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
+
+/// What opens every context block, before the revision it describes.
+const CONTEXT: &str = "[Execution context ";
 
 /// The line that opens a switch's announcement.
 const SWITCHED: &str = "[Execution target switched]";
@@ -25,7 +32,7 @@ const CLOUD_RESET: &str = "Cloud was reset: system packages and configuration we
 impl Shard {
     /// The context block for a node of the conversation `id` whose
     /// transcript holds the context texts `seen`, oldest first; none when
-    /// the node saw the current revision, or nothing ever changed.
+    /// the node saw the current revision.
     pub(crate) async fn execution_context(
         &self,
         id: &ConversationId,
@@ -35,15 +42,13 @@ impl Shard {
         let Some(record) = control.conversation(id.clone()).await? else {
             return Ok(None);
         };
-        if record.context_version == 0 {
-            return Ok(None);
-        }
-        let marker = format!("[Execution context {}]", record.context_version);
+        let marker = format!("{CONTEXT}{}]", record.context_version);
         if seen.iter().any(|text| text.contains(&marker)) {
             return Ok(None);
         }
+        let primary = self.host_shard().resolve_target(&record).await?;
         let attached = control.attached_hosts(record.id.clone()).await?;
-        let mut lines = vec![marker];
+        let mut lines = vec![marker, self.primary_host_line(&primary).await?];
         // A Cloud reset is announced to a node once (`managed-hosts.md`
         // § System reset).
         if let Some(reset) = control.announced_cloud_reset(record.id.clone()).await? {
@@ -73,12 +78,40 @@ impl Shard {
             }
             None => None,
         };
+        // A node that read an earlier revision learns what changed since;
+        // one reading its first block learns the context as it stands.
+        let earlier = seen.iter().any(|text| text.contains(CONTEXT));
         match announced {
             Some(announcement) => lines.extend(announcement),
-            None => lines.push("[Attached hosts changed]".into()),
+            None if earlier => lines.push("[Attached hosts changed]".into()),
+            None => {}
         }
         lines.push(self.attached_hosts_line(&attached));
         Ok(Some(lines.join("\n")))
+    }
+
+    /// The primary Host as the model reads it: its name, its operating
+    /// system with its architecture as its runner last reported them, and
+    /// the directory its shells start in. A Host whose runner never
+    /// connected, such as a Cloud not made yet, is named without its system.
+    async fn primary_host_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
+        let device = match target.device() {
+            Some(device) => self.services().control.device(device.clone()).await?,
+            None => None,
+        };
+        let name = match (&device, target.device()) {
+            (Some(record), _) => record.name.clone(),
+            (None, Some(device)) => device.to_string(),
+            (None, None) => CLOUD_NAME.to_owned(),
+        };
+        let host = match device.and_then(|record| record.os) {
+            Some(os) => format!("{name}, {} ({})", os.name, os.arch),
+            None => name,
+        };
+        Ok(format!(
+            "Primary host: {host}. Shells start in {}.",
+            target.path()
+        ))
     }
 
     /// A target as the model reads it.
