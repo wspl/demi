@@ -7,7 +7,7 @@
  * opens again after the page's reconnect waits (`web-application.md`
  * § Liveness and reconnection).
  */
-import { liveViewerMessageSchema, type BrowserViewport, type LiveControl, type LiveDialog, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
+import { liveViewerMessageSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
 import { LIVE_CAPTURE_FAILED, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
 import { reactive } from 'vue'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
@@ -15,10 +15,24 @@ import type { OpenUserStream, StreamBytes, UserStream } from '@demicodes/plugin-
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame, type LiveVideoFrame } from './frames'
 import type { PanelSize } from './view'
 
+/**
+ * A stream generation as the module names it: its pictures' size in pixels,
+ * the viewport they show and their scale of its device pixels
+ * (`live-view.md` § Modes).
+ */
+export interface LiveStream {
+  tab: string
+  generation: number
+  width: number
+  height: number
+  viewport: BrowserViewport
+  scale: number
+}
+
 /** What shows the pictures: a decoder in the page, or the gallery's canvas. */
 export interface PictureSink {
-  /** Frames of this generation follow, at this size in device pixels. */
-  start(generation: number, width: number, height: number): void
+  /** Frames of this generation follow. */
+  start(stream: LiveStream): void
   show(frame: LiveVideoFrame): void
   /** Nothing is watched any more. */
   stop(): void
@@ -40,6 +54,9 @@ export interface LiveState {
   watched: string | null
   dialog: { tab: string; dialog: LiveDialog } | null
   controls: LiveControl[]
+  /** Where on the watched tab each cursor applies, in tab CSS pixels; a later region over an earlier one wins. */
+  regions: CursorRegion[]
+  /** The cursor the watched tab's observer resolved at the pointer, where no region decides. */
   cursor: { cursor: string; editable: boolean }
   /** The latest thing that failed, for the view to show. */
   notice: { code: string; message: string } | null
@@ -47,8 +64,17 @@ export interface LiveState {
   ended: string | null
 }
 
+/** The panel the viewer shows the watched tab in, and its screen, as the page last measured them. */
+export interface PanelReport {
+  panel: PanelSize
+  devicePixelRatio: number
+  screen: PanelSize
+}
+
 export interface LiveSessionOptions {
   open: OpenUserStream
+  /** The panel the view sizes the watched tab by, which the page keeps; none until it measured one. */
+  panel: () => PanelReport | null
   platform: 'mac' | 'windows' | 'linux' | 'other'
   /** Text the watched tab copied, for the viewer's own clipboard. */
   onClipboard?: (text: string) => void
@@ -80,6 +106,7 @@ export class LiveSession {
     watched: null,
     dialog: null,
     controls: [],
+    regions: [],
     cursor: { cursor: 'default', editable: false },
     notice: null,
     ended: null,
@@ -89,8 +116,8 @@ export class LiveSession {
   /** The watch over the stream's silence, while there is a stream. */
   private silence: SilenceWatch | null = null
   private pictures: PictureSink | null = null
-  /** The pictures the stream sends now: their tab, generation and size in device pixels; none before its first. */
-  private video: { tab: string; generation: number; width: number; height: number } | null = null
+  /** The pictures the stream sends now; none before its first. */
+  private video: LiveStream | null = null
   private uploads = 0
   private received: number
   /** When the page last asked for a key frame; never, at first. */
@@ -98,7 +125,6 @@ export class LiveSession {
   /** Views that ended in a row since one last worked. */
   private failures = 0
   private reopening: ReconnectWait | null = null
-  private panelReport: { panel: PanelSize; ratio: number; screen: PanelSize } | null = null
 
   constructor(private readonly options: LiveSessionOptions) {
     this.received = this.time()
@@ -112,18 +138,13 @@ export class LiveSession {
     // sends no other: it starts on the generation, from a key frame it asks for. Pictures of a tab the
     // view no longer watches are not this canvas's.
     if (this.video && this.video.tab === this.state.watched) {
-      pictures.start(this.video.generation, this.video.width, this.video.height)
+      pictures.start(this.video)
       this.resync()
     }
   }
 
   private time(): number {
     return this.options.now ? this.options.now() : performance.now()
-  }
-
-  /** The viewport of the tab this view watches, or none. */
-  get viewport(): BrowserViewport | null {
-    return this.state.tabs.find((tab) => tab.id === this.state.watched)?.viewport ?? null
   }
 
   start(): void {
@@ -149,10 +170,10 @@ export class LiveSession {
     // for a silent socket holds for the view as for the page's other sockets.
     this.silence = watchSilence(() => this.end(SILENT_STREAM))
     this.send({ type: 'hello', platform: this.options.platform })
-    // A view that opens again takes up where the page left off.
-    if (this.panelReport) {
-      this.panel(this.panelReport.panel, this.panelReport.ratio, this.panelReport.screen)
-    }
+    // The panel comes before the tab, so the module sizes the tab before it
+    // captures it (`live-view.md` § Delivery); a view that opens again takes
+    // up where the page left off.
+    this.panel()
     if (this.state.watched) {
       this.send({ type: 'watch', tab: this.state.watched })
     }
@@ -197,6 +218,7 @@ export class LiveSession {
     this.state.ended = reason
     this.state.dialog = null
     this.state.controls = []
+    this.state.regions = []
     this.options.onEnded?.(reason)
     this.failures += 1
     this.state.connection = 'opening'
@@ -266,6 +288,7 @@ export class LiveSession {
           // way: a tab that is still there is asked for again.
           if (this.state.watched !== message.watched) {
             this.state.controls = []
+            this.state.regions = []
             const wanted = this.state.watched
             if (wanted !== null && message.tabs.some((tab) => tab.id === wanted)) {
               this.send({ type: 'watch', tab: wanted })
@@ -275,11 +298,21 @@ export class LiveSession {
           }
           break
         case 'stream':
-          this.video = { tab: message.tab, generation: message.generation, width: message.width, height: message.height }
+          this.video = {
+            tab: message.tab,
+            generation: message.generation,
+            width: message.width,
+            height: message.height,
+            viewport: message.viewport,
+            scale: message.scale,
+          }
           // Video generations change independently of the watched document's controls.
-          this.pictures?.start(message.generation, message.width, message.height)
+          this.pictures?.start(this.video)
           break
         case 'heartbeat':
+          break
+        case 'cursors':
+          this.state.regions = message.tab === this.state.watched ? message.regions : []
           break
         case 'cursor':
           this.state.cursor = { cursor: message.cursor, editable: message.editable }
@@ -344,15 +377,19 @@ export class LiveSession {
     }
   }
 
-  panel(panel: PanelSize, devicePixelRatio: number, screen: PanelSize): void {
-    this.panelReport = { panel, ratio: devicePixelRatio, screen }
+  /** Tells the module the page's panel, as the page last measured it. */
+  panel(): void {
+    const report = this.options.panel()
+    if (!report) {
+      return
+    }
     this.send({
       type: 'panel',
-      width: panel.width,
-      height: panel.height,
-      devicePixelRatio: Math.max(0.5, Math.min(4, devicePixelRatio)),
-      screenWidth: screen.width,
-      screenHeight: screen.height,
+      width: report.panel.width,
+      height: report.panel.height,
+      devicePixelRatio: Math.max(0.5, Math.min(4, report.devicePixelRatio)),
+      screenWidth: report.screen.width,
+      screenHeight: report.screen.height,
     })
   }
 
@@ -362,6 +399,7 @@ export class LiveSession {
     }
     this.state.watched = tab
     this.state.controls = []
+    this.state.regions = []
     this.state.dialog = null
     this.pictures?.stop()
     this.send({ type: 'watch', tab })

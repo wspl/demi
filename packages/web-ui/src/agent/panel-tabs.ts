@@ -97,6 +97,33 @@ export function removeTabs(state: PanelState, ids: readonly string[]): PanelStat
 }
 
 /**
+ * Each tab's highest numbered request to be shown that this page applied, by
+ * tab id (`live-view.md` § Showing a tab), kept beside the page's selection
+ * history.
+ */
+export type AppliedRequests = Readonly<Record<string, number>>
+
+/**
+ * What the page's record becomes when tab `id` asks to be shown with
+ * `request`: the page applies a request above the one it recorded for the
+ * tab, once, and none other, so the user's own selection after it stands.
+ * Null when the request selects nothing. Tabs the panel no longer has
+ * (`present` lists the ones it has) leave the record.
+ */
+export function applyRequest(
+  applied: AppliedRequests,
+  present: readonly string[],
+  id: string,
+  request: number,
+): AppliedRequests | null {
+  if (request <= (applied[id] ?? 0)) {
+    return null
+  }
+  const kept = Object.entries(applied).filter(([tab]) => tab !== id && present.includes(tab))
+  return { ...Object.fromEntries(kept), [id]: request }
+}
+
+/**
  * The tabs and pinned kinds whose contents the panel keeps on the page
  * (`web-application.md` § Work panel, Contents stay): each one once shown,
  * in the order first shown, until it leaves the panel (`present` lists the

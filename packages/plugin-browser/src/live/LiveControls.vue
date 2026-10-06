@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { LiveControl, BrowserViewport } from '../generated/plugin'
+import type { LiveControl } from '../generated/plugin'
 import type { LiveSession } from './session'
 import { panelRect, type Placement } from './view'
 
@@ -14,7 +14,6 @@ const props = defineProps<{
   session: LiveSession
   controls: readonly LiveControl[]
   placement: Placement
-  viewport: BrowserViewport
 }>()
 
 /** A list without a popup shows its own pixels; the page's input stays. */
@@ -32,6 +31,8 @@ function style(control: LiveControl): Record<string, string> {
     width: `${rect.width}px`,
     height: `${rect.height}px`,
     fontSize: `${14 * props.placement.scale}px`,
+    // The page's cursor shows over its control, never the local control's own (`live-view.md` § Input).
+    cursor: 'inherit',
   }
 }
 

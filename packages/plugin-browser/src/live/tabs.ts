@@ -1,21 +1,25 @@
 /**
  * The `browser` page's panel session (`live-view.md` § A browser tab in the
- * panel): what a tab keeps, the conversation browser's tab list for the
- * tabs' titles, which the plugin's conversation state brings, the requests
- * that move a bound tab, and the one view a page keeps while a `browser` tab
- * is shown and the page is visible. Which browser tab a panel tab shows is
- * the plugin's work on the backend; the session never opens, closes or adds
- * a tab.
+ * panel): what a tab keeps, the conversation browser's tab list, which the
+ * plugin's conversation state brings, the requests that move a bound tab,
+ * the panel's size, each browser tab as a view last reported it, the tabs
+ * the agent shows, and the one view a page keeps while a `browser` tab is
+ * shown and the page is visible. Which browser tab a panel tab shows is the
+ * plugin's work on the backend; the session never opens, closes or adds a
+ * tab.
  */
 import { clientPlatform } from '@demicodes/utils'
-import { useDocumentVisibility } from '@vueuse/core'
-import { computed, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
+import { useDocumentVisibility, useDebounceFn } from '@vueuse/core'
+import { computed, shallowReactive, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 import { z } from 'zod'
-import type { BrowserTab, NeededBrowser } from '../generated/plugin'
+import type { BrowserTab, LiveTab, NeededBrowser } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from './pictures'
-import type { HostArtifact, OpenUserStream, SentenceText } from '@demicodes/plugin-sdk'
-import { LiveSession } from './session'
+import type { HostArtifact, OpenUserStream, PanelKindTab, SentenceText } from '@demicodes/plugin-sdk'
+import { LiveSession, type PanelReport } from './session'
+
+/** The work panel kind the page shows the conversation browser's tabs as. */
+export const BROWSER_KIND = 'browser'
 
 /** What a new tab shows before the user goes anywhere. */
 export const NEW_TAB_URL = 'about:blank'
@@ -29,6 +33,10 @@ export const browserTabDataSchema = z.object({
   closed: z.boolean().optional(),
   /** Why the plugin could not open a browser tab for it. */
   failure: z.object({ code: z.string(), message: z.string() }).optional(),
+  /** The page's title as the address bar last showed it, so the strip names the tab while no view shows it. */
+  title: z.string().optional(),
+  /** How many times the agent showed the browser tab; absent while it never did (`live-view.md` § Showing a tab). */
+  shows: z.number().int().min(1).optional(),
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 
@@ -74,6 +82,10 @@ export interface BrowserTabsApi {
   stream: OpenUserStream
   /** What the Host holds of the browser's package, read reactively. */
   installed(): readonly HostArtifact[]
+  /** The panel's `browser` tabs, read reactively. */
+  panelTabs(): PanelKindTab[]
+  /** Selects the panel tab with the panel opened, as the agent's `request`th showing of it, which the page applies once. */
+  show(panelTab: string, request: number): void
 }
 
 /** Answers that will not change by asking again. */
@@ -95,11 +107,16 @@ export type ReportDefect = (message: string, error: unknown) => void
 /** Whether the page is visible: one listener, for the page's lifetime, that every controller shares. */
 const pageVisibility = useDocumentVisibility()
 
+/** How long a panel that resizes waits before the module hears of it: a drag would otherwise resize the capture each step. */
+const PANEL_SETTLE_MS = 100
+
 /**
  * One conversation's browser, for one page, made by the page's panel
- * session in its effect scope: the tab list it last learned, for the tabs'
- * titles, and the view, open only while a `browser` tab's content is shown
- * and the page is visible (`live-view.md` § Ending a view).
+ * session in its effect scope: the tab list, each browser tab as a view last
+ * reported it, the panel the shown tab is sized by, and the view, open only
+ * while a `browser` tab's content is shown and the page is visible
+ * (`live-view.md` § Ending a view). It alone tells the view which tab to
+ * watch.
  */
 export class BrowserTabsController {
   /** The last list the plugin's state gave; null before the first. */
@@ -119,8 +136,14 @@ export class BrowserTabsController {
    * in the panel).
    */
   readonly pictures: ShallowRef<PictureSupport> = shallowRef('checking')
-  /** The tabs as the open view last reported them, the newest there are; none while no view is open. */
-  private readonly viewed: ShallowRef<readonly BrowserTab[] | null> = shallowRef(null)
+  /**
+   * Each browser tab as a view last reported it, kept while no view is open,
+   * so a tab shown again shows its address, loading and viewport at once.
+   * A tab leaves once a view reports the browser without it.
+   */
+  private readonly known = shallowReactive(new Map<string, LiveTab>())
+  /** The panel the shown tab's content measured, which a view sizes the tab by. */
+  private panel: PanelReport | null = null
   /** The browser tab whose content is shown, which the view watches while the page is visible. */
   private shown: string | null = null
   /** The shown tab the view found gone, which the plugin was asked to look for once. */
@@ -128,6 +151,8 @@ export class BrowserTabsController {
   private closing: ReturnType<typeof setTimeout> | null = null
   private readonly visibility: Readonly<Ref<DocumentVisibilityState>>
   private disposed = false
+  /** Tells the view a panel that stopped resizing for a moment; after the view closed, nobody. */
+  private readonly settled = useDebounceFn(() => this.session.value?.panel(), PANEL_SETTLE_MS)
 
   constructor(
     readonly api: BrowserTabsApi,
@@ -154,6 +179,22 @@ export class BrowserTabsController {
         this.closeView()
       }
     })
+    // The agent showed a tab: this page selects it once per showing (`live-view.md` § Showing a tab).
+    watch(
+      () => api.panelTabs().flatMap((tab) => {
+        const data = browserTabDataSchema.safeParse(tab.data)
+        return data.success && data.data.shows !== undefined ? [[tab.id, data.data.shows] as const] : []
+      }),
+      (shown, before) => {
+        for (const [panelTab, shows] of shown) {
+          // The page records what it applied; a showing it has seen here needs no second look.
+          if (!before?.some(([seen, count]) => seen === panelTab && count === shows)) {
+            api.show(panelTab, shows)
+          }
+        }
+      },
+      { immediate: true },
+    )
     const pictures = options.pictures ?? (() => picturesSupported(defect))
     void pictures().then((supported) => {
       if (this.disposed) {
@@ -164,15 +205,24 @@ export class BrowserTabsController {
     })
   }
 
+  /** The browser tab `tab` as a view last reported it, if one did. */
+  tab(tab: string | undefined): LiveTab | null {
+    return tab === undefined ? null : (this.known.get(tab) ?? null)
+  }
+
   /**
-   * The tab `tab` as the browser names it, if it does: as the open view
-   * reported it, which follows every page, else as the plugin's state last
-   * listed it. It names a tab's title only, so the newer of the two is
-   * enough.
+   * The shown content measured its panel. The first measure goes to the view
+   * at once, as a capture starts at it; later ones once the panel stopped
+   * resizing for a moment.
    */
-  listed(tab: string | undefined): BrowserTab | null {
-    const tabs = this.viewed.value ?? this.list.value?.tabs ?? []
-    return tabs.find((listed) => listed.id === tab) ?? null
+  resize(panel: PanelReport): void {
+    const first = this.panel === null
+    this.panel = panel
+    if (first) {
+      this.watchShown()
+      return
+    }
+    void this.settled()
   }
 
   /**
@@ -230,21 +280,37 @@ export class BrowserTabsController {
     this.watchShown()
   }
 
-  /** The shown tab on the page's one view, while someone can see its pictures. */
+  /**
+   * The shown tab on the page's one view, while someone can see its
+   * pictures, once its content measured the panel the tab is sized by.
+   */
   private watchShown(): void {
-    if (this.shown === null || this.visibility.value !== 'visible' || this.pictures.value !== 'supported') {
+    if (
+      this.shown === null
+      || this.panel === null
+      || this.visibility.value !== 'visible'
+      || this.pictures.value !== 'supported'
+    ) {
       return
     }
     this.view().watch(this.shown)
   }
 
   /**
-   * The view's tab list. A list without the shown tab asks the plugin, once
+   * The view's tab list. Each tab is kept as reported, and one the browser no
+   * longer has leaves. A list without the shown tab asks the plugin, once
    * for that tab, to read the browser's tabs: the plugin marks the panel tab
    * closed if the browser lost it.
    */
-  private viewTabs(tabs: readonly BrowserTab[]): void {
-    this.viewed.value = tabs
+  private viewTabs(tabs: readonly LiveTab[]): void {
+    for (const id of [...this.known.keys()]) {
+      if (!tabs.some((tab) => tab.id === id)) {
+        this.known.delete(id)
+      }
+    }
+    for (const tab of tabs) {
+      this.known.set(tab.id, tab)
+    }
     const shown = this.shown
     if (shown === null || tabs.some((tab) => tab.id === shown) || this.missed === shown) {
       return
@@ -261,6 +327,7 @@ export class BrowserTabsController {
     }
     const session = new LiveSession({
       open: this.api.stream,
+      panel: () => this.panel,
       platform: clientPlatform(navigator),
       onClipboard: (text) => viewerClipboard.receive(text),
       onTabs: (tabs) => this.viewTabs(tabs),
@@ -274,7 +341,6 @@ export class BrowserTabsController {
   private closeView(): void {
     this.session.value?.close()
     this.session.value = null
-    this.viewed.value = null
   }
 
   dispose(): void {
@@ -284,6 +350,7 @@ export class BrowserTabsController {
       this.closing = null
     }
     this.shown = null
+    this.known.clear()
     this.closeView()
   }
 }

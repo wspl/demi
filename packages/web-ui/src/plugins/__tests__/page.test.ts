@@ -38,7 +38,7 @@ function host(parts: Partial<PageHost> = {}): PageHost {
     installed: unused,
     files: unused,
     intents: { open: unused, canOpen: unused },
-    panel: { tabs: unused, add: unused },
+    panel: { tabs: unused, add: unused, select: unused },
     openSettings: unused,
     overlays: createOverlayStore(),
     ...parts,
@@ -98,16 +98,27 @@ test('a panel session runs for its conversation until the panel lets it go, and 
   expect(seen).toEqual([1])
 })
 
-test('a page adds tabs only of its own kinds', () => {
+test('a page adds and selects tabs only of its own kinds', () => {
   const added: string[] = []
+  const selected: string[] = []
   const page = definePage({
     plugin: 'notes',
     kinds: [{ kind: 'note', schema: z.string(), title: (data: string) => data, mark: nothing, content: nothing }],
   })
-  const context = pageContext(host({ panel: { tabs: () => [], add: (_conversation, kind) => void added.push(kind) } }), page)
+  const tabs = [{ id: 'n1', kind: 'note' }, { id: 'b1', kind: 'browser' }]
+  const context = pageContext(host({
+    panel: {
+      tabs: (_conversation, kind) => tabs.filter((tab) => tab.kind === kind).map((tab) => ({ id: tab.id, data: null })),
+      add: (_conversation, kind) => void added.push(kind),
+      select: (_conversation, id) => void selected.push(id),
+    },
+  }), page)
   context.panel.add('c1', 'note', 'draft')
   expect(() => context.panel.add('c1', 'browser', { url: 'about:blank' })).toThrow('has no kind browser')
   expect(added).toEqual(['note'])
+  context.panel.select('c1', 'n1')
+  expect(() => context.panel.select('c1', 'b1')).toThrow('has no tab b1')
+  expect(selected).toEqual(['n1'])
 })
 
 test('a page that declares one kind twice is refused', () => {
