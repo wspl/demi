@@ -44,7 +44,7 @@ pub use block::{
 pub use bytes::B64Bytes;
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
 pub use content::{
-    Attachment, BlobRef, DocumentSource, GoneCause, MediaSource, ToolMediaSource,
+    Attachment, BlobRef, DocumentSource, GoneCause, MediaSource, PixelSize, ToolMediaSource,
     ToolResultContentBlock, UserContentBlock, attachment_tag, char_offset, is_blank, trim,
 };
 pub use failure::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};

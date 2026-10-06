@@ -186,6 +186,7 @@ impl RemoteHost {
                 context: job.context,
                 script: job.script,
                 cwd: job.cwd,
+                workspace: self.0.default_cwd.clone(),
                 env: job.env,
                 stdin: job.stdin,
                 stdout: job.stdout,

@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { ToolMediaSource } from '@demicodes/protocol'
-import { useImageViewer } from '../../files/image-viewer'
+import { useMediaViewer } from '../../files/media-viewer'
 import { dropSource } from '../../files/preview'
-import { loadedSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize } from '../../files/thumbnail'
+import { declaredSize, loadedSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize } from '../../files/thumbnail'
 import { useMediaUrl } from '../media-source'
 
 /**
- * One image or video a tool returned, which takes its box before its bytes
- * arrive so the transcript does not move when they load (`file-previews.md`
- * § Media a tool returned). An image is a thumbnail, cropped when its
- * proportions fall outside the thumbnail's, and a click opens it whole and
- * large; a video plays in the web browser's player, a player's height tall.
- * A medium the page cannot show, because it did not load or the web browser
- * cannot decode it, says so in its place.
+ * One image or video a tool returned, as a thumbnail that takes its box
+ * before its bytes arrive, from the size its reference carries, so the
+ * transcript does not move when they load (`file-previews.md` § Media a tool
+ * returned). It is cropped when its proportions fall outside the
+ * thumbnail's; a video's is its first frame with a play mark. A click opens
+ * it whole and large, where a video plays. A medium the page cannot show,
+ * because it did not load or the web browser cannot decode it, says so in
+ * its place.
  */
 const props = defineProps<{
   kind: 'image' | 'video'
@@ -23,20 +24,20 @@ const props = defineProps<{
 }>()
 
 const src = useMediaUrl(() => props.source)
-const viewer = useImageViewer()
+const viewer = useMediaViewer()
 const failed = ref(false)
 const element = ref<HTMLImageElement | HTMLVideoElement | null>(null)
-/** The image's size once its bytes have loaded; the result does not carry it. */
-const natural = ref<PixelSize | null>(null)
-const box = computed(() => thumbnailBox(natural.value))
+/** The medium's size once its bytes have loaded. */
+const loaded = ref<PixelSize | null>(null)
+const box = computed(() => thumbnailBox(loaded.value ?? declaredSize(props.source), props.kind))
 watch(src, () => {
   failed.value = false
-  natural.value = null
+  loaded.value = null
 })
 
-function onImageLoad(): void {
-  if (element.value instanceof HTMLImageElement)
-    natural.value = loadedSize(element.value)
+function onLoaded(): void {
+  if (element.value)
+    loaded.value = loadedSize(element.value)
 }
 
 onBeforeUnmount(() => {
@@ -46,11 +47,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    class="flex max-w-full items-start"
-    :class="kind === 'video' ? 'h-video-player' : ''"
-    :style="kind === 'image' ? { height: `${THUMBNAIL_HEIGHT}px` } : undefined"
-  >
+  <div class="flex max-w-full items-start" :style="{ height: `${THUMBNAIL_HEIGHT}px` }">
     <div
       v-if="failed"
       class="flex h-full w-60 max-w-full items-center justify-center rounded-md border border-line-subtle px-3 text-center text-xs text-fg-muted"
@@ -58,32 +55,39 @@ onBeforeUnmount(() => {
       Could not show this {{ kind }}.
     </div>
     <button
-      v-else-if="kind === 'image'"
+      v-else
       type="button"
-      class="max-w-full cursor-zoom-in rounded-md outline-none focus-visible:ring-2 focus-visible:ring-line-focus"
-      :aria-label="`Open ${name} large`"
-      @click="viewer.show(src, name)"
+      class="relative max-w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-line-focus"
+      :class="kind === 'image' ? 'cursor-zoom-in' : 'cursor-pointer'"
+      :aria-label="kind === 'image' ? `Open ${name} large` : `Play ${name}`"
+      @click="viewer.show({ kind, src, name })"
     >
       <img
+        v-if="kind === 'image'"
         ref="element"
         :src="src"
         :alt="name"
         class="block max-w-full rounded-md object-cover object-top ring-1 ring-line"
-        :class="{ checkerboard: natural }"
+        :class="{ checkerboard: loaded }"
         :style="{ width: `${box.width}px`, height: `${box.height}px` }"
-        @load="onImageLoad"
+        @load="onLoaded"
         @error="failed = true"
       >
+      <template v-else>
+        <video
+          ref="element"
+          :src="src"
+          :aria-label="name"
+          muted
+          playsinline
+          preload="metadata"
+          class="block max-w-full rounded-md bg-black object-cover object-top ring-1 ring-line"
+          :style="{ width: `${box.width}px`, height: `${box.height}px` }"
+          @loadedmetadata="onLoaded"
+          @error="failed = true"
+        />
+        <span class="media-play-mark" aria-hidden="true" />
+      </template>
     </button>
-    <video
-      v-else
-      ref="element"
-      :src="src"
-      :aria-label="name"
-      controls
-      preload="metadata"
-      class="block h-full max-w-full rounded-md bg-black"
-      @error="failed = true"
-    />
   </div>
 </template>

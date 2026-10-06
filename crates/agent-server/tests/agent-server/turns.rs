@@ -262,11 +262,13 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
         .await;
     let frames = client.next_until(is_idle).await;
 
-    // At rest and on the wire, the image is its reference.
+    // At rest and on the wire, the image is its reference, with its size.
     let by_reference = UserContentBlock::Image {
         source: MediaSource::Ref {
             r#ref: uploaded.clone(),
             media_type: "image/png".into(),
+            width: Some(4),
+            height: Some(3),
         },
     };
     let stored = fixture.store.checkpoint(&conversation()).unwrap();

@@ -74,11 +74,12 @@ test('task boxes are read-only, and HTML shows as text', () => {
 // `attachment:a3` names one of the conversation's, whatever its file became.
 
 const attachments: Record<string, AttachmentLookup> = {
-  a1: { state: 'found', attachment: { name: 'login.png', mediaType: 'image/png', url: '/blobs/1?type=image%2Fpng' } },
-  a2: { state: 'found', attachment: { name: 'flow.mp4', mediaType: 'video/mp4', url: '/blobs/2?type=video%2Fmp4' } },
+  a1: { state: 'found', attachment: { name: 'login.png', mediaType: 'image/png', url: '/blobs/1?type=image%2Fpng', width: 480, height: 300 } },
+  a2: { state: 'found', attachment: { name: 'flow.mp4', mediaType: 'video/mp4', url: '/blobs/2?type=video%2Fmp4', width: 1280, height: 720 } },
   a3: { state: 'found', attachment: { name: 'report.pdf', mediaType: 'application/pdf', url: '/blobs/3?type=application%2Fpdf' } },
   a4: { state: 'loading' },
   a5: { state: 'failed' },
+  a6: { state: 'found', attachment: { name: 'clip.webm', mediaType: 'video/webm', url: '/blobs/6?type=video%2Fwebm' } },
 }
 const withAttachments: MessageFiles = {
   ...files,
@@ -87,18 +88,23 @@ const withAttachments: MessageFiles = {
 
 test('an attachment image shows, and a click on it shows it large', () => {
   expect(renderMarkdown('![The fixed sign-in page](attachment:a1)', { files: withAttachments }))
-    .toBe('<p><a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"><img src="/blobs/1?type=image%2Fpng" alt="The fixed sign-in page" /></a></p>\n')
+    .toBe('<p><a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"><img src="/blobs/1?type=image%2Fpng" alt="The fixed sign-in page" data-width="480" data-height="300" /></a></p>\n')
 })
 
-test('an attachment video plays in place', () => {
+const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
+
+test('an attachment video shows its first frame with a play mark, as large as its record says, and a click plays it large', () => {
   expect(renderMarkdown('![The flow](attachment:a2)', { files: withAttachments }))
-    .toBe('<p><video src="/blobs/2?type=video%2Fmp4" controls preload="metadata" aria-label="The flow"></video></p>\n')
+    .toBe(`<p><a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" class="message-video" style="--media-ratio: ${1280 / 720}; --media-width: 1280px"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720"></video>${mark}</a></p>\n`)
+  // A record without a size leaves the frame 16:9 until it arrives.
+  expect(renderMarkdown('![The clip](attachment:a6)', { files: withAttachments }))
+    .toBe(`<p><a href="/blobs/6?type=video%2Fwebm" data-attachment-video="clip.webm" class="message-video"><video src="/blobs/6?type=video%2Fwebm" muted playsinline preload="metadata" aria-label="The clip"></video>${mark}</a></p>\n`)
 })
 
-test('a link opens an attachment: an image large, a video in a new tab, any other file as a download', () => {
+test('a link opens an attachment: an image or a video large, any other file as a download', () => {
   const html = renderMarkdown('[shot](attachment:a1) [flow](attachment:a2) [report](attachment:a3) ![report](attachment:a3)', { files: withAttachments })
   expect(html).toContain('<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png">shot</a>')
-  expect(html).toContain('<a href="/blobs/2?type=video%2Fmp4" target="_blank" rel="noopener noreferrer">flow</a>')
+  expect(html).toContain('<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4">flow</a>')
   expect(html).toContain('<a href="/blobs/3?type=application%2Fpdf" download="report.pdf">report</a> <a href="/blobs/3?type=application%2Fpdf" download="report.pdf">report</a>')
 })
 
@@ -118,7 +124,7 @@ test('an attachment shows its text while the page asks for it, when asking faile
 // § Files named in messages): a run is one row, each image an item of it.
 
 const shot = (n: number) => `![shot ${n}](https://example.com/${n}.png)`
-const item = (n: number) => `<span><a href="https://example.com/${n}.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/${n}.png" alt="shot ${n}" /></a></span>`
+const item = (n: number) => `<span style="height: 80px"><a href="https://example.com/${n}.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/${n}.png" alt="shot ${n}" style="width: 64px; height: 80px" /></a></span>`
 
 test('images with only white space between them in one paragraph are one run', () => {
   expect(renderMarkdown(`${shot(1)} ${shot(2)}\n${shot(3)}`, { files }))
@@ -127,7 +133,17 @@ test('images with only white space between them in one paragraph are one run', (
 
 test('paragraphs of images that follow each other are one run, a video among them', () => {
   expect(renderMarkdown(`${shot(1)}\n\n![The flow](attachment:a2)\n\n\n${shot(2)}`, { files: withAttachments }))
-    .toBe(`<p class="media-run">${item(1)}<span><video src="/blobs/2?type=video%2Fmp4" controls preload="metadata" aria-label="The flow"></video></span>${item(2)}</p>\n`)
+    .toBe(`<p class="media-run">${item(1)}<span style="height: 80px"><a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4" class="message-video"><video src="/blobs/2?type=video%2Fmp4" muted playsinline preload="metadata" aria-label="The flow" data-width="1280" data-height="720" style="width: 142px; height: 80px"></video>${mark}</a></span>${item(2)}</p>\n`)
+})
+
+// Before a byte of it loads, a medium whose record carries its size takes the
+// thumbnail box that size makes, so nothing in the row moves when it loads;
+// one whose size is unknown takes the narrowest box, or 16:9 for a video.
+test('in a run, an attachment takes its final thumbnail box from its record before it loads', () => {
+  const html = renderMarkdown('![sign-in](attachment:a1) ![flow](attachment:a2) ![clip](attachment:a6)', { files: withAttachments })
+  expect(html).toContain('alt="sign-in" data-width="480" data-height="300" style="width: 128px; height: 80px" />')
+  expect(html).toContain('aria-label="flow" data-width="1280" data-height="720" style="width: 142px; height: 80px"></video>')
+  expect(html).toContain('aria-label="clip" style="width: 142px; height: 80px"></video>')
 })
 
 test('text, a list or a heading between images ends the run', () => {
@@ -138,8 +154,8 @@ test('text, a list or a heading between images ends the run', () => {
   expect(html.match(/class="media-run"/g)).toHaveLength(2)
   expect(html).toContain(`<p class="media-run">${item(1)}${item(2)}</p>`)
   expect(html).toContain(`<p class="media-run">${item(3)}${item(4)}</p>`)
-  expect(html).not.toContain('<span><a href="https://example.com/5.png"')
-  expect(html).not.toContain('<span><a href="https://example.com/7.png"')
+  expect(html).not.toContain(`<span style="height: 80px"><a href="https://example.com/5.png"`)
+  expect(html).not.toContain(`<span style="height: 80px"><a href="https://example.com/7.png"`)
 })
 
 test('a lone image keeps its paragraph', () => {
@@ -149,7 +165,7 @@ test('a lone image keeps its paragraph', () => {
 
 test('an image inside a link counts as an image of a run, and follows its link', () => {
   expect(renderMarkdown(`[![build](https://example.com/badge.svg)](https://example.com/ci)\n${shot(1)}`, { files }))
-    .toBe(`<p class="media-run"><span><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a></span>${item(1)}</p>\n`)
+    .toBe(`<p class="media-run"><span style="height: 80px"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" style="width: 64px; height: 80px" /></a></span>${item(1)}</p>\n`)
 })
 
 test('while a message streams, a lone image at its end waits for what follows', () => {
