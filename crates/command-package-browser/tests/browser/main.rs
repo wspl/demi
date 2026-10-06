@@ -2,7 +2,9 @@
 //! conversation release, and the browser. Most browser tests start the
 //! pinned Chrome for Testing and are ignored unless asked for:
 //! `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
-//! demi-runner/test-fixtures --test browser -- --include-ignored`. They run
+//! demi-runner/test-fixtures --test browser -- --include-ignored`, on Linux
+//! with `DEMI_TEST_CHROME_RUNTIME=<directory>` too, the pinned Chrome
+//! runtime unpacked. They run
 //! in parallel; the ones that read the whole process table of the test
 //! process are the `browser-processes` binary.
 
@@ -24,6 +26,7 @@ mod conversations;
 mod download;
 mod fetch;
 mod fidelity;
+mod launch;
 mod live;
 mod repairs;
 mod retirement;
