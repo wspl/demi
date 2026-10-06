@@ -10,6 +10,7 @@ fn options(root: &Path, output: std::fs::File) -> ShellOptions {
         scope: Scope::new(tokio_util::sync::CancellationToken::new(), None),
         login: false,
         cwd: root.into(),
+        workspace: root.into(),
         env: BTreeMap::new(),
         stdin: tempfile::tempfile().unwrap(),
         stdout: output,
