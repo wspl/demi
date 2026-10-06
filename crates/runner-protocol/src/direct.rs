@@ -275,10 +275,12 @@ impl Default for Opened {
 }
 
 /// A `read`'s answer: the file's size and version; its bytes follow.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
+#[garde(allow_unvalidated)]
 pub struct ReadOpened {
     pub ok: bool,
+    #[garde(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
     pub size: u64,
     pub version: String,
 }

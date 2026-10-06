@@ -5,6 +5,7 @@
 
 use demi_conversation_socket_protocol as frames;
 use demi_shared_types as core;
+use demi_runner_protocol::direct;
 use demi_web_api_protocol as api;
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 
@@ -166,5 +167,14 @@ pub fn web() -> Vec<Root> {
         receives::<drafts::DraftAnswer>(),
         receives::<permissions::ConversationPermissions>(),
         sends::<permissions::DecidePermission>(),
+        sends::<devices::DirectRequest>(),
+        receives::<devices::DirectMessage>(),
+        sends::<direct::ChannelHeader>(),
+        sends::<direct::WriteEnd>(),
+        receives::<direct::ChannelRefusal>(),
+        receives::<direct::Opened>(),
+        receives::<direct::ReadOpened>(),
+        receives::<direct::TextOpened>(),
+        receives::<direct::Listed>(),
     ]
 }

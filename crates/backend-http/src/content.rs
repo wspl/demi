@@ -11,9 +11,6 @@ use axum::http::header::{
 use axum::http::{HeaderMap, HeaderValue};
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 
-/// An image served in place runs no script and fetches nothing, in an opaque
-/// origin.
-const IMAGE_POLICY: &str = "default-src 'none'; style-src 'unsafe-inline'; sandbox";
 
 /// What RFC 8187 encodes of a file name: all but the unreserved characters
 /// `-`, `.`, `_`, `~` and `!`.
@@ -41,7 +38,7 @@ pub(super) fn content_headers(
             if media_type.starts_with("image/") {
                 headers.insert(
                     CONTENT_SECURITY_POLICY,
-                    HeaderValue::from_static(IMAGE_POLICY),
+                    HeaderValue::from_static(demi_shared_types::IMAGE_CONTENT_POLICY),
                 );
             }
             let value = HeaderValue::from_str(media_type)
@@ -113,7 +110,7 @@ mod tests {
             headers(Some("image/svg+xml"), false, Some("logo.svg")),
             pairs(&[
                 ("content-type", "image/svg+xml"),
-                ("content-security-policy", IMAGE_POLICY),
+                ("content-security-policy", demi_shared_types::IMAGE_CONTENT_POLICY),
                 ("x-content-type-options", "nosniff"),
             ])
         );

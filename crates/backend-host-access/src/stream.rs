@@ -19,7 +19,7 @@ use demi_backend_remote_host::{
 use demi_backend_runners::command_context::command_context;
 use demi_backend_runners::native::NativeCatalog;
 use demi_command_declarations::NativeOperation;
-use demi_command_protocol::{CommandCaller, PackageDescriptor};
+use demi_command_protocol::CommandCaller;
 use demi_host_interface::HostErrorKind;
 use demi_shared_gates::GateLease;
 use demi_web_api_protocol::error::ErrorCode;
@@ -32,12 +32,9 @@ use crate::access::{Attention, ConversationHost, HostAccessError, Waits};
 use crate::lease::Lease;
 use crate::transfer::OpenTransfer;
 
-/// The native operation a user stream or a one-shot user call runs.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ServiceBinding {
-    pub package: PackageDescriptor,
-    pub operation: String,
-}
+/// The native operation a user stream or a one-shot user call runs, as a
+/// direct channel's introduction carries it too.
+pub use demi_runner_protocol::direct::ServiceBinding;
 
 /// The user streams a page may open, by name. Each binds an operation of a
 /// published package; the plugins declare them, fixed for the backend's
@@ -68,6 +65,11 @@ impl UserStreams {
 
     pub fn get(&self, name: &str) -> Option<&ServiceBinding> {
         self.0.get(name)
+    }
+
+    /// Every stream, by name.
+    pub fn iter(&self) -> impl Iterator<Item = (&str, &ServiceBinding)> {
+        self.0.iter().map(|(name, binding)| (name.as_str(), binding))
     }
 }
 

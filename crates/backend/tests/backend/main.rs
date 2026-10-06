@@ -25,6 +25,7 @@ mod claude;
 mod claude_code;
 mod cloud;
 mod conversations;
+mod direct;
 mod drafts;
 mod edge;
 mod editing;

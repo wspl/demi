@@ -50,10 +50,19 @@ async fn context(
     scope: String,
     caller: CommandCaller,
 ) -> Result<CommandContext, StorageError> {
-    let preferences = control.preferences(user.clone()).await?;
     Ok(CommandContext {
         conversation: scope,
         caller,
-        locale: preferences.locale.unwrap_or_else(default_locale),
+        locale: user_locale(control, user).await?,
     })
+}
+
+/// The locale `user`'s commands receive: the one their browser reported,
+/// or the default before one.
+pub async fn user_locale(
+    control: &ControlService,
+    user: &UserId,
+) -> Result<CommandLocale, StorageError> {
+    let preferences = control.preferences(user.clone()).await?;
+    Ok(preferences.locale.unwrap_or_else(default_locale))
 }
