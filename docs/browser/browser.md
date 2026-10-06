@@ -290,7 +290,7 @@ ChromeDriver is not required.
 
 A browser release pins a complete version and a per-platform artifact record:
 platform, download location, byte size and SHA-256 established by the Demi release
-pipeline. `cargo xtask browser-release` resolves the official version and
+pipeline. `bun xtask browser-release` resolves the official version and
 download metadata during release preparation
 ([Chrome for Testing](../delivery/builds-and-releases.md#chrome-for-testing));
 A Host installs the pinned artifact rather than resolving a moving channel

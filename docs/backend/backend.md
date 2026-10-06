@@ -592,10 +592,10 @@ Cloud guest, and both run `x86_64-unknown-linux-musl`:
    A root is assembled once: to try a changed program, assemble a new one.
 
    ```sh
-   cargo xtask native build --target x86_64-unknown-linux-musl \
+   bun xtask native build --target x86_64-unknown-linux-musl \
      --package demi-runner --package demi-file --package demi-browser \
      --package demi-claude-code --package demi-backend --package demi-machine-manager
-   cargo xtask server-release --output /opt/demi/dev-<build> \
+   bun xtask server-release --output /opt/demi/dev-<build> \
      --files /opt/demi/dev-<build>-files \
      --target x86_64-unknown-linux-musl --server x86_64-unknown-linux-musl
    ```
@@ -647,7 +647,7 @@ differences.
 
 ### One-command development backend
 
-`cargo xtask dev` builds the one Cargo selection and runs, until Ctrl-C or a
+`bun xtask dev` builds the one Cargo selection and runs, until Ctrl-C or a
 termination, a backend for the page to talk to. For example, a developer runs
 it, then starts the page with the command it prints, signs in with the
 account the sign-in page fills in, picks the model the developer's `.env`
@@ -719,7 +719,7 @@ it builds anything, naming the type. Setting only some of the four stops the com
 anything, naming the missing variables. The key reaches the backend only
 through the web API and is never printed. A developer keeps the
 four in the repository's ignored `.env` (`.env.example` lists them) and runs
-`bun run dev`, which loads `.env` and starts `cargo xtask dev` with it. For
+`bun run dev`, which loads `.env` and starts `bun xtask dev` with it. For
 example, with Command Code's gateway:
 
 ```sh

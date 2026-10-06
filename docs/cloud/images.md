@@ -71,7 +71,7 @@ stages:
    overlay, and removes package caches, runtime state, and machine identity.
    These steps drive a package manager inside the tree, so a shell script
    runs them.
-2. The packaging command, `cargo xtask cloud-image package`, completes the
+2. The packaging command, `bun xtask cloud-image package`, completes the
    release. It installs the runner and its `demi` alias from the verified
    runner release and the command packages' executables from their verified
    releases. It reads the package inventory from the tree's dpkg database without
