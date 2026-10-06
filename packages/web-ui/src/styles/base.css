@@ -299,6 +299,14 @@ svg.lucide {
   --fill-color: var(--surface-dialog);
 }
 
+/* Text that wraps as a terminal wraps it: each line fills to the box's edge and
+   breaks at any character, never earlier at a hyphen or a space, so a long
+   command reads, and copies, as the shell has it. */
+@utility terminal-wrap {
+  white-space: pre-wrap;
+  line-break: anywhere;
+}
+
 /* The content of a filled element (a selected row, a capsule) sits on its fill. A
    primitive puts the controls it lays on its fill in such a slot; the slot is a plain
    wrapper, never a fill itself, since a fill reads the surface this sets. */

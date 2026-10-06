@@ -110,7 +110,7 @@ function toggleCommand(): void {
           that fits is no control: a click selects it whole for copying.
         --><span
           ref="commandRef"
-          class="min-w-0 whitespace-pre-wrap break-words"
+          class="min-w-0 terminal-wrap"
           :class="[
             commandOverflows ? 'select-text transition-colors duration-200 ease-out hover:text-fg-body' : 'select-all',
             commandOverflows && commandWhole ? '' : 'line-clamp-2',
