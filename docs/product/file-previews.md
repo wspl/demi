@@ -200,14 +200,10 @@ open, and a click opens it large:
   control closes it. A video plays in the player of the user's browser, which an
   iPhone shows full screen.
 - **A medium that is gone.** A result can hold, in a medium's place, a part
-  that says what the medium was and why it is gone: its bytes could not be
-  stored ([Media](../agent/runtime.md#media)), or, 30 days on, it was removed
-  ([Retired tool media](../agent/runtime.md#retired-tool-media)). The page
-  reads that part and shows one line where the medium was: that the image or
-  video was not stored, with the store's reason, or that it was removed, with
-  the day, such as *Video not stored: the object store refused the write* or
-  *Image removed on Oct 1, 2026*. The model reads the same facts in a text of
-  its own ([Media](../agent/runtime.md#media)).
+  that says its bytes could not be stored ([Media](../agent/runtime.md#media)).
+  The page shows one line where the medium was, with the store's reason, such
+  as *Video not stored: the object store refused the write*. The model reads
+  the same fact in a text of its own. A medium that was stored stays.
 - **A medium that cannot be shown.** When the page cannot show a medium,
   because its blob is missing, the request failed or the user's browser cannot
   decode it, *Could not show this image.* (or *video*) shows in its place, at

@@ -24,7 +24,7 @@ layout and interaction; these documents do not repeat it.
 ## How does the backend serve requests and keep data?
 
 - [Backend](backend/backend.md): the backend binary's modules and runtime model, authentication and ownership, page synchronization, media by reference, failure facts, startup and shutdown, configuration, a development backend with the native programs a developer built, and deployment and user placement.
-- [Storage](backend/storage.md): the data directory, control and conversation databases, encodings and digests, passwords and credentials at rest, the one object store for blobs and the published command packages, [retention](backend/storage.md#retention) of tool media and blobs, multi-worker placement, and open durability decisions.
+- [Storage](backend/storage.md): the data directory, control and conversation databases, encodings and digests, passwords and credentials at rest, the one object store for blobs and the published command packages, [retention](backend/storage.md#retention): everything stays while the account does, multi-worker placement, and open durability decisions.
 
 ## How does the agent run a conversation?
 
