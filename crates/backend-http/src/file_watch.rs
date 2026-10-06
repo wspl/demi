@@ -4,13 +4,15 @@
 
 use axum::extract::ws::rejection::WebSocketUpgradeRejection;
 use axum::extract::ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade};
+use demi_backend_user_shard::shard::page_socket::PageSocket;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use demi_backend_host_access::file_watch::{FileWatchChannel, OpenedWatch};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{FileWatchMessage, FileWatchRequest, FileWatchState};
-use futures_util::{SinkExt as _, StreamExt as _};
+use futures_util::StreamExt as _;
+use futures_util::stream::SplitStream;
 use garde::Validate as _;
 
 use super::AppState;
@@ -46,12 +48,15 @@ pub(super) async fn open(
                 .await
         })
         .await??;
+    let tuning = state.services.pages;
     // An upgrade that never completes drops the channel, which ends the
     // watch.
     Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
+        let (sink, from_page) = socket.split();
+        let to_page = PageSocket::new(sink, tuning);
         match opened {
-            OpenedWatch::Watching(channel) => relay(socket, channel).await,
-            OpenedWatch::Offline => offline(socket).await,
+            OpenedWatch::Watching(channel) => relay(to_page, from_page, channel).await,
+            OpenedWatch::Offline => offline(to_page).await,
         }
     }))
 }
@@ -81,35 +86,39 @@ impl End {
 }
 
 /// Tells the page that the Host is out of reach, and closes.
-async fn offline(mut socket: WebSocket) {
+async fn offline(mut page: PageSocket) {
     let message = FileWatchMessage::State {
         state: FileWatchState::Offline,
         reason: None,
     };
-    if socket.send(text(&message)).await.is_ok() {
-        // A page that went meanwhile hears nothing, which is what closing
-        // tells it.
-        let _ = socket.send(close(End::HostUnreachable)).await;
+    if page.send(text(&message)).await.is_ok() {
+        page.close(close_frame(End::HostUnreachable)).await;
     }
 }
 
-/// Relays an open watch until either side ends it or a transition does;
-/// dropping the lease then ends it in the shard.
-async fn relay(socket: WebSocket, channel: FileWatchChannel) {
+/// Relays an open watch until either side ends it or a transition does,
+/// with a `heartbeat` after 30 seconds without another message; dropping
+/// the lease then ends it in the shard.
+async fn relay(mut page: PageSocket, mut page_in: SplitStream<WebSocket>, channel: FileWatchChannel) {
     let FileWatchChannel {
         mut to_page,
         from_page,
         lease,
     } = channel;
-    let (mut page_out, mut page_in) = socket.split();
     let end = {
         let deliver = async {
-            while let Some(message) = to_page.recv().await {
-                if page_out.send(text(&message)).await.is_err() {
+            loop {
+                let message = tokio::select! {
+                    message = to_page.recv() => match message {
+                        Some(message) => message,
+                        None => return End::HostUnreachable,
+                    },
+                    () = page.silent() => FileWatchMessage::Heartbeat,
+                };
+                if page.send(text(&message)).await.is_err() {
                     return End::PageClosed;
                 }
             }
-            End::HostUnreachable
         };
         let forward = async {
             loop {
@@ -136,8 +145,7 @@ async fn relay(socket: WebSocket, channel: FileWatchChannel) {
         }
     };
     if end.close().is_some() {
-        // As above, a page that went hears nothing.
-        let _ = page_out.send(close(end)).await;
+        page.close(close_frame(end)).await;
     }
     drop(lease);
 }
@@ -150,15 +158,14 @@ fn paths_of(message: &str) -> Option<Vec<String>> {
     Some(paths)
 }
 
-fn text(message: &FileWatchMessage) -> Message {
-    let json = serde_json::to_string(message).expect("a watch message serializes");
-    Message::Text(json.into())
+fn text(message: &FileWatchMessage) -> String {
+    serde_json::to_string(message).expect("a watch message serializes")
 }
 
-fn close(end: End) -> Message {
+fn close_frame(end: End) -> CloseFrame {
     let (code, reason) = end.close().expect("an end the page hears");
-    Message::Close(Some(CloseFrame {
+    CloseFrame {
         code,
         reason: reason.into(),
-    }))
+    }
 }

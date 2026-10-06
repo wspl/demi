@@ -172,7 +172,8 @@ impl Relay {
                 break End::Released;
             }
         };
-        if let End::Offline = end {
+        // A Host that cannot watch said so, and says no other state.
+        if matches!(end, End::Offline) && !self.unavailable {
             let offline = FileWatchMessage::State {
                 state: FileWatchState::Offline,
                 reason: None,

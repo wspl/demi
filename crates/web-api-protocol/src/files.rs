@@ -94,6 +94,8 @@ pub enum FileWatchMessage {
     },
     /// Absolute paths on the Host that something changed at, each once.
     Changed { paths: Vec<String> },
+    /// Nothing else was sent for 30 seconds: the watch is quiet, not dead.
+    Heartbeat,
 }
 
 /// Where a page's file watch is (`web-api.md` § File watch).
