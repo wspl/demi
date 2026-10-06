@@ -45,6 +45,7 @@ test("a device project's row follows its device online, offline and gone; a Clou
     online: true,
     home: null,
     installed: [],
+    startCommand: null,
   }
   const cloud = { ...device, id: 'cloud', name: 'Cloud', kind: 'managed' as const }
   const workspace = (id: string, deviceId: string) => ({

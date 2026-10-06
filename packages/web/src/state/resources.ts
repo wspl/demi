@@ -29,6 +29,7 @@ const FILE_BROWSER_PLATFORMS: Record<DeviceDto['platform'], Device['platform']> 
 
 /** A snapshot device as the file browser and the work panel take it. */
 function productDevice(device: DeviceDto): Device {
+  const platform = FILE_BROWSER_PLATFORMS[device.platform]
   return {
     id: device.id,
     kind: device.kind,
@@ -36,7 +37,8 @@ function productDevice(device: DeviceDto): Device {
     online: device.online,
     home: device.home,
     seen: device.lastSeenAt ?? undefined,
-    platform: FILE_BROWSER_PLATFORMS[device.platform],
+    platform,
+    start: device.startCommand ? { command: device.startCommand, system: platform } : null,
   }
 }
 
