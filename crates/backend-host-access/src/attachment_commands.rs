@@ -1,9 +1,11 @@
 //! The product's `demi attachment` group (`commands.md` § Attachment
 //! commands): `upload` copies files of the Host into the conversation as
 //! attachments `a1`, `a2`, …, which the agent's messages then show as
-//! `attachment:a3`. The runner of the conversation's Host reads each file
-//! beside the invocation and streams its bytes to the backend through a pipe
-//! (`runner.md` § File contents); the backend reads the media type from the
+//! `attachment:a3`. The runner of the invocation's Host, the conversation's
+//! primary Host or an attached one a `demi host shell` job runs on, reads
+//! each file beside the invocation, through the conversation's host access,
+//! and streams its bytes to the backend through a pipe (`runner.md` § File
+//! contents); the backend reads the media type from the
 //! bytes as it does for the user's uploads, stores the blob in the
 //! conversation owner's namespace, and then the record, under the next
 //! number of the conversation's `attachment` sequence. The command returns
@@ -16,11 +18,11 @@ use demi_agent_store::attachments::upload_media_type;
 use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 use demi_backend_database::sequences;
 use demi_backend_remote_host::collect_pipe;
-use demi_host_interface::text::{byte_size, table};
+use demi_host_interface::text::table;
 use demi_host_interface::{ByteRange, Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_shared_types::{Sequence, preview_media_type};
 use demi_web_api_protocol::attachments::ATTACHMENT_MAX_BYTES;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
@@ -30,7 +32,7 @@ use crate::host_commands::{conversation_of, verb};
 
 const SUMMARY: &str = "Give the user files of this host as attachments of the conversation, which your messages show.";
 
-const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Show one in a message as ![description](attachment:a3): an image shows and a video plays; link any file as [name](attachment:a3). A file is at most 25 MiB. Returns no medium: an attachment is for the user, not for you to see.";
+const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Show one in a message as ![description](attachment:a3): an image shows and a video plays; link any other file as [name](attachment:a3). A file is at most 25 MiB. Returns no medium: an attachment is for the user, not for you to see.";
 
 /// What the media type falls back to when neither the bytes nor the file's
 /// name tell it.
@@ -71,7 +73,7 @@ pub fn attachment_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             .input::<UploadArgs>()
             .positionals(["path"])
             .json_output::<Uploaded>()
-            .success_output("one line per file: its number, path, media type and size, such as `a3  out/login.png  image/png  402 KB`")
+            .success_output("one line per file: its number, path, media type and size, such as `a3  out/login.png  image/png  421888 bytes`")
             .failure_output("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
             .bind(TypedRpc::new(verb(shard, upload))),
     )
@@ -84,11 +86,13 @@ async fn upload(
 ) -> Result<u8, RpcError> {
     let Call { args, invocation } = call;
     let conversation = conversation_of(&invocation)?;
+    let device = DeviceId::try_from(invocation.host.as_str())
+        .map_err(|_| RpcError::Failed(format!("{} names no device", invocation.host)))?;
     let mut uploaded = Vec::new();
     let mut failed = false;
     for path in args.path {
         let stored = tokio::select! {
-            stored = store(&*shard, &conversation, &invocation.cwd, &path) => stored,
+            stored = store(&*shard, &conversation, &device, &invocation.cwd, &path) => stored,
             () = port.cancelled() => return Ok(130),
         };
         match stored {
@@ -120,7 +124,7 @@ async fn upload(
                     attachment.id,
                     attachment.path,
                     attachment.media_type,
-                    byte_size(attachment.size),
+                    format!("{} bytes", attachment.size),
                 ]
             })
             .collect();
@@ -132,18 +136,19 @@ async fn upload(
     Ok(u8::from(failed))
 }
 
-/// Reads the file at `path`, beside `cwd`, from the conversation's Host,
-/// and stores it as the conversation's next attachment: its blob first, then
+/// Reads the file at `path`, beside `cwd`, from the conversation's Host on
+/// `device`, and stores it as the conversation's next attachment: its blob first, then
 /// its record. Answers why when it cannot.
 async fn store(
     shard: &dyn HostShard,
     conversation: &ConversationId,
+    device: &DeviceId,
     cwd: &str,
     path: &str,
 ) -> Result<AttachmentRow, String> {
     // The admission waits only as long as the call: a stopped call drops it.
     let bytes = shard
-        .with_host(conversation, None, &CancellationToken::new(), async |host| {
+        .with_host(conversation, Some(device), &CancellationToken::new(), async |host| {
             read(&host.host, cwd, path).await
         })
         .await

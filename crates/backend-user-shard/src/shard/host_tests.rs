@@ -31,6 +31,7 @@ mod host_commands {
             argv: Vec::new(),
             args: args.as_object().unwrap().clone(),
             json: false,
+            host: "laptop".into(),
             cwd: "/work".into(),
             env: BTreeMap::new(),
             context: CommandContext {
