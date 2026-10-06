@@ -1,7 +1,14 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
-import { openIntent, shownSelection, type PanelState, type PinnedTabs } from '@demicodes/web-ui/agent/panel-tabs'
+import {
+  applyRequest,
+  openIntent,
+  shownSelection,
+  type AppliedRequests,
+  type PanelState,
+  type PinnedTabs,
+} from '@demicodes/web-ui/agent/panel-tabs'
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import type { CallEditSelection } from '@demicodes/web-ui/files/changes'
 import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
@@ -64,7 +71,7 @@ export function useGalleryWork(
   if (shown.some((page) => page.plugin === 'browser')) {
     for (const tab of browser.listed.value.tabs) {
       const id = tab.createdBy.kind === 'user' ? `user-${tab.id}` : `browser-${tab.id}`
-      backend.apply({ type: 'create', tab: { id, kind: 'browser', data: { url: tab.url, tab: tab.id } } })
+      backend.apply({ type: 'create', tab: { id, kind: 'browser', data: { url: tab.url, tab: tab.id, title: tab.title } } })
     }
   }
   const tabs = new PanelTabs(backend, (error) => {
@@ -85,6 +92,20 @@ export function useGalleryWork(
 
   function select(id: string) {
     history.value = selectTab(history.value, id)
+  }
+  /** Each tab's request to be shown that the panel applied, as the product keeps it beside the history. */
+  let applied: AppliedRequests = {}
+  /** A plugin page's selection, as the product's work store makes it: a request applies once. */
+  function show(id: string, request?: number) {
+    if (request !== undefined) {
+      const next = applyRequest(applied, tabs.tabs.value.map((tab) => tab.id), id, request)
+      if (!next) {
+        return
+      }
+      applied = next
+    }
+    // A specimen's panel is always open.
+    select(id)
   }
   /** A new tab after the others, selected unless `options` says not; returns its id. */
   function add(kind: string, data: unknown, options = { select: true }): string {
@@ -132,8 +153,10 @@ export function useGalleryWork(
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
     },
     panel: {
-      tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
+      tabs: (_conversation, kind) =>
+        tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => ({ id: tab.id, data: tab.data })),
       add: (_conversation, kind, data, options = { select: false }) => void add(kind, data, options),
+      select: (_conversation, id, request) => show(id, request),
     },
   })
   const bound = bindPages(shown, host, CONVERSATION)
@@ -152,12 +175,22 @@ export function useGalleryWork(
     history.value = selection === null ? [] : [selection]
     pinned.value = {}
   }
+  /**
+   * The agent shows `tab` with `demi browser show`, and its job ends: the
+   * plugin reads the tab list and carries the count into the panel tab,
+   * which the panel then selects.
+   */
+  async function agentShows(tab: string) {
+    browser.show(tab)
+    await plugin.sync()
+  }
   return {
     panel,
     pinned,
     kinds,
     selected,
     browser,
+    agentShows,
     host,
     select,
     add,

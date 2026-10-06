@@ -20,6 +20,7 @@ export {
   type PageContext,
   type PagePlugin,
   type PanelKind,
+  type PanelKindTab,
   type PanelSession,
   type PluginCallOptions,
   type PluginPage,
