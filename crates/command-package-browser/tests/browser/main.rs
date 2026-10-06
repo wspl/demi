@@ -1,11 +1,10 @@
-//! The tests of `demi-browser`, in one binary: the built executable serving
-//! its operations, conversation release, and the browser. Most browser
-//! tests start the pinned Chrome for Testing and are ignored unless asked for.
-//! They check the whole process table and the directory of browser profiles,
-//! so they run one at a time:
+//! The tests of `demi-browser`: the built executable serving its operations,
+//! conversation release, and the browser. Most browser tests start the
+//! pinned Chrome for Testing and are ignored unless asked for:
 //! `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features
-//! demi-runner/test-fixtures --test browser -- --include-ignored
-//! --test-threads=1`.
+//! demi-runner/test-fixtures --test browser -- --include-ignored`. They run
+//! in parallel; the ones that read the whole process table of the test
+//! process are the `browser-processes` binary.
 
 // The service is `Send` and `Sync` deeper than the trait solver's default 128
 // steps, as in the library (`src/lib.rs`).
@@ -14,6 +13,7 @@
 mod families;
 mod fixture;
 mod page;
+mod processes;
 mod server;
 
 mod assets;
