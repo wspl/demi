@@ -4,7 +4,7 @@ import type { Coverage, HostFiles } from '@demicodes/web-ui/files/file-cache'
 import type { FileFollower } from '@demicodes/web-ui/files/kept-source'
 import { parentPath } from '@demicodes/web-ui/files/paths'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { waitToReconnect, type ReconnectWait } from '@demicodes/web-ui/transport/liveness'
+import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { apiUrl } from '../api/client'
 import { fileWatchMessageSchema, type FileWatchMessage, type FileWatchRequest } from '../api/generated/web-api'
 
@@ -45,6 +45,8 @@ class WatchSocket {
   lost = false
   /** The Host cannot watch: no state follows on this socket. */
   unavailable = false
+  /** Watches the socket's silence from its open; a heartbeat comes after 30 s of nothing else. */
+  silence: SilenceWatch | null = null
 
   constructor(readonly socket: WebSocket, readonly target: WatchTarget) {
     // The working tree's watch, which also follows its repository's `.git`,
@@ -62,7 +64,9 @@ class WatchSocket {
  * service keeps). It tells the Host's kept files what each `live` covers,
  * what `changed` names, and that what was covered is unconfirmed when the
  * watch loses reports, cannot watch, or ends; and it names the folders and
- * files shown outside the working tree. A closed socket opens again after
+ * files shown outside the working tree. A socket that brings nothing, not
+ * even a heartbeat, for 75 seconds is broken (`web-application.md`
+ * § Liveness and reconnection); a closed or broken socket opens again after
  * the reconnect waits, and at once when the Host comes back online.
  */
 export class ConversationWatch implements FileFollower {
@@ -134,9 +138,14 @@ export class ConversationWatch implements FileFollower {
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     const watch = new WatchSocket(new WebSocket(url), target)
     this.current = watch
+    watch.socket.addEventListener('open', () => {
+      if (this.current === watch)
+        watch.silence = watchSilence(() => this.lose(watch))
+    })
     watch.socket.addEventListener('message', (event) => {
       if (this.current !== watch)
         return
+      watch.silence?.heard()
       let data: unknown
       try {
         data = typeof event.data === 'string' ? JSON.parse(event.data) : null
@@ -152,23 +161,34 @@ export class ConversationWatch implements FileFollower {
       }
       this.receive(watch, parsed.data)
     })
-    watch.socket.addEventListener('close', () => {
-      if (this.current !== watch)
-        return
-      this.end(watch)
-      this.current = null
-      if (this.shown.size === 0)
-        return
-      this.failures += 1
-      this.waiting = waitToReconnect(this.failures, () => {
-        this.waiting = null
-        this.connect()
-      })
+    watch.socket.addEventListener('close', () => this.lose(watch))
+  }
+
+  /**
+   * The socket closed, or is taken as broken: what it covered is
+   * unconfirmed, and while something shows the files it connects again
+   * after its wait.
+   */
+  private lose(watch: WatchSocket): void {
+    if (this.current !== watch)
+      return
+    this.current = null
+    this.end(watch)
+    // A broken socket's own close may come much later, or never.
+    watch.socket.close()
+    if (this.shown.size === 0)
+      return
+    this.failures += 1
+    this.waiting = waitToReconnect(this.failures, () => {
+      this.waiting = null
+      this.connect()
     })
   }
 
   private receive(watch: WatchSocket, message: FileWatchMessage): void {
     const { files } = watch.target
+    if (message.type === 'heartbeat')
+      return
     if (message.type === 'changed') {
       files.changed(message.paths)
       return
@@ -238,8 +258,10 @@ export class ConversationWatch implements FileFollower {
     watch.last = paths
   }
 
-  /** What a socket covered is unconfirmed once it ends. */
+  /** What a socket covered is unconfirmed once it ends, and its silence is no longer watched. */
   private end(watch: WatchSocket): void {
+    watch.silence?.stop()
+    watch.silence = null
     watch.target.files.uncover(watch.coverage)
     this.note.unavailable = null
   }
