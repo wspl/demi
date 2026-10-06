@@ -58,7 +58,10 @@ was not told about.
    opens a first data channel so that the offer carries one, and sends the
    offer at once, without waiting for its own candidates: the runner learns
    the page's addresses from the checks the page sends it. The backend
-   forwards the offer to the runner as `direct_offer { peer, sdp }`.
+   forwards the offer to the runner as `direct_offer { peer, sdp,
+   introduction }`, where the introduction is what the runner cannot know on
+   its own: the user's locale, and each user stream of the plugins the user
+   has on, by name, with the package and operation it opens.
 3. **The answer.** The runner binds one UDP socket on `127.0.0.1` and one on
    each address it can be reached at on the local network, each on a port
    the system picks, and answers with those addresses as candidates in
@@ -95,7 +98,10 @@ operation. The page names the conversation in each operation, so the runner
 acts in that conversation's directory and, for a stream, in its browser.
 
 When the signaling socket closes, the backend tells the runner
-`direct_close { peer }`, and the runner closes the peer. When the runner's own
+`direct_close { peer }`, and the runner closes the peer. When the user turns a
+plugin on or off, the backend closes the user's peers the same way, as it
+ends the relay's streams of a plugin turned off: the page reconnects at once,
+and its next offer carries the new introduction. When the runner's own
 connection to the backend ends, it closes every peer. A device revoked, a
 session ended or the user signed out closes the signaling socket, and so the
 peer. A conversation that no longer runs on this device, after a target
@@ -131,12 +137,20 @@ the same failure. Bytes travel as binary messages of at most 64 KiB.
 | `op` | The page sends | The runner answers |
 | --- | --- | --- |
 | `stream` | `{ stream, args? }`, then the stream's input bytes | `{ ok }`, then the stream's output bytes: the same bytes the relay's pipes carry |
-| `read` | `{ path, offset?, length?, version? }` | `{ ok, size, version }`, then the bytes; a `version` the file no longer has answers `file_changed` |
+| `read` | `{ path, offset?, length?, version? }` | `{ ok, size, version, modifiedAt }`, then the bytes; a `version` the file no longer has answers `file_changed` |
 | `write` | `{ path, replace }`, the bytes, then `{ end: true }` | `{ ok }` once the file is in place |
 | `text` | `{ path, version? }` | `{ ok, version, unchanged }`, then the text unless it is unchanged |
 | `list` | `{ path? }` | `{ ok, path, home, entries }` |
 | `mkdir`, `delete` | `{ path }` | `{ ok }` |
 | `watch` | `{ paths }` messages, as on the relay | The relay's `state`, `changed` and `heartbeat` messages |
+
+A direct `stream` is conversation activity, as an open relay stream is
+([Activity](resource-lifecycle.md#activity)): the runner tells the backend
+`direct_stream { conversation, open }` when a stream channel opens and when
+it closes, so a live view watched only over the direct channel keeps the
+conversation from its idle release. A stream whose service must first fetch
+an executable is refused with `needs_relay`, since only a stream the backend
+opened can ask it for artifacts, and the page opens that stream on the relay.
 
 The runner carries each one out as it carries out the backend's request for
 the same thing ([Host operations](runner.md#host-operations)): the same
@@ -234,7 +248,7 @@ relay.
 
 | Where | Responsibility |
 | --- | --- |
-| `runner-protocol` | The `direct_offer`, `direct_answer` and `direct_close` messages and the operations' headers and answers |
+| `runner-protocol` | The `direct_offer`, `direct_answer`, `direct_close` and `direct_stream` messages and the operations' headers and answers |
 | `runner-direct` | The runner's peers: sockets, ICE, DTLS and SCTP through str0m, and each operation carried out through `runner-host` and the service streams the runner supplies; on its own thread, off the runner's control thread, since a peer at full speed fills a core |
 | `runner` | Composing `runner-direct` with the Host operations and service streams, and closing every peer when the backend connection ends |
 | `backend-http` | The signaling route, with the device access check |
