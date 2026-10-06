@@ -92,10 +92,12 @@ import {
   screenshotTool,
   screenshotsTool,
   shellTool,
+  smallImageTool,
   statusImageTool,
   thinkingText,
   steerPrompt,
   transcriptDemoBlocks,
+  wideImageTool,
 } from '../fixtures/blocks'
 import {
   demoModels,
@@ -575,6 +577,8 @@ const toolMediaSpecimens = [
   { variant: 'shell · image', block: screenshotTool },
   { variant: 'shell · several images', block: screenshotsTool },
   { variant: 'shell · tall image', block: fullPageTool },
+  { variant: 'shell · wide image', block: wideImageTool },
+  { variant: 'shell · small image', block: smallImageTool },
   { variant: 'shell · video', block: recordingTool },
   { variant: 'status · image', block: statusImageTool },
   { variant: 'shell · video not stored', block: notStoredVideoTool },
@@ -1212,7 +1216,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Attachments in a Message"
-        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video plays in place at an image's bounds, a link opens the attachment, any other file downloads, and a number the conversation does not have says so. Images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap, each at most a tool preview's height and the message's width: the tall page shows narrow, the wide timeline fits the width. A lone image after text keeps the message's width and 60% of the visible height."
+        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video plays in place at an image's bounds, a link opens the attachment, any other file downloads, and a number the conversation does not have says so. Images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap: an image is a thumbnail, as a tool's images are, the tall page cropped to its top and the wide timeline to its middle, and a click shows it whole and large; a video is a tool's 160px player. A lone image after text keeps the message's width and 60% of the visible height."
       >
         <GallerySpecimen variant="attachments" wide>
           <GalleryAttachmentMessage :files="sessionFiles" :cwd="workspace.root" />
@@ -1449,7 +1453,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Tool Media"
-        note="The images and videos a call's result carries show under its row at one preview height, folded or open, in the order of the result. A click on an image opens it large over the dimmed page: fitted and never enlarged, a click toggles actual size, and Escape, the close control or a click on the dimmed page closes it. A video plays in the browser's player, whose full-screen control shows it large. A medium that is gone shows one line where it was: that it was not stored, with the store's reason, or the day it was removed. A medium the page cannot show says so at the same height. At a phone's width a preview fits the column, an image opened large fills the screen, where a tap toggles actual size, and an iPhone plays a video full screen."
+        note="The images and videos a call's result carries show under its row, folded or open, side by side in the order of the result. An image is a thumbnail: 80px tall and 64 to 200px wide by its proportions, cropped beyond them (the tall page keeps its top, the wide timeline its middle), never enlarged (the icon keeps its size). A click on an image opens it whole and large over the dimmed page: fitted and never enlarged, a click toggles actual size, and Escape, the close control or a click on the dimmed page closes it. A video plays in the browser's player, 160px tall, whose full-screen control shows it large. A medium that is gone shows one line where it was: that it was not stored, with the store's reason, or the day it was removed. A medium the page cannot show says so at the same height. At a phone's width a preview fits the column, an image opened large fills the screen, where a tap toggles actual size, and an iPhone plays a video full screen."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { holdUndecidedMedium } from '@demicodes/web-ui/markdown/render'
+import { fitRunThumbnail, fitRunThumbnails } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { useImageViewer } from '@demicodes/web-ui/files/image-viewer'
@@ -87,6 +88,18 @@ function clearStreamMarks(): void {
   inkSpans = []
 }
 
+// A render replaces the images of a run, which take their thumbnail's box
+// before they paint; one still loading takes it again when it loads.
+onMounted(() => {
+  if (root.value)
+    fitRunThumbnails(root.value)
+})
+
+function onImageLoad(event: Event): void {
+  if (event.target instanceof HTMLImageElement)
+    fitRunThumbnail(event.target)
+}
+
 watch(
   [renderedMarkdown, () => props.streaming],
   async () => {
@@ -94,6 +107,7 @@ watch(
     const el = root.value
     if (!el)
       return
+    fitRunThumbnails(el)
     if (!props.streaming) {
       clearStreamMarks()
       return
@@ -112,5 +126,6 @@ watch(
     :aria-busy="streaming || undefined"
     v-html="renderedMarkdown"
     @click="openMessageLink($event, files(), viewer)"
+    @load.capture="onImageLoad"
   />
 </template>
