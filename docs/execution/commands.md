@@ -12,8 +12,7 @@ The `demi browser` command family, including readable output, optional
 JSON, image bytes, targeting, and examples, is specified in
 [Browser automation](../browser/browser.md#command-contract). It uses this
 command contract rather than a separate shell or model tool loop. The
-`demi expose` group is specified in [Host expose](expose.md#commands),
-the `demi agent` group in [Subagents](../agent/subagents.md), and the
+`demi agent` group is specified in [Subagents](../agent/subagents.md), and the
 `demi shell` group in [The whole output](../agent/runtime.md#the-whole-output).
 
 ## Declare a command
@@ -66,23 +65,24 @@ declaration and its handler cannot describe different arguments
 ([Contract crates](../architecture/contracts.md#contract-crates)).
 
 An `rpc` leaf runs a handler in the backend instead.
-`demi expose add 3000` declares its arguments the same way:
+`demi skills add vercel-labs/agent-skills` declares its arguments the same
+way:
 
 ```rust
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 struct AddArgs {
-    /// host:port, or a bare port meaning 127.0.0.1
-    address: String,
-    /// Host name or device id from demi host list; the primary host by default
-    host: Option<String>,
+    /// The repository: owner/name on GitHub, or a Git URL
+    repository: String,
+    /// Turn on only these skills of the repository
+    skill: Vec<String>,
 }
 ```
 
-Its leaf has `kind: "rpc"`, `positionals: ["address"]`, and an `output.json`
-schema derived from the type it prints with `--json`. Its handler receives the
-validated arguments as an `AddArgs`, creates the expose, and prints its URL
-([Handle an rpc call](#handle-an-rpc-call)).
+Its leaf has `kind: "rpc"`, `positionals: ["repository"]`, and an
+`output.json` schema derived from the type it prints with `--json`. Its
+handler receives the validated arguments as an `AddArgs`, adds the source,
+and prints its skills ([Handle an rpc call](#handle-an-rpc-call)).
 
 Declarations are separate from handlers. The command set pairs the declaration
 tree with one handler per `rpc` leaf, and everything that reads the tree sees
@@ -147,7 +147,7 @@ values, and schema failures reject execution, and one rejection names every
 field that failed. It names the field rather than repeating its value, which
 may be a whole stdin body: `"count" is not of type "integer"; "path" is a
 required property`. An unknown option's rejection also names the command, such
-as `Unknown option "--bogus" for "demi expose add"`, since a script may run
+as `Unknown option "--bogus" for "demi skills add"`, since a script may run
 several commands. The parser reports a missing option value before it
 consumes the next option. `--name=value` supplies an option value that begins
 with `--`. Without `restField`, a standalone `--` ends option parsing and the
@@ -322,7 +322,7 @@ composition, immutable releases, installation, and service lifetime.
 
 An `rpc` handler receives its call as data and acts only through messages;
 [The TypeScript boundary](../architecture/contracts.md#the-typescript-boundary)
-says why. For example, `demi expose add 3000` in a job reaches the
+says why. For example, `demi skills add vercel-labs/agent-skills` in a job reaches the
 backend as an `rpc_call`. The backend builds an invocation from the call and its
 record of the job, and gives the handler that invocation and a port. The
 handler of a plugin's leaf forwards both to its plugin as a command request,

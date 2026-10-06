@@ -33,9 +33,8 @@ cookies, a resident native service, a provider's process kept between turns (the
 turn that waits for it is the activity; a Host that stops ends the process, and
 the next turn starts another), a paired device that stays online, a sidebar
 entry, a connected chat, a metadata observer, a look at what runs on the Host
-such as listing the conversation browser's tabs, a scheduled future turn that
-has not been admitted, a [Host expose](expose.md#lifetime) and its visitors'
-traffic. The gates that admit this work are the only source of this fact; no
+such as listing the conversation browser's tabs, and a scheduled future turn that
+has not been admitted. The gates that admit this work are the only source of this fact; no
 module keeps a second busy flag.
 
 A look is retention because the page makes it by itself: it lists the
@@ -58,7 +57,7 @@ never retires work that won admission first.
 
 | Resource | Idle predicate | Consequence |
 | --- | --- | --- |
-| Cloud device | No conversation [using this device](sessions-and-targets.md#how-a-conversation-uses-a-device), in any role, has been active within the window, and no running job | Save persistent volumes and stop the sandbox; everything inside it ends with the machine, and the device's exposes are destroyed ([A Cloud's idle stop](#a-clouds-idle-stop)) |
+| Cloud device | No conversation [using this device](sessions-and-targets.md#how-a-conversation-uses-a-device), in any role, has been active within the window, and no running job | Save persistent volumes and stop the sandbox; everything inside it ends with the machine ([A Cloud's idle stop](#a-clouds-idle-stop)) |
 | Conversation on a Host | This conversation has not been active within the window | Send the conversation release to each of its Hosts whose runner is connected: a paired device or a running Cloud |
 
 Idle retirement never interrupts active work. A retirement that loses the race

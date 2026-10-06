@@ -7,8 +7,7 @@ of its own command package, and a part of the web app with the calls behind
 it. Every capability that is not the agent runtime itself or the product's
 core is a plugin: the file commands
 (`plugin-file`), the conversation browser with its live view
-(`plugin-browser`), [Host expose](../execution/expose.md) (`plugin-expose`),
-[skills](../agent/skills.md) (`plugin-skills`), and the work panel's Change
+(`plugin-browser`), [skills](../agent/skills.md) (`plugin-skills`), and the work panel's Change
 view (`plugin-changes`) and File view (`plugin-file-browser`). The agent
 runtime, the runner, the backend's conversation lifecycle and the web app's
 shell know none of them; a plugin's part of the web app is written against
@@ -86,13 +85,13 @@ its commands and nothing else, `plugin-skills` binds no package, and
 **Name and description.** Settings show a plugin by its name and its
 description, so both speak to the user. A plugin with a feature the user sees
 is named after that feature as the user sees it, short, in title style: the
-work panel's File view comes from File Browser, the conversation header's
-exposes from Expose. A plugin that only gives the agent a `demi <group>`
+work panel's File view comes from File Browser, the Skills settings from
+Skills. A plugin that only gives the agent a `demi <group>`
 command group and shows nothing is named Demi *Group* Commands, such as Demi
 File Commands. The description is one full sentence, in sentence style, that
 says what the plugin does for the user and names its command when it has one,
-as plain text since settings show it as written, such as "Gives a service on
-one of your hosts a public URL for an hour, with demi expose." The gallery's
+as plain text since settings show it as written, such as "Adds, updates and turns
+on skills that extend the agent, with demi skills." The gallery's
 Writing page has the capitalization rules.
 
 ### Commands
@@ -109,7 +108,6 @@ The plugin host composes the command set every node starts from:
 demi                     the plugin host's root
   file                   plugin-file (native: demi.file)
   browser                plugin-browser (native: demi.browser)
-  expose                 plugin-expose (rpc)
   skills                 plugin-skills (rpc)
   host                   the product's group (backend-host-access)
   agent, shell           the agent runtime's groups, grafted per node
@@ -307,14 +305,13 @@ state again ([Data a page shows](plugin-pages.md#data-a-page-shows)):
 
 | Topic | Scope | Fires when |
 | --- | --- | --- |
-| `exposes` | User | One of the user's exposes is created, renewed or destroyed, or the earliest one expires |
 | `jobs` | Conversation | A job of the conversation ends |
 
 For example, `plugin-browser`'s conversation state, the conversation
 browser's tab list, follows `jobs`: the agent's `demi browser open` is a job,
 and when it ends every page that shows the conversation reads the list again.
-A topic belongs to the product service whose change it is: `exposes` to the
-expose relay, `jobs` to host access. A topic joins when a plugin's state needs
+A topic belongs to the product service whose change it is: `jobs` to host
+access. A topic joins when a plugin's state needs
 it, as a slot of the page does.
 
 A manifest can also name the topics the plugin itself is told about: when one
@@ -395,16 +392,14 @@ conversation's operations need a request about a conversation: a `command`, a
 | Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
 | | Blobs: put, get | Every request | Bytes in the user's blob namespace, by SHA-256 |
 | Hosts | Set directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
-| | List the conversation's Hosts | A conversation's | Its primary and attached Hosts: each one's name, device, role and whether it is online ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)) |
 | | Read files | A conversation's | Several paths on the conversation's primary Host, if it is running ([Reading a conversation's files](#reading-a-conversations-files)) |
 | | Call a package | A conversation's | One operation of a package the manifest names, waking the Host or not ([Calling its command package](#calling-its-command-package)) |
-| Exposes | List, create, renew, remove | Every request | The user's [exposes](../execution/expose.md#the-expose-record), the backend's public relays to a device's address |
 | Pages | Changed | Every request | Mark one scope of the plugin's page state, the user's or one conversation's, as changed, so the pages that show it read it again ([The page](#the-page)) |
 | Panel | List, create, update, remove | A conversation's | The conversation's work panel tabs of the plugin's own [panel kinds](#panel-kinds); a change answers the panel's revision |
 | Request | Cancellation | Every request | Whether, and when, the request was cancelled |
 
 A product service a plugin may use is one service of the port: its
-operations, and the [topics](#topics) its changes fire. Exposes is such a
+operations, and the [topics](#topics) its changes fire. Hosts is such a
 service; one joins when a plugin needs it, and never as an operation shaped
 for one plugin among the others.
 
@@ -498,7 +493,7 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
   user's conversations, the host marks the state scope of each plugin whose
   manifest follows it as changed.
 - **The port.** The host answers every port operation against the user's
-  storage, blobs, channels and exposes. The conversation's host access
+  storage, blobs and channels. The conversation's host access
   installs the directories the host records, reads the Host files a plugin
   asks for in its form that never wakes a Host, and runs its package calls.
 
@@ -573,7 +568,6 @@ not use.
 | --- | --- | --- | --- | --- | --- |
 | `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
 | `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
-| `expose` | Expose | `plugin-expose` | The `demi expose` group with its numbers; the port's Hosts and Exposes services; user state following `exposes`; methods to renew and remove | `@demicodes/plugin-expose`: the conversation header tool and the `page` work panel kind | [Host expose](../execution/expose.md) |
 | `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
 | `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
 | `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
@@ -584,7 +578,7 @@ Besides the plugins, the components that carry them are:
 | --- | --- |
 | `plugin-interface` | The contract: factory and instance traits, manifest, requests and replies, the port, the JSON loopback transport for tests |
 | `backend-plugins` | The plugin host: registration and its checks, the command set and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
-| `backend-user-shard`, `backend-host-access`, `backend-expose`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the exposes the `expose` plugin manages, with their relay; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
+| `backend-user-shard`, `backend-host-access`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
 | `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns |
 | `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: `definePage`, `usePage`, intents, the conversation files service and the plugin kit ([Plugin pages](plugin-pages.md)); the shell and the primitives; the page context over HTTP, the sync channel and the user stream route, and the generated registry; the page context over each specimen's fixtures |
 
@@ -592,7 +586,7 @@ Besides the plugins, the components that carry them are:
 
 A plugin can give the web app a part of its own: the page package its
 manifest names, which fills the shell's slots with a settings section and
-its sidebar entry, a conversation header tool or work panel kinds.
+its sidebar entry, or work panel kinds.
 [Plugin pages](plugin-pages.md) owns that side: the page object, the page
 context, intents, the plugin kit, registration and versions. This section
 owns what the backend gives a page.
@@ -603,7 +597,7 @@ manifest, and each marked changed on its own, through the port or by a
 
 | Scope | Holds, for example | Reaches the pages |
 | --- | --- | --- |
-| User | The user's skill sources, the user's exposes | In the product state, on the synchronization channel: the snapshot holds it, and each change sends the new state to every page of the user ([Page synchronization](../product/web-api.md#page-synchronization)) |
+| User | The user's skill sources | In the product state, on the synchronization channel: the snapshot holds it, and each change sends the new state to every page of the user ([Page synchronization](../product/web-api.md#page-synchronization)) |
 | Conversation | The conversation browser's tab list | By revision, as a draft does: the conversation's summary carries the revision of each plugin's conversation state, and a page that shows the conversation reads the state when the revision is higher than the one it holds ([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins)) |
 
 The plugin host answers a read of either scope with a `page_state` request

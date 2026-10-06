@@ -540,7 +540,7 @@ uses join one allocation and wake. Metadata alone never creates a sandbox.
 | Off → booting → running | Recover the pinned storage, rotate the token, start a sandbox, and await the runner. |
 | Running → checkpoint → running | Save a paired generation and resume the same processes. |
 | Running → saving → off | End processes, save storage, and release the runtime. |
-| Running → off, on runtime loss | The manager saves the working pair and reports the death; the backend ends the device's exposes and disconnects its runner. A death while the backend is saving or resetting the device is ignored; one while it boots counts toward the crash loop, and the boot fails when its runner does not connect. |
+| Running → off, on runtime loss | The manager saves the working pair and reports the death; the backend disconnects its runner. A death while the backend is saving or resetting the device is ignored; one while it boots counts toward the crash loop, and the boot fails when its runner does not connect. |
 | Resetting → running | Publish a fresh system with retained home, then boot. |
 | Failed boot, save, or reset | Keep the device and operation error; retry only after recovery establishes the authoritative state. |
 
@@ -548,8 +548,7 @@ The [idle rule](../execution/resource-lifecycle.md#idle-window) applies across
 every conversation using this device. Tabs, resident services, attachments, and
 a look at what runs there, such as a tab listing, do not keep it active.
 Maintenance does not restart the idle clock. Stopping Cloud ends all in-sandbox
-conversation browser and native state, and its
-[exposes](../execution/expose.md#lifetime). A running Cloud hears each
+conversation browser and native state. A running Cloud hears each
 conversation's release as a paired device does; a stop needs none, since it
 ends everything a release would
 ([A Cloud's idle stop](../execution/resource-lifecycle.md#a-clouds-idle-stop)),
@@ -779,9 +778,8 @@ private-network access. Exceptions for a private backend or resolver are exact
 endpoints, not whole subnets; address changes require revalidation and rule
 update.
 
-A service's public URL uses the backend's [Host expose](../execution/expose.md)
-relay over the runner connection. The same connection carries files, commands,
-and conversation browser streams through normal Host access. No
+The runner connection carries files, commands and conversation browser
+streams through normal Host access. No
 infrastructure transport is an alternate route for conversation operations.
 
 ### Managed boot credential

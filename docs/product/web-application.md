@@ -192,15 +192,6 @@ The kinds:
 | `change` | `changes` | Pinned: the conversation's changes, in Uncommitted and Conversation mode ([Changes](file-previews.md#changes)) | The `edit` intent |
 | `file` | `file-browser` | Pinned: one file of the conversation's Host, with its tree ([File previews](file-previews.md)) | The `file` intent |
 | `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The strip's new-tab control; the plugin, for a tab the agent or a page opened |
-| `page` | `expose` | A page in the user's own browser, in a sandboxed iframe | Only an [expose](../execution/expose.md#product-surface), on its URL |
-
-A `page` tab loads the `http` or `https` address the user submits in its
-address bar, the same primitive the `browser` kind's address bar is.
-The frame may run scripts, submit forms and open popups, which land in
-ordinary tabs of the user's browser; it cannot navigate the product page. The
-parent sees nothing of a cross-origin page, so Back and Forward stay
-unavailable, Refresh reloads the tab's URL, and a control opens that URL in an
-ordinary tab of the user's browser for pages that refuse framing.
 
 ## Backend communication
 

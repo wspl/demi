@@ -89,7 +89,7 @@ example. A paused clock would advance whenever the runtime waits on a
 runner and fire every timer early
 ([Tests and time](../architecture/concurrency.md#tests-and-time)). In-process
 tests on a paused clock pin the exact boundaries of timer rules. A scenario
-that needs wall time to pass, such as an expose's expiry, sets an injected
+that needs wall time to pass, such as a session's expiry, sets an injected
 clock instead of waiting.
 
 A scenario never fits a step into such a window. One that looks at a running
@@ -125,7 +125,6 @@ common checks do not establish.
 | Archive and project removal | Metadata operations preserve machine identity and files; conversation deletion is not a product operation |
 | Reset | Affected jobs end, retained home survives, and the selected system generation becomes authoritative without changing device/project identity |
 | Cross-host RPC and pipes | Valid callbacks use the invoking Host; unauthorized or mismatched job/node/device contexts fail; bulk bytes stream separately from bounded control views |
-| Host expose | A public URL relays HTTP, streaming, and WebSocket to the device service; another user cannot manage it; expiry, removal, and Cloud stop destroy it and end its connections ([Host expose](../execution/expose.md#acceptance)) |
 
 Use [Commands](../execution/commands.md),
 [Sessions and targets](../execution/sessions-and-targets.md),
@@ -174,7 +173,7 @@ The world does not record the runner's wire frames either. `job_exit` and
 `backend-remote-host` (`crates/backend-remote-host/tests/host_remote/runner.rs`), which read
 every frame their runner sends: each job's end there comes from its
 `job_exit`, and they check `pipe_done` for a job's pipes, whole and refused, a
-file read whose reader left, and service and network streams. A scenario sees
+file read whose reader left, and service streams. A scenario sees
 a missing `job_exit` as a command that never ends. The backend uses
 `pipe_done` only to fail a pipe early; the end of the pipe's HTTP exchange is
 what settles it.
