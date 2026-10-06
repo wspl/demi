@@ -14,6 +14,7 @@ import { useConversations } from './conversation/store'
 import { closeDraftStorage } from './conversation/drafts'
 import { useResources } from './state/resources'
 import { useProduct } from './state/product'
+import { startRawBridge } from './direct/raw-bridge'
 import { usePreferences } from './state/preferences'
 import { onSessionExpired } from './api/client'
 import { useSession } from './auth/session'
@@ -58,6 +59,10 @@ const startup = new AbortController()
 // (`web-application.md` § Requests for one action); a page the check finds
 // signed out has no channel.
 product.start()
+// The page answers its service worker's raw file requests over its direct
+// channels for its lifetime (`direct-channel.md` § Bytes the browser
+// fetches itself).
+startRawBridge()
 const restored = session.restore(startup.signal).then(() => {
   if (!session.signedIn) {
     product.stop()

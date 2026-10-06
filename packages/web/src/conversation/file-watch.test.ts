@@ -214,3 +214,31 @@ test('a watch that brings nothing, not even a heartbeat, for 75 s is broken and 
     jest.useRealTimers()
   }
 })
+
+test('a watch moves to the other path at once, and what it covered waits for the new live', async () => {
+  const { files, reads, spec } = kept()
+  const watch = new ConversationWatch('c1', () => ({ files, root: '/w' }))
+  watch.show('/w/a.ts')
+  const first = sockets[0]!
+  first.open()
+  first.receive(live)
+  files.show(spec('text', '/w/a.ts')).release()
+  await settle()
+
+  // The path to the Host changed: the next connection opens without a wait.
+  watch.move()
+  expect(first.closed).toBe(true)
+  expect(sockets).toHaveLength(2)
+  const second = sockets[1]!
+  // Until the new watch is live, what was read is checked again.
+  files.show(spec('text', '/w/a.ts')).release()
+  await settle()
+  expect(reads).toEqual(['text /w/a.ts', 'text /w/a.ts'])
+  second.open()
+  second.receive(live)
+  files.show(spec('text', '/w/a.ts')).release()
+  await settle()
+  files.show(spec('text', '/w/a.ts')).release()
+  await settle()
+  expect(reads).toHaveLength(3)
+})

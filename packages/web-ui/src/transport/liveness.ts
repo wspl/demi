@@ -157,6 +157,16 @@ export function pageReturned(): void {
   setTimeout(connectWaiting, 0)
 }
 
+/**
+ * The page's path to a Host changed, as when a direct channel opened or
+ * failed (`direct-channel.md` § Choosing the path): each socket that waits
+ * to connect again, such as a view its owner just ended for the move,
+ * connects now on the new path. Moving costs no reconnect wait.
+ */
+export function reconnectNow(): void {
+  connectWaiting()
+}
+
 /** Connects each closed socket now instead of after the rest of its wait. */
 function connectWaiting(): void {
   for (const now of [...waiting]) {
