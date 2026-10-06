@@ -61,7 +61,7 @@ useEventListener(
     :ignore-els="anchor ? [anchor] : []"
     @close="open = false"
   >
-    <div class="overlay-shell w-80 max-w-[calc(100vw-2rem)] rounded-lg p-3 text-chrome text-fg" role="dialog" :aria-label="label">
+    <div class="overlay-shell w-96 max-w-[calc(100vw-2rem)] rounded-lg p-3 text-chrome text-fg" role="dialog" :aria-label="label">
       <slot />
     </div>
   </Popover>

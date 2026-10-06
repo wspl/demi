@@ -10,7 +10,8 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { SettingsDevice, SettingsRowStatus } from './types'
+import type { SettingsDevice } from './types'
+import type { SentenceText } from '../ui/ui-text'
 import type { DeviceInstallation } from '../devices/installation'
 import type { OverlayStore } from '../overlay/overlayStore'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
@@ -40,11 +41,15 @@ const emit = defineEmits<{
   revoke: [id: string]
   resetCloud: [operationId: string]
 }>()
-/** The note beside a device this page reaches without the server in the middle. */
-const connectedDirectly: SettingsRowStatus = {
-  label: 'Connected directly',
-  tone: 'success',
-  detail: 'This page reaches the device without going through the server, so files and the browser view load faster.',
+/**
+ * The few words under a device that say how this page reaches it
+ * (`direct-channel.md` § What the user sees), or its state while its runner
+ * does not serve it.
+ */
+function reachedAs(device: SettingsDevice): SentenceText {
+  if (device.state !== 'online')
+    return DEVICE_STATE_LABEL[device.state]
+  return device.direct === 'connected' ? 'Connected directly' : 'Through the server'
 }
 const { isOpen, phase, open, close, submit } = useDevicePairing(
   (code, signal) => props.claimDevice(code, signal),
@@ -100,13 +105,12 @@ function revoke() {
         @retry="emit('retry')"
       >
         <template v-for="device in devices" :key="device.id">
-          <SettingsRow
-            :label="device.name"
-            :description="device.state !== 'offline' || !device.seen ? DEVICE_STATE_LABEL[device.state] : undefined"
-            :statuses="device.direct === 'connected' ? [connectedDirectly] : undefined"
-          >
-            <template v-if="device.state === 'offline' && device.seen" #description>
-              Last seen <RelativeTime :timestamp="device.seen" />
+          <SettingsRow :label="device.name">
+            <template #description>
+              <template v-if="device.state === 'offline' && device.seen">
+                Last seen <RelativeTime :timestamp="device.seen" />
+              </template>
+              <template v-else>{{ reachedAs(device) }}</template>
             </template>
             <template #leading>
               <span class="relative flex">
@@ -117,19 +121,23 @@ function revoke() {
                 />
               </span>
             </template>
-            <template v-if="device.direct === 'blocked'" #detail>
-              <p class="text-[12px] leading-4 text-fg-subtle">
-                This browser blocks direct connections to devices on this computer and network, so
-                this device is reached through the server. To allow them, open this site’s settings
-                in the browser and allow Local network access.
-              </p>
-            </template>
             <HelpPopover
               v-if="device.state === 'offline' && device.start"
               label="How to Start Its Runner"
               :overlay-store="overlayStore"
             >
               <DeviceStartHint :start="device.start" />
+            </HelpPopover>
+            <HelpPopover
+              v-else-if="device.state === 'online' && device.direct === 'blocked'"
+              label="How to Connect Directly"
+              :overlay-store="overlayStore"
+            >
+              <p class="text-[12px] leading-4 text-fg-muted">
+                This browser blocks direct connections to devices on this computer and network, so
+                this device is reached through the server, which is slower. To allow them, open
+                this site’s settings in the browser and allow Local network access.
+              </p>
             </HelpPopover>
             <Button
               size="sm"

@@ -304,6 +304,7 @@ impl Devices {
             (DeviceKind::User, Some(backend)) => Some(start_command(
                 backend.url(),
                 installation.as_deref(),
+                self.home(&device.id).as_deref(),
                 device.platform,
             )),
             _ => None,
