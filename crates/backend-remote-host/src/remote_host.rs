@@ -234,8 +234,14 @@ impl RemoteHost {
     }
 
     /// The size and SHA-256 of the file at `path` beside `cwd`, none of
-    /// whose bytes travel (`runner.md` § File contents).
-    pub async fn hash_file_in(&self, cwd: &str, path: &str) -> Result<wire::FileHash, HostError> {
+    /// whose bytes travel, or its size alone when it is over `limit` bytes
+    /// (`runner.md` § File contents).
+    pub async fn hash_file_in(
+        &self,
+        cwd: &str,
+        path: &str,
+        limit: u64,
+    ) -> Result<wire::FileHash, HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
         let hashed = link
@@ -243,6 +249,7 @@ impl RemoteHost {
                 id,
                 path: path.into(),
                 cwd: Some(cwd.to_owned()),
+                limit,
             })
             .await?;
         match hashed {

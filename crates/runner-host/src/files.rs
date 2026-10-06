@@ -373,13 +373,20 @@ impl FileTransfers {
 }
 
 /// `fs_hashFile`: the size and SHA-256 of the regular file at `target`,
-/// read through and sent nowhere.
+/// read through and sent nowhere; a file over `limit` bytes answers its size
+/// before it is opened.
 pub async fn hash(
     target: io::Result<PathBuf>,
+    limit: u64,
     cancel: &CancellationToken,
 ) -> io::Result<wire::FileHash> {
     use sha2::{Digest, Sha256};
-    let (mut file, _) = open_range(target, 0, None, cancel).await?;
+    let target = target?;
+    let size = fs::metadata(&target).await?.len();
+    if size > limit {
+        return Ok(wire::FileHash::TooLarge { size });
+    }
+    let (mut file, _) = open_range(Ok(target), 0, None, cancel).await?;
     let mut hasher = Sha256::new();
     let mut size = 0_u64;
     let mut chunk = vec![0; CHUNK_BYTES];
@@ -392,7 +399,7 @@ pub async fn hash(
         hasher.update(&chunk[..read]);
         size += read as u64;
     }
-    wire::FileHash::new(size, format!("{:x}", hasher.finalize())).map_err(io::Error::other)
+    wire::FileHash::hashed(size, format!("{:x}", hasher.finalize())).map_err(io::Error::other)
 }
 
 /// The regular file at `target`, positioned at `offset` and limited to
