@@ -1,11 +1,12 @@
-//! The pinned Chrome for Testing release (`browser.md` § Browser
-//! distribution). Nothing resolves a moving channel: a release names each
-//! platform's archive by URL, size and digest, which `demi browser install`
-//! downloads from its official URL. Beside it, the record of what Chrome
-//! needs on Linux that Demi does not install
-//! (`builds-and-releases.md` § Chrome for Testing).
+//! The pinned Chrome for Testing release, and the Chrome runtime release
+//! Linux Hosts start it with (`browser.md` § Browser distribution). Nothing
+//! resolves a moving channel: a release names each platform's archive, and
+//! the runtime's archives, by URL, size and digest, which `demi browser
+//! install` downloads (`builds-and-releases.md` § Chrome for Testing,
+//! § Chrome runtime).
 
-use schemars::JsonSchema;
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
 use demi_shared_types::DecodeError;
@@ -15,7 +16,20 @@ use demi_shared_types::DecodeError;
 /// artifacts).
 pub const ARTIFACT: &str = "Chrome for Testing";
 
-/// One Chrome version and its archive for each platform.
+/// The artifact lines the Chrome runtime's archives are installed as: its
+/// libraries for the Host's architecture, and its fonts.
+pub const RUNTIME_LIBRARIES: &str = "Chrome runtime libraries";
+pub const RUNTIME_FONTS: &str = "Chrome runtime fonts";
+
+/// The file of each runtime archive that names its installation: a library
+/// in the directory of the libraries, which holds `gio/modules` too, and
+/// the fontconfig file, which finds the fonts relative to itself
+/// (`builds-and-releases.md` § Chrome runtime).
+pub const RUNTIME_LIBRARIES_ENTRY: &str = "lib/libnss3.so";
+pub const RUNTIME_FONTS_ENTRY: &str = "fontconfig/fonts.conf";
+
+/// One Chrome version and its archive for each platform, with the Chrome
+/// runtime release that runs it on Linux.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct BrowserRelease {
@@ -24,6 +38,8 @@ pub struct BrowserRelease {
     pub version: String,
     #[garde(dive)]
     pub platforms: Vec<ReleasePlatform>,
+    #[garde(dive)]
+    pub runtime: ChromeRuntime,
 }
 
 impl BrowserRelease {
@@ -50,6 +66,17 @@ impl BrowserRelease {
             .iter()
             .find(|platform| platform.target == target)
     }
+
+    /// The runtime's archives Chrome starts with on `target`: on a Linux
+    /// target, its libraries and its fonts; none elsewhere, where Chrome
+    /// brings what it needs.
+    pub fn runtime_archives(&self, target: &str) -> Option<RuntimeArchives<'_>> {
+        let libraries = self.runtime.libraries.get(target)?;
+        Some(RuntimeArchives {
+            libraries,
+            fonts: &self.runtime.fonts,
+        })
+    }
 }
 
 /// One platform's archive.
@@ -70,45 +97,45 @@ pub struct ReleasePlatform {
     pub executable: String,
 }
 
-/// What Chrome needs on Linux that Demi does not install: the shared
-/// libraries it loads that a minimal Ubuntu lacks, and the fonts pages need
-/// to show their text, each with the Ubuntu package that provides it.
+/// The Chrome runtime release a Chrome release runs with on Linux: the
+/// libraries' archive of each Linux target, and the fonts' archive they all
+/// share (`builds-and-releases.md` § Chrome runtime).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
-pub struct LinuxRequirements {
+pub struct ChromeRuntime {
+    /// The runtime's release number, such as `1`.
+    #[garde(range(min = 1))]
+    pub release: u32,
+    /// By the Rust target triple each runs on.
     #[garde(dive)]
-    pub libraries: Vec<LinuxLibrary>,
+    pub libraries: BTreeMap<String, RuntimeArchive>,
     #[garde(dive)]
-    pub fonts: Vec<LinuxFont>,
+    pub fonts: RuntimeArchive,
 }
 
-impl LinuxRequirements {
-    /// The record this build of Demi carries, `release/linux.json` beside
-    /// this module.
-    pub fn pinned() -> Result<Self, DecodeError> {
-        demi_shared_types::decode_slice(include_bytes!("release/linux.json"))
+impl ChromeRuntime {
+    /// The runtime's title for the user, such as `Chrome runtime 1`, which
+    /// a sentence names as `the Chrome runtime 1`.
+    pub fn title(&self) -> String {
+        format!("Chrome runtime {}", self.release)
     }
 }
 
-/// A shared library by its soname, such as `libnss3.so`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+/// One archive of the Chrome runtime.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
-pub struct LinuxLibrary {
-    #[garde(length(min = 1))]
-    pub name: String,
-    #[garde(length(min = 1))]
-    pub package: String,
+pub struct RuntimeArchive {
+    #[garde(url)]
+    pub url: String,
+    #[garde(range(min = 1))]
+    pub size: u64,
+    #[garde(pattern(r"^[a-f0-9]{64}$"))]
+    pub sha256: String,
 }
 
-/// A font a page needs for `purpose`, such as `color emoji`, found by the
-/// name of its file.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(deny_unknown_fields)]
-pub struct LinuxFont {
-    #[garde(length(min = 1))]
-    pub purpose: String,
-    #[garde(length(min = 1))]
-    pub file: String,
-    #[garde(length(min = 1))]
-    pub package: String,
+/// The runtime's two archives for one target.
+#[derive(Debug, Clone, Copy)]
+pub struct RuntimeArchives<'a> {
+    pub libraries: &'a RuntimeArchive,
+    pub fonts: &'a RuntimeArchive,
 }

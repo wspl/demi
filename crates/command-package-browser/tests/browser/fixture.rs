@@ -5,7 +5,7 @@ use demi_command_package_browser_chrome::tabs::environment::{
 };
 use demi_command_sdk::testing::counting_numbers;
 use futures_util::FutureExt;
-use std::{future::Future, path::PathBuf};
+use std::future::Future;
 use tokio_util::sync::CancellationToken;
 
 /// Serve deterministic browser fixtures, including failures before HTTP headers.
@@ -26,12 +26,11 @@ where
     W: Future<Output = Result<()>>,
 {
     let _turn = crate::families::browser_turn().await;
-    let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
     let server = crate::server::Server::start(include_str!("repairs.html")).await;
     let base = server.base.clone();
     let result = with_browser(
         LaunchOptions::pinned(
-            executable,
+            demi_command_package_browser_chrome::driver::testing::installation(),
             demi_command_protocol::CommandLocale {
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],
