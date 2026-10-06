@@ -10,6 +10,7 @@ import {
   type ProductTone,
 } from '@demicodes/web-ui/theme/productAppearance'
 import { galleryState } from '../gallery-state'
+import { productWould } from '../product-would'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
@@ -343,11 +344,10 @@ function resetShortcuts() {
 
   <SettingsData
     v-else-if="tab === 'data'"
-    v-model:retention="s.data.retention"
     v-model:share-links="s.data.shareLinks"
     v-model:telemetry="s.data.telemetry"
-    :overlay-store="appOverlayStore"
-    :retentions="['Forever', '90 days', '30 days', '7 days']"
+    @export="productWould('The product would prepare an export of everything')"
+    @delete-all="productWould('The product would delete all conversations')"
   />
 
 </template>

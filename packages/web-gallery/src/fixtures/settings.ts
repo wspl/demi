@@ -837,7 +837,6 @@ export function createSettingsState() {
       { id: 'settings', action: 'Open settings', keys: '⌘,' },
     ] satisfies SettingsKeyBinding[],
     data: {
-      retention: 'Forever',
       shareLinks: false,
       telemetry: true,
     },

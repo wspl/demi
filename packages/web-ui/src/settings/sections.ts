@@ -123,7 +123,6 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         icon: Database,
         keywords: [
           'transcripts',
-          'retention',
           'share links',
           'export',
           'usage data',
