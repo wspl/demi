@@ -16,6 +16,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
 const props = defineProps<{
@@ -100,8 +101,8 @@ function revoke() {
           <SettingsRow
             :label="device.name"
             :description="
-              device.online
-                ? 'Online'
+              device.state !== 'offline'
+                ? DEVICE_STATE_LABEL[device.state]
                 : device.seen
                   ? `Last seen ${device.seen}`
                   : 'Offline'
@@ -112,18 +113,18 @@ function revoke() {
               <span class="relative flex">
                 <Monitor :size="ICON_PX.in28" />
                 <CornerDot
-                  :tone="device.online ? 'success' : 'muted'"
-                  :label="device.online ? 'Online' : 'Offline'"
+                  :tone="DEVICE_STATE_TONE[device.state]"
+                  :label="DEVICE_STATE_LABEL[device.state]"
                 />
               </span>
             </template>
             <template
-              v-if="device.direct === 'blocked' || (!device.online && device.start)"
+              v-if="device.direct === 'blocked' || (device.state === 'offline' && device.start)"
               #detail
             >
               <div class="flex min-w-0 flex-col gap-2">
                 <DeviceStartHint
-                  v-if="!device.online && device.start"
+                  v-if="device.state === 'offline' && device.start"
                   :start="device.start"
                 />
                 <p v-if="device.direct === 'blocked'" class="text-[12px] leading-4 text-fg-subtle">

@@ -625,7 +625,7 @@ test('the first send creates the conversation with its settings and hosts in one
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  conversation.attachedHosts = [{ deviceId: 'laptop', name: 'build', cwd: null, online: true }]
+  conversation.attachedHosts = [{ deviceId: 'laptop', name: 'build', cwd: null }]
   useProduct().snapshot!.providers.push(stubProvider)
   const originalFetch = globalThis.fetch
   const readBack: string[] = []

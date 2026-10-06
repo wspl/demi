@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue'
 import type { PairingDevice } from '../devices/pairing'
+import type { DeviceState } from '../devices/state'
 
 /** What the working-environment dialog shows and asks for. Hosts map their own projects and devices onto these. */
 export interface WorkspaceProject {
@@ -13,7 +14,7 @@ export interface WorkspaceProject {
 export interface WorkspaceDevice {
   id: string
   name: string
-  online: boolean
+  state: DeviceState
 }
 
 /**

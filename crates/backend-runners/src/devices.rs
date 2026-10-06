@@ -22,11 +22,13 @@ use demi_backend_remote_host::{Admission, DeviceLink, Link, LinkDriver, LinkEnd,
 use demi_host_interface::{HostIdentity, HostKey};
 use demi_runner_protocol::wire::{self, HostArtifact, Inbound};
 use demi_runner_protocol::values::BackendUrl;
-use demi_web_api_protocol::devices::{DeviceDto, DeviceKind};
+use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceState};
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::ready;
 use futures_util::{SinkExt as _, StreamExt as _};
 use tokio::sync::watch;
+use tokio::time::Instant;
+use tokio_util::task::AbortOnDropHandle;
 
 use crate::file_gate::FileLease;
 use crate::host_key::{HostOwner, host_key};
@@ -47,6 +49,27 @@ struct DeviceSlot {
     /// Set once the device is revoked: the projects that went with it,
     /// which its runner hears of as its connection ends.
     revoked: RefCell<Option<Vec<String>>>,
+    /// The update the device's runner was last sent to, until its next
+    /// hello.
+    updating: RefCell<Option<Updating>>,
+}
+
+/// A runner's update as the backend shows it (`runner.md` § Runner
+/// updates): until `until`, unless the device's next hello comes first.
+pub struct Updating {
+    until: Instant,
+    /// Ends the window for the device's pages; dropped, it stops.
+    _expiry: AbortOnDropHandle<()>,
+}
+
+impl Updating {
+    /// An update shown until `until`, whose end `expiry` announces.
+    pub fn new(until: Instant, expiry: AbortOnDropHandle<()>) -> Self {
+        Self {
+            until,
+            _expiry: expiry,
+        }
+    }
 }
 
 impl DeviceSlot {
@@ -54,6 +77,7 @@ impl DeviceSlot {
         Rc::new(Self {
             link: watch::Sender::new(DeviceLink::Offline { last: None }),
             revoked: RefCell::new(None),
+            updating: RefCell::new(None),
         })
     }
 
@@ -115,6 +139,41 @@ impl Devices {
 
     pub fn online(&self, device: &DeviceId) -> bool {
         self.link(device).is_some()
+    }
+
+    /// Whether the device's runner serves it now, replaces itself, or
+    /// neither.
+    pub fn state(&self, device: &DeviceId) -> DeviceState {
+        if self.online(device) {
+            return DeviceState::Online;
+        }
+        let updating = self.slots.borrow().get(device).is_some_and(|slot| {
+            slot.updating
+                .borrow()
+                .as_ref()
+                .is_some_and(|updating| Instant::now() < updating.until)
+        });
+        if updating {
+            DeviceState::Updating
+        } else {
+            DeviceState::Offline
+        }
+    }
+
+    /// Shows the device as updating, as `updating` says, from now on.
+    pub fn updating(&self, device: &DeviceId, updating: Updating) {
+        self.slot(device).updating.replace(Some(updating));
+    }
+
+    /// The device's runner said hello: an update it was sent to is over.
+    /// Whether one was shown.
+    pub fn hello(&self, device: &DeviceId) -> bool {
+        let ended = self
+            .slots
+            .borrow()
+            .get(device)
+            .and_then(|slot| slot.updating.take());
+        ended.is_some_and(|updating| Instant::now() < updating.until)
     }
 
     /// Resolves once a live connection serves the device, as a Cloud's
@@ -225,7 +284,7 @@ impl Devices {
             _ => None,
         };
         DeviceDto {
-            online: self.online(&device.id),
+            state: self.state(&device.id),
             home: self.home(&device.id),
             installed: device.installed,
             id: device.id,
