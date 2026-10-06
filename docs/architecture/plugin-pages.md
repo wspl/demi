@@ -144,7 +144,7 @@ calls.
 | --- | --- | --- |
 | `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls and its user streams ([Data a page shows](#data-a-page-shows)) | The sync channel, the conversation state route, the plugin call routes, the user stream route |
 | `intents` | Opening an [intent](#intents) for a conversation, as `{ intent, payload }`, and whether any page the user has on opens it | The shell |
-| `panel` | The tabs of the page's own kinds in a conversation's panel, adding one, selected with the panel opened or not, and selecting one, with the panel opened | The shell |
+| `panel` | The tabs of the page's own kinds in a conversation's panel, and adding one, selected with the panel opened or not | The shell |
 | `settings` | Opening a section of the settings dialog, such as Devices | The shell |
 | `errors` | Reporting an error the user sees, or a defect of the page, which only the console shows | The shell |
 | `overlays` | The overlay store a dialog or menu opens in | The shell |
@@ -169,6 +169,7 @@ its tabs.
 | `picked(data)` | What a tab shows next when its user picks it in the strip, even while it is selected: the Change view returns to Uncommitted ([Delivery to the conversation](../execution/edit-tracking.md#delivery-to-the-conversation)) |
 | `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
+| `shows(data)` | How many times something asked that the user see this tab, from its data. When the count is higher than the one the page last applied for the tab, the panel opens and selects the tab, whether the panel was open or closed, and records the count beside its selection history; the browser's agent-shown tabs use it ([Showing a tab](../browser/live-view.md#showing-a-tab)) |
 
 Because a kind is data on the page, the panel knows every kind of every page
 the user has on before it opens, and an intent can open a kind while the panel
@@ -209,8 +210,7 @@ otherwise.
 
 Intents and `panel.add` are the only ways a tab is opened from outside the
 strip, and `panel.add` adds only a tab of the page's own kinds: a page opens
-another plugin's tab only through an intent. Likewise `panel.select` selects
-only a tab of the page's own kinds.
+another plugin's tab only through an intent.
 
 ## Data a page shows
 
