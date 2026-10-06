@@ -338,6 +338,11 @@ without a loading state.
   changed. An answer that the file or folder is gone shows that, as a first
   read would. A read that fails keeps what it shows and says quietly that it
   could not refresh, with Retry.
+- **The page's own writes** edit the listing they change at once, without
+  listing it: an upload adds the entry with the name and size it sent, a new
+  folder adds itself, a deletion removes its entry. The watch's report then
+  lists the folder once. A listing with no watch, as in a device's folder
+  dialog, so still shows what the page just did.
 - **Reading again costs little.** A file text is read again with the version
   the service holds, and an unchanged file answers that it is unchanged
   without its text
