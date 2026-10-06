@@ -9,13 +9,11 @@ import { activeLineVisibilityExtension } from '../activeLineVisibility'
 import { foldMarker } from '../foldMarker'
 import { customScrollbarExtension } from '../scrollbars/extension'
 import { searchExtension } from '../searchPanel'
-import { stickyHeadersExtension } from '../sticky/extension'
 import { useCodeView } from '../useCodeView'
 
 /**
- * One file's text, read-only: syntax colors by the file's name, folding, the
- * enclosing blocks' first lines kept at the top while scrolling, and Mod-f to
- * find. Another file or text needs another editor.
+ * One file's text, read-only: syntax colors by the file's name, folding, and
+ * Mod-f to find. Another file or text needs another editor.
  */
 const props = defineProps<{
   /** The file's path, which selects its language. */
@@ -36,7 +34,6 @@ useCodeView(container, props, [
   bracketMatching(),
   highlightSelectionMatches(),
   customScrollbarExtension(),
-  stickyHeadersExtension(),
   searchExtension(getCurrentInstance()?.appContext ?? null),
   keymap.of([...defaultKeymap, ...foldKeymap]),
 ])

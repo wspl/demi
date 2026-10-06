@@ -46,24 +46,6 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
     '.cm-searchMatch.cm-searchMatch-selected': { backgroundColor: isDark ? '#9e6a03' : '#f5d024', borderRadius: '2px', padding: '1px', margin: '-1px' },
     '.cm-selectionMatch': { backgroundColor: isDark ? '#add6ff26' : '#add6ff44', borderRadius: '2px', padding: '1px', margin: '-1px' },
     '.cm-foldPlaceholder': { backgroundColor: 'transparent', border: 'none', color: p.comment },
-    '.cm-stickyHeaders': {
-      position: 'absolute',
-      top: '0',
-      left: '0',
-      right: '0',
-      zIndex: '3',
-      pointerEvents: 'none',
-      overflow: 'hidden',
-    },
-    '.cm-stickyHeadersRows': {
-      display: 'flex',
-      flexDirection: 'column',
-    },
-    '.cm-stickyHeaderRow': {
-      pointerEvents: 'none',
-      backgroundColor: 'var(--color-surface-editor)',
-      borderBottom: '1px solid var(--color-line)',
-    },
     '.cm-foldGutter .cm-gutterElement': {
       display: 'flex',
       alignItems: 'center',
