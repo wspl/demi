@@ -173,7 +173,7 @@ differs is only who asks for it and why:
 | A file the backend chose at run time, such as a Claude Code CLI version | The program, through the artifacts stream, during the call that named it | The record the backend gave the call |
 
 An artifact has a **form**: `file`, one executable file, or `archive`, a zip
-archive that is unpacked and that names its **entry**, the file its user
+or `.tar.zst` archive, told apart by its first bytes, that is unpacked and that names its **entry**, the file its user
 starts, as a relative path with `/` between the components. It has the
 package it belongs to, a **name** and a **version** for the user, such as
 `Chrome for Testing` and `153.0.8010.36` (an executable's name is `program`
@@ -251,7 +251,8 @@ To download, the runner completes these steps:
 1. Download to a temporary file, decoding the response's content coding, and
    enforce the declared size on the decoded bytes. The runner accepts `zstd`
    and no coding; a response with any other coding fails the download. It
-   follows no redirect.
+   follows up to ten redirects, as GitHub's release downloads need; the size
+   and SHA-256 it checks are the record's, whatever host answers.
 2. Verify the size and SHA-256 of the decoded bytes.
 3. For a `file`, apply executable permissions where required and publish the
    verified file atomically into the cache as `<sha256>`. For an `archive`,
