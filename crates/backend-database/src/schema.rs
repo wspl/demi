@@ -1,10 +1,11 @@
 //! The schemas of the control database and of each conversation's database
 //! (`storage.md` § Schemas and migrations): one SQL text each, applied to a
 //! new database in a transaction, whose digest is the version a database
-//! records, and the history of the schemas formal releases shipped before
-//! it, each with the migration to the next. Times are integer milliseconds
-//! since the Unix epoch; a closed set is text a CHECK limits; JSON columns are
-//! text their reader decodes and validates; sealed values are BLOBs.
+//! records, and the history of the schemas published releases shipped
+//! before it, each with the migration to the next. Times are integer
+//! milliseconds since the Unix epoch; a closed set is text a CHECK limits;
+//! JSON columns are text their reader decodes and validates; sealed values
+//! are BLOBs.
 
 use std::path::Path;
 
@@ -14,13 +15,13 @@ use sha2::{Digest, Sha256};
 use super::StorageError;
 
 /// A database's schema: its SQL, whose digest names it, and the schemas
-/// that formal releases shipped before it, oldest first.
+/// that published releases shipped before it, oldest first.
 pub(crate) struct Schema {
     sql: &'static str,
     history: &'static [Shipped],
 }
 
-/// A schema a formal release shipped, and the migration from it to the
+/// A schema a published release shipped, and the migration from it to the
 /// schema after it in the history, or to the current one after the last.
 pub(crate) struct Shipped {
     sql: &'static str,
@@ -28,29 +29,99 @@ pub(crate) struct Shipped {
 }
 
 /// What turns a database of one schema into one of the next.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "the histories are empty until the first formal release")
-)]
 pub(crate) enum Migration {
     Sql(&'static str),
     /// A change SQL cannot express, such as re-encoding a stored value.
+    #[cfg_attr(
+        not(test),
+        expect(dead_code, reason = "every migration so far is SQL")
+    )]
     Code(fn(&Transaction<'_>) -> rusqlite::Result<()>),
 }
 
-/// The control database's; its history starts with the first formal
-/// release.
+/// The control database's. Its history holds the schema of each published
+/// release before the one that shipped the current schema; 0.1.12 shipped
+/// it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
-    history: &[],
+    history: &[Shipped {
+        sql: include_str!("schema/control-0.1.11.sql"),
+        migration: Migration::Sql(CONTROL_FROM_0_1_11),
+    }],
 };
 
-/// Each conversation's database's; its history starts with the first formal
-/// release.
+/// Each conversation's database's. Its history holds the schema of each
+/// published release before the one that shipped the current schema; 0.1.12
+/// shipped it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
-    history: &[],
+    history: &[Shipped {
+        sql: include_str!("schema/conversation-0.1.11.sql"),
+        migration: Migration::Sql(CONVERSATION_FROM_0_1_11),
+    }],
 };
+
+/// From 0.1.11's control schema: the retention pass, which read when each
+/// conversation was last live, is gone, and the column with it.
+const CONTROL_FROM_0_1_11: &str = "
+ALTER TABLE conversations DROP COLUMN live_at;
+";
+
+/// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
+/// or drop a column a CHECK names, so such a table is made anew under
+/// another name, its rows are copied, and it takes the old one's place
+/// (SQLite's `ALTER TABLE`, § Making Other Kinds Of Table Schema Changes).
+const CONVERSATION_FROM_0_1_11: &str = "
+-- The retention pass and the blob collector are gone, and with them
+-- blob_refs, an index derived from the blocks that holds nothing else.
+DROP TABLE blob_refs;
+
+-- The attachment sequence.
+CREATE TABLE sequences_next (
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'shell', 'agent', 'tab', 'attachment')),
+  next INTEGER NOT NULL CHECK (next >= 1)
+) STRICT;
+INSERT INTO sequences_next (name, next) SELECT name, next FROM sequences;
+DROP TABLE sequences;
+ALTER TABLE sequences_next RENAME TO sequences;
+
+-- An output is no longer removed: the removed_at column goes, and the index
+-- the retention pass searched. A row of an output 0.1.11 removed has no
+-- state here, so its copy fails the CHECK, and with it the migration, which
+-- leaves the database as 0.1.11 left it.
+DROP INDEX command_outputs_expiry;
+CREATE TABLE command_outputs_next (
+  command_id     TEXT PRIMARY KEY,
+  ended_at       INTEGER NOT NULL,
+  blob           TEXT,
+  missing_bytes  INTEGER CHECK (missing_bytes >= 0),
+  missing_reason TEXT,
+  media          TEXT,
+  not_stored     TEXT,
+  CHECK ((blob IS NOT NULL) + (not_stored IS NOT NULL) = 1),
+  CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
+  CHECK (missing_bytes IS NULL OR blob IS NOT NULL),
+  CHECK ((media IS NULL) = (blob IS NULL))
+) STRICT;
+INSERT INTO command_outputs_next
+  (command_id, ended_at, blob, missing_bytes, missing_reason, media, not_stored)
+  SELECT command_id, ended_at, blob, missing_bytes, missing_reason, media, not_stored
+  FROM command_outputs;
+DROP TABLE command_outputs;
+ALTER TABLE command_outputs_next RENAME TO command_outputs;
+
+-- The attachments the agent uploads.
+CREATE TABLE attachments (
+  number     INTEGER PRIMARY KEY CHECK (number >= 1),
+  name       TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size       INTEGER NOT NULL CHECK (size >= 0),
+  width      INTEGER CHECK (width >= 1),
+  height     INTEGER CHECK (height >= 1),
+  blob       TEXT NOT NULL,
+  CHECK ((width IS NULL) = (height IS NULL))
+) STRICT;
+";
 
 /// A kind of database, as a server's upgrade asks about it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -574,9 +645,23 @@ mod tests {
     use super::*;
 
     /// The tables, columns, indexes and foreign keys of a database, as
-    /// SQLite reports them, whatever SQL made them.
+    /// SQLite reports them, and each table's and index's definition with
+    /// its constraints, whatever SQL made them: comments, spacing and
+    /// quoted names aside, which a migration's `ALTER TABLE` changes.
     fn shape(connection: &Connection) -> Vec<String> {
         let mut shape = Vec::new();
+        let mut definitions = connection
+            .prepare("SELECT type, name, sql FROM sqlite_schema WHERE sql IS NOT NULL ORDER BY name")
+            .unwrap();
+        let definitions: Vec<String> = definitions
+            .query_map([], |row| {
+                let sql: String = row.get(2)?;
+                Ok(format!("{} {} {}", row.get::<_, String>(0)?, row.get::<_, String>(1)?, definition(&sql)))
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        shape.extend(definitions);
         let mut tables = connection
             .prepare("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name")
             .unwrap();
@@ -617,14 +702,35 @@ mod tests {
             let mut columns = connection
                 .prepare("SELECT seqno, name FROM pragma_index_info(?1) ORDER BY seqno")
                 .unwrap();
+            // An expression has no column name; the index's definition
+            // above holds it.
             let columns: Vec<String> = columns
-                .query_map([&index], |row| row.get(1))
+                .query_map([&index], |row| {
+                    let name: Option<String> = row.get(1)?;
+                    Ok(name.unwrap_or_else(|| "(expression)".to_owned()))
+                })
                 .unwrap()
                 .map(Result::unwrap)
                 .collect();
             shape.push(format!("{table} index {index} {}", columns.join(",")));
         }
         shape
+    }
+
+    /// `sql` without its comments, quotes and spacing.
+    fn definition(sql: &str) -> String {
+        let code: Vec<&str> = sql
+            .lines()
+            .map(|line| line.split_once("--").map_or(line, |(code, _)| code))
+            .collect();
+        code.join(" ")
+            .replace('"', "")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+            .replace("( ", "(")
+            .replace(" )", ")")
+            .replace(" ,", ",")
     }
 
     /// A database file that holds nothing yet.
@@ -705,8 +811,9 @@ mod tests {
         assert_eq!(schema.current(version_of("CREATE TABLE other (id TEXT) STRICT;")), None);
     }
 
-    /// Every schema a formal release shipped migrates to the current one:
-    /// the same tables, columns, indexes and foreign keys as a new database.
+    /// Every schema a published release shipped migrates to the current
+    /// one: the same tables, columns, indexes, constraints and foreign keys
+    /// as a new database.
     #[test]
     fn each_shipped_schema_migrates_to_the_current_one() {
         for schema in [CONTROL, CONVERSATION] {
@@ -718,5 +825,95 @@ mod tests {
                 assert_eq!(shape(&migrated), shape(&fresh));
             }
         }
+    }
+
+    /// 0.1.11's rows of a conversation keep their values through the
+    /// rebuilt tables, and the attachment sequence counts in it; an output
+    /// 0.1.11 removed, which has no state now, stops the migration and
+    /// leaves the database as it was.
+    #[test]
+    fn a_conversation_of_0_1_11_keeps_its_rows_and_an_output_it_removed_stops_the_migration() {
+        use demi_host_interface::{MediumKept, Missing, StoredMedium};
+        use demi_shared_types::{BlobRef, CommandId, Sequence, Timestamp};
+
+        use crate::command_outputs::{self, CommandOutput, OutputRow};
+        use crate::sequences;
+
+        let shipped = CONVERSATION.history[0].sql;
+        let blob = BlobRef::try_from("a".repeat(64)).unwrap();
+        let media = vec![
+            StoredMedium {
+                number: 1,
+                media_type: "image/png".to_owned(),
+                size: 12,
+                kept: MediumKept::Stored { blob: blob.clone() },
+            },
+            StoredMedium {
+                number: 2,
+                media_type: "video/mp4".to_owned(),
+                size: 40,
+                kept: MediumKept::Missing {
+                    reason: "lost with the Host's connection".to_owned(),
+                },
+            },
+        ];
+        let (_directory, path, mut connection) = database(shipped);
+        connection
+            .execute_batch("INSERT INTO sequences (name, next) VALUES ('command', 7), ('tab', 3);")
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO command_outputs
+                   (command_id, ended_at, blob, missing_bytes, missing_reason, media, not_stored, removed_at)
+                 VALUES ('c1', 1000, ?1, 25, 'lost with the Host''s connection', ?2, NULL, NULL),
+                        ('c2', 2000, NULL, NULL, NULL, NULL, 'the object store refused the write', NULL)",
+                rusqlite::params![blob.as_str(), serde_json::to_string(&media).unwrap()],
+            )
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path).unwrap();
+        let stored = command_outputs::read(&connection, &CommandId::try_from("c1").unwrap()).unwrap();
+        assert_eq!(
+            stored,
+            Some(CommandOutput {
+                command: CommandId::try_from("c1").unwrap(),
+                ended: Timestamp::from_millisecond(1000).unwrap(),
+                output: OutputRow::Stored {
+                    blob,
+                    missing: Some(Missing {
+                        bytes: 25,
+                        reason: "lost with the Host's connection".to_owned(),
+                    }),
+                    media,
+                },
+            })
+        );
+        let not_stored = command_outputs::read(&connection, &CommandId::try_from("c2").unwrap()).unwrap();
+        assert_eq!(
+            not_stored.map(|row| row.output),
+            Some(OutputRow::NotStored("the object store refused the write".to_owned()))
+        );
+        assert_eq!(
+            sequences::all(&connection).unwrap(),
+            vec![(Sequence::Command, 7), (Sequence::Tab, 3)]
+        );
+        assert_eq!(sequences::next(&connection, Sequence::Attachment).unwrap(), 1);
+
+        let (_removed_directory, removed_path, mut removed) = database(shipped);
+        removed
+            .execute_batch(
+                "INSERT INTO command_outputs (command_id, ended_at, removed_at) VALUES ('c3', 1000, 2000);",
+            )
+            .unwrap();
+        let refused = CONVERSATION.apply(&mut removed, &removed_path);
+        assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
+        let version: i32 = removed
+            .pragma_query_value(None, "user_version", |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, version_of(shipped));
+        let removed_at: i64 = removed
+            .query_row("SELECT removed_at FROM command_outputs WHERE command_id = 'c3'", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(removed_at, 2000);
     }
 }
