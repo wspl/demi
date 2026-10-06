@@ -477,6 +477,13 @@ pub(crate) async fn on_device(
     id: &str,
 ) -> (Paired, String) {
     let paired = backend.pair(master, "laptop").await;
+    let root = working_on(harness, &paired, id);
+    (paired, root)
+}
+
+/// Makes the master's conversation `id` work in a new `work` directory of
+/// `paired`, as a target switch would leave it; answers that directory.
+pub(crate) fn working_on(harness: &Harness, paired: &Paired, id: &str) -> String {
     let root = format!("{}/work", paired.runner.home());
     std::fs::create_dir_all(&root).unwrap();
     harness
@@ -486,7 +493,7 @@ pub(crate) async fn on_device(
             rusqlite::params![paired.id(), root, id],
         )
         .unwrap();
-    (paired, root)
+    root
 }
 
 pub(crate) async fn summaries(

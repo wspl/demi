@@ -218,7 +218,8 @@ The page sends no bytes the caller's namespace holds already. Before an upload
 it computes the file's SHA-256 and asks with
 `POST /attachments?name=<file name>&sha256=<hash>` and no body: when the
 caller's namespace holds that blob, the answer is 201 with `{ attachment }`
-for it, read from the stored bytes; otherwise 404 `blob_missing`, and the page
+for it, whose media type and snippet the backend reads from the blob's first
+64 KiB, a range of the stored object, since both come from a file's opening; otherwise 404 `blob_missing`, and the page
 then uploads the bytes as above, naming the same `sha256`, which the backend
 checks against what it received. The check reads only the caller's own
 namespace, so it says nothing of another user's files.

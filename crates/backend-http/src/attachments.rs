@@ -1,8 +1,10 @@
-//! `POST /api/attachments?name=` (`web-api.md` § Uploads and media): a
-//! file's bytes, at most 25 MiB, into the caller's blobs with one
-//! attachment record. The answer carries the media type the backend reads
-//! from the bytes and, for a text file, its opening, which the composer
-//! shows on the file's capsule as the message will carry it.
+//! `POST /api/attachments?name=&sha256=` (`web-api.md` § Uploads and
+//! media): a file's bytes, at most 25 MiB, into the caller's blobs with one
+//! attachment record; with a SHA-256 and no body, the blob the caller holds
+//! already gains the record, and no bytes travel. The answer carries the
+//! media type the backend reads from the bytes and, for a text file, its
+//! opening, which the composer shows on the file's capsule as the message
+//! will carry it.
 
 use std::sync::Arc;
 
@@ -77,18 +79,45 @@ pub(super) async fn upload(
         BytesRejection::FailedToBufferBody(FailedToBufferBody::LengthLimitError(_)) => too_large(),
         other => ApiError::invalid_body(other.body_text()),
     })?;
-    if bytes.is_empty() {
-        return Err(ApiError::invalid_body("An upload holds at least one byte"));
-    }
-    let media_type = upload_media_type(&sent, &bytes);
-    // The record keeps the opening, so a draft that names the upload shows
+    let blobs = services.blobs.for_user(&user.id);
+    // What the record is read from: the file's opening, or all of it, and
+    // its size.
+    let (opening, size_bytes, sha256) = match (bytes.is_empty(), query.sha256) {
+        (true, None) => return Err(ApiError::invalid_body("An upload holds at least one byte")),
+        // No bytes travel for a blob the caller holds already; only the
+        // caller's own namespace is asked, and only its opening is read.
+        (true, Some(sha256)) => match blobs.opening(&sha256).await? {
+            Some(held) => (held.bytes, held.size, sha256),
+            None => {
+                return Err(ApiError::new(
+                    StatusCode::NOT_FOUND,
+                    ErrorCode::BlobMissing,
+                    "Your files hold no blob with that SHA-256; send its bytes",
+                ));
+            }
+        },
+        (false, Some(sha256)) => {
+            if !blobs.put_named(bytes.clone(), &sha256).await? {
+                return Err(ApiError::invalid_body(
+                    "The bytes do not have the SHA-256 the request named",
+                ));
+            }
+            let size = bytes.len() as u64;
+            (bytes, size, sha256)
+        }
+        (false, None) => {
+            let sha256 = blobs.put(bytes.clone()).await?;
+            let size = bytes.len() as u64;
+            (bytes, size, sha256)
+        }
+    };
+    let media_type = upload_media_type(&sent, &opening);
+    // The record keeps the snippet, so a draft that names the upload shows
     // it on every page (`web-api.md` § Conversation drafts).
-    let opening = is_text(&query.name, &media_type).then(|| snippet(&bytes));
-    let sha256 = services.blobs.for_user(&user.id).put(bytes.clone()).await?;
-    let size_bytes = bytes.len() as u64;
+    let snippet = is_text(&query.name, &media_type).then(|| snippet(&opening));
     let record = services
         .control
-        .create_attachment(user.id.clone(), media_type, size_bytes, sha256, opening)
+        .create_attachment(user.id.clone(), media_type, size_bytes, sha256, snippet)
         .await?;
     let attachment = AttachmentDto {
         id: record.id,

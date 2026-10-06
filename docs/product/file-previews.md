@@ -154,6 +154,17 @@ width. A click shows the image whole: a Host image in the File
 view, a web image in a new tab of the user's browser. An image inside a link
 follows the link.
 
+Images that follow each other show side by side. For example, the agent
+replies with four screenshots, one per line, and nothing else between them:
+they stand in a row, left to right in their order, as many as the message's
+width holds, and the rest wrap onto the next row. A run is two or more
+images or videos with nothing but white space between them, in one
+paragraph or in paragraphs that follow each other; any text, list or heading
+ends it. In a run, each image is a thumbnail, as a tool's images are
+([Media a tool returned](#media-a-tool-returned)), and each video a player at
+a tool's video height; they stand 8 pixels apart in both directions. A lone
+image keeps the rule above.
+
 A link to a file opens the `file` intent, and so does a click on a Host image;
 while no plugin the user has on opens it, a file link is shown as text and a
 Host image only shows. A `:line` suffix on a path is dropped, since the File view opens a whole file.
@@ -189,22 +200,27 @@ open, and a click opens it large:
   `shell_write` or `shell_abort` that reports the exit carries it instead. A
   `yield` carries none. The generic tool card shows its result's media the
   same way.
-- **Where.** Under the call's row, in the order of the result and above the
-  files the call changed. Every medium takes the preview's height before its
+- **Where.** Under the call's row, above the files the call changed, side
+  by side in the order of the result and wrapping onto the next row when the
+  transcript's width runs out, as a run of images in a message does
+  ([Files named in messages](#files-named-in-messages)). Every medium takes its box, a thumbnail's or a player's, before its
   bytes arrive, so the transcript does not move when they load. The fold
   still shows the command's own output, whose lines
   `[medium 1: image/png, 412000 bytes]` and `<binary stdout: 412000 bytes>`
   stand for the original bytes.
-- **An image** is scaled down to fit the preview's height, its proportions
-  kept, and never enlarged or cropped. It is smaller than a message's image:
-  it is a step of the work, not something the agent chose to show. A click
-  opens it large over the dimmed page, as the File view shows an image:
+- **An image** is a thumbnail: 80 pixels tall, as wide as its proportions
+  make it within 64 and 200 pixels, never enlarged. An image whose
+  proportions fall outside that range is cropped to it: a tall one, such as
+  a whole page's screenshot, keeps its top, and a wide one its middle. For
+  example, a 1280 × 720 screenshot is 142 × 80, and a 360 × 2400 page shows
+  the top 64 × 80 of it scaled down. It is small because it is a step of the
+  work, not something the agent chose to show. A click opens it large over the dimmed page, as the File view shows an image:
   scaled down to fit and never enlarged, a click toggles actual size,
   transparency shows over a checkerboard, and its pixel size shows beneath
   it. Escape, the close control or a click on the dimmed page closes it; it
   stays open while the transcript changes beneath it.
-- **A video** plays in place, in the player built into the user's browser, at
-  the preview's height. The player's full-screen control shows it large.
+- **A video** plays in place, in the player built into the user's browser,
+  160 pixels tall, the least its controls fit in. The player's full-screen control shows it large.
 - **On a phone**, the preview fits the conversation's width. An image opened
   large fills the screen: a tap toggles actual size, at actual size a drag
   moves the picture, a pinch zooms as anywhere on the page, and the close

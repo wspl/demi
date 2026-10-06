@@ -250,6 +250,10 @@ beforeEach(async () => {
     if (draft) {
       return draftRoute(decodeURIComponent(draft[1]!), init?.method ?? 'GET', draft[2] !== undefined, body)
     }
+    if (path.startsWith('/api/attachments?')) {
+      // The backend holds none of these files: their bytes go next.
+      return Response.json({ code: 'blob_missing', message: 'Send its bytes' }, { status: 404 })
+    }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
   channels = playChannels()

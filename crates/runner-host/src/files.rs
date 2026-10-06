@@ -406,6 +406,36 @@ pub async fn open_read(
     })
 }
 
+/// `fs_hashFile`: the size and SHA-256 of the regular file at `target`,
+/// read through and sent nowhere; a file over `limit` bytes answers its size
+/// before it is opened.
+pub async fn hash(
+    target: io::Result<PathBuf>,
+    limit: u64,
+    cancel: &CancellationToken,
+) -> io::Result<wire::FileHash> {
+    use sha2::{Digest, Sha256};
+    let target = target?;
+    let size = fs::metadata(&target).await?.len();
+    if size > limit {
+        return Ok(wire::FileHash::TooLarge { size });
+    }
+    let (mut file, _) = open_range(Ok(target), 0, None, cancel).await?;
+    let mut hasher = Sha256::new();
+    let mut size = 0_u64;
+    let mut chunk = vec![0; CHUNK_BYTES];
+    loop {
+        crate::fs::check_cancelled(cancel)?;
+        let read = file.read(&mut chunk).await?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&chunk[..read]);
+        size += read as u64;
+    }
+    wire::FileHash::hashed(size, format!("{:x}", hasher.finalize())).map_err(io::Error::other)
+}
+
 /// The regular file at `target`, positioned at `offset` and limited to
 /// `length` bytes, or to the end it had when it was opened, with its
 /// metadata then, which the read answers so that no `stat` precedes it

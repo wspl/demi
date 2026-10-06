@@ -22,6 +22,8 @@ export const galleryBlobs = {
   fullPage: fixture('9f'.repeat(32), '/fixtures/preview/page-full.png'),
   /** A 480 × 300 chart. */
   chart: fixture('3d'.repeat(32), '/fixtures/preview/photo-before.png'),
+  /** A 1600 × 300 timeline, wider than a message. */
+  timeline: fixture('6b'.repeat(32), '/fixtures/preview/timeline-wide.png'),
   /** A three-second 320 × 180 recording, as WebM, which every web browser plays. */
   recording: fixture('a7'.repeat(32), '/fixtures/preview/recording.webm'),
   /** A one-page PDF, for the documents a message carries. */

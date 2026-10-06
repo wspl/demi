@@ -16,7 +16,7 @@ const PNG: [u8; 12] = [
     0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0xff, 0xfe, 0x01,
 ];
 
-async fn user(backend: &TestBackend, master: &Session, email: &str) -> Session {
+pub(crate) async fn user(backend: &TestBackend, master: &Session, email: &str) -> Session {
     let password = format!("{}-pass-1", email.split('@').next().unwrap());
     let body = json!({ "email": email, "password": password, "role": "user" });
     let created = backend.post("/api/users", Some(master), body).await;

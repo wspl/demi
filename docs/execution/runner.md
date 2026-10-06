@@ -307,9 +307,11 @@ A file's contents never travel in a message; they go through a pipe, the
 way command IO does. Messages carry the request, its reply and the file's
 metadata.
 
-- `fs_hashFile` names a file; the runner answers its size and SHA-256 and
-  sends none of its bytes, so the backend can tell whether it holds them
-  already ([Attachment commands](commands.md#attachment-commands)).
+- `fs_hashFile` names a file and the most bytes it may have; the runner
+  answers its size and SHA-256 and sends none of its bytes, so the backend
+  can tell whether it holds them already
+  ([Attachment commands](commands.md#attachment-commands)). A file over that
+  size answers `too_large` with its size, before any byte is read.
 - `fs_readFile` names a file, an optional byte range (`offset`, and `length` up
   to the end when absent) and an output pipe. The runner opens the file and
   replies once it is open and positioned; only then does it stream the range

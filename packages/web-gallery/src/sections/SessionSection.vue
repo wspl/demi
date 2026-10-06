@@ -691,10 +691,13 @@ onBeforeUnmount(() => {
     <template v-if="view === 'tabs'">
       <GallerySection
         title="Motion"
-        note="The work panel's browser tabs, and every motion their strip owns, in a narrow frame that overflows and one at the pane width. Tabs fit their mark and title up to 160px; longer titles truncate. A tab opens by growing from nothing and closes by collapsing, while the New browser tab control follows the last tab until they scroll and then holds the right edge. Selecting or opening a tab that is cut off scrolls, with the same timing as the tab, until it shows whole and clear of the fade; closing scrolls back when the end comes into reach. Play all runs through the cases; the tabs, their close controls and their menus work too."
+        note="The work panel's browser tabs, and every motion their strip owns, in a narrow frame that overflows and one at the pane width. Tabs fit their mark and title up to 160px; longer titles truncate. A tab opens by growing from nothing and closes by collapsing, while the New browser tab control follows the last tab until they scroll and then holds the right edge. Selecting or opening a tab that is cut off scrolls, with the same timing as the tab, until it shows whole and clear of the fade; closing scrolls back when the end comes into reach. Wherever the strip comes to rest, a tab mark its edge cuts stays under the fade's solid start, so a mark at a scrolled edge shows whole or not at all, never sliced. The crowded strip has the product's panel width and five tabs, the last selected. Play all runs through the cases; the tabs, their close controls and their menus work too."
       >
         <GallerySpecimen variant="narrow · overflows" wide>
           <GalleryTabStripDrive width="32rem" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="crowded · panel width, the last of five selected" wide>
+          <GalleryTabStripDrive width="37.25rem" :pages="5" select="last" />
         </GallerySpecimen>
         <GallerySpecimen variant="wide · pane width" wide>
           <GalleryTabStripDrive />
@@ -1209,7 +1212,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Attachments in a Message"
-        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video plays in place at an image's bounds, a link opens the attachment, any other file downloads, and a number the conversation does not have says so."
+        note="What the agent gave the user with demi attachment upload, named as attachment:a3: an image shows and a click shows it large, a video plays in place at an image's bounds, a link opens the attachment, any other file downloads, and a number the conversation does not have says so. Images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap, each at most a tool preview's height and the message's width: the tall page shows narrow, the wide timeline fits the width. A lone image after text keeps the message's width and 60% of the visible height."
       >
         <GallerySpecimen variant="attachments" wide>
           <GalleryAttachmentMessage :files="sessionFiles" :cwd="workspace.root" />

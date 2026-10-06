@@ -49,8 +49,10 @@ const emit = defineEmits<{
       placement="bottom"
       class="flex h-full min-w-0 flex-1 items-center"
     >
+    <!-- The strip finds the mark by its attribute, to cover one its edge cuts. -->
     <span
       v-if="$slots.mark || mark"
+      data-tab-mark
       class="relative ml-1.5 flex shrink-0 items-center justify-center"
     >
       <slot name="mark">

@@ -6,10 +6,10 @@ import { toolMedia } from '../tool-media'
 import ToolMediumPreview from './ToolMediumPreview.vue'
 
 /**
- * The images and videos a call's result carries, under the call's row and
- * in the order of the result, whether the call is folded or open; a medium
- * that is gone shows a line that says why where it was
- * (`file-previews.md` § Media a tool returned).
+ * The images and videos a call's result carries, under the call's row, side
+ * by side in the order of the result and wrapping onto the next row, whether
+ * the call is folded or open; a medium that is gone shows a line that says
+ * why where it was (`file-previews.md` § Media a tool returned).
  */
 const props = defineProps<{
   output: readonly ToolResultContentBlock[]
