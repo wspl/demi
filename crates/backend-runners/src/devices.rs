@@ -2,9 +2,9 @@
 //! identity): each device has one slot holding its connection, `Online` with
 //! the connection's link or `Offline` with the account its runner last
 //! reported, and every Host handle of the device watches that slot. A device
-//! holds one live connection; a second runner with its token is refused
-//! until the first is gone, and one reconnecting is adopted once the old
-//! connection finished tearing down. A Host handle is made here only for one
+//! holds one live connection; a new hello with its token is refused while
+//! the held connection answers its ping, and adopted once a silent one
+//! finished tearing down. A Host handle is made here only for one
 //! of the ways to a Host (`sessions-and-targets.md` § Every way to a Host):
 //! a conversation's against a lease of its file gate, device access while
 //! the runner is connected, and machine access under the Cloud's admission.

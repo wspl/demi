@@ -182,6 +182,24 @@ impl RawRunner {
         }
     }
 
+    /// Answers the backend's next ping; what the backend sent the device
+    /// before is passed over.
+    async fn answer_ping(&mut self) {
+        loop {
+            match self.next().await {
+                Some(Inbound::Ping {}) => break,
+                Some(_) => {}
+                None => panic!("the connection closed before a ping"),
+            }
+        }
+        self.send(&Outbound::Pong { jobs: 0 }).await;
+    }
+
+    /// Reads until the backend closed the socket.
+    async fn closed(&mut self) {
+        while self.next().await.is_some() {}
+    }
+
     /// The next message the backend sends; none once it closed the socket.
     async fn next(&mut self) -> Option<Inbound> {
         loop {
@@ -318,6 +336,9 @@ async fn a_device_holds_one_live_connection_and_a_newcomer_is_adopted_once_the_f
     backend.close().await;
 }
 
+/// Hellos with one token at once bind one socket: the other is a second
+/// runner as long as the bound one answers its ping (`runner.md`
+/// § Connection and identity).
 #[tokio::test(flavor = "multi_thread")]
 async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_changes_nothing() {
     let harness = Harness::new();
@@ -331,12 +352,19 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
         tokio::join!(RawRunner::connect(&backend), RawRunner::connect(&backend));
     let message = hello(wire::VERSION, Some(&token), None);
     tokio::join!(one.send(&message), other.send(&message));
-    let (first, second) = tokio::join!(one.next(), other.next());
-    let (mut bound, refused) = match (first, second) {
-        (Some(Inbound::HelloOk { .. }), refused) => (one, refused),
-        (refused, Some(Inbound::HelloOk { .. })) => (other, refused),
-        answers => panic!("expected one welcome, got {answers:?}"),
+    // The waiting one hears nothing until the bound one answers its ping.
+    let (mut bound, mut waiting) = tokio::select! {
+        answer = one.next() => match answer {
+            Some(Inbound::HelloOk { .. }) => (one, other),
+            answer => panic!("expected a welcome, got {answer:?}"),
+        },
+        answer = other.next() => match answer {
+            Some(Inbound::HelloOk { .. }) => (other, one),
+            answer => panic!("expected a welcome, got {answer:?}"),
+        },
     };
+    bound.answer_ping().await;
+    let refused = waiting.next().await;
     assert!(
         matches!(
             &refused,
@@ -371,6 +399,40 @@ async fn hellos_with_one_token_at_once_bind_one_socket_and_a_repeated_hello_chan
     }
     assert!(backend.online(&master, laptop.id()).await);
     drop(bound);
+    backend.until_online(&master, laptop.id(), false).await;
+    backend.close().await;
+}
+
+/// A connection lost without a close leaves the backend holding a socket
+/// nobody answers; the runner's new hello finds it silent and takes the
+/// device once the probe's wait is over (`runner.md` § Connection and
+/// identity).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_held_connection_that_does_not_answer_its_ping_gives_way_to_the_devices_new_hello() {
+    let mut harness = Harness::new();
+    let probe = Duration::from_millis(300);
+    harness.runners.probe = probe;
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let token = laptop.token().await;
+    laptop.runner.stop().await;
+    backend.until_online(&master, laptop.id(), false).await;
+    let message = hello(wire::VERSION, Some(&token), None);
+
+    // The held socket reads nothing more after its welcome, as one whose
+    // network dropped it.
+    let mut held = RawRunner::connect(&backend).await;
+    held.send(&message).await;
+    assert!(matches!(held.next().await, Some(Inbound::HelloOk { .. })));
+
+    let mut returning = RawRunner::connect(&backend).await;
+    let asked = tokio::time::Instant::now();
+    returning.send(&message).await;
+    assert!(matches!(returning.next().await, Some(Inbound::HelloOk { .. })));
+    assert!(asked.elapsed() >= probe, "{:?}", asked.elapsed());
+    held.closed().await;
+    assert!(backend.online(&master, laptop.id()).await);
+    drop(returning);
     backend.until_online(&master, laptop.id(), false).await;
     backend.close().await;
 }
