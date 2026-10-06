@@ -47,8 +47,7 @@ away.
 
 Examples:
   demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
-  demi-server setup --domain demi.example.com --mode shared --listen 0.0.0.0:80 \\
-    --expose-domain expose-example.com
+  demi-server setup --domain demi.example.com --mode shared --listen 0.0.0.0:80
   AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... demi-server setup \\
     --domain demi.example.com --mode isolated --listen 127.0.0.1:3271 \\
     --storage s3 --s3-bucket demi --s3-region eu-central-1
@@ -105,12 +104,6 @@ pub struct Options {
     /// Names the bucket in the request path, with --storage s3.
     #[arg(long)]
     s3_force_path_style: bool,
-    /// The domain of expose hostnames, which the proxy serves as
-    /// *.<domain> with a wildcard certificate. Without it, exposes are off.
-    /// Behind Cloudflare it is a zone of its own: its free certificate covers
-    /// one level of wildcard.
-    #[arg(long, value_name = "NAME")]
-    expose_domain: Option<String>,
     /// The machine manager's state directory, on one filesystem.
     #[arg(long, value_name = "DIRECTORY", default_value = "/opt/demi/data/cloud")]
     cloud_data: PathBuf,
@@ -225,7 +218,7 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     link_program(layout)?;
 
     step(&format!("Checking https://{} from outside", choices.domain));
-    runtime.block_on(check_outside(&choices, options.expose_domain.as_deref()))?;
+    runtime.block_on(check_outside(&choices))?;
     // A run that continued on a newer release leaves the earlier one, which
     // never ran: a server just set up has no release to return to.
     for unpacked in layout.versions()? {
@@ -266,10 +259,6 @@ fn choices(options: &mut Options, asking: bool) -> io::Result<Option<Choices>> {
             let listen = ask("Address and port the backend listens on", Some("127.0.0.1:3271"))?;
             options.listen = Some(listen.parse().map_err(io::Error::other)?);
         }
-        if options.expose_domain.is_none() {
-            let expose = ask("Domain of expose hostnames (empty for none)", Some(""))?;
-            options.expose_domain = (!expose.is_empty()).then_some(expose);
-        }
     }
     let (Some(domain), Some(mode), Some(listen)) = (options.domain.clone(), options.mode, options.listen) else {
         return Ok(None);
@@ -280,7 +269,7 @@ fn choices(options: &mut Options, asking: bool) -> io::Result<Option<Choices>> {
 /// Asks at the terminal, offering `default`.
 fn ask(question: &str, default: Option<&str>) -> io::Result<String> {
     match default {
-        Some(default) if !default.is_empty() => print!("{question} [{default}]: "),
+        Some(default) => print!("{question} [{default}]: "),
         _ => print!("{question}: "),
     }
     io::stdout().flush()?;
@@ -316,9 +305,6 @@ fn configuration(choices: &Choices, options: &Options) -> Result<Settings, Box<d
     ];
     if options.cloud_limits == Switch::Off {
         variables.push(("DEMI_MANAGED_LIMITS".into(), "off".into()));
-    }
-    if let Some(expose) = &options.expose_domain {
-        variables.push(("DEMI_EXPOSE_DOMAIN".into(), expose.clone()));
     }
     if options.storage == Storage::S3 {
         variables.push(("DEMI_STORAGE".into(), "s3".into()));
@@ -487,9 +473,8 @@ fn link_program(layout: &Layout) -> io::Result<()> {
 }
 
 /// The server from outside: its domain answers over HTTPS with a valid
-/// certificate, the proxy passes `Origin`, and an expose hostname reaches the
-/// backend.
-async fn check_outside(choices: &Choices, expose: Option<&str>) -> Result<(), Box<dyn std::error::Error>> {
+/// certificate, and the proxy passes `Origin`.
+async fn check_outside(choices: &Choices) -> Result<(), Box<dyn std::error::Error>> {
     let client = demi_shared_artifacts::client()?;
     let domain = &choices.domain;
     let proxy = format!(
@@ -517,22 +502,6 @@ async fn check_outside(choices: &Choices, expose: Option<&str>) -> Result<(), Bo
             other.status()
         )
         .into());
-    }
-    if let Some(expose) = expose {
-        let label = format!("check-{}", uuid::Uuid::new_v4().simple());
-        let answer = client
-            .get(format!("https://{label}.{expose}/"))
-            .send()
-            .await
-            .map_err(|error| {
-                format!(
-                    "https://{label}.{expose} does not answer: {}\nThe proxy must serve *.{expose} with a wildcard certificate and forward it to Demi too.",
-                    error.without_url()
-                )
-            })?;
-        if answer.status() != 404 {
-            return Err(format!("https://{label}.{expose} answers {} where Demi answers 404 for an expose it does not know", answer.status()).into());
-        }
     }
     Ok(())
 }

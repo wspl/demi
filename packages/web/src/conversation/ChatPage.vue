@@ -7,9 +7,6 @@ import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
-import PluginHeaderTools from '@demicodes/web-ui/plugins/PluginHeaderTools.vue'
-import { PLUGIN_PAGES } from '../plugins/generated/pages'
-import { pluginEnabled } from '../plugins/enabled'
 import { useConversations } from './store'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
@@ -183,13 +180,6 @@ async function fork(request: MessageForkRequest): Promise<void> {
     <template #workspace
       ><WorkspaceInfo :project="project" :conversation="conversation"
     /></template>
-    <template #tools>
-      <PluginHeaderTools
-        :pages="PLUGIN_PAGES"
-        :enabled="(plugin: string) => pluginEnabled(product.snapshot, plugin)"
-        :conversation="conversation.id"
-      />
-    </template>
     <template #composer
       ><ConversationComposer
         :key="conversation.id"

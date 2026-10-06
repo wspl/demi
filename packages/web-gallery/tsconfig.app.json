@@ -11,7 +11,6 @@
       "@demicodes/plugin-browser/*": ["../plugin-browser/src/*"],
       "@demicodes/plugin-changes/*": ["../plugin-changes/src/*"],
       "@demicodes/plugin-file-browser/*": ["../plugin-file-browser/src/*"],
-      "@demicodes/plugin-expose/*": ["../plugin-expose/src/*"],
       "@demicodes/plugin-skills/*": ["../plugin-skills/src/*"],
       "@demicodes/*": ["../*/src/index.ts"]
     }
