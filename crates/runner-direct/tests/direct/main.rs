@@ -92,7 +92,10 @@ async fn a_read_answers_the_range_and_refuses_a_version_the_file_no_longer_has()
 
     let mut whole = page.open(header("read", json!({ "path": "/work/video.mp4" }))).await;
     let answer = whole.next().await.json();
-    assert_eq!(answer, json!({ "ok": true, "size": 300_000, "version": "W/\"1\"" }));
+    assert_eq!(
+        answer,
+        json!({ "ok": true, "size": 300_000, "version": "W/\"1\"", "modifiedAt": "2026-09-21T14:13:20.123Z" })
+    );
     assert_eq!(whole.bytes_to_end().await, file, "the whole file, then the channel's end");
 
     let mut range = page
@@ -130,6 +133,8 @@ async fn a_write_is_in_place_at_its_end_and_not_at_all_when_the_page_goes_first(
         .open(header("write", json!({ "path": "cut.bin", "replace": true })))
         .await;
     cut.binary(b"half");
+    // The runner carries out the write before the page goes.
+    fake.started_writes.subscribe().wait_for(|started| *started == 2).await.unwrap();
     cut.close();
     // The runner hears the close: the write ends without its file.
     fake.cut_writes.subscribe().wait_for(|cut| *cut == 1).await.unwrap();
