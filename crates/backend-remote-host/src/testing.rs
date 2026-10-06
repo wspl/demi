@@ -134,7 +134,7 @@ impl LinkPolicy for CommandPolicy {
     fn direct_stream(
         &self,
         _: String,
-    ) -> LocalBoxFuture<'static, Result<demi_shared_gates::GateLease, String>> {
+    ) -> LocalBoxFuture<'static, Result<crate::DirectAdmission, String>> {
         Box::pin(async { Err("direct streams are not available".into()) })
     }
 }

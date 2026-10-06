@@ -13,7 +13,7 @@ use demi_runner_protocol::direct::{
     MESSAGE_BYTES, Opened, QUEUE_BYTES, ReadOpened, ServiceBinding, TextOpened, WATCH_HEARTBEAT,
 };
 use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage, FileWatchState};
-use futures_util::{Stream, StreamExt};
+use futures_util::{Stream, StreamExt, future::BoxFuture};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -23,9 +23,13 @@ pub type ByteStream = Pin<Box<dyn Stream<Item = io::Result<Bytes>> + Send>>;
 pub type Answer<T> = Pin<Box<dyn Future<Output = Result<T, ChannelError>> + Send>>;
 /// What a watch says, in order.
 pub type WatchStream = Pin<Box<dyn Stream<Item = FileWatchMessage> + Send>>;
-/// An open `stream` channel as its conversation's activity, which ends when
-/// it is dropped.
-pub type StreamActivity = Box<dyn Send>;
+/// An open `stream` channel as the backend knows it: the id the runner gave
+/// the stream, which its artifact requests name, and its conversation's
+/// activity, which ends when `held` is dropped.
+pub struct StreamActivity {
+    pub stream: String,
+    pub held: Box<dyn Send>,
+}
 
 /// The conversation an operation acts for, and the directory its work
 /// starts in.
@@ -61,6 +65,8 @@ pub struct Listing {
 /// A user stream to open: the operation its name binds, with the arguments
 /// the page gave and the locale of the introducing user.
 pub struct StreamRequest {
+    /// The id the runner gave the stream with its activity.
+    pub stream: String,
     pub binding: ServiceBinding,
     pub args: Option<serde_json::Map<String, serde_json::Value>>,
     pub introduction: Arc<Introduction>,
@@ -91,12 +97,12 @@ pub trait Operations: Send + Sync + 'static {
     fn watch(&self, scope: Scope, paths: mpsc::UnboundedReceiver<Vec<String>>) -> WatchStream;
     /// Opens a user stream: its output bytes, once it opened.
     fn stream(&self, scope: Scope, request: StreamRequest) -> Answer<ByteStream>;
-    /// A `stream` channel of `conversation` opened: the runner tells the
-    /// backend, which counts it as the conversation's activity, and tells it
-    /// again when the answer is dropped, as the channel's end drops it on
-    /// every path: the stream's end, the page's, the peer's close and the
-    /// runner's.
-    fn stream_activity(&self, conversation: &str) -> StreamActivity;
+    /// A `stream` channel of `conversation` opened: the runner gives the
+    /// stream an id and tells the backend, which then knows it as a stream
+    /// it opened, before the stream asks it for anything; it tells it again
+    /// when the activity is dropped, as the channel's end drops it on every
+    /// path: the stream's end, the page's, the peer's close and the runner's.
+    fn stream_activity(&self, conversation: &str) -> BoxFuture<'static, StreamActivity>;
 }
 
 /// What the page sends on a channel after its header.
@@ -319,8 +325,9 @@ async fn carry_out(
                 return;
             };
             // Held until the channel's operation ends, or is dropped.
-            let _activity = operations.stream_activity(&scope.conversation);
+            let activity = operations.stream_activity(&scope.conversation).await;
             let request = StreamRequest {
+                stream: activity.stream.clone(),
                 binding,
                 args,
                 introduction: introduction.clone(),

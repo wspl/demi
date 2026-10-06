@@ -191,8 +191,8 @@ test('a stream moves to the other path when the choice changes, and its view con
   expect(relayOpened).toEqual(['relay'])
 })
 
-test('a stream whose service the runner must fetch first opens on the relay, and the channel stays the choice', async () => {
-  const peer = new ScriptedPeer([{ fails: new ChannelRefused('needs_relay', 409, 'The service must be fetched first') }])
+test('a stream the runner refuses opens on the relay, and the channel stays the choice', async () => {
+  const peer = new ScriptedPeer([{ fails: new ChannelRefused('busy', 503, 'Too many channels') }])
   const route = await directOver(peer)
   const relayOpened: string[] = []
   const relay = (handlers: UserStreamHandlers) => {

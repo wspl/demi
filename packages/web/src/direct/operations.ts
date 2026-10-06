@@ -245,7 +245,7 @@ export function directStream(routeOf: RouteOf, name: string, relay: OpenUserStre
       })
     stream = route && peer ? openDirect(peer, route, name, handlers, end, () => {
       // The runner refused the stream, such as for a service it could not
-      // start: the relay serves it.
+      // start or a peer at its limit of channels: the relay serves it.
       if (!ended)
         stream = onRelay()
     }) : onRelay()

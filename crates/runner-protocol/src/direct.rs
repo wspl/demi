@@ -252,9 +252,6 @@ pub enum ChannelErrorCode {
     /// relay, whose messages are larger, answers it.
     TooLarge,
     Busy,
-    /// The stream's service must first fetch its executable, which only a
-    /// stream the backend opened can ask it for: the relay opens it.
-    NeedsRelay,
 }
 
 /// The runner's first message when it carries out an operation that

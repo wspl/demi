@@ -12,7 +12,7 @@ use demi_runner_direct::{
 };
 use demi_runner_protocol::direct::{ChannelError, ChannelErrorCode};
 use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage};
-use futures_util::StreamExt;
+use futures_util::{StreamExt, future::BoxFuture};
 use tokio::sync::mpsc;
 
 /// What the operations hold and saw, which the test reads.
@@ -24,8 +24,11 @@ pub struct Held {
     pub scopes: Vec<Scope>,
     /// The paths of each watch's `paths` messages.
     pub watched: Vec<Vec<String>>,
-    /// The streams opened, by the operation their name binds.
-    pub streams: Vec<String>,
+    /// The streams opened: the operation each one's name binds, and the
+    /// id its request carries.
+    pub streams: Vec<(String, String)>,
+    /// How many streams the runner gave an id, which is `s` and the count.
+    pub given: usize,
 }
 
 #[derive(Clone)]
@@ -210,7 +213,7 @@ impl Operations for Fake {
             .lock()
             .unwrap()
             .streams
-            .push(request.binding.operation.clone());
+            .push((request.binding.operation.clone(), request.stream.clone()));
         // Echoes the page's bytes, as a service stream's invocation answers
         // its input.
         let echo = request.input.map(|chunk| chunk.map(|bytes| {
@@ -221,14 +224,23 @@ impl Operations for Fake {
         Box::pin(async move { Ok(Box::pin(echo) as ByteStream) })
     }
 
-    fn stream_activity(&self, conversation: &str) -> StreamActivity {
+    fn stream_activity(&self, conversation: &str) -> BoxFuture<'static, StreamActivity> {
         let told = |open: bool| {
             let activity = self.activity.clone();
             let conversation = conversation.to_owned();
             move || activity.send_modify(|told| told.push((conversation, open)))
         };
         told(true)();
-        Box::new(scopeguard(told(false)))
+        let stream = {
+            let mut held = self.held.lock().unwrap();
+            held.given += 1;
+            format!("s{}", held.given)
+        };
+        let activity = StreamActivity {
+            stream,
+            held: Box::new(scopeguard(told(false))),
+        };
+        Box::pin(std::future::ready(activity))
     }
 }
 

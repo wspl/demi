@@ -1030,10 +1030,13 @@ pub enum Outbound {
         code: crate::direct::OfferRefusal,
         message: String,
     },
-    /// A direct channel's `stream` of `conversation` opened, or closed
-    /// (`direct-channel.md` § Operations on the channel): the backend counts
-    /// each open one as the conversation's activity, as an open relay stream.
+    /// A direct channel's `stream` of `conversation`, named by the id the
+    /// runner gave it, opened, or closed (`direct-channel.md` § Operations on
+    /// the channel): the backend knows each open one as a stream it opened,
+    /// counts it as the conversation's activity and answers its artifact
+    /// requests.
     DirectStream {
+        stream: String,
         #[garde(custom(conversation_name))]
         conversation: String,
         open: bool,
