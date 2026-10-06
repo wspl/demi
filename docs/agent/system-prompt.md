@@ -93,6 +93,15 @@ order:
   nothing it can do fixes the failure does it tell the user why, and it asks
   before reaching for an outside service that would put the user's work on
   the internet, such as a public tunnel.
+- **Parallel work.** A task with several independent parts, each taking more
+  than a quick step, such as several sites, pages, libraries or files to look
+  into, goes to helper agents with `demi agent`, one part each, run at the
+  same time; the model then combines their reports. It does the parts itself
+  only when each is a single quick step. The capability index entry says what
+  the group does; this rule says when the work is split, because a model
+  reading only the entry weighs the split against doing the work itself and
+  keeps choosing to do it alone: the five-site pricing comparison took 140
+  requests and six million input tokens in one context.
 - **Files for the user.** Replies render as Markdown. A file the user should
   keep goes out as an attachment
   ([Attachment commands](../execution/commands.md#attachment-commands)); a
