@@ -57,6 +57,7 @@ members = [
   "crates/provider-openai-api",
   "crates/runner",
   "crates/runner-host",
+  "crates/runner-direct",
   "crates/runner-jobs",
   "crates/runner-process",
   "crates/runner-protocol",

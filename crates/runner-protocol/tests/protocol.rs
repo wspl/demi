@@ -534,3 +534,23 @@ fn a_files_version_is_its_size_and_time_in_hexadecimal_as_a_weak_etag() {
     );
     assert_eq!(wire::file_version(0, -16), "W/\"0--10\"");
 }
+#[test]
+fn a_delete_keeps_the_roots_and_every_directory_that_holds_a_kept_one() {
+    use demi_runner_protocol::files::protected_path;
+    let kept = ["/home/ana", "/home/ana/work"];
+    for path in [
+        "/",
+        "/home",
+        "/home/ana",
+        "/HOME/Ana/",
+        "/home/ana/work/..",
+        "/home/ana/work",
+        "C:\\",
+    ] {
+        assert!(protected_path(path, kept), "{path}");
+    }
+    for path in ["/home/ana/work/notes.md", "/home/ana/other", "/home/anabel"] {
+        assert!(!protected_path(path, kept), "{path}");
+    }
+}
+

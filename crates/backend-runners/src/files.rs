@@ -5,21 +5,12 @@
 //! the size an edit snapshot keeps, so a file the runner counted lines for
 //! is one the web app shows.
 
-use bytes::{Bytes, BytesMut};
+use bytes::BytesMut;
 use demi_command_protocol::EDIT_FILE_BYTES;
-use demi_command_protocol::is_text;
+pub use demi_command_protocol::{TextRefusal, text_of};
 use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, HostFs};
 use futures_util::StreamExt as _;
 use demi_web_api_protocol::files::DirectoryEntry;
-
-/// Why a file is not shown as text.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
-pub enum TextRefusal {
-    #[error("The file is too large to show")]
-    TooLarge,
-    #[error("The file is not UTF-8 text")]
-    NotText,
-}
 
 /// Why a file's text could not be read.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -28,18 +19,6 @@ pub enum TextError {
     Host(#[from] HostError),
     #[error(transparent)]
     Refused(#[from] TextRefusal),
-}
-
-/// `bytes` as text, under the limits above.
-pub fn text_of(bytes: Bytes) -> Result<String, TextRefusal> {
-    if bytes.len() > EDIT_FILE_BYTES {
-        return Err(TextRefusal::TooLarge);
-    }
-    if !is_text(&bytes) {
-        return Err(TextRefusal::NotText);
-    }
-    // `is_text` checked the encoding.
-    Ok(String::from_utf8(bytes.to_vec()).expect("text is UTF-8"))
 }
 
 /// The range a text read asks for: one byte more than the limit, so a file
@@ -64,7 +43,7 @@ pub async fn text_of_stream(mut stream: ByteStream) -> Result<String, TextError>
             return Err(TextRefusal::TooLarge.into());
         }
     }
-    Ok(text_of(bytes.freeze())?)
+    Ok(text_of(Vec::from(bytes))?)
 }
 
 /// A directory's entries with their metadata, which the listing carries,
@@ -198,19 +177,19 @@ mod tests {
     #[test]
     fn text_is_utf8_without_a_nul_byte_up_to_the_snapshot_limit() {
         assert_eq!(
-            text_of(Bytes::from_static(b"1\n2\n")),
+            text_of(b"1\n2\n".to_vec()),
             Ok("1\n2\n".to_owned())
         );
         assert_eq!(
-            text_of(Bytes::from_static(b"\x00\xff\x01")),
+            text_of(b"\x00\xff\x01".to_vec()),
             Err(TextRefusal::NotText)
         );
         assert_eq!(
-            text_of(Bytes::from_static(b"nul \x00 inside")),
+            text_of(b"nul \x00 inside".to_vec()),
             Err(TextRefusal::NotText)
         );
         assert_eq!(
-            text_of(Bytes::from(vec![b'a'; EDIT_FILE_BYTES + 1])),
+            text_of(vec![b'a'; EDIT_FILE_BYTES + 1]),
             Err(TextRefusal::TooLarge)
         );
     }

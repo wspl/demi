@@ -2,8 +2,11 @@
 //! working tree (`web-api.md` § Device files and remote references, § File
 //! text and working tree changes).
 
+pub use demi_runner_protocol::files::{
+    DirectoryEntry, FileWatchMessage, FileWatchRequest, FileWatchState, MAX_WATCHED_PATHS,
+};
 use demi_runner_protocol::wire::GitChanges;
-use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
+use demi_shared_types::Nullable;
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -20,19 +23,6 @@ pub struct Directory {
     #[schemars(with = "Nullable<String>")]
     pub home: Option<String>,
     pub entries: Vec<DirectoryEntry>,
-}
-
-/// One entry of a listing. An entry that disappears while the directory is
-/// listed is left out.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct DirectoryEntry {
-    pub name: String,
-    pub is_directory: bool,
-    pub is_symbolic_link: bool,
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub size: u64,
-    pub modified_at: Timestamp,
 }
 
 /// `POST .../fs { path }`: a directory to make, with its parents.
@@ -63,53 +53,6 @@ pub struct CreatedDirectory {
 pub struct FileText {
     pub path: String,
     pub text: String,
-}
-
-/// The most folders and files outside the working tree a page's file watch
-/// names (`web-api.md` § File watch).
-pub const MAX_WATCHED_PATHS: usize = 64;
-
-/// A message the page sends on its file watch, `WS .../fs/watch`
-/// (`web-api.md` § File watch).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
-#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
-pub enum FileWatchRequest {
-    /// The folders and files outside the working tree the page shows now,
-    /// each absolute; each message replaces the last.
-    Paths {
-        #[garde(length(max = MAX_WATCHED_PATHS), inner(length(chars, min = 1)))]
-        paths: Vec<String>,
-    },
-}
-
-/// A message the backend sends on a page's file watch.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "type", rename_all = "snake_case")]
-pub enum FileWatchMessage {
-    /// Where the Host's watch is; `reason` says why the Host cannot watch.
-    State {
-        state: FileWatchState,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        reason: Option<String>,
-    },
-    /// Absolute paths on the Host that something changed at, each once.
-    Changed { paths: Vec<String> },
-    /// Nothing else was sent for 30 seconds: the watch is quiet, not dead.
-    Heartbeat,
-}
-
-/// Where a page's file watch is (`web-api.md` § File watch).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum FileWatchState {
-    /// The Host's watch runs: what is read from now on is covered.
-    Live,
-    /// The Host's watch lost reports: nothing read before is confirmed.
-    Lost,
-    /// The Host cannot watch.
-    Unavailable,
-    /// The Host is out of reach, or a stopped Cloud.
-    Offline,
 }
 
 /// `GET .../changes`: the runner's list of uncommitted changes, and the

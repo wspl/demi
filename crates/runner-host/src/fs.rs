@@ -40,7 +40,10 @@ pub async fn handle(
     })
 }
 
-async fn call(
+/// Carries out one filesystem request whose answer is a message, the
+/// backend's or a direct channel's (`direct-channel.md` § Operations on
+/// the channel): the request's paths resolved against `default_cwd`.
+pub async fn call(
     message: &Inbound,
     default_cwd: &Path,
     cancel: &CancellationToken,

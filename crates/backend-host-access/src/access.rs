@@ -20,6 +20,7 @@ use demi_backend_database::devices::DeviceRecord;
 use demi_backend_remote_host::{Admission, RemoteHost};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
 use demi_host_interface::{HostError, HostErrorKind, HostFs, MkdirOptions};
+use demi_runner_protocol::files::FsFailure;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::error::ErrorCode;
@@ -147,10 +148,10 @@ pub fn host_error_code(error: &HostError) -> (ErrorCode, u16) {
         HostErrorKind::Offline => (ErrorCode::DeviceOffline, 409),
         HostErrorKind::Unavailable => (ErrorCode::CloudUnavailable, 503),
         HostErrorKind::TooLarge => (ErrorCode::DirectoryTooLarge, 413),
-        HostErrorKind::Failed { code } => match code.as_deref() {
-            Some("ENOENT") => (ErrorCode::FsError, 404),
-            Some("EACCES" | "EPERM") => (ErrorCode::FsError, 403),
-            _ => (ErrorCode::HostOperationFailed, 500),
+        HostErrorKind::Failed { code } => match FsFailure::of(code.as_deref()) {
+            FsFailure::NotFound => (ErrorCode::FsError, 404),
+            FsFailure::Forbidden => (ErrorCode::FsError, 403),
+            FsFailure::Failed => (ErrorCode::HostOperationFailed, 500),
         },
         HostErrorKind::Protocol | HostErrorKind::Interrupted => {
             (ErrorCode::HostOperationFailed, 500)

@@ -170,3 +170,42 @@ impl TryFrom<String> for LogSource {
         }
     }
 }
+
+/// A message the page sends on a device's direct channel signaling socket,
+/// `WS /devices/:deviceId/direct` (`web-api.md` § Direct channel).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
+pub enum DirectRequest {
+    /// The page's offer for a new peer, which replaces the socket's peer.
+    Offer {
+        #[garde(length(min = 1, max = MAX_OFFER_BYTES))]
+        sdp: String,
+    },
+}
+
+/// The most bytes of an offer: a data channel's offer is a few kilobytes.
+pub const MAX_OFFER_BYTES: usize = 64 * 1024;
+
+/// A message the backend sends on a direct channel signaling socket.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum DirectMessage {
+    /// The runner's answer to the page's last offer.
+    Answer { sdp: String },
+    /// The runner did not answer the page's last offer.
+    Unanswered { code: Unanswered },
+    /// Nothing else was sent for 30 seconds: the socket is quiet, not dead.
+    Heartbeat,
+}
+
+/// Why an offer has no answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum Unanswered {
+    /// The runner keeps as many peers as it may.
+    Busy,
+    /// The runner could not answer the offer.
+    InvalidOffer,
+    /// The runner did not answer within 10 seconds.
+    Timeout,
+}

@@ -113,6 +113,9 @@ pub enum ErrorCode {
     DeviceNotFound,
     /// The device's runner is not connected.
     DeviceOffline,
+    /// The device is the caller's Cloud, which no direct channel reaches
+    /// (`web-api.md` § Direct channel).
+    NotAPairedDevice,
     /// The Host's log could not be read.
     LogUnreadable,
     /// The caller owns no conversation of that id.

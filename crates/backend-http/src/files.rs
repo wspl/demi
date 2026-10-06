@@ -18,6 +18,7 @@ use demi_backend_runners::files::{
     TEXT_RANGE, TextError, browse_directory, read_text_file, text_of, text_of_stream,
 };
 use demi_host_interface::{FileStat, HostFs, MkdirOptions, RmOptions};
+use demi_runner_protocol::files::protected_path;
 use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
@@ -145,21 +146,6 @@ pub(super) async fn remove(
         Ok(StatusCode::NO_CONTENT)
     })
     .await
-}
-
-/// Whether deleting `path` would take with it a directory the Host needs:
-/// a filesystem root, or one of `kept` or a directory holding it. Compared
-/// without case, since a Host's filesystem may ignore it.
-fn protected_path<'a>(path: &str, kept: impl IntoIterator<Item = &'a str>) -> bool {
-    let top = Utf8TypedPath::derive(&path.to_lowercase()).normalize();
-    if top.parent().is_none() {
-        return true;
-    }
-    kept.into_iter().any(|directory| {
-        Utf8TypedPath::derive(&directory.to_lowercase())
-            .normalize()
-            .starts_with(top.as_str())
-    })
 }
 
 /// What a text read answers: the text with its version, or that the file
@@ -392,7 +378,7 @@ pub(super) async fn changed_file(
             read_text_file(&host.host, &working),
         );
         let original = match committed {
-            Ok(bytes) => text_of(bytes)?,
+            Ok(bytes) => text_of(Vec::from(bytes))?,
             Err(error) if error.code() == Some("ENOENT") => String::new(),
             Err(error) => return Err(ApiError::working_tree(error)),
         };
@@ -559,25 +545,6 @@ mod tests {
     use demi_shared_types::Timestamp;
 
     use super::*;
-
-    #[test]
-    fn a_delete_keeps_the_roots_and_every_directory_that_holds_a_kept_one() {
-        let kept = ["/home/ana", "/home/ana/work"];
-        for path in [
-            "/",
-            "/home",
-            "/home/ana",
-            "/HOME/Ana/",
-            "/home/ana/work/..",
-            "/home/ana/work",
-            "C:\\",
-        ] {
-            assert!(protected_path(path, kept), "{path}");
-        }
-        for path in ["/home/ana/work/notes.md", "/home/ana/other", "/home/anabel"] {
-            assert!(!protected_path(path, kept), "{path}");
-        }
-    }
 
     #[test]
     fn a_file_is_dated_by_its_time_and_named_by_its_last_segment() {

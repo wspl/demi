@@ -645,6 +645,23 @@ pub enum Inbound {
     FsUnwatch {
         id: String,
     },
+    /// Introduces a page to the runner (`direct-channel.md` § Making the
+    /// channel): `sdp` is the page's offer for peer `peer`, which replaces
+    /// the peer of that id; `direct_answer` or `direct_refused` answers.
+    DirectOffer {
+        id: String,
+        #[garde(length(min = 1))]
+        peer: String,
+        #[garde(length(min = 1))]
+        sdp: String,
+        #[garde(dive)]
+        introduction: crate::direct::Introduction,
+    },
+    /// The page's signaling socket closed: the runner closes the peer.
+    DirectClose {
+        #[garde(length(min = 1))]
+        peer: String,
+    },
 }
 
 impl Inbound {
@@ -978,6 +995,18 @@ pub enum Outbound {
     },
     LogError {
         id: String,
+        message: String,
+    },
+    /// The runner's answer to a `direct_offer`, with its candidates.
+    DirectAnswer {
+        id: String,
+        #[garde(length(min = 1))]
+        sdp: String,
+    },
+    /// The runner did not answer a `direct_offer`.
+    DirectRefused {
+        id: String,
+        code: crate::direct::OfferRefusal,
         message: String,
     },
     /// Every artifact this runner's cache holds, once the connection is
