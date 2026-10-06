@@ -32,10 +32,12 @@ pub struct Scope {
     pub cwd: String,
 }
 
-/// A file's opened range: its size and version; its bytes follow.
+/// A file's opened range: its size, version and modification time; its
+/// bytes follow.
 pub struct FileRange {
     pub size: u64,
     pub version: String,
+    pub modified: demi_runner_protocol::wire::Timestamp,
     pub body: ByteStream,
 }
 
@@ -226,10 +228,14 @@ async fn carry_out(
                 out.refuse(error).await;
                 return;
             }
-            let opened = ReadOpened {
-                ok: true,
-                size: range.size,
-                version: range.version,
+            let Some(opened) = ReadOpened::new(range.size, range.version, range.modified) else {
+                let error = ChannelError::new(
+                    ChannelErrorCode::HostOperationFailed,
+                    500,
+                    "The file's modification time is out of range",
+                );
+                out.refuse(error).await;
+                return;
             };
             if out.answer(&opened).await {
                 out.bytes(range.body).await;

@@ -67,6 +67,7 @@ impl Operations for HostOperations {
             Ok(FileRange {
                 size: read.opened.stat.size,
                 version: read.opened.version,
+                modified: read.opened.stat.mtime,
                 body: read.body.unwrap_or_else(|| Box::pin(futures_util::stream::empty())),
             })
         })

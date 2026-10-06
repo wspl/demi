@@ -18,6 +18,7 @@ import {
   errorCodeSchema,
   listedSchema,
   openedSchema,
+  readOpenedSchema,
   textOpenedSchema,
   type ChannelHeader,
   type Opened,
@@ -112,6 +113,22 @@ export function directFileReads(routeOf: RouteOf, relay: FileReads): FileReads {
           modifiedAt: entry.modifiedAt,
         }))
       }, () => relay.list(path)),
+    ...(relay.contents
+      ? {
+          contents: {
+            ...relay.contents,
+            // What a preview shows of the file: its size, time and version,
+            // from a read of none of its bytes.
+            describe: (path: string) =>
+              either(async (peer, route) => {
+                const channel = await peer.open({ ...route.scope, op: 'read', path, length: 0 }, readOpenedSchema)
+                const { size, modifiedAt, version } = await channel.answer()
+                channel.close()
+                return { size, modifiedAt, version }
+              }, () => relay.contents!.describe(path)),
+          },
+        }
+      : {}),
     ...(relay.readText
       ? {
           readText: (path: string, held: string | null) =>
