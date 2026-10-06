@@ -144,6 +144,15 @@ struct Shape {
     name: Option<String>,
     #[serde(default)]
     optional: bool,
+    /// A property Chrome may stop sending, as Chrome 153 no longer sends a
+    /// cookie's `sameParty`; the bindings leave such properties out too.
+    #[serde(default)]
+    deprecated: bool,
+    /// A number Chrome writes as null when JSON cannot hold its value
+    /// (±Inf), as its description says; the pinned protocol's generator
+    /// marks it, since PDL cannot.
+    #[serde(default)]
+    nullable: bool,
     #[serde(rename = "$ref")]
     reference: Option<String>,
     #[serde(rename = "type")]
@@ -175,6 +184,7 @@ impl Shape {
             "object" if self.properties.is_some() => {
                 object_schema(self.properties.as_ref().expect("properties exist"), domain)?
             }
+            "number" if self.nullable => json!({"type":["number","null"]}),
             "object" | "string" | "integer" | "number" | "boolean" => json!({"type":kind}),
             _ => return Err(format!("unknown pinned CDP type {kind}")),
         };
@@ -192,7 +202,7 @@ fn object_schema(properties: &[Shape], domain: &str) -> std::result::Result<Valu
     for property in properties {
         let name = property.name.as_ref().ok_or("CDP parameter has no name")?;
         members.insert(name.clone(), property.schema(domain)?);
-        if !property.optional {
+        if !property.optional && !property.deprecated {
             required.push(name);
         }
     }
