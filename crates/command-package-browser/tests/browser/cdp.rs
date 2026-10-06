@@ -205,6 +205,47 @@ async fn a_cookie_expiry_chrome_writes_as_null_keeps_the_browser_and_reaches_cdp
     server.close().await;
 }
 
+/// About 3 s here: Chrome starts, and a page sends 64 MiB to a binding.
+///
+/// Planted defect this catches: a debugging connection that ends and tells
+/// its calls only that it ended, so the caller cannot tell a page that
+/// overflowed it from a lost browser.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn an_ended_debugging_connection_says_why_to_its_calls() {
+    with_browser_fixture(|fixture| async move {
+        let tab = fixture.open("cdp.html").await;
+        fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Runtime.addBinding","params":"{\"name\":\"demiLarge\"}"})).await;
+        // Only this debugging connection hears the binding; its event is over
+        // the 64 MiB a CDP message may have, which ends the connection.
+        let expression = format!("demiLarge('x'.repeat({})); 1", 64 * 1024 * 1024);
+        let (code, pending) = fixture
+            .result(
+                "browser.cdp.send",
+                json!({"tab":tab,"method":"Runtime.evaluate","params":json!({"expression":expression}).to_string()}),
+                CancellationToken::new(),
+            )
+            .await;
+        let reason = "and it answers no request";
+        assert_eq!(code, 1, "{pending}");
+        let message = pending["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("tab debugging connection ended") && message.contains(reason), "{pending}");
+
+        // A later call hears the same reason.
+        let (_, later) = fixture
+            .result("browser.cdp.events", json!({"tab":tab}), CancellationToken::new())
+            .await;
+        let message = later["error"]["message"].as_str().unwrap_or_default();
+        assert!(message.contains("tab debugging connection ended") && message.contains(reason), "{later}");
+
+        // The browser and its tab go on.
+        let info = fixture.call("browser.info", json!({"tab":tab})).await;
+        assert_eq!(info["tab"], tab, "{info}");
+        fixture
+    })
+    .await;
+}
+
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn cdp_detach_releases_only_its_caller_and_timeouts_identify_other_debug_owners() {
