@@ -186,7 +186,8 @@ export const runningShellTool = toolCall({
   status: 'executing',
   input: JSON.stringify({
     // Long enough to wrap over more than two lines: the command shows two
-    // above the output, which scrolls under it.
+    // above the output, which scrolls under it. Its flags' hyphens show the
+    // wrap a terminal makes: each line fills to the box's edge.
     script: [
       'DEMI_LOG=auth=debug,cookie=debug,session=info bun test --watch --timeout 20000 --rerun-each 1 --bail 5 packages/web/src/auth.test.ts packages/web/src/cookie.test.ts packages/web/src/session.test.ts \\',
       '  2>&1 | tee target/auth-watch.log',
