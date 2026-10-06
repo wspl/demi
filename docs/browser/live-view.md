@@ -347,7 +347,12 @@ loads ([Native driver](browser.md#native-driver)). The extension works in an
 offscreen document, which Chrome lists as a background page, not as a tab, so
 it never enters the tab registry. It captures a tab with `chrome.tabCapture`,
 encodes H.264 High 4:2:0 with WebCodecs in software, and sends each encoded
-frame to the live view module over a WebSocket on `127.0.0.1` that accepts only
+frame to the live view module. The encoder runs without a content hint: the
+screen-content mode a `text` hint selects ignores the bit rate it is given and
+keeps every picture blurred. Only a new size, a new capture or a key frame a
+viewer asks for after a decode error produces a key frame; refining a still
+picture, motion resuming and a new bit rate change the running encoding
+without one. The frames travel over a WebSocket on `127.0.0.1` that accepts only
 the environment's token. The frames do not travel over CDP: base64 and JSON
 would inflate them, they would share the connection that carries the agent's
 commands, and CDP messages have a size limit.
@@ -424,8 +429,10 @@ keeps running. Booting the VM's kernel with `arm64.nosme` restores capture.
   congestion it lowers the bit rate, then the frame rate, then the resolution.
   The viewers of a tab share its encoding, so it follows the viewer with the
   least room: one slow viewer lowers the picture for all of them.
-  A blocked page and a stall are pauses, not congestion. There
-  is no fixed bit rate ceiling and no Cloud-specific limit.
+  A blocked page and a stall are pauses, not congestion. The bit rate stops
+  only at the codec level's own limit, 240 Mbps for H.264 level 5.1, past
+  which the encoder refuses to start; there is no other ceiling and no
+  Cloud-specific limit.
 - Watching costs Host CPU. A small Host shares its CPU between Chrome,
   software compositing, H.264 encoding and the agent's commands, so a watched
   tab can slow the agent's commands even while its pictures arrive promptly.
