@@ -8,6 +8,7 @@ use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
     ServiceSequence, conversation_name, digest, without_nul,
 };
+use demi_shared_types::BlobRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -368,6 +369,22 @@ pub enum Inbound {
         version: Option<String>,
         output: PipeRef,
     },
+    /// The file's size and SHA-256, and none of its bytes, so the backend
+    /// can tell whether it holds them already; a file over `limit` bytes
+    /// answers its size alone, before a byte is read (`runner.md` § File
+    /// contents).
+    #[serde(rename = "fs_hashFile")]
+    FsHashFile {
+        id: String,
+        path: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        cwd: Option<String>,
+        limit: u64,
+    },
     /// Fill the file from `input`, making the directories above it that are
     /// missing; `exists` says what to do when the path is taken. The answer
     /// names the file it wrote.
@@ -669,6 +686,7 @@ impl Inbound {
     pub fn fs_request_id(&self) -> Option<&str> {
         match self {
             Self::FsReadFile { id, .. }
+            | Self::FsHashFile { id, .. }
             | Self::FsWriteFile { id, .. }
             | Self::FsLook { id, .. }
             | Self::FsReadFiles { id, .. }
@@ -1253,6 +1271,30 @@ pub struct OpenedFile {
     pub stat: FileStat,
     pub version: String,
     pub unchanged: bool,
+}
+
+/// What `fs_hashFile` answers: the bytes hashed and their SHA-256, which
+/// names their blob, or, for a file over the request's limit, its size
+/// alone (`too_large`), none of its bytes read.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(
+    tag = "status",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum FileHash {
+    Hashed { size: u64, sha256: BlobRef },
+    TooLarge { size: u64 },
+}
+
+impl FileHash {
+    /// The answer for `size` bytes whose SHA-256 is `sha256`, in lowercase
+    /// hexadecimal; anything else is refused.
+    pub fn hashed(size: u64, sha256: String) -> Result<Self, String> {
+        let sha256 = BlobRef::try_from(sha256)?;
+        Ok(Self::Hashed { size, sha256 })
+    }
 }
 
 /// A file's version, from its size and modification time in milliseconds:

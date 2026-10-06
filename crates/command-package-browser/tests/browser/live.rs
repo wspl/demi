@@ -578,7 +578,9 @@ async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
               srcdoc=\"<body style='margin:0'><div style='margin:10px;width:50px;height:20px;cursor:crosshair'></div></body>\"></iframe>\
             <iframe style=\"position:absolute;left:450px;top:100px;width:200px;height:100px;border:3px solid black\" src=\"http://localhost:{port}/frame\"></iframe>\
             <div id=\"host\" style=\"position:absolute;left:10px;top:300px\"></div>\
-            <script>host.attachShadow({{mode:'open'}}).innerHTML = '<button style=\"width:80px;height:20px;cursor:copy\">Shadow</button>'</script>\
+            <div id=\"sealed\" style=\"position:absolute;left:10px;top:340px;cursor:progress\"></div>\
+            <script>host.attachShadow({{mode:'open'}}).innerHTML = '<button style=\"width:80px;height:20px;cursor:copy\">Shadow</button>';\
+              sealed.attachShadow({{mode:'closed'}}).innerHTML = '<button style=\"width:80px;height:20px;cursor:zoom-in\">Closed</button>'</script>\
             <p style=\"position:absolute;left:10px;top:220px;margin:0\">Some text</p>"
         );
         let frame = "<!doctype html><body style=\"margin:0\"><button style=\"margin:20px;width:60px;height:30px;cursor:cell\">Far</button></body>";
@@ -606,7 +608,7 @@ async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
         let cursors = view
             .until("the page's and its frames' cursors", |message| {
                 message["type"] == "cursors"
-                    && ["pointer", "crosshair", "cell", "copy"].iter().all(|cursor| has(&message["regions"], cursor))
+                    && ["pointer", "crosshair", "cell", "copy", "progress"].iter().all(|cursor| has(&message["regions"], cursor))
             })
             .await;
         let regions = cursors["regions"].as_array().unwrap();
@@ -625,6 +627,10 @@ async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
         assert_eq!(region("cell"), Some([473.0, 123.0, 60.0, 30.0]));
         // A button in a shadow root.
         assert_eq!(region("copy"), Some([10.0, 300.0, 80.0, 20.0]));
+        // A closed shadow root, which no script outside it reaches, shows its
+        // host's cursor.
+        assert_eq!(region("progress").map(|[x, y, ..]| [x, y]), Some([10.0, 340.0]));
+        assert_eq!(region("zoom-in"), None);
         // A region its scrolled container hides is left out.
         assert_eq!(region("help"), None);
         // The cursor the observer resolves at the pointer: text over text.
@@ -1322,6 +1328,84 @@ async fn a_watched_tab_arrives_with_the_detail_of_the_viewers_ratio() {
         assert_eq!(shot["height"], 600);
         assert_eq!(shot["viewport"]["devicePixelRatio"], 2.0);
         assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// A frame from another site shows whole at every ratio the viewer moves
+/// between, falling ratios included (`live-view.md` § Pixel ratio).
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_cross_site_frame_follows_the_viewers_new_ratio() {
+    with_browser_fixture(|fixture| async move {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // `localhost` is another site than `127.0.0.1`: its frame runs in a
+        // process of its own, which paints all of it green.
+        let page = format!(
+            "<!doctype html><style>body{{margin:0;background:white}}</style>\
+            <iframe style=\"position:absolute;left:20px;top:20px;width:200px;height:100px;border:0\" src=\"http://localhost:{port}/frame\"></iframe>"
+        );
+        let frame = "<!doctype html><body style=\"margin:0;background:#00ff00\"></body>";
+        let app = Router::new()
+            .route("/", get(move || async move { Html(page) }))
+            .route("/frame", get(move || async move { Html(frame) }));
+        let _server = AbortOnDropHandle::new(tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        }));
+        // The page loads while the viewer watches at ratio 2, as a page the
+        // user opens in the panel does: its frame starts at that ratio.
+        let tab = fixture
+            .call("browser.open", json!({"url": "about:blank"}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        view.send(json!({"type": "watch", "tab": tab}));
+        let panel = |width: u32, ratio: u32| {
+            json!({
+                "type": "panel", "width": width, "height": 912, "devicePixelRatio": ratio,
+                "screenWidth": 800, "screenHeight": 600,
+            })
+        };
+        view.send(panel(400, 2));
+        view.until("a stream at ratio 2", |message| {
+            message["type"] == "stream" && message["width"] == 800
+        })
+        .await;
+        fixture
+            .call("browser.goto", json!({"tab": tab, "url": format!("http://127.0.0.1:{port}/")}))
+            .await;
+        // The viewer's ratio goes to 1 and back, as when the window moves
+        // between a Retina screen and another, and the panel's size changes
+        // with it.
+        for (width, ratio) in [(358u32, 1u32), (400, 2)] {
+            view.send(panel(width, ratio));
+            let stream = view
+                .until("a stream at the new ratio", |message| {
+                    message["type"] == "stream" && message["width"] == width * ratio
+                })
+                .await;
+            let (_, key, _, _, picture) = view.picture(stream["generation"].as_u64().unwrap()).await;
+            assert!(key);
+            let (decoded_width, pixels) = decoded(&fixture, &tab, &picture).await;
+            assert_eq!(decoded_width, width * ratio);
+            let rgb = |x: u32, y: u32| {
+                let at = ((y * decoded_width + x) * 3) as usize;
+                [pixels[at], pixels[at + 1], pixels[at + 2]]
+            };
+            let green = |[red, green, blue]: [u8; 3]| red < 80 && green > 200 && blue < 80;
+            // The frame's corners, inside its 200 x 100 CSS pixels.
+            for (x, y) in [(25, 25), (215, 25), (25, 115), (215, 115)] {
+                let pixel = rgb(x * ratio, y * ratio);
+                assert!(green(pixel), "the frame at CSS {x},{y}, ratio {ratio}: {pixel:?}");
+            }
+        }
+        view.close().await;
         fixture
     })
     .await;
