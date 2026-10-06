@@ -46,7 +46,7 @@ export interface PersistedScrollState {
 }
 
 export function useBlockVirtualizer(
-  scrollContainer: Ref<HTMLDivElement | undefined>,
+  scrollContainer: Readonly<Ref<HTMLElement | undefined>>,
   blocks: Ref<VirtualizedBlock[]>,
   persistedState: PersistedScrollState | undefined,
 ) {
@@ -56,7 +56,7 @@ export function useBlockVirtualizer(
   const isAtBottom = ref(true)
   const isRestored = ref(false)
 
-  const virtualizer = useVirtualizer<HTMLDivElement, HTMLElement>(
+  const virtualizer = useVirtualizer<HTMLElement, HTMLElement>(
     computed(() => ({
       count: blocks.value.length,
       getScrollElement: () => scrollContainer.value ?? null,

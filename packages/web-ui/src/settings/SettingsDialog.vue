@@ -136,7 +136,7 @@ const initials = computed(() =>
           </div>
         <!-- The list spans the rail edge to edge; its thumb is drawn over the content, taking no room. -->
           <ScrollArea
-            class="hidden min-h-0 flex-1 @md:-mx-3 @md:block"
+            class="hidden min-h-0 flex-1 @md:-mx-3 @md:flex"
             viewport-class="@md:px-3"
           >
             <nav class="flex flex-col gap-3" aria-label="Settings sections">
