@@ -397,17 +397,24 @@ fn hello(view: &View, platform: &str) {
     }));
 }
 
-/// Watches `tab` until its pictures arrive at the panel's size.
+/// Watches `tab`, whose capture starts at the panel's size: the first
+/// stream is the panel's, never one the module is about to replace
+/// (`live-view.md` § Delivery).
 async fn watch(view: &mut View, tab: &str) -> u64 {
     view.send(json!({"type": "watch", "tab": tab}));
-    let stream = view
-        .until("a 1600-wide stream", |message| {
-            message["type"] == "stream" && message["width"] == 1600
-        })
-        .await;
+    let stream = view.message("stream").await;
     assert_eq!(
-        (stream["tab"].as_str(), stream["height"].as_u64()),
-        (Some(tab), Some(1200))
+        (&stream["tab"], &stream["width"], &stream["height"]),
+        (&json!(tab), &json!(1600), &json!(1200)),
+        "the first stream has the panel's size: {stream}"
+    );
+    assert_eq!(
+        (&stream["viewport"], &stream["scale"]),
+        (
+            &json!({"width": 800, "height": 600, "devicePixelRatio": 2.0, "mode": "web"}),
+            &json!(1.0)
+        ),
+        "a stream names the viewport its pictures show"
     );
     let generation = stream["generation"].as_u64().unwrap();
     let (pictured, key, width, height, data) = view.picture(generation).await;
@@ -1080,27 +1087,45 @@ async fn a_narrow_still_picture_matches_the_page_coordinates() {
         view.send(json!({"type": "hello", "platform": "mac"}));
         view.message("state").await;
         view.send(json!({"type": "watch", "tab": tab}));
-        for (width, height) in [(409, 632), (800, 600), (409, 632)] {
+        // Each size resizes the running capture; an odd side at ratio 1 is
+        // encoded without its last column or row, never scaled.
+        for (width, height, ratio) in [(409, 632, 2), (800, 600, 2), (500, 400, 2), (409, 632, 2), (409, 631, 1)] {
             view.send(json!({
-                "type": "panel", "width": width, "height": height, "devicePixelRatio": 2,
+                "type": "panel", "width": width, "height": height, "devicePixelRatio": ratio,
                 "screenWidth": 1280, "screenHeight": 720,
             }));
+            let (pixels_wide, pixels_high) = ((width * ratio) & !1, (height * ratio) & !1);
             let stream = view
                 .until("a resized stream", |message| {
                     message["type"] == "stream"
-                        && message["width"] == width * 2
-                        && message["height"] == height * 2
+                        && message["width"] == pixels_wide
+                        && message["height"] == pixels_high
+                        && message["viewport"]["width"] == width
+                        && message["viewport"]["height"] == height
                 })
                 .await;
             let (_, key, _, _, frame) = view.picture(stream["generation"].as_u64().unwrap()).await;
             assert!(key);
             let (decoded_width, pixels) = decoded(&fixture, &tab, &frame).await;
-            for (x, y) in [(4, 4), (width * 2 - 5, height * 2 - 5)] {
+            assert_eq!(decoded_width, pixels_wide);
+            let rgb = |x: u32, y: u32| {
                 let at = ((y * decoded_width + x) * 3) as usize;
-                assert!(pixels[at..at + 3].iter().all(|value| *value > 230), "white page corner at {x},{y}: {:?}", &pixels[at..at + 3]);
+                [pixels[at], pixels[at + 1], pixels[at + 2]]
+            };
+            let white = |[red, green, blue]: [u8; 3]| red > 200 && green > 200 && blue > 200;
+            // Red against white differs most in green, which an edge's compression blurs least.
+            let red = |[red, green, _]: [u8; 3]| red > 150 && green < 80;
+
+            for (x, y) in [(4, 4), (pixels_wide - 5, pixels_high - 5)] {
+                assert!(white(rgb(x, y)), "white page corner at {x},{y}: {:?}", rgb(x, y));
             }
-            let at = ((220 * decoded_width + 40) * 3) as usize;
-            assert!(pixels[at] > 220 && pixels[at + 1] < 35 && pixels[at + 2] < 35, "red rectangle at its CSS coordinates: {:?}", &pixels[at..at + 3]);
+            // The rectangle's edges, at CSS 10 and 110 across, fall on the
+            // page's own device pixels: nothing scaled the picture.
+            let row = 115 * ratio;
+            for (x, inside) in [(10 * ratio - 1, false), (10 * ratio, true), (110 * ratio - 1, true), (110 * ratio, false)] {
+                let pixel = rgb(x, row);
+                assert!(if inside { red(pixel) } else { white(pixel) }, "the rectangle's edge at {x}, ratio {ratio}: {pixel:?}");
+            }
         }
         view.close().await;
         fixture
