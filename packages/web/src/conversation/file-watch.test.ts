@@ -94,9 +94,17 @@ test('a live watch confirms what is read, and a report has what it names read ag
   expect(reads).toEqual(['text /w/a.ts', 'text /w/a.ts'])
   expect(again.entry.value).toBe('2')
 
+  // A view that shows another file lets the last one go first: the watch stays.
+  unfollow()
+  const other = watch.show('/w/b.ts')
+  await settle()
+  expect(socket.closed).toBe(false)
+  expect(sockets).toHaveLength(1)
+
   // Nothing shows the files: the watch closes.
   again.release()
-  unfollow()
+  other()
+  await settle()
   expect(socket.closed).toBe(true)
 })
 
