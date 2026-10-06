@@ -267,7 +267,6 @@ pub(crate) enum Expected {
     Log,
     Release,
     Sync,
-    Net,
     Service,
     JobRead,
     JobMediaRead,
@@ -870,20 +869,9 @@ impl Link {
             Outbound::LogError { id, message } => {
                 self.refuse(&id, HostError::failed(None, message))
             }
-            Outbound::NetOpened { stream_id } => {
-                self.answer(&stream_id, Expected::Net, Answer::Done)
-            }
             Outbound::ServiceOpened { stream_id } => {
                 self.answer(&stream_id, Expected::Service, Answer::Done);
             }
-            Outbound::NetError {
-                stream_id,
-                code,
-                message,
-            } => self.refuse(
-                &stream_id,
-                HostError::failed(Some(code.to_string()), message),
-            ),
             Outbound::ServiceError {
                 stream_id,
                 code,

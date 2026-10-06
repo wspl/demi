@@ -17,7 +17,6 @@ mod devices;
 mod direct;
 mod drafts;
 mod error;
-mod expose;
 mod file_watch;
 mod files;
 mod gate;
@@ -90,8 +89,8 @@ impl Edge {
     ) -> io::Result<Self> {
         let tcp = TcpListener::bind(address).await?;
         let local_addr = tcp.local_addr()?;
-        // Before the first request: a Cloud's boot, an expose's URL and a
-        // local store's downloads name this URL.
+        // Before the first request: a Cloud's boot and a local store's
+        // downloads name this URL.
         state
             .services
             .public_url
@@ -104,7 +103,7 @@ impl Edge {
         let serving = tokio::spawn(listener::serve(
             listener,
             stop.clone(),
-            move |peer, request| respond(app.clone(), state.clone(), peer, request),
+            move |peer, request| respond(app.clone(), peer, request),
         ));
         Ok(Self {
             local_addr,
@@ -135,17 +134,9 @@ impl Edge {
     }
 }
 
-/// Answers one request: an expose hostname's with the public relay, before
-/// any route sees it, and every other with the routes.
-async fn respond(
-    app: Router,
-    state: AppState,
-    peer: Peer,
-    mut request: Request<Incoming>,
-) -> Response {
-    if let Some(label) = expose::expose_label(&state, &request) {
-        return expose::relay(state, peer, label, request).await;
-    }
+/// Answers one request with the routes, which see the connection it came
+/// on.
+async fn respond(app: Router, peer: Peer, mut request: Request<Incoming>) -> Response {
     request.extensions_mut().insert(ConnectInfo(peer));
     match app.oneshot(request).await {
         Ok(response) => response,

@@ -16,7 +16,6 @@ use url::Url;
 use demi_backend_accounts::email_change::AccountMail;
 use demi_backend_blobs::store::{S3Config, Storage};
 use demi_backend_cloud::tuning::CloudTuning;
-use demi_backend_expose::domain::ExposeDomain;
 use demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
@@ -26,7 +25,7 @@ use demi_provider_common::models_dev::ModelsDevClient;
 
 use demi_backend_user_shard::shard::ShardPlacement;
 use demi_backend_user_shard::tuning::{
-    ConversationTuning, ExposeTuning, LifecycleTuning, PageTuning, RunnerTuning,
+    ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning,
 };
 
 use self::secret::InstanceSecret;
@@ -106,9 +105,6 @@ pub struct Config {
         hide_env_values = true
     )]
     pub instance_secret: Option<String>,
-    /// The domain of expose hostnames; without it, exposes are unavailable
-    #[arg(long, env = "DEMI_EXPOSE_DOMAIN", value_name = "DEMI_EXPOSE_DOMAIN")]
-    pub expose_domain: Option<ExposeDomain>,
     /// The Claude Code distribution whose newest release the CLI on each Cloud follows
     #[arg(
         long,
@@ -247,7 +243,6 @@ impl Config {
         config.web_directory = web.is_dir().then_some(web);
         let runners = release.join("runners");
         config.runner_releases = runners.is_dir().then_some(runners);
-        config.expose_domain = self.expose_domain.clone();
         let public_url = demi_backend_runners::install::backend_url(&self.public_url)
             .map_err(|_| ConfigError::PublicUrl)?;
         config.public_url = Some(public_url);
@@ -273,9 +268,6 @@ pub struct BackendConfig {
     /// The URL runners connect to, which the installers name; without it,
     /// the origin an installer was requested from.
     pub public_url: Option<Url>,
-    /// The domain expose hostnames live under; without it, exposes are
-    /// unavailable (`expose.md` § Deployment).
-    pub expose_domain: Option<ExposeDomain>,
     /// The runner releases the installer routes serve; without them, the
     /// installers answer 503.
     pub runner_releases: Option<PathBuf>,
@@ -313,8 +305,6 @@ pub struct BackendConfig {
     pub lifecycle: LifecycleTuning,
     /// How the Cloud is run.
     pub cloud: CloudTuning,
-    /// How the public relay treats its connections.
-    pub exposes: ExposeTuning,
     /// Counts what reaches the object store, for the scenarios that prove
     /// what the backend reads and writes there.
     #[cfg(feature = "testing")]
@@ -339,7 +329,6 @@ impl BackendConfig {
             mode,
             web_directory: None,
             public_url: None,
-            expose_domain: None,
             runner_releases: None,
             storage: Storage::Local,
             instance_secret: None,
@@ -363,7 +352,6 @@ impl BackendConfig {
             native: NativeCatalog::unpublished(),
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
-            exposes: ExposeTuning::default(),
             #[cfg(feature = "testing")]
             object_counts: None,
         }

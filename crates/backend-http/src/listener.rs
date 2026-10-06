@@ -5,15 +5,12 @@
 //! close it through, and an idle deadline a file transfer arms
 //! (`sessions-and-targets.md` § Host operations): a connection on which no
 //! byte moves for the deadline is closed, whoever stopped moving them. The
-//! edge serves its connections itself, with hyper's HTTP/1 server keeping
-//! each header name's case, which axum's `serve` cannot: the expose relay
-//! passes names on as the visitor wrote them (`expose.md` § The public
-//! relay).
+//! edge serves its connections itself, with hyper's HTTP/1 server, since
+//! axum's `serve` gives a connection neither a control nor a deadline.
 
 use std::convert::Infallible;
 use std::future::Future;
 use std::io;
-use std::net::SocketAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -54,7 +51,7 @@ impl EdgeListener {
 
     /// The next connection, until shutdown starts; then the socket closes
     /// and this never resolves.
-    async fn accept(&mut self) -> (ConnectionIo, SocketAddr) {
+    async fn accept(&mut self) -> ConnectionIo {
         if let Some(tcp) = self.tcp.as_mut() {
             tokio::select! {
                 biased;
@@ -67,7 +64,7 @@ impl EdgeListener {
                     if let Err(error) = stream.set_nodelay(true) {
                         tracing::debug!("a connection from {peer} keeps Nagle's algorithm: {error}");
                     }
-                    return (ConnectionIo::new(stream, &self.connections), peer);
+                    return ConnectionIo::new(stream, &self.connections);
                 }
             }
             self.tcp = None;
@@ -88,12 +85,11 @@ where
 {
     let connections = TaskTracker::new();
     loop {
-        let (io, addr) = tokio::select! {
+        let io = tokio::select! {
             () = stop.cancelled() => break,
             accepted = listener.accept() => accepted,
         };
         let peer = Peer {
-            addr,
             control: io.control.clone(),
         };
         let respond = respond.clone();
@@ -114,9 +110,7 @@ async fn serve_connection<S>(io: ConnectionIo, service: S, stop: CancellationTok
 where
     S: hyper::service::Service<Request<Incoming>, Response = Response, Error = Infallible>,
 {
-    let mut builder = http1::Builder::new();
-    builder.preserve_header_case(true);
-    let connection = builder
+    let connection = http1::Builder::new()
         .serve_connection(TokioIo::new(io), service)
         .with_upgrades();
     let mut connection = std::pin::pin!(connection);
@@ -174,10 +168,9 @@ impl ConnectionIo {
     }
 }
 
-/// A connection as a request sees it: where it comes from, and its control.
+/// A connection as a request sees it: its control.
 #[derive(Clone)]
 pub(crate) struct Peer {
-    pub(crate) addr: SocketAddr,
     pub(crate) control: ConnectionControl,
 }
 
