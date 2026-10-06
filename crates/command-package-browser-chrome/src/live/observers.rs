@@ -1,8 +1,11 @@
 //! The page observers of watched tabs (`live-view.md` § Input): an
-//! isolated world in each of the tab's documents reports the cursor, the
+//! isolated world in each of the tab's documents reports the cursors, the
 //! native form controls and copied text, and applies the viewer's choices.
 
-use std::sync::Arc;
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 
 use chromiumoxide::cdp::{
     browser_protocol::{
@@ -13,7 +16,9 @@ use chromiumoxide::cdp::{
         },
     },
     js_protocol::runtime::{
-        AddBindingParams, EvaluateParams, EventBindingCalled, ReleaseObjectParams, RemoteObject,
+        AddBindingParams, EvaluateParams, EventBindingCalled, EventExecutionContextCreated,
+        EventExecutionContextDestroyed, EventExecutionContextsCleared, ReleaseObjectParams,
+        RemoteObject,
     },
 };
 use futures_util::StreamExt;
@@ -24,18 +29,28 @@ use tokio_util::task::TaskTracker;
 
 use crate::driver::operation::{BrowserError, Result};
 use crate::tabs::tab::BrowserTab;
-use demi_command_package_browser_protocol::live::{ControlToken, LiveControl};
+use demi_command_package_browser_protocol::live::{
+    ControlToken, CursorRegion, LiveControl, MAX_CURSOR_REGIONS,
+};
 
 /// The isolated world's name, shared by its script and its binding.
 const WORLD: &str = "demi-live";
 const BINDING: &str = "demiLiveReport";
 const SOURCE: &str = include_str!("observer.js");
+/// How long a new document gets to take the viewer's pointer.
+const POINTER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
 /// What the observer of one tab last reported.
 pub(crate) struct Observed {
     pub controls: watch::Sender<Vec<LiveControl>>,
     /// The CSS cursor under the pointer, and whether it is over editable text.
     pub cursor: watch::Sender<(String, bool)>,
+    /// Where on the visible page each cursor applies, from every frame that
+    /// reports them: the top document's first, then its frames'.
+    pub regions: watch::Sender<Vec<CursorRegion>>,
+    /// The viewer's pointer in the tab, as a viewer last moved it there; a
+    /// new top document resolves its cursor at it before any pointer event.
+    pub pointer: watch::Sender<Option<(f64, f64)>>,
     /// Text the page copied.
     pub copies: broadcast::Sender<String>,
     /// Counts the tab's main documents: a new one ends the input held in the
@@ -46,7 +61,14 @@ pub(crate) struct Observed {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Report {
-    Cursor { cursor: String, editable: bool },
+    Cursor {
+        cursor: String,
+        editable: bool,
+    },
+    Cursors {
+        top: bool,
+        regions: Vec<CursorRegion>,
+    },
     Controls { controls: Vec<LiveControl> },
     Copy { text: String },
 }
@@ -55,6 +77,18 @@ enum Report {
 pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<Observed>> {
     let mut reports = tab.page().event_listener::<EventBindingCalled>().await?;
     let mut navigations = tab.page().event_listener::<EventFrameNavigated>().await?;
+    let mut created = tab
+        .page()
+        .event_listener::<EventExecutionContextCreated>()
+        .await?;
+    let mut destroyed = tab
+        .page()
+        .event_listener::<EventExecutionContextDestroyed>()
+        .await?;
+    let mut cleared = tab
+        .page()
+        .event_listener::<EventExecutionContextsCleared>()
+        .await?;
     tab.page()
         .execute(
             AddBindingParams::builder()
@@ -87,12 +121,18 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
     let observed = Arc::new(Observed {
         controls: watch::channel(Vec::new()).0,
         cursor: watch::channel(("default".to_owned(), false)).0,
+        regions: watch::channel(Vec::new()).0,
+        pointer: watch::channel(None).0,
         copies: broadcast::channel(4).0,
         documents: watch::channel(0).0,
     });
     let reporting = observed.clone();
     let ended = tab.ended().clone();
+    let observing = tab.clone();
+    let calls = tasks.clone();
     tasks.spawn(async move {
+        // Each frame's regions by the execution context of its observer.
+        let mut frames = FrameRegions::default();
         loop {
             tokio::select! {
                 _ = ended.cancelled() => break,
@@ -112,6 +152,10 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
                         Ok(Report::Cursor { cursor, editable }) => {
                             reporting.cursor.send_replace((cursor, editable));
                         }
+                        Ok(Report::Cursors { top, regions }) => {
+                            frames.report(*report.execution_context_id.inner(), top, regions);
+                            reporting.regions.send_replace(frames.merged());
+                        }
                         Ok(Report::Controls { controls }) => {
                             reporting.controls.send_replace(controls);
                         }
@@ -128,17 +172,113 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
                         Some(Err(_)) | None => break,
                     };
                     if navigation.frame.parent_id.is_none() {
-                        // A new document has no controls yet, and the
-                        // pointer's cursor is its own until it moves.
+                        // A new document has no controls or cursors yet; its
+                        // cursor at the still pointer replaces the old one's
+                        // once it resolves it there.
                         reporting.controls.send_replace(Vec::new());
-                        reporting.cursor.send_replace(("default".to_owned(), false));
+                        frames.clear();
+                        reporting.regions.send_replace(Vec::new());
                         reporting.documents.send_modify(|documents| *documents += 1);
+                        let pointer = *reporting.pointer.borrow();
+                        if let Some((x, y)) = pointer {
+                            let tab = observing.clone();
+                            calls.spawn(async move {
+                                let expression = format!("globalThis.demiLive.pointer({x}, {y})");
+                                let told = call(&tab, &expression, true);
+                                // A document replaced again meanwhile waits for its own pointer events.
+                                tokio::select! {
+                                    _ = tab.ended().cancelled() => {}
+                                    _told = tokio::time::timeout(POINTER_TIMEOUT, told) => {}
+                                }
+                            });
+                        }
                     }
+                }
+                world = created.next() => {
+                    let world = match world {
+                        Some(Ok(world)) => world,
+                        Some(Err(chromiumoxide::listeners::EventStreamError::Lagged(_))) => continue,
+                        Some(Err(_)) | None => break,
+                    };
+                    if world.context.name == WORLD {
+                        frames.contexts.insert(world.context.unique_id.clone(), *world.context.id.inner());
+                    }
+                }
+                gone = destroyed.next() => {
+                    let gone = match gone {
+                        Some(Ok(gone)) => gone,
+                        Some(Err(chromiumoxide::listeners::EventStreamError::Lagged(_))) => continue,
+                        Some(Err(_)) | None => break,
+                    };
+                    if frames.remove(&gone.execution_context_unique_id) {
+                        reporting.regions.send_replace(frames.merged());
+                    }
+                }
+                all = cleared.next() => {
+                    match all {
+                        Some(Ok(_)) => {}
+                        Some(Err(chromiumoxide::listeners::EventStreamError::Lagged(_))) => continue,
+                        Some(Err(_)) | None => break,
+                    }
+                    frames.clear();
+                    reporting.regions.send_replace(Vec::new());
                 }
             }
         }
     });
     Ok(observed)
+}
+
+/// The cursor regions each frame's observer last reported, by the
+/// execution context of its world.
+#[derive(Default)]
+struct FrameRegions {
+    top: Option<(i64, Vec<CursorRegion>)>,
+    frames: BTreeMap<i64, Vec<CursorRegion>>,
+    /// The observers' worlds by the unique ids their end is reported with.
+    contexts: HashMap<String, i64>,
+}
+
+impl FrameRegions {
+    fn report(&mut self, context: i64, top: bool, regions: Vec<CursorRegion>) {
+        if top {
+            self.top = Some((context, regions));
+        } else {
+            self.frames.insert(context, regions);
+        }
+    }
+
+    /// Forgets every frame's regions, as a new top document does; the
+    /// worlds keep their ids.
+    fn clear(&mut self) {
+        self.top = None;
+        self.frames.clear();
+    }
+
+    /// Forgets the frame whose world `unique` ended with its document;
+    /// whether it had reported regions.
+    fn remove(&mut self, unique: &str) -> bool {
+        let Some(context) = self.contexts.remove(unique) else {
+            return false;
+        };
+        if self.top.as_ref().is_some_and(|(top, _)| *top == context) {
+            self.top = None;
+            return true;
+        }
+        self.frames.remove(&context).is_some()
+    }
+
+    /// The top document's regions, then its frames', which lie over it.
+    fn merged(&self) -> Vec<CursorRegion> {
+        self.top
+            .iter()
+            .map(|(_, regions)| regions)
+            .chain(self.frames.values())
+            .flatten()
+            .take(MAX_CURSOR_REGIONS)
+            .cloned()
+            .collect()
+    }
 }
 
 /// Runs `expression` in the observer's world of the tab's main document, and
