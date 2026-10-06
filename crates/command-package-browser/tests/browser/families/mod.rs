@@ -248,6 +248,20 @@ pub fn answer_chrome(
     })
 }
 
+/// How many Chromes this test process runs at once: a third of the cores.
+/// Each Chrome is a dozen processes, and a watched tab encodes video; with
+/// one per test thread, as the harness starts them, the machine starved and
+/// commands and retirements ran out of their deadlines.
+static BROWSERS: std::sync::LazyLock<tokio::sync::Semaphore> = std::sync::LazyLock::new(|| {
+    let cores = std::thread::available_parallelism().map_or(3, std::num::NonZero::get);
+    tokio::sync::Semaphore::new((cores / 3).max(2))
+});
+
+/// A turn to run a Chrome, held for as long as the test's browser runs.
+pub async fn browser_turn() -> tokio::sync::SemaphorePermit<'static> {
+    BROWSERS.acquire().await.expect("the semaphore is never closed")
+}
+
 /// The service, whose requests for Chrome [`answer_chrome`] answers.
 pub fn test_browser() -> DemiBrowser {
     let service = DemiBrowser::new();
@@ -270,6 +284,7 @@ where
     F: FnOnce(BrowserFixture) -> W,
     W: Future<Output = BrowserFixture>,
 {
+    let _turn = browser_turn().await;
     let service = test_browser();
     service.numbers(numbers);
     let fixture = BrowserFixture {

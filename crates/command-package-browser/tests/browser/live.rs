@@ -397,17 +397,24 @@ fn hello(view: &View, platform: &str) {
     }));
 }
 
-/// Watches `tab` until its pictures arrive at the panel's size.
+/// Watches `tab`, whose capture starts at the panel's size: the first
+/// stream is the panel's, never one the module is about to replace
+/// (`live-view.md` § Delivery).
 async fn watch(view: &mut View, tab: &str) -> u64 {
     view.send(json!({"type": "watch", "tab": tab}));
-    let stream = view
-        .until("a 1600-wide stream", |message| {
-            message["type"] == "stream" && message["width"] == 1600
-        })
-        .await;
+    let stream = view.message("stream").await;
     assert_eq!(
-        (stream["tab"].as_str(), stream["height"].as_u64()),
-        (Some(tab), Some(1200))
+        (&stream["tab"], &stream["width"], &stream["height"]),
+        (&json!(tab), &json!(1600), &json!(1200)),
+        "the first stream has the panel's size: {stream}"
+    );
+    assert_eq!(
+        (&stream["viewport"], &stream["scale"]),
+        (
+            &json!({"width": 800, "height": 600, "devicePixelRatio": 2.0, "mode": "web"}),
+            &json!(1.0)
+        ),
+        "a stream names the viewport its pictures show"
     );
     let generation = stream["generation"].as_u64().unwrap();
     let (pictured, key, width, height, data) = view.picture(generation).await;
@@ -542,6 +549,92 @@ async fn modes_follow_the_viewer_and_the_agent() {
             .await;
         let info = fixture.call("browser.info", json!({"tab": tab})).await;
         assert_eq!(info["viewport"]["mode"], "web");
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// The view resolves the page's cursor locally (`live-view.md` § Input):
+/// the observer of every frame, a cross-site frame in its own process
+/// included, reports where each cursor applies, placed in tab CSS pixels; a
+/// shadow root's elements count; a cursor list counts by its last keyword;
+/// what a scrolled container hides is left out; and a new document resolves
+/// its cursor at the still pointer.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
+    with_browser_fixture(|fixture| async move {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // `localhost` is another site than `127.0.0.1`: its frame runs in a process of its own.
+        let page = format!(
+            "<!doctype html><style>body{{margin:0;font:16px sans-serif}}</style>\
+            <button style=\"position:absolute;left:10px;top:10px;width:100px;height:30px;cursor:pointer\"><span>Save</span></button>\
+            <div style=\"position:absolute;left:10px;top:50px;width:100px;height:30px;cursor:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=) 4 4, move\"></div>\
+            <div style=\"position:absolute;left:10px;top:100px;width:100px;height:50px;overflow:auto\">\
+              <div style=\"height:200px\"><div style=\"margin-top:120px;height:20px;cursor:help\"></div></div></div>\
+            <iframe style=\"position:absolute;left:200px;top:100px;width:200px;height:100px;border:5px solid black\"\
+              srcdoc=\"<body style='margin:0'><div style='margin:10px;width:50px;height:20px;cursor:crosshair'></div></body>\"></iframe>\
+            <iframe style=\"position:absolute;left:450px;top:100px;width:200px;height:100px;border:3px solid black\" src=\"http://localhost:{port}/frame\"></iframe>\
+            <div id=\"host\" style=\"position:absolute;left:10px;top:300px\"></div>\
+            <script>host.attachShadow({{mode:'open'}}).innerHTML = '<button style=\"width:80px;height:20px;cursor:copy\">Shadow</button>'</script>\
+            <p style=\"position:absolute;left:10px;top:220px;margin:0\">Some text</p>"
+        );
+        let frame = "<!doctype html><body style=\"margin:0\"><button style=\"margin:20px;width:60px;height:30px;cursor:cell\">Far</button></body>";
+        let next = "<!doctype html><style>body{margin:0}</style><button style=\"position:absolute;left:0;top:0;width:300px;height:300px;cursor:grab\">Next</button>";
+        let app = Router::new()
+            .route("/", get(move || async move { Html(page) }))
+            .route("/frame", get(move || async move { Html(frame) }))
+            .route("/next", get(move || async move { Html(next) }));
+        let _server = AbortOnDropHandle::new(tokio::spawn(async move {
+            axum::serve(listener, app).await.unwrap();
+        }));
+        let tab = fixture
+            .call("browser.open", json!({"url": format!("http://127.0.0.1:{port}/")}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        view.send(json!({"type": "watch", "tab": tab}));
+        let has = |regions: &Value, cursor: &str| {
+            regions.as_array().is_some_and(|regions| regions.iter().any(|region| region["cursor"] == cursor))
+        };
+        let cursors = view
+            .until("the page's and its frames' cursors", |message| {
+                message["type"] == "cursors"
+                    && ["pointer", "crosshair", "cell", "copy"].iter().all(|cursor| has(&message["regions"], cursor))
+            })
+            .await;
+        let regions = cursors["regions"].as_array().unwrap();
+        let region = |cursor: &str| {
+            regions
+                .iter()
+                .find(|region| region["cursor"] == cursor)
+                .map(|region| [&region["x"], &region["y"], &region["width"], &region["height"]].map(|value| value.as_f64().unwrap()))
+        };
+        assert_eq!(region("pointer"), Some([10.0, 10.0, 100.0, 30.0]));
+        // A cursor list falls back to its last keyword.
+        assert_eq!(region("move"), Some([10.0, 50.0, 100.0, 30.0]));
+        // A frame's region, in the tab's coordinates past its border.
+        assert_eq!(region("crosshair"), Some([215.0, 115.0, 50.0, 20.0]));
+        // A cross-site frame's, from its own process, placed the same way.
+        assert_eq!(region("cell"), Some([473.0, 123.0, 60.0, 30.0]));
+        // A button in a shadow root.
+        assert_eq!(region("copy"), Some([10.0, 300.0, 80.0, 20.0]));
+        // A region its scrolled container hides is left out.
+        assert_eq!(region("help"), None);
+        // The cursor the observer resolves at the pointer: text over text.
+        view.pointer(&tab, "move", 20.0, 228.0);
+        view.until("a text cursor", |message| message["type"] == "cursor" && message["cursor"] == "text").await;
+        // A new document under the still pointer resolves its own cursor there.
+        fixture
+            .call("browser.goto", json!({"tab": tab, "url": format!("http://127.0.0.1:{port}/next")}))
+            .await;
+        view.until("the new document's cursor", |message| message["type"] == "cursor" && message["cursor"] == "grab").await;
         assert_eq!(view.close().await.exit_code, 0);
         fixture
     })
@@ -1080,27 +1173,63 @@ async fn a_narrow_still_picture_matches_the_page_coordinates() {
         view.send(json!({"type": "hello", "platform": "mac"}));
         view.message("state").await;
         view.send(json!({"type": "watch", "tab": tab}));
-        for (width, height) in [(409, 632), (800, 600), (409, 632)] {
+        // Each size starts a capture whose stream names its pictures' size.
+        // Chrome captures an odd side at ratio 1 at the nearest even size of
+        // the page's shape, so both sides may lose a pixel: 537 × 912 came
+        // as 536 × 910.
+        for (width, height, ratio) in [(409, 632, 2), (800, 600, 2), (500, 400, 2), (409, 632, 2), (537, 912, 1)] {
             view.send(json!({
-                "type": "panel", "width": width, "height": height, "devicePixelRatio": 2,
-                "screenWidth": 1280, "screenHeight": 720,
+                "type": "panel", "width": width, "height": height, "devicePixelRatio": ratio,
+                "screenWidth": 1920, "screenHeight": 1080,
             }));
             let stream = view
                 .until("a resized stream", |message| {
                     message["type"] == "stream"
-                        && message["width"] == width * 2
-                        && message["height"] == height * 2
+                        && message["viewport"]["width"] == width
+                        && message["viewport"]["height"] == height
+                        && message["viewport"]["devicePixelRatio"].as_f64() == Some(f64::from(ratio))
                 })
                 .await;
-            let (_, key, _, _, frame) = view.picture(stream["generation"].as_u64().unwrap()).await;
+            let pixels_wide = stream["width"].as_u64().unwrap() as u32;
+            let pixels_high = stream["height"].as_u64().unwrap() as u32;
+            let (wide, high): (u32, u32) = (width * ratio, height * ratio);
+            assert!(
+                pixels_wide % 2 == 0 && pixels_high % 2 == 0 && wide.abs_diff(pixels_wide) <= 2 && high.abs_diff(pixels_high) <= 2,
+                "the stream of {wide} × {high} pixels is {pixels_wide} × {pixels_high}",
+            );
+            let (_, key, frame_wide, frame_high, frame) = view.picture(stream["generation"].as_u64().unwrap()).await;
             assert!(key);
+            assert_eq!((u32::from(frame_wide), u32::from(frame_high)), (pixels_wide, pixels_high), "the stream names its pictures' size");
             let (decoded_width, pixels) = decoded(&fixture, &tab, &frame).await;
-            for (x, y) in [(4, 4), (width * 2 - 5, height * 2 - 5)] {
+            assert_eq!(decoded_width, pixels_wide);
+            let rgb = |x: u32, y: u32| {
                 let at = ((y * decoded_width + x) * 3) as usize;
-                assert!(pixels[at..at + 3].iter().all(|value| *value > 230), "white page corner at {x},{y}: {:?}", &pixels[at..at + 3]);
+                [pixels[at], pixels[at + 1], pixels[at + 2]]
+            };
+            let white = |[red, green, blue]: [u8; 3]| red > 200 && green > 200 && blue > 200;
+            // Red against white differs most in green, which an edge's compression blurs least.
+            let red = |[red, green, _]: [u8; 3]| red > 150 && green < 80;
+
+            for (x, y) in [(4, 4), (pixels_wide - 5, pixels_high - 5)] {
+                assert!(white(rgb(x, y)), "white page corner at {x},{y}: {:?}", rgb(x, y));
             }
-            let at = ((220 * decoded_width + 40) * 3) as usize;
-            assert!(pixels[at] > 220 && pixels[at + 1] < 35 && pixels[at + 2] < 35, "red rectangle at its CSS coordinates: {:?}", &pixels[at..at + 3]);
+            // The rectangle's edges, at CSS 10 and 110 across, fall on the
+            // page's own device pixels when the sides are even, and within
+            // the pixel Chrome's scaling blends when one is odd.
+            let at = |css: u32| f64::from(css * ratio) * f64::from(pixels_wide) / f64::from(wide);
+            let row = 115 * ratio;
+            let left = at(10);
+            let right = at(110);
+            let edges = [
+                (left.floor() as u32 - 1, false),
+                (left.ceil() as u32, true),
+                (right.floor() as u32 - 1, true),
+                (right.ceil() as u32, false),
+            ];
+            for (x, inside) in edges {
+                let pixel = rgb(x, row);
+                assert!(if inside { red(pixel) } else { white(pixel) }, "the rectangle's edge at {x}, ratio {ratio}: {pixel:?}");
+            }
         }
         view.close().await;
         fixture
