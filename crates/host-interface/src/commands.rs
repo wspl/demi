@@ -1,12 +1,12 @@
 //! The command set (`commands.md` § Declare a command): root command
 //! declarations paired with the handler of each `rpc` leaf. Everything that
-//! reads the tree, the manifest a runner receives and the help the model
-//! reads, sees only the declarations.
+//! reads the tree, the manifest a runner receives and the capability index
+//! the model reads, sees only the declarations.
 
 use std::{collections::HashMap, rc::Rc};
 
 use demi_command_declarations::{
-    Category, HELP_DEFAULTS, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
+    Category, Leaf, LeafKind, NativeOperation, Node, check_input_subset, render_index,
 };
 
 use crate::{RpcError, RpcHandler, RpcInvocation, RpcPort, reserved::is_reserved};
@@ -201,18 +201,10 @@ impl CommandSet {
         self.roots.iter()
     }
 
-    /// The model's command help: the paragraph of defaults, then each root's
-    /// help; nothing when the set is empty.
-    pub fn render_help(&self) -> String {
-        if self.roots.is_empty() {
-            return String::new();
-        }
-        let roots: Vec<String> = self
-            .roots
-            .iter()
-            .map(|root| root.help(root.name()))
-            .collect();
-        format!("{HELP_DEFAULTS}\n\n{}", roots.join("\n\n"))
+    /// The model's capability index of the set (`system-prompt.md`
+    /// § Capability index); nothing when the set is empty.
+    pub fn render_index(&self) -> String {
+        render_index(&self.roots)
     }
 
     /// Runs the `rpc` leaf `invocation.path` names. The arguments arrived as
@@ -366,6 +358,7 @@ fn keep_leaves(
                 Node::Group(demi_command_declarations::Group {
                     name: group.name.clone(),
                     summary: group.summary.clone(),
+                    index_entry: group.index_entry.clone(),
                     permissions: group.permissions.clone(),
                     subcommands,
                 })

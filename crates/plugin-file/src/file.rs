@@ -6,11 +6,16 @@ use demi_command_declarations::NativeOperation;
 use demi_command_package_file_protocol::{CreateArgs, EditArgs, PACKAGE, PatchArgs, ReadArgs};
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 
+/// The group's entry in the model's capability index (`system-prompt.md`
+/// § Capability index).
+const ENTRY: &str = "Reads, creates, edits and patches files precisely: `edit` replaces exact text, `patch` applies a diff, `create` never overwrites, and `read` shows you an image or video as media you can look at. Use it when you change files of the task, so each change is exact and the user can review it, and whenever you need to see an image. Plain shell tools are fine for looking around.";
+
 pub(crate) fn file_group() -> GroupBuilder {
     GroupBuilder::new(
         "file",
         "Read, create, edit, and patch workspace files (text, images, and video).",
     )
+    .index_entry(ENTRY)
     .leaf(
         leaf(
             "read",

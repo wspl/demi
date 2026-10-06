@@ -17,7 +17,7 @@ mod help;
 mod input;
 mod parse;
 
-pub use help::HELP_DEFAULTS;
+pub use help::{HELP_DEFAULTS, INDEX_OPENER, render_index};
 pub use input::{check_input_subset, command_schema_settings};
 pub use parse::{Parsed, Selected, UsageError};
 
@@ -33,6 +33,10 @@ use serde_with::rust::unwrap_or_skip;
 
 /// The deepest a command tree nests.
 pub const MAX_DEPTH: usize = 32;
+
+/// The most characters a group's index entry holds
+/// (`system-prompt.md` § Capability index).
+pub const MAX_INDEX_ENTRY: usize = 600;
 
 /// A declaration that breaks one of the tree's rules.
 #[derive(Debug, thiserror::Error)]
@@ -66,6 +70,17 @@ pub enum Node<B = Binding> {
 pub struct Group<B = Binding> {
     pub name: String,
     pub summary: String,
+    /// What the group is for and when to use it, as the model's capability
+    /// index shows it (`system-prompt.md` § Capability index); a group
+    /// without one, such as the `demi` root or a subgroup, is reached
+    /// through its parent.
+    #[serde(
+        default,
+        rename = "indexEntry",
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub index_entry: Option<String>,
     /// The permission categories the group's leaves name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<Category>,
@@ -290,7 +305,8 @@ impl<B> Node<B> {
     }
 
     /// Checks the tree's rules: names, at most [`MAX_DEPTH`] levels, groups
-    /// with distinctly named subcommands, each leaf's input declaration, and
+    /// with distinctly named subcommands and an index entry of at most
+    /// [`MAX_INDEX_ENTRY`] characters, each leaf's input declaration, and
     /// the permission categories: each declared once, and a leaf's
     /// `permission` naming one its groups declare, on an `rpc` leaf only.
     pub fn validate(&self) -> Result<(), DeclarationError> {
@@ -327,6 +343,15 @@ impl<B> Node<B> {
                         "command group {} has no subcommands",
                         group.name
                     )));
+                }
+                if let Some(entry) = &group.index_entry {
+                    let length = entry.chars().count();
+                    if length > MAX_INDEX_ENTRY {
+                        return Err(invalid(format!(
+                            "the index entry of command group {} has {length} characters; at most {MAX_INDEX_ENTRY} are allowed",
+                            group.name
+                        )));
+                    }
                 }
                 for category in &group.permissions {
                     category.validate(&group.name)?;
@@ -382,6 +407,7 @@ impl Node<NativeOperation> {
             Self::Group(group) => Node::Group(Group {
                 name: group.name.clone(),
                 summary: group.summary.clone(),
+                index_entry: group.index_entry.clone(),
                 permissions: group.permissions.clone(),
                 subcommands: group
                     .subcommands

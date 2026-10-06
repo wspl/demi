@@ -98,41 +98,34 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
                 "yield"
             ]
         );
-        // The prompt teaches the node's commands: the plugins' `demi` root
-        // with the `demi agent` graft beside `file`, and bodies only from
-        // stdin.
+        // The prompt opens with the product's identity and harness guide,
+        // indexes the node's groups, the plugins' `demi file` and the
+        // `demi agent` graft, without their manuals, and names the model
+        // last.
         let prompt = &first.system_prompt;
+        assert!(
+            prompt.starts_with("You are a coding agent.\n\nHow Demi works.\n\n"),
+            "{prompt}"
+        );
         for taught in [
-            "You are a coding agent.",
-            "Registered commands:",
-            "demi file create",
-            "demi agent spawn",
-            "demi agent abort",
-            "demi agent list",
-            "demi agent show",
-            "demi agent send <id> [--json] <<'EOF'",
-            "Stdin body: content",
-            "Stdin body: patch",
-            "Stdin body: prompt",
-            "Stdin body: message",
-            "cannot see this conversation",
-            "State the exact shape of the last assistant text it should return.",
-            "demi agent profiles",
-            // The help names no profile, since the user's profiles change
-            // while a tree is open (`subagents.md` § Command help).
-            "The name of one of the user's subagent profiles",
+            "Capabilities:",
+            "demi agent\nRuns helper agents",
+            "Operations: spawn, send, abort, resume, list, show, profiles\n",
+            "demi file\nReads, creates, edits and patches files precisely",
+            "Operations: read, create, edit, patch\n",
+            "Details: demi file --help; one operation: demi file <operation> --help",
         ] {
             assert!(prompt.contains(taught), "{taught}");
         }
-        for absent in [
-            "demi agent steer",
-            "--content",
-            "--patch",
-            "--prompt",
-            "--message",
-        ] {
+        for absent in ["Usage:", "Stdin body:", "demi file create <path>", "--content"] {
             assert!(!prompt.contains(absent), "{absent}");
         }
+        assert!(
+            prompt.ends_with(
+                "This conversation runs on test-model (stub, test-model). If asked which model you are, answer with this."
+            ),
+            "{prompt}"
+        );
         fixture.stop().await;
     })
     .await;
