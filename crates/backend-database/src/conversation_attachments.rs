@@ -3,14 +3,14 @@
 //! upload` stores each file's bytes as a blob of the conversation owner's
 //! namespace, and the conversation's `attachments` table holds one row per
 //! attachment, keyed by its number in the conversation's `attachment`
-//! sequence, with the file's name, its media type, its size and its blob. A
-//! row is written once, or copied into a Fork's destination, and never
-//! changes.
+//! sequence, with the file's name, its media type, its size, an image's or a
+//! video's size in pixels, and its blob. A row is written once, or copied
+//! into a Fork's destination, and never changes.
 
 use std::fmt;
 use std::str::FromStr;
 
-use demi_shared_types::BlobRef;
+use demi_shared_types::{BlobRef, PixelSize};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
@@ -57,6 +57,10 @@ pub struct AttachmentRow {
     /// The media type the backend read from the bytes.
     pub media_type: String,
     pub size: u64,
+    /// An image's or a video's size in pixels, read from its header when
+    /// the row was written; none for any other file, and for one whose
+    /// header does not give it.
+    pub pixels: Option<PixelSize>,
     pub blob: BlobRef,
 }
 
@@ -65,8 +69,8 @@ pub fn insert(connection: &mut Connection, rows: &[AttachmentRow]) -> Result<(),
     let transaction = connection.transaction()?;
     {
         let mut insert = transaction.prepare_cached(
-            "INSERT INTO attachments (number, name, media_type, size, blob)
-             VALUES (?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO attachments (number, name, media_type, size, width, height, blob)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
              ON CONFLICT (number) DO NOTHING",
         )?;
         for row in rows {
@@ -75,6 +79,8 @@ pub fn insert(connection: &mut Connection, rows: &[AttachmentRow]) -> Result<(),
                 row.name,
                 row.media_type,
                 column(row.size),
+                row.pixels.map(|pixels| pixels.width),
+                row.pixels.map(|pixels| pixels.height),
                 row.blob.as_str(),
             ])?;
         }
@@ -90,7 +96,8 @@ pub fn read(
 ) -> Result<Option<AttachmentRow>, StorageError> {
     connection
         .prepare_cached(
-            "SELECT number, name, media_type, size, blob FROM attachments WHERE number = ?1",
+            "SELECT number, name, media_type, size, width, height, blob
+             FROM attachments WHERE number = ?1",
         )?
         .query_row([column(number.0)], |row| Ok(decode_row(row)))
         .optional()?
@@ -101,7 +108,8 @@ pub fn read(
 /// its destination.
 pub fn all(connection: &Connection) -> Result<Vec<AttachmentRow>, StorageError> {
     let mut statement = connection.prepare_cached(
-        "SELECT number, name, media_type, size, blob FROM attachments ORDER BY number",
+        "SELECT number, name, media_type, size, width, height, blob
+         FROM attachments ORDER BY number",
     )?;
     let mut rows = statement.query([])?;
     let mut attachments = Vec::new();
@@ -124,10 +132,22 @@ fn decode_row(row: &Row<'_>) -> Result<AttachmentRow, StorageError> {
         name: row.get("name")?,
         media_type: row.get("media_type")?,
         size: decode(TABLE, "size", u64::try_from(row.get::<_, i64>("size")?))?,
+        pixels: decode_pixels(row)?,
         blob: decode(
             TABLE,
             "blob",
             BlobRef::try_from(row.get::<_, String>("blob")?),
         )?,
     })
+}
+
+/// A row's width and height, which it holds both or neither of.
+fn decode_pixels(row: &Row<'_>) -> Result<Option<PixelSize>, StorageError> {
+    let width: Option<u32> = row.get("width")?;
+    let height: Option<u32> = row.get("height")?;
+    match (width, height) {
+        (Some(width), Some(height)) => Ok(Some(PixelSize { width, height })),
+        (None, None) => Ok(None),
+        _ => decode(TABLE, "height", Err("a row holds a width and a height, or neither")),
+    }
 }

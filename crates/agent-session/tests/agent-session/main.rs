@@ -1173,6 +1173,8 @@ async fn a_medium_the_requests_model_cannot_take_reaches_it_as_the_same_text_in_
             source: MediaSource::Ref {
                 r#ref: BlobRef::of(&png),
                 media_type: "image/png".into(),
+                width: None,
+                height: None,
             },
         },
         UserContentBlock::Document {

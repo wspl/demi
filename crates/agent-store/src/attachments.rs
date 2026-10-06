@@ -14,6 +14,7 @@ use demi_shared_types::{
 use crate::{
     StoreError, images,
     media::{BlobStore, HeldMedia},
+    pixels::pixel_size,
 };
 
 /// How much of a text file's opening a record keeps, in Unicode scalar
@@ -81,11 +82,12 @@ pub struct Upload<'a> {
 /// The blocks an upload becomes in a message: the medium a model reads
 /// natively when it is an image, a video or a PDF, then the file's record,
 /// with its opening when it is text. The medium references the upload's own
-/// blob, and its bytes come with the blocks, for the session to hold
-/// (`runtime.md` § Media). An image enters fitted (`runtime.md` § Images in
-/// the transcript): one that fitting changed references the fitted image's
-/// blob, which is put into `blobs` first, and one no provider can take
-/// stays the record alone, which the model reads by path.
+/// blob, with its size in pixels, and its bytes come with the blocks, for
+/// the session to hold (`runtime.md` § Media). An image enters fitted
+/// (`runtime.md` § Images in the transcript): one that fitting changed
+/// references the fitted image's blob, which is put into `blobs` first, and
+/// one no provider can take stays the record alone, which the model reads by
+/// path.
 pub async fn upload_blocks(
     upload: Upload<'_>,
     blobs: &dyn BlobStore,
@@ -108,11 +110,14 @@ pub async fn upload_blocks(
                     } else {
                         upload.sha256.clone()
                     };
+                    let size = pixel_size(fitted.data.clone().into_bytes(), fitted.media_type);
                     held.hold(blob.clone(), fitted.data);
                     Some(UserContentBlock::Image {
                         source: MediaSource::Ref {
                             r#ref: blob,
                             media_type: fitted.media_type.to_owned(),
+                            width: size.map(|size| size.width),
+                            height: size.map(|size| size.height),
                         },
                     })
                 }
@@ -120,11 +125,14 @@ pub async fn upload_blocks(
             }
         }
         Some(media) => {
+            let size = pixel_size(upload.bytes.clone().into_bytes(), media.media_type);
             held.hold(upload.sha256.clone(), upload.bytes.clone());
             Some(UserContentBlock::Video {
                 source: MediaSource::Ref {
                     r#ref: upload.sha256.clone(),
                     media_type: media.media_type.to_owned(),
+                    width: size.map(|size| size.width),
+                    height: size.map(|size| size.height),
                 },
             })
         }
