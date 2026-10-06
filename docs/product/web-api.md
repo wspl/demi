@@ -48,7 +48,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversation draft | `GET/PUT /conversations/:id/draft` reads and saves the [draft](#conversation-drafts); `POST /conversations/:id/draft/replaced { action, revision }` restores or dismisses the version a save replaced |
 | Conversation permissions | `GET /conversations/:id/permissions` reads the conversation's [permission requests](#conversation-permissions); `POST /conversations/:id/permissions/requests/:request { decision }` decides a request |
 | Device log | `GET /devices/:id/log?since=<cursor>&limit=<n>&source=<source>` reads the [Host's log](../execution/runner.md#host-log) |
-| Direct channel | `WS /devices/:deviceId/direct` introduces the page to a paired device's runner and grants it conversations ([Direct channel](#direct-channel)) |
+| Direct channel | `WS /devices/:deviceId/direct` introduces the page to a paired device's runner ([Direct channel](#direct-channel)) |
 | Sidebar | `POST /sidebar/reorder { kind, id, beforeId }` |
 | Plugins | `PUT /plugins/:plugin { enabled }` turns a plugin on or off for the caller ([A user's plugins](#a-users-plugins)); `GET /conversations/:id/plugins/:plugin/state` reads a plugin's [state for one conversation](#conversation-state-of-plugins); `POST /plugins/:plugin/calls/:method` and `POST /conversations/:id/plugins/:plugin/calls/:method` with the method's parameters call a [plugin's page method](#plugin-calls), for the user or for one conversation; `POST /conversations/:id/reload` reopens the conversation's tree with the user's current plugins |
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
@@ -1398,8 +1398,6 @@ The page sends:
 | Message | Carries | Sent when |
 | --- | --- | --- |
 | `offer` | `sdp` | The page makes a peer: at first, and on each new attempt |
-| `use` | `conversation` | The page shows a conversation whose primary Host is this device |
-| `release` | `conversation` | It no longer shows it |
 
 The backend sends:
 
@@ -1407,9 +1405,6 @@ The backend sends:
 | --- | --- | --- |
 | `answer` | `sdp` | The runner answered the offer |
 | `unanswered` | `code` | The runner refused the offer (`busy`) or did not answer within 10 seconds |
-| `granted` | `conversation` | `use` was admitted and the runner holds the grant |
-| `refused` | `conversation`, `code` | `use` was not admitted: `conversation_archived`, `not_found`, or `not_on_device` when the conversation's primary Host is another device |
-| `revoked` | `conversation` | A transition took the grant back |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
 A new `offer` replaces the socket's peer: the runner closes the old one. The
