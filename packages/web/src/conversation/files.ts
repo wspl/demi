@@ -7,6 +7,8 @@ import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
 import { readEditCopies, workingTreeReads } from './changes'
 import { ConversationWatch } from './file-watch'
+import { directRoute } from '../direct'
+import { directFileReads, directWatchLink } from '../direct/operations'
 import { useConversations } from './store'
 
 /** Each conversation's service, made once for the page's lifetime. */
@@ -36,14 +38,18 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   const watcher = new ConversationWatch(conversationId, () => {
     const target = execution.value
     return target?.path && device.value ? { files: hostFiles(device.value.id), root: target.path } : null
-  })
-  // For the page's lifetime: a Host that comes back online has the watch connect at once.
+  }, directWatchLink(() => directRoute(conversationId)))
+  // For the page's lifetime: a Host that comes back online has the watch
+  // connect at once, and the watch moves whenever the path to its device
+  // changes (`direct-channel.md` § Choosing the path).
   effectScope(true).run(() => {
-    watch(() => device.value?.online === true, (online) => {
-      if (online) {
-        watcher.online()
-      }
-    })
+    watch(() => device.value?.online === true ? device.value.id : null, (online, _previous, onCleanup) => {
+      if (online === null)
+        return
+      watcher.online()
+      const moving = directRoute(conversationId)?.device.onChange(() => watcher.move())
+      onCleanup(() => moving?.())
+    }, { immediate: true })
   })
   const workspace = computed(() => {
     const target = execution.value
@@ -51,7 +57,8 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       return null
     }
     return {
-      source: fileSource(conversationFileRoutes(conversationId), device.value, watcher),
+      source: fileSource(conversationFileRoutes(conversationId), device.value, watcher, (reads) =>
+        directFileReads(() => directRoute(conversationId), reads)),
       root: target.path,
       // The Cloud's own session directory has no name worth showing; it is the workspace.
       name: target.directory === null ? 'Workspace' : undefined,
