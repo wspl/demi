@@ -57,8 +57,6 @@
 Only when the user says to enter parallel development mode:
 
 - Hand each independent implementation, test or acceptance item to a background subagent and stay free to talk with the user. Items that change the same files run one after another.
-- An acceptance run asks one question and stops once the run has answered it; the brief names the question, not a list of numbers that only a finished run yields. Whether a model splits a task with helper agents shows in its early requests: a pricing run that went on to its end once cost 140 requests and six million input tokens, nearly all of them after the answer, which was no.
-- At a merge, run the checks the merged change can affect: a change only in TypeScript packages runs `bun run test` and `bun run typecheck:web`, not the Cargo suite.
 - Each subagent works in its own worktree under `../demi-worktrees/`, clones the warm `target/` with `cp -c` (APFS copy-on-write; skip `target/debug/incremental`), commits on its own branch and never pushes.
 - The lead reviews each result, merges it into the branch of the user's own checkout, tests and pushes from there, then removes the worktree. After each merge it rebuilds and restarts the development backend and web front end from the checkout (`bun run dev`, `bun run web:dev`), so the user sees the new code at once.
 
