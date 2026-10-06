@@ -1,11 +1,11 @@
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
 import {
-  applyRequest,
   openIntent,
+  pendingShows,
   shownSelection,
-  type AppliedRequests,
+  type AppliedShows,
   type PanelState,
   type PinnedTabs,
 } from '@demicodes/web-ui/agent/panel-tabs'
@@ -93,20 +93,22 @@ export function useGalleryWork(
   function select(id: string) {
     history.value = selectTab(history.value, id)
   }
-  /** Each tab's request to be shown that the panel applied, as the product keeps it beside the history. */
-  let applied: AppliedRequests = {}
-  /** A plugin page's selection, as the product's work store makes it: a request applies once. */
-  function show(id: string, request?: number) {
-    if (request !== undefined) {
-      const next = applyRequest(applied, tabs.tabs.value.map((tab) => tab.id), id, request)
-      if (!next) {
-        return
-      }
-      applied = next
+  /** Each tab's showings the panel applied, as the product keeps them beside the history. */
+  let applied: AppliedShows = {}
+  /** Whether the specimen's panel is open, which a tab its kind asks to show opens. */
+  const open = ref(true)
+  // A tab its kind asks to show opens the panel and is selected once, as the product's work store does it.
+  watch(() => tabs.tabs.value, (current) => {
+    const pending = pendingShows(current, shown, enabled, applied)
+    if (!pending) {
+      return
     }
-    // A specimen's panel is always open.
-    select(id)
-  }
+    applied = pending.applied
+    for (const id of pending.shown) {
+      select(id)
+    }
+    open.value = true
+  })
   /** A new tab after the others, selected unless `options` says not; returns its id. */
   function add(kind: string, data: unknown, options = { select: true }): string {
     const id = crypto.randomUUID()
@@ -153,10 +155,8 @@ export function useGalleryWork(
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
     },
     panel: {
-      tabs: (_conversation, kind) =>
-        tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => ({ id: tab.id, data: tab.data })),
+      tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       add: (_conversation, kind, data, options = { select: false }) => void add(kind, data, options),
-      select: (_conversation, id, request) => show(id, request),
     },
   })
   const bound = bindPages(shown, host, CONVERSATION)
@@ -184,13 +184,20 @@ export function useGalleryWork(
     browser.show(tab)
     await plugin.sync()
   }
+  /** The agent opens a page, shown with `--show` or not, and its job ends: the plugin adds the tab. */
+  async function agentOpens(url: string, show: boolean) {
+    browser.agentOpens(url, { show })
+    await plugin.sync()
+  }
   return {
     panel,
     pinned,
+    open,
     kinds,
     selected,
     browser,
     agentShows,
+    agentOpens,
     host,
     select,
     add,

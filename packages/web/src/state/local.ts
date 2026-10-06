@@ -15,8 +15,9 @@ const localStateSchema = z.object({
   /** What this page's work panel selected, tabs' ids and pinned kinds', the newest last, keyed by conversation id. */
   workPanelHistory: z.record(z.string(), z.array(z.string()).max(TAB_HISTORY)).optional(),
   /**
-   * Each tab's highest request to be shown that this page's work panel
-   * applied, by tab id, keyed by conversation id (`live-view.md` § Showing a tab).
+   * Each tab's count of the times its kind asked that the user see it, as
+   * this page's work panel last applied it, by tab id, keyed by conversation
+   * id (`web-application.md` § Work panel).
    */
   workPanelShown: z.record(z.string(), z.record(z.string(), z.number().int().min(1))).optional(),
 })

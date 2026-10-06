@@ -115,29 +115,14 @@ export interface PageHost {
   intents: IntentService
   /** The panel tabs of one conversation. */
   panel: {
-    /** The panel's tabs of `kind`, with their `data` as saved, in their order, read reactively. */
-    tabs(conversation: string, kind: string): PanelKindTab[]
+    /** The `data` of the panel's tabs of `kind`, as saved. */
+    tabs(conversation: string, kind: string): unknown[]
     /** Adds a tab of `kind`; `select` selects it and opens the panel. */
     add(conversation: string, kind: string, data: unknown, options?: { select: boolean }): void
-    /**
-     * Selects the tab `id`, with the panel opened, as an ordinary selection
-     * that enters the page's history. With `request`, the selection is the
-     * tab's numbered request to be shown, which this page applies once: it
-     * records the highest request it applied for the tab beside its
-     * selection history, and a request not above it selects nothing, across
-     * reloads too (`live-view.md` § Showing a tab).
-     */
-    select(conversation: string, id: string, request?: number): void
   }
   /** Opens a section of the settings dialog, such as `devices`. */
   openSettings(section: string): void
   overlays: OverlayStore
-}
-
-/** A panel tab of one kind, as a page reads it. */
-export interface PanelKindTab {
-  id: string
-  data: unknown
 }
 
 /** A plugin's state, validated with the page's schema: null until it arrives. */
@@ -236,6 +221,13 @@ export interface PanelKind<Data, Session = undefined> {
   pinned?: { data(): Data }
   /** What a tab shows next when its user picks it in the strip, even while it is selected. */
   picked?(data: Data): Data
+  /**
+   * How many times something asked that the user see the tab, from its
+   * data. When the count rises above the one the page last applied for the
+   * tab, the panel opens and selects it, open or closed before
+   * (`plugin-pages.md` § Work panel kinds).
+   */
+  shows?(data: Data): number
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `conversation`, `data`. */
   badge?: Component
   /** The intents it opens: for each, the data its tab shows next, from the payload and what it shows now. */
@@ -448,13 +440,6 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       add(conversation, kind, data, options) {
         own(kind)
         host.panel.add(conversation, kind, data, options)
-      },
-      select(conversation, id, request) {
-        const kinds = (page.kinds ?? []).map((candidate) => candidate.kind)
-        if (!kinds.some((kind) => host.panel.tabs(conversation, kind).some((tab) => tab.id === id))) {
-          throw new Error(`the page of ${page.plugin} has no tab ${id}`)
-        }
-        host.panel.select(conversation, id, request)
       },
     },
     settings: { open: (section) => host.openSettings(section) },

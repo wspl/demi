@@ -21,7 +21,7 @@ export function browserPage(options: BrowserTabsOptions = {}) {
     kinds: [browserTabKind],
     panel: (conversation, page) =>
       new BrowserTabsController(
-        browserTabsApi(page.plugin.conversation(conversation), page.panel, conversation),
+        browserTabsApi(page.plugin.conversation(conversation)),
         page.errors.defect,
         options,
       ),

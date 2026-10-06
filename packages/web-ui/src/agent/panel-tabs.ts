@@ -97,30 +97,39 @@ export function removeTabs(state: PanelState, ids: readonly string[]): PanelStat
 }
 
 /**
- * Each tab's highest numbered request to be shown that this page applied, by
- * tab id (`live-view.md` § Showing a tab), kept beside the page's selection
- * history.
+ * Each tab's highest count of the times something asked that the user see
+ * it, as the page last applied it, by tab id (`web-application.md` § Work
+ * panel); it stands beside the page's selection history.
  */
-export type AppliedRequests = Readonly<Record<string, number>>
+export type AppliedShows = Readonly<Record<string, number>>
 
 /**
- * What the page's record becomes when tab `id` asks to be shown with
- * `request`: the page applies a request above the one it recorded for the
- * tab, once, and none other, so the user's own selection after it stands.
- * Null when the request selects nothing. Tabs the panel no longer has
- * (`present` lists the ones it has) leave the record.
+ * The tabs whose kind counts more showings than the page applied
+ * (`plugin-pages.md` § Work panel kinds), in the panel's order, and the
+ * record once they are applied: the panel opens and selects each, so the
+ * last of them shows. Tabs the panel no longer has leave the record. Null
+ * when no tab asks; the record then stays as it is.
  */
-export function applyRequest(
-  applied: AppliedRequests,
-  present: readonly string[],
-  id: string,
-  request: number,
-): AppliedRequests | null {
-  if (request <= (applied[id] ?? 0)) {
+export function pendingShows(
+  tabs: readonly PanelTab[],
+  pages: readonly AnyPluginPage[],
+  enabled: (plugin: string) => boolean,
+  applied: AppliedShows,
+): { shown: string[]; applied: AppliedShows } | null {
+  const kinds = pages.filter((page) => enabled(page.plugin)).flatMap((page) => page.kinds ?? [])
+  const counts = tabs.flatMap((tab) => {
+    const kind = kinds.find((candidate) => candidate.kind === tab.kind)
+    const data = kind?.shows ? kind.schema.safeParse(tab.data) : null
+    return kind?.shows && data?.success ? [[tab.id, kind.shows(data.data)] as const] : []
+  })
+  const shown = counts.filter(([id, count]) => count > (applied[id] ?? 0)).map(([id]) => id)
+  if (shown.length === 0) {
     return null
   }
-  const kept = Object.entries(applied).filter(([tab]) => tab !== id && present.includes(tab))
-  return { ...Object.fromEntries(kept), [id]: request }
+  const present = new Set(tabs.map((tab) => tab.id))
+  const kept = Object.entries(applied).filter(([id]) => present.has(id))
+  const raised = counts.filter(([id]) => shown.includes(id))
+  return { shown, applied: { ...Object.fromEntries(kept), ...Object.fromEntries(raised) } }
 }
 
 /**
