@@ -1,6 +1,7 @@
-//! Archive installation: a verified zip archive unpacked into a directory
-//! named by its SHA-256, beside a receipt that lets a later process trust
-//! the files without downloading them again. A runner installs a command
+//! Archive installation: a verified zip archive, or a tar archive
+//! compressed with zstd, unpacked into a directory named by its SHA-256,
+//! beside a receipt that lets a later process trust the files without
+//! downloading them again. A runner installs a command
 //! package's resources into its artifact cache and the Cloud image build
 //! into the image, with the same steps (`native-runtime.md` § Install the
 //! selected package, `images.md` § Root filesystem contents).
@@ -155,14 +156,14 @@ impl Unpacking {
     /// Where the caller writes the archive, checked against its declared
     /// size and SHA-256 as it is written, such as by [`crate::download`].
     pub fn archive(&self) -> PathBuf {
-        self.temporary.path().join("archive.zip")
+        self.temporary.path().join("archive")
     }
 
     /// Unpacks the archive the caller wrote, writes the receipt and
     /// publishes the installation; returns its entry.
     pub async fn finish(self, cancel: &CancellationToken) -> Result<PathBuf, Error> {
         let extracted = self.temporary.path().join("extracted");
-        extract_zip(&self.archive(), &extracted, cancel).await?;
+        extract(&self.archive(), &extracted, cancel).await?;
         publish_installation(&extracted, &self.destination, &self.archive, cancel).await
     }
 }
@@ -267,27 +268,89 @@ fn at(path: &Path, error: std::io::Error) -> std::io::Error {
     std::io::Error::new(error.kind(), format!("{}: {error}", path.display()))
 }
 
-/// Whether the zip archive at `archive` holds a file at `path`, such as the
-/// entry a release record names; only the archive's directory is read.
-pub async fn zip_holds(archive: &Path, path: &str) -> Result<bool, Error> {
+/// The kinds of archive an installation unpacks, told apart by their first
+/// bytes: the archive's digest, not its name, says which bytes it is.
+#[derive(Clone, Copy)]
+enum Format {
+    Zip,
+    /// A tar archive compressed with zstd, as the Chrome runtime's
+    /// (`builds-and-releases.md` § Chrome runtime).
+    TarZstd,
+}
+
+/// The first bytes of a zip archive's first local file header.
+const ZIP_MAGIC: [u8; 4] = *b"PK\x03\x04";
+/// The first bytes of a zstd frame.
+const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
+
+/// Which kind of archive `file` holds, read from its start, which the file
+/// is left at.
+fn format(file: &mut File) -> Result<Format, Error> {
+    let mut magic = [0_u8; 4];
+    let read = file.read_exact(&mut magic);
+    file.seek(SeekFrom::Start(0))?;
+    match read {
+        Ok(()) if magic == ZIP_MAGIC => Ok(Format::Zip),
+        Ok(()) if magic == ZSTD_MAGIC => Ok(Format::TarZstd),
+        Err(error) if error.kind() != std::io::ErrorKind::UnexpectedEof => Err(error.into()),
+        _ => Err(Error::Archive(
+            "is neither a zip archive nor a tar archive compressed with zstd".to_owned(),
+        )),
+    }
+}
+
+/// `path` without the `.` components a tar archive may start its paths
+/// with, as `./lib/libnss3.so`.
+fn tar_path(path: &Path) -> PathBuf {
+    path.components()
+        .filter(|component| !matches!(component, std::path::Component::CurDir))
+        .collect()
+}
+
+/// Whether the archive at `archive` holds a file at `path`, such as the
+/// entry a release record names. Only a zip archive's directory is read; a
+/// tar archive is read until the file.
+pub async fn holds(archive: &Path, path: &str) -> Result<bool, Error> {
     let archive = archive.to_owned();
     let path = path.to_owned();
     tokio::task::spawn_blocking(move || {
-        let unreadable =
-            |error: zip::result::ZipError| Error::Archive(format!("cannot be read: {error}"));
-        let mut archive = zip::ZipArchive::new(File::open(archive)?).map_err(unreadable)?;
-        let Some(index) = archive.index_for_name(&path) else {
-            return Ok(false);
-        };
-        let entry = archive.by_index_raw(index).map_err(unreadable)?;
-        Ok(entry.is_file())
+        let mut file = File::open(archive)?;
+        match format(&mut file)? {
+            Format::Zip => {
+                let unreadable = |error: zip::result::ZipError| {
+                    Error::Archive(format!("cannot be read: {error}"))
+                };
+                let mut archive = zip::ZipArchive::new(file).map_err(unreadable)?;
+                let Some(index) = archive.index_for_name(&path) else {
+                    return Ok(false);
+                };
+                let entry = archive.by_index_raw(index).map_err(unreadable)?;
+                Ok(entry.is_file())
+            }
+            Format::TarZstd => {
+                let unreadable =
+                    |error: std::io::Error| Error::Archive(format!("cannot be read: {error}"));
+                let decoder = zstd::stream::read::Decoder::new(file).map_err(unreadable)?;
+                let mut archive = tar::Archive::new(decoder);
+                let wanted = Path::new(&path);
+                for entry in archive.entries().map_err(unreadable)? {
+                    let entry = entry.map_err(unreadable)?;
+                    let found = tar_path(&entry.path().map_err(unreadable)?) == wanted;
+                    if found {
+                        return Ok(entry.header().entry_type().is_file());
+                    }
+                }
+                Ok(false)
+            }
+        }
     })
     .await
     .map_err(std::io::Error::other)?
 }
 
-/// zip checks each entry's path and CRC but has no cancellation of its own;
-/// the reader it reads through stops when cancelled.
+/// zip and tar check each entry's path, and zip its CRC, but neither has a
+/// cancellation of its own; the reader they read through stops when
+/// cancelled.
 struct Cancellable {
     file: File,
     cancel: CancellationToken,
@@ -310,10 +373,12 @@ impl Seek for Cancellable {
     }
 }
 
-/// Extracts the zip archive at `archive` into `destination` on the blocking
-/// pool. The call returns only once extraction has stopped, also when
-/// cancelled, so the caller alone owns what was extracted.
-async fn extract_zip(
+/// Extracts the archive at `archive`, of either [`Format`], into
+/// `destination` on the blocking pool. Neither format writes outside
+/// `destination`: zip refuses such a path, and tar skips it. The call
+/// returns only once extraction has stopped, also when cancelled, so the
+/// caller alone owns what was extracted.
+async fn extract(
     archive: &Path,
     destination: &Path,
     cancel: &CancellationToken,
@@ -322,14 +387,30 @@ async fn extract_zip(
     let destination = destination.to_owned();
     let reader_cancel = cancel.clone();
     let extracted = tokio::task::spawn_blocking(move || {
+        let mut file = File::open(archive)?;
+        let format = format(&mut file)?;
         let reader = Cancellable {
-            file: File::open(archive)?,
+            file,
             cancel: reader_cancel,
         };
-        let unusable =
-            |error: zip::result::ZipError| Error::Archive(format!("cannot be extracted: {error}"));
-        let mut archive = zip::ZipArchive::new(reader).map_err(unusable)?;
-        archive.extract(destination).map_err(unusable)
+        match format {
+            Format::Zip => {
+                let unusable = |error: zip::result::ZipError| {
+                    Error::Archive(format!("cannot be extracted: {error}"))
+                };
+                let mut archive = zip::ZipArchive::new(reader).map_err(unusable)?;
+                archive.extract(destination).map_err(unusable)
+            }
+            Format::TarZstd => {
+                let unusable =
+                    |error: std::io::Error| Error::Archive(format!("cannot be extracted: {error}"));
+                let decoder = zstd::stream::read::Decoder::new(reader).map_err(unusable)?;
+                std::fs::create_dir(&destination)?;
+                tar::Archive::new(decoder)
+                    .unpack(&destination)
+                    .map_err(unusable)
+            }
+        }
     })
     .await
     .map_err(std::io::Error::other)?;

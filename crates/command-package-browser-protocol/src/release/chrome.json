@@ -36,5 +36,25 @@
       "sha256": "8edfaa0923c11a30a9315a5e7e5794c5efb60146edea7e3f749f7fdc2aa026cb",
       "executable": "chrome-win64/chrome.exe"
     }
-  ]
+  ],
+  "runtime": {
+    "release": 1,
+    "libraries": {
+      "aarch64-unknown-linux-musl": {
+        "url": "https://github.com/wspl/demi-chrome-runtime/releases/download/1/libs-aarch64.tar.zst",
+        "size": 11743745,
+        "sha256": "394081c124f751d56e9104b4aa022a3f53ee0bbd948c7f4388ed64e5b0d1c27b"
+      },
+      "x86_64-unknown-linux-musl": {
+        "url": "https://github.com/wspl/demi-chrome-runtime/releases/download/1/libs-x86_64.tar.zst",
+        "size": 12186365,
+        "sha256": "93e07e148278af7a505fd699fd086c2dc4e309f88c33978d6cd6a4bb47cb2764"
+      }
+    },
+    "fonts": {
+      "url": "https://github.com/wspl/demi-chrome-runtime/releases/download/1/fonts.tar.zst",
+      "size": 42349036,
+      "sha256": "79af32bcda2423d3c277f8fc3b70515844ae27fd924b5dc99bf80b152e78ddee"
+    }
+  }
 }
