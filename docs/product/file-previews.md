@@ -213,7 +213,11 @@ open, and a click opens it large:
   proportions fall outside that range is cropped to it: a tall one, such as
   a whole page's screenshot, keeps its top, and a wide one its middle. For
   example, a 1280 × 720 screenshot is 142 × 80, and a 360 × 2400 page shows
-  the top 64 × 80 of it scaled down. It is small because it is a step of the
+  the top 64 × 80 of it scaled down. Never enlarged wins over the range: the
+  box is no larger than the image either way, so a 50 × 50 icon stays
+  50 × 50 and a 300 × 40 strip shows its middle 200 × 40. The medium's
+  reference, and an attachment's record, carry an image's pixel size, so its
+  box is known before its bytes arrive. It is small because it is a step of the
   work, not something the agent chose to show. A click opens it large over the dimmed page, as the File view shows an image:
   scaled down to fit and never enlarged, a click toggles actual size,
   transparency shows over a checkerboard, and its pixel size shows beneath
