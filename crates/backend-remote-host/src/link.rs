@@ -33,6 +33,7 @@ use tokio::sync::{mpsc, oneshot, watch};
 use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
+    file_watch::LinkWatches,
     manifest::CommandSelection,
     output_records::stream_kind,
     pipes::Pipes,
@@ -197,6 +198,8 @@ struct State {
     manifest: Option<String>,
     /// The runner's own count of its jobs, from its last pong.
     pong_jobs: u64,
+    /// The file watches the connection's Hosts follow.
+    watches: LinkWatches,
 }
 
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
@@ -634,6 +637,10 @@ impl Link {
         })
     }
 
+    pub(crate) fn with_watches<T>(&self, f: impl FnOnce(&mut LinkWatches) -> T) -> T {
+        f(&mut self.0.state.borrow_mut().watches)
+    }
+
     pub(crate) fn with_state<T>(&self, f: impl FnOnce(&mut StateView<'_>) -> T) -> T {
         let mut state = self.0.state.borrow_mut();
         f(&mut StateView(&mut state))
@@ -710,6 +717,14 @@ impl Link {
             }
             Outbound::GitError { id, code, message } => {
                 self.refuse(&id, HostError::failed(Some(code), message));
+            }
+            Outbound::FsWatchReady { id } => self.with_watches(|watches| watches.ready(&id)),
+            Outbound::FsWatchChanged { id, paths } => {
+                self.with_watches(|watches| watches.changed(&id, paths));
+            }
+            Outbound::FsWatchLost { id } => self.with_watches(|watches| watches.lost(&id)),
+            Outbound::FsWatchFailed { id, reason } => {
+                self.with_watches(|watches| watches.failed(&id, reason));
             }
             Outbound::LogLines { id, lines, next } => {
                 self.answer(&id, Expected::Log, Answer::Log { lines, next });
@@ -1125,7 +1140,8 @@ impl Link {
         }
         *self.0.end.borrow_mut() = Some(reason.into());
         self.0.closed.cancel();
-        let state = std::mem::take(&mut *self.0.state.borrow_mut());
+        let mut state = std::mem::take(&mut *self.0.state.borrow_mut());
+        state.watches.end();
         for (_, waiting) in state.waiting {
             // A requester that gave up waits for nothing.
             let _ = waiting.answer.send(Err(HostError::offline(reason)));

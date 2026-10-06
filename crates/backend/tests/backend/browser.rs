@@ -315,12 +315,10 @@ async fn summary(backend: &TestBackend, master: &Session, id: &str) -> Conversat
         .expect("the conversation is listed")
 }
 
-/// The revisions the summary carries: its working tree's and its tab list's.
-fn revisions(summary: &ConversationSummary) -> (u64, Vec<PluginRevision>) {
-    (
-        summary.working_tree_revision,
-        summary.plugin_revisions.clone(),
-    )
+/// The revisions the summary carries of its plugins' states: the browser's
+/// tab list's.
+fn revisions(summary: &ConversationSummary) -> Vec<PluginRevision> {
+    summary.plugin_revisions.clone()
 }
 
 fn browser_at(revision: u64) -> Vec<PluginRevision> {
@@ -333,7 +331,7 @@ fn browser_at(revision: u64) -> Vec<PluginRevision> {
 // Several seconds: a real device installs the builtin package, and one turn
 // runs a shell job.
 #[tokio::test]
-async fn a_job_that_ends_and_a_tab_method_raise_the_revisions_the_summary_carries() {
+async fn a_job_that_ends_and_a_tab_method_raise_the_tab_list_revision_the_summary_carries() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
@@ -343,24 +341,24 @@ async fn a_job_that_ends_and_a_tab_method_raise_the_revisions_the_summary_carrie
     // The paired device's runner lives as long as its handle.
     let (_device, _) = on_device(&harness, &backend, &master, &id).await;
     let fresh = summary(&backend, &master, &id).await;
-    assert_eq!(revisions(&fresh), (0, browser_at(0)));
+    assert_eq!(revisions(&fresh), browser_at(0));
 
-    // A job may have changed the working tree and opened or closed tabs.
+    // A job may have opened or closed tabs.
     let mut work = Driven::open(&backend, &master, &vendor, &id, &provider, "/work").await;
     work.turn(vec![shell("t1", "true", 30_000), say("done")])
         .await;
     let ended = summary(&backend, &master, &id).await;
-    assert_eq!(revisions(&ended), (1, browser_at(1)));
+    assert_eq!(revisions(&ended), browser_at(1));
     let listed = tabs(&backend, &master, &id).await;
     assert_eq!(
         listed.json::<Value>(),
         json!({ "revision": 1, "state": no_tabs() })
     );
 
-    // The user's own tab methods change the list too; the working tree is the jobs'.
+    // The user's own tab methods change the list too.
     let synced = call(&backend, &master, &id, "sync", json!({})).await;
     assert_eq!(synced.status, StatusCode::OK);
     let operated = summary(&backend, &master, &id).await;
-    assert_eq!(revisions(&operated), (1, browser_at(2)));
+    assert_eq!(revisions(&operated), browser_at(2));
     backend.close().await;
 }

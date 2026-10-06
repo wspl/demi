@@ -2,8 +2,9 @@ import { editedFileSchema, type EditCopies } from '@demicodes/protocol'
 import { z } from 'zod'
 import { compareFileNames } from './file-browser-state'
 import { baseName } from './paths'
+import type { Showing } from './file-cache'
 import type { TreeRow } from './tree'
-import type { FileContents } from './types'
+import type { FileContents, FileWatchNote } from './types'
 
 /**
  * One changed file as the change view lists it: its path, how it changed,
@@ -42,12 +43,14 @@ export interface ChangeSetSource {
   failure?: string | null
   /** Lists the working tree again. */
   refresh?(): void
+  /** What the source says of the Host's watch; null or absent without one. */
+  readonly watch?: FileWatchNote | null
   /**
-   * Both sides of one file: empty `original` for an added file, empty
-   * `modified` for a deleted one. A side that is not text rejects with a
-   * `FileBrowserError` of kind `binary` or `too-large`.
+   * Shows both sides of one file until released: empty `original` for an
+   * added file, empty `modified` for a deleted one. A side that is not text
+   * fails with kind `binary` or `too-large`.
    */
-  read(path: string, signal?: AbortSignal): Promise<ChangeSides | null>
+  showSides(path: string): Showing<ChangeSides>
   /**
    * Each file as the last commit has it, by the path relative to the
    * workspace, for previews and Download; absent when the source serves no
@@ -109,10 +112,14 @@ export interface ChangeSources {
   conversation: CallChangeSource | null
 }
 
-/** The working-tree placeholder when no workspace is available. */
+/** The working-tree placeholder when no workspace is available: it lists nothing, so no side is shown. */
 export const emptyChangeSet: ChangeSetSource = {
   files: [],
-  read: () => Promise.reject(new Error('No change recorded')),
+  showSides: () => ({
+    entry: { value: undefined, failure: { kind: 'not-found', message: 'No change recorded' }, reading: false },
+    retry: () => {},
+    release: () => {},
+  }),
 }
 
 /** One row of the change tree: a directory on the way to changed files (no change), or a changed file. */

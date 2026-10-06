@@ -34,7 +34,10 @@ struct OnDevice {
 
 impl OnDevice {
     async fn start() -> Self {
-        let harness = Harness::new();
+        Self::start_with(Harness::new()).await
+    }
+
+    async fn start_with(harness: Harness) -> Self {
         let (backend, master) = harness.start_set_up().await;
         let paired = backend.pair(&master, "laptop").await;
         let created = backend
@@ -395,12 +398,13 @@ async fn the_raw_routes_stream_a_file_by_range_under_inert_headers_and_the_commi
         )
         .await;
     assert_eq!(unchanged.status, StatusCode::NOT_MODIFIED);
+    // The bytes of a version named can only be that version's: the user's
+    // browser keeps them.
+    let pinned = device.get(&raw("logo.svg", &[("version", &etag)])).await;
+    assert_eq!(pinned.status, StatusCode::OK);
     assert_eq!(
-        device
-            .get(&raw("logo.svg", &[("version", &etag)]))
-            .await
-            .status,
-        StatusCode::OK
+        header(&pinned, "cache-control"),
+        Some("private, max-age=31536000, immutable")
     );
     std::fs::write(device.root.join("logo.svg"), pattern(10, 0)).unwrap();
     let changed = device.get(&raw("logo.svg", &[("version", &etag)])).await;
@@ -864,4 +868,109 @@ async fn a_shutdown_ends_an_open_download_instead_of_waiting_for_it() {
         }
     };
     assert_eq!(ended, "cut");
+}
+
+type Socket =
+    tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
+
+/// A page's file watch of the conversation, from the product's origin.
+async fn watch_socket(device: &OnDevice) -> Socket {
+    use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
+    let mut request = device
+        .backend
+        .ws_url(&format!("/api/conversations/{CONVERSATION}/fs/watch"))
+        .into_client_request()
+        .unwrap();
+    let headers = request.headers_mut();
+    headers.insert("cookie", device.master.cookie.parse().unwrap());
+    headers.insert("origin", device.backend.url.parse().unwrap());
+    let (socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
+    socket
+}
+
+/// The next message the watch sends.
+async fn watch_message(socket: &mut Socket) -> Value {
+    use tokio_tungstenite::tungstenite::Message;
+    loop {
+        match socket.next().await {
+            Some(Ok(Message::Text(text))) => return serde_json::from_str(text.as_str()).unwrap(),
+            Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
+            other => panic!("expected a watch message, got {other:?}"),
+        }
+    }
+}
+
+/// Reads `changed` messages until one names `path`.
+async fn reported(socket: &mut Socket, path: &str) {
+    loop {
+        let message = watch_message(socket).await;
+        assert_eq!(message["type"], "changed", "{message}");
+        let paths = message["paths"].as_array().unwrap();
+        if paths.iter().any(|reported| reported == path) {
+            return;
+        }
+    }
+}
+
+// A second or two: a paired device's real runner starts its watch.
+#[tokio::test]
+async fn pages_that_watch_the_files_hear_what_changed_and_a_text_they_hold_answers_not_modified() {
+    let device = OnDevice::start().await;
+    let mut first = watch_socket(&device).await;
+    let mut second = watch_socket(&device).await;
+    for socket in [&mut first, &mut second] {
+        assert_eq!(
+            watch_message(socket).await,
+            json!({ "type": "state", "state": "live" })
+        );
+    }
+    let a = device.path("a.txt");
+    std::fs::write(&a, "1\n").unwrap();
+    reported(&mut first, &a).await;
+    reported(&mut second, &a).await;
+
+    let route = format!("/fs/file?{}", query(&[("path", &a)]));
+    let read = device.get(&route).await;
+    assert_eq!(read.status, StatusCode::OK);
+    let version = header(&read, "etag").unwrap().to_owned();
+    let held = device
+        .call(Method::GET, &route, &[("if-none-match", &version)], None)
+        .await;
+    assert_eq!(held.status, StatusCode::NOT_MODIFIED);
+    assert_eq!(header(&held, "etag"), Some(version.as_str()));
+    assert!(held.body.is_empty());
+
+    std::fs::write(&a, "1\n2\n").unwrap();
+    let changed = device
+        .call(Method::GET, &route, &[("if-none-match", &version)], None)
+        .await;
+    assert_eq!(
+        changed.json::<Value>(),
+        json!({ "path": a, "text": "1\n2\n" })
+    );
+    assert_ne!(header(&changed, "etag"), Some(version.as_str()));
+    device.backend.close().await;
+}
+
+/// A file watch that has sent nothing else for the heartbeat interval sends
+/// a `heartbeat`, so the page tells a quiet watch from a dead one
+/// (`web-api.md` § File watch); 0.2 s here.
+#[tokio::test]
+async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
+    let mut harness = Harness::new();
+    harness.pages.heartbeat = Duration::from_millis(200);
+    let device = OnDevice::start_with(harness).await;
+    let mut socket = watch_socket(&device).await;
+    assert_eq!(
+        watch_message(&mut socket).await,
+        json!({ "type": "state", "state": "live" })
+    );
+    let quiet = std::time::Instant::now();
+    // A hang guard: without a heartbeat the watch stays silent.
+    let heartbeat = tokio::time::timeout(Duration::from_secs(10), watch_message(&mut socket))
+        .await
+        .expect("a heartbeat comes");
+    assert_eq!(heartbeat, json!({ "type": "heartbeat" }));
+    assert!(quiet.elapsed() >= Duration::from_millis(200), "no heartbeat before the interval");
+    device.backend.close().await;
 }
