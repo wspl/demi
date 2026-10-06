@@ -118,9 +118,9 @@ attempt makes Chrome ask the user, once per site:
 - **Not answered, or dismissed:** the attempt fails; the page stays on the
   relay and tries again later, which may ask again.
 - **Blocked:** the page stays on the relay. Where the browser reports the
-  permission's state, Settings → Devices says under a paired device that this
-  browser blocks direct connections to devices on this computer and network,
-  and how to allow it in the site's settings. When the user allows it, the
+  permission's state, the help of an online paired device in Settings →
+  Devices (below) says that this browser blocks direct connections to devices
+  on this computer and network, and how to allow it in the site's settings. When the user allows it, the
   browser reports the change and the page connects without a reload.
 
 Firefox and Safari ask nothing for a data channel today.
@@ -237,9 +237,13 @@ connection state is `failed` or `closed`.
 
 ## What the user sees
 
-Nothing changes but speed. Settings → Devices shows, beside a paired device,
-*Connected directly* while this page has a direct channel to it, so a user
-can tell why one machine feels faster than another. A user who blocks the
+Nothing changes but speed. In Settings → Devices, an online paired device's
+row says in a few words how this page reaches it, *Connected directly* or
+*Through the server*, so a user can tell why one machine feels faster than
+another; nothing more stays in the row. Its `?` button opens the help that
+fits: how to allow direct connections when the browser blocks them, or, for
+an offline device, the command that starts its runner
+([Installation, pairing and removal](runner.md#installation-pairing-and-removal)). A user who blocks the
 browser's local network permission sees no prompt again and stays on the
 relay.
 
