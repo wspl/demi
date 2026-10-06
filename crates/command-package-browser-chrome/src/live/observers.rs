@@ -169,7 +169,16 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
                     // parse is the observer's own defect.
                     match serde_json::from_str::<Report>(&payload) {
                         Ok(Report::Cursor { cursor, editable }) => {
-                            reporting.cursor.send_replace((cursor, editable));
+                            // Each move reports its frame's cursor; the viewers
+                            // hear only a change of the tab's one cursor.
+                            let reported = (cursor, editable);
+                            reporting.cursor.send_if_modified(|current| {
+                                if *current == reported {
+                                    return false;
+                                }
+                                *current = reported;
+                                true
+                            });
                         }
                         Ok(Report::Cursors { regions }) => {
                             frames.regions.insert(world, regions);

@@ -61,7 +61,13 @@
           bottom: Math.min(shown.bottom, box.bottom),
         };
       }
-      if (cursor !== parent.cursor && style.pointerEvents !== 'none') {
+      // An element the pointer passes through shows no cursor of its own, as
+      // a hidden backdrop that covers the whole page does not: its children
+      // compare with the cursor shown around it, so a visible child that
+      // inherits the hidden element's cursor is a region of its own.
+      const hit = style.pointerEvents !== 'none' && style.visibility === 'visible';
+      if (!hit) cursor = parent.cursor;
+      if (cursor !== parent.cursor) {
         for (const rect of element.getClientRects()) {
           const left = Math.max(rect.left, shown.left);
           const upper = Math.max(rect.top, shown.top);
@@ -124,7 +130,11 @@
   const touched = () => {
     dirty = true;
   };
-  const reportCursors = () => {
+  // The pointer moving in this frame always reports what it resolves: the
+  // tab has one cursor, which another frame's observer may have reported
+  // since this one last did. Only a resolution at a still pointer that this
+  // observer reported already is left out.
+  const reportCursors = moved => {
     if (!dirty || !document.documentElement) return;
     dirty = false;
     const found = regions();
@@ -136,7 +146,7 @@
     if (!point) return;
     const resolved = cursorAt(point);
     const key = JSON.stringify(resolved);
-    if (resolved && key !== lastCursor) {
+    if (resolved && (moved || key !== lastCursor)) {
       lastCursor = key;
       report({ type: 'cursor', ...resolved });
     }
@@ -149,11 +159,11 @@
     point = { x: event.clientX, y: event.clientY };
     // Hovering changes styles, and the cursor at the point is what the view asks about.
     dirty = true;
-    reportCursors();
+    reportCursors(true);
   }, { passive: true, capture: true });
   setInterval(() => {
     try {
-      reportCursors();
+      reportCursors(false);
     } catch {
       // A document being replaced; the next one reports its own.
     }

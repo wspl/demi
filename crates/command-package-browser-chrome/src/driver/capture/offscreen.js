@@ -130,6 +130,13 @@ async function stop(id) {
   await ask({ type: 'released', tabId: state.tabId }).catch(error => console.warn(error));
 }
 
+// Reconfiguring the same sides keeps the stream: its next frame is a delta
+// frame, so a new budget or a still picture's refinement costs no key frame.
+// No content hint: with `text` Chrome's software H.264 encoder runs its
+// screen-content mode, whose rate control ignores the budget. Measured on
+// scrolling text at 1072 x 1824, it kept every delta frame near 2 KiB and
+// 39.7 dB PSNR at 20 and at 70 Mbps alike, while the default mode spends the
+// budget: 47 dB at 70 Mbps, 38 dB at 10.
 function configure(state, still) {
   state.encoder.configure({
     codec,
@@ -139,7 +146,6 @@ function configure(state, still) {
     bitrate: state.bitrate,
     bitrateMode: 'variable',
     latencyMode: 'realtime',
-    contentHint: 'text',
     hardwareAcceleration: 'prefer-software',
     avc: { format: 'annexb' },
   });
@@ -169,12 +175,16 @@ function encode(state) {
   }
   const width = even(state.latest.displayWidth);
   const height = even(state.latest.displayHeight);
-  // The first picture, or the first at a new size, starts the encoding at its sides.
-  if (state.width !== width || state.height !== height || state.still !== refine) {
+  // The first picture, or the first at a new size, starts the encoding at its
+  // sides with a key frame. A still picture is encoded once more with a
+  // second's budget, and the next change goes back to the frame rate's.
+  if (state.width !== width || state.height !== height) {
     state.width = width;
     state.height = height;
     configure(state, refine);
     state.force = true;
+  } else if (state.still !== refine) {
+    configure(state, refine);
   }
   const visible = state.latest.visibleRect;
   const timestamp = Math.round(performance.now() * 1000);
@@ -302,7 +312,6 @@ socket.addEventListener('message', event => {
       state.bitrate = message.bitrate;
       state.fps = message.fps;
       if (state.encoder) configure(state, state.still);
-      state.force = true;
       state.settled = false;
       break;
   }
