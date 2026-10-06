@@ -75,6 +75,23 @@ pub struct ConversationAttachment {
     pub media_type: String,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub size: u64,
+    /// An image's or a video's width and height in pixels, which the
+    /// backend read from its header when it stored it; absent for any other
+    /// file, and for one whose header does not give them.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "u32")]
+    pub width: Option<u32>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "u32")]
+    pub height: Option<u32>,
     /// The hash its bytes are served under, at `GET /blobs/:sha256`.
     pub blob: BlobRef,
 }

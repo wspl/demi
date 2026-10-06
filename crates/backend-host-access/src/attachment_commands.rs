@@ -16,7 +16,8 @@
 use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
-use demi_agent_store::attachments::upload_media_type;
+use demi_agent_store::{attachments::upload_media_type, pixels::pixel_size};
+use demi_backend_blobs::blobs::OPENING_BYTES;
 use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 use demi_backend_database::sequences;
 use demi_backend_remote_host::collect_pipe;
@@ -175,8 +176,9 @@ async fn store(
         .opening(&sha256)
         .await
         .map_err(|error| error.to_string())?;
-    // The media type comes from the file's opening, so a held blob is read
-    // only that far.
+    // The media type and an image's or a video's size come from the file's
+    // opening, so a held blob is read only that far, and a file read whole
+    // is read only that far too: the same file gets the same record.
     let (blob, opening, size) = match held {
         Some(opening) => (sha256, opening.bytes, opening.size),
         None => {
@@ -191,11 +193,13 @@ async fn store(
                 .put(bytes.clone())
                 .await
                 .map_err(|error| error.to_string())?;
-            (blob, bytes, size)
+            let opened = bytes.len().min(OPENING_BYTES as usize);
+            (blob, bytes.slice(..opened), size)
         }
     };
     let sent = preview_media_type(path).unwrap_or(UNKNOWN_MEDIA_TYPE);
     let media_type = upload_media_type(sent, &opening);
+    let pixels = pixel_size(opening, &media_type);
     let db = shard.conversation_db(conversation);
     let number = db
         .call(|connection| sequences::next(connection, Sequence::Attachment))
@@ -212,6 +216,7 @@ async fn store(
         name,
         media_type,
         size,
+        pixels,
         blob,
     };
     let record = row.clone();

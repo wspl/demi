@@ -43,11 +43,6 @@
   --spacing-hit-sm: 24px;
   --spacing-hit: 28px;
   --spacing-hit-lg: 32px;
-  /* The height of the player of a video a tool returned, the least its
-     controls fit in, which a video in a run of a message's images shares
-     (`file-previews.md` § Media a tool returned). An image there is a
-     thumbnail, whose box `files/thumbnail.ts` owns. */
-  --spacing-video-player: 160px;
 }
 
 :root,
@@ -1026,26 +1021,45 @@ svg.lucide {
   text-decoration: line-through;
 }
 
-/* A message's image, and an attachment's video, fit the message and 60% of
-   the conversation's visible height, which the transcript sets; outside one,
-   the window's. */
+/* A message's image, and an attachment's video's first frame, fit the
+   message and 60% of the conversation's visible height, which the transcript
+   sets; outside one, the window's. */
 .markdown-body :is(img, video) {
   max-width: 100%;
   max-height: calc(var(--conversation-visible-height, 100svh) * 0.6);
   border-radius: 0.375rem;
 }
 
-.markdown-body video {
+/* An attachment's video shows its first frame with a play mark, and a click
+   plays it in the viewer (`markdown/render.ts`). A lone one is as large as
+   its frame, within a lone image's bounds: its proportions and its width
+   come from its record, or from its first frame, and are 16:9 and the
+   message's width until either says. */
+.markdown-body .message-video {
+  position: relative;
   display: block;
+  width: min(
+    100%,
+    var(--media-width, 100%),
+    calc(var(--conversation-visible-height, 100svh) * 0.6 * var(--media-ratio, 16 / 9))
+  );
+  aspect-ratio: var(--media-ratio, 16 / 9);
+}
+
+.markdown-body .message-video video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top;
   background: black;
 }
 
 /* A run of a message's images and videos (`markdown/render.ts`) stands in a
-   row that wraps, 8px apart both ways. An image is a thumbnail: its box, set
-   by `StreamedMarkdown` from `files/thumbnail.ts`, crops it to its top when
-   tall and to its middle when wide (`object-position: top` is `center top`).
-   A video is a tool's video player high, which it takes before its bytes
-   arrive. */
+   row that wraps, 8px apart both ways. Each is a thumbnail: its box, which
+   the render gives it from its record's size and `StreamedMarkdown` from its
+   own once loaded (`files/thumbnail.ts`), crops it to its top when tall and
+   to its middle when wide (`object-position: top` is `center top`). */
 .markdown-body .media-run {
   display: flex;
   flex-wrap: wrap;
@@ -1063,15 +1077,36 @@ svg.lucide {
 
 .markdown-body .media-run :is(img, video) {
   display: block;
-}
-
-.markdown-body .media-run img {
   object-fit: cover;
   object-position: top;
 }
 
-.markdown-body .media-run video {
-  height: var(--spacing-video-player);
+.markdown-body .media-run .message-video {
+  width: auto;
+  aspect-ratio: auto;
+}
+
+/* The mark over a video's first frame that says a click plays it, in a
+   message and under a tool's row: a dark disc with a white triangle at the
+   middle of its parent, which places it. */
+.media-play-mark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(32px, 60%);
+  aspect-ratio: 1;
+  translate: -50% -50%;
+  border-radius: 9999px;
+  background: rgb(0 0 0 / 0.55);
+  pointer-events: none;
+}
+
+.media-play-mark::before {
+  content: "";
+  position: absolute;
+  inset: 30% 26% 30% 36%;
+  background: white;
+  clip-path: polygon(0 0, 100% 50%, 0 100%);
 }
 
 /* What a message says of an attachment number its conversation does not

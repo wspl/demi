@@ -238,7 +238,9 @@ impl<'a> RequestView<'a> {
     ) -> Result<Medium, String> {
         match source {
             MediaSource::Url { url } => Ok(Medium::Url(url.clone())),
-            MediaSource::Ref { r#ref, media_type } => {
+            MediaSource::Ref {
+                r#ref, media_type, ..
+            } => {
                 let accepted = model_accepts_media_type(self.model, media_type);
                 self.bytes(kind.name(), r#ref, media_type, media_type, accepted)
                     .map(Medium::Bytes)
@@ -289,7 +291,9 @@ impl<'a> RequestView<'a> {
         kind: ModelMediaKind,
         source: &ToolMediaSource,
     ) -> Result<MediaBytes, String> {
-        let ToolMediaSource::Ref { r#ref, media_type } = source;
+        let ToolMediaSource::Ref {
+            r#ref, media_type, ..
+        } = source;
         let accepted = model_accepts_media_type(self.model, media_type);
         self.bytes(kind.name(), r#ref, media_type, media_type, accepted)
     }

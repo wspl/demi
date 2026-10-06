@@ -69,6 +69,7 @@ async fn a_declared_command_reaches_the_jobs_handler() {
             .start(JobStart {
                 script: "/usr/bin/env; printf body | fixture --flag; echo \" $?\"".into(),
                 cwd: root.path().into(),
+                workspace: root.path().into(),
                 env: crate::home(root.path()),
                 live: false,
                 output: true,

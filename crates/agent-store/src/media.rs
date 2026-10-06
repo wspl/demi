@@ -16,6 +16,7 @@ use demi_shared_types::{
 use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, stream};
 
 use super::StoreError;
+use crate::pixels::pixel_size;
 
 /// How many blobs are read at once: on S3 each read is a round trip, and
 /// more at once only queue there.
@@ -202,9 +203,9 @@ pub fn content_references(content: &[UserContentBlock]) -> impl Iterator<Item = 
 
 /// Stores the media of a tool's result as the result enters the transcript
 /// (`runtime.md` § Media): each medium's bytes are put, the result keeps
-/// the reference and the bytes are held. A medium whose put fails is gone
-/// from the result, not stored, with the store's error, so no block names a
-/// blob that was not stored.
+/// the reference, with the medium's size in pixels, and the bytes are held.
+/// A medium whose put fails is gone from the result, not stored, with the
+/// store's error, so no block names a blob that was not stored.
 pub async fn store_result(
     output: Vec<ResultPart>,
     blobs: &dyn BlobStore,
@@ -222,10 +223,13 @@ pub async fn store_result(
         };
         let part = match blobs.put(data.clone()).await {
             Ok(blob) => {
+                let size = pixel_size(data.clone().into_bytes(), &media_type);
                 held.hold(blob.clone(), data);
                 let source = ToolMediaSource::Ref {
                     r#ref: blob,
                     media_type,
+                    width: size.map(|size| size.width),
+                    height: size.map(|size| size.height),
                 };
                 match kind {
                     ModelMediaKind::Image => ToolResultContentBlock::Image { source },

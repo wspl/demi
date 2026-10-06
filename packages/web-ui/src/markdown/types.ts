@@ -9,6 +9,12 @@ export interface MessageAttachment {
   mediaType: string
   /** Where its bytes load from, shown as its media type. */
   url: string
+  /**
+   * An image's or a video's size in pixels, which its record carries when
+   * the backend read it from its header (`web-api.md`).
+   */
+  width?: number
+  height?: number
 }
 
 /**

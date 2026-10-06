@@ -89,7 +89,9 @@ async fn an_upload_becomes_its_native_medium_then_its_record() {
         UserContentBlock::Image {
             source: MediaSource::Ref {
                 r#ref: sha256.clone(),
-                media_type: "image/png".into()
+                media_type: "image/png".into(),
+                width: Some(4),
+                height: Some(3),
             }
         }
     );
@@ -133,13 +135,21 @@ async fn an_uploaded_image_enters_fitted_and_one_that_does_not_decode_stays_its_
         .await
         .unwrap();
     let UserContentBlock::Image {
-        source: MediaSource::Ref { r#ref, media_type },
+        source:
+            MediaSource::Ref {
+                r#ref,
+                media_type,
+                width,
+                height,
+            },
     } = &blocks[0]
     else {
         panic!("{blocks:?}");
     };
     assert_ne!(r#ref, &wide_blob);
     assert_eq!(media_type, "image/png");
+    // Its reference carries the size it entered at.
+    assert_eq!((*width, *height), (Some(2_000), Some(8)));
     let fitted = blobs
         .get(r#ref)
         .await

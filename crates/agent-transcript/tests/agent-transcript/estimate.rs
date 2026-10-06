@@ -121,6 +121,8 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
                 source: MediaSource::Ref {
                     r#ref: BlobRef::of(&image),
                     media_type: "image/png".into(),
+                    width: None,
+                    height: None,
                 },
             },
             UserContentBlock::Image {
@@ -150,6 +152,8 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
             source: ToolMediaSource::Ref {
                 r#ref: BlobRef::of(&screenshot),
                 media_type: "image/png".into(),
+                width: None,
+                height: None,
             },
         }],
         view: None,

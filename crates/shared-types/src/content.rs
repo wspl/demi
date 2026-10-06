@@ -217,6 +217,13 @@ fn is_trimmed_space(character: char) -> bool {
     character == '\u{feff}' || (character.is_whitespace() && character != '\u{85}')
 }
 
+/// An image's or a video's size in pixels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PixelSize {
+    pub width: u32,
+    pub height: u32,
+}
+
 /// Where a message's image or video is: never its bytes, which a session
 /// holds beside the transcript while a request can send them (`runtime.md`
 /// § Media).
@@ -240,6 +247,24 @@ pub enum MediaSource {
         r#ref: BlobRef,
         #[garde(skip)]
         media_type: String,
+        /// An image's width and height in pixels, as it shows; a video's
+        /// when its container's header gives them (`runtime.md` § Media).
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "u32")]
+        #[garde(skip)]
+        width: Option<u32>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "u32")]
+        #[garde(skip)]
+        height: Option<u32>,
     },
 }
 
@@ -328,5 +353,23 @@ pub enum ToolMediaSource {
         r#ref: BlobRef,
         #[garde(skip)]
         media_type: String,
+        /// An image's width and height in pixels, as it shows; a video's
+        /// when its container's header gives them (`runtime.md` § Media).
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "u32")]
+        #[garde(skip)]
+        width: Option<u32>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "u32")]
+        #[garde(skip)]
+        height: Option<u32>,
     },
 }

@@ -94,7 +94,8 @@ async fn job_environment_combines_device_request_and_owned_values() {
             job_id: "env".into(),
             script: "printf '%s:%s:%s:%s:%s' \"$DEVICE\" \"$OVERRIDE\" \"$DEMI_HOME\" \"$HOME\" \"$profile_home\""
                 .into(),
-            cwd,
+            cwd: cwd.clone(),
+            workspace: cwd,
             env: BTreeMap::from([
                 ("OVERRIDE".into(), "new".into()),
                 ("DEMI_HOME".into(), "untrusted".into()),
