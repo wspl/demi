@@ -85,10 +85,15 @@ impl Peer {
             match UdpSocket::bind(SocketAddr::from((address, 0))).await {
                 Ok(socket) => {
                     let local = socket.local_addr().map_err(OfferError::Sockets)?;
-                    let candidate = Candidate::host(local, "udp")
-                        .map_err(|error| OfferError::Invalid(error.to_string()))?;
-                    rtc.add_local_candidate(candidate);
-                    sockets.push(Arc::new(socket));
+                    match Candidate::host(local, "udp") {
+                        Ok(candidate) => {
+                            rtc.add_local_candidate(candidate);
+                            sockets.push(Arc::new(socket));
+                        }
+                        // An address ICE does not take, such as a
+                        // link-local one, is not offered.
+                        Err(error) => tracing::debug!("{local} is not offered: {error}"),
+                    }
                 }
                 // An address that went away meanwhile is not offered.
                 Err(error) => unbound = Some(error),

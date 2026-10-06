@@ -233,7 +233,7 @@ pub(super) async fn log(
 }
 
 /// The caller's device `id`, of `kind` when one is named; 404 otherwise.
-async fn owned_device(
+pub(super) async fn owned_device(
     state: &AppState,
     user: &demi_web_api_protocol::ids::UserId,
     id: &str,

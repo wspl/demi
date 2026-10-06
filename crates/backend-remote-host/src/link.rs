@@ -496,6 +496,11 @@ impl Link {
         self.0.closed.is_cancelled()
     }
 
+    /// Resolves once the connection is closing or closed.
+    pub async fn ended(&self) {
+        self.0.closed.cancelled().await;
+    }
+
     /// Ends the connection for `reason`, such as the backend shutting down or
     /// the device being revoked.
     pub fn disconnect(&self, reason: &str) {
