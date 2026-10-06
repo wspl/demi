@@ -429,7 +429,7 @@ impl Owner {
         {
             self.leave_stream(tab.id(), viewer);
         }
-        // The screen keeps its ratio until another viewer operates.
+        // The screen keeps its ratio; only a viewer that operates raises it.
         if self.driver == Some(viewer) {
             self.driver = None;
         }
@@ -462,18 +462,26 @@ impl Owner {
             .map(|(_, panel)| panel)
     }
 
-    /// The screen follows the driver; a watched Web or Mobile tab takes its
-    /// decider's panel and ratio. What cannot be applied is logged and told
-    /// to the viewers it was for (`live-view.md` § Opening a view).
+    /// The screen follows the driver's size, at the highest ratio a viewer
+    /// used; a watched Web or Mobile tab takes its decider's panel and ratio.
+    /// What cannot be applied is logged and told to the viewers it was for
+    /// (`live-view.md` § Opening a view).
     async fn layout(&mut self) {
+        // The screen's ratio only rises: Chrome keeps painting a cross-site
+        // frame at the old scale when it falls, until the page loads again
+        // (`live-view.md` § Pixel ratio).
+        let used = self.screen.map(|screen| screen.ratio);
         let desired = self
             .driver
             .and_then(|driver| self.viewers.get(&driver))
             .and_then(|viewer| viewer.panel)
-            .map(|panel| Screen {
-                width: panel.screen_width,
-                height: panel.screen_height,
-                ratio: screen_ratio(panel.ratio),
+            .map(|panel| {
+                let ratio = screen_ratio(panel.ratio);
+                Screen {
+                    width: panel.screen_width,
+                    height: panel.screen_height,
+                    ratio: used.map_or(ratio, |used| used.max(ratio)),
+                }
             });
         let mut tabs: Vec<(BrowserTab, Panel)> = Vec::new();
         for viewer in self.viewers.values() {
