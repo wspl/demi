@@ -139,6 +139,7 @@ fn greet() -> CommandSet {
     commands
         .register(
             GroupBuilder::new("greet", "Greets the caller.")
+                .index_entry("Greets the caller by name.")
                 .leaf(LeafBuilder::rpc("hello", "Say hello.").bind(Hello)),
         )
         .expect("the test command registers");
@@ -542,6 +543,7 @@ impl Fixture {
             }),
             subagents: product.clone(),
             instructions: Rc::from("system prompt"),
+            guide: Rc::from("harness guide"),
             hosts: product.clone(),
             context: context.into(),
             providers: resolver.clone(),

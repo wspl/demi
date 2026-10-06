@@ -192,6 +192,14 @@ impl ProviderResolver for DeepSeek {
         Box::pin(async move { window })
     }
 
+    /// DeepSeek speaks the OpenAI family's wire.
+    fn family<'a>(
+        &'a self,
+        _model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<String, ResolveError>> {
+        Box::pin(async { Ok("openai".to_owned()) })
+    }
+
     /// The fixture's user has no profile, so no spawn asks.
     fn profile_selection<'a>(
         &'a self,
@@ -255,6 +263,7 @@ impl Conversation {
                 profiles: Vec::new(),
             }),
             instructions: Rc::from(SYSTEM_PROMPT),
+            guide: Rc::from(""),
             hosts: Rc::new(NoHosts),
             context: Rc::new([]),
             providers: deepseek,
