@@ -58,9 +58,9 @@ Only when the user says to enter parallel development mode:
 
 - Hand each independent implementation, test or acceptance item to a background subagent and stay free to talk with the user. Items that change the same files run one after another.
 - Subagents work in four slots, `../demi-slots/1` to `../demi-slots/4`. A slot is a git worktree that stays between tasks, with its own warm `target/`, `node_modules/` and `.cache/`, so a task starts without copying anything. A slot is made once by cloning the checkout's warm `target/` into it with `cp -c` (APFS copy-on-write; skip `target/debug/incremental`). At most four items run at once; another waits for a free slot.
-- A subagent takes a free slot by writing its task into the slot's `.slot-busy` file, then starts its branch from the lead's branch with `git switch --discard-changes -C <branch> feat/demi-next` and `git clean -fd`, which keeps the ignored build products. It commits on its branch and never pushes.
+- The lead names a free slot in each subagent's brief. The subagent starts its branch there from the lead's branch with `git switch --discard-changes -C <branch> feat/demi-next` and `git clean -fd`, which keeps the ignored build products. It commits on its branch and never pushes.
 - Slot *n* starts its servers on ports 33*n*0–33*n*9 and 189*n*0–189*n*9, so slots never collide with each other or with the user's own development servers.
-- The lead reviews each result, merges it into the branch of the user's own checkout, tests and pushes from there, deletes the branch and empties the slot's `.slot-busy`. After each merge it rebuilds and restarts the development backend and web front end from the checkout (`bun run dev`, `bun run web:dev`), so the user sees the new code at once.
+- The lead reviews each result, merges it into the branch of the user's own checkout, tests and pushes from there, and deletes the branch, which frees the slot. After each merge it rebuilds and restarts the development backend and web front end from the checkout (`bun run dev`, `bun run web:dev`), so the user sees the new code at once.
 - When the disk runs low, the lead removes from the checkout and every slot the build products no build has used for a week.
 
 # Writing and Communication
