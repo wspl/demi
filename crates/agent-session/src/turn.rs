@@ -18,7 +18,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ResultPart,
 };
-use demi_shared_types::{Block, ToolView, WakeupId};
+use demi_shared_types::{Block, ModelSelection, ToolView, WakeupId};
 use futures_util::StreamExt;
 
 use super::{
@@ -279,7 +279,8 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
         persist::flush(s).await?;
         cancel.check()?;
     }
-    let system_prompt = cancel.guard(s.runtime.system_prompt()).await?;
+    let model = s.read(|core| core.model.clone());
+    let system_prompt = system_prompt(s, &model, cancel).await?;
     let tools = s.runtime.tools();
     let request_id = s.ids.next_id();
     let view = model_view(s, cancel).await?;
@@ -292,6 +293,28 @@ async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequ
             cancel.child_token(),
         )
     }))
+}
+
+/// The system prompt of a request that infers with `model`. One that cannot
+/// be rendered, as when the model's provider entry is gone, fails the
+/// request before any vendor, recorded as a failed request is.
+pub(super) async fn system_prompt(
+    s: &SessionShared,
+    model: &ModelSelection,
+    cancel: &TurnCancel,
+) -> Result<String, TurnError> {
+    match cancel.guard(s.runtime.system_prompt(model)).await? {
+        Ok(prompt) => Ok(prompt),
+        Err(message) => {
+            let report = ErrorReport {
+                message,
+                code: None,
+                diagnostics: None,
+            };
+            s.update(|core| core.record_failure(&report));
+            Err(TurnError::Failed(Box::new(report)))
+        }
+    }
 }
 
 /// Applies a run's events as they arrive. A thinking start waits until

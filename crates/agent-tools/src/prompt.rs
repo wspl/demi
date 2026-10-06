@@ -1,11 +1,11 @@
-//! A node's system prompt (`runtime.md` § Sessions and turns): the
-//! product's instructions, the rules of the standard tools, and the help of
-//! the node's commands, rendered once when the node is assembled.
+//! A node's system prompt (`system-prompt.md`): the identity, the harness
+//! guide, the rules of the standard tools, the capability index of the
+//! node's commands and the model identity, in that order.
 
 use crate::input::DESCRIPTION;
 
-/// The rules of the standard tools and of the commands' help, which every
-/// node's system prompt carries.
+/// The rules of the standard tools, which every node's system prompt
+/// carries.
 const TOOL_RULES: &[&str] = &[
     "Shell session rules:",
     "- Use shell_exec for commands. timeoutMs is required and is only an observation window, not a kill deadline; at timeoutMs the command keeps running and a commandId is returned while the turn continues.",
@@ -23,28 +23,43 @@ const TOOL_RULES: &[&str] = &[
     "- Use shell_abort only when intentionally stopping a foreground command, and pass commandId.",
 ];
 
-/// The system prompt of a node: `instructions` first, then the rules of the
-/// standard tools, and `commands`, the rendered help of the node's commands,
-/// last when there is any.
-pub fn system_prompt(instructions: &str, commands: &str) -> String {
+/// What the model identity line names of the model that serves a node,
+/// from its model selection (`system-prompt.md` § Model identity).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModelIdentity<'a> {
+    /// The model's display name in its catalog.
+    pub name: &'a str,
+    /// The provider family of the entry that serves it.
+    pub family: &'a str,
+    pub id: &'a str,
+}
+
+/// The system prompt of a node: its `identity` (the product's instructions
+/// or a profile's), the product's harness `guide`, the rules of the
+/// standard tools, the capability `index` of its commands when it has any,
+/// and the line naming `model`, last.
+pub fn system_prompt(
+    identity: &str,
+    guide: &str,
+    index: &str,
+    model: ModelIdentity<'_>,
+) -> String {
     let mut sections = Vec::new();
-    if !instructions.trim().is_empty() {
-        sections.push(instructions.to_owned());
+    for layer in [identity, guide] {
+        if !layer.trim().is_empty() {
+            sections.push(layer.to_owned());
+        }
     }
-    sections.push(
-        "Prefer registered commands for agent-specific state and audited workflows. Use normal system commands for ordinary shell work."
-            .to_owned(),
-    );
     sections.push(format!(
         "{}\n- Tool description: {DESCRIPTION}",
         TOOL_RULES.join("\n")
     ));
-    sections.push(
-        "Files the user attaches arrive as <attachment> tags that name their path on the Host; read them there with ordinary commands."
-            .to_owned(),
-    );
-    if !commands.trim().is_empty() {
-        sections.push(format!("Registered commands:\n\n{commands}"));
+    if !index.trim().is_empty() {
+        sections.push(format!("Capabilities:\n\n{index}"));
     }
+    sections.push(format!(
+        "This conversation runs on {} ({}, {}). If asked which model you are, answer with this.",
+        model.name, model.family, model.id
+    ));
     sections.join("\n\n")
 }

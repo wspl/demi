@@ -1219,12 +1219,13 @@ async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_match
     })
     .await;
     let shell = shell_on(fixture.host(), &[], Some(selection));
-    // A group below the root prints its help under its full path.
-    let help = run(&shell, "probe json --help").await;
+    // A group below the root prints its help under its full path, listing
+    // its commands; a command's help gives its usage.
+    let help = run(&shell, "probe json --help && probe json emit --help").await;
     assert_eq!(exited(&help), 0, "{}", help.stderr.tail);
     let printed = &help.stdout.delta;
     assert!(
-        printed.starts_with("probe json: Output probes.\n"),
+        printed.starts_with("probe json: Output probes.\n\nSubcommands:\n  probe json emit — Print a text.\n"),
         "{printed}"
     );
     assert!(

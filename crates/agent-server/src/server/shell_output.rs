@@ -34,6 +34,10 @@ const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
 const GROUP_SUMMARY: &str = "Shell commands: read a command's whole output.";
 
+/// The group's entry in the model's capability index (`system-prompt.md`
+/// § Capability index).
+const GROUP_ENTRY: &str = "Prints the whole output of a command you ran earlier, by its commandId, a page at a time. Use it when a result was cut short in the middle; the result says so with a line naming this command.";
+
 const OUTPUT_SUMMARY: &str = "Print a command's whole output by its commandId: numbered lines a page at a time, as `cat -n` shows them, from the first line or the lines --lines <from>-<to> names; the newest with --tail <n>. --stdout or --stderr takes one stream, with line numbers of its own. --raw prints the bytes as they are, unnumbered and unpaged, for pipes and files: `grep -n` on it gives the numbers --lines takes (`demi shell output 17 --raw | grep -n FAIL`). --medium <n> returns the command's medium n, the image or video its line `[medium n: …]` stands for, as it came: shown to you again, or its bytes into a file (`demi shell output 17 --medium 2 > shot.png`). Any command of this conversation, running or ended.";
 
 /// The input of `demi shell output`.
@@ -61,15 +65,17 @@ struct OutputArgs {
 
 /// The `shell` group.
 pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> GroupBuilder {
-    GroupBuilder::new("shell", GROUP_SUMMARY).leaf(
-        LeafBuilder::rpc("output", OUTPUT_SUMMARY)
-            .input::<OutputArgs>()
-            .positionals(["id"])
-            .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out; with --medium, the medium")
-            .media()
-            .failure_output("\"demi shell output: <reason>\" on stderr, exit 1")
-            .bind(TypedRpc::new(verb(server, output))),
-    )
+    GroupBuilder::new("shell", GROUP_SUMMARY)
+        .index_entry(GROUP_ENTRY)
+        .leaf(
+            LeafBuilder::rpc("output", OUTPUT_SUMMARY)
+                .input::<OutputArgs>()
+                .positionals(["id"])
+                .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out; with --medium, the medium")
+                .media()
+                .failure_output("\"demi shell output: <reason>\" on stderr, exit 1")
+                .bind(TypedRpc::new(verb(server, output))),
+        )
 }
 
 /// What a reading prints of the output's lines.

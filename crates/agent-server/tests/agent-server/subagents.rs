@@ -214,8 +214,11 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].session_id, child.as_str());
     assert!(asked[0].system_prompt.starts_with("system prompt\n"));
-    assert!(asked[0].system_prompt.contains("demi agent spawn"));
-    assert!(asked[0].system_prompt.contains("demi agent send"));
+    assert!(
+        asked[0]
+            .system_prompt
+            .contains("Operations: spawn, send, abort, resume, list, show, profiles\n")
+    );
     let [InferenceItem::UserMessage { content }] = &*asked[0].items else {
         panic!("{:?}", asked[0].items)
     };
@@ -1122,8 +1125,8 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
     // worker's prompt and model, with the commands every node has.
     let inner_asked = &model.requests_of("task inner")[0];
     assert!(inner_asked.system_prompt.starts_with("worker prompt\n"));
-    assert!(inner_asked.system_prompt.contains("demi agent send"));
-    assert!(inner_asked.system_prompt.contains("greet"));
+    assert!(inner_asked.system_prompt.contains("demi agent\nRuns helper agents"));
+    assert!(inner_asked.system_prompt.contains("greet\nGreets the caller by name."));
     assert_eq!(inner_asked.model_id, "worker-model");
     assert_eq!(listed.code, 0, "{listed:?}");
     // Each node reads the execution context itself, once, whatever its
