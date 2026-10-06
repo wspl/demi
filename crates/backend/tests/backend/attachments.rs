@@ -98,11 +98,14 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
         (first.id.as_str(), first.name.as_str(), first.media_type.as_str(), first.size),
         ("a1", "login.png", "image/png", png as u64)
     );
+    // An image's record carries its size in pixels, read from its header.
+    assert_eq!((first.width, first.height), (Some(4), Some(3)));
     let second: ConversationAttachment = read("a2").await.json();
     assert_eq!(
         (second.name.as_str(), second.media_type.as_str(), second.size),
         ("notes.md", "text/markdown", 8)
     );
+    assert_eq!((second.width, second.height), (None, None));
     for missing in ["a3", "a0", "3", "a01"] {
         let answer = read(missing).await;
         assert_eq!(
@@ -220,7 +223,7 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
     // Each job sends the backend a pipe upload of its own; the file's bytes
     // went in one more, the first time only.
     assert_eq!(sent[0], sent[1] + 1, "{sent:?}");
-    let blob = async |number: &str| {
+    let read = async |number: &str| {
         backend
             .get(
                 &format!("/api/conversations/{CONVERSATION}/attachments/{number}"),
@@ -228,8 +231,10 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
             )
             .await
             .json::<ConversationAttachment>()
-            .blob
     };
-    assert_eq!(blob("a1").await, blob("a2").await);
+    let (first, again) = (read("a1").await, read("a2").await);
+    assert_eq!(first.blob, again.blob);
+    // The held blob's opening gives the record the image's size all the same.
+    assert_eq!((again.width, again.height), (Some(4), Some(3)));
     backend.close().await;
 }

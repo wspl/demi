@@ -6,9 +6,10 @@
 
 use std::io::Cursor;
 
-use demi_shared_types::B64Bytes;
+use demi_shared_types::{B64Bytes, PixelSize};
 use image::{
-    DynamicImage, ImageDecoder as _, ImageError, ImageFormat, ImageReader, Limits,
+    DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, Limits,
+    metadata::Orientation,
     codecs::{jpeg::JpegEncoder, png::PngEncoder},
     imageops::FilterType,
 };
@@ -77,13 +78,7 @@ pub async fn fit(data: B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
 /// as JPEG and anything else as PNG. An image still over the byte limit
 /// enters as a JPEG of a lower quality, or not at all.
 fn fit_now(data: &B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
-    let format = ImageFormat::from_mime_type(media_type)
-        .ok_or_else(|| Unfit::Undecodable(format!("{media_type} is not an image type")))?;
-    let mut reader = ImageReader::with_format(Cursor::new(data.as_bytes()), format);
-    let mut limits = Limits::default();
-    limits.max_alloc = Some(MAX_DECODE_BYTES);
-    reader.limits(limits);
-    let mut decoder = reader.into_decoder()?;
+    let (format, mut decoder) = decoder(data, media_type)?;
     let orientation = decoder.orientation()?;
     let came = decoder.dimensions();
     let mut image = DynamicImage::from_decoder(decoder)?;
@@ -127,6 +122,44 @@ fn fit_now(data: &B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
         return Err(Unfit::TooLarge);
     }
     Ok(fitted(bytes, ImageFormat::Jpeg))
+}
+
+/// A decoder of `data`, an image of `media_type`, that has read its header
+/// and decodes the rest within [`MAX_DECODE_BYTES`].
+fn decoder<'a>(
+    data: &'a [u8],
+    media_type: &str,
+) -> Result<(ImageFormat, impl ImageDecoder + 'a), Unfit> {
+    let format = ImageFormat::from_mime_type(media_type)
+        .ok_or_else(|| Unfit::Undecodable(format!("{media_type} is not an image type")))?;
+    let mut reader = ImageReader::with_format(Cursor::new(data), format);
+    let mut limits = Limits::default();
+    limits.max_alloc = Some(MAX_DECODE_BYTES);
+    reader.limits(limits);
+    Ok((format, reader.into_decoder()?))
+}
+
+/// The size `data`, an image of `media_type`, shows at, as a web browser
+/// shows it: its pixels turned upright as its orientation says. Only its
+/// header is read; none when that does not decode.
+pub(crate) fn shown_size(data: &[u8], media_type: &str) -> Option<PixelSize> {
+    let (_, mut decoder) = decoder(data, media_type).ok()?;
+    let (width, height) = decoder.dimensions();
+    let turned = matches!(
+        decoder.orientation().ok()?,
+        Orientation::Rotate90
+            | Orientation::Rotate270
+            | Orientation::Rotate90FlipH
+            | Orientation::Rotate270FlipH
+    );
+    Some(if turned {
+        PixelSize {
+            width: height,
+            height: width,
+        }
+    } else {
+        PixelSize { width, height }
+    })
 }
 
 /// `image` as a JPEG of `quality`, without an alpha channel, which JPEG has

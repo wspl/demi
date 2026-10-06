@@ -46,6 +46,8 @@ async function ask(conversationId: string, id: string, key: string): Promise<voi
         name: attachment.name,
         mediaType: attachment.mediaType,
         url: blobUrl(attachment.blob, attachment.mediaType),
+        width: attachment.width,
+        height: attachment.height,
       },
     })
   } catch (error) {

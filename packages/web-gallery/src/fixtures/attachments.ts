@@ -1,5 +1,5 @@
 import type { AttachmentLookup } from '@demicodes/web-ui/markdown/types'
-import { galleryBlobUrl, galleryBlobs } from './blobs'
+import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from './blobs'
 
 /**
  * The attachments the gallery's conversation holds, as `demi attachment
@@ -13,6 +13,7 @@ const attachments: Record<string, { name: string; mediaType: string; blob: strin
   a4: { name: 'dashboard-full.png', mediaType: 'image/png', blob: galleryBlobs.fullPage },
   a5: { name: 'timeline.png', mediaType: 'image/png', blob: galleryBlobs.timeline },
   a6: { name: 'chart.png', mediaType: 'image/png', blob: galleryBlobs.chart },
+  a7: { name: 'demo.mp4', mediaType: 'video/mp4', blob: galleryBlobs.unsizedRecording },
 }
 
 /**
@@ -26,15 +27,20 @@ export function galleryAttachment(id: string): AttachmentLookup {
   }
   return {
     state: 'found',
-    attachment: { name: held.name, mediaType: held.mediaType, url: galleryBlobUrl(held.blob, held.mediaType) },
+    attachment: {
+      name: held.name,
+      mediaType: held.mediaType,
+      url: galleryBlobUrl(held.blob, held.mediaType),
+      ...galleryBlobSize(held.blob),
+    },
   }
 }
 
 /**
  * A reply that gives the user what the agent made: four screenshots of
  * different sizes in a run, a recording and a screenshot in a run, links to
- * them and to a file, a number the conversation does not have, and a lone
- * image after text.
+ * them and to a file, a number the conversation does not have, a lone image
+ * after text, and a lone recording whose size its record does not carry.
  */
 export const attachmentMarkdown = `The sign-in page works again. Each step, from the form to the chart:
 
@@ -49,11 +55,15 @@ The recording and the page it ends on:
 
 ![The dashboard it ends on](attachment:a6)
 
-The [setup guide](attachment:a3) has the steps, and [the screenshot](attachment:a1) opens large.
+The [setup guide](attachment:a3) has the steps, and [the screenshot](attachment:a1) and [the recording](attachment:a2) open large.
 
 ![The old capture](attachment:a9)
 
 The chart on its own:
 
 ![The weekly chart](attachment:a6)
+
+The demo on its own:
+
+![The demo of the checkout](attachment:a7)
 `
