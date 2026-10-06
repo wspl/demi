@@ -203,6 +203,8 @@ pub(crate) struct Inner {
     /// Why the backend ends it; the driver returns with this.
     disconnect: RefCell<Option<String>>,
     liveness: Cell<Liveness>,
+    /// Changes with each pong, which a probe of the connection waits for.
+    pongs: watch::Sender<()>,
     /// What the runner last reported its artifact cache holds; none until
     /// it reports.
     installed: watch::Sender<Option<Vec<HostArtifact>>>,
@@ -505,6 +507,7 @@ impl Link {
             disconnect: RefCell::new(None),
             liveness: Cell::new(Liveness::Idle),
             installed: watch::Sender::new(None),
+            pongs: watch::Sender::new(()),
         }));
         let driver = LinkDriver {
             link: link.clone(),
@@ -563,6 +566,30 @@ impl Link {
     /// Starts liveness again, with no ping outstanding.
     pub fn resume_liveness(&self) {
         self.0.liveness.set(Liveness::Idle);
+    }
+
+    /// Whether the runner answers a ping within `within`, as a new hello for
+    /// the device asks of the connection that holds it (`runner.md`
+    /// § Connection and identity): any pong that arrives meanwhile is an
+    /// answer. A connection that is closing does not answer; one whose
+    /// liveness is paused does, since its silence is no death.
+    pub async fn answers(&self, within: Duration) -> bool {
+        if self.0.liveness.get() == Liveness::Paused {
+            return true;
+        }
+        // Subscribing marks the pongs so far as seen.
+        let mut pongs = self.0.pongs.subscribe();
+        let asked = async {
+            if self.send(&Inbound::Ping {}).await.is_err() {
+                return false;
+            }
+            // The connection holds the sender, so the watch never closes.
+            pongs.changed().await.is_ok()
+        };
+        tokio::select! {
+            answered = tokio::time::timeout(within, asked) => answered.unwrap_or(false),
+            () = self.ended() => false,
+        }
     }
 
     /// The jobs running on the device: the runner's own count, or the work
@@ -799,6 +826,7 @@ impl Link {
                 if self.0.liveness.get() == Liveness::Waiting {
                     self.0.liveness.set(Liveness::Idle);
                 }
+                self.0.pongs.send_replace(());
             }
             Outbound::VolumeGrow { id, volume, bytes } => self.grow_volume(id, volume, bytes),
             Outbound::Revoke {} => self.revoke(),
