@@ -39,7 +39,7 @@ use demi_command_sdk::{ConversationContext, InvocationContext, Numbers, ServiceE
 use crate::protocol::{
     self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,
     CloseResult, ContentReadResult, DEFAULT_NODES, FailureDocument, ImageMime, InstallResult,
-    OpenResult, ScreenshotResult, TabsResult,
+    OpenResult, ScreenshotResult, ShowResult, TabsResult,
 };
 
 /// Requests waiting for an owner; a full queue holds back their senders.
@@ -988,6 +988,9 @@ impl Conversations {
             // work panel shows its loading, so opening does not wait for the page.
             let url = (input.url != "about:blank").then_some(input.url.as_str());
             let tab = environment.open_user(url, cancellation, deadline).await?;
+            if input.show == Some(true) {
+                tab.show();
+            }
             return Ok(CommandOutput::Json(output::value(OpenResult {
                 tab: tab.id().clone(),
                 url: url.unwrap_or("about:blank").to_owned(),
@@ -1005,6 +1008,9 @@ impl Conversations {
                     deadline,
                 )
                 .await?;
+            if input.show == Some(true) {
+                tab.show();
+            }
             // Navigation completed. Metadata is optional and cannot undo that input.
             let result = match demi_command_package_browser_chrome::page::actions::metadata(
                 &tab,
@@ -1065,6 +1071,7 @@ impl Conversations {
                     url: listed.url.clone(),
                     created_by: listed.tab.created_by().clone(),
                     loading: listed.tab.loading(),
+                    shows: listed.tab.shows(),
                 })
                 .collect();
             return Ok(CommandOutput::Json(output::value(TabsResult {
@@ -1074,6 +1081,14 @@ impl Conversations {
         }
         let id = command.tab().ok_or(BrowserError::TabNotFound)?;
         let tab = &environment.tab(id, cancellation, command.timeout()).await?;
+        if matches!(command, BrowserOperation::Show(_)) {
+            // Only the request is recorded: the user's panel shows the tab
+            // once the job ends (`live-view.md` § Showing a tab).
+            tab.show();
+            return Ok(CommandOutput::Json(output::value(ShowResult {
+                tab: tab.id().clone(),
+            })?));
+        }
         if context.request.context.caller.agent_number().is_none()
             && matches!(
                 command,
