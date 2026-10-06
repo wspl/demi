@@ -224,7 +224,7 @@ impl Operations for Fake {
         Box::pin(async move { Ok(Box::pin(echo) as ByteStream) })
     }
 
-    fn stream_activity(&self, conversation: &str) -> BoxFuture<'static, StreamActivity> {
+    fn stream_activity(&self, conversation: &str, _name: &str) -> BoxFuture<'static, StreamActivity> {
         let told = |open: bool| {
             let activity = self.activity.clone();
             let conversation = conversation.to_owned();

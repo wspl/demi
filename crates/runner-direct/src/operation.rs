@@ -97,12 +97,13 @@ pub trait Operations: Send + Sync + 'static {
     fn watch(&self, scope: Scope, paths: mpsc::UnboundedReceiver<Vec<String>>) -> WatchStream;
     /// Opens a user stream: its output bytes, once it opened.
     fn stream(&self, scope: Scope, request: StreamRequest) -> Answer<ByteStream>;
-    /// A `stream` channel of `conversation` opened: the runner gives the
-    /// stream an id and tells the backend, which then knows it as a stream
-    /// it opened, before the stream asks it for anything; it tells it again
-    /// when the activity is dropped, as the channel's end drops it on every
-    /// path: the stream's end, the page's, the peer's close and the runner's.
-    fn stream_activity(&self, conversation: &str) -> BoxFuture<'static, StreamActivity>;
+    /// A `stream` channel of `conversation` opened the user stream `name`:
+    /// the runner gives the stream an id and tells the backend, which then
+    /// knows it as a stream of that name it opened, before the stream asks
+    /// it for anything; it tells it again when the activity is dropped, as
+    /// the channel's end drops it on every path: the stream's end, the
+    /// page's, the peer's close and the runner's.
+    fn stream_activity(&self, conversation: &str, name: &str) -> BoxFuture<'static, StreamActivity>;
 }
 
 /// What the page sends on a channel after its header.
@@ -325,7 +326,7 @@ async fn carry_out(
                 return;
             };
             // Held until the channel's operation ends, or is dropped.
-            let activity = operations.stream_activity(&scope.conversation).await;
+            let activity = operations.stream_activity(&scope.conversation, &stream).await;
             let request = StreamRequest {
                 stream: activity.stream.clone(),
                 binding,

@@ -350,6 +350,7 @@ mod tests {
                 // the backend admitted started the idle watch.
                 let stream = |open| Outbound::DirectStream {
                     stream: "direct".to_owned(),
+                    name: "echo".to_owned(),
                     conversation: ID.to_owned(),
                     open,
                 };
