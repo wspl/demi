@@ -43,7 +43,7 @@ pub use pipes::{
 };
 pub use remote_host::{
     Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, LogPage, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
-    ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, host_identity,
+    ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, collect_pipe, host_identity,
 };
 #[cfg(feature = "edge")]
 pub use stream_pipe::accept_stream_pipe;

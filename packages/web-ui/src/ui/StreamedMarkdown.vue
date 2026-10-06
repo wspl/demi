@@ -2,7 +2,8 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
-import { openFileLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
+import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
+import { useImageViewer } from '@demicodes/web-ui/files/image-viewer'
 import { useContentScrollbars } from '@demicodes/web-ui/composables/useContentScrollbars'
 import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
 import {
@@ -30,6 +31,7 @@ const visible = computed(() => {
 
 const renderVersion = useMarkdownRenderVersion()
 const files = useMessageFiles()
+const viewer = useImageViewer()
 
 // Closers apply to finished text too: an aborted stream leaves the same half-open markers.
 // The render also follows the highlighter: its arrival and the document's theme.
@@ -106,6 +108,6 @@ watch(
     :class="streaming ? 'is-streaming' : ''"
     :aria-busy="streaming || undefined"
     v-html="renderedMarkdown"
-    @click="openFileLink($event, files())"
+    @click="openMessageLink($event, files(), viewer)"
   />
 </template>

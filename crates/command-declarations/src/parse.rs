@@ -150,12 +150,20 @@ impl Selected<'_> {
                 set_value(&mut result.values, field, value, schema)?;
                 continue;
             }
-            let field = leaf
+            let field = match leaf
                 .positionals
                 .as_ref()
                 .and_then(|fields| fields.get(positional))
-                .ok_or_else(|| UsageError(format!("Unexpected positional argument \"{token}\"")))?;
-            positional += 1;
+            {
+                Some(field) => {
+                    positional += 1;
+                    field.as_str()
+                }
+                // Past the positionals, a trailing array takes the rest.
+                None => leaf.repeated_positional().ok_or_else(|| {
+                    UsageError(format!("Unexpected positional argument \"{token}\""))
+                })?,
+            };
             let schema = &properties.expect("validated positional schema")[field];
             set_value(
                 &mut result.values,

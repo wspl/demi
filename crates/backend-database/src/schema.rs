@@ -524,7 +524,7 @@ CREATE INDEX nodes_children ON nodes (parent_id, number);
 -- number is advanced past in its own transaction before it is given out,
 -- so a crash leaves a gap and never gives a number twice.
 CREATE TABLE sequences (
-  name TEXT PRIMARY KEY CHECK (name IN ('command', 'shell', 'agent', 'tab')),
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'shell', 'agent', 'tab', 'attachment')),
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
@@ -550,6 +550,18 @@ CREATE TABLE command_outputs (
   CHECK ((missing_bytes IS NULL) = (missing_reason IS NULL)),
   CHECK (missing_bytes IS NULL OR blob IS NOT NULL),
   CHECK ((media IS NULL) = (blob IS NULL))
+) STRICT;
+
+-- Each attachment the agent uploaded, by its number in the conversation's
+-- attachment sequence: the file's name, the media type read from its bytes,
+-- its size and its blob in the owner's namespace. A row never changes; a
+-- Fork's seed copies the rows, and the blobs stay shared.
+CREATE TABLE attachments (
+  number     INTEGER PRIMARY KEY CHECK (number >= 1),
+  name       TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size       INTEGER NOT NULL CHECK (size >= 0),
+  blob       TEXT NOT NULL
 ) STRICT;
 ";
 

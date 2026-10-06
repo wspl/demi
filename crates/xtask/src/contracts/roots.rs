@@ -134,6 +134,7 @@ pub fn web() -> Vec<Root> {
         sends::<conversations::ForkRequest>(),
         receives::<conversations::ForkAnswer>(),
         receives::<attachments::AttachmentAnswer>(),
+        receives::<attachments::ConversationAttachment>(),
         receives::<hosts::AttachedHosts>(),
         sends::<hosts::AttachHost>(),
         sends::<hosts::RenameHost>(),
