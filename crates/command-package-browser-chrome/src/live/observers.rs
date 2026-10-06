@@ -9,11 +9,13 @@ use std::{
 
 use chromiumoxide::cdp::{
     browser_protocol::{
-        dom::{DescribeNodeParams, SetFileInputFilesParams},
+        dom::{DescribeNodeParams, GetBoxModelParams, GetFrameOwnerParams, SetFileInputFilesParams},
         emulation::SetFocusEmulationEnabledParams,
         page::{
             AddScriptToEvaluateOnNewDocumentParams, CreateIsolatedWorldParams, EventFrameNavigated,
+            FrameId,
         },
+        target::{EventAttachedToTarget, EventDetachedFromTarget, TargetId},
     },
     js_protocol::runtime::{
         AddBindingParams, EvaluateParams, EventBindingCalled, EventExecutionContextCreated,
@@ -21,11 +23,12 @@ use chromiumoxide::cdp::{
         RemoteObject,
     },
 };
+use chromiumoxide::{Page, listeners::EventStreamError};
 use futures_util::StreamExt;
 use serde::Deserialize;
 use serde_json::{Value, json};
-use tokio::sync::{broadcast, watch};
-use tokio_util::task::TaskTracker;
+use tokio::sync::{broadcast, mpsc, watch};
+use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::driver::operation::{BrowserError, Result};
 use crate::tabs::tab::BrowserTab;
@@ -37,6 +40,8 @@ use demi_command_package_browser_protocol::live::{
 const WORLD: &str = "demi-live";
 const BINDING: &str = "demiLiveReport";
 const SOURCE: &str = include_str!("observer.js");
+/// How long the place of a frame in the tab may take to read.
+const PLACE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 /// How long a new document gets to take the viewer's pointer.
 const POINTER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -61,53 +66,51 @@ pub(crate) struct Observed {
 #[derive(Deserialize)]
 #[serde(tag = "type", rename_all = "lowercase")]
 enum Report {
-    Cursor {
-        cursor: String,
-        editable: bool,
-    },
-    Cursors {
-        top: bool,
-        regions: Vec<CursorRegion>,
-    },
+    Cursor { cursor: String, editable: bool },
+    /// The regions of the reporting frame, in its own viewport's CSS pixels.
+    Cursors { regions: Vec<CursorRegion> },
     Controls { controls: Vec<LiveControl> },
     Copy { text: String },
 }
 
-/// Starts the observer of `tab`; it ends with the tab.
+/// A document of the tab whose observer reports: the renderer session it
+/// lives in, as the tab's page or a cross-site frame's own target, and its
+/// world there.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+struct World {
+    /// The session's target id.
+    page: String,
+    context: i64,
+}
+
+/// What the tab's observed pages tell the observer's owner.
+enum Heard {
+    Report { world: World, payload: String },
+    /// An observer's world started in a frame of `page`.
+    Created { world: World, unique: String, frame: FrameId },
+    Destroyed { unique: String },
+    /// Every world of `page` ended, as its documents were replaced.
+    Cleared { page: TargetId },
+    /// The tab's top document was replaced.
+    Navigated,
+    /// A cross-site frame of `parent` got its own renderer session.
+    Attached { parent: TargetId, child: TargetId },
+    /// A renderer session embedded in the tab ended, as its frame went away.
+    Detached { session: String },
+}
+
+/// One renderer session of the tab: the tab's page, or a cross-site
+/// frame's, with the session it is embedded in.
+struct Observing {
+    page: Page,
+    parent: Option<TargetId>,
+}
+
+/// Starts the observer of `tab` in every frame of it, cross-site frames in
+/// their own processes included; it ends with the tab.
 pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<Observed>> {
-    let mut reports = tab.page().event_listener::<EventBindingCalled>().await?;
-    let mut navigations = tab.page().event_listener::<EventFrameNavigated>().await?;
-    let mut created = tab
-        .page()
-        .event_listener::<EventExecutionContextCreated>()
-        .await?;
-    let mut destroyed = tab
-        .page()
-        .event_listener::<EventExecutionContextDestroyed>()
-        .await?;
-    let mut cleared = tab
-        .page()
-        .event_listener::<EventExecutionContextsCleared>()
-        .await?;
-    tab.page()
-        .execute(
-            AddBindingParams::builder()
-                .name(BINDING)
-                .execution_context_name(WORLD)
-                .build()
-                .map_err(BrowserError::Configuration)?,
-        )
-        .await?;
-    tab.page()
-        .execute(
-            AddScriptToEvaluateOnNewDocumentParams::builder()
-                .source(SOURCE)
-                .world_name(WORLD)
-                .run_immediately(true)
-                .build()
-                .map_err(BrowserError::Configuration)?,
-        )
-        .await?;
+    let (heard, mut hearing) = mpsc::channel(64);
+    listen(tab.page(), true, heard.clone(), tab.ended().clone(), tasks).await?;
     // The tab a viewer watches is the one in front, as the viewer's page
     // is in the user's browser.
     tab.page()
@@ -126,35 +129,51 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
         copies: broadcast::channel(4).0,
         documents: watch::channel(0).0,
     });
+    let mut pages = HashMap::from([(
+        tab.page().target_id().clone(),
+        Observing {
+            page: tab.page().clone(),
+            parent: None,
+        },
+    )]);
+    // The cross-site frames already there; later ones are heard of as they attach.
+    for document in crate::driver::frames::capture(tab.page()).await?.frames {
+        let child = document.page.target_id().clone();
+        let Some(parent) = document.parent_page.map(|page| page.target_id().clone()) else {
+            continue;
+        };
+        if pages.contains_key(&child) || child == parent {
+            continue;
+        }
+        if listen(&document.page, false, heard.clone(), tab.ended().clone(), tasks).await.is_ok() {
+            pages.insert(child, Observing { page: document.page, parent: Some(parent) });
+        }
+    }
     let reporting = observed.clone();
     let ended = tab.ended().clone();
     let observing = tab.clone();
-    let calls = tasks.clone();
+    let spawner = tasks.clone();
     tasks.spawn(async move {
-        // Each frame's regions by the execution context of its observer.
         let mut frames = FrameRegions::default();
         loop {
-            tokio::select! {
+            let heard_now = tokio::select! {
                 _ = ended.cancelled() => break,
-                report = reports.next() => {
-                    let report = match report {
-                        Some(Ok(report)) => report,
-                        // Reports are snapshots; a newer one follows.
-                        Some(Err(chromiumoxide::listeners::EventStreamError::Lagged(_))) => continue,
-                        Some(Err(_)) | None => break,
-                    };
-                    if report.name != BINDING {
-                        continue;
-                    }
-                    // The page cannot reach this world; a report it
-                    // cannot parse is the observer's own defect.
-                    match serde_json::from_str::<Report>(&report.payload) {
+                heard_now = hearing.recv() => match heard_now {
+                    Some(heard_now) => heard_now,
+                    None => break,
+                },
+            };
+            match heard_now {
+                Heard::Report { world, payload } => {
+                    // The page cannot reach this world; a report it cannot
+                    // parse is the observer's own defect.
+                    match serde_json::from_str::<Report>(&payload) {
                         Ok(Report::Cursor { cursor, editable }) => {
                             reporting.cursor.send_replace((cursor, editable));
                         }
-                        Ok(Report::Cursors { top, regions }) => {
-                            frames.report(*report.execution_context_id.inner(), top, regions);
-                            reporting.regions.send_replace(frames.merged());
+                        Ok(Report::Cursors { regions }) => {
+                            frames.regions.insert(world, regions);
+                            reporting.regions.send_replace(frames.merged(&pages, &observing).await);
                         }
                         Ok(Report::Controls { controls }) => {
                             reporting.controls.send_replace(controls);
@@ -165,63 +184,71 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
                         Err(error) => tracing::warn!("live view observer report: {error}"),
                     }
                 }
-                navigation = navigations.next() => {
-                    let navigation = match navigation {
-                        Some(Ok(navigation)) => navigation,
-                        Some(Err(chromiumoxide::listeners::EventStreamError::Lagged(_))) => continue,
-                        Some(Err(_)) | None => break,
-                    };
-                    if navigation.frame.parent_id.is_none() {
-                        // A new document has no controls or cursors yet; its
-                        // cursor at the still pointer replaces the old one's
-                        // once it resolves it there.
-                        reporting.controls.send_replace(Vec::new());
-                        frames.clear();
-                        reporting.regions.send_replace(Vec::new());
-                        reporting.documents.send_modify(|documents| *documents += 1);
-                        let pointer = *reporting.pointer.borrow();
-                        if let Some((x, y)) = pointer {
-                            let tab = observing.clone();
-                            calls.spawn(async move {
-                                let expression = format!("globalThis.demiLive.pointer({x}, {y})");
-                                let told = call(&tab, &expression, true);
-                                // A document replaced again meanwhile waits for its own pointer events.
-                                tokio::select! {
-                                    _ = tab.ended().cancelled() => {}
-                                    _told = tokio::time::timeout(POINTER_TIMEOUT, told) => {}
-                                }
-                            });
-                        }
+                Heard::Created { world, unique, frame } => {
+                    frames.contexts.insert(unique, world.clone());
+                    frames.documents.insert(world, frame);
+                }
+                Heard::Destroyed { unique } => {
+                    if frames.remove(&unique) {
+                        reporting.regions.send_replace(frames.merged(&pages, &observing).await);
                     }
                 }
-                world = created.next() => {
-                    let world = match world {
-                        Some(Ok(world)) => world,
-                        Some(Err(chromiumoxide::listeners::EventStreamError::Lagged(_))) => continue,
-                        Some(Err(_)) | None => break,
-                    };
-                    if world.context.name == WORLD {
-                        frames.contexts.insert(world.context.unique_id.clone(), *world.context.id.inner());
-                    }
+                Heard::Cleared { page } => {
+                    frames.regions.retain(|world, _| world.page != page.as_ref());
+                    reporting.regions.send_replace(frames.merged(&pages, &observing).await);
                 }
-                gone = destroyed.next() => {
-                    let gone = match gone {
-                        Some(Ok(gone)) => gone,
-                        Some(Err(chromiumoxide::listeners::EventStreamError::Lagged(_))) => continue,
-                        Some(Err(_)) | None => break,
-                    };
-                    if frames.remove(&gone.execution_context_unique_id) {
-                        reporting.regions.send_replace(frames.merged());
-                    }
-                }
-                all = cleared.next() => {
-                    match all {
-                        Some(Ok(_)) => {}
-                        Some(Err(chromiumoxide::listeners::EventStreamError::Lagged(_))) => continue,
-                        Some(Err(_)) | None => break,
-                    }
-                    frames.clear();
+                Heard::Navigated => {
+                    // A new document has no controls or cursors yet, nor the
+                    // old one's cross-site frames; its cursor at the still
+                    // pointer replaces the old one's once it resolves it there.
+                    reporting.controls.send_replace(Vec::new());
+                    pages.retain(|_, observing| observing.parent.is_none());
+                    frames.regions.clear();
                     reporting.regions.send_replace(Vec::new());
+                    reporting.documents.send_modify(|documents| *documents += 1);
+                    let pointer = *reporting.pointer.borrow();
+                    if let Some((x, y)) = pointer {
+                        let tab = observing.clone();
+                        spawner.spawn(async move {
+                            let expression = format!("globalThis.demiLive.pointer({x}, {y})");
+                            let told = call(&tab, &expression, true);
+                            // A document replaced again meanwhile waits for its own pointer events.
+                            tokio::select! {
+                                _ = tab.ended().cancelled() => {}
+                                _told = tokio::time::timeout(POINTER_TIMEOUT, told) => {}
+                            }
+                        });
+                    }
+                }
+                Heard::Detached { session } => {
+                    let gone: Vec<TargetId> = pages
+                        .iter()
+                        .filter(|(_, observing)| observing.page.session_id().as_ref() == session)
+                        .map(|(id, _)| id.clone())
+                        .collect();
+                    for id in gone {
+                        pages.remove(&id);
+                        frames.regions.retain(|world, _| world.page != id.as_ref());
+                        reporting.regions.send_replace(frames.merged(&pages, &observing).await);
+                    }
+                }
+                Heard::Attached { parent, child } => {
+                    if pages.contains_key(&child) {
+                        continue;
+                    }
+                    let Some(embedder) = pages.get(&parent) else {
+                        continue;
+                    };
+                    // A frame that went away before its session settled has nothing to observe.
+                    let Ok(Some(page)) = embedder.page.related_page(child.clone()).await else {
+                        continue;
+                    };
+                    if listen(&page, false, heard.clone(), observing.ended().clone(), &spawner)
+                        .await
+                        .is_ok()
+                    {
+                        pages.insert(child, Observing { page, parent: Some(parent) });
+                    }
                 }
             }
         }
@@ -229,56 +256,222 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
     Ok(observed)
 }
 
-/// The cursor regions each frame's observer last reported, by the
-/// execution context of its world.
+/// Puts the observer into every document of `page`'s renderer session, the
+/// ones there now and the ones to come, and hands what it reports to
+/// `heard` until `ended`. The tab's own page also tells of its top
+/// document's replacement; each page tells of the cross-site frames that
+/// attach to it.
+async fn listen(
+    page: &Page,
+    tab_page: bool,
+    heard: mpsc::Sender<Heard>,
+    ended: CancellationToken,
+    tasks: &TaskTracker,
+) -> Result<()> {
+    let mut reports = page.event_listener::<EventBindingCalled>().await?;
+    let mut navigations = page.event_listener::<EventFrameNavigated>().await?;
+    let mut created = page.event_listener::<EventExecutionContextCreated>().await?;
+    let mut destroyed = page.event_listener::<EventExecutionContextDestroyed>().await?;
+    let mut cleared = page.event_listener::<EventExecutionContextsCleared>().await?;
+    let mut attached = page.event_listener::<EventAttachedToTarget>().await?;
+    let mut detached = page.event_listener::<EventDetachedFromTarget>().await?;
+    page.execute(
+        AddBindingParams::builder()
+            .name(BINDING)
+            .execution_context_name(WORLD)
+            .build()
+            .map_err(BrowserError::Configuration)?,
+    )
+    .await?;
+    page.execute(
+        AddScriptToEvaluateOnNewDocumentParams::builder()
+            .source(SOURCE)
+            .world_name(WORLD)
+            .run_immediately(true)
+            .build()
+            .map_err(BrowserError::Configuration)?,
+    )
+    .await?;
+    let id = page.target_id().clone();
+    tasks.spawn(async move {
+        loop {
+            let next = tokio::select! {
+                _ = ended.cancelled() => break,
+                report = reports.next() => match report {
+                    Some(Ok(report)) if report.name == BINDING => Some(Heard::Report {
+                        world: World { page: id.as_ref().to_owned(), context: *report.execution_context_id.inner() },
+                        payload: report.payload.clone(),
+                    }),
+                    // Reports are snapshots; a newer one follows.
+                    Some(Ok(_)) | Some(Err(EventStreamError::Lagged(_))) => None,
+                    Some(Err(_)) | None => break,
+                },
+                navigation = navigations.next() => match navigation {
+                    Some(Ok(navigation)) if tab_page && navigation.frame.parent_id.is_none() => Some(Heard::Navigated),
+                    Some(Ok(_)) | Some(Err(EventStreamError::Lagged(_))) => None,
+                    Some(Err(_)) | None => break,
+                },
+                world = created.next() => match world {
+                    Some(Ok(world)) if world.context.name == WORLD => {
+                        let frame = world
+                            .context
+                            .aux_data
+                            .as_ref()
+                            .and_then(|data| data.get("frameId"))
+                            .and_then(Value::as_str)
+                            .map(|frame| FrameId::new(frame.to_owned()));
+                        frame.map(|frame| Heard::Created {
+                            world: World { page: id.as_ref().to_owned(), context: *world.context.id.inner() },
+                            unique: world.context.unique_id.clone(),
+                            frame,
+                        })
+                    }
+                    Some(Ok(_)) | Some(Err(EventStreamError::Lagged(_))) => None,
+                    Some(Err(_)) | None => break,
+                },
+                gone = destroyed.next() => match gone {
+                    Some(Ok(gone)) => Some(Heard::Destroyed { unique: gone.execution_context_unique_id.clone() }),
+                    Some(Err(EventStreamError::Lagged(_))) => None,
+                    Some(Err(_)) | None => break,
+                },
+                all = cleared.next() => match all {
+                    Some(Ok(_)) => Some(Heard::Cleared { page: id.clone() }),
+                    Some(Err(EventStreamError::Lagged(_))) => None,
+                    Some(Err(_)) | None => break,
+                },
+                child = attached.next() => match child {
+                    Some(Ok(child)) if child.target_info.r#type == "iframe" => Some(Heard::Attached {
+                        parent: id.clone(),
+                        child: child.target_info.target_id.clone(),
+                    }),
+                    Some(Ok(_)) | Some(Err(EventStreamError::Lagged(_))) => None,
+                    Some(Err(_)) | None => break,
+                },
+                child = detached.next() => match child {
+                    Some(Ok(child)) => Some(Heard::Detached { session: child.session_id.as_ref().to_owned() }),
+                    Some(Err(EventStreamError::Lagged(_))) => None,
+                    Some(Err(_)) | None => break,
+                },
+            };
+            // The owner ended with the tab.
+            if let Some(next) = next
+                && heard.send(next).await.is_err()
+            {
+                break;
+            }
+        }
+    });
+    Ok(())
+}
+
+/// The cursor regions each frame's observer last reported, in its own
+/// viewport's CSS pixels, by its world.
 #[derive(Default)]
 struct FrameRegions {
-    top: Option<(i64, Vec<CursorRegion>)>,
-    frames: BTreeMap<i64, Vec<CursorRegion>>,
-    /// The observers' worlds by the unique ids their end is reported with.
-    contexts: HashMap<String, i64>,
+    regions: BTreeMap<World, Vec<CursorRegion>>,
+    /// The frame each world is in.
+    documents: HashMap<World, FrameId>,
+    /// The worlds by the unique ids their end is reported with.
+    contexts: HashMap<String, World>,
 }
 
 impl FrameRegions {
-    fn report(&mut self, context: i64, top: bool, regions: Vec<CursorRegion>) {
-        if top {
-            self.top = Some((context, regions));
-        } else {
-            self.frames.insert(context, regions);
-        }
-    }
-
-    /// Forgets every frame's regions, as a new top document does; the
-    /// worlds keep their ids.
-    fn clear(&mut self) {
-        self.top = None;
-        self.frames.clear();
-    }
-
     /// Forgets the frame whose world `unique` ended with its document;
     /// whether it had reported regions.
     fn remove(&mut self, unique: &str) -> bool {
-        let Some(context) = self.contexts.remove(unique) else {
+        let Some(world) = self.contexts.remove(unique) else {
             return false;
         };
-        if self.top.as_ref().is_some_and(|(top, _)| *top == context) {
-            self.top = None;
-            return true;
-        }
-        self.frames.remove(&context).is_some()
+        self.documents.remove(&world);
+        self.regions.remove(&world).is_some()
     }
 
-    /// The top document's regions, then its frames', which lie over it.
-    fn merged(&self) -> Vec<CursorRegion> {
-        self.top
-            .iter()
-            .map(|(_, regions)| regions)
-            .chain(self.frames.values())
-            .flatten()
-            .take(MAX_CURSOR_REGIONS)
-            .cloned()
-            .collect()
+    /// Every frame's regions in the tab's CSS pixels: the top document's
+    /// first, then its frames', which lie over it. A frame whose place in
+    /// the tab cannot be read, as one going away, counts for nothing.
+    async fn merged(&self, pages: &HashMap<TargetId, Observing>, tab: &BrowserTab) -> Vec<CursorRegion> {
+        let root = tab.page().mainframe().await.ok().flatten();
+        let mut top = Vec::new();
+        let mut framed = Vec::new();
+        for (world, regions) in &self.regions {
+            let Some(frame) = self.documents.get(world) else {
+                continue;
+            };
+            let is_top = world.page == tab.page().target_id().as_ref() && Some(frame) == root.as_ref();
+            let Some((x, y)) = frame_origin(pages, &TargetId::new(world.page.clone()), frame).await else {
+                continue;
+            };
+            let placed = regions.iter().map(|region| CursorRegion {
+                x: region.x + x,
+                y: region.y + y,
+                ..region.clone()
+            });
+            if is_top {
+                top.extend(placed);
+            } else {
+                framed.extend(placed);
+            }
+        }
+        top.extend(framed);
+        top.truncate(MAX_CURSOR_REGIONS);
+        top
     }
+}
+
+/// Where the viewport of `frame`, a document of `page`'s renderer session,
+/// stands in the tab, in CSS pixels: the content boxes of the frames that
+/// embed it, added up to the tab's own page.
+async fn frame_origin(
+    pages: &HashMap<TargetId, Observing>,
+    page: &TargetId,
+    frame: &FrameId,
+) -> Option<(f64, f64)> {
+    let (mut x, mut y) = (0.0, 0.0);
+    let mut page = page.clone();
+    let mut frame = frame.clone();
+    loop {
+        let observing = pages.get(&page)?;
+        let root = observing.page.mainframe().await.ok()??;
+        // A frame inside the session's own document: its box there.
+        if frame != root {
+            let (left, top) = owner_box(&observing.page, &frame).await?;
+            x += left;
+            y += top;
+        }
+        let Some(parent) = &observing.parent else {
+            return Some((x, y));
+        };
+        // The session's own document is a cross-site frame: its box in the session that embeds it.
+        let embedder = pages.get(parent)?;
+        let (left, top) = owner_box(&embedder.page, &root).await?;
+        x += left;
+        y += top;
+        frame = embedder.page.mainframe().await.ok()??;
+        page = parent.clone();
+    }
+}
+
+/// The top-left corner of the content box of the element that embeds
+/// `frame` in `page`'s session, in that session's top viewport. A session
+/// that went away without its detachment reaching the observer yet would
+/// answer only at the request timeout, so it is given a moment and then
+/// counts as gone.
+async fn owner_box(page: &Page, frame: &FrameId) -> Option<(f64, f64)> {
+    let owner = tokio::time::timeout(PLACE_TIMEOUT, page.execute(GetFrameOwnerParams::new(frame.clone())))
+        .await
+        .ok()?
+        .ok()?
+        .result
+        .backend_node_id;
+    let boxed = page.execute(GetBoxModelParams::builder().backend_node_id(owner).build());
+    let model = tokio::time::timeout(PLACE_TIMEOUT, boxed)
+        .await
+        .ok()?
+        .ok()?
+        .result
+        .model;
+    let content = model.content.inner();
+    Some((*content.first()?, *content.get(1)?))
 }
 
 /// Runs `expression` in the observer's world of the tab's main document, and

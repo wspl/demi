@@ -23,9 +23,9 @@
   const top = window === window.top;
 
   // The cursors of the visible page (`live-view.md` § Input). Each frame
-  // reports where on the tab each cursor applies, so the view resolves the
-  // cursor under its pointer without asking: a region is an element whose
-  // cursor differs from its parent's, in tab CSS pixels, in document order,
+  // reports where each cursor applies, so the view resolves the cursor under
+  // its pointer without asking: a region is an element whose cursor differs
+  // from its parent's, in document order,
   // so a later region over an earlier one wins as a child's cursor does. A
   // region of `auto` leaves the cursor to the browser, which this observer
   // resolves for the point the viewer's pointer is at: a text cursor over
@@ -35,34 +35,19 @@
   // A cursor list falls back to its last keyword, the one every browser has.
   const keyword = cursor => cursor.split(',').pop().trim();
   const editable = element => element.matches(EDITABLE) || element.isContentEditable === true;
-  // Where this frame's viewport stands in the tab, or none for a frame whose
-  // embedder another origin owns.
-  const origin = () => {
-    let x = 0;
-    let y = 0;
-    for (let view = window; view !== view.top; view = view.parent) {
-      const frame = view.frameElement;
-      if (!frame) return null;
-      const rect = frame.getBoundingClientRect();
-      const style = getComputedStyle(frame);
-      x += rect.left + frame.clientLeft + parseFloat(style.paddingLeft);
-      y += rect.top + frame.clientTop + parseFloat(style.paddingTop);
-    }
-    return { x, y };
-  };
+  // Each frame reports in its own viewport's CSS pixels; the module, which
+  // knows where every frame stands, cross-site ones in their own processes
+  // included, places them in the tab. A shadow root's elements count as the
+  // page's, under their host.
   const regions = () => {
-    const offset = origin();
-    if (!offset) return null;
     const result = [];
     const viewport = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
-    const root = document.documentElement;
-    // Each element's cursor, and the box its children show within: a
-    // scrolled or clipped container hides what lies outside it.
-    const inherited = new Map([[root.parentNode, { cursor: 'auto', clip: viewport }]]);
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
-    for (let element = walker.currentNode; element && result.length < MAX_REGIONS; element = walker.nextNode()) {
+    // Each element with the cursor it passes on and the box its children
+    // show within: a scrolled or clipped container hides what lies outside it.
+    const pending = [[document.documentElement, { cursor: 'auto', clip: viewport }]];
+    while (pending.length > 0 && result.length < MAX_REGIONS) {
+      const [element, parent] = pending.pop();
       const style = getComputedStyle(element);
-      const parent = inherited.get(element.parentNode) ?? { cursor: 'auto', clip: viewport };
       let cursor = keyword(style.cursor);
       if (cursor === 'auto' && editable(element)) cursor = style.writingMode.startsWith('vertical') ? 'vertical-text' : 'text';
       const shown = style.position === 'fixed' ? viewport : parent.clip;
@@ -76,16 +61,20 @@
           bottom: Math.min(shown.bottom, box.bottom),
         };
       }
-      inherited.set(element, { cursor, clip: within });
-      if (cursor === parent.cursor || style.pointerEvents === 'none') continue;
-      for (const rect of element.getClientRects()) {
-        const left = Math.max(rect.left, shown.left);
-        const upper = Math.max(rect.top, shown.top);
-        const right = Math.min(rect.right, shown.right);
-        const bottom = Math.min(rect.bottom, shown.bottom);
-        if (right <= left || bottom <= upper) continue;
-        result.push({ x: left + offset.x, y: upper + offset.y, width: right - left, height: bottom - upper, cursor: clip(cursor, 200) });
+      if (cursor !== parent.cursor && style.pointerEvents !== 'none') {
+        for (const rect of element.getClientRects()) {
+          const left = Math.max(rect.left, shown.left);
+          const upper = Math.max(rect.top, shown.top);
+          const right = Math.min(rect.right, shown.right);
+          const bottom = Math.min(rect.bottom, shown.bottom);
+          if (right <= left || bottom <= upper) continue;
+          result.push({ x: left, y: upper, width: right - left, height: bottom - upper, cursor: clip(cursor, 200) });
+        }
       }
+      // Children in document order: the stack takes them last first.
+      const passed = { cursor, clip: within };
+      const children = [...element.children, ...(element.shadowRoot?.children ?? [])];
+      for (let index = children.length - 1; index >= 0; index--) pending.push([children[index], passed]);
     }
     return result;
   };
@@ -140,9 +129,9 @@
     dirty = false;
     const found = regions();
     const serialized = JSON.stringify(found);
-    if (found && serialized !== lastRegions) {
+    if (serialized !== lastRegions) {
       lastRegions = serialized;
-      report({ type: 'cursors', top, regions: found });
+      report({ type: 'cursors', regions: found });
     }
     if (!point) return;
     const resolved = cursorAt(point);
