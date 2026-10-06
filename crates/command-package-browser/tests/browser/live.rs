@@ -570,12 +570,15 @@ async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
         // `localhost` is another site than `127.0.0.1`: its frame runs in a process of its own.
         let page = format!(
             "<!doctype html><style>body{{margin:0;font:16px sans-serif}}</style>\
+            <button style=\"position:fixed;inset:0;visibility:hidden;opacity:0;cursor:pointer\"></button>\
             <button style=\"position:absolute;left:10px;top:10px;width:100px;height:30px;cursor:pointer\"><span>Save</span></button>\
+            <div style=\"position:absolute;left:10px;top:400px;pointer-events:none;cursor:wait\">\
+              <span style=\"pointer-events:auto;display:inline-block;width:40px;height:20px\"></span></div>\
             <div style=\"position:absolute;left:10px;top:50px;width:100px;height:30px;cursor:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=) 4 4, move\"></div>\
             <div style=\"position:absolute;left:10px;top:100px;width:100px;height:50px;overflow:auto\">\
               <div style=\"height:200px\"><div style=\"margin-top:120px;height:20px;cursor:help\"></div></div></div>\
             <iframe style=\"position:absolute;left:200px;top:100px;width:200px;height:100px;border:5px solid black\"\
-              srcdoc=\"<body style='margin:0'><div style='margin:10px;width:50px;height:20px;cursor:crosshair'></div></body>\"></iframe>\
+              srcdoc=\"<body style='margin:0'><div style='margin:10px;width:50px;height:20px;cursor:crosshair'></div><p style='margin:0 10px'>Frame text</p></body>\"></iframe>\
             <iframe style=\"position:absolute;left:450px;top:100px;width:200px;height:100px;border:3px solid black\" src=\"http://localhost:{port}/frame\"></iframe>\
             <div id=\"host\" style=\"position:absolute;left:10px;top:300px\"></div>\
             <div id=\"sealed\" style=\"position:absolute;left:10px;top:340px;cursor:progress\"></div>\
@@ -618,7 +621,14 @@ async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
                 .find(|region| region["cursor"] == cursor)
                 .map(|region| [&region["x"], &region["y"], &region["width"], &region["height"]].map(|value| value.as_f64().unwrap()))
         };
+        // A hidden backdrop over the whole page, which the pointer passes
+        // through, shows no cursor: only the button does.
+        let pointers: Vec<_> = regions.iter().filter(|region| region["cursor"] == "pointer").collect();
+        assert_eq!(pointers.len(), 1, "{pointers:?}");
         assert_eq!(region("pointer"), Some([10.0, 10.0, 100.0, 30.0]));
+        // Inside an element the pointer passes through, a child it reaches
+        // shows the cursor it inherits.
+        assert_eq!(region("wait"), Some([10.0, 400.0, 40.0, 20.0]));
         // A cursor list falls back to its last keyword.
         assert_eq!(region("move"), Some([10.0, 50.0, 100.0, 30.0]));
         // A frame's region, in the tab's coordinates past its border.
@@ -636,6 +646,17 @@ async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
         // The cursor the observer resolves at the pointer: text over text.
         view.pointer(&tab, "move", 20.0, 228.0);
         view.until("a text cursor", |message| message["type"] == "cursor" && message["cursor"] == "text").await;
+        // The tab has one cursor whichever frame resolved it: back from a
+        // frame's text, the top document's empty space shows its own again.
+        let cursor = |cursor: &'static str| move |message: &Value| message["type"] == "cursor" && message["cursor"] == cursor;
+        view.pointer(&tab, "move", 150.0, 450.0);
+        view.until("the top document's default cursor", cursor("default")).await;
+        view.pointer(&tab, "move", 220.0, 150.0);
+        view.until("the frame's text cursor", cursor("text")).await;
+        view.pointer(&tab, "move", 150.0, 450.0);
+        view.until("the top document's default cursor again", cursor("default")).await;
+        view.pointer(&tab, "move", 20.0, 228.0);
+        view.until("the text cursor again", cursor("text")).await;
         // A new document under the still pointer resolves its own cursor there.
         fixture
             .call("browser.goto", json!({"tab": tab, "url": format!("http://127.0.0.1:{port}/next")}))
