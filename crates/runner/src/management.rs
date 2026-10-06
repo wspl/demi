@@ -13,7 +13,7 @@ use tokio_util::sync::CancellationToken;
 /// drain; its arguments are a [`Request`].
 pub const MANAGE: &str = "manage";
 
-#[derive(Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Phase {
     Connecting,
@@ -54,11 +54,11 @@ pub enum Revocation {
     Unreached,
 }
 
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Status {
     release: String,
-    phase: Phase,
+    pub phase: Phase,
     draining: bool,
     jobs: usize,
 }

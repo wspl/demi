@@ -34,7 +34,7 @@ function productDevice(device: DeviceDto): Device {
     id: device.id,
     kind: device.kind,
     name: device.name,
-    online: device.online,
+    state: device.state,
     home: device.home,
     seen: device.lastSeenAt ?? undefined,
     platform,
@@ -148,7 +148,7 @@ export const useResources = defineStore('resources', () => {
         ...checkout,
         host: device?.name ?? 'Unavailable device',
         hostKind: 'device',
-        online: device?.online ?? false,
+        state: device?.state ?? 'offline',
       }
     }),
   )

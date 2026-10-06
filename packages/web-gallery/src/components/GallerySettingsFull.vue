@@ -216,7 +216,7 @@ async function claimDevice(_code: string) {
   const device = {
     id: `device-${Date.now()}`,
     name: `host-${n}`,
-    online: true,
+    state: 'online' as const,
     seen: 'Now',
   }
   s.value.devices.push(device)
