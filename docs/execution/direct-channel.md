@@ -82,36 +82,42 @@ The encryption keys' fingerprints travel in the offer and the answer, so
 each end knows it talks to the one the backend introduced. The channel is
 encrypted end to end with DTLS, as every WebRTC data channel is.
 
-## What the page may do
+## Who may connect
 
-A peer is connected but allowed nothing until the page asks for each
-conversation it shows. The page sends `use { conversation }` on the
-signaling socket. The backend admits it as it admits a
-[user stream](sessions-and-targets.md#host-operations): the caller owns the
-conversation, it is not archived, and its primary Host is this device. It
-then tells the runner `direct_grant { peer, conversation, context }`, where
-`context` is what the runner needs to act for the conversation as the relay
-would: its [command context](native-runtime.md#command-context) with a `user`
-caller and its working directory. The page hears `granted { conversation }`,
-or `refused { conversation, code }`.
-
-The runner serves a channel only for a conversation granted to its peer, and
-only the operations of the table above. The backend takes a grant back with
-`direct_revoke { peer, conversation }`, and the runner closes that
-conversation's channels of the peer:
-
-- when an archive, a target or directory change, or a detach ends the
-  conversation's transfers and user streams: a direct operation is ended,
-  not awaited, as a file transfer is
-  ([Lifecycle access](sessions-and-targets.md#lifecycle-access));
-- when the page sends `release { conversation }` because it no longer shows
-  it, and when the signaling socket closes.
+The backend's introduction is the only check, and it is the check the user's
+own device already has everywhere else: the caller owns the device and its
+runner is connected, as for browsing the device's folders
+([Every way to a Host](sessions-and-targets.md#every-way-to-a-host)). The
+runner accepts no peer the backend did not introduce, and everything a peer
+then does is the device owner's work on their own device, for any of their
+conversations on it: Demi adds no gate of its own per conversation or per
+operation. The page names the conversation in each operation, so the runner
+acts in that conversation's directory and, for a stream, in its browser.
 
 When the signaling socket closes, the backend tells the runner
 `direct_close { peer }`, and the runner closes the peer. When the runner's own
-connection to the backend ends, it closes every peer, since it can no longer
-hear a revocation. A device revoked, a session ended or the user signed out
-closes the signaling socket, and so the peer.
+connection to the backend ends, it closes every peer. A device revoked, a
+session ended or the user signed out closes the signaling socket, and so the
+peer. A conversation that no longer runs on this device, after a target
+change, an archive or a detach, is one the page no longer sends here: it
+reads the conversation's Host from its summary as it does for the relay.
+
+## The browser's permission
+
+Chrome has a local network permission for WebRTC ready behind a flag, as it
+already has one for `fetch` and WebSockets. Once it is on, the page's first
+attempt makes Chrome ask the user, once per site:
+
+- **Allowed:** the attempt connects, and later ones do without asking.
+- **Not answered, or dismissed:** the attempt fails; the page stays on the
+  relay and tries again later, which may ask again.
+- **Blocked:** the page stays on the relay. Where the browser reports the
+  permission's state, Settings → Devices says under a paired device that this
+  browser blocks direct connections to devices on this computer and network,
+  and how to allow it in the site's settings. When the user allows it, the
+  browser reports the change and the page connects without a reload.
+
+Firefox and Safari ask nothing for a data channel today.
 
 ## Operations on the channel
 
@@ -137,7 +143,8 @@ the same thing ([Host operations](runner.md#host-operations)): the same
 functions, the same limits, the same atomic writes, the same
 [file watch](runner.md#watching-files) shared with the backend's watches. A
 `stream` starts the invocation as a `service_open` does
-([Service streams](runner.md#service-streams)), from the grant's context.
+([Service streams](runner.md#service-streams)), with a `user` caller in the
+conversation the header names.
 
 Flow control is the data channel's own. The runner keeps at most 256 KiB
 queued on a channel and writes more as the queue drains; the page does the
@@ -148,7 +155,7 @@ refuses more with `busy`, which sends the page's operation to the relay.
 ## Choosing the path
 
 The page keeps one choice per device: `relay` or `direct`. It is `direct`
-while the peer is connected and the operation's conversation is granted.
+while the peer is connected.
 
 - **Each operation chooses as it starts.** A read, a text, a listing or a
   write starts on whatever the choice is at that moment, and finishes there.
@@ -181,8 +188,8 @@ back to it without waiting.
 An image, a video, a PDF or a download is fetched by the user's browser from
 the raw route's URL, not by the page's code: a `<video>` asks for ranges as it
 plays. So the page's service worker answers those requests on the direct
-channel. It sees a `GET` of `…/fs/raw` for a conversation the page has
-granted, asks the page, which holds the peer, to read the range on a `read`
+channel. It sees a `GET` of `…/fs/raw` for a conversation on a device the
+page is connected to directly, asks the page, which holds the peer, to read the range on a `read`
 channel, and answers with the bytes and the headers the relay's route gives
 them: the media type of the [file-type table](../architecture/contracts.md#logic-the-web-app-and-backend-share),
 `nosniff`, the content policy of an image shown in place, `Range` answers,
@@ -217,23 +224,22 @@ relay.
 | --- | --- |
 | The browser and the Host are different machines that cannot reach each other | The peer never connects; the relay serves everything |
 | Two machines on one local network | The peer connects over the network's addresses, as on one machine |
-| The browser asks for local network permission, and the user denies it or has not answered | The relay serves everything; a later permission change tries again |
+| The browser asks for local network permission, and the user has not answered | The relay serves everything; a later attempt or a permission change tries again |
 | Windows asks whether the runner may receive connections | The runner's local network sockets are blocked until the user allows it; `127.0.0.1` still connects in Chrome |
 | A policy or VPN that forbids direct UDP | The relay serves everything |
 | The runner restarts | Its peers close; the page falls back and tries again when the runner connects |
-| A transition of the conversation | Its grants are revoked and its direct operations end, as its relayed transfers and streams do |
+| The browser's local network permission is blocked | The relay serves everything; Settings → Devices says how to allow it, and allowing it connects without a reload |
 
 ## Responsibilities
 
 | Where | Responsibility |
 | --- | --- |
-| `runner-protocol` | The `direct_offer`, `direct_answer`, `direct_grant`, `direct_revoke` and `direct_close` messages and the operations' headers and answers |
-| `runner-direct` | The runner's peers: sockets, ICE, DTLS and SCTP through str0m, the grants, and each operation carried out through `runner-host` and the service streams the runner supplies; on its own thread, off the runner's control thread, since a peer at full speed fills a core |
+| `runner-protocol` | The `direct_offer`, `direct_answer` and `direct_close` messages and the operations' headers and answers |
+| `runner-direct` | The runner's peers: sockets, ICE, DTLS and SCTP through str0m, and each operation carried out through `runner-host` and the service streams the runner supplies; on its own thread, off the runner's control thread, since a peer at full speed fills a core |
 | `runner` | Composing `runner-direct` with the Host operations and service streams, and closing every peer when the backend connection ends |
-| `backend-host-access` | Admitting `use`, granting and revoking with the conversation's transitions |
-| `backend-http` | The signaling route |
+| `backend-http` | The signaling route, with the device access check |
 | `web` | The peer, the choice of path, the operations' clients, the service worker, and the user streams and file reads the page context supplies over either path |
-| `web-ui` | The *Connected directly* note in the Devices settings |
+| `web-ui` | The *Connected directly* note and the blocked-permission note in the Devices settings |
 
 ## Rationale
 

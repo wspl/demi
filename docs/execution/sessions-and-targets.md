@@ -296,7 +296,8 @@ saved.
 ### Every way to a Host
 
 The conversation's host access is the only way to a conversation's Host, in the
-forms the first rows name. Two more ways reach a device for work that
+forms the first rows name, but for a direct channel, which device access
+introduces. Two more ways reach a device for work that
 touches no conversation's files. This table names every way to a Host:
 
 | Way | Used by | Takes | A stopped Cloud |
@@ -304,8 +305,7 @@ touches no conversation's files. This table names every way to a Host:
 | The conversation's host access | The agent's tool calls and shell jobs, with the plugins' Host directories each job needs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a conversation browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host; a plugin's [reads of the conversation's files](../architecture/plugins.md#reading-a-conversations-files) | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
-| Device access | The public relay of a [Host expose](expose.md#the-public-relay); the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |
-| A [direct channel](direct-channel.md)'s grant, a form of the conversation's host access | The page's user streams, file transfers, file text, listings and file watch of a conversation on a paired device, when the page and its runner connect directly | The file gate while admitting the grant only; a transition revokes the grant and ends its operations, as it ends file transfers | Not offered: a Cloud has no direct channel |
+| Device access | A [direct channel](direct-channel.md) between the page and a paired device's runner, which carries the page's user streams, file transfers, file text, listings and file watch of the user's conversations on that device; the public relay of a [Host expose](expose.md#the-public-relay); the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |
 | Machine access | Creating a Cloud project; [placing a provider's process](../providers/claude-code.md#where-it-runs) on the user's Cloud | The Cloud's admission; no file gate | Woken; a running reset is waited for |
 
 Device access and machine access touch no conversation's files, so they take no
@@ -320,8 +320,13 @@ makes the project's directory before any conversation uses it. A provider's
 process runs in a directory of Demi's on the Cloud, for a conversation's
 requests (the [`provider` role](#how-a-conversation-uses-a-device)) and for
 account work that belongs to no conversation, such as **Test connection**.
-Anything that reaches a conversation's primary or attached Host goes through the
-conversation's host access.
+Anything else that reaches a conversation's primary or attached Host goes
+through the conversation's host access. A direct channel is the device
+owner's work on their own device, as browsing its folders is: the backend
+checks ownership when it introduces the page, and adds no conversation gate,
+so a transition does not wait for the channel's operations, and the page
+stops sending a conversation's operations to a device once its summary names
+another Host.
 
 ### Lifecycle access
 

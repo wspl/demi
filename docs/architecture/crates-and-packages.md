@@ -840,8 +840,8 @@ demi-runner (executable: connection, registration, Host log, composition)
 
 - **Owns:** the runner's side of [direct channels](../execution/direct-channel.md):
   the peers the backend introduces, their UDP sockets on `127.0.0.1` and the
-  local network's addresses, ICE, DTLS and SCTP through str0m, the grants,
-  the operations' headers and flow control, on a thread of its own off the
+  local network's addresses, ICE, DTLS and SCTP through str0m, the
+  operations' headers and flow control, on a thread of its own off the
   runner's control thread.
 - **Public boundary:** the peers' handle the runner drives with the backend's
   `direct_*` messages, and the trait through which it carries out an
@@ -1061,9 +1061,7 @@ demi-backend (executable: configuration, composition)
   uploads, remote files and user streams, with the leases the edge holds of
   them; the shell environments of agent nodes over it, which keep the
   commands' outputs and edit copies as the user's blobs;
-  the product's `demi host` and `demi attachment` groups; the grants of
-  [direct channels](../execution/direct-channel.md) and their revocation with
-  the transitions; the installation
+  the product's `demi host` and `demi attachment` groups; the installation
   of the user's [Host directories](plugins.md#host-directories) before a job
   runs, once per runner connection, the reads of a conversation's files and
   the package calls plugins make; and `HostShard`,
@@ -1163,8 +1161,8 @@ demi-backend (executable: configuration, composition)
   installer, native artifact and web app asset routes, the plugins' page call
   routes, the conversation permissions routes, runner acceptance, and
   the byte copies of file transfers, pipes, user streams and the expose relay,
-  and the signaling socket of [direct channels](../execution/direct-channel.md)
-  ([Web API](../product/web-api.md)).
+  and the signaling socket of [direct channels](../execution/direct-channel.md),
+  with its device access check ([Web API](../product/web-api.md)).
 - **Public boundary:** the edge the executable starts (`Edge`), with the
   state its routes reach (`AppState`, `Site`). Its `testing` feature holds
   the runners' hellos at the token's lookup (`Backend::hold_hellos`).
