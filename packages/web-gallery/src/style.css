@@ -156,7 +156,7 @@ body,
 
 .gallery-specimen-variant {
   min-height: 1rem;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1rem;
   color: var(--fg-faint);

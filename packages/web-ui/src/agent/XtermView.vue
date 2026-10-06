@@ -9,8 +9,6 @@ import {
 import { liveOutputDelta } from './terminals'
 import '@xterm/xterm/css/xterm.css'
 
-const MONO = 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace'
-
 const props = defineProps<{
   output: string
   /**
@@ -96,7 +94,8 @@ onMounted(() => {
     cursorInactiveStyle: props.running ? 'block' : 'none',
     fontSize: 12,
     lineHeight: 1.4,
-    fontFamily: MONO,
+    // The app's code font (`styles/base.css`), which xterm takes as a family list.
+    fontFamily: getComputedStyle(host).getPropertyValue('--font-mono'),
     scrollback: 2000,
     theme: xtermThemeFromElement(host, terminalTheme.value),
   })
