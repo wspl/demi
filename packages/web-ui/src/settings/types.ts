@@ -5,6 +5,7 @@ import type { ModelSettings } from '../agent/model-selection'
 import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import type { DeviceStart } from '../devices/installation'
+import type { DeviceState } from '../devices/state'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -44,7 +45,7 @@ export interface SettingsAccountInfo {
 export interface SettingsDevice {
   id: string
   name: string
-  online: boolean
+  state: DeviceState
   /** When the host last connected; shown while it is offline. */
   seen?: string
   /** How to start its runner again; shown while it is offline. */

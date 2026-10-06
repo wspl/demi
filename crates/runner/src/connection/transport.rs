@@ -9,8 +9,8 @@ use std::{io, time::Duration};
 
 use demi_command_protocol::host_target;
 use demi_runner_protocol::{
-    release::{RELEASE_HEADER, RunnerUpdate, TARGET_HEADER},
-    values::BackendUrl,
+    release::{RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER},
+    values::{BackendUrl, DeviceToken},
     wire::{self, Frame, Inbound},
 };
 use futures_util::{SinkExt, StreamExt};
@@ -73,10 +73,12 @@ pub enum Connected {
 
 impl Transport {
     /// Opens the backend's socket for a runner of `release`, which the
-    /// backend checks before it opens it.
+    /// backend checks before it opens it; a paired runner names its device
+    /// with `token`.
     pub async fn connect(
         backend: &BackendUrl,
         release: &str,
+        token: Option<&DeviceToken>,
         cancel: CancellationToken,
     ) -> io::Result<Connected> {
         let url = socket_url(backend)?;
@@ -90,6 +92,11 @@ impl Transport {
             HeaderValue::from_str(release).map_err(io::Error::other)?,
         );
         headers.insert(TARGET_HEADER, HeaderValue::from_static(host_target()));
+        if let Some(token) = token {
+            let mut value = HeaderValue::from_str(token.expose()).map_err(io::Error::other)?;
+            value.set_sensitive(true);
+            headers.insert(TOKEN_HEADER, value);
+        }
         let config = WebSocketConfig::default()
             .max_message_size(Some(wire::MAX_MESSAGE_BYTES))
             .max_frame_size(Some(wire::MAX_MESSAGE_BYTES));

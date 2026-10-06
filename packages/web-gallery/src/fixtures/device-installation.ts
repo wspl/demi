@@ -13,7 +13,7 @@ const demoInstallationId = '748c25663f69ee8fdc3510acd09c38e08112c001195c9340fe2a
 export function demoDeviceStart(system: DeviceSystem): DeviceStart {
   const command =
     system === 'windows'
-      ? `& "$env:USERPROFILE\\.demi\\instances\\${demoInstallationId}\\run.ps1"`
-      : `~/.demi/instances/${demoInstallationId}/run`
+      ? `powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\\.demi\\instances\\${demoInstallationId}\\run.ps1" start`
+      : `~/.demi/instances/${demoInstallationId}/run start`
   return { command, system }
 }

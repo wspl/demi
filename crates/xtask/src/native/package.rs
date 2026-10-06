@@ -5,9 +5,10 @@
 //! runner release is named by the SHA-256 of its versions and targets, and
 //! the top-level manifest names the release packaged last; the backend's and
 //! the machine manager's record names the executable, its version and its
-//! targets. A command package carries each executable's zstd-compressed copy
-//! beside it, kept by the executable's SHA-256 so that packaging an unchanged
-//! program again compresses nothing, and is versioned with the workspace
+//! targets. A command package and a runner release carry each executable's
+//! zstd-compressed copy beside it, kept by the executable's SHA-256 so that
+//! packaging an unchanged program again compresses nothing; a command
+//! package is versioned with the workspace
 //! version only when published by the release workflow, with a development
 //! version naming its artifacts otherwise (`package-versioning.md` § Rust
 //! executables).
@@ -17,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use demi_command_protocol::{PackageArtifact, PackageDescriptor, canonical_digest};
 use demi_runner_protocol::release::{
-    RUNNER, RunnerRelease, SERVER_RELEASE, ServerRelease, compressed_file, release_file,
+    COMPRESSED_SUFFIX, RUNNER, RunnerRelease, SERVER_RELEASE, ServerRelease, compressed_file,
 };
 use demi_shared_artifacts::{Mode, Permissions, Publication, ReleaseFile, ReleaseRecord};
 use serde::Serialize;
@@ -36,8 +37,6 @@ const COMPRESSED: &str = ".cache/compressed";
 /// Where `xtask dev` keeps the copies it compresses at the fast level, apart
 /// from a release's, so no release reuses one.
 const COMPRESSED_FAST: &str = ".cache/compressed-fast";
-/// What a compressed copy's name adds to its executable's.
-const COMPRESSED_SUFFIX: &str = ".zst";
 /// How many hexadecimal digits of its artifacts' digest a development
 /// version carries.
 const DEVELOPMENT_DIGITS: usize = 12;
@@ -290,8 +289,8 @@ async fn compress(
 /// server release (`builds-and-releases.md` § Server release): its records
 /// into the root at `root`, the runner's manifests into `runners/` and a
 /// command package's descriptor into `commands/<program>/`, and its
-/// programs into `files`, each runner executable as it is and each command
-/// program as its compressed copy. A file already in `files` must hold the
+/// programs into `files`, each runner executable and each command program
+/// as its compressed copy. A file already in `files` must hold the
 /// same bytes.
 pub async fn split(
     release: &Path,
@@ -311,11 +310,10 @@ pub async fn split(
         tokio::fs::write(runners.join(MANIFEST), &bytes).await?;
         tokio::fs::write(current.join(MANIFEST), &bytes).await?;
         for target in manifest.targets.keys() {
-            let built = release
-                .join(&manifest.release)
-                .join(target)
-                .join(executable.file_name(target));
-            place(&built, &files.join(release_file(RUNNER, target)), cancel).await?;
+            let mut copy = executable.file_name(target);
+            copy.push_str(COMPRESSED_SUFFIX);
+            let built = release.join(&manifest.release).join(target).join(copy);
+            place(&built, &files.join(compressed_file(RUNNER, target)), cancel).await?;
         }
         return Ok(());
     }
@@ -372,7 +370,13 @@ pub async fn package(spec: &Spec<'_>, cancel: &CancellationToken) -> Result<Stri
         built.add(executable, target, source, cancel).await?;
     }
     match Release::of(executable)? {
-        Release::Runner => runner(spec.output, built, cancel).await,
+        Release::Runner => {
+            let compressed = Caches::directory(spec.caches.compressed.as_deref(), COMPRESSED)?;
+            built
+                .add_compressed(&compressed, demi_shared_artifacts::Effort::Published, cancel)
+                .await?;
+            runner(spec.output, built, cancel).await
+        }
         Release::Package { id, operations } => {
             let compressed = Caches::directory(spec.caches.compressed.as_deref(), COMPRESSED)?;
             built

@@ -110,7 +110,7 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
       platform: 'linux',
       claimedAt: '2026-09-10T00:00:00.000Z',
       lastSeenAt: null,
-      online: true,
+      state: 'online',
       home: '/home/ada',
       installed: [
         { package: 'demi.browser', name: 'program', version: '0.1.3' },
