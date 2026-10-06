@@ -591,9 +591,8 @@ Each crate implements the provider contract for one vendor family.
 - **Owns:** the transcript of one session: its log and the patches it sends
   (`TranscriptLog`), the identities it gives blocks and turns (`ids`), its
   estimates (`estimate`), the points it is cut at for a resume, a rewind, an
-  edit or a compaction (`cut`), its replay into a provider request
-  (`replay`), and the rule that retires a tool result's expired images and
-  videos, which the backend applies to stored conversations (`retire`).
+  edit or a compaction (`cut`), and its replay into a provider request
+  (`replay`).
 - **Public boundary:** the items above; `agent_transcript::testing` supplies
   predictable identities (`SequentialIds`) and the texts the model receives
   for a resume, a fired wakeup and an agent message (`RESUME_TEXT`,
@@ -929,8 +928,8 @@ demi-backend (executable: configuration, composition)
 
 - **Owns:** the SQLite databases ([Storage](../backend/storage.md)): the
   control service and every control record, the conversation index, each
-  conversation's database with the tree store over it, its `blob_refs` index
-  and its records of commands' outputs, the schemas and their migrations, and
+  conversation's database with the tree store over it and its records of
+  commands' outputs, the schemas and their migrations, and
   the encodings of stored values; and the record types it stores, among them
   the hashes and policies of sessions and challenges, a conversation's target
   and settings changes, and catalog records, which the domains above use. The
@@ -1238,8 +1237,8 @@ demi-backend (executable: configuration, composition)
   a process, its session runtime over a placement), the login timing
   (`LoginTiming`), the conversations' bounds (`ConversationTuning`), the
   times of a page's sockets (`PageTuning`), the
-  Cloud's and the idle clock's times and limits and the retention pass's
-  schedule (`CloudTuning`, `LifecycleTuning`), the command packages their commands bind to
+  Cloud's and the idle clock's times and limits (`CloudTuning`,
+  `LifecycleTuning`), the command packages their commands bind to
   (`NativeCatalog`, which the executable and the scenarios make with
   `publish_native` from a server release's `commands/`) and the plugins. A test imports each of these from the library that owns it
   (`backend-providers`, `backend-user-shard`, `backend-cloud`, `backend-runners`),

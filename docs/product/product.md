@@ -118,11 +118,11 @@ remains readable; sending and metadata changes require restore. Persistent order
 is independent of activity; its storage rules belong to
 [Storage](../backend/storage.md#control-records).
 
-A conversation keeps everything the user wrote and uploaded. What its tools
-produced goes by itself: a tool result's images and videos give way to a line
-of text after 30 days, once no request can still send them from a vendor's
-cache, and a command's full output on a Host goes when the conversation's Host
-resources are released ([Retention](../backend/storage.md#retention)).
+A conversation keeps everything the user wrote and uploaded and everything
+its tools produced, images, videos and commands' outputs among them, for as
+long as the account exists ([Retention](../backend/storage.md#retention)). A
+command's output kept on its Host while it runs goes when the conversation's
+Host resources are released, once the backend has stored it.
 
 The conversation interface exposes steering, queued messages, stop,
 [recovery of an unfinished turn](#recovering-an-unfinished-turn), manual
