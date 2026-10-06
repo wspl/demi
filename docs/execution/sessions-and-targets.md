@@ -110,7 +110,21 @@ device does not add a duplicate attachment. Previous paths continue to refer to
 their original device; another directory on the same Cloud machine remains
 locally accessible.
 
-Each node observes the latest execution-context revision before its next inference.
+Each node observes the latest execution-context revision before its next inference,
+the first one included: a node's first inference is preceded by a block of
+the current revision, so the agent never has to probe where it runs. For
+example, a new conversation on the user's Cloud starts with:
+
+```text
+[Execution context 0]
+Primary host: Cloud, Ubuntu 26.04 (x86_64). Shells start in /home/demi/sessions/0f4e7597-e889-4baa-ac98-93fa61b68d28.
+Attached hosts: none. `demi host list` shows every host this conversation can reach.
+```
+
+Every block names the primary Host this way: its name, its operating system
+and release as its runner last reported them with the architecture, and the
+directory its shells start in. A Host whose runner never connected, such as
+a Cloud that has not run yet, is named without the system.
 Its persisted context block describes the switch, attached hosts, and any Cloud
 reset. Observation is node-specific: the root seeing an update does not consume
 it for a child. Product execution context is independent of custom profile prompts.

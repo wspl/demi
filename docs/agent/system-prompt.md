@@ -79,16 +79,20 @@ order:
 
 - **Hosts.** The conversation works on one Host at a time, a Cloud machine
   or one of the user's paired devices, which can change while it lives; the
-  current one's system and directory arrive in a context block. Other devices
+  current one's system and directory arrive in a context block before the
+  first turn and after each change
+  ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)). Other devices
   of the user are reached with `demi host`.
 - **The workspace.** The working directory is the task's workspace, which
   persists across turns. What the model makes, a new app, a download, notes,
   goes in it, as `./signin-app` rather than `~/signin-app` or `/tmp`, unless
   the user names another place.
 - **Demi's capabilities first.** A task a `demi` command serves is done with
-  it. When one fails, the model tells the user why, and asks before reaching
-  for an outside service that would put the user's work on the internet, such
-  as a public tunnel.
+  it. When one fails, the model takes the step its error names, such as
+  installing what it lacks, rather than stopping to report it; only when
+  nothing it can do fixes the failure does it tell the user why, and it asks
+  before reaching for an outside service that would put the user's work on
+  the internet, such as a public tunnel.
 - **Files for the user.** Replies render as Markdown. A file the user should
   keep goes out as an attachment
   ([Attachment commands](../execution/commands.md#attachment-commands)); a
