@@ -246,7 +246,7 @@ async fn serving() -> (
         Turn::Events(vec![event::tool_call(
             "call-1",
             "shell_exec",
-            json!({"script": "serve", "timeoutMs": 200}),
+            json!({"script": "serve", "description": "Start the server", "timeoutMs": 200}),
         )]),
         Turn::Events(vec![event::text("serving"), event::response(1, 1)]),
     ]);

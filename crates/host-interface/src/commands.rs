@@ -6,7 +6,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use demi_command_declarations::{
-    Category, Leaf, LeafKind, NativeOperation, Node, check_input_subset, render_index,
+    Category, Group, Leaf, LeafKind, NativeOperation, Node, check_input_subset, render_index,
 };
 
 use crate::{RpcError, RpcHandler, RpcInvocation, RpcPort, reserved::is_reserved};
@@ -55,6 +55,11 @@ pub struct Checked<'a> {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 #[error("{0}")]
 pub struct RegisterError(String);
+
+/// The root Demi's own command groups sit under, as `demi browser`; each of
+/// its groups, like every other root that is a group, is a top-level group
+/// (`system-prompt.md` § Capability index).
+pub const DEMI_ROOT: &str = "demi";
 
 /// Root commands, in the order they were registered, and the handler of
 /// every `rpc` leaf.
@@ -201,10 +206,21 @@ impl CommandSet {
         self.roots.iter()
     }
 
-    /// The model's capability index of the set (`system-prompt.md`
-    /// § Capability index); nothing when the set is empty.
+    /// The model's capability index of the set's top-level groups
+    /// (`system-prompt.md` § Capability index); nothing when it has none.
     pub fn render_index(&self) -> String {
-        render_index(&self.roots)
+        let groups = self
+            .roots
+            .iter()
+            .flat_map(top_level_groups)
+            .map(|(path, group)| {
+                let entry = group
+                    .index_entry
+                    .as_deref()
+                    .expect("registration refuses a top-level group without an index entry");
+                (path, entry, group)
+            });
+        render_index(groups)
     }
 
     /// Runs the `rpc` leaf `invocation.path` names. The arguments arrived as
@@ -259,9 +275,26 @@ impl CommandSet {
     }
 }
 
+/// The top-level groups of the root `root`, with their paths: the groups of
+/// the `demi` root, or the root itself when it is any other group.
+fn top_level_groups(root: &Node<NativeOperation>) -> Vec<(Vec<&str>, &Group<NativeOperation>)> {
+    match root {
+        Node::Group(group) if group.name == DEMI_ROOT => group
+            .subcommands
+            .iter()
+            .filter_map(|child| match child {
+                Node::Group(child) => Some((vec![DEMI_ROOT, child.name.as_str()], child)),
+                Node::Leaf(_) => None,
+            })
+            .collect(),
+        Node::Group(group) => vec![(vec![group.name.as_str()], group)],
+        Node::Leaf(_) => Vec::new(),
+    }
+}
+
 /// Checks a declared tree: its builders' refusals, the declaration rules,
-/// each leaf's input against the subset, and one handler for exactly each
-/// `rpc` leaf.
+/// an index entry on each top-level group, each leaf's input against the
+/// subset, and one handler for exactly each `rpc` leaf.
 fn check(declared: &Declared) -> Result<(), RegisterError> {
     let name = declared.tree.name();
     if let Some(error) = &declared.error {
@@ -271,6 +304,14 @@ fn check(declared: &Declared) -> Result<(), RegisterError> {
         .tree
         .validate()
         .map_err(|error| RegisterError(format!("\"{name}\": {error}")))?;
+    for (path, group) in top_level_groups(&declared.tree) {
+        if group.index_entry.is_none() {
+            return Err(RegisterError(format!(
+                "\"{}\": a top-level command group needs an index entry",
+                path.join(" ")
+            )));
+        }
+    }
     let mut rpc_leaves = Vec::new();
     let mut path = Vec::new();
     walk_leaves(&declared.tree, &mut path, &mut |path, leaf| {
@@ -306,7 +347,7 @@ fn check(declared: &Declared) -> Result<(), RegisterError> {
 fn group_mut<'a>(
     node: &'a mut Node<NativeOperation>,
     path: &[&str],
-) -> Option<&'a mut demi_command_declarations::Group<NativeOperation>> {
+) -> Option<&'a mut Group<NativeOperation>> {
     let mut node = node;
     for name in path {
         node = match node {
@@ -355,7 +396,7 @@ fn keep_leaves(
                 .filter_map(|child| keep_leaves(child, path, keep))
                 .collect();
             (!subcommands.is_empty()).then(|| {
-                Node::Group(demi_command_declarations::Group {
+                Node::Group(Group {
                     name: group.name.clone(),
                     summary: group.summary.clone(),
                     index_entry: group.index_entry.clone(),

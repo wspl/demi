@@ -1396,7 +1396,7 @@ fn live_commands(ended: Rc<Cell<bool>>, context: Rc<RefCell<Option<Value>>>) -> 
     });
     commands
         .register(
-            GroupBuilder::new("probe", "Probes.")
+            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
                 .leaf(LeafBuilder::rpc("live", "Live input.").bind(handler)),
         )
         .unwrap();
@@ -1558,7 +1558,7 @@ async fn a_call_exits_after_its_standard_output_drained() {
     });
     commands
         .register(
-            GroupBuilder::new("probe", "Probes.")
+            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
                 .leaf(LeafBuilder::rpc("live", "Speaks.").bind(handler)),
         )
         .unwrap();
@@ -1609,7 +1609,7 @@ async fn a_call_that_fails_at_once_keeps_its_standard_output_until_drained() {
     });
     commands
         .register(
-            GroupBuilder::new("probe", "Probes.")
+            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
                 .leaf(LeafBuilder::rpc("live", "Refuses.").bind(handler)),
         )
         .unwrap();

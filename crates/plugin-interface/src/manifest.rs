@@ -13,7 +13,7 @@ use serde_json::Value;
 pub const EXECUTION_SOURCE: &str = "execution";
 
 /// The root the plugins of this repository place their groups under.
-pub const DEMI_ROOT: &str = "demi";
+pub use demi_host_interface::DEMI_ROOT;
 
 /// The `demi` root's summary in the model's command help.
 pub const DEMI_SUMMARY: &str =
