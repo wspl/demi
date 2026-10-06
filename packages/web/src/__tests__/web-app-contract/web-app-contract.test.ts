@@ -336,8 +336,9 @@ test('a conversation created through the API runs a turn, and the client receive
     await client.send([text('Say hello')])
     expect(phases).toEqual(['idle', 'running', 'idle'])
     const blocks = client.transcript().blocks
-    expect(kinds(blocks)).toEqual(['user', 'text', 'response'])
-    expect(blocks[1]).toMatchObject({ type: 'text', text: 'Hello from the script.' })
+    // The model learned its Host before its first request.
+    expect(kinds(blocks)).toEqual(['user', 'context', 'text', 'response'])
+    expect(blocks[2]).toMatchObject({ type: 'text', text: 'Hello from the script.' })
     const request = vendor.turns().at(-1)
     expect(request?.model).toBe(MODEL_ID)
     expect(JSON.stringify(request?.messages)).toContain('Say hello')
@@ -431,7 +432,7 @@ test('a submitted message is acknowledged once it is in the transcript, before t
     const ended = idle(client)
     held.release()
     await ended
-    expect(kinds(client.transcript().blocks)).toEqual(['user', 'text', 'response'])
+    expect(kinds(client.transcript().blocks)).toEqual(['user', 'context', 'text', 'response'])
   } finally {
     client.disconnect()
   }
@@ -461,10 +462,10 @@ test('an edit of the last message replaces it and what follows, and an edit of a
     await client.editAndSend(sentEditRequest(editing.request))
     await ended
     const edited = client.transcript().blocks
-    expect(kinds(edited)).toEqual(['user', 'text', 'response', 'user', 'text', 'response'])
-    expect(edited.slice(0, 3)).toEqual(blocks.slice(0, 3))
-    expect(edited[3]).toMatchObject({ type: 'user', content: [{ type: 'text', text: 'Edited second message' }] })
-    expect(edited[4]).toMatchObject({ type: 'text', text: 'Answer to the edit.' })
+    expect(kinds(edited)).toEqual(['user', 'context', 'text', 'response', 'user', 'text', 'response'])
+    expect(edited.slice(0, 4)).toEqual(blocks.slice(0, 4))
+    expect(edited[4]).toMatchObject({ type: 'user', content: [{ type: 'text', text: 'Edited second message' }] })
+    expect(edited[5]).toMatchObject({ type: 'text', text: 'Answer to the edit.' })
     // The model read the first exchange and the edit, never the replaced message.
     const request = userTexts(vendor.turns().at(-1))
     expect(request).toContain('First message')
@@ -542,8 +543,8 @@ test('a queued message sent now steers the running turn: the page lists it as pe
     held.release()
     await ended
     const blocks = client.transcript().blocks
-    expect(kinds(blocks)).toEqual(['user', 'text', 'response', 'steer', 'text', 'response'])
-    expect(blocks[3]).toMatchObject({ type: 'steer', id: steerId })
+    expect(kinds(blocks)).toEqual(['user', 'context', 'text', 'response', 'steer', 'text', 'response'])
+    expect(blocks[4]).toMatchObject({ type: 'steer', id: steerId })
     expect(client.pendingSteers()).toEqual([])
     // The turn asked the model once more, with the steer.
     expect(userTexts(vendor.turns().at(-1))).toContain('Skip the flaky suite')
@@ -569,7 +570,7 @@ test('Stop ends the running turn with its pending steer written, and Continue go
     expect(await client.abort()).toEqual({ target: 'active_provider_stream', canAbortAgain: false })
     // The answer comes once the stop is in the transcript, and the backend
     // stopped asking the model.
-    expect(kinds(client.transcript().blocks)).toEqual(['user', 'steer', 'abort'])
+    expect(kinds(client.transcript().blocks)).toEqual(['user', 'context', 'steer', 'abort'])
     await held.cancelled
     // Continue is admitted once the session is idle, after the stopped
     // turn's save (`runtime.md` § Actions); the answer to Stop comes before.
