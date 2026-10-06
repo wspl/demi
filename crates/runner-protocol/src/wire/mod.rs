@@ -12,7 +12,7 @@ pub use kept::{
     encode_record,
 };
 pub use messages::{
-    ArtifactOwner, ChangeKind, DirEntry, DirectoryFile, FileRead, FileStat, OpenedFile, file_version, GitChange, GitChanges,
+    ArtifactOwner, ChangeKind, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitChange, GitChanges,
     HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, LogLine,
     LookPath, Looked, MAX_INSTALLED, NetErrorCode, Outbound, OutputLengths, OutputStream, PipeRef,
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,

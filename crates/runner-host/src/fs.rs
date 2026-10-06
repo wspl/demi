@@ -61,6 +61,9 @@ async fn call(
             };
             FsResult::Exists(exists)
         }
+        FsHashFile {
+            path: value, cwd, ..
+        } => FsResult::HashFile(crate::files::hash(path(value, cwd), cancel).await?),
         FsStat {
             path: value, cwd, ..
         } => FsResult::Stat(stat(fs::metadata(path(value, cwd)?).await?)?),
@@ -445,7 +448,7 @@ fn file_time(timestamp: Timestamp) -> filetime::FileTime {
     )
 }
 
-fn check_cancelled(cancel: &CancellationToken) -> io::Result<()> {
+pub(crate) fn check_cancelled(cancel: &CancellationToken) -> io::Result<()> {
     if cancel.is_cancelled() {
         Err(io::Error::new(
             io::ErrorKind::Interrupted,

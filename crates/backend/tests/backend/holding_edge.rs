@@ -6,6 +6,8 @@
 //! comes.
 
 use std::net::SocketAddr;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -17,6 +19,9 @@ pub struct HoldingEdge {
     pub url: String,
     /// Cancelled to cut every pipe WebSocket the edge carries.
     cut: CancellationToken,
+    /// How many pipe uploads the edge carried: a runner sends a file's
+    /// bytes to the backend with one (`runner.md` § File contents).
+    pipe_puts: Arc<AtomicUsize>,
     _accepting: AbortOnDropHandle<()>,
 }
 
@@ -27,17 +32,20 @@ impl HoldingEdge {
         let url = format!("http://{}", listener.local_addr().unwrap());
         let cut = CancellationToken::new();
         let cutting = cut.clone();
+        let pipe_puts = Arc::new(AtomicUsize::new(0));
+        let counting = pipe_puts.clone();
         let accepting = tokio::spawn(async move {
             // Each connection's task goes with the edge.
             let mut connections = tokio::task::JoinSet::new();
             loop {
                 let (client, _) = listener.accept().await.unwrap();
-                connections.spawn(carry(client, backend, cutting.clone()));
+                connections.spawn(carry(client, backend, cutting.clone(), counting.clone()));
             }
         });
         Self {
             url,
             cut,
+            pipe_puts,
             _accepting: AbortOnDropHandle::new(accepting),
         }
     }
@@ -47,12 +55,22 @@ impl HoldingEdge {
     pub fn cut_pipe_sockets(&self) {
         self.cut.cancel();
     }
+
+    /// How many pipe uploads the edge carried so far.
+    pub fn pipe_puts(&self) -> usize {
+        self.pipe_puts.load(Ordering::SeqCst)
+    }
 }
 
 /// Carries one client connection to the backend: the backend's bytes back
 /// as they come, each request whole once its body ended, and, after an
 /// upgrade, the client's bytes as they come.
-async fn carry(client: TcpStream, backend: SocketAddr, cut: CancellationToken) {
+async fn carry(
+    client: TcpStream,
+    backend: SocketAddr,
+    cut: CancellationToken,
+    pipe_puts: Arc<AtomicUsize>,
+) {
     let upstream = TcpStream::connect(backend).await.unwrap();
     let (client_read, mut client_write) = client.into_split();
     let (upstream_read, mut upstream_write) = upstream.into_split();
@@ -67,6 +85,9 @@ async fn carry(client: TcpStream, backend: SocketAddr, cut: CancellationToken) {
             let Some(head) = read_head(&mut client).await else {
                 return;
             };
+            if head.starts_with("PUT /api/pipes/") {
+                pipe_puts.fetch_add(1, Ordering::SeqCst);
+            }
             let header = |name: &str| {
                 head.lines().skip(1).find_map(|line| {
                     let (key, value) = line.split_once(':')?;

@@ -32,6 +32,9 @@ pub enum ErrorCode {
     InvalidBody,
     /// A body the backend reads whole is over its limit.
     TooLarge,
+    /// An upload that sent no bytes named a SHA-256 the caller's blobs do
+    /// not hold: the page sends the bytes next.
+    BlobMissing,
     /// The backend failed in a way the request could not cause.
     InternalError,
     /// The backend is shutting down and starts no new work.
