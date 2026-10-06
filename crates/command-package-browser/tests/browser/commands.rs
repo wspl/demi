@@ -46,6 +46,7 @@ pub(crate) async fn exchange(
 #[tokio::test]
 #[ignore = "requires DEMI_TEST_CHROME; exercises a real browser"]
 async fn conversation_browser_commands_share_state_and_retire() {
+    let _turn = crate::families::browser_turn().await;
     use axum::{Router, response::Html, routing::get};
     use demi_command_sdk::serve;
     use serde_json::{Value, json};

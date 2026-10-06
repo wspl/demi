@@ -14,6 +14,12 @@ const localStateSchema = z.object({
   workPanelOpen: z.record(z.string(), z.boolean()).optional(),
   /** What this page's work panel selected, tabs' ids and pinned kinds', the newest last, keyed by conversation id. */
   workPanelHistory: z.record(z.string(), z.array(z.string()).max(TAB_HISTORY)).optional(),
+  /**
+   * Each tab's count of the times its kind asked that the user see it, as
+   * this page's work panel last applied it, by tab id, keyed by conversation
+   * id (`web-application.md` § Work panel).
+   */
+  workPanelShown: z.record(z.string(), z.record(z.string(), z.number().int().min(1))).optional(),
 })
 export type LocalState = z.infer<typeof localStateSchema>
 
