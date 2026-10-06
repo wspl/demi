@@ -1,8 +1,9 @@
+import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { keptSource, type ContentReads, type FileFollower, type FileReads } from '@demicodes/web-ui/files/kept-source'
 import {
   FileBrowserError,
   type FileBrowserFailure,
   type FileBrowserSource,
-  type FileContents,
   type FileUploadOptions,
 } from '@demicodes/web-ui/files/types'
 import { z } from 'zod'
@@ -62,17 +63,17 @@ function browserError(error: unknown): never {
  * tree changes): `endpoint` serves `?path=`, with `version` and `download`,
  * and answers `HEAD` with a file's size, modification time and version.
  */
-export function rawFileContents(endpoint: string): FileContents {
+export function rawFileContents(endpoint: string): ContentReads {
   return {
     url: (path, options = {}) => apiUrl(`${endpoint}?${new URLSearchParams({
       path,
       ...(options.version ? { version: options.version } : {}),
       ...(options.download ? { download: 'true' } : {}),
     })}`),
-    async describe(path, signal) {
+    async describe(path) {
       let response: Response
       try {
-        response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`, { method: 'HEAD', signal })
+        response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`, { method: 'HEAD' })
       } catch (error) {
         browserError(error)
       }
@@ -112,13 +113,24 @@ export function conversationFileRoutes(conversationId: string): Required<FileRou
   return { directory: base, text: `${base}/file`, raw: `${base}/raw`, upload: `${base}/raw`, remove: base }
 }
 
-const sources = new Map<string, FileBrowserSource>()
+/** What the page keeps of each Host's files, by its device: every conversation on a Host shares it. */
+const hosts = new Map<string, HostFiles>()
 
-/** The shared file browser handles paths and selection; this adapter handles HTTP. */
-export function fileSource(
+/** The kept files of the Host of `deviceId`, made on first use for the page's lifetime. */
+export function hostFiles(deviceId: string): HostFiles {
+  let files = hosts.get(deviceId)
+  if (!files) {
+    files = new HostFiles()
+    hosts.set(deviceId, files)
+  }
+  return files
+}
+
+/** The reads and writes a file source makes through `endpoints`, each a request. */
+export function fileReads(
   endpoints: FileRoutes,
   device: Pick<Device, 'platform' | 'home'> | null,
-): FileBrowserSource {
+): FileReads {
   const {
     directory: endpoint,
     text: textEndpoint,
@@ -126,23 +138,15 @@ export function fileSource(
     upload: uploadEndpoint,
     remove: removeEndpoint,
   } = endpoints
-  const key = JSON.stringify([endpoint, textEndpoint, rawEndpoint, uploadEndpoint, removeEndpoint, device?.platform, device?.home])
-  const cached = sources.get(key)
-  if (cached) {
-    return cached
-  }
-  const source: FileBrowserSource = {
+  return {
     platform: device?.platform ?? 'linux',
     home: device?.home ?? '/',
-    async list(path, signal) {
+    async list(path) {
       if (!endpoint) {
         throw new FileBrowserError('offline', 'Select a connected device.')
       }
       try {
-        const response = await apiRequest(
-          `${endpoint}?${new URLSearchParams({ path })}`,
-          { signal },
-        )
+        const response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`)
         const directory = await readResponse(response, directorySchema)
         return directory.entries.map((entry) => ({
           name: entry.name,
@@ -172,13 +176,19 @@ export function fileSource(
     ...(rawEndpoint ? { contents: rawFileContents(rawEndpoint) } : {}),
     ...(textEndpoint
       ? {
-          async read(path: string, signal?: AbortSignal) {
+          // The text the page holds is read again with its version: an
+          // unchanged file answers 304 without it.
+          async readText(path: string, held: string | null) {
             try {
-              const response = await apiRequest(
-                `${textEndpoint}?${new URLSearchParams({ path })}`,
-                { signal },
-              )
-              return (await readResponse(response, fileTextSchema)).text
+              const response = await apiRequest(`${textEndpoint}?${new URLSearchParams({ path })}`, {
+                headers: held === null ? {} : { 'if-none-match': held },
+                allowNotModified: true,
+              })
+              if (response.status === 304) {
+                return null
+              }
+              const { text } = await readResponse(response, fileTextSchema)
+              return { text, version: response.headers.get('etag') }
             } catch (error) {
               browserError(error)
             }
@@ -213,7 +223,28 @@ export function fileSource(
         }
       : {}),
   }
+}
+
+const sources = new Map<string, FileBrowserSource>()
+
+/**
+ * The shared file browser handles paths and selection; this adapter handles
+ * HTTP, over the kept files of the device's Host. A conversation's source
+ * names its `follower`, the conversation's file watch.
+ */
+export function fileSource(
+  endpoints: FileRoutes,
+  device: Pick<Device, 'id' | 'platform' | 'home'> | null,
+  follower?: FileFollower,
+): FileBrowserSource {
+  const key = JSON.stringify([endpoints, device?.id, device?.platform, device?.home])
+  const cached = sources.get(key)
+  if (cached) {
+    return cached
+  }
+  // Without a device nothing is listed, so nothing is kept.
+  const files = hostFiles(device?.id ?? '')
+  const source = keptSource(fileReads(endpoints, device), { files, follower })
   sources.set(key, source)
   return source
 }
-

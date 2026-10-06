@@ -366,6 +366,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 cwd: None,
                 offset: None,
                 length: None,
+                version: None,
                 output: PipeRef {
                     id: "transfer".into(),
                     url: "/pipe/transfer".into(),

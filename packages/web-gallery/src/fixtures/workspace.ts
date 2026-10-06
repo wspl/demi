@@ -1,7 +1,16 @@
-import { reactive } from 'vue'
-import type { ChangeFile, ChangeSetSource, WorkingTreeChange } from '@demicodes/web-ui/files/changes'
-import { assetFile, createMemoryFileSource, dir, textFile, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
-import { FileBrowserError, type FileBrowserSource, type FileContents } from '@demicodes/web-ui/files/types'
+import { delay } from '@demicodes/utils'
+import type { ChangeFile, ChangeSetSource, ChangeSides, WorkingTreeChange } from '@demicodes/web-ui/files/changes'
+import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { keptChangeSet, type ContentReads } from '@demicodes/web-ui/files/kept-source'
+import {
+  assetFile,
+  createMemoryFileSource,
+  dir,
+  textFile,
+  type MemoryDirectory,
+  type MemoryFileSource,
+} from '@demicodes/web-ui/files/memory-source'
+import { FileBrowserError } from '@demicodes/web-ui/files/types'
 
 /**
  * The demo workspace behind the work panel: the project the login-test
@@ -490,7 +499,7 @@ const changedFiles: WorkingTreeChange[] = [
 ]
 
 /** The committed side of the binary changes, the way the raw committed route serves it. */
-const committedContents: FileContents = {
+const committedContents: ContentReads = {
   url: (path) => {
     const committed = binaryChanges[path]?.committed
     return committed && committed !== 'too-large' ? committed.url : ''
@@ -515,56 +524,61 @@ export interface GalleryChangeListing {
   unavailable?: 'no-repository'
 }
 
-/**
- * A change set the way the product's working tree presents one: reactive,
- * with a Refresh that shows as in flight for a moment, and the listing state
- * the specimen asks for.
- */
-export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}): ChangeSetSource {
-  const fixed = createGalleryChanges(latencyMs)
-  const source: ChangeSetSource = reactive({
-    files: listing.unavailable ? [] : fixed.files,
-    truncated: listing.truncated ?? false,
-    unavailable: listing.unavailable ?? null,
-    refreshing: false,
-    failure: listing.failure ?? null,
-    refresh() {
-      source.refreshing = true
-      setTimeout(() => {
-        source.refreshing = false
-      }, latencyMs * 4)
-    },
-    read: fixed.read,
-    committed: committedContents,
-  })
-  return source
-}
-
-function createGalleryChanges(latencyMs: number): ChangeSetSource {
-  return {
-    files: changedFiles,
-    async read(path, signal) {
-      await new Promise<void>((resolve, reject) => {
-        const timer = setTimeout(resolve, latencyMs)
-        signal?.addEventListener('abort', () => {
-          clearTimeout(timer)
-          reject(new DOMException('Aborted', 'AbortError'))
-        }, { once: true })
-      })
-      if (binaryChanges[path]) {
-        throw new FileBrowserError('binary', 'The file is not UTF-8 text')
-      }
-      const sides = changeSides[path]
-      if (!sides) {
-        throw new Error(`No change recorded for ${path}`)
-      }
-      return { original: sides.original, modified: sides.modified }
-    },
+/** Both sides of one fixture change, as the backend's working-tree route answers them. */
+export async function gallerySides(path: string): Promise<ChangeSides> {
+  if (binaryChanges[path]) {
+    throw new FileBrowserError('binary', 'The file is not UTF-8 text')
   }
+  const sides = changeSides[path]
+  if (!sides) {
+    throw new FileBrowserError('not-found', `No change recorded for ${path}`)
+  }
+  return { original: sides.original, modified: sides.modified }
 }
 
-export function createGalleryWorkspace(latencyMs = 200): {
-  source: FileBrowserSource & { contents: FileContents }
+/**
+ * A change set the way the product's working tree presents one, kept as the
+ * product keeps it under a live watch: each read takes `latencyMs`, and the
+ * list shows for the page's lifetime in the listing state the specimen asks
+ * for. A failure follows a first list that read, as a refresh that failed
+ * would.
+ */
+export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}) {
+  const files = new HostFiles()
+  files.cover({ covers: () => true })
+  let lists = 0
+  const set = keptChangeSet({
+    async list() {
+      await delay(latencyMs)
+      lists += 1
+      if (listing.failure && lists > 1)
+        throw new FileBrowserError('offline', listing.failure)
+      if (listing.failure)
+        setTimeout(() => set.refresh(), 0)
+      return {
+        files: listing.unavailable ? [] : changedFiles,
+        truncated: listing.truncated ?? false,
+        repository: !listing.unavailable,
+      }
+    },
+    async sides(path) {
+      await delay(latencyMs)
+      return gallerySides(path)
+    },
+    committed: committedContents,
+  }, WORKSPACE_ROOT, { files })
+  // The gallery's working tree shows for the page's lifetime.
+  set.show()
+  return set
+}
+
+/**
+ * The demo workspace, read with `latencyMs` each, under a simulated watch:
+ * `live` confirms what is read and reports each simulated change;
+ * `unavailable` is a Host that cannot watch.
+ */
+export function createGalleryWorkspace(latencyMs = 200, watch: 'live' | 'unavailable' = 'live'): {
+  source: MemoryFileSource
   root: string
   changes: ChangeSetSource
 } {
@@ -578,6 +592,7 @@ export function createGalleryWorkspace(latencyMs = 200): {
     latencyMs,
     // Slow enough that a file of a few tens of MB shows its upload's progress.
     uploadRate: 8 * 1024 * 1024,
+    watch,
   })
   const changes = createGalleryChangeSet(latencyMs)
   return { source, root: WORKSPACE_ROOT, changes }

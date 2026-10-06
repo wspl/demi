@@ -209,12 +209,6 @@ pub struct ConversationSummary {
     /// in memory (`web-api.md` § Revisions counted in memory).
     #[garde(dive)]
     pub plugin_revisions: Vec<PluginRevision>,
-    /// How many of the conversation's jobs ended in this run of the
-    /// backend: a page lists the working tree again when it changes
-    /// (`web-api.md` § File text and working tree changes, § Revisions
-    /// counted in memory).
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub working_tree_revision: u64,
     /// How many permission requests of the conversation wait for the user,
     /// which the sidebar shows as the needs-you mark (`web-api.md`
     /// § Conversation permissions).

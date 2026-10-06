@@ -28,7 +28,7 @@ use tokio::sync::{oneshot, watch};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ArtifactResolver, Link,
+    ArtifactResolver, HostWatch, Link,
     link::{
         Answer, Expected, JobEnd, JobEntry, JobMedium, JobOrigin, JobOutput, ServiceEntry, Shared,
         SpawnEntry,
@@ -56,6 +56,28 @@ pub enum DeviceLink {
 pub enum Admission {
     Free,
     Leased(Rc<dyn Fn() -> Result<GateLease, HostError>>),
+}
+
+/// A file a read opened: its metadata and version then, and its bytes.
+pub struct OpenedRead {
+    pub stat: FileStat,
+    pub version: String,
+    pub body: PipeReader,
+}
+
+/// A pipe's bytes as a Host's byte stream: a pipe that fails interrupts it.
+pub fn byte_stream(reader: PipeReader) -> ByteStream {
+    reader
+        .into_stream()
+        .map(|chunk| chunk.map_err(|failure| HostError::interrupted(failure.to_string())))
+        .boxed()
+}
+
+/// What a read that holds a version answers.
+pub enum ConditionalRead {
+    /// The file still has the version held: no bytes move.
+    Unchanged { stat: FileStat, version: String },
+    Opened(OpenedRead),
 }
 
 /// A Host over a runner connection.
@@ -187,16 +209,35 @@ impl RemoteHost {
     }
 
     /// A pipe the device's runner fills with `range` of the file, once the
-    /// file is open, with the file's metadata then, so no `stat` precedes
-    /// a read (`runner.md` § Host operations): a file that cannot be opened,
-    /// or is not a regular file, fails here, before any byte. A range is
-    /// read up to the end the file had when it was opened. Dropping the
-    /// reader stops the read.
-    pub async fn read_pipe(
+    /// file is open, with the file's metadata and version then, so no `stat`
+    /// precedes a read (`runner.md` § Host operations): a file that cannot
+    /// be opened, or is not a regular file, fails here, before any byte. A
+    /// range is read up to the end the file had when it was opened. Dropping
+    /// the reader stops the read.
+    pub async fn read_pipe(&self, path: &str, range: ByteRange) -> Result<OpenedRead, HostError> {
+        match self.read_pipe_held(path, range, None).await? {
+            ConditionalRead::Opened(opened) => Ok(opened),
+            ConditionalRead::Unchanged { .. } => Err(mismatch()),
+        }
+    }
+
+    /// [`RemoteHost::read_pipe`], except that a file that still has the
+    /// version `held` streams nothing (`runner.md` § File contents).
+    pub async fn read_pipe_unless(
         &self,
         path: &str,
         range: ByteRange,
-    ) -> Result<(FileStat, PipeReader), HostError> {
+        held: &str,
+    ) -> Result<ConditionalRead, HostError> {
+        self.read_pipe_held(path, range, Some(held)).await
+    }
+
+    async fn read_pipe_held(
+        &self,
+        path: &str,
+        range: ByteRange,
+        held: Option<&str>,
+    ) -> Result<ConditionalRead, HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
         let (answer, reader) = answered(&link, Expected::Fs("readFile"), |id, output| {
@@ -206,14 +247,35 @@ impl RemoteHost {
                 cwd: self.cwd(),
                 offset: (range.offset > 0).then_some(range.offset),
                 length: range.length,
+                version: held.map(str::to_owned),
                 output,
             }
         })
         .await?;
-        match answer {
-            Answer::Fs(FsResult::ReadFile(stat)) => Ok((file_stat(stat)?, reader)),
-            _ => Err(mismatch()),
+        let Answer::Fs(FsResult::ReadFile(opened)) = answer else {
+            return Err(mismatch());
+        };
+        let stat = file_stat(opened.stat)?;
+        if opened.unchanged {
+            // The runner reports the unused pipe's end.
+            return Ok(ConditionalRead::Unchanged {
+                stat,
+                version: opened.version,
+            });
         }
+        Ok(ConditionalRead::Opened(OpenedRead {
+            stat,
+            version: opened.version,
+            body: reader,
+        }))
+    }
+
+    /// Follows the Host's watch of `path`, and of what lies below it when
+    /// `recursive` (`runner.md` § Watching files): pages that watch the
+    /// same path share one. It holds no admission, so it keeps no Cloud
+    /// awake.
+    pub fn watch(&self, path: &str, recursive: bool) -> Result<HostWatch, HostError> {
+        Ok(self.link()?.watch_files(path, recursive))
     }
 
     /// A pipe to the device's runner that this process fills.
@@ -1025,7 +1087,7 @@ impl HostFs for RemoteHost {
     fn read_file<'a>(&'a self, path: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>> {
         Box::pin(async move {
             collect(
-                self.read_pipe(path, ByteRange::default()).await?.1,
+                self.read_pipe(path, ByteRange::default()).await?.body,
                 usize::MAX,
             )
             .await
@@ -1038,11 +1100,7 @@ impl HostFs for RemoteHost {
         range: ByteRange,
     ) -> LocalBoxFuture<'a, Result<ByteStream, HostError>> {
         Box::pin(async move {
-            let (_, reader) = self.read_pipe(path, range).await?;
-            Ok(reader
-                .into_stream()
-                .map(|chunk| chunk.map_err(|failure| HostError::interrupted(failure.to_string())))
-                .boxed())
+            Ok(byte_stream(self.read_pipe(path, range).await?.body))
         })
     }
 

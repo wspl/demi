@@ -11,7 +11,7 @@ use serde::de::{self, MapAccess, Visitor};
 use serde::ser::SerializeStruct;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::{DirEntry, FileRead, FileStat, GitChanges, Looked};
+use super::{DirEntry, FileRead, FileStat, GitChanges, Looked, OpenedFile};
 
 /// A successful fs call's reply.
 #[derive(Debug, Clone, PartialEq)]
@@ -24,8 +24,9 @@ pub struct FsOk {
 /// carry none.
 #[derive(Debug, Clone, PartialEq)]
 pub enum FsResult {
-    /// The file's metadata when it was opened; its bytes follow in the pipe.
-    ReadFile(FileStat),
+    /// The file as it was opened; its bytes follow in the pipe unless it is
+    /// unchanged.
+    ReadFile(OpenedFile),
     /// The name of the file written: its path's, or the free one it took.
     WriteFile(String),
     Look(Vec<Looked>),
@@ -111,7 +112,8 @@ impl Serialize for FsOk {
             FsResult::Look(looked) => reply.serialize_field("result", looked)?,
             FsResult::ReadFiles(read) => reply.serialize_field("result", read)?,
             FsResult::Exists(exists) => reply.serialize_field("result", exists)?,
-            FsResult::ReadFile(stat) | FsResult::Stat(stat) | FsResult::Lstat(stat) => {
+            FsResult::ReadFile(opened) => reply.serialize_field("result", opened)?,
+            FsResult::Stat(stat) | FsResult::Lstat(stat) => {
                 reply.serialize_field("result", stat)?;
             }
             FsResult::Readdir(entries) => reply.serialize_field("result", entries)?,

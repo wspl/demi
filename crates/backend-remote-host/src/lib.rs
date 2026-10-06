@@ -5,7 +5,8 @@
 //!   declared commands make;
 //! - [`RemoteHost`], a Host over its device's connection, with job,
 //!   working-tree, network, log and service facets, whose file contents
-//!   travel through pipes;
+//!   travel through pipes, and its file watches ([`HostWatch`]), shared by
+//!   the pages that follow the same path;
 //! - pipe records ([`Pipes`]) and their `Send` ends;
 //! - [`RemoteShellEnvironment`], the shell behind the `shell_*` tools over
 //!   real runner jobs, and its factory;
@@ -16,6 +17,7 @@
 //! that a pipe route accepted ([`accept_stream_pipe`]). Everything but the
 //! pipe ends runs inside the user's shard.
 
+mod file_watch;
 mod link;
 mod manifest;
 mod output_records;
@@ -28,6 +30,7 @@ mod stream_pipe;
 #[cfg(feature = "testing")]
 pub mod testing;
 
+pub use file_watch::{HostWatch, WatchUpdate};
 pub use link::{
     JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions, LinkPolicy,
     OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
@@ -39,8 +42,8 @@ pub use pipes::{
     PipeSink, PipeWriter, Pipes,
 };
 pub use remote_host::{
-    Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, LogPage, Look, LookAt, RemoteHost, RemoteJob,
-    ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, host_identity,
+    Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, LogPage, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
+    ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, host_identity,
 };
 #[cfg(feature = "edge")]
 pub use stream_pipe::accept_stream_pipe;
