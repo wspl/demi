@@ -732,6 +732,49 @@ svg.lucide {
   }
 }
 
+/* The edge fades of a sideways scroller (`composables/useScrollFades.ts`): its
+   content fades out over the last 1.5rem at each side that hides more of it,
+   which the composable lists in `data-scroll-fade`, and back in as that side
+   comes into view. A mask fades the content into whatever is behind it, in
+   either theme. */
+@property --scroll-fade-start {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+
+@property --scroll-fade-end {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+
+[data-scroll-fade] {
+  --scroll-fade-to: right;
+  mask-image: linear-gradient(
+    to var(--scroll-fade-to),
+    rgb(0 0 0 / var(--scroll-fade-start)),
+    black 1.5rem,
+    black calc(100% - 1.5rem),
+    rgb(0 0 0 / var(--scroll-fade-end))
+  );
+  transition:
+    --scroll-fade-start 120ms ease,
+    --scroll-fade-end 120ms ease;
+}
+
+[data-scroll-fade]:dir(rtl) {
+  --scroll-fade-to: left;
+}
+
+[data-scroll-fade~='start'] {
+  --scroll-fade-start: 0;
+}
+
+[data-scroll-fade~='end'] {
+  --scroll-fade-end: 0;
+}
+
 /* The scrollbar of every scroller (`ui/scrollbars.ts`): no track, a thumb 6px
    thick, 2px from the edges, in the overlay hue, stronger under the pointer and
    while dragged. It never takes room. No rule sets the standard scrollbar
@@ -950,7 +993,7 @@ svg.lucide {
 
 /* A code block, table or equation that scrolls sideways keeps its scrollbar out of
    the layout, so a code block's padding stays even whether or not its line
-   overflows. `useContentScrollbars` gives it an overlay scrollbar when the pointer
+   overflows. `useContentScrollers` gives it an overlay scrollbar when the pointer
    first comes onto it; until then, as OverlayScrollbars does for an element it is
    about to take over, the native bar is hidden. */
 .markdown-body :is(pre, table, .katex-display):not([data-overlayscrollbars]) {
@@ -970,6 +1013,13 @@ svg.lucide {
 .markdown-body th {
   font-weight: 600;
   background-color: color-mix(in srgb, var(--color-overlay) 4%, transparent);
+}
+
+/* A header cell starts where its column's text starts, as a body cell does, so
+   a header over a wide column is not centered out of view; the alignment a
+   table's delimiter row asks for (`:-:`, `--:`) still applies. */
+.markdown-body th:not([align]) {
+  text-align: start;
 }
 
 /* Chrome Checkbox mark. Tick is a 14×14 background on the border box so it

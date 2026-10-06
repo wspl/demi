@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document'
 import { useMarkdownRenderVersion } from '../markdown/highlight'
-import { useContentScrollbars } from '../composables/useContentScrollbars'
+import { useContentScrollers } from '../composables/useContentScrollers'
 import ScrollArea from '../ui/ScrollArea.vue'
 
 /**
@@ -21,7 +21,7 @@ const html = computed(() => {
 })
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
 const root = computed(() => scrollArea.value?.el)
-useContentScrollbars(root)
+useContentScrollers(root)
 
 function follow(event: MouseEvent): void {
   const link = event.target instanceof Element ? event.target.closest('a') : null

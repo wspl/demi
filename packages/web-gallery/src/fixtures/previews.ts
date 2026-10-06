@@ -38,6 +38,17 @@ The energy is $E = mc^2$, and 面积为$x^2$平方米.
 `
 
 /**
+ * A table whose delimiter row aligns two of its columns: the header of each
+ * column aligns as its cells do, and the column the row leaves alone starts
+ * where its text starts.
+ */
+export const alignedMarkdown = `| Step | Files | Status |
+| --- | --: | :-: |
+| Build | 12 | Passed |
+| Test | 148 | Failed |
+`
+
+/**
  * A reply whose lines outrun a narrow column: an address, a path, a long line of
  * code beside a short one, a wide table and a wide equation.
  */
