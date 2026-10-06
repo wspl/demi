@@ -852,10 +852,8 @@ async fn install_tools(test: &str, driven: &mut Driven<'_>) {
 }
 
 /// Installs Chrome on the Cloud of `driven`'s conversation as an agent
-/// would (`browser.md` § Installation): `demi browser install`, then the
-/// apt command its output ends with, as printed, which refreshes the package
-/// lists and installs the libraries and fonts the Cloud lacks. Prints how
-/// long each step took.
+/// would (`browser.md` § Installation): `demi browser install`, which brings
+/// the Chrome runtime with it. Prints how long it took.
 async fn install_chrome(test: &str, driven: &mut Driven<'_>) {
     let started = Instant::now();
     let installed = run_download(
@@ -875,22 +873,6 @@ async fn install_chrome(test: &str, driven: &mut Driven<'_>) {
         "installing Chrome with demi browser install",
         started.elapsed(),
     );
-    // A Host that has every library and font gets no command.
-    let Some(command) = installed
-        .lines()
-        .map(str::trim)
-        .find(|line| line.starts_with("sudo apt-get update && sudo apt-get install "))
-    else {
-        return;
-    };
-    let started = Instant::now();
-    let added = run_download(driven, "chrome-packages", command, APT_WATCH_MS).await;
-    assert!(added.contains("exitCode: 0"), "{added}");
-    measured(
-        test,
-        "installing Chrome's libraries and fonts with apt",
-        started.elapsed(),
-    );
 }
 
 /// Maps a file of its own, writes a line through the mapping without
@@ -906,8 +888,8 @@ time.sleep(600)
 "#;
 
 // Minutes: the Cloud boots, apt installs Python in it, the agent installs
-// Chrome from its official URL and apt its libraries and fonts, which takes
-// as long as the network does, Chrome starts in it, the checkpoint copies
+// Chrome from its official URL with the Chrome runtime, which takes as long
+// as the network does, Chrome starts in it, the checkpoint copies
 // both images, and one conversation's idle window passes.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]

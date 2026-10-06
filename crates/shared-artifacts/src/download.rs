@@ -24,14 +24,17 @@ pub fn client() -> Result<reqwest::Client, Error> {
         .map_err(|error| Error::Download(error.without_url().to_string()))
 }
 
-/// [`client`], but plain HTTP too: for a caller that received the declared
-/// size and SHA-256 over a connection it trusts, so the transport cannot
-/// change what it keeps, such as a runner installing a command executable
-/// (`native-runtime.md` § Install artifacts). A download whose
-/// digest comes from the same server keeps [`client`].
+/// [`client`], but plain HTTP too, and following redirects: for a caller
+/// that received the declared size and SHA-256 over a connection it trusts,
+/// so neither the transport nor where the bytes come from can change what
+/// it keeps, such as a runner installing a command executable or the Chrome
+/// runtime, which GitHub serves through a redirect to short-lived storage
+/// (`native-runtime.md` § Install artifacts). A download whose digest
+/// comes from the same server keeps [`client`].
 pub fn client_allowing_http() -> Result<reqwest::Client, Error> {
     builder()
         .https_only(false)
+        .redirect(reqwest::redirect::Policy::limited(10))
         .build()
         .map_err(|error| Error::Download(error.without_url().to_string()))
 }

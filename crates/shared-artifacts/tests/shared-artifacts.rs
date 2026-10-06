@@ -12,8 +12,8 @@ use demi_shared_artifacts::{
     check_encoded_blocking, copy, digest, download, download_measured, encode_blocking,
     install_archive, installed,
     publish, publish_bytes, publish_directory, publish_release, receipt, recorded,
-    testing::{Answer, Server, zip},
-    zip_holds,
+    holds,
+    testing::{Answer, Server, tar_zst, zip},
 };
 use sha2::{Digest as _, Sha256};
 use tokio::io::AsyncWriteExt;
@@ -686,9 +686,76 @@ async fn an_archive_extracts_inside_its_installation_only_and_names_its_files() 
     );
     let file = root.path().join("app.zip");
     std::fs::write(&file, zip(&[("app/bin/tool", b"tool")])).unwrap();
-    assert!(zip_holds(&file, "app/bin/tool").await.unwrap());
-    assert!(!zip_holds(&file, "app/bin").await.unwrap());
-    assert!(!zip_holds(&file, "app/bin/other").await.unwrap());
+    assert!(holds(&file, "app/bin/tool").await.unwrap());
+    assert!(!holds(&file, "app/bin").await.unwrap());
+    assert!(!holds(&file, "app/bin/other").await.unwrap());
+}
+
+/// The Chrome runtime's archives are tar archives compressed with zstd
+/// (`builds-and-releases.md` § Chrome runtime): one installs as a zip
+/// archive does, its empty directories with it, and its entry is found the
+/// same way. Bytes of neither kind install nothing.
+#[tokio::test]
+async fn a_tar_archive_compressed_with_zstd_installs_as_a_zip_archive_does() {
+    let client = client_allowing_http().unwrap();
+    let cancel = CancellationToken::new();
+    let bytes = tar_zst(&[
+        ("lib/", b""),
+        ("lib/gio/", b""),
+        ("lib/gio/modules/", b""),
+        ("./lib/libnss3.so", b"nss"),
+    ]);
+    let server = Server::start([
+        ("/libs.tar.zst".to_owned(), Answer::ok(bytes.clone())),
+        ("/plain".to_owned(), Answer::ok(b"plain bytes".to_vec())),
+    ])
+    .await;
+    let archive = Archive {
+        digest: declared(&bytes),
+        entry: "lib/libnss3.so".to_owned(),
+    };
+    let root = tempfile::tempdir().unwrap();
+    let entry = install(&client, root.path(), &server.url("/libs.tar.zst"), &archive, &cancel)
+        .await
+        .unwrap();
+    let directory = root.path().join(&archive.digest.sha256);
+    assert_eq!(entry, directory.join("lib/libnss3.so"));
+    assert_eq!(std::fs::read(&entry).unwrap(), b"nss");
+    assert!(directory.join("lib/gio/modules").is_dir());
+    let file = root.path().join("libs.tar.zst");
+    std::fs::write(&file, &bytes).unwrap();
+    assert!(holds(&file, "lib/libnss3.so").await.unwrap());
+    assert!(!holds(&file, "lib/gio/modules").await.unwrap());
+    assert!(!holds(&file, "lib/libnspr4.so").await.unwrap());
+    let plain = Archive {
+        digest: declared(b"plain bytes"),
+        entry: "lib/libnss3.so".to_owned(),
+    };
+    let other = tempfile::tempdir().unwrap();
+    let result = install(&client, other.path(), &server.url("/plain"), &plain, &cancel).await;
+    assert!(matches!(result, Err(Error::Archive(_))), "{result:?}");
+}
+
+/// A download whose digest the caller was given over a connection it trusts
+/// follows a redirect, as GitHub serves a release's assets
+/// (`native-runtime.md` § Install artifacts), and is verified all the same.
+#[tokio::test]
+async fn a_trusted_download_follows_a_redirect() {
+    let client = client_allowing_http().unwrap();
+    let cancel = CancellationToken::new();
+    let storage = serve(200, BODY, true).await;
+    let release = Server::start([(
+        "/releases/download/1/libs.tar.zst".to_owned(),
+        Answer::redirect(storage.url("/artifact")),
+    )])
+    .await;
+    let url = release.url("/releases/download/1/libs.tar.zst");
+    let mut output = Vec::new();
+    download(&client, &url, &declared(BODY), &mut output, &cancel)
+        .await
+        .unwrap();
+    assert_eq!(output, BODY);
+    assert_eq!(storage.requests(), 1);
 }
 
 #[test]
