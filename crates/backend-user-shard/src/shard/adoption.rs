@@ -20,6 +20,10 @@ use tokio::sync::oneshot;
 use super::Shard;
 use super::policy::ShardPolicy;
 
+/// Why a connection that did not answer its ping ended when a new one of
+/// its device arrived.
+const REPLACED: &str = "replaced by a new connection of the device's runner";
+
 impl Shard {
     /// Takes the socket of a runner that presented `device`'s token.
     pub async fn adopt_runner(
@@ -33,26 +37,41 @@ impl Shard {
             .hellos
             .pass(crate::holds::HelloStep::Bind)
             .await;
-        self.devices().settled(&device.id).await;
-        // From this check until the link is published nothing awaits, so two
-        // runners of one device never both become online.
-        if self.devices().online(&device.id) {
-            tracing::warn!(
+        // A held connection that answers its ping keeps the device; one
+        // that does not is the same runner's, lost without a close, and
+        // gives way.
+        loop {
+            self.devices().settled(&device.id).await;
+            // From this check until the link is published nothing awaits, so
+            // two runners of one device never both become online.
+            let Some(held) = self.devices().link(&device.id) else {
+                break;
+            };
+            if held.answers(self.services().runners.probe).await {
+                tracing::warn!(
+                    device = %device.id,
+                    "runner hello refused (already_connected): device {} already has a live connection [{}, {}]",
+                    device.id,
+                    runner.name,
+                    runner.platform
+                );
+                let refusal = Inbound::HelloError {
+                    code: HelloErrorCode::AlreadyConnected,
+                    reason: format!("device {} already has a live connection", device.id),
+                };
+                // A runner that went away needs no refusal.
+                if send(&mut socket, &refusal).await.is_ok() {
+                    let _ = socket.send(Message::Close(None)).await;
+                }
+                return;
+            }
+            tracing::info!(
                 device = %device.id,
-                "runner hello refused (already_connected): device {} already has a live connection [{}, {}]",
-                device.id,
+                "the device's connection did not answer its ping and gives way to a new one [{}, {}]",
                 runner.name,
                 runner.platform
             );
-            let refusal = Inbound::HelloError {
-                code: HelloErrorCode::AlreadyConnected,
-                reason: format!("device {} already has a live connection", device.id),
-            };
-            // A runner that went away needs no refusal.
-            if send(&mut socket, &refusal).await.is_ok() {
-                let _ = socket.send(Message::Close(None)).await;
-            }
-            return;
+            held.disconnect(REPLACED);
         }
         let identity = host_identity(&runner.identity);
         let welcome = Inbound::HelloOk {
