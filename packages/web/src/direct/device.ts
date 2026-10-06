@@ -22,6 +22,11 @@ export const RETRY_MS = [60_000, 120_000, 300_000, 600_000] as const
 
 /** What a device's choice needs of the page. */
 export interface DeviceDirectDeps {
+  /**
+   * Whether an attempt can start: the device's signaling socket is open.
+   * Its opening is a reason to try, so nothing waits for it.
+   */
+  ready(): boolean
   /** Makes a peer through the device's signaling; fails when it does not connect. */
   connect(signal: AbortSignal): Promise<DirectPeer>
   /** Calls `run` after `ms`, unless the answer is called first. */
@@ -70,7 +75,7 @@ export class DeviceDirect {
    * is `direct`, one runs, or the browser blocks local network access.
    */
   tryNow(): void {
-    if (this.stopped || this.peer || this.attempt || this.permission === 'denied')
+    if (this.stopped || this.peer || this.attempt || this.permission === 'denied' || !this.deps.ready())
       return
     this.cancelRetry?.()
     this.cancelRetry = null
@@ -161,7 +166,7 @@ export class DeviceDirect {
     const wait = RETRY_MS[Math.min(this.failures, RETRY_MS.length) - 1] ?? RETRY_MS[0]
     this.cancelRetry = this.deps.after(wait, () => {
       this.cancelRetry = null
-      if (!this.peer && !this.attempt && !this.stopped)
+      if (!this.peer && !this.attempt && !this.stopped && this.deps.ready())
         this.start()
     })
   }

@@ -77,6 +77,7 @@ function use(deviceId: string): DeviceDirect {
   const signaling = new DeviceSignaling(deviceId, () => direct.tryNow())
   const direct = new DeviceDirect(
     {
+      ready: () => signaling.open,
       connect: (signal) => connectPeer((sdp) => signaling.offer(sdp), signal),
       after: (ms, run) => {
         const timer = setTimeout(run, ms)
