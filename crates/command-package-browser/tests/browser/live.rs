@@ -555,6 +555,72 @@ async fn modes_follow_the_viewer_and_the_agent() {
     .await;
 }
 
+/// The view resolves the page's cursor locally (`live-view.md` § Input):
+/// the observer of every frame reports where each cursor applies in tab
+/// CSS pixels, a cursor list by its last keyword, what a scrolled container
+/// hides is left out, and a new document resolves its cursor at the still
+/// pointer.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn the_view_hears_where_each_cursor_applies_in_every_frame() {
+    with_browser_fixture(|fixture| async move {
+        let first = fixture.root.path().join("cursors.html");
+        let second = fixture.root.path().join("next.html");
+        std::fs::write(&second, "<!doctype html><style>body{margin:0}</style><button style=\"position:absolute;left:0;top:0;width:300px;height:300px;cursor:grab\">Next</button>").unwrap();
+        std::fs::write(&first, "<!doctype html><style>body{margin:0;font:16px sans-serif}</style>\
+            <button style=\"position:absolute;left:10px;top:10px;width:100px;height:30px;cursor:pointer\"><span>Save</span></button>\
+            <div style=\"position:absolute;left:10px;top:50px;width:100px;height:30px;cursor:url(data:image/gif;base64,R0lGODlhAQABAAAAACw=) 4 4, move\"></div>\
+            <div style=\"position:absolute;left:10px;top:100px;width:100px;height:50px;overflow:auto\">\
+              <div style=\"height:200px\"><div style=\"margin-top:120px;height:20px;cursor:help\"></div></div></div>\
+            <iframe style=\"position:absolute;left:200px;top:100px;width:200px;height:100px;border:5px solid black\"\
+              srcdoc=\"<body style='margin:0'><div style='margin:10px;width:50px;height:20px;cursor:crosshair'></div></body>\"></iframe>\
+            <p style=\"position:absolute;left:10px;top:220px;margin:0\">Some text</p>").unwrap();
+        let tab = fixture
+            .call("browser.open", json!({"url": url::Url::from_file_path(&first).unwrap().as_str()}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        view.send(json!({"type": "watch", "tab": tab}));
+        let has = |regions: &Value, cursor: &str| {
+            regions.as_array().is_some_and(|regions| regions.iter().any(|region| region["cursor"] == cursor))
+        };
+        let cursors = view
+            .until("the page's and its frame's cursors", |message| {
+                message["type"] == "cursors" && has(&message["regions"], "pointer") && has(&message["regions"], "crosshair")
+            })
+            .await;
+        let regions = cursors["regions"].as_array().unwrap();
+        let region = |cursor: &str| {
+            regions
+                .iter()
+                .find(|region| region["cursor"] == cursor)
+                .map(|region| [&region["x"], &region["y"], &region["width"], &region["height"]].map(|value| value.as_f64().unwrap()))
+        };
+        assert_eq!(region("pointer"), Some([10.0, 10.0, 100.0, 30.0]));
+        // A cursor list falls back to its last keyword.
+        assert_eq!(region("move"), Some([10.0, 50.0, 100.0, 30.0]));
+        // The frame's region, in the tab's coordinates past its border.
+        assert_eq!(region("crosshair"), Some([215.0, 115.0, 50.0, 20.0]));
+        // A region its scrolled container hides is left out.
+        assert_eq!(region("help"), None);
+        // The cursor the observer resolves at the pointer: text over text.
+        view.pointer(&tab, "move", 20.0, 228.0);
+        view.until("a text cursor", |message| message["type"] == "cursor" && message["cursor"] == "text").await;
+        // A new document under the still pointer resolves its own cursor there.
+        fixture
+            .call("browser.goto", json!({"tab": tab, "url": url::Url::from_file_path(&second).unwrap().as_str()}))
+            .await;
+        view.until("the new document's cursor", |message| message["type"] == "cursor" && message["cursor"] == "grab").await;
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn dialogs_controls_files_and_the_clipboard_reach_the_viewer() {
@@ -1321,3 +1387,4 @@ async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
     })
     .await;
 }
+

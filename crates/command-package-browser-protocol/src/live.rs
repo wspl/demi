@@ -510,6 +510,28 @@ pub struct LiveControl {
     pub rect: ControlRect,
 }
 
+/// The most cursor regions a view hears of for a tab, from all its frames.
+pub const MAX_CURSOR_REGIONS: usize = 4000;
+
+/// Where on the visible page a cursor applies, in tab CSS pixels
+/// (`live-view.md` § Input).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct CursorRegion {
+    #[garde(skip)]
+    pub x: f64,
+    #[garde(skip)]
+    pub y: f64,
+    #[garde(range(min = f64::MIN_POSITIVE))]
+    pub width: f64,
+    #[garde(range(min = f64::MIN_POSITIVE))]
+    pub height: f64,
+    /// A CSS cursor keyword; `auto` leaves it to the browser, which the
+    /// observer resolves for the pointer's point.
+    #[garde(length(chars, max = 200))]
+    pub cursor: String,
+}
+
 /// A tab as the view lists it.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -577,6 +599,18 @@ pub enum LiveModuleMessage {
         scale: f64,
     },
     Heartbeat {},
+    /// Where on the watched tab's visible page each cursor applies, in
+    /// document order: a later region over an earlier one wins. The view
+    /// resolves the cursor under its pointer from them; where none applies,
+    /// or one leaves the cursor to the browser, the last `cursor` holds.
+    Cursors {
+        #[garde(skip)]
+        tab: TabId,
+        #[garde(length(max = MAX_CURSOR_REGIONS), dive)]
+        regions: Vec<CursorRegion>,
+    },
+    /// The cursor the watched tab shows at the viewer's pointer, as its
+    /// observer resolved it there.
     Cursor {
         #[garde(skip)]
         tab: TabId,

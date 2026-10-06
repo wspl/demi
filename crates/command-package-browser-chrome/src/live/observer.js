@@ -1,8 +1,8 @@
 // The live view's page observer (`live-view.md` § Input). It runs in
 // an isolated world of each watched tab's documents, where the page can
 // neither see nor call it, and reports through the world's own binding: the
-// cursor under the viewer's pointer, the page's native form controls, and
-// text the page copies. The module calls `globalThis.demiLive` to apply a
+// cursors of the visible page and the one under the viewer's pointer, the
+// page's native form controls, and text the page copies. The module calls `globalThis.demiLive` to apply a
 // viewer's choice to a control.
 (() => {
   if (globalThis.demiLive) return;
@@ -22,12 +22,75 @@
   };
   const top = window === window.top;
 
-  // The cursor the pointer shows, even when content changes under a still pointer.
-  let point;
-  let cursorTimer;
-  let lastCursor;
-  const updateCursor = () => {
-    if (!point) return;
+  // The cursors of the visible page (`live-view.md` § Input). Each frame
+  // reports where on the tab each cursor applies, so the view resolves the
+  // cursor under its pointer without asking: a region is an element whose
+  // cursor differs from its parent's, in tab CSS pixels, in document order,
+  // so a later region over an earlier one wins as a child's cursor does. A
+  // region of `auto` leaves the cursor to the browser, which this observer
+  // resolves for the point the viewer's pointer is at: a text cursor over
+  // text, as a local browser does.
+  const EDITABLE = 'textarea, input:not([type]), input[type=text], input[type=search], input[type=url], input[type=tel], input[type=email], input[type=password], input[type=number]';
+  const MAX_REGIONS = 2000;
+  // A cursor list falls back to its last keyword, the one every browser has.
+  const keyword = cursor => cursor.split(',').pop().trim();
+  const editable = element => element.matches(EDITABLE) || element.isContentEditable === true;
+  // Where this frame's viewport stands in the tab, or none for a frame whose
+  // embedder another origin owns.
+  const origin = () => {
+    let x = 0;
+    let y = 0;
+    for (let view = window; view !== view.top; view = view.parent) {
+      const frame = view.frameElement;
+      if (!frame) return null;
+      const rect = frame.getBoundingClientRect();
+      const style = getComputedStyle(frame);
+      x += rect.left + frame.clientLeft + parseFloat(style.paddingLeft);
+      y += rect.top + frame.clientTop + parseFloat(style.paddingTop);
+    }
+    return { x, y };
+  };
+  const regions = () => {
+    const offset = origin();
+    if (!offset) return null;
+    const result = [];
+    const viewport = { left: 0, top: 0, right: innerWidth, bottom: innerHeight };
+    const root = document.documentElement;
+    // Each element's cursor, and the box its children show within: a
+    // scrolled or clipped container hides what lies outside it.
+    const inherited = new Map([[root.parentNode, { cursor: 'auto', clip: viewport }]]);
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT);
+    for (let element = walker.currentNode; element && result.length < MAX_REGIONS; element = walker.nextNode()) {
+      const style = getComputedStyle(element);
+      const parent = inherited.get(element.parentNode) ?? { cursor: 'auto', clip: viewport };
+      let cursor = keyword(style.cursor);
+      if (cursor === 'auto' && editable(element)) cursor = style.writingMode.startsWith('vertical') ? 'vertical-text' : 'text';
+      const shown = style.position === 'fixed' ? viewport : parent.clip;
+      let within = shown;
+      if (style.overflowX !== 'visible' || style.overflowY !== 'visible') {
+        const box = element.getBoundingClientRect();
+        within = {
+          left: Math.max(shown.left, box.left),
+          top: Math.max(shown.top, box.top),
+          right: Math.min(shown.right, box.right),
+          bottom: Math.min(shown.bottom, box.bottom),
+        };
+      }
+      inherited.set(element, { cursor, clip: within });
+      if (cursor === parent.cursor || style.pointerEvents === 'none') continue;
+      for (const rect of element.getClientRects()) {
+        const left = Math.max(rect.left, shown.left);
+        const upper = Math.max(rect.top, shown.top);
+        const right = Math.min(rect.right, shown.right);
+        const bottom = Math.min(rect.bottom, shown.bottom);
+        if (right <= left || bottom <= upper) continue;
+        result.push({ x: left + offset.x, y: upper + offset.y, width: right - left, height: bottom - upper, cursor: clip(cursor, 200) });
+      }
+    }
+    return result;
+  };
+  // The cursor at `point` as the browser shows it, `auto` resolved.
+  const cursorAt = point => {
     let element = document.elementFromPoint(point.x, point.y);
     const shadowRoots = [];
     while (element?.shadowRoot) {
@@ -36,12 +99,10 @@
       if (!inner || inner === element) break;
       element = inner;
     }
-    if (!element || element.matches('iframe,frame')) return;
+    if (!element || element.matches('iframe,frame')) return null;
     const style = getComputedStyle(element);
-    // An SVG element has no isContentEditable; an undefined field would be dropped from the report.
-    const editable = element.matches('textarea, input:not([type]), input[type=text], input[type=search], input[type=url], input[type=tel], input[type=email], input[type=password], input[type=number]') || element.isContentEditable === true;
-    // `auto` resolves against the text under the pointer, as a local browser does.
-    let cursor = style.cursor;
+    const field = editable(element);
+    let cursor = keyword(style.cursor);
     if (cursor === 'auto') {
       let textHit = false;
       if (style.userSelect !== 'none' && !element.closest('button,select,input')) {
@@ -59,19 +120,55 @@
           }
         }
       }
-      cursor = editable || textHit ? (style.writingMode.startsWith('vertical') ? 'vertical-text' : 'text') : 'default';
+      cursor = field || textHit ? (style.writingMode.startsWith('vertical') ? 'vertical-text' : 'text') : 'default';
     }
-    const key = `${cursor}:${editable}`;
-    if (key === lastCursor) return;
-    lastCursor = key;
-    report({ type: 'cursor', cursor: clip(cursor, 200), editable });
+    // An SVG element has no isContentEditable; an undefined field would be dropped from the report.
+    return { cursor: clip(cursor, 200), editable: field };
   };
-  const stopCursor = () => {
-    clearInterval(cursorTimer);
-    cursorTimer = undefined;
-    point = undefined;
-    lastCursor = undefined;
+  // The pointer in this frame's viewport, from the page's own events or, in
+  // a new document under a still pointer, from the module.
+  let point;
+  // Something on the page may have moved since the cursors were reported.
+  let dirty = true;
+  let lastRegions = '';
+  let lastCursor = '';
+  const touched = () => {
+    dirty = true;
   };
+  const reportCursors = () => {
+    if (!dirty || !document.documentElement) return;
+    dirty = false;
+    const found = regions();
+    const serialized = JSON.stringify(found);
+    if (found && serialized !== lastRegions) {
+      lastRegions = serialized;
+      report({ type: 'cursors', top, regions: found });
+    }
+    if (!point) return;
+    const resolved = cursorAt(point);
+    const key = JSON.stringify(resolved);
+    if (resolved && key !== lastCursor) {
+      lastCursor = key;
+      report({ type: 'cursor', ...resolved });
+    }
+  };
+  new MutationObserver(touched).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  for (const type of ['scroll', 'resize', 'transitionend', 'animationend', 'load']) {
+    addEventListener(type, touched, { passive: true, capture: true });
+  }
+  addEventListener('pointermove', event => {
+    point = { x: event.clientX, y: event.clientY };
+    // Hovering changes styles, and the cursor at the point is what the view asks about.
+    dirty = true;
+    reportCursors();
+  }, { passive: true, capture: true });
+  setInterval(() => {
+    try {
+      reportCursors();
+    } catch {
+      // A document being replaced; the next one reports its own.
+    }
+  }, 200);
 
   // Native controls the viewer opens with its own pickers: each has an
   // identity and a revision that changes whenever what it reports changes.
@@ -212,14 +309,6 @@
     navigator.clipboard?.addEventListener?.('clipboardchange', () => {
       navigator.clipboard.readText().then(copied, () => {});
     });
-    addEventListener('pointermove', event => {
-      point = { x: event.clientX, y: event.clientY };
-      updateCursor();
-      cursorTimer ??= setInterval(updateCursor, 100);
-    }, { passive: true, capture: true });
-    addEventListener('pointerout', event => {
-      if (!event.relatedTarget) stopCursor();
-    }, { passive: true, capture: true });
     setInterval(() => {
       let current;
       try {
@@ -233,5 +322,10 @@
       report({ type: 'controls', controls: current });
     }, 200);
   }
-  globalThis.demiLive = { element, committed, commit };
+  // The viewer's pointer in a new top document, which no pointer event reached yet.
+  const pointer = (x, y) => {
+    point = { x, y };
+    dirty = true;
+  };
+  globalThis.demiLive = { element, committed, commit, pointer };
 })();
