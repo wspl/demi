@@ -74,9 +74,11 @@ ALTER TABLE conversations DROP COLUMN live_at;
 ";
 
 /// From 0.1.13's control schema: Host expose is gone, and its records with
-/// it.
+/// it; a device keeps the operating system its runner reports, which a
+/// device migrated from 0.1.13 learns at its runner's next hello.
 const CONTROL_FROM_0_1_13: &str = "
 DROP TABLE exposes;
+ALTER TABLE devices ADD COLUMN os TEXT;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -308,7 +310,10 @@ CREATE TABLE devices (
   token_hash   TEXT UNIQUE,
   claimed_at   INTEGER NOT NULL,
   last_seen_at INTEGER,
-  installed    TEXT NOT NULL DEFAULT '[]'
+  installed    TEXT NOT NULL DEFAULT '[]',
+  -- The operating system its runner last reported, JSON; none before its
+  -- runner first connected.
+  os           TEXT
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 

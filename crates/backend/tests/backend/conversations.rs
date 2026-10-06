@@ -847,7 +847,8 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     // without a session.
     let summary = summary(&backend, &master, FIRST).await;
     let live = socket.live().await;
-    assert_eq!(kinds(&live), ["user", "text", "response"]);
+    // The model learned its Host before its first request.
+    assert_eq!(kinds(&live), ["user", "context", "text", "response"]);
     assert_eq!(last_text(&live), "Hello there.");
     let cold = transcript(&backend, &master, FIRST).await;
     assert_eq!(cold.blocks, live);
@@ -930,7 +931,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     );
     assert_eq!(
         kinds(&transcript(&backend, &master, FIRST).await.blocks).len(),
-        6
+        7
     );
     backend.close().await;
 }
@@ -1055,13 +1056,17 @@ async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_
     );
     assert_eq!(
         kinds(&socket.live().await),
+        // The compaction's summary leaves the context block out of what
+        // the model receives, so the next request carries it again.
         [
             "user",
+            "context",
             "compaction_boundary",
             "text",
             "response",
             "user",
             "compaction_marker",
+            "context",
             "text",
             "response"
         ]
@@ -1577,7 +1582,7 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     assert_eq!(
         kinds(&blocks),
-        ["user", "text", "response", "user", "error"]
+        ["user", "context", "text", "response", "user", "error"]
     );
     let Some(Block::Error(record)) = blocks.last() else {
         unreachable!()
