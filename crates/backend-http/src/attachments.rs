@@ -80,12 +80,14 @@ pub(super) async fn upload(
         other => ApiError::invalid_body(other.body_text()),
     })?;
     let blobs = services.blobs.for_user(&user.id);
-    let (bytes, sha256) = match (bytes.is_empty(), query.sha256) {
+    // What the record is read from: the file's opening, or all of it, and
+    // its size.
+    let (opening, size_bytes, sha256) = match (bytes.is_empty(), query.sha256) {
         (true, None) => return Err(ApiError::invalid_body("An upload holds at least one byte")),
         // No bytes travel for a blob the caller holds already; only the
-        // caller's own namespace is asked.
-        (true, Some(sha256)) => match blobs.get(&sha256).await? {
-            Some(held) => (held, sha256),
+        // caller's own namespace is asked, and only its opening is read.
+        (true, Some(sha256)) => match blobs.opening(&sha256).await? {
+            Some(held) => (held.bytes, held.size, sha256),
             None => {
                 return Err(ApiError::new(
                     StatusCode::NOT_FOUND,
@@ -100,21 +102,22 @@ pub(super) async fn upload(
                     "The bytes do not have the SHA-256 the request named",
                 ));
             }
-            (bytes, sha256)
+            let size = bytes.len() as u64;
+            (bytes, size, sha256)
         }
         (false, None) => {
             let sha256 = blobs.put(bytes.clone()).await?;
-            (bytes, sha256)
+            let size = bytes.len() as u64;
+            (bytes, size, sha256)
         }
     };
-    let media_type = upload_media_type(&sent, &bytes);
-    // The record keeps the opening, so a draft that names the upload shows
+    let media_type = upload_media_type(&sent, &opening);
+    // The record keeps the snippet, so a draft that names the upload shows
     // it on every page (`web-api.md` § Conversation drafts).
-    let opening = is_text(&query.name, &media_type).then(|| snippet(&bytes));
-    let size_bytes = bytes.len() as u64;
+    let snippet = is_text(&query.name, &media_type).then(|| snippet(&opening));
     let record = services
         .control
-        .create_attachment(user.id.clone(), media_type, size_bytes, sha256, opening)
+        .create_attachment(user.id.clone(), media_type, size_bytes, sha256, snippet)
         .await?;
     let attachment = AttachmentDto {
         id: record.id,
