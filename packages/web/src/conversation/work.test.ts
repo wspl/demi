@@ -198,3 +198,42 @@ test('the selection is this page\'s own, and a higher revision in the summary re
   await nextTick()
   expect(readLocalState('one').workPanelHistory).toEqual({ [id]: ['p1'] })
 })
+
+test('a request to show a tab selects it with the panel opened once per request, across reloads', async () => {
+  signIn('one')
+  stubPanelRoutes({ revision: 1, tabs: [
+    { id: 'b1', kind: 'browser', data: { url: 'https://a.test/' } },
+    { id: 'b2', kind: 'browser', data: { url: 'https://b.test/' } },
+  ] })
+  const conversations = useConversations()
+  const id = conversations.create()
+  conversations.items.find((item) => item.id === id)!.persistence = 'synced'
+  const work = useWorkPanel()
+  work.load(id)
+  await settled()
+  work.show(id, 'b1', 1)
+  expect([work.stateFor(id).open, [...work.stateFor(id).history]]).toEqual([true, ['b1']])
+  // The user's own selection after it stands, however often the request is seen again.
+  work.select(id, 'b2')
+  work.show(id, 'b1', 1)
+  expect(work.stateFor(id).history.at(-1)).toBe('b2')
+  await nextTick()
+  expect(readLocalState('one').workPanelShown).toEqual({ [id]: { b1: 1 } })
+
+  // A reloaded page knows what it applied; a new request shows the tab again.
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  signIn('one')
+  stubPanelRoutes({ revision: 1, tabs: [
+    { id: 'b1', kind: 'browser', data: { url: 'https://a.test/' } },
+    { id: 'b2', kind: 'browser', data: { url: 'https://b.test/' } },
+  ] })
+  const reloaded = useWorkPanel()
+  reloaded.load(id)
+  await settled()
+  reloaded.show(id, 'b1', 1)
+  expect(reloaded.stateFor(id).history.at(-1)).toBe('b2')
+  reloaded.show(id, 'b1', 2)
+  expect(reloaded.stateFor(id).history.at(-1)).toBe('b1')
+})
