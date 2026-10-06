@@ -1,8 +1,8 @@
 //! The conversation's host access (`sessions-and-targets.md` § Host
 //! operations): the one way to a conversation's primary or attached Host, with
 //! target resolution and the transitions that end a target (switch, archive,
-//! detach); file transfers, uploads, remote files and user streams; the
-//! shell environments of the agent's nodes over it; and the product's
+//! detach); file transfers, uploads, remote files, user streams and the
+//! file watch; the shell environments of the agent's nodes over it; and the product's
 //! `demi host` group.
 //!
 //! Host access's operations are methods of `dyn HostShard`, what host access
@@ -11,6 +11,7 @@
 
 pub mod access;
 pub mod blobs;
+pub mod file_watch;
 pub mod host_commands;
 pub mod lease;
 pub mod plugin_files;
@@ -82,8 +83,7 @@ pub trait HostShard {
     /// What the shard remembers of its Hosts' directories.
     fn plugin_installs(&self) -> &PluginInstalls;
     /// A job of the conversation ended, finished or stopped, which may have
-    /// changed its working tree and what its plugins show (`plugins.md`
-    /// § Topics).
+    /// changed what its plugins show (`plugins.md` § Topics).
     fn job_ended(&self, conversation: &ConversationId);
 }
 
