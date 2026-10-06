@@ -516,14 +516,23 @@ where
 /// alone. Then the profiles whose runtime directory is gone, which happens
 /// when a restart emptied a `/tmp` held in memory: no running environment
 /// has one.
+///
+/// Without the installed Chrome's location the sweep cannot find an orphan's
+/// processes, so it leaves the runtime directories to the next service:
+/// removing a profile under a Chrome that still runs would leave both.
 pub async fn sweep_orphans(chrome: &crate::driver::installation::Chrome) {
     let installations = chrome.roots().await;
     sweep_orphans_in(&DirectoryBases::host(), installations, Owner::current()).await;
 }
 
-async fn sweep_orphans_in(bases: &DirectoryBases, installations: Vec<PathBuf>, owner: Owner) {
-    for runtime in owned_directories(&bases.runtime, RUNTIME_PREFIX, owner).await {
-        if let Err(error) = sweep_orphan(&runtime, installations.clone(), owner).await {
+async fn sweep_orphans_in(bases: &DirectoryBases, installations: Option<Vec<PathBuf>>, owner: Owner) {
+    let runtimes = match &installations {
+        Some(_) => owned_directories(&bases.runtime, RUNTIME_PREFIX, owner).await,
+        None => Vec::new(),
+    };
+    for runtime in runtimes {
+        let installations = installations.clone().unwrap_or_default();
+        if let Err(error) = sweep_orphan(&runtime, installations, owner).await {
             tracing::warn!(
                 "could not remove the orphaned browser environment {}: {error}",
                 runtime.display()
@@ -1017,7 +1026,7 @@ mod tests {
         let other = bases.runtime.join("not-an-environment");
         std::fs::create_dir(&other).unwrap();
         std::fs::File::create(other.join(LOCK)).unwrap();
-        sweep_orphans_in(&bases, Vec::new(), Owner::current()).await;
+        sweep_orphans_in(&bases, Some(Vec::new()), Owner::current()).await;
         assert!(!orphan.exists());
         assert!(!orphan_profile.exists());
         assert!(held.exists() && held_profile.exists());
@@ -1040,7 +1049,7 @@ mod tests {
         lock.try_lock().unwrap();
         let other = bases.profiles.join("not-a-profile");
         std::fs::create_dir(&other).unwrap();
-        sweep_orphans_in(&bases, Vec::new(), Owner::current()).await;
+        sweep_orphans_in(&bases, Some(Vec::new()), Owner::current()).await;
         assert!(!left.exists());
         assert!(held_profile.exists());
         assert!(other.exists());
@@ -1079,7 +1088,7 @@ mod tests {
             orphans.push(orphan("foreign", &foreign));
             named.push(foreign);
         }
-        sweep_orphans_in(&bases, Vec::new(), this_user).await;
+        sweep_orphans_in(&bases, Some(Vec::new()), this_user).await;
         for orphan in orphans {
             assert!(!orphan.exists(), "{} stayed", orphan.display());
         }
@@ -1105,9 +1114,9 @@ mod tests {
         let another_user = Owner {
             uid: this_user.uid.wrapping_add(1),
         };
-        sweep_orphans_in(&bases, Vec::new(), another_user).await;
+        sweep_orphans_in(&bases, Some(Vec::new()), another_user).await;
         assert!(orphan.exists() && profile.exists() && left.exists());
-        sweep_orphans_in(&bases, Vec::new(), this_user).await;
+        sweep_orphans_in(&bases, Some(Vec::new()), this_user).await;
         assert!(!orphan.exists() && !profile.exists() && !left.exists());
     }
 
@@ -1129,7 +1138,7 @@ mod tests {
                     let made = made.clone();
                     async move {
                         while !made.is_cancelled() {
-                            sweep_orphans_in(&bases, Vec::new(), Owner::current()).await;
+                            sweep_orphans_in(&bases, Some(Vec::new()), Owner::current()).await;
                         }
                     }
                 })
