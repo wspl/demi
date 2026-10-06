@@ -7,10 +7,12 @@ import {
   afterLeaveTab,
   beforeEnterTab,
   beforeLeaveTab,
+  cutMarkCover,
   enterTab,
   leaveTab,
   revealScroll,
   settledTabBounds,
+  tabsChanged,
 } from './tab-strip'
 
 /** The edge fades' width; a revealed tab is scrolled clear of them. */
@@ -19,8 +21,10 @@ const FADE_PX = 24
 /**
  * The row every tab bar uses. Tabs fit their content up to their maximum width; when they outgrow the
  * row the strip scrolls with no scrollbar and fades out at whichever edge
- * has more behind it. Whenever the active tab changes, or a tab enters, the
- * strip scrolls until that tab shows whole and clear of the fades. The
+ * has more behind it. A tab mark that edge cuts stays under the fade's solid
+ * start, so a mark at an edge shows whole or not at all, never sliced.
+ * Whenever the active tab changes, or a tab enters, the strip scrolls until
+ * that tab shows whole and clear of the fades. The
  * scroll is the strip's own, timed and eased like the tab motion, and aimed
  * at the settled layout: a tab on its way out takes no room and a tab on its
  * way in its full width, so one motion lands the tab where it ends up. Close
@@ -53,6 +57,7 @@ const colors = computed(() =>
       },
 )
 const el = ref<HTMLElement | null>(null)
+const fades = ref<HTMLElement | null>(null)
 const moreBefore = ref(false)
 const moreAfter = ref(false)
 let resizeObserver: ResizeObserver | null = null
@@ -100,6 +105,15 @@ function updateEdges(): void {
   }
   moreBefore.value = strip.scrollLeft > 0
   moreAfter.value = strip.scrollLeft + strip.clientWidth < strip.scrollWidth - 1
+  const view = strip.getBoundingClientRect()
+  const marks = [...strip.querySelectorAll('[data-tab-mark]')].map((mark) => {
+    const rect = mark.getBoundingClientRect()
+    return { left: rect.left - view.left, right: rect.right - view.left }
+  })
+  // Written to the style, not kept as state: they change on every frame of
+  // a scroll, and a render of the strip then would disturb its tabs' motion.
+  fades.value?.style.setProperty('--fade-before', `${cutMarkCover(0, 'start', marks)}px`)
+  fades.value?.style.setProperty('--fade-after', `${cutMarkCover(strip.clientWidth, 'end', marks)}px`)
 }
 
 // Only the strip scrolls, never the page: scrollIntoView would move both.
@@ -151,8 +165,15 @@ onMounted(() => {
   }
   resizeObserver = new ResizeObserver(updateEdges)
   resizeObserver.observe(strip)
-  // A tab becoming active, or tabs coming and going, is what moves the view.
-  mutationObserver = new MutationObserver(revealActive)
+  // A tab becoming active, or tabs coming and going, is what moves the view;
+  // any other change, such as a title that widens a tab, moves the marks.
+  mutationObserver = new MutationObserver((records) => {
+    if (tabsChanged(strip, records, (node) => node instanceof HTMLElement)) {
+      revealActive()
+    } else {
+      updateEdges()
+    }
+  })
   mutationObserver.observe(strip, {
     childList: true,
     subtree: true,
@@ -173,7 +194,8 @@ defineExpose({ el })
 
 <template>
   <div class="flex min-w-0 items-center" :style="colors">
-    <div class="relative min-w-0 shrink">
+    <!-- Its own stacking context, so the fades lie over the scrolled tabs and nothing else. -->
+    <div ref="fades" class="relative isolate min-w-0 shrink [--fade-after:0px] [--fade-before:0px]">
     <TransitionGroup
       :ref="bindEl"
       :name="TAB_TRANSITION"
@@ -196,12 +218,12 @@ defineExpose({ el })
     <div
       v-if="moreBefore"
       aria-hidden="true"
-      class="pointer-events-none absolute inset-y-0 left-0 w-6 bg-linear-to-r from-(--tab-row) to-transparent"
+      class="pointer-events-none absolute inset-y-0 left-0 z-1 w-[calc(var(--fade-before)_+_--spacing(6))] bg-[linear-gradient(to_right,var(--tab-row)_var(--fade-before),transparent)]"
     />
     <div
       v-if="moreAfter"
       aria-hidden="true"
-      class="pointer-events-none absolute inset-y-0 right-0 w-6 bg-linear-to-l from-(--tab-row) to-transparent"
+      class="pointer-events-none absolute inset-y-0 right-0 z-1 w-[calc(var(--fade-after)_+_--spacing(6))] bg-[linear-gradient(to_left,var(--tab-row)_var(--fade-after),transparent)]"
     />
     </div>
     <slot name="trailing" />
