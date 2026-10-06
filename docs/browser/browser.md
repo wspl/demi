@@ -1731,6 +1731,12 @@ not another Host access channel. Its supported version is pinned together with
 the browser release, and commands and events are validated against schemas
 derived from that version's protocol description. Unknown
 methods, malformed parameters, and malformed replies are not trusted objects.
+The schemas follow what Chrome actually sends where its description cannot
+say it: a deprecated property may be absent, and `Network.Cookie.expires` may
+be `null`, which is how Chrome writes an expiry of minus infinity, for a
+cookie whose `Max-Age` is far negative. Both the browser's own connection and
+`demi browser cdp` read them so; a value is never repaired, and a property
+that is present is still checked.
 
 Send takes a positional method and a finite stdin parameter object. Supply `{}`
 for a method with no parameters. Events accepts repeated `--method`, `--after`,
@@ -1775,7 +1781,9 @@ Tab-owned observations such as buffered logs are not debug state and remain
 until the tab is released.
 
 When Chrome or the debugging transport ends, pending debugging calls fail and
-the connection's actor is joined. Detaching an already disconnected session is
+the connection's actor is joined. The failure says why the connection ended,
+such as the message that did not match its schema, so the caller does not
+have to guess. Detaching an already disconnected session is
 complete: closing its socket releases its debugging state. Transport loss is
 not a cleanup failure that fences a later browser startup. Failure to join the
 actor or retire Chrome and its profile still fails cleanup.

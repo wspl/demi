@@ -688,6 +688,10 @@ async fn ask_socket(
         runner: wire::RunnerInfo {
             name: "raw".into(),
             platform: wire::RunnerPlatform::Linux,
+            os: wire::OperatingSystem {
+                name: "Ubuntu 26.04".into(),
+                arch: "x86_64".into(),
+            },
             version: release.into(),
             native_target: None,
             identity: wire::HostIdentity {

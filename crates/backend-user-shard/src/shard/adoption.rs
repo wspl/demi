@@ -11,7 +11,6 @@ use demi_backend_database::devices::{DeviceRecord, DeviceRemoval};
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::{Link, LinkOptions, host_identity};
 use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
-use demi_host_interface::HostIdentity;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::DeviceId;
@@ -79,14 +78,12 @@ impl Shard {
             );
             held.disconnect(REPLACED);
         }
-        let identity = host_identity(&runner.identity);
-        let installation = runner.installation.clone();
         let welcome = Inbound::HelloOk {
             device_id: device.id.to_string(),
             device_name: device.name.clone(),
         };
         // A closing shard takes no runner; dropping the socket closes it.
-        let Some(serving) = self.bind(&device.id, identity, installation) else {
+        let Some(serving) = self.bind(&device.id, runner) else {
             return;
         };
         // A runner that went away before its welcome ends its connection at
@@ -107,8 +104,7 @@ impl Shard {
     ) {
         // A closing shard takes no runner, and the claim that waits for the
         // answer deletes the device it made.
-        let identity = host_identity(&runner.identity);
-        let Some(serving) = self.bind(&device.id, identity, runner.installation.clone()) else {
+        let Some(serving) = self.bind(&device.id, runner) else {
             return;
         };
         // The claim that waits for this answer may have gone; the runner is
@@ -121,20 +117,15 @@ impl Shard {
     }
 
     /// Publishes a new connection of the device under the shard's policy,
-    /// and records that the device was seen. None once the shard is
+    /// and records what its runner's hello says. None once the shard is
     /// closing, whose close ends every connection it published before.
-    fn bind(
-        self: &Rc<Self>,
-        device: &DeviceId,
-        identity: HostIdentity,
-        installation: Option<String>,
-    ) -> Option<Serving> {
+    fn bind(self: &Rc<Self>, device: &DeviceId, runner: RunnerInfo) -> Option<Serving> {
         if self.is_closing() {
             return None;
         }
         let (link, driver) = Link::new(LinkOptions {
             device: device.to_string(),
-            identity,
+            identity: host_identity(&runner.identity),
             pipes: self.pipes().clone(),
             policy: Rc::new(ShardPolicy::new(self, device.clone())),
             ping: self.services().runners.ping,
@@ -145,10 +136,10 @@ impl Shard {
         );
         let serving = self
             .devices()
-            .bind(device, link, driver, seen.clone(), installation);
+            .bind(device, link, driver, seen.clone(), runner.installation);
         let device = device.clone();
         self.tasks()
-            .spawn_local(async move { seen.touch(device).await });
+            .spawn_local(async move { seen.hello(device, runner.os).await });
         Some(serving)
     }
 
@@ -224,13 +215,26 @@ impl Shard {
         device: &DeviceId,
         home: &str,
     ) -> demi_backend_remote_host::LinkDriver {
-        let identity = HostIdentity {
-            uid: 501,
-            gid: 20,
-            hostname: "test".into(),
-            home_dir: home.into(),
+        use demi_runner_protocol::wire::{HostIdentity, OperatingSystem, RunnerPlatform};
+        let runner = RunnerInfo {
+            name: "test".into(),
+            platform: RunnerPlatform::Darwin,
+            os: OperatingSystem {
+                name: "macOS 26.5".into(),
+                arch: "aarch64".into(),
+            },
+            version: "0".into(),
+            native_target: None,
+            identity: HostIdentity {
+                uid: 501,
+                gid: 20,
+                hostname: "test".into(),
+                home_dir: home.into(),
+            },
+            managed: None,
+            installation: None,
         };
-        self.bind(device, identity, None)
+        self.bind(device, runner)
             .expect("an open shard binds")
             .into_driver()
     }
