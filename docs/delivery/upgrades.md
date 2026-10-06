@@ -165,10 +165,12 @@ part of another release, and each is a contract that a release never breaks:
   reported, never silently ignored
   ([Configuration](../backend/backend.md#configuration)).
 
-These rules hold from the first formal release on. A server upgrades from
-any formal release to any later one directly; it never has to pass through
-the releases in between, since each release migrates from every earlier
-format.
+These rules hold for every published release. A server upgrades from any
+release in the history to any later one directly; it never has to pass
+through the releases in between, since each release migrates from every
+earlier format. The history starts with 0.1.11, the first release whose
+databases migrate, and the first formal release starts it again
+([Schemas and migrations](../backend/storage.md#schemas-and-migrations)).
 
 ## The upgrade
 
