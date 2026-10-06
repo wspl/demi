@@ -17,6 +17,7 @@ mod devices;
 mod drafts;
 mod error;
 mod expose;
+mod file_watch;
 mod files;
 mod gate;
 mod hosts;
@@ -263,6 +264,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/read", post(conversations::read))
         .route("/conversations/{id}/stream", get(conversations::stream))
         .route("/conversations/{id}/streams/{name}", get(streams::open))
+        .route("/conversations/{id}/fs/watch", get(file_watch::open))
         .route("/conversations/{id}/panel", get(panel::read))
         .route("/conversations/{id}/panel/changes", post(panel::change))
         .route(
