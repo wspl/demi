@@ -9,7 +9,7 @@
 use std::rc::Weak;
 
 use bytes::Bytes;
-use demi_agent_store::{COMMAND_OUTPUT_DAYS, StoredOutput};
+use demi_agent_store::StoredOutput;
 use demi_host_interface::{MediumKept, StoredMedium};
 use demi_agent_tools::{HostResolver, PAGE_CHARS};
 use demi_host_interface::{
@@ -215,10 +215,6 @@ async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String
         Ok(Some(StoredOutput::NotStored(reason))) => {
             Err(format!("the output of {id} was not stored: {reason}"))
         }
-        Ok(Some(StoredOutput::Removed(at))) => Err(format!(
-            "the output of {id} was removed on {}, {COMMAND_OUTPUT_DAYS} days after the command ended",
-            at.to_jiff().strftime("%Y-%m-%d")
-        )),
         Ok(None) => Err(unknown()),
         Err(error) => Err(format!("the output of {id} could not be read: {error}")),
     }
@@ -256,12 +252,6 @@ async fn find_medium<H: HostResolver>(
         Ok(Some(StoredOutput::Stored { media, .. })) => media,
         Ok(Some(StoredOutput::NotStored(reason))) => {
             return Err(format!("the output of {id} was not stored: {reason}"));
-        }
-        Ok(Some(StoredOutput::Removed(at))) => {
-            return Err(format!(
-                "the output of {id} was removed on {}, {COMMAND_OUTPUT_DAYS} days after the command ended",
-                at.to_jiff().strftime("%Y-%m-%d")
-            ));
         }
         Ok(None) => return Err(unknown()),
         Err(error) => return Err(format!("the output of {id} could not be read: {error}")),

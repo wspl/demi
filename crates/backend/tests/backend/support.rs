@@ -298,12 +298,7 @@ impl Harness {
             release: None,
             public_url: None,
             user_streams: None,
-            // A test runs a retention pass when it chooses; one that ran by
-            // itself would race the test's own steps.
-            lifecycle: LifecycleTuning {
-                retention_interval: None,
-                ..LifecycleTuning::default()
-            },
+            lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
             manager: ScriptedManager::start(),
             machines: None,
@@ -745,11 +740,6 @@ impl TestBackend {
     }
 
     /// The file gate of `session`'s user's conversation `conversation`.
-    /// Runs the user's retention pass at once, and waits for its end.
-    pub async fn run_retention(&self, session: &Session) {
-        self.backend.run_retention(&session.user.id).await;
-    }
-
     pub async fn file_gate(
         &self,
         session: &Session,

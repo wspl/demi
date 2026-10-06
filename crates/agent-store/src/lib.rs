@@ -121,10 +121,6 @@ pub trait AgentTreeStore {
     ) -> LocalBoxFuture<'a, Result<Option<StoredOutput>, StoreError>>;
 }
 
-/// How many days a conversation keeps an ended command's output
-/// (`storage.md` § Retention).
-pub const COMMAND_OUTPUT_DAYS: i64 = 30;
-
 /// What a conversation holds of an ended command's output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoredOutput {
@@ -135,8 +131,6 @@ pub enum StoredOutput {
     },
     /// Why the backend could not store it.
     NotStored(String),
-    /// When the retention pass removed it.
-    Removed(Timestamp),
 }
 
 /// Why a store operation failed.
