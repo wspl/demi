@@ -4,8 +4,8 @@
 //! run in the node's shell environment for that Host, which the product
 //! makes; `yield` returns an effect for the session to apply. A tool never
 //! reaches into its session: it returns its outcome. The product also
-//! supplies the context sources, and the rules of these tools open every
-//! node's system prompt.
+//! supplies the context sources, and the rules of these tools are a layer
+//! of every node's system prompt.
 
 mod environments;
 mod frames;
@@ -40,7 +40,7 @@ pub use product::{
     ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
 };
-pub use prompt::system_prompt;
+pub use prompt::{ModelIdentity, system_prompt};
 
 /// The most characters a page of `demi shell output` takes, so that a tool
 /// result printing one is never cut.

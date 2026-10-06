@@ -37,6 +37,10 @@ const ABORT_GRACE: Duration = Duration::from_secs(5);
 const SUMMARY: &str =
     "The hosts this conversation reaches: list them, show the primary one, run a command on another.";
 
+/// The group's entry in the model's capability index (`system-prompt.md`
+/// § Capability index).
+const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and other devices the user attached to it, and runs a command on another one. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or running something where a particular device is.";
+
 const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory shells start in; the primary one marked.";
 
 const CURRENT_SUMMARY: &str = "The primary host: where shell_exec runs.";
@@ -62,6 +66,7 @@ struct ShellArgs {
 /// The `host` group, whose handlers act in `shard`.
 pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
     GroupBuilder::new("host", SUMMARY)
+        .index_entry(ENTRY)
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()

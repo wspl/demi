@@ -652,6 +652,17 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
         (served, other.closes()),
         (vec!["other-model-2".to_owned()], 0)
     );
+    // The system prompt's last line names the model each request infers
+    // with; the layers before it stay.
+    let before = &stub.requests()[0].system_prompt;
+    let after = &other.requests()[0].system_prompt;
+    let line = |model: &str, family: &str| {
+        format!("This conversation runs on {model} ({family}, {model}). If asked which model you are, answer with this.")
+    };
+    let layers = before
+        .strip_suffix(&line("test-model", "stub"))
+        .expect("the stub's request names its model last");
+    assert_eq!(*after, format!("{layers}{}", line("other-model-2", "other")));
     let checkpoint = fixture.store.checkpoint(&conversation()).unwrap();
     assert_eq!(
         (
@@ -663,7 +674,8 @@ async fn a_switch_to_another_provider_builds_its_runtime_and_closes_the_old_one_
 }
 
 #[tokio::test(flavor = "local")]
-async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_before_the_request() {
+async fn the_system_prompt_layers_its_parts_in_order_and_a_context_change_is_saved_before_the_request()
+ {
     let store = MemoryTreeStore::new();
     let stored_at_request = Rc::new(std::cell::RefCell::new(Vec::new()));
     let script = ScriptedRuntime::new([
@@ -692,13 +704,20 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
 
     assert_eq!(*stored_at_request.borrow(), ["user", "context"]);
     let request = &script.requests()[0];
-    assert!(request.system_prompt.starts_with("system prompt\n"));
-    assert!(
-        request.system_prompt.contains("greet: Greets the caller."),
-        "{}",
-        request.system_prompt
-    );
-    assert!(request.system_prompt.contains("greet hello"));
+    // Identity, harness guide, tool rules, the capability index and the
+    // model's own line, in that order.
+    let prompt = &request.system_prompt;
+    let layers = [
+        "system prompt\n\nharness guide\n\n",
+        "Shell session rules:",
+        "Capabilities:\n\nUnless a command states otherwise",
+        "greet\nGreets the caller by name.\nOperations: hello\n",
+        "This conversation runs on test-model (stub, test-model). If asked which model you are, answer with this.",
+    ];
+    let positions: Vec<Option<usize>> = layers.iter().map(|layer| prompt.find(layer)).collect();
+    assert!(positions.iter().all(Option::is_some), "{prompt}");
+    assert!(positions.is_sorted(), "{prompt}");
+    assert!(prompt.starts_with(layers[0]) && prompt.ends_with(layers[4]), "{prompt}");
     assert_eq!(request.items.len(), 2);
     let blocks = fixture
         .server
@@ -710,9 +729,11 @@ async fn the_system_prompt_has_the_command_help_and_a_context_change_is_saved_be
         .blocks;
     assert_eq!(kinds(&blocks), ["user", "context", "text", "response"]);
 
-    // The next request's hook is shown what the node saw.
+    // The next request's hook is shown what the node saw, and the node's
+    // system prompt is the same bytes.
     client.send(send("m2", "again")).await;
     client.next_until(is_idle).await;
+    assert_eq!(script.requests()[1].system_prompt, *prompt);
     let seen = fixture.product.seen.borrow();
     assert_eq!(
         *seen,

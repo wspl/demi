@@ -76,8 +76,11 @@ impl SessionRuntime for TestRuntime {
         Box::pin(async { Ok(None) })
     }
 
-    fn system_prompt(&self) -> LocalBoxFuture<'_, String> {
-        Box::pin(async { "system prompt".to_owned() })
+    fn system_prompt<'a>(
+        &'a self,
+        _model: &'a ModelSelection,
+    ) -> LocalBoxFuture<'a, Result<String, String>> {
+        Box::pin(async { Ok("system prompt".to_owned()) })
     }
 
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {

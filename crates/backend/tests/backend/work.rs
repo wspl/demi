@@ -240,11 +240,11 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
         std::fs::read_to_string(home.join("src/notes.md")).unwrap(),
         "alpha\nbeta\ngamma\n"
     );
-    // The model is offered the `demi.file` package's commands beside the
+    // The model's index lists the `demi.file` package's group beside the
     // backend's own.
     let system = created.requests[0]["system"].to_string();
     assert!(
-        system.contains("demi file create") && system.contains("demi host"),
+        system.contains("demi file\\nReads, creates") && system.contains("demi host\\nLists"),
         "{system}"
     );
 

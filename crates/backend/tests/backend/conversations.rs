@@ -822,7 +822,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let body = sent.json();
     let system = body["system"].to_string();
     assert!(
-        system.contains("You are a coding agent. Use shell session tools"),
+        system.contains("You are Demi, an agent that does work for the user"),
         "{system}"
     );
     assert!(

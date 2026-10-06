@@ -1,17 +1,86 @@
-//! Help rendering: the text `--help` prints for a group or a command
-//! (`commands.md` § Parse input and render help).
+//! Help rendering: the text `--help` prints for a group or a command, and
+//! the model's capability index (`commands.md` § Help, `system-prompt.md`
+//! § Capability index).
 
 use serde_json::Value;
 
-use crate::{Leaf, Node};
+use crate::{Group, Leaf, Node};
 
-/// The paragraph the model's command help opens with: what every command does
+/// The paragraph the capability index opens with: what every command does
 /// unless its own help says otherwise (`commands.md` § Help).
 pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --. A command marked as returning media attaches its images and videos to the result when its stdout is the job's output, and otherwise writes a single one's bytes as its stdout.";
 
+/// The paragraph after [`HELP_DEFAULTS`] that introduces the groups'
+/// entries (`system-prompt.md` § Capability index).
+pub const INDEX_OPENER: &str = "Demi's own capabilities are `demi` commands you run in the shell. Each group below says what it is for; read its `--help` before you first use it, and an operation's `--help` for its arguments.";
+
+/// The model's capability index of the command trees `roots`: the defaults
+/// and the opener, then each group that carries an index entry, sorted by
+/// its path, with its entry, its operations' names and where its details
+/// are. Nothing when there is no tree.
+pub fn render_index<B>(roots: &[Node<B>]) -> String {
+    if roots.is_empty() {
+        return String::new();
+    }
+    let mut groups = Vec::new();
+    for root in roots {
+        indexed_groups(root, &mut Vec::new(), &mut groups);
+    }
+    groups.sort_by(|(left, _, _), (right, _, _)| left.cmp(right));
+    let mut sections = vec![HELP_DEFAULTS.to_owned(), INDEX_OPENER.to_owned()];
+    for (path, entry, group) in groups {
+        let path = path.join(" ");
+        let mut operations = Vec::new();
+        for child in &group.subcommands {
+            operation_names(child, &mut Vec::new(), &mut operations);
+        }
+        sections.push(format!(
+            "{path}\n{entry}\nOperations: {}\nDetails: {path} --help; one operation: {path} <operation> --help",
+            operations.join(", ")
+        ));
+    }
+    sections.join("\n\n")
+}
+
+/// Collects each group at or below `node` that carries an index entry, with
+/// its path and its entry; `path` names the groups above `node`.
+fn indexed_groups<'a, B>(
+    node: &'a Node<B>,
+    path: &mut Vec<&'a str>,
+    groups: &mut Vec<(Vec<&'a str>, &'a str, &'a Group<B>)>,
+) {
+    let Node::Group(group) = node else {
+        return;
+    };
+    path.push(&group.name);
+    if let Some(entry) = &group.index_entry {
+        groups.push((path.clone(), entry, group));
+    }
+    for child in &group.subcommands {
+        indexed_groups(child, path, groups);
+    }
+    path.pop();
+}
+
+/// The path of each leaf at or below `node` from the group whose operations
+/// are listed, such as `content fetch`; `path` names the subgroups between.
+fn operation_names<'a, B>(node: &'a Node<B>, path: &mut Vec<&'a str>, names: &mut Vec<String>) {
+    path.push(node.name());
+    match node {
+        Node::Leaf(_) => names.push(path.join(" ")),
+        Node::Group(group) => {
+            for child in &group.subcommands {
+                operation_names(child, path, names);
+            }
+        }
+    }
+    path.pop();
+}
+
 impl<B> Node<B> {
-    /// The help of this node and, for a group, of every node below it; `path`
-    /// is the command line that names this node.
+    /// The help of this node: a group's lists its subcommands with their
+    /// summaries, and a command's gives its full usage; `path` is the
+    /// command line that names this node.
     pub fn help(&self, path: &str) -> String {
         let mut lines = vec![format!("{path}: {}", self.summary())];
         if let Some(leaf) = self.leaf() {
@@ -118,20 +187,13 @@ impl<B> Node<B> {
                 lines.push("    Returns media: images and videos, attached to the result when stdout is the job's output; otherwise a single one's bytes are stdout".into());
             }
         }
-        let mut blocks = Vec::new();
         if let Node::Group(group) = self {
             lines.extend([String::new(), "Subcommands:".into()]);
             for child in &group.subcommands {
                 lines.push(format!("  {path} {} — {}", child.name(), child.summary()));
             }
-            blocks.push(lines.join("\n"));
-            for child in &group.subcommands {
-                blocks.push(child.help(&format!("{path} {}", child.name())));
-            }
-        } else {
-            blocks.push(lines.join("\n"));
         }
-        blocks.join("\n\n")
+        lines.join("\n")
     }
 }
 

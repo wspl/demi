@@ -10,6 +10,9 @@ use demi_host_interface::{GroupBuilder, LeafBuilder};
 
 /// The group's summary.
 const SUMMARY: &str = "Operate the conversation’s persistent browser tabs on the Host running this shell. Use inspect to obtain node references; never guess them.";
+/// The group's entry in the model's capability index (`system-prompt.md`
+/// § Capability index).
+const ENTRY: &str = "Drives a real browser on the Host: opens pages, reads their text and structure, clicks, types, fills forms, uploads and downloads files, takes screenshots, and keeps tabs and sign-ins for the whole conversation. Use it when a task needs a live page: checking a site the user is building, using a site that needs JavaScript or a sign-in, or showing the user a page in their work panel. Not for fetching a static URL or an API, where curl is enough.";
 
 /// What every leaf but `screenshot` writes on success.
 const SUCCESS: &str = "readable page results; one validated JSON value with --json";
@@ -106,7 +109,7 @@ pub(crate) fn browser_group() -> GroupBuilder {
         }
     }
     entries.into_iter().fold(
-        GroupBuilder::new("browser", SUMMARY),
+        GroupBuilder::new("browser", SUMMARY).index_entry(ENTRY),
         |root, entry| match entry {
             Entry::Leaf(leaf) => root.leaf(*leaf),
             Entry::Group(name, members) => root.group(members.into_iter().fold(

@@ -20,6 +20,7 @@ use crate::{Declared, RpcError, RpcHandler, RpcInvocation, RpcPort};
 pub struct GroupBuilder {
     name: String,
     summary: String,
+    index_entry: Option<String>,
     permissions: Vec<Category>,
     children: Vec<Declared>,
 }
@@ -29,9 +30,20 @@ impl GroupBuilder {
         Self {
             name: name.into(),
             summary: summary.into(),
+            index_entry: None,
             permissions: Vec::new(),
             children: Vec::new(),
         }
+    }
+
+    /// The group's entry in the model's capability index: what it does,
+    /// when to use it and when not, in at most
+    /// [`MAX_INDEX_ENTRY`](demi_command_declarations::MAX_INDEX_ENTRY)
+    /// characters, which registration checks (`system-prompt.md`
+    /// § Capability index).
+    pub fn index_entry(mut self, entry: impl Into<String>) -> Self {
+        self.index_entry = Some(entry.into());
+        self
     }
 
     /// Declares a permission category the group's leaves may name
@@ -85,6 +97,7 @@ impl From<GroupBuilder> for Declared {
             tree: Node::Group(Group {
                 name: group.name,
                 summary: group.summary,
+                index_entry: group.index_entry,
                 permissions: group.permissions,
                 subcommands,
             }),
