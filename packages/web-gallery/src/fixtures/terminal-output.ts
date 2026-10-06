@@ -37,6 +37,8 @@ export const DEMO_RG = [
   `${green}42${reset}:    // legacy ${bold}${red}sid${reset} header`,
   `${magenta}packages/web/src/cookie.ts${reset}`,
   `${green}11${reset}:    // writes session, not ${bold}${red}sid${reset}`,
+  `${magenta}packages/web/src/locales/ar.json${reset}`,
+  `${green}7${reset}:  "${bold}${red}sid${reset}ebar": "الشريط الجانبي",`,
 ].join('\n')
 
 export const DEMO_GIT_DIFF = [

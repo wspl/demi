@@ -3,7 +3,23 @@
 /* Every scrollbar is OverlayScrollbars' (`ui/scrollbars.ts`), in the theme below. */
 @import 'overlayscrollbars/overlayscrollbars.css';
 
+/*
+ * Arabic in code. No font of the code stack has Arabic letters, so the browser
+ * borrows them from a fixed-pitch font, on macOS Courier New: it draws each
+ * letter one cell wide and stretches every join across the cell, so a word
+ * reads as letters spaced apart. This face, first in the stack and only for
+ * Arabic, gives Arabic a proportional font that joins it as a sentence does;
+ * every other character keeps the code font. A machine without these fonts
+ * skips the face.
+ */
+@font-face {
+  font-family: "Code Arabic";
+  src: local("GeezaPro"), local("NotoSansArabic-Regular");
+  unicode-range: U+0600-06FF, U+0750-077F, U+0870-08FF, U+FB50-FDFF, U+FE70-FEFF;
+}
+
 @theme {
+  --font-mono: "Code Arabic", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --color-surface-base: var(--surface-base);
   --color-surface: var(--surface);
   --color-surface-editor: var(--surface-editor);
@@ -905,7 +921,7 @@ svg.lucide {
 }
 
 .markdown-body code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.85em;
   background: color-mix(in srgb, var(--color-overlay) 4%, transparent);
   padding: 0.15em 0.35em;
@@ -1303,7 +1319,7 @@ svg.lucide {
 }
 
 .markdown-document kbd {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-mono);
   font-size: 0.8em;
   padding: 0.1em 0.4em;
   border: 1px solid color-mix(in srgb, var(--color-overlay) 18%, transparent);

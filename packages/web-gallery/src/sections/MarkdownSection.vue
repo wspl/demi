@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
-import { alignedMarkdown, dollarMarkdown, overlongMarkdown, previewMarkdown } from '../fixtures/previews'
+import { alignedMarkdown, dollarMarkdown, overlongMarkdown, previewMarkdown, scriptsMarkdown } from '../fixtures/previews'
 </script>
 
 <template>
@@ -11,6 +11,9 @@ import { alignedMarkdown, dollarMarkdown, overlongMarkdown, previewMarkdown } fr
     <!-- Prices and math in one reply: a dollar sign before an amount stays text, and math
          renders on its own and flush against Chinese text (`file-previews.md` § Markdown). -->
     <StreamedMarkdown class="mt-8" :content="dollarMarkdown" />
+    <!-- Page text quoted in every script: Arabic joins its letters and runs right to left
+         in the code block and inline code as it does in a sentence. -->
+    <StreamedMarkdown class="mt-8" :content="scriptsMarkdown" />
     <!-- Header cells start where their column's text starts; a column the delimiter row
          aligns (`--:` to the end, `:-:` to the center) aligns its header with its cells. -->
     <StreamedMarkdown class="mt-8" :content="alignedMarkdown" />

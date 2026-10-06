@@ -166,15 +166,20 @@ export const shellTool = toolCall({
   toolName: 'shell_exec',
   status: 'completed',
   input: JSON.stringify({
-    script: 'rg -n "sid" packages/web/src/auth.test.ts',
-    description: 'Find the old cookie name in the login test',
+    script: 'rg -n "sid" packages/web/src',
+    description: 'Find the old cookie name',
   }),
   view: shellView({
     commandId: 'cmd-find',
+    // The Arabic match joins its letters in the output, as it does in a sentence.
     chunks: [
       {
         stream: 'stdout',
-        text: 'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")\n'
+        text: [
+          'packages/web/src/auth.test.ts:18:    expect(cookie.name).toBe("sid")',
+          'packages/web/src/locales/ar.json:7:  "sidebar": "الشريط الجانبي",',
+          '',
+        ].join('\n'),
       },
     ],
   }),

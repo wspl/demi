@@ -23,7 +23,10 @@ function buildEditorTheme(p: CodeThemePalette, isDark: boolean) {
       padding: '12px 0 0',
     },
     '.cm-cursorLayer': { display: 'none' },
+    // The app's code font (`styles/base.css`) in place of CodeMirror's bare
+    // `monospace`, which leaves Arabic to a font that does not join it.
     '.cm-scroller': {
+      fontFamily: 'var(--font-mono)',
       fontSize: '13px',
       lineHeight: '20px',
       boxSizing: 'border-box',
