@@ -495,7 +495,8 @@ the service may need its executable, and the invocation may ask for other
 artifacts: the runner asks the backend for their locations as it does for a
 job's command ([Install artifacts](native-runtime.md#install-artifacts)),
 naming the stream instead of a job, and the backend answers only while the
-stream is open. The input pipe ending ends the invocation's
+stream is open. A [direct channel](direct-channel.md)'s stream, which the
+runner reports with `direct_stream`, asks the same way. The input pipe ending ends the invocation's
 input; the invocation's completion ends the output pipe, which is how the
 backend learns the stream is over; a pipe failing or the connection to the
 backend closing cancels the invocation. The runner reports each pipe end with `pipe_done` like any other
