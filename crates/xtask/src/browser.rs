@@ -1,4 +1,4 @@
-//! `cargo xtask browser-release <version>` (`builds-and-releases.md`
+//! `xtask browser-release <version>` (`builds-and-releases.md`
 //! § Chrome for Testing): pins a Chrome for Testing version. It reads the
 //! version's official download metadata, downloads the archive of each
 //! platform Demi supports through `artifact`, measures it, checks that it

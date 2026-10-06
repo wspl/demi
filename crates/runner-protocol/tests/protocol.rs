@@ -445,7 +445,7 @@ fn a_kept_output_decodes_from_its_recorded_bytes() {
     assert_eq!(encoded, bytes);
 }
 
-/// A release record as `cargo xtask native package` writes it, compacted,
+/// A release record as `xtask native package` writes it, compacted,
 /// for the wire this build speaks.
 fn record() -> String {
     format!(

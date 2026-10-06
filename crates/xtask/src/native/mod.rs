@@ -1,4 +1,4 @@
-//! `cargo xtask native` (`builds-and-releases.md`): builds the workspace's
+//! `xtask native` (`builds-and-releases.md`): builds the workspace's
 //! executables for their targets with this machine's toolchain and cross
 //! tools, and packages the built executables into releases.
 
@@ -68,7 +68,7 @@ pub enum Error {
         target: &'static str,
         status: std::process::ExitStatus,
     },
-    #[error("no build of {} for {target} at {}: run cargo xtask native build first", executable.name(), path.display())]
+    #[error("no build of {} for {target} at {}: run bun xtask native build first", executable.name(), path.display())]
     NotBuilt {
         executable: Executable,
         target: &'static str,

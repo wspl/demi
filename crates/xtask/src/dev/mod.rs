@@ -1,4 +1,4 @@
-//! `cargo xtask dev` (`backend.md` § One-command development backend): the
+//! `xtask dev` (`backend.md` § One-command development backend): the
 //! backend executable on a temporary data directory, with the backend
 //! scenarios' scripted machine manager, whose runners run on this machine as
 //! the Cloud, set up as the web app contract suite starts the backend
@@ -12,7 +12,7 @@ mod provider;
 
 use std::os::unix::ffi::OsStrExt as _;
 use std::path::{Path, PathBuf};
-use std::process::{ExitStatus, Stdio};
+use std::process::Stdio;
 use std::time::Duration;
 
 use demi_command_protocol::testing::built_program;
@@ -60,8 +60,6 @@ pub struct Options {
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[error("the workspace build failed: {0}")]
-    Build(ExitStatus),
     #[error("the machine manager {0}")]
     Manager(String),
     #[error("the backend {0}")]
@@ -81,7 +79,7 @@ pub enum Error {
 }
 
 /// What the run seeds through the web API, read from the environment before
-/// anything is built, so a partial setting stops the command at once.
+/// anything starts, so a partial setting stops the command at once.
 struct Seed {
     account: Account,
     provider: Option<DevProvider>,
@@ -96,29 +94,7 @@ pub fn run(options: Options) -> Result<(), Error> {
         provider: DevProvider::read(var).map_err(Error::DevProvider)?,
         echo: echo::enabled(var).map_err(Error::Seed)?,
     };
-    build()?;
     crate::interruptible(|cancel| develop(options, seed, cancel))?
-}
-
-/// Builds the one Cargo selection, which holds the backend, the scripted
-/// manager and the runner; this program is rebuilt in place, which a
-/// running program survives on Unix.
-fn build() -> Result<(), Error> {
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let status = std::process::Command::new(cargo)
-        .args([
-            "build",
-            "--workspace",
-            "--all-targets",
-            "--features",
-            "demi-runner/test-fixtures",
-        ])
-        .current_dir(crate::repository())
-        .status()?;
-    if !status.success() {
-        return Err(Error::Build(status));
-    }
-    Ok(())
 }
 
 /// Runs the development backend until `cancel`, then removes its data
