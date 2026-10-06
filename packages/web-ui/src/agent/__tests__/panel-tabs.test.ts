@@ -2,6 +2,7 @@ import { expect, test } from 'bun:test'
 import { defineComponent } from 'vue'
 import { z } from 'zod'
 import {
+  keptContents,
   openIntent,
   pinnedData,
   removeTabs,
@@ -89,4 +90,17 @@ test('an intent a kind that is not pinned opens gets a new tab of its own, selec
   const opened = openIntent({}, pages, () => true, { intent: 'file', payload: { path: '/a' } })
   const tab = opened!.created!
   expect(opened).toEqual({ selection: tab.id, pinned: {}, created: { id: tab.id, kind: 'page', data: 'null > /a' } })
+})
+
+test('a content once shown stays until its tab leaves the panel', () => {
+  const steps: Array<[string, readonly string[], string | null, readonly string[], readonly string[]]> = [
+    ['the first selection is kept', [], 'change', ['change', 'file', 'a'], ['change']],
+    ['another selection joins it', ['change'], 'a', ['change', 'file', 'a'], ['change', 'a']],
+    ['selecting a kept one again changes nothing', ['change', 'a'], 'change', ['change', 'file', 'a'], ['change', 'a']],
+    ['a closed tab leaves', ['change', 'a'], 'change', ['change', 'file'], ['change']],
+    ['nothing selected keeps what stays', ['change', 'a'], null, ['change', 'a'], ['change', 'a']],
+  ]
+  for (const [step, kept, selection, present, next] of steps) {
+    expect({ step, kept: keptContents(kept, selection, present) }).toEqual({ step, kept: next })
+  }
 })

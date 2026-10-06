@@ -18,7 +18,7 @@ use crate::driver::{
         DialogInspectResult, DialogOutcome, DialogResult, DownloadResult, EvalResult, FindResult,
         HistoryResult, InfoResult, InspectResult, InstallResult, LogsResult, MouseButton, NavigationResult,
         NodeValue, OpenResult, ProbeResult, ReadResult, ResolvedElement, ScreenshotResult,
-        SelectedOption, TabsResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
+        SelectedOption, ShowResult, TabsResult, UploadResult, ViewportResult, WaitResult, WebmcpCallResult,
         WebmcpListResult,
     },
 };
@@ -27,7 +27,11 @@ use crate::driver::{
 /// shortened to fit.
 pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<String> {
     let text = match operation {
-        BrowserOperation::Open(_) => open(&typed(value)?),
+        BrowserOperation::Open(input) => open(&typed(value)?, input.show == Some(true)),
+        BrowserOperation::Show(_) => {
+            let result: ShowResult = typed(value)?;
+            format!("Shown {} to the user.\n", result.tab)
+        }
         BrowserOperation::Tabs(_) => tabs(&typed(value)?),
         BrowserOperation::Info(_) => info(&typed(value)?),
         BrowserOperation::Goto(_) | BrowserOperation::Back(_) | BrowserOperation::Forward(_) => {
@@ -210,10 +214,13 @@ fn truncated(text: &mut String, truncated: bool) {
     }
 }
 
-fn open(result: &OpenResult) -> String {
+fn open(result: &OpenResult, shown: bool) -> String {
     let mut text = format!("Tab: {}\nURL: {}\n", result.tab, plain(&result.url));
     if let Some(title) = &result.title {
         text.push_str(&format!("Title: {}\n", plain(title)));
+    }
+    if shown {
+        text.push_str("Shown to the user.\n");
     }
     text
 }
@@ -998,11 +1005,23 @@ mod tests {
                 ],
             ),
             (
+                "open",
+                json!({"url": "http://localhost:3000/login", "show": true}),
+                json!({"tab": "t3", "url": "http://localhost:3000/login", "title": "Sign in"}),
+                vec!["Tab: t3\n", "Title: Sign in\nShown to the user.\n"],
+            ),
+            (
+                "show",
+                tab.clone(),
+                json!({"tab": "t1"}),
+                vec!["Shown t1 to the user.\n"],
+            ),
+            (
                 "tabs",
                 json!({}),
                 json!({"tabs": [
-                    {"id": "t1", "title": "Sign in", "url": "http://localhost:3000/login", "createdBy": {"kind": "agent", "number": 0}, "loading": false},
-                    {"id": "t2", "title": "Admin", "url": "http://localhost:3000/admin", "createdBy": {"kind": "page", "opener": "t1"}, "loading": true},
+                    {"id": "t1", "title": "Sign in", "url": "http://localhost:3000/login", "createdBy": {"kind": "agent", "number": 0}, "loading": false, "shows": 0},
+                    {"id": "t2", "title": "Admin", "url": "http://localhost:3000/admin", "createdBy": {"kind": "page", "opener": "t1"}, "loading": true, "shows": 1},
                 ], "truncated": false}),
                 vec![
                     "Tab  Title    Created by  URL\n",

@@ -1,39 +1,72 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import type { LiveTab } from '../generated/plugin'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
 import { CanvasPictures } from './pictures'
-import type { LiveSession } from './session'
+import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
-import { keyMessage, localKey, composingKey, pointerMessage, wheelMessage } from './input'
-import { deviceSnap, panelSize, placePicture, tabPoint, type PanelSize } from './view'
+import { ClickCount, keyMessage, localKey, composingKey, pointerMessage, wheelMessage } from './input'
+import { cursorAt, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
  * A tab of the conversation's browser, live (`live-view.md`): its
  * pictures on a canvas, the viewer's input on its way to the page, and the
- * page's own native controls and dialogs over it.
+ * page's own native controls and dialogs over it. The view stays mounted
+ * while its content is hidden and while no session is open, so its last
+ * picture shows at once when the tab is shown again; the page's panel
+ * session alone decides which tab a session watches.
  */
-const props = defineProps<{ session: LiveSession; tab: LiveTab }>()
+const props = defineProps<{
+  /** The page's view, while one is open. */
+  session: LiveSession | null
+  /** The tab as a view last reported it. */
+  tab: LiveTab
+  /** Whether the content is shown: only a shown view takes the session's pictures. */
+  shown: boolean
+  /** The panel's size, as its content measured it. */
+  panel: PanelSize
+  /** What moves the picture onto the screen's pixel grid. */
+  snap: { x: number; y: number }
+}>()
 
 const frame = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
 /** The viewer's keys, input method and clipboard go through this field. */
 const bridge = ref<HTMLInputElement | null>(null)
-const panel = ref<PanelSize>({ width: 1, height: 1 })
-const state = props.session.state
-/** What moves the picture onto the screen's pixel grid, from where the panel stands. */
-const snap = ref({ x: 0, y: 0 })
-const placement = computed(() => {
-  const placed = placePicture(props.tab.viewport, panel.value)
-  return { ...placed, left: placed.left + snap.value.x, top: placed.top + snap.value.y }
+/**
+ * The generation of the picture the canvas shows: it places the picture and
+ * maps input on it, never a viewport the tab list reports for a picture that
+ * has not arrived (`live-view.md` § Modes). Before the first, the tab's.
+ */
+const picture = shallowRef<LiveStream | null>(null)
+const generation = computed<LiveStream>(() => picture.value ?? {
+  tab: props.tab.id,
+  generation: 0,
+  width: props.tab.viewport.width * props.tab.viewport.devicePixelRatio,
+  height: props.tab.viewport.height * props.tab.viewport.devicePixelRatio,
+  viewport: props.tab.viewport,
+  scale: 1,
 })
+const placement = computed(() => {
+  const placed = placePicture(generation.value, props.panel)
+  return { ...placed, left: placed.left + props.snap.x, top: placed.top + props.snap.y }
+})
+const state = computed(() => props.session?.state ?? null)
 /** Nothing arrives, or the view is connecting again after it ended: the last picture stays under a quiet note. */
-const stalled = computed(() => state.connection === 'stalled' || (state.connection === 'opening' && state.ended !== null))
+const stalled = computed(() => {
+  const connection = state.value?.connection
+  return connection === 'stalled' || (connection === 'opening' && state.value?.ended !== null)
+})
+/** The pointer in the tab, while it is over the picture. */
+const pointer = shallowRef<{ x: number; y: number } | null>(null)
+/** The cursor the page shows under the pointer, resolved here from the page's cursor regions. */
 const cursor = computed(() => {
-  // A page can name a cursor this web browser has no rule for, or an image.
-  const name = state.cursor.cursor
-  return /^[a-z-]+$/.test(name) && name !== 'auto' ? name : 'default'
+  const at = pointer.value
+  if (!at || !state.value) {
+    return 'default'
+  }
+  return cursorAt(at, state.value.regions, state.value.cursor.cursor)
 })
 
 /**
@@ -44,45 +77,22 @@ const cursor = computed(() => {
 const painted = ref(false)
 let pictures: CanvasPictures | null = null
 let ticking: ReturnType<typeof setInterval> | null = null
-let observer: ResizeObserver | null = null
-let density: MediaQueryList | null = null
 let move: { x: number; y: number; event: PointerEvent } | null = null
 let moving: ReturnType<typeof setInterval> | null = null
 let composing = false
 let committed: string | undefined
-
-function report(): void {
-  const bounds = frame.value?.getBoundingClientRect()
-  if (!bounds || bounds.width < 1 || bounds.height < 1) {
-    return
-  }
-  panel.value = panelSize(bounds.width, bounds.height)
-  snap.value = { x: deviceSnap(bounds.left, devicePixelRatio), y: deviceSnap(bounds.top, devicePixelRatio) }
-  props.session.panel(
-    panel.value,
-    devicePixelRatio,
-    panelSize(screen.width, screen.height),
-  )
-}
-
-/** The screen's density can change when the window moves to another display. */
-function watchDensity(): void {
-  density?.removeEventListener('change', watchDensity)
-  density = matchMedia(`(resolution: ${devicePixelRatio}dppx)`)
-  density.addEventListener('change', watchDensity)
-  report()
-}
+const clicks = new ClickCount()
 
 function point(event: { clientX: number; clientY: number }): { x: number; y: number } {
   const bounds = frame.value?.getBoundingClientRect()
   const inside = { x: event.clientX - (bounds?.left ?? 0), y: event.clientY - (bounds?.top ?? 0) }
-  return tabPoint(inside, props.tab.viewport, placement.value)
+  return tabPoint(inside, generation.value.viewport, placement.value)
 }
 
 function flushMove(): void {
   if (move) {
     // The event itself: a DOM event's fields are getters on its prototype, so a spread copy has none of them.
-    props.session.input(pointerMessage(props.tab.id, 'move', move, move.event))
+    props.session?.input(pointerMessage(props.tab.id, 'move', move, move.event))
     move = null
   }
 }
@@ -92,21 +102,24 @@ function pointerDown(event: PointerEvent): void {
   const bounds = frame.value?.getBoundingClientRect()
   // The field follows the pointer, so an input method composes where the
   // viewer is typing, and the viewer's own paste reaches this page first.
+  // It takes no pointer events, so every click, a double click's second
+  // included, reaches the picture.
   if (bridge.value && bounds) {
     bridge.value.style.left = `${Math.max(0, Math.min(bounds.width - 2, event.clientX - bounds.left))}px`
-    bridge.value.style.top = `${Math.max(0, Math.min(bounds.height - 22, event.clientY - bounds.top))}px`
+    bridge.value.style.top = `${Math.max(0, Math.min(bounds.height - 2, event.clientY - bounds.top))}px`
     bridge.value.focus({ preventScroll: true })
   }
   canvas.value?.setPointerCapture(event.pointerId)
   flushMove()
-  props.session.input(pointerMessage(props.tab.id, 'down', point(event), event))
+  props.session?.input(pointerMessage(props.tab.id, 'down', point(event), event, clicks.press(event)))
 }
 
 function pointerMove(event: PointerEvent): void {
   const at = point(event)
+  pointer.value = at
   if (event.buttons) {
     move = null
-    props.session.input(pointerMessage(props.tab.id, 'move', at, event))
+    props.session?.input(pointerMessage(props.tab.id, 'move', at, event))
     return
   }
   // Hover moves are worth at most one message a frame.
@@ -118,13 +131,13 @@ function pointerUp(event: PointerEvent): void {
   if (canvas.value?.hasPointerCapture(event.pointerId)) {
     canvas.value.releasePointerCapture(event.pointerId)
   }
-  props.session.input(pointerMessage(props.tab.id, 'up', point(event), event))
+  props.session?.input(pointerMessage(props.tab.id, 'up', point(event), event, clicks.current))
 }
 
 function wheel(event: WheelEvent): void {
   event.preventDefault()
   flushMove()
-  props.session.input(wheelMessage(props.tab.id, point(event), event, props.tab.viewport.height))
+  props.session?.input(wheelMessage(props.tab.id, point(event), event, generation.value.viewport.height))
 }
 
 function key(event: KeyboardEvent, action: 'down' | 'up'): void {
@@ -143,7 +156,7 @@ function key(event: KeyboardEvent, action: 'down' | 'up'): void {
       viewerClipboard.expect()
     }
   }
-  props.session.input(keyMessage(props.tab.id, action, event))
+  props.session?.input(keyMessage(props.tab.id, action, event))
   event.preventDefault()
 }
 
@@ -160,7 +173,7 @@ function typed(event: Event): void {
     return
   }
   if (text) {
-    props.session.input({ type: 'text', tab: props.tab.id, text })
+    props.session?.input({ type: 'text', tab: props.tab.id, text })
   }
 }
 
@@ -169,7 +182,7 @@ function pasted(event: ClipboardEvent): void {
   const text = event.clipboardData?.getData('text/plain') ?? ''
   const html = event.clipboardData?.getData('text/html') ?? ''
   if (text || html) {
-    props.session.input({
+    props.session?.input({
       type: 'paste',
       tab: props.tab.id,
       text: text.slice(0, 1_000_000),
@@ -187,11 +200,11 @@ function composition(event: CompositionEvent, phase: 'start' | 'update' | 'end')
     return
   }
   if (phase === 'update') {
-    props.session.input({ type: 'composition', tab: props.tab.id, text: event.data })
+    props.session?.input({ type: 'composition', tab: props.tab.id, text: event.data })
     return
   }
   committed = event.data
-  props.session.input(
+  props.session?.input(
     event.data
       ? { type: 'text', tab: props.tab.id, text: event.data }
       : { type: 'composition', tab: props.tab.id, text: '' },
@@ -208,33 +221,44 @@ function release(): void {
   if (bridge.value) {
     bridge.value.value = ''
   }
-  props.session.release()
+  props.session?.release()
+}
+
+/** A shown view takes the session's pictures; a hidden one keeps its last picture. */
+function takePictures(): void {
+  if (pictures && props.session && props.shown) {
+    props.session.attach(pictures)
+  }
 }
 
 onMounted(() => {
   if (canvas.value) {
     pictures = new CanvasPictures(canvas.value, {
-      shown: (generation, sequence, queue) => {
+      shown: (stream, sequence, queue) => {
         painted.value = true
-        props.session.showed(generation, sequence, queue)
+        picture.value = stream
+        props.session?.showed(stream.generation, sequence, queue)
       },
-      lost: () => props.session.resync(),
+      lost: () => props.session?.resync(),
     })
-    props.session.attach(pictures)
   }
-  observer = new ResizeObserver(() => report())
-  if (frame.value) {
-    observer.observe(frame.value)
-  }
-  watchDensity()
-  ticking = setInterval(() => props.session.tick(), 250)
+  takePictures()
+  ticking = setInterval(() => props.session?.tick(), 250)
   moving = setInterval(flushMove, 16)
   addEventListener('blur', release)
 })
 
+watch([() => props.session, () => props.shown], takePictures)
+
+// Hidden, the view lets go of what the viewer holds in the page.
+watch(() => props.shown, (shown) => {
+  if (!shown) {
+    release()
+    pointer.value = null
+  }
+})
+
 onBeforeUnmount(() => {
-  observer?.disconnect()
-  density?.removeEventListener('change', watchDensity)
   removeEventListener('blur', release)
   if (ticking !== null) {
     clearInterval(ticking)
@@ -244,41 +268,40 @@ onBeforeUnmount(() => {
   }
   pictures?.stop()
   release()
-  // Nothing watches this tab any more, so the Host captures nothing.
-  props.session.watch(null)
 })
-
-// The tab the view watches decides what the module captures.
-watch(() => props.tab.id, (id) => {
-  release()
-  props.session.watch(id)
-  report()
-}, { immediate: true })
 </script>
 
 <template>
-  <div ref="frame" class="relative min-h-0 flex-1 overflow-hidden bg-surface-base">
+  <!-- The page's cursor shows on the frame, and every element over the picture inherits it. -->
+  <!-- A Web picture's uncovered part is white, as a local window's while it resizes; a phone's sides are the panel's. -->
+  <div
+    ref="frame"
+    class="relative min-h-0 flex-1 overflow-hidden"
+    :class="generation.viewport.mode === 'web' ? 'bg-white' : 'bg-surface-base'"
+    :style="{ cursor }"
+  >
     <canvas
       ref="canvas"
-      class="absolute origin-top-left object-contain"
+      class="absolute origin-top-left"
       :style="{
+        cursor: 'inherit',
         left: `${placement.left}px`,
         top: `${placement.top}px`,
         width: `${placement.width}px`,
         height: `${placement.height}px`,
-        cursor,
       }"
       @pointerdown="pointerDown"
       @pointermove="pointerMove"
       @pointerup="pointerUp"
       @pointercancel="release"
+      @pointerleave="pointer = null"
       @wheel.prevent="wheel"
       @contextmenu.prevent
     />
     <div v-if="!painted" class="pointer-events-none absolute inset-0 bg-white" />
     <input
       ref="bridge"
-      class="absolute h-[2px] w-[2px] border-0 bg-transparent p-0 text-transparent caret-transparent outline-none"
+      class="pointer-events-none absolute h-[2px] w-[2px] border-0 bg-transparent p-0 text-transparent caret-transparent outline-none"
       aria-label="Browser input"
       autocomplete="off"
       autocorrect="off"
@@ -293,10 +316,10 @@ watch(() => props.tab.id, (id) => {
       @blur="release"
     >
     <LiveControls
+      v-if="session"
       :session="session"
       :controls="session.state.controls"
       :placement="placement"
-      :viewport="tab.viewport"
     />
     <div
       v-if="stalled"
@@ -307,7 +330,7 @@ watch(() => props.tab.id, (id) => {
       </span>
     </div>
     <LiveDialog
-      v-if="session.state.dialog"
+      v-if="session?.state.dialog"
       :dialog="session.state.dialog.dialog"
       @answer="session.answerDialog($event.accept, $event.text)"
     />
