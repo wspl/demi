@@ -1062,8 +1062,9 @@ as it does any artifact ([Runner updates](runner.md#runner-updates)).
 decompressed as it streams, for the installers, which know only the backend
 and have no zstd. Both stream from S3 as from the data directory.
 
-A backend sources the runner executables of its release for the targets of
-the paired devices it serves as soon as it starts, in the background, so an
+A backend sources the runner executables of its release for the systems of
+the paired devices it serves, both architectures of each, as soon as it
+starts, in the background, so an
 update never waits on the release's origin: a runner that reconnects after
 the server's upgrade finds its executable already in the store.
 
