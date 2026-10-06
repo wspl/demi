@@ -55,7 +55,7 @@ other two kinds of release use it differently:
 - A command package's descriptor records it as the package version. A published
   version is immutable, so a release with different artifacts needs a new
   workspace version. Only the release workflow names a package with the
-  workspace version itself, through `cargo xtask server-release --publish`
+  workspace version itself, through `bun xtask server-release --publish`
   ([Release workflow](builds-and-releases.md#release-workflow)). Any other
   packaging gives it a development version, the workspace version with build
   metadata naming its artifacts: `0.1.3+dev.<digest>`, where the digest is

@@ -71,7 +71,7 @@ layout and interaction; these documents do not repeat it.
 - [Roadmap](delivery/roadmap.md): dependency order, completion conditions, required evidence and open deployment decisions.
 - [Scenarios](delivery/scenarios.md): backend scenario acceptance, the web app contract suite and real-machine acceptance.
 - [Testing](delivery/testing.md): what a test protects, its level, how it proves itself, time and stability, cost, resources and coverage.
-- [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `cargo xtask` packaging, the server release, the release workflow on GitHub's hosted runners, the Chrome for Testing pin, targets per executable and Cloud image refresh.
+- [Builds and releases](delivery/builds-and-releases.md): the toolchain, cross builds, `bun xtask` packaging, the server release, the release workflow on GitHub's hosted runners, the Chrome for Testing pin, targets per executable and Cloud image refresh.
 - [Installation](delivery/installation.md): installing a server with one command, its parameters for people and agents, the HTTPS shapes, the steps and the distributions.
 - [Upgrades](delivery/upgrades.md): one release on a server, what follows it and how, what crosses releases, the upgrade, its interruptions and rollback, and `demi-server`.
 - [Package versioning](delivery/package-versioning.md): the npm release set and changesets, and how the Rust executables are versioned.

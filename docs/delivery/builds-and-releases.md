@@ -1,7 +1,7 @@
 # Builds and releases
 
 The backend, the machine manager, the runner, and the command programs are
-Rust executables built from one Cargo workspace. `cargo xtask` runs the
+Rust executables built from one Cargo workspace. `bun xtask` runs the
 builds, packages the releases, assembles a server release, pins the Chrome
 for Testing release, and assembles the Cloud image. The same commands run in
 two places:
@@ -24,13 +24,13 @@ and accepts the change on both Hosts. A published release carries every
 target.
 
 ```text
-cargo xtask native build     compiles each executable for its targets
+bun xtask native build     compiles each executable for its targets
         |                    into the Cargo target directory
         v
-cargo xtask native package   one release directory per executable
+bun xtask native package   one release directory per executable
         |
         v
-cargo xtask server-release   one server release for a Linux target: the
+bun xtask server-release   one server release for a Linux target: the
         |                    backend, the manager, the web app and the
         |                    packages' manifests, and the release's files,
         |                    each program for each target
@@ -131,7 +131,7 @@ cargo install --locked cargo-zigbuild --version <cargo-zigbuild version>
 cargo install --locked cargo-xwin --version <cargo-xwin version>
 ```
 
-Homebrew does not link these formulae. `cargo xtask` takes Zig from
+Homebrew does not link these formulae. `bun xtask` takes Zig from
 `CARGO_ZIGBUILD_ZIG_PATH` and the LLVM tools from `PATH`:
 
 ```sh
@@ -139,16 +139,20 @@ export CARGO_ZIGBUILD_ZIG_PATH="$(brew --prefix zig@<zig version>)/bin/zig"
 export PATH="$(brew --prefix llvm)/bin:$(brew --prefix lld)/bin:$PATH"
 ```
 
-`cargo xtask` is an alias, in the repository's `.cargo/config.toml`, for
-`cargo run --package xtask --`. It selects one crate, so it builds `xtask` with
-a copy of the dependencies of its own ([Validation](#validation)); after a
-build of the whole workspace, `target/debug/xtask` runs the same commands
-without that copy, as `bun run contracts` does.
+`bun xtask <command>` runs `xtask` on a developer's machine: it builds the
+one Cargo selection ([Validation](#validation)), which holds `xtask`, and
+runs `target/debug/xtask` with the arguments given. An `xtask` built on its own,
+as `cargo run --package xtask` builds it, would resolve the features of every
+crate it shares with the workspace differently and keep a second copy of the
+backend and its dependencies beside the first, built again whenever either
+changes; so the repository has no Cargo alias for it. The release workflow is
+the one exception: on its own hosted runners it builds `xtask` alone without
+its developer features ([Release workflow](#release-workflow)).
 
-`cargo xtask` pins the remaining inputs: the Apple SDK version (macOS 26.5),
+`xtask` pins the remaining inputs: the Apple SDK version (macOS 26.5),
 the Windows SDK and C runtime versions, and the minimum macOS version (13.0).
 The Apple targets need an Apple SDK directory, passed with `--sdk` or
-`SDKROOT`; `cargo xtask` checks its SDK metadata against the pin before
+`SDKROOT`; `bun xtask` checks its SDK metadata against the pin before
 building. The pinned SDK is the one the Command Line Tools and Xcode 26.6
 install, so a developer's Mac and the release workflow's macOS runner build
 against the same SDK; a runner image whose SDK differs fails the check rather
@@ -208,11 +212,11 @@ release workflow runs the same command on each platform's runner, naming that
 platform's targets ([Release workflow](#release-workflow)).
 
 ```sh
-cargo xtask native build \
+bun xtask native build \
   --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk
 ```
 
-Without `--package` or `--target` options, `cargo xtask native build` builds
+Without `--package` or `--target` options, `bun xtask native build` builds
 the runner and the command programs for all six targets. Repeated
 `--package <crate>` options name the executables to build, including
 `demi-backend` and `demi-machine-manager`. Repeated `--target <triple>` options name
@@ -227,7 +231,7 @@ release of the same targets (see [Packaging](#packaging)). Building six targets
 to try a change on one machine is wasted time:
 
 ```sh
-cargo xtask native build \
+bun xtask native build \
   --sdk /Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk \
   --target aarch64-apple-darwin --target aarch64-unknown-linux-musl
 ```
@@ -246,28 +250,28 @@ directory, so prefer the machine's own tools. The container's target path is
 
 ```sh
 docker build -t demi-native-tools -f scripts/native/Dockerfile .
-cargo xtask native build \
+bun xtask native build \
   --container demi-native-tools --sdk /path/to/MacOSX26.5.sdk
 ```
 
 ## Packaging
 
-`cargo xtask native package` turns built executables into a release directory.
+`bun xtask native package` turns built executables into a release directory.
 It takes the same repeated `--target` options as the build and packages exactly
 those targets; without them it requires every target of the executable.
 `--artifacts` names the Cargo target directory the build wrote, with the
 build's default.
 
 ```sh
-cargo xtask native package --package demi-file \
+bun xtask native package --package demi-file \
   --artifacts .cache/native-target --output .cache/releases/demi-file-<version>
-cargo xtask native package --package demi-browser \
+bun xtask native package --package demi-browser \
   --artifacts .cache/native-target --output .cache/releases/demi-browser-<version>
-cargo xtask native package --package demi-claude-code \
+bun xtask native package --package demi-claude-code \
   --artifacts .cache/native-target --output .cache/releases/demi-claude-<version>
-cargo xtask native package --package demi-runner \
+bun xtask native package --package demi-runner \
   --artifacts .cache/native-target --output .cache/releases/runners
-cargo xtask native package --package demi-backend \
+bun xtask native package --package demi-backend \
   --artifacts .cache/native-target --output .cache/releases/demi-backend-<version>
 ```
 
@@ -348,7 +352,7 @@ command artifacts into its object store, and runners download them from there
 ([Backend deployment configuration](../execution/native-runtime.md#backend-deployment-configuration)).
 
 The Cloud image embeds a Linux runner release and the command package releases.
-`cargo xtask cloud-image package` assembles the image on a Linux builder of the
+`bun xtask cloud-image package` assembles the image on a Linux builder of the
 image's architecture: [Cloud images](../cloud/images.md) defines the image, and
 the [guest image build](../../cloud-guest-image/README.md) gives the steps.
 
@@ -399,11 +403,11 @@ command artifacts it embeds are the ones the backend's catalog selects, and a
 Cloud starts them from the image instead of downloading them
 ([Preinstalled artifacts](../execution/native-runtime.md#preinstalled-artifacts)).
 
-`cargo xtask server-release` assembles a release from the executables
-`cargo xtask native build` wrote, packaging them as the packaging above does:
+`bun xtask server-release` assembles a release from the executables
+`bun xtask native build` wrote, packaging them as the packaging above does:
 
 ```sh
-cargo xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.1.3-files \
+bun xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.1.3-files \
   --server x86_64-unknown-linux-musl --web packages/web/dist
 ```
 
@@ -481,7 +485,7 @@ No job compiles what another already compiled. A job of command programs
 also packages them for its target, which compresses them; the server release
 job reuses those compressed copies instead of compressing every target's
 programs itself. The Linux runner jobs keep the `xtask` they built for
-running `cargo xtask native build`, and the server release and image jobs of
+running `bun xtask native build`, and the server release and image jobs of
 the same architecture run that `xtask` instead of compiling their own. The
 `xtask` a CI job builds leaves out the commands that only a developer runs,
 `xtask contracts` and `xtask dev`, and with them the backend they compile.
@@ -501,8 +505,8 @@ compiles nothing; its package downloads take half a minute and are not
 cached.
 
 Each step is a command of the repository that a developer runs too, a
-`cargo xtask` command, `bun run build` or the image build script; only
-`cargo xtask server-release --publish` differs, naming the command packages
+`bun xtask` command, `bun run build` or the image build script; only
+`bun xtask server-release --publish` differs, naming the command packages
 with the workspace version itself. So the workflow only orders them and
 carries files between jobs, as workflow artifacts kept for one day.
 
@@ -540,10 +544,10 @@ make the system ask before running them.
 Each Demi release pins one Chrome for Testing version, which `demi-browser`
 installs when the agent runs `demi browser install`
 ([Browser distribution](../browser/browser.md#browser-distribution)).
-`cargo xtask browser-release` pins the version it is given:
+`bun xtask browser-release` pins the version it is given:
 
 ```sh
-cargo xtask browser-release 153.0.8010.36
+bun xtask browser-release 153.0.8010.36
 ```
 
 It reads that version's official download metadata and, for each platform
