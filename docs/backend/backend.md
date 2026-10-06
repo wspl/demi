@@ -720,7 +720,14 @@ an `openai` entry labeled **Development** that speaks Chat Completions to that
 endpoint, with that one model and context window, and prints the entry.
 `DEMI_DEV_PROVIDER_THINKING_EFFORTS`, optional, lists the model's
 thinking efforts, comma-separated, as the endpoint names them; without it the
-model has none and the page offers no effort. Setting only some of them stops the command before it builds
+model has none and the page offers no effort.
+`DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS`, optional, lists the file types the
+model reads natively, comma-separated, as the model's `acceptedExtensions`
+names them ([Accepted attachment types](../providers/models.md#accepted-attachment-types)),
+such as `png,jpg,jpeg,gif,webp` for a model that reads images; without it
+which types the model reads is unknown, so no file reaches it natively. A
+type outside the set the model-media table defines stops the command before
+it builds anything, naming the type. Setting only some of the four stops the command before it builds
 anything, naming the missing variables. The key reaches the backend only
 through the web API and is never printed. A developer keeps the
 four in the repository's ignored `.env` (`.env.example` lists them) and runs
@@ -733,6 +740,7 @@ DEMI_DEV_PROVIDER_API_KEY=<key>
 DEMI_DEV_PROVIDER_MODEL=deepseek/deepseek-v4.1-flash
 DEMI_DEV_PROVIDER_CONTEXT_WINDOW=1000000
 DEMI_DEV_PROVIDER_THINKING_EFFORTS=low,medium,high
+DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS=png,jpg,jpeg,gif,webp
 ```
 
 A turn with that model is a real request and costs what the vendor charges;
