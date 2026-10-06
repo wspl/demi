@@ -82,7 +82,7 @@ const pairedHosts = hosts.filter((host) => !host.canWake)
 const { view } = useGalleryView()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
-const workspaceDevices = ref(pairedHosts.map(({ id, label, online }) => ({ id, name: label, online })))
+const workspaceDevices = ref(pairedHosts.map(({ id, label, state }) => ({ id, name: label, state })))
 /**
  * Add Device pairs as the product does, with any code: the claim answers with a
  * new online device, and the list shows it a moment later, as the page's
@@ -98,7 +98,7 @@ async function claimWorkspaceDevice(_code: string, signal?: AbortSignal): Promis
   const device = {
     id: `device-${Date.now()}`,
     name: `host-${workspaceDevices.value.length + 1}`,
-    online: true
+    state: 'online' as const,
   }
   void delay(600, workspaceSync.signal).then(() => {
     if (!workspaceSync.signal.aborted)

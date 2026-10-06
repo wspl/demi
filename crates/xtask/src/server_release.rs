@@ -334,11 +334,19 @@ mod tests {
                 "demi-browser-aarch64-pc-windows-msvc.exe.zst",
                 "demi-claude-code-aarch64-pc-windows-msvc.exe.zst",
                 "demi-file-aarch64-pc-windows-msvc.exe.zst",
-                "demi-runner-aarch64-pc-windows-msvc.exe",
+                "demi-runner-aarch64-pc-windows-msvc.exe.zst",
             ]
         );
+        // The runner is its compressed copy too, of the executable the
+        // manifest names.
+        let runner = &manifest.targets[windows];
+        let expected = demi_shared_artifacts::Digest {
+            size: runner.size,
+            sha256: runner.sha256.clone(),
+        };
+        let encoded = std::fs::read(files.join("demi-runner-aarch64-pc-windows-msvc.exe.zst")).unwrap();
         assert_eq!(
-            std::fs::read(files.join("demi-runner-aarch64-pc-windows-msvc.exe")).unwrap(),
+            demi_shared_artifacts::decode_blocking(&encoded, &expected).unwrap(),
             format!("demi-runner {windows}").as_bytes()
         );
         let record = |output: &Path| {

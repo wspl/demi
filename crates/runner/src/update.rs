@@ -13,7 +13,7 @@ use std::{
 
 use demi_command_protocol::host_target;
 use demi_runner_protocol::{
-    release::{RELEASE_ENV, RUNNER, RunnerUpdate},
+    release::{COMPRESSED_SUFFIX, RELEASE_ENV, RUNNER, RunnerUpdate},
     values::BackendUrl,
 };
 use demi_shared_artifacts::{Digest, Mode, Permissions, Publication};
@@ -87,10 +87,12 @@ impl Installed {
                 )));
             }
         } else {
+            // The compressed copy, which the download decodes as it checks it
+            // (`native-runtime.md` § Runner releases).
             let url = backend
                 .url()
                 .join(&format!(
-                    "/runner-artifacts/{}/{target}/{name}",
+                    "/runner-artifacts/{}/{target}/{name}{COMPRESSED_SUFFIX}",
                     update.release
                 ))
                 .map_err(io::Error::other)?;

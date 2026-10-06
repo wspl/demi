@@ -102,6 +102,12 @@ pub struct RunnerTuning {
     /// How often a connected runner is asked whether it is there; none turns
     /// liveness off.
     pub ping: Option<Duration>,
+    /// How long the connection that holds a device has to answer a ping
+    /// when a new hello for the device arrives, before it gives way.
+    pub probe: Duration,
+    /// How long a device shows as updating after the 409 that sent its
+    /// runner to an update, unless a hello comes first.
+    pub updating: Duration,
 }
 
 impl Default for RunnerTuning {
@@ -111,6 +117,8 @@ impl Default for RunnerTuning {
             claim_lifetime: Duration::from_secs(10 * 60),
             claims_per_minute: 10,
             ping: Some(demi_backend_remote_host::PING_INTERVAL),
+            probe: Duration::from_secs(5),
+            updating: Duration::from_secs(5 * 60),
         }
     }
 }

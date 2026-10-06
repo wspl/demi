@@ -142,8 +142,8 @@ const pairingPhases: { variant: string; phase: PairingPhase; installation?: Devi
 const pairingShown = ref(pairingPhases.map((item) => item.phase))
 const hosts = createGalleryFileHosts()
 const devices: WorkspaceDevice[] = [
-  { id: hosts[0]!.id, name: hosts[0]!.label, online: true },
-  { id: 'build-01', name: 'build-01', online: false },
+  { id: hosts[0]!.id, name: hosts[0]!.label, state: 'online' },
+  { id: 'build-01', name: 'build-01', state: 'offline' },
 ]
 function sourceFor(deviceId: string) {
   return (hosts.find((host) => host.id === deviceId) ?? hosts[0]!).source

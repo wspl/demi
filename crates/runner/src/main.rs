@@ -8,6 +8,7 @@ mod host_log;
 mod management;
 mod registration;
 mod removal;
+mod start;
 mod state;
 mod update;
 
@@ -81,7 +82,7 @@ async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
 /// Asks the installation's active runner for its status, to drain, or to
 /// remove itself; the status it answers goes to `stdout`.
 async fn manage(
-    state: RunnerState,
+    state: &RunnerState,
     action: management::Action,
     release: Option<&str>,
     stdout: impl tokio::io::AsyncWrite + Unpin,
@@ -198,6 +199,13 @@ enum Action {
         #[command(flatten)]
         installation: Installation,
     },
+    /// Starts the installation's runner in the background and returns once
+    /// it is connected or has said why it cannot connect; a running one is
+    /// left as it is.
+    Start {
+        #[command(flatten)]
+        installation: Installation,
+    },
     /// Removes the runner from this device: asks the backend to revoke the
     /// device, drains the runner, and removes the installation.
     Uninstall {
@@ -234,13 +242,25 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
             let stdout = tokio::fs::File::from_std(standard_file(1)?);
-            return manage(state, management::Action::Status, release, stdout).await;
+            return manage(&state, management::Action::Status, release, stdout).await;
         }
         Action::Drain { installation } => {
             let state = RunnerState::open(directory(&installation, None)?).await?;
             let release = installation.release.as_deref();
             let stdout = tokio::fs::File::from_std(standard_file(1)?);
-            return manage(state, management::Action::Drain, release, stdout).await;
+            return manage(&state, management::Action::Drain, release, stdout).await;
+        }
+        Action::Start { installation } => {
+            let directory = directory(&installation, None)?;
+            // The started runner serves the installation this one names.
+            let mut arguments = vec!["run".to_owned()];
+            if let Some(backend) = &installation.backend {
+                arguments.extend(["--backend".to_owned(), backend.to_string()]);
+            }
+            if let Some(home) = &installation.home {
+                arguments.extend(["--home".to_owned(), home.to_string_lossy().into_owned()]);
+            }
+            return start::start(&directory, arguments).await;
         }
         Action::Uninstall { installation } => {
             let directory = directory(&installation, None)?;
@@ -254,7 +274,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
                 None => {
                     let action = management::Action::Uninstall;
                     let mut answer = Vec::new();
-                    let code = manage(state, action, None, &mut answer).await?;
+                    let code = manage(&state, action, None, &mut answer).await?;
                     if code != 0 {
                         return Ok(code);
                     }
@@ -328,6 +348,13 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             .as_ref()
             .map(|_| true)
             .or_else(|| managed.map(|value| !value.is_empty())),
+        // A managed guest's state is temporary; nobody starts its runner.
+        installation: boot.is_none().then(|| {
+            std::path::absolute(&directory)
+                .unwrap_or_else(|_| directory.clone())
+                .to_string_lossy()
+                .into_owned()
+        }),
     };
     // A managed guest's state is temporary; its log and its job output stay
     // on the system layer, which a stop keeps (`runner.md` § Host log,

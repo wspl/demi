@@ -10,8 +10,8 @@ import {
 // Pure functions over two small arrays and one stubbed claim: well under a millisecond.
 
 const devices: WorkspaceDevice[] = [
-  { id: 'laptop', name: 'laptop', online: true },
-  { id: 'build-01', name: 'build-01', online: false },
+  { id: 'laptop', name: 'laptop', state: 'online' },
+  { id: 'build-01', name: 'build-01', state: 'offline' },
 ]
 
 test('New project opens on the Cloud the first time, with no device chosen', () => {
@@ -60,7 +60,7 @@ test('a device paired from beside the device menu is selected there once the men
   // The claim has answered, but the page has not brought the device yet.
   expect(selected.value).toBe('laptop')
 
-  listed.value = [...listed.value, { id: 'studio', name: 'studio', online: true }]
+  listed.value = [...listed.value, { id: 'studio', name: 'studio', state: 'online' }]
   await nextTick()
   expect(selected.value).toBe('studio')
   scope.stop()

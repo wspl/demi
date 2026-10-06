@@ -10,8 +10,11 @@
 //! pairing and removal). A script holds no credential: pairing grants device
 //! access.
 
+use std::path::Path;
+
 use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
 use demi_runner_protocol::release::RunnerRelease;
+use demi_runner_protocol::wire::RunnerPlatform;
 use sha2::{Digest, Sha256};
 use url::Url;
 
@@ -40,6 +43,82 @@ pub fn backend_url(url: &Url) -> Result<Url, InvalidBackendUrl> {
 /// own.
 fn registration(backend: &Url) -> String {
     hex::encode(Sha256::digest(backend.as_str().as_bytes()))
+}
+
+/// The command that starts the runner of `backend`'s installation again on
+/// a device of `platform`, typed in a terminal there: the launcher of the
+/// installation, in `installation` as its runner reported it or where the
+/// installers put it by default, with `start`, which starts the runner in
+/// the background (`runner.md` § Installation, pairing and removal). A
+/// directory in `home`, the device's home directory, is written from the
+/// home: `~` in a POSIX shell, `$env:USERPROFILE` in PowerShell, where `-File`
+/// does not expand `~`. On Windows it runs through PowerShell with a policy
+/// that lets the launcher run.
+pub fn start_command(
+    backend: &Url,
+    installation: Option<&str>,
+    home: Option<&str>,
+    platform: RunnerPlatform,
+) -> String {
+    let windows = platform == RunnerPlatform::Win32;
+    let separator = if windows { '\\' } else { '/' };
+    let default = format!(".demi{separator}instances{separator}{}", registration(backend));
+    let place = match installation {
+        None => Place::Home(default),
+        Some(installation) => {
+            let relative = home
+                .and_then(|home| installation.strip_prefix(home.trim_end_matches(separator)))
+                .and_then(|rest| rest.strip_prefix(separator));
+            match relative {
+                Some(relative) => Place::Home(relative.to_owned()),
+                None => Place::Absolute(installation.to_owned()),
+            }
+        }
+    };
+    if windows {
+        let launcher = match place {
+            Place::Home(relative) => format!(
+                "\"$env:USERPROFILE\\{}\\run.ps1\"",
+                powershell_expandable(&relative)
+            ),
+            Place::Absolute(installation) => powershell(&format!("{installation}\\run.ps1")),
+        };
+        return format!("powershell -ExecutionPolicy Bypass -File {launcher} start");
+    }
+    match place {
+        Place::Home(relative) => format!("~/{} start", sh(&format!("{relative}/run"))),
+        Place::Absolute(installation) => format!("{} start", sh(&format!("{installation}/run"))),
+    }
+}
+
+/// Where an installation's directory is, as a command names it.
+enum Place {
+    /// Under the home directory, at this path relative to it.
+    Home(String),
+    Absolute(String),
+}
+
+/// `value` inside a PowerShell string literal that expands variables, with
+/// nothing of its own expanded.
+fn powershell_expandable(value: &str) -> String {
+    value
+        .replace('`', "``")
+        .replace('"', "`\"")
+        .replace('$', "`$")
+}
+
+/// The runner release record at `path`, a release's or the top-level
+/// `manifest.json` of a server release's `runners/`, when there is one; a
+/// record that does not decode is the deployment's fault.
+pub async fn read_runner_release(path: &Path) -> Result<Option<RunnerRelease>, String> {
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("{}: {error}", path.display())),
+    };
+    RunnerRelease::decode(&bytes)
+        .map(Some)
+        .map_err(|error| format!("{}: {error}", path.display()))
 }
 
 /// `value` as one POSIX shell word.
@@ -370,7 +449,7 @@ try {
       [IO.File]::WriteAllText($demiBackendFile, $demiBackend + [Environment]::NewLine, $demiUtf8)
       [IO.File]::WriteAllText((Join-Path $demiState 'release-id'), $demiRelease + [Environment]::NewLine, $demiUtf8)
       $demiLauncher = @'
-param([ValidateSet('run', 'status', 'drain', 'uninstall')][string]$Action = 'run')
+param([ValidateSet('run', 'start', 'status', 'drain', 'uninstall')][string]$Action = 'run')
 $ErrorActionPreference = 'Stop'
 $demiState = $PSScriptRoot
 $demiBackend = [IO.File]::ReadAllText((Join-Path $demiState 'backend-url')).Trim()
@@ -458,6 +537,50 @@ exit $demiExit
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The start command names the installation the runner reported,
+    /// written from the home when it lies there, or the default one.
+    #[test]
+    fn the_start_command_names_the_reported_installation_from_the_home() {
+        let backend = Url::parse("https://demi.example.com/").unwrap();
+        let id = registration(&backend);
+        let cases: [(Option<&str>, Option<&str>, RunnerPlatform, String); 6] = [
+            (None, None, RunnerPlatform::Darwin, format!("~/.demi/instances/{id}/run start")),
+            (
+                Some("/Users/ana/.demi/instances/work"),
+                Some("/Users/ana"),
+                RunnerPlatform::Darwin,
+                "~/.demi/instances/work/run start".into(),
+            ),
+            (
+                Some("/Users/ana/my demi"),
+                Some("/Users/ana/"),
+                RunnerPlatform::Linux,
+                "~/'my demi/run' start".into(),
+            ),
+            (
+                Some("/opt/demi"),
+                Some("/Users/ana"),
+                RunnerPlatform::Linux,
+                "/opt/demi/run start".into(),
+            ),
+            (
+                Some("C:\\Users\\ana\\.demi\\instances\\work"),
+                Some("C:\\Users\\ana"),
+                RunnerPlatform::Win32,
+                "powershell -ExecutionPolicy Bypass -File \"$env:USERPROFILE\\.demi\\instances\\work\\run.ps1\" start".into(),
+            ),
+            (
+                Some("D:\\demi's"),
+                Some("C:\\Users\\ana"),
+                RunnerPlatform::Win32,
+                "powershell -ExecutionPolicy Bypass -File 'D:\\demi''s\\run.ps1' start".into(),
+            ),
+        ];
+        for (installation, home, platform, expected) in cases {
+            assert_eq!(start_command(&backend, installation, home, platform), expected);
+        }
+    }
 
     #[test]
     fn a_backend_url_names_an_http_origin_and_nothing_to_leak() {
