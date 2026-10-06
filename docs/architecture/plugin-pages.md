@@ -233,12 +233,9 @@ it changed; no page polls, and no page guesses when to read again.
   topic it follows fires: the user's exposes for the expose menu, a
   conversation's jobs ending for the browser's tabs, which the agent's
   commands open and close ([Topics](plugins.md#topics)).
-- **Product services keep themselves fresh.** While a component that shows
-  the working tree says so with `showChanges()`, the conversation's files
-  service lists it again when the conversation's working-tree revision
-  changes, after any job ended, and when the page is shown again, since the
-  user may have changed files outside Demi meanwhile. What it read before it
-  shows at once and checks in the background
+- **Product services keep themselves fresh.** While a component shows the
+  conversation's files, the conversation's files service follows the Host's
+  reports of what changed and reads again what they name
   ([What the service keeps](#what-the-service-keeps)). A page that shows the
   files reads the service, and never decides when to read again.
 
@@ -290,20 +287,22 @@ for whichever page shows them. `usePage().files(conversation)` gives:
 | `root` | Where the conversation's work runs, which a retained edit's paths are relative to |
 | `changes` | The working tree's uncommitted changes: the list, each file's two sides and the committed contents, with whether a listing is on its way or failed |
 | `edit(copies)` | The two sides of one call's retained edit |
-| `showChanges()` | The calling component shows the working tree: the service keeps `changes` fresh until the component's scope ends ([Data a page shows](#data-a-page-shows)) |
+| `showChanges()` | The calling component shows the working tree: the service follows the Host's reports for it and keeps `changes` current until the component's scope ends ([What the service keeps](#what-the-service-keeps)) |
 
 `changes` and `file-browser` show these; any other page may read them.
 
 ### What the service keeps
 
-Picking a file the user saw a moment ago shows it at once, and so does a
-folder unfolded again or a changed file's diff picked again; then the service
-checks in the background whether it changed. For example, the user reads
+The service keeps what it read and learns from the Host's own file system
+when that changes, the way VS Code, JetBrains IDEs and Zed keep a remote
+workspace: the Host watches the files and reports every path that changed
+([Watching files](../execution/runner.md#watching-files)), and what was read is
+current until such a report names it. For example, the user reads
 `src/app.ts`, picks `README.md`, and picks `src/app.ts` again: its text shows
-at once, with its scroll where it was, while one request asks the Host whether
-the file changed. It did not, so nothing more happens. Had the agent edited it
-meanwhile, the new text would replace the old in place, without a loading
-state.
+at once, with its scroll where it was, and nothing is asked, since the Host
+reported no change to it. The agent then edits it: the Host reports
+`src/app.ts` changed, and the shown text is read again and replaced in place,
+without a loading state.
 
 - **What it keeps.** Directory listings, file texts, file descriptions, the
   changes list, each changed file's two sides and its committed contents,
@@ -314,31 +313,37 @@ state.
   ([Backend communication](../product/web-application.md#backend-communication)).
   At most 64 MiB of them stay, counted by their text; past that the ones shown
   longest ago go first.
-- **Shown at once, then checked.** A read of something the service keeps
-  answers at once with what it keeps and reads it again in the background. A
-  read of something it does not keep shows its loading, as before. Reads of one
-  thing share one request: a second read while one is on its way waits for
-  it rather than asking again.
-- **When it checks.** Each time a component starts showing an entry: picking a
-  file, unfolding a folder, showing a tab again. And, for the entries shown,
-  when the conversation's working-tree revision rises and when the page
-  becomes visible again, since the user may have changed files outside Demi.
-  An entry nobody shows is checked when it is shown next. Nothing polls.
-- **An answer that differs replaces the entry in place.** The view keeps its
-  scroll, selection and folded rows; a text view shows the new text as an
-  editor reloads a file it has not changed. An answer that the file or folder
-  is gone shows that, as a first read would.
-- **A check that fails keeps what it shows** and says quietly that it could
-  not refresh, with Retry, as the changes list does; the next occasion checks
-  again.
-- **Checking costs little.** A file text is read again with the version the
-  service holds, and an unchanged file answers that it is unchanged without
-  its text ([File text and working tree changes](../product/web-api.md#file-text-and-working-tree-changes)).
+- **Confirmed entries.** An entry read while a watch covering its path was
+  live, and that no report named since, is the Host's content as its file
+  system knows it. Showing it asks nothing.
+- **A report.** A changed path makes unconfirmed: its own text, description,
+  diff sides and, for a folder, its listing; its folder's listing, since a
+  file came, went or was renamed; and the changes list of the working tree
+  it lies in. A path under the repository's `.git`, such as `HEAD`, the index
+  or a ref, makes the changes list and every committed side unconfirmed. What
+  a report makes unconfirmed and something shows is read again at once; the
+  rest is read again when it is shown next.
+- **Unconfirmed entries are shown, then checked.** An entry read while no
+  watch covered it, or once the watch said it lost reports, or across a lost
+  connection to the Host or a watch stream that reconnected, may be out of
+  date without a report saying so. Showing it shows it at once and reads it
+  again in the background; an answer that differs replaces it in place.
+  Reads of one thing share one request.
+- **A Host that cannot watch**, past an inotify limit or on a file system that
+  reports nothing, is a fact the watch says. The view then says quietly that
+  it shows files as they were last read and offers Refresh, and every entry
+  stays unconfirmed, so each showing checks it.
+- **Replacing in place.** The view keeps its scroll, selection and folded
+  rows; a text view shows the new text as an editor reloads a file it has not
+  changed. An answer that the file or folder is gone shows that, as a first
+  read would. A read that fails keeps what it shows and says quietly that it
+  could not refresh, with Retry.
+- **Reading again costs little.** A file text is read again with the version
+  the service holds, and an unchanged file answers that it is unchanged
+  without its text
+  ([File text and working tree changes](../product/web-api.md#file-text-and-working-tree-changes)).
   A preview's bytes come from a URL that names their version, which the user's
-  browser keeps, so a preview shown again needs no bytes; when the check finds
-  a new version, the preview's URL names it.
-- **The page's own writes** update what they change at once: a created folder,
-  an uploaded or deleted file checks its folder's listing immediately.
+  browser keeps, so a preview shown again needs no bytes.
 
 ## The plugin kit
 
