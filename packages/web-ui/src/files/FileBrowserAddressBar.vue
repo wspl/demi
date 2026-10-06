@@ -37,7 +37,7 @@ const props = withDefaults(
   defineProps<{
     path: string
     /** Where the root and the home are, for their glyphs; `browse` also lists through it. */
-    source: Pick<FileBrowserSource, 'platform' | 'home'> & Partial<Pick<FileBrowserSource, 'list'>>
+    source: Pick<FileBrowserSource, 'platform' | 'home'> & Partial<Pick<FileBrowserSource, 'showListing'>>
     mode?: 'navigate' | 'browse'
     /** The first crumb; the ancestors above it are not shown. */
     root?: string
@@ -101,6 +101,12 @@ provide(menuRootKey, { dismiss: closeMenu })
 const editing = ref(false)
 const draft = ref('')
 const input = ref<InstanceType<typeof PathInput>>()
+
+/** What the crumbs' menus list through: one object per source, so a menu keeps its listing. */
+const menuSource = computed(() => {
+  const showListing = props.source.showListing
+  return showListing ? { showListing } : null
+})
 const bar = ref<HTMLElement>()
 const ruler = ref<HTMLElement>()
 
@@ -248,7 +254,7 @@ watch(() => props.path, () => {
     </div>
     <!-- Inside the bar, so the bar stays the component's one root and keeps the host's classes. -->
     <Popover
-      v-if="mode === 'browse' && source.list"
+      v-if="mode === 'browse' && menuSource"
       :overlay-store="appOverlayStore"
       :is-open="menuCrumb !== null"
       :anchor-el="menuCrumb?.el ?? null"
@@ -259,7 +265,7 @@ watch(() => props.path, () => {
     >
       <DirectoryMenu
         v-if="menuDirectory !== null"
-        :source="{ list: source.list }"
+        :source="menuSource"
         :path="menuDirectory"
         :current="menuCrumb?.path"
         @pick="pick"

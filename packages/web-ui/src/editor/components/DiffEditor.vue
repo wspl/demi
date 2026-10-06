@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { reactive, ref, toRef } from 'vue'
 import { EditorView, highlightActiveLine, highlightActiveLineGutter, lineNumbers } from '@codemirror/view'
 import { unifiedMergeView } from '@codemirror/merge'
 import { activeLineVisibilityExtension } from '../activeLineVisibility'
@@ -8,8 +8,8 @@ import { useCodeView } from '../useCodeView'
 
 /**
  * Two versions of one file as a unified diff, read-only: the whole current
- * text, with each removed stretch shown above what replaced it. Another pair
- * of texts needs another editor.
+ * text, with each removed stretch shown above what replaced it. New texts of
+ * the file replace the old in place; another file needs another editor.
  */
 const props = defineProps<{
   original: string
@@ -40,7 +40,11 @@ const diffTheme = EditorView.theme({
 
 const container = ref<HTMLDivElement>()
 
-useCodeView(container, { path: props.path, text: props.modified }, [
+useCodeView(container, reactive({
+  path: props.path,
+  text: toRef(props, 'modified'),
+  original: toRef(props, 'original'),
+}), [
   diffTheme,
   lineNumbers(),
   highlightActiveLine(),

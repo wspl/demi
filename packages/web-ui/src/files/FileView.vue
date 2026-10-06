@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Code, Download, Eye } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Code, Download, Eye, History, RefreshCw } from '@lucide/vue'
+import type { StateEffect } from '@codemirror/state'
 import CodeEditor from '../editor/components/CodeEditor.vue'
 import { showToast } from '../infra/toast'
 import { renderable, type DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
+import RegionNote from '../ui/RegionNote.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
@@ -18,7 +20,8 @@ import { downloadUrl } from './download'
 import { TREE_WIDTH } from './file-view'
 import { baseName, normalizePath, parentPath } from './paths'
 import { hasSourceView, previewKind, TOO_LARGE_NOTE } from './preview'
-import { FileBrowserError, type FileBrowserSource } from './types'
+import { useShowing } from './showing'
+import type { FileBrowserSource } from './types'
 
 /**
  * One file of a workspace, read through its source: the path as crumbs from
@@ -38,6 +41,12 @@ import { FileBrowserError, type FileBrowserSource } from './types'
  * that file, or finds that folder in the tree and selects it there. Files
  * dropped on the tree, or uploaded from its menu, list under it until
  * cleared (`FileTree`).
+ *
+ * The file shows as its source keeps it (`plugin-pages.md` § What the
+ * service keeps): a file seen a moment ago shows at once, scrolled where it
+ * was, and a new text replaces the old in place. A read that fails keeps
+ * what shows and says so quietly, with Retry; a Host that cannot watch its
+ * files has the view say that it shows them as last read, with Refresh.
  */
 const props = defineProps<{
   source: FileBrowserSource
@@ -87,8 +96,39 @@ type TextState =
   | { phase: 'card'; note: string | null }
   | { phase: 'failed'; message: string }
 
-const state = ref<TextState>({ phase: 'loading' })
-let controller: AbortController | null = null
+const shown = useShowing(
+  () => props.source,
+  () => props.path !== null && media.value === null ? props.path : null,
+  (source, path) => source.showText?.(path),
+)
+
+const state = computed<TextState>(() => {
+  if (props.path === null || media.value !== null)
+    return { phase: 'idle' }
+  if (!props.source.showText)
+    return { phase: 'failed', message: 'This source cannot read files.' }
+  const entry = shown.entry.value
+  if (!entry)
+    return { phase: 'loading' }
+  if (entry.value !== undefined)
+    return { phase: 'ready', text: entry.value.text }
+  const failure = entry.failure
+  if (!failure)
+    return { phase: 'loading' }
+  // A file the text read cannot show is a card.
+  if (failure.kind === 'binary' || failure.kind === 'too-large')
+    return { phase: 'card', note: failure.kind === 'too-large' ? TOO_LARGE_NOTE : null }
+  return { phase: 'failed', message: failure.message ?? 'The file could not be read.' }
+})
+
+/** Why the last read of the text shown failed, while the text it had stays. */
+const staleBecause = computed(() => {
+  const entry = shown.entry.value
+  return entry?.value !== undefined ? entry.failure?.message ?? (entry.failure ? 'The read failed.' : null) : null
+})
+
+/** Where each file this view showed was scrolled to, to open there again. */
+const scrolls = new Map<string, StateEffect<unknown>>()
 
 /** Rendered Markdown, unless Source is chosen or the document is too large to render. */
 const markdown = computed(() => kind.value === 'markdown' &&
@@ -106,37 +146,6 @@ const place = computed<DocumentPlace | null>(() => props.path === null
       imageUrl: (path) => props.source.contents?.url(path) ?? '',
     })
 
-async function read(): Promise<void> {
-  controller?.abort()
-  controller = null
-  if (props.path === null || media.value !== null) {
-    state.value = { phase: 'idle' }
-    return
-  }
-  const current = new AbortController()
-  controller = current
-  state.value = { phase: 'loading' }
-  if (!props.source.read) {
-    state.value = { phase: 'failed', message: 'This source cannot read files.' }
-    return
-  }
-  try {
-    const text = await props.source.read(props.path, current.signal)
-    if (current.signal.aborted)
-      return
-    state.value = { phase: 'ready', text }
-  } catch (error) {
-    if (current.signal.aborted)
-      return
-    // A file the text read cannot show is a card.
-    if (error instanceof FileBrowserError && (error.kind === 'binary' || error.kind === 'too-large')) {
-      state.value = { phase: 'card', note: error.kind === 'too-large' ? TOO_LARGE_NOTE : null }
-      return
-    }
-    state.value = { phase: 'failed', message: error instanceof Error ? error.message : String(error) }
-  }
-}
-
 // A directory typed into the crumb row: selected in the tree until another file opens.
 const located = ref<string | null>(null)
 const frame = ref<InstanceType<typeof TreeFrame> | null>(null)
@@ -148,14 +157,12 @@ watch(() => props.path, () => {
 })
 
 /** Whether `path` names a directory, by its parent's listing. */
-async function isDirectory(path: string, signal: AbortSignal): Promise<boolean> {
+async function isDirectory(path: string): Promise<boolean> {
   // The filesystem root has no parent to list.
   if (path === '/')
     return true
-  if (!props.source.list)
-    return false
   try {
-    const entries = await props.source.list(parentPath(path), signal)
+    const entries = await props.source.list(parentPath(path))
     return entries.some((entry) => entry.name === baseName(path) && entry.isDirectory)
   } catch {
     // Opened as a file instead, whose read says what is wrong.
@@ -172,7 +179,7 @@ async function go(target: string): Promise<void> {
   going?.abort()
   const current = new AbortController()
   going = current
-  const directory = await isDirectory(target, current.signal)
+  const directory = await isDirectory(target)
   // Another path was typed meanwhile, or the view went away.
   if (current.signal.aborted)
     return
@@ -201,10 +208,7 @@ function download(): void {
     downloadUrl(props.source.contents.url(props.path, { download: true }))
 }
 
-watch(() => [props.source, props.path, media.value], read, { immediate: true })
-
 onBeforeUnmount(() => {
-  controller?.abort()
   going?.abort()
 })
 </script>
@@ -247,42 +251,65 @@ onBeforeUnmount(() => {
         <IconButton :icon="Download" variant="ghost" aria-label="Download" :disabled="path === null" @click="download" />
       </Tooltip>
     </template>
-    <FilePreview
-      v-if="media && path && source.contents"
-      :key="path"
-      :path="path"
-      :kind="media"
-      :contents="source.contents"
-    />
-    <MarkdownDocument
-      v-else-if="markdown && state.phase === 'ready' && place"
-      :text="state.text"
-      :place="place"
-      @open="emit('open', $event)"
-    />
-    <!-- Every read passes through loading, so each text gets an editor of its own. -->
-    <CodeEditor
-      v-else-if="state.phase === 'ready' && path"
-      class="h-full"
-      :path="path"
-      :text="state.text"
-    />
-    <FileSummary
-      v-else-if="state.phase === 'card' && path"
-      :path="path"
-      :contents="source.contents"
-      :note="state.note"
-    />
-    <RegionStatus
-      v-else
-      class="h-full"
-      :busy="state.phase === 'loading'"
-      :failed="state.phase === 'failed'"
-      :label="state.phase === 'idle' ? 'Select a file.' : state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
-      :detail="state.phase === 'failed' ? state.message : null"
-      :action="state.phase === 'failed' ? 'Retry' : undefined"
-      @action="read"
-    />
+    <div class="flex h-full min-h-0 flex-col">
+      <RegionNote
+        v-if="source.watch?.unavailable"
+        :icon="History"
+        label="Showing files as they were last read."
+        :detail="source.watch.unavailable"
+        action="Refresh"
+        @action="source.watch.refresh()"
+      />
+      <RegionNote
+        v-if="staleBecause"
+        :icon="RefreshCw"
+        label="Could not refresh this file."
+        :detail="staleBecause"
+        action="Retry"
+        @action="shown.retry"
+      />
+      <div class="min-h-0 flex-1">
+        <FilePreview
+          v-if="media && path && source.contents"
+          :key="path"
+          :path="path"
+          :kind="media"
+          :contents="source.contents"
+        />
+        <MarkdownDocument
+          v-else-if="markdown && state.phase === 'ready' && place"
+          :text="state.text"
+          :place="place"
+          @open="emit('open', $event)"
+        />
+        <!-- One editor per file: a new text of it replaces the old in place. -->
+        <CodeEditor
+          v-else-if="state.phase === 'ready' && path"
+          :key="path"
+          class="h-full"
+          :path="path"
+          :text="state.text"
+          :scroll-to="scrolls.get(path)"
+          @left="(left, snapshot) => scrolls.set(left, snapshot)"
+        />
+        <FileSummary
+          v-else-if="state.phase === 'card' && path"
+          :path="path"
+          :contents="source.contents"
+          :note="state.note"
+        />
+        <RegionStatus
+          v-else
+          class="h-full"
+          :busy="state.phase === 'loading'"
+          :failed="state.phase === 'failed'"
+          :label="state.phase === 'idle' ? 'Select a file.' : state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
+          :detail="state.phase === 'failed' ? state.message : null"
+          :action="state.phase === 'failed' ? 'Retry' : undefined"
+          @action="shown.retry"
+        />
+      </div>
+    </div>
     <template #tree>
       <FileTree
         ref="treeView"

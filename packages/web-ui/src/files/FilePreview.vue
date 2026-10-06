@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import FileCard from './FileCard.vue'
 import ImagePreview from './ImagePreview.vue'
@@ -7,13 +7,17 @@ import MediaPreview from './MediaPreview.vue'
 import { baseName } from './paths'
 import { formatBytes } from './format'
 import { TOO_LARGE_NOTE } from './preview'
-import { FileBrowserError, type FileContents, type FileDescription } from './types'
+import { useShowing } from './showing'
+import type { FileContents, FileDescription } from './types'
 
 /**
  * An image, a video, an audio file or a PDF, loaded from `contents` in the
  * web browser's own viewer (`file-previews.md` § What the user sees). The
- * preview pins the version it opened: when the file changes under it, it
- * says so and offers the new one instead of showing a mix of both.
+ * preview pins the version it shows, so it never shows a mix of two; when
+ * the file's description is read again with a new version, the new one
+ * replaces it in place. A viewer that cannot show its bytes has the file
+ * described again: a new version shows, and the same one is a file this
+ * browser cannot show.
  */
 const props = defineProps<{
   path: string
@@ -27,67 +31,52 @@ type State =
   | { phase: 'loading' }
   | { phase: 'ready'; description: FileDescription }
   | { phase: 'undecodable'; description: FileDescription }
-  | { phase: 'changed' }
   | { phase: 'too-large' }
   | { phase: 'failed'; message: string }
 
-const state = ref<State>({ phase: 'loading' })
 const dimensions = ref<{ width: number; height: number } | null>(null)
 const name = computed(() => baseName(props.path))
-let controller: AbortController | null = null
+const shown = useShowing(() => props.contents, () => props.path, (contents, path) => contents.showDescription(path))
+/** The version the web browser could not decode, of this file. */
+const undecodable = ref<{ path: string; version: string | null } | null>(null)
 
-async function describe(): Promise<FileDescription | null> {
-  controller?.abort()
-  const current = new AbortController()
-  controller = current
-  try {
-    return await props.contents.describe(props.path, current.signal)
-  } catch (error) {
-    if (current.signal.aborted)
-      return null
-    state.value = error instanceof FileBrowserError && error.kind === 'too-large'
+const state = computed<State>(() => {
+  const entry = shown.entry.value
+  const description = entry?.value
+  if (!entry || (description === undefined && entry.failure === null))
+    return { phase: 'loading' }
+  if (description === undefined) {
+    return entry.failure?.kind === 'too-large'
       ? { phase: 'too-large' }
-      : { phase: 'failed', message: error instanceof Error ? error.message : String(error) }
-    return null
+      : { phase: 'failed', message: entry.failure?.message ?? 'The file could not be read.' }
   }
-}
-
-async function open(): Promise<void> {
-  state.value = { phase: 'loading' }
-  dimensions.value = null
-  const description = await describe()
-  if (description)
-    state.value = { phase: 'ready', description }
-}
+  const failed = undecodable.value
+  return failed?.path === props.path && failed.version === description.version
+    ? { phase: 'undecodable', description }
+    : { phase: 'ready', description }
+})
 
 /** A viewer that cannot show the bytes: the file changed, or the web browser cannot decode it. */
-async function failed(): Promise<void> {
+function failed(): void {
   if (state.value.phase !== 'ready')
     return
-  const opened = state.value.description
-  const now = await describe()
-  if (!now)
-    return
-  state.value = now.version !== opened.version
-    ? { phase: 'changed' }
-    : { phase: 'undecodable', description: now }
+  undecodable.value = { path: props.path, version: state.value.description.version }
+  shown.retry()
 }
 
 const src = computed(() => state.value.phase === 'ready'
   ? props.contents.url(props.path, state.value.description.version === null ? {} : { version: state.value.description.version })
   : '')
 
+watch(() => props.path, () => {
+  dimensions.value = null
+})
+
 const caption = computed(() => {
   if (state.value.phase !== 'ready')
     return ''
   const size = formatBytes(state.value.description.size)
   return dimensions.value ? `${dimensions.value.width} × ${dimensions.value.height} · ${size}` : size
-})
-
-watch(() => [props.path, props.contents], open, { immediate: true })
-
-onBeforeUnmount(() => {
-  controller?.abort()
 })
 </script>
 
@@ -129,13 +118,6 @@ onBeforeUnmount(() => {
       :note="tooLarge ?? TOO_LARGE_NOTE"
     />
     <RegionStatus
-      v-else-if="state.phase === 'changed'"
-      class="h-full"
-      label="The file changed."
-      action="Show the New Version"
-      @action="open"
-    />
-    <RegionStatus
       v-else
       class="h-full"
       :busy="state.phase === 'loading'"
@@ -143,7 +125,7 @@ onBeforeUnmount(() => {
       :label="state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
       :detail="state.phase === 'failed' ? state.message : null"
       :action="state.phase === 'failed' ? 'Retry' : undefined"
-      @action="open"
+      @action="shown.retry"
     />
   </div>
 </template>
