@@ -73,7 +73,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Data',
-    'The rail entry is disabled with an In development tooltip because every control on the page is deferred. The page specimen still shows retention, share links, export, diagnostics and delete-all.'
+    'The rail entry is disabled with an In development tooltip because every control on the page is deferred. The page specimen still shows share links, export, diagnostics and delete-all.'
   ],
   [
     'Sign-in',
