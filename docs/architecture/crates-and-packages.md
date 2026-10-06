@@ -932,10 +932,7 @@ demi-backend (executable: configuration, composition)
   commands' outputs, the schemas and their migrations, and
   the encodings of stored values; and the record types it stores, among them
   the hashes and policies of sessions and challenges, a conversation's target
-  and settings changes, and catalog records, which the domains above use. The
-  tree store reaches the owner's blobs through `OwnerBlobs`, the narrow trait
-  of what its commits need of the namespace and the record of blob uses that
-  `backend-blobs` keeps, which the shard implements.
+  and settings changes, and catalog records, which the domains above use.
 - **Public boundary:** the stores and their records. Its `testing` feature
   opens a control database with a test key and runs raw statements behind the
   service's back, for tests of what the service must refuse, and holds the
@@ -945,8 +942,8 @@ demi-backend (executable: configuration, composition)
 #### `backend-blobs`
 
 - **Owns:** the object store, on local disk or S3 through `object_store`, and
-  the attachment and transcript media over it with the record of each blob's
-  uses ([The object store](../backend/storage.md#the-object-store)).
+  the attachment and transcript media over it
+  ([The object store](../backend/storage.md#the-object-store)).
 - **Public boundary:** the store and the blob namespaces. Its `testing`
   feature adds an S3 fake and a store that counts its operations
   (`ObjectCounts`).
@@ -1048,7 +1045,7 @@ demi-backend (executable: configuration, composition)
   transitions that end a target (switch, archive, detach); file transfers,
   uploads, remote files and user streams, with the leases the edge holds of
   them; the shell environments of agent nodes over it, which keep the
-  commands' outputs and edit copies as the user's blobs (`ConversationBlobs`);
+  commands' outputs and edit copies as the user's blobs;
   the product's `demi host` and `demi attachment` groups; the installation
   of the user's [Host directories](plugins.md#host-directories) before a job
   runs, once per runner connection, the reads of a conversation's files and
