@@ -73,7 +73,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Data',
-    'The rail entry is disabled with an In development tooltip because every control on the page is deferred. The page specimen still shows retention, share links, export, diagnostics and delete-all.'
+    'The rail entry is disabled with an In development tooltip because every control on the page is deferred. The Data & Privacy specimen below shows its page.'
   ],
   [
     'Sign-in',
@@ -159,6 +159,17 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
         <GallerySpecimen variant="Narrow · 320px">
           <div class="w-[320px] max-w-full">
             <GallerySettingsRows />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+
+      <GallerySection
+        title="Data & Privacy"
+        note="The page behind the rail's disabled Data & Privacy entry, whose controls are all deferred: share links, export, diagnostics and delete-all."
+      >
+        <GallerySpecimen variant="Page" wide>
+          <div class="w-full max-w-2xl">
+            <GallerySettingsFull tab="data" :state="full" />
           </div>
         </GallerySpecimen>
       </GallerySection>
