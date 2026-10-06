@@ -15,7 +15,6 @@ const props = defineProps<{
   label: TitleText
   shortcut?: string
   pressed?: boolean
-  emphasis?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
@@ -46,9 +45,7 @@ const emit = defineEmits<{
           ? 'cursor-not-allowed text-fg-faint'
           : pressed
             ? 'bg-active text-fg-emphasis'
-            : emphasis
-              ? 'text-fg hover:bg-hover hover:text-fg-emphasis'
-              : 'text-fg-muted hover:bg-hover hover:text-fg',
+            : 'text-fg-muted hover:bg-hover hover:text-fg',
       ]"
       @click="!disabled && emit('click')"
     >
