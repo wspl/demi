@@ -5,6 +5,15 @@ import type { SegmentedOption } from '../ui/Segmented.vue'
 
 export type DeviceSystem = 'linux' | 'macos' | 'windows'
 
+/**
+ * How a paired device's runner is started again: the command its
+ * installation's launcher takes, typed on the device's `system`.
+ */
+export interface DeviceStart {
+  command: string
+  system: DeviceSystem
+}
+
 /** Where a device fetches the runner's installer for its system. */
 export interface DeviceInstallation {
   shellInstallerUrl: string

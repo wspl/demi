@@ -524,6 +524,49 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     backend.close().await;
 }
 
+/// The command a paired device shows starts its stopped runner again: it is
+/// the launcher of the installation the installer made for this backend
+/// (`runner.md` § Installation, pairing and removal).
+// Several seconds: the installer downloads this build's runner (170 MB)
+// and starts it, and the runner starts a second time.
+#[tokio::test]
+async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    installations.install(&backend, &master).await;
+    let devices = backend.devices(&master).await;
+    let [device] = devices.as_slice() else {
+        panic!("one paired device: {devices:?}");
+    };
+    backend.until_online(&master, device.id.as_str(), true).await;
+    let drained = std::process::Command::new(state.join("run"))
+        .arg("drain")
+        .output()
+        .unwrap();
+    assert!(drained.status.success(), "{drained:?}");
+    backend.until_online(&master, device.id.as_str(), false).await;
+
+    let command = device.start_command.clone().expect("a paired device has a start command");
+    // The runner runs in the shell the command was typed into; the
+    // installations' drop drains it.
+    let _started = installations
+        .shell()
+        .arg("-c")
+        .arg(&command)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .unwrap();
+    backend.until_online(&master, device.id.as_str(), true).await;
+    drop(installations);
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served() {
     let backend = Harness::new().start().await;

@@ -12,6 +12,7 @@
 
 use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
 use demi_runner_protocol::release::RunnerRelease;
+use demi_runner_protocol::wire::RunnerPlatform;
 use sha2::{Digest, Sha256};
 use url::Url;
 
@@ -40,6 +41,23 @@ pub fn backend_url(url: &Url) -> Result<Url, InvalidBackendUrl> {
 /// own.
 fn registration(backend: &Url) -> String {
     hex::encode(Sha256::digest(backend.as_str().as_bytes()))
+}
+
+/// The command that starts the runner of `backend`'s installation again on
+/// a device of `platform`, typed in a terminal there: the launcher the
+/// installers write, where they put it unless the person named another
+/// installation, which runs the runner in that terminal (`runner.md`
+/// § Installation, pairing and removal).
+pub fn start_command(backend: &Url, platform: RunnerPlatform) -> String {
+    let installation = registration(backend);
+    match platform {
+        RunnerPlatform::Win32 => {
+            format!("& \"$env:USERPROFILE\\.demi\\instances\\{installation}\\run.ps1\"")
+        }
+        RunnerPlatform::Darwin | RunnerPlatform::Linux => {
+            format!("~/.demi/instances/{installation}/run")
+        }
+    }
 }
 
 /// `value` as one POSIX shell word.

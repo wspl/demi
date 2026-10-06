@@ -7,6 +7,7 @@ import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/messag
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
+import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
   applyAttachmentUpdate,
@@ -67,6 +68,8 @@ const props = withDefaults(
     replaced?: string
     /** Plugins changed since the conversation opened: the composer offers a reload. */
     pluginsChanged?: boolean
+    /** The conversation's primary Host is an offline paired device: the composer says how to start its runner. */
+    offlineHost?: { name: string; start: DeviceStart } | null
     /** Compacts the specimen's conversation; without it, a toast says what the product would do. */
     onCompact?: () => void
   }>(),

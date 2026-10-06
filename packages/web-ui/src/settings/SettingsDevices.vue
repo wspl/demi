@@ -15,6 +15,7 @@ import type { DeviceInstallation } from '../devices/installation'
 import type { OverlayStore } from '../overlay/overlayStore'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
+import DeviceStartHint from '../devices/DeviceStartHint.vue'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
 const props = defineProps<{
@@ -116,12 +117,21 @@ function revoke() {
                 />
               </span>
             </template>
-            <template v-if="device.direct === 'blocked'" #detail>
-              <p class="text-[12px] leading-4 text-fg-subtle">
-                This browser blocks direct connections to devices on this computer and network, so
-                this device is reached through the server. To allow them, open this site’s settings
-                in the browser and allow Local network access.
-              </p>
+            <template
+              v-if="device.direct === 'blocked' || (!device.online && device.start)"
+              #detail
+            >
+              <div class="flex min-w-0 flex-col gap-2">
+                <DeviceStartHint
+                  v-if="!device.online && device.start"
+                  :start="device.start"
+                />
+                <p v-if="device.direct === 'blocked'" class="text-[12px] leading-4 text-fg-subtle">
+                  This browser blocks direct connections to devices on this computer and network, so
+                  this device is reached through the server. To allow them, open this site’s settings
+                  in the browser and allow Local network access.
+                </p>
+              </div>
             </template>
             <Button
               size="sm"

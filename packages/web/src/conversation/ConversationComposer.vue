@@ -84,6 +84,15 @@ const hold = computed(() =>
     ? 'Cloud is resetting.'
     : null,
 )
+/** The primary Host when it is a paired device whose runner is not connected. */
+const offlineHost = computed(() => {
+  const primary = execution.value
+  if (primary.kind !== 'device' || primary.online) {
+    return null
+  }
+  const start = resources.deviceById(primary.deviceId)?.start
+  return start ? { name: primary.name, start } : null
+})
 const remoteHosts = computed(() => {
   const primary = execution.value
   const hosts = [
@@ -170,6 +179,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"
+      :offline-host="offlineHost"
       :replaced="replaced"
       :draft-shown="conversation.draftShown"
       :plugins-changed="conversation.pluginsChanged"

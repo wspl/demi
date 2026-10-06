@@ -21,7 +21,8 @@ use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::{Admission, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost};
 use demi_host_interface::{HostIdentity, HostKey};
 use demi_runner_protocol::wire::{self, HostArtifact, Inbound};
-use demi_web_api_protocol::devices::DeviceDto;
+use demi_runner_protocol::values::BackendUrl;
+use demi_web_api_protocol::devices::{DeviceDto, DeviceKind};
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::ready;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -29,6 +30,7 @@ use tokio::sync::watch;
 
 use crate::file_gate::FileLease;
 use crate::host_key::{HostOwner, host_key};
+use crate::install::start_command;
 
 /// Why a revoked device's connection ended.
 const REVOKED: &str = "device revoked";
@@ -215,8 +217,13 @@ impl Devices {
         }
     }
 
-    /// The device as the web app sees it.
-    pub fn dto(&self, device: DeviceRecord) -> DeviceDto {
+    /// The device as the web app sees it, whose runner connects to
+    /// `backend`, the backend's public URL once it listens.
+    pub fn dto(&self, device: DeviceRecord, backend: Option<&BackendUrl>) -> DeviceDto {
+        let start_command = match (device.kind, backend) {
+            (DeviceKind::User, Some(backend)) => Some(start_command(backend.url(), device.platform)),
+            _ => None,
+        };
         DeviceDto {
             online: self.online(&device.id),
             home: self.home(&device.id),
@@ -227,6 +234,7 @@ impl Devices {
             platform: device.platform,
             claimed_at: device.claimed_at,
             last_seen_at: device.last_seen_at,
+            start_command,
         }
     }
 
@@ -236,12 +244,16 @@ impl Devices {
         &self,
         control: &ControlService,
         user: &UserId,
+        backend: Option<&BackendUrl>,
     ) -> Result<Vec<DeviceDto>, StorageError> {
         let mut devices = control.paired_devices(user.clone()).await?;
         if let Some(cloud) = control.managed_device(user.clone()).await? {
             devices.push(cloud);
         }
-        Ok(devices.into_iter().map(|device| self.dto(device)).collect())
+        Ok(devices
+            .into_iter()
+            .map(|device| self.dto(device, backend))
+            .collect())
     }
 
     /// Ends the device's connection, whose runner then reconnects.

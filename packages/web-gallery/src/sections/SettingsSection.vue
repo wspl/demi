@@ -30,7 +30,7 @@ import { productWould } from '../product-would'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
-import { demoDeviceInstallation } from '../fixtures/device-installation'
+import { demoDeviceInstallation, demoDeviceStart } from '../fixtures/device-installation'
 
 const { view } = useGalleryView()
 
@@ -44,7 +44,7 @@ const directPaths = [
 ] as const
 const directDevices = ref<SettingsDevice[]>([
   { id: 'mac', name: 'zan-mbp', online: true, seen: 'Now' },
-  { id: 'build', name: 'build-01', online: false, seen: '3 days ago' },
+  { id: 'build', name: 'build-01', online: false, seen: '3 days ago', start: demoDeviceStart('linux') },
 ])
 /** Each device as the Devices page lists it: an online one directly connected, a blocked browser blocking every one. */
 const directListed = computed(() =>

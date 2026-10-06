@@ -105,7 +105,10 @@ impl Shard {
         };
         // The claim that waits for this answer may have gone; the runner is
         // paired all the same.
-        let _ = bound.send(self.devices().dto(device));
+        let _ = bound.send(
+            self.devices()
+                .dto(device, self.services().public_url.get()),
+        );
         serving.serve(socket).await;
     }
 
@@ -165,7 +168,11 @@ impl Shard {
     /// The user's devices as the web app sees them.
     pub async fn device_list(&self) -> Result<Vec<DeviceDto>, StorageError> {
         self.devices()
-            .device_list(&self.services().control, self.user())
+            .device_list(
+                &self.services().control,
+                self.user(),
+                self.services().public_url.get(),
+            )
             .await
     }
 }

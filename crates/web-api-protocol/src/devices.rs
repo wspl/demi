@@ -27,7 +27,9 @@ serde_plain::derive_fromstr_from_deserialize!(DeviceKind);
 /// the home directory it reported when it last connected, null until then
 /// (the backend keeps it in memory only); `installed` is what its runner
 /// last reported its artifact cache holds, kept while it is offline
-/// (`native-runtime.md` § Installed artifacts).
+/// (`native-runtime.md` § Installed artifacts); `start_command` is what a
+/// person types in a terminal on a paired device to start its runner again,
+/// null for the Cloud.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
@@ -44,6 +46,9 @@ pub struct DeviceDto {
     #[schemars(with = "Nullable<String>")]
     pub home: Option<String>,
     pub installed: Vec<HostArtifact>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub start_command: Option<String>,
 }
 
 /// `GET /devices`: the caller's paired devices, oldest first.

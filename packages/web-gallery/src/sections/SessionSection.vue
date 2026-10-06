@@ -110,6 +110,7 @@ import {
 import { galleryBlobs } from '../fixtures/blobs'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
+import { demoDeviceStart } from '../fixtures/device-installation'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
 import GalleryComposer from '../components/GalleryComposer.vue'
@@ -757,6 +758,15 @@ onBeforeUnmount(() => {
               placeholder="Ask Demi…"
               draft="Fix the login test in packages/web/src/auth.test.ts."
               replaced="Fix the login bug before the release; the session cookie was renamed."
+            />
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="primary Host offline · how to start its runner again, with Copy"
+            wide
+          >
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :offline-host="{ name: 'zan-mbp', start: demoDeviceStart('macos') }"
             />
           </GallerySpecimen>
           <GallerySpecimen

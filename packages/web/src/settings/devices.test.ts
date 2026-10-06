@@ -26,6 +26,7 @@ beforeEach(async () => {
         online: true,
         home: null,
         installed: [],
+        startCommand: null,
       },
     ],
     cloud: {
