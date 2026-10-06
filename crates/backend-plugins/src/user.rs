@@ -15,7 +15,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use demi_backend_database::StorageError;
-use demi_backend_database::blob_refs::OwnerBlobs;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::panels::PanelOutcome;
 use demi_backend_database::plugin_values::{ValueWrite, Written};
@@ -73,10 +72,6 @@ pub trait ProductPort {
     fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>>;
 
     fn get_blob(&self, blob: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>>;
-
-    /// The record of the user's blob uses, which each write of a plugin
-    /// value or of a plugin's Host directories updates before it commits.
-    fn blob_uses(&self) -> Arc<dyn OwnerBlobs>;
 
     fn exposes(&self) -> LocalBoxFuture<'_, Result<ExposeList, PortFailure>>;
 
@@ -366,11 +361,9 @@ impl Shared {
                 self.user.clone(),
                 self.plugin_id(plugin),
                 directories.clone(),
-                self.product.blob_uses(),
             )
             .await
-            .map_err(storage)?
-            .map_err(|refused| PortError::Failed(refused.to_string()))?;
+            .map_err(storage)?;
         let id = self.registry.plugins[plugin].id();
         let paths = directories
             .iter()
@@ -903,15 +896,12 @@ impl RequestPort {
                 };
                 let written = shared
                     .control
-                    .write_plugin_value(write, product.blob_uses())
+                    .write_plugin_value(write)
                     .await
                     .map_err(storage)?;
                 match written {
                     Written::Revision(revision) => PortAnswer::Written { revision },
                     Written::Conflict => return Err(PortFailure::Refused(PortRefusal::Conflict)),
-                    Written::Refused(refused) => {
-                        return Err(PortError::Failed(refused.to_string()).into());
-                    }
                 }
             }
             PortMessage::RemoveValue { key, revision } => {
@@ -922,16 +912,12 @@ impl RequestPort {
                         shared.plugin_id(self.plugin),
                         key,
                         revision,
-                        product.blob_uses(),
                     )
                     .await
                     .map_err(storage)?;
                 match removed {
                     Written::Revision(_) => PortAnswer::Done,
                     Written::Conflict => return Err(PortFailure::Refused(PortRefusal::Conflict)),
-                    Written::Refused(refused) => {
-                        return Err(PortError::Failed(refused.to_string()).into());
-                    }
                 }
             }
             PortMessage::PutBlob { bytes } => PortAnswer::Blob {

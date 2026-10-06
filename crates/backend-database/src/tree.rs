@@ -9,9 +9,7 @@
 //! Blocks hold their media by reference, and a checkpoint that holds media
 //! bytes is refused; each node's session reaches the conversation owner's
 //! blob namespace through its store (`storage.md` § Attachment and
-//! transcript media). Every block written or removed changes the
-//! `blob_refs` index in the same transaction ([`blob_refs`](super::blob_refs)),
-//! and the commit records the uses of the blobs it names before it commits.
+//! transcript media).
 //!
 //! The same readings serve what the web app reads without a live session: a
 //! conversation's summary facts and its history, on a read-only connection,
@@ -35,7 +33,6 @@ use futures_util::future::LocalBoxFuture;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 use super::StorageError;
-use super::blob_refs::{self, OwnerBlobs};
 use super::columns::{count, decode, instant, json, to_json};
 use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
@@ -97,12 +94,12 @@ fn earliest_wakeup(connection: &Connection) -> Result<Option<WakeupDue>, Storage
 /// One conversation's agent tree in its database, with its owner's blobs.
 pub struct SqliteTreeStore {
     db: ConversationDb,
-    blobs: Arc<dyn OwnerBlobs>,
+    blobs: Arc<dyn BlobStore>,
     saved: Saved,
 }
 
 impl SqliteTreeStore {
-    pub fn new(db: ConversationDb, blobs: Arc<dyn OwnerBlobs>, saved: Saved) -> Self {
+    pub fn new(db: ConversationDb, blobs: Arc<dyn BlobStore>, saved: Saved) -> Self {
         Self { db, blobs, saved }
     }
 }
@@ -110,7 +107,7 @@ impl SqliteTreeStore {
 /// One node's checkpoint in its conversation's database.
 struct SqliteSessionStore {
     db: ConversationDb,
-    blobs: Arc<dyn OwnerBlobs>,
+    blobs: Arc<dyn BlobStore>,
     node: NodeId,
     saved: Saved,
 }
@@ -163,7 +160,6 @@ impl AgentTreeStore for SqliteTreeStore {
         Box::pin(async move {
             let completions = initial.carried_completions()?;
             let node = record.id.clone();
-            let blobs = self.blobs.clone();
             let wakeup = self.db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
@@ -194,7 +190,7 @@ impl AgentTreeStore for SqliteTreeStore {
                             to_json(&initial.state),
                         ],
                     )?;
-                    if let Err(refused) = write_checkpoint(&transaction, &*blobs, &record.id, &initial, &completions)? {
+                    if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
                         return Ok(Err(refused));
                     }
                     let wakeup = earliest_wakeup(&transaction)?;
@@ -314,26 +310,20 @@ impl AgentTreeStore for SqliteTreeStore {
 
     fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
-        let blobs = self.blobs.clone();
         Box::pin(async move {
-            // The node's descendants and every row of theirs, their index
-            // rows included, go with it through the cascades, and so do the
-            // wakeups they saved.
+            // The node's descendants and every row of theirs go with it
+            // through the cascades, and so do the wakeups they saved.
             let wakeup = self
                 .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
-                    let removed = blob_refs::subtree(&transaction, &node)?;
-                    if let Err(refused) = blobs.commit_uses(&removed) {
-                        return Ok(Err(refused));
-                    }
                     transaction.execute("DELETE FROM nodes WHERE id = ?1", [node.as_str()])?;
                     let wakeup = earliest_wakeup(&transaction)?;
                     transaction.commit()?;
-                    Ok(Ok(wakeup))
+                    Ok(wakeup)
                 })
                 .await
-                .map_err(store_error)??;
+                .map_err(store_error)?;
             (self.saved)(id, wakeup);
             Ok(())
         })
@@ -373,9 +363,8 @@ impl AgentTreeStore for SqliteTreeStore {
                     media,
                 } => (blob, missing, media),
                 OutputRow::NotStored(reason) => return Ok(Some(StoredOutput::NotStored(reason))),
-                OutputRow::Removed(at) => return Ok(Some(StoredOutput::Removed(at))),
             };
-            let bytes = self.blobs.media().get(&blob).await?.ok_or_else(|| {
+            let bytes = self.blobs.get(&blob).await?.ok_or_else(|| {
                 StoreError::Failed(format!(
                     "the blob {blob} of the output of {command} is missing"
                 ))
@@ -400,13 +389,12 @@ impl SessionStore for SqliteSessionStore {
         Box::pin(async move {
             let completions = update.carried_completions()?;
             let commit = self.db.commit_point();
-            let blobs = self.blobs.clone();
             let wakeup = self
                 .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     if let Err(refused) =
-                        write_checkpoint(&transaction, &*blobs, &node, &update, &completions)?
+                        write_checkpoint(&transaction, &node, &update, &completions)?
                     {
                         return Ok(Err(refused));
                     }
@@ -435,29 +423,32 @@ impl SessionStore for SqliteSessionStore {
     }
 
     fn blobs(&self) -> &dyn BlobStore {
-        self.blobs.media()
+        &*self.blobs
     }
 }
 
 /// Writes one save of `node` in `transaction`: the changed block rows, the
-/// rows past the new end gone, each with its index rows, the state row with
-/// its earliest wakeup, and the child completions it carries marked
-/// delivered; last, the uses of the blobs whose references it wrote or
-/// removed. Changed output advances the node's output revision; input
-/// alone does not. A refusal leaves the transaction uncommitted.
+/// rows past the new end gone, the state row with its earliest wakeup, and
+/// the child completions it carries marked delivered. Changed output
+/// advances the node's output revision; input alone does not. A refusal
+/// leaves the transaction uncommitted.
 fn write_checkpoint(
     transaction: &Transaction<'_>,
-    blobs: &dyn OwnerBlobs,
     node: &NodeId,
     update: &CheckpointUpdate,
     completions: &[CompletionId],
 ) -> Result<Result<(), StoreError>, StorageError> {
-    let mut touched = Vec::new();
+    let mut write = transaction.prepare_cached(
+        "INSERT INTO blocks (node_id, idx, block) VALUES (?1, ?2, ?3)
+         ON CONFLICT (node_id, idx) DO UPDATE SET block = excluded.block",
+    )?;
     for (index, block) in &update.changed_blocks {
-        blob_refs::write_block(transaction, node, *index, block, &mut touched)?;
+        write.execute(params![node.as_str(), count(*index), to_json(block)])?;
     }
-    blob_refs::truncate(transaction, node, update.block_count, &mut touched)?;
     let block_count = count(update.block_count);
+    transaction
+        .prepare_cached("DELETE FROM blocks WHERE node_id = ?1 AND idx >= ?2")?
+        .execute(params![node.as_str(), block_count])?;
     let output = update
         .changed_blocks
         .iter()
@@ -495,7 +486,7 @@ fn write_checkpoint(
             params![round.child.as_str(), node.as_str(), integer(round.round)],
         )?;
     }
-    Ok(blobs.commit_uses(&touched))
+    Ok(Ok(()))
 }
 
 /// Whether a block is output, which the user has not seen until the page
@@ -870,12 +861,9 @@ mod tests {
     use std::sync::Mutex;
 
     use demi_agent_store::testing::{store_contract, test_model, text};
-    use demi_agent_transcript::{INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, retire::Retirement};
+    use demi_agent_transcript::{INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE};
     use demi_shared_types::{
-        B64Bytes, BlobRef, EditCopies, EditKind, EditSegment, EditedFile, ErrorBlock, MediaSource,
-        ResponseBlock, ShellId, ShellToolView, ShellViewStatus, TextBlock, TokenUsage,
-        ToolCallBlock, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, ToolView, TurnId,
-        UserBlock, UserContentBlock,
+        B64Bytes, BlobRef, ErrorBlock, ResponseBlock, TextBlock, TokenUsage, TurnId, UserBlock,
     };
     use demi_web_api_protocol::ids::ConversationId;
 
@@ -883,7 +871,7 @@ mod tests {
     use crate::conversations::ConversationStores;
 
     /// The owner's blobs in memory, named by their SHA-256 as the object
-    /// store names them, with a record of uses that refuses no commit.
+    /// store names them.
     #[derive(Default)]
     struct Blobs(Mutex<BTreeMap<BlobRef, B64Bytes>>);
 
@@ -900,16 +888,6 @@ mod tests {
         ) -> LocalBoxFuture<'a, Result<Option<B64Bytes>, StoreError>> {
             let bytes = self.0.lock().unwrap().get(blob).cloned();
             Box::pin(async move { Ok(bytes) })
-        }
-    }
-
-    impl OwnerBlobs for Blobs {
-        fn media(&self) -> &dyn BlobStore {
-            self
-        }
-
-        fn commit_uses(&self, _: &[BlobRef]) -> Result<(), StoreError> {
-            Ok(())
         }
     }
 
@@ -1073,215 +1051,6 @@ mod tests {
             ]
         );
         assert_eq!(history.subagents[0].0, record("a", Some("root"), 3));
-    }
-
-    /// A shell call written at `at`, whose result holds the images that
-    /// `images` name.
-    fn shot(block: &str, at: Timestamp, images: &[u8]) -> Block {
-        let output = images
-            .iter()
-            .map(|byte| ToolResultContentBlock::Image {
-                source: ToolMediaSource::Ref {
-                    r#ref: BlobRef::of(&[*byte]),
-                    media_type: "image/png".into(),
-                },
-            })
-            .collect();
-        Block::ToolCall(ToolCallBlock {
-            id: block.try_into().unwrap(),
-            created_at: at,
-            model: test_model(),
-            tool_use_id: format!("toolu_{block}"),
-            tool_name: "shell_exec".into(),
-            input: "{}".into(),
-            status: ToolCallStatus::Completed,
-            output,
-            view: None,
-        })
-    }
-
-    /// A shell call written at `at` whose command edited one file in
-    /// segments, each side a blob that one of `sides` names: segment `n` goes
-    /// from side `n` to side `n + 1`.
-    fn edited(block: &str, at: Timestamp, sides: &[u8]) -> Block {
-        let edits = sides
-            .windows(2)
-            .map(|pair| EditSegment {
-                copies: Some(EditCopies {
-                    original: BlobRef::of(&[pair[0]]),
-                    modified: BlobRef::of(&[pair[1]]),
-                }),
-            })
-            .collect();
-        Block::ToolCall(ToolCallBlock {
-            id: block.try_into().unwrap(),
-            created_at: at,
-            model: test_model(),
-            tool_use_id: format!("toolu_{block}"),
-            tool_name: "shell_exec".into(),
-            input: "{}".into(),
-            status: ToolCallStatus::Completed,
-            output: Vec::new(),
-            view: Some(ToolView::Shell(ShellToolView {
-                status: ShellViewStatus::Exited,
-                shell_id: ShellId::try_from("shell-1").unwrap(),
-                command_id: CommandId::try_from(format!("command-{block}")).unwrap(),
-                exit_code: Some(0),
-                running_ms: 1,
-                idle_ms: 0,
-                chunks: Vec::new(),
-                view_truncated: false,
-                files: Some(vec![EditedFile {
-                    path: "/work/notes.md".into(),
-                    kind: EditKind::Modified,
-                    added: 1,
-                    removed: 1,
-                    edits,
-                }]),
-                files_truncated: Some(false),
-            })),
-        })
-    }
-
-    /// A message written at `at` with the uploaded image `image` names.
-    fn pasted(block: &str, at: Timestamp, image: u8) -> Block {
-        Block::User(UserBlock {
-            id: block.try_into().unwrap(),
-            turn_id: TurnId::try_from(block).unwrap(),
-            created_at: at,
-            model: test_model(),
-            content: vec![UserContentBlock::Image {
-                source: MediaSource::Ref {
-                    r#ref: BlobRef::of(&[image]),
-                    media_type: "image/png".into(),
-                },
-            }],
-            preamble: None,
-        })
-    }
-
-    /// An index row as the `blob_refs` table holds it: the node, the block's
-    /// index, the reference's place, the blob, its holder and the block's
-    /// time.
-    type Indexed = Vec<(String, i64, i64, String, String, i64)>;
-
-    /// The rows the `blob_refs` table holds, and the rows the one derivation
-    /// makes of the blocks, in the same order.
-    fn index(connection: &Connection) -> Result<(Indexed, Indexed), StorageError> {
-        let mut held = Vec::new();
-        let mut statement = connection
-            .prepare("SELECT node_id, idx, part, blob, holder, at FROM blob_refs ORDER BY node_id, idx, part")?;
-        let mut rows = statement.query([])?;
-        while let Some(row) = rows.next()? {
-            held.push((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-            ));
-        }
-        let mut derived = Vec::new();
-        let mut statement =
-            connection.prepare("SELECT node_id, idx, block FROM blocks ORDER BY node_id, idx")?;
-        let mut rows = statement.query([])?;
-        while let Some(row) = rows.next()? {
-            let (node, index): (String, i64) = (row.get(0)?, row.get(1)?);
-            let block: Block = json("blocks", "block", &row.get::<_, String>(2)?)?;
-            derived.extend(blob_refs::rows(&block).into_iter().map(|row| {
-                (
-                    node.clone(),
-                    index,
-                    count(row.part),
-                    row.blob.to_string(),
-                    blob_refs::holder_name(row.holder).to_owned(),
-                    row.at.as_millisecond(),
-                )
-            }));
-        }
-        Ok((held, derived))
-    }
-
-    #[tokio::test(flavor = "local")]
-    async fn every_write_of_a_block_keeps_the_blob_index_what_the_blocks_derive() {
-        let (tree, stores, _data) = store().await;
-        let check = async |path: &str| {
-            let (held, derived) = stores.read(&conversation(), index).await.unwrap().unwrap();
-            assert!(
-                !held.is_empty() || path == "an edit",
-                "after {path}: the index holds rows"
-            );
-            assert_eq!(held, derived, "after {path}");
-        };
-        let written = Timestamp::UNIX_EPOCH;
-        // A Fork's seed is the first checkpoint of its root, with a history.
-        let seed = vec![
-            (0, pasted("u1", written, 1)),
-            (1, shot("t1", written, &[2, 3])),
-        ];
-        tree.create_node(record("root", None, 0), update(seed, 2))
-            .await
-            .unwrap();
-        check("a Fork's seed").await;
-        let root = tree.session_store(&id("root"));
-        let save = async |blocks: Vec<(usize, Block)>, count: usize| {
-            root.save(update(blocks, count)).await.unwrap();
-        };
-        save(vec![(2, shot("t2", written, &[4])), (3, reply("a1"))], 4).await;
-        check("a save").await;
-        // A history rewrite writes blocks anew in place and drops the rest.
-        save(vec![(1, reply("a2")), (2, shot("t3", written, &[5, 6]))], 3).await;
-        check("a history rewrite").await;
-        // An edit replaces the message and drops everything after it.
-        save(vec![(0, pasted("u2", written, 7))], 1).await;
-        check("an edit").await;
-        // A command's edit copies: the middle side is both segments'.
-        save(
-            vec![
-                (1, shot("t4", written, &[8])),
-                (2, edited("e1", written, &[10, 11, 12])),
-            ],
-            3,
-        )
-        .await;
-        check("a save of edit copies").await;
-        let child = vec![(0, shot("c1", written, &[9]))];
-        tree.create_node(record("child", Some("root"), 2), update(child, 1))
-            .await
-            .unwrap();
-        tree.delete_node(&id("child")).await.unwrap();
-        check("a subagent's deletion").await;
-
-        // Forty days later the conversation has been idle for thirty.
-        let before = facts(&stores).await;
-        let retirement = Retirement {
-            now: Timestamp::from_millisecond(40 * 24 * 60 * 60 * 1000).unwrap(),
-            idle: true,
-        };
-        let retired = stores
-            .db(&conversation())
-            .call(move |connection| blob_refs::retire(connection, &Blobs::default(), retirement))
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(retired, 1);
-        check("a retirement").await;
-        // The message's image and the edit copies stay; the retirement shows
-        // the page nothing new.
-        let (held, _) = stores.read(&conversation(), index).await.unwrap().unwrap();
-        let kept: Vec<(i64, &str)> = held.iter().map(|row| (row.1, row.4.as_str())).collect();
-        assert_eq!(
-            kept,
-            [
-                (0, "message"),
-                (2, "edit_copy"),
-                (2, "edit_copy"),
-                (2, "edit_copy"),
-                (2, "edit_copy")
-            ]
-        );
-        assert_eq!(facts(&stores).await, before);
     }
 
     /// A save whose state saves wakeups due at each of `due`, in

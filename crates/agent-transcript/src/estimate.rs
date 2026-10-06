@@ -308,11 +308,9 @@ fn result_estimate<'a>(
 ) -> (Cow<'a, str>, u64) {
     let (kind, source) = match part {
         ToolResultContentBlock::Text { text } => return (Cow::Borrowed(text.as_str()), 0),
-        ToolResultContentBlock::Gone {
-            kind,
-            media_type,
-            cause,
-        } => return (Cow::Owned(gone_text(*kind, media_type, cause)), 0),
+        ToolResultContentBlock::Gone { kind, cause, .. } => {
+            return (Cow::Owned(gone_text(*kind, cause)), 0);
+        }
         ToolResultContentBlock::Image { source } => (ModelMediaKind::Image, source),
         ToolResultContentBlock::Video { source } => (ModelMediaKind::Video, source),
     };

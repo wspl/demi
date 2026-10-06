@@ -1,8 +1,7 @@
 //! A session's transcript (`runtime.md` § Transcript): its blocks, the
 //! patches that record every change to them, the identities it gives blocks
 //! and turns, the points it is cut at, the model's replay of them, the token
-//! estimates compaction decides by, and the retirement of a tool result's
-//! expired media.
+//! estimates compaction decides by.
 
 mod cut;
 pub mod estimate;
@@ -10,7 +9,6 @@ mod ids;
 mod journal;
 mod log;
 mod replay;
-pub mod retire;
 #[cfg(feature = "testing")]
 pub mod testing;
 
@@ -24,22 +22,13 @@ pub use log::{PendingCall, TranscriptLog};
 pub use replay::{REPLAY_CHARS, Replay, RequestView, replay, tool_input};
 
 use demi_shared_types::{Block, GoneCause, ModelMediaKind, WakeupPlacement};
-use jiff::tz::TimeZone;
 
 /// What the model receives for a tool's medium that is gone (`runtime.md`
-/// § Media): `[<kind> not stored: <reason>]` when its bytes could not be
-/// stored, and, once retired, `[<kind>:<media type>, removed on <day>: a
-/// tool result's images and videos are kept for 30 days]` with the UTC day
-/// of the retirement.
-pub(crate) fn gone_text(kind: ModelMediaKind, media_type: &str, cause: &GoneCause) -> String {
+/// § Media): `[<kind> not stored: <reason>]`.
+pub(crate) fn gone_text(kind: ModelMediaKind, cause: &GoneCause) -> String {
     let kind = kind.name();
     match cause {
         GoneCause::NotStored { error } => format!("[{kind} not stored: {error}]"),
-        GoneCause::Retired { at } => format!(
-            "[{kind}:{media_type}, removed on {}: a tool result's images and videos are kept for {} days]",
-            at.to_jiff().to_zoned(TimeZone::UTC).date(),
-            retire::KEPT.as_hours() / 24
-        ),
     }
 }
 

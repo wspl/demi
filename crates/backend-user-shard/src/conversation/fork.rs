@@ -23,7 +23,6 @@ use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
-use demi_backend_host_access::blobs::ConversationBlobs;
 use demi_backend_host_access::root_of;
 
 /// A Fork's destination, and whether this request created it.
@@ -162,13 +161,11 @@ impl Shard {
             .await?
             .unwrap_or_default();
         if !rows.is_empty() {
-            let blobs = ConversationBlobs(services.blobs.for_user(self.user()));
             services
                 .conversations
                 .db(&destination)
-                .call(move |connection| command_outputs::insert(connection, &blobs, &rows))
-                .await?
-                .map_err(|refused| ForkRefusal::Failed(refused.to_string()))?;
+                .call(move |connection| command_outputs::insert(connection, &rows))
+                .await?;
         }
         // Its sequences go on from the source's, read after the seed, so a
         // number its history names is never given to something new.
@@ -278,7 +275,7 @@ mod tests {
             changed_blocks: Vec::new(),
             block_count: 0,
         };
-        let blobs = Arc::new(ConversationBlobs(blobs.clone()));
+        let blobs = Arc::new(blobs.clone());
         SqliteTreeStore::new(
             stores.db(id),
             blobs,
@@ -365,7 +362,6 @@ mod tests {
                 .await
                 .unwrap()
                 .store,
-            Arc::new(demi_shared_types::SystemClock),
         )
         .for_user(&master);
         commit_root(&stores, &blobs, &committed, created_at).await;

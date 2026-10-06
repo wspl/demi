@@ -149,7 +149,7 @@ mod tests {
     async fn an_s3_bucket_holds_each_blob_once_under_its_users_namespace() {
         let fake = FakeS3::start().await;
         let objects: Arc<dyn ObjectStore> = Arc::new(fake.client());
-        let blobs = BlobStores::new(objects, Arc::new(demi_shared_types::SystemClock))
+        let blobs = BlobStores::new(objects)
             .for_user(&UserId::try_from("ana").unwrap());
         let first = blobs.put(Bytes::from_static(b"picture")).await.unwrap();
         // The same bytes again are the same blob, created once.

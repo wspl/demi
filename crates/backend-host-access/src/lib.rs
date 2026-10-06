@@ -10,7 +10,6 @@
 //! shard implements.
 
 pub mod access;
-pub mod blobs;
 pub mod file_watch;
 pub mod host_commands;
 pub mod lease;

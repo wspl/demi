@@ -1064,15 +1064,6 @@
           "type": "not_stored",
           "error": "the object store refused the write"
         }
-      },
-      {
-        "type": "gone",
-        "kind": "video",
-        "mediaType": "video/webm",
-        "cause": {
-          "type": "retired",
-          "at": "2026-10-21T09:30:00.000Z"
-        }
       }
     ],
     "view": {

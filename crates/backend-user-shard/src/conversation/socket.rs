@@ -375,12 +375,6 @@ impl Shard {
                         "No such provider".into(),
                     ));
                 }
-                // The tree is live from here on, before it admits any action
-                // (`storage.md` § Retiring tool media).
-                services
-                    .control
-                    .mark_live(record.id.clone(), services.clock.now())
-                    .await?;
             }
             ClientFrame::Send { content, .. } => {
                 // Every message the user sends makes a generated title older

@@ -423,26 +423,6 @@ export const statusImageTool = binaryStdoutCall(
   blobImage(galleryBlobs.chart),
 )
 
-/** A screenshot retired after 30 days: in its place, the part that says so and when. */
-export const removedImageTool = returnedMediaCall(
-  { id: 'tool-screenshot-removed', toolName: 'shell_exec', input: screenshotInput },
-  '9',
-  [
-    {
-      tab: 't1',
-      width: 480,
-      height: 300,
-      bytes: 15_822,
-      medium: {
-        type: 'gone',
-        kind: 'image',
-        mediaType: 'image/png',
-        cause: { type: 'retired', at: '2026-10-01T12:00:00.000Z' },
-      },
-    },
-  ],
-)
-
 /** A recording whose bytes could not be stored: in its place, the part that says so and why. */
 export const notStoredVideoTool = binaryStdoutCall(
   {

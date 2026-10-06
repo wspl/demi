@@ -1,7 +1,7 @@
 //! An object store that counts what reaches it, for the scenarios that prove
-//! what the backend reads and writes (`storage.md` § The object store,
-//! § Retention): each put with its bytes, each read, each HEAD, the most
-//! reads in flight at once, each listing and each deletion.
+//! what the backend reads and writes (`storage.md` § The object store): each
+//! put with its bytes, each read, each HEAD, the most reads in flight at
+//! once, each listing and each deletion.
 
 use std::fmt;
 use std::sync::Arc;

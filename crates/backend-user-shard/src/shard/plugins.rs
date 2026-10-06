@@ -5,14 +5,11 @@
 
 use std::collections::HashMap;
 use std::rc::Weak;
-use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_backend_database::blob_refs::OwnerBlobs;
 use demi_backend_expose::records::{Expose, ExposeError};
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::{self, HostAccessError};
-use demi_backend_host_access::blobs::ConversationBlobs;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ServiceBinding, ServiceCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
@@ -153,14 +150,6 @@ impl ProductPort for ShardPort {
             let bytes = HostShard::blobs(&*shard).get(&blob).await.map_err(failed)?;
             Ok(bytes.map(B64Bytes::from))
         })
-    }
-
-    fn blob_uses(&self) -> Arc<dyn OwnerBlobs> {
-        let shard = self
-            .shard
-            .upgrade()
-            .expect("a request's port runs while its shard lives");
-        Arc::new(ConversationBlobs(HostShard::blobs(&*shard)))
     }
 
     fn exposes(&self) -> LocalBoxFuture<'_, Result<ExposeList, PortFailure>> {

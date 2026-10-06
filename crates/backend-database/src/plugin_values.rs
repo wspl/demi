@@ -7,17 +7,14 @@
 //! decodes it into its own type.
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
-use demi_agent_store::StoreError;
-use demi_plugin_interface::{DirectoryFile, HostDirectory};
+use demi_plugin_interface::HostDirectory;
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::UserId;
 use rusqlite::{OptionalExtension, params};
 use serde_json::Value;
 
 use super::StorageError;
-use super::blob_refs::OwnerBlobs;
 use super::columns::decode;
 use super::control::ControlService;
 
@@ -115,38 +112,25 @@ impl ControlService {
     /// Writes `plugin`'s value `key` for `user` if it is still at
     /// `revision`, none for a value that does not exist yet, in one
     /// transaction, so two writes never build on the same revision. The
-    /// value names `blobs`; the blobs it named before and names now are
-    /// used before it commits (`storage.md` § Collecting blobs).
-    pub async fn write_plugin_value(
-        &self,
-        write: ValueWrite,
-        uses: Arc<dyn OwnerBlobs>,
-    ) -> Result<Written, StorageError> {
+    /// value names `blobs`.
+    pub async fn write_plugin_value(&self, write: ValueWrite) -> Result<Written, StorageError> {
         let text = write.document.to_string();
         let named = blob_list(&write.blobs);
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            let before: Option<(i64, String)> = transaction
+            let before: Option<i64> = transaction
                 .query_row(
-                    "SELECT revision, blobs FROM plugin_values
+                    "SELECT revision FROM plugin_values
                      WHERE user_id = ?1 AND plugin = ?2 AND key = ?3",
                     params![write.user.as_str(), write.plugin, write.key],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| row.get(0),
                 )
                 .optional()?;
             let stored = before
-                .as_ref()
-                .map(|(revision, _)| decode(TABLE, "revision", u64::try_from(*revision)))
+                .map(|revision| decode(TABLE, "revision", u64::try_from(revision)))
                 .transpose()?;
             if stored != write.revision {
                 return Ok(Written::Conflict);
-            }
-            let mut touched = write.blobs.clone();
-            if let Some((_, blobs)) = &before {
-                touched.extend(blobs_of(blobs)?);
-            }
-            if let Err(refused) = uses.commit_uses(&touched) {
-                return Ok(Written::Refused(refused));
             }
             let revision = write.revision.map_or(1, |revision| revision + 1);
             transaction.execute(
@@ -172,34 +156,30 @@ impl ControlService {
     }
 
     /// Removes `plugin`'s value `key` for `user` if it is still at
-    /// `revision`, in one transaction; the blobs it named are used before
-    /// it commits. Answers [`Written::Revision`] with the removed revision.
+    /// `revision`, in one transaction. Answers [`Written::Revision`] with
+    /// the removed revision.
     pub async fn remove_plugin_value(
         &self,
         user: UserId,
         plugin: String,
         key: String,
         revision: u64,
-        uses: Arc<dyn OwnerBlobs>,
     ) -> Result<Written, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            let before: Option<(i64, String)> = transaction
+            let before: Option<i64> = transaction
                 .query_row(
-                    "SELECT revision, blobs FROM plugin_values
+                    "SELECT revision FROM plugin_values
                      WHERE user_id = ?1 AND plugin = ?2 AND key = ?3",
                     params![user.as_str(), plugin, key],
-                    |row| Ok((row.get(0)?, row.get(1)?)),
+                    |row| row.get(0),
                 )
                 .optional()?;
-            let Some((stored, blobs)) = before else {
+            let Some(stored) = before else {
                 return Ok(Written::Conflict);
             };
             if decode(TABLE, "revision", u64::try_from(stored))? != revision {
                 return Ok(Written::Conflict);
-            }
-            if let Err(refused) = uses.commit_uses(&blobs_of(&blobs)?) {
-                return Ok(Written::Refused(refused));
             }
             transaction.execute(
                 "DELETE FROM plugin_values WHERE user_id = ?1 AND plugin = ?2 AND key = ?3",
@@ -238,32 +218,15 @@ impl ControlService {
     }
 
     /// Replaces `plugin`'s Host directories for `user` whole, in one
-    /// transaction; the blobs the set named before and names now are used
-    /// before it commits.
+    /// transaction.
     pub async fn set_plugin_directories(
         &self,
         user: UserId,
         plugin: String,
         directories: Vec<HostDirectory>,
-        uses: Arc<dyn OwnerBlobs>,
-    ) -> Result<Result<(), StoreError>, StorageError> {
+    ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            let mut touched: Vec<BlobRef> = Vec::new();
-            {
-                let mut statement = transaction.prepare_cached(
-                    "SELECT files FROM plugin_directories WHERE user_id = ?1 AND plugin = ?2",
-                )?;
-                let mut rows = statement.query(params![user.as_str(), plugin])?;
-                while let Some(row) = rows.next()? {
-                    let files: Vec<DirectoryFile> = decode(
-                        DIRECTORIES,
-                        "files",
-                        serde_json::from_str(&row.get::<_, String>(0)?),
-                    )?;
-                    touched.extend(files.into_iter().map(|file| file.blob));
-                }
-            }
             transaction.execute(
                 "DELETE FROM plugin_directories WHERE user_id = ?1 AND plugin = ?2",
                 params![user.as_str(), plugin],
@@ -282,40 +245,9 @@ impl ControlService {
                         files
                     ],
                 )?;
-                touched.extend(directory.files.iter().map(|file| file.blob.clone()));
-            }
-            if let Err(refused) = uses.commit_uses(&touched) {
-                return Ok(Err(refused));
             }
             transaction.commit()?;
-            Ok(Ok(()))
-        })
-        .await
-    }
-
-    /// Every blob `user`'s plugin values and Host directories name, which
-    /// the collector keeps.
-    pub async fn plugin_blobs(&self, user: UserId) -> Result<Vec<BlobRef>, StorageError> {
-        self.call(move |connection, _| {
-            let mut blobs = Vec::new();
-            let mut values =
-                connection.prepare_cached("SELECT blobs FROM plugin_values WHERE user_id = ?1")?;
-            let mut rows = values.query([user.as_str()])?;
-            while let Some(row) = rows.next()? {
-                blobs.extend(blobs_of(&row.get::<_, String>(0)?)?);
-            }
-            let mut directories = connection
-                .prepare_cached("SELECT files FROM plugin_directories WHERE user_id = ?1")?;
-            let mut rows = directories.query([user.as_str()])?;
-            while let Some(row) = rows.next()? {
-                let files: Vec<DirectoryFile> = decode(
-                    DIRECTORIES,
-                    "files",
-                    serde_json::from_str(&row.get::<_, String>(0)?),
-                )?;
-                blobs.extend(files.into_iter().map(|file| file.blob));
-            }
-            Ok(blobs)
+            Ok(())
         })
         .await
     }
@@ -341,19 +273,12 @@ pub enum Written {
     Revision(u64),
     /// Another write came first.
     Conflict,
-    /// A blob the write touches is being deleted, and nothing was written.
-    Refused(StoreError),
 }
 
 /// `blobs` as their column holds them.
 fn blob_list(blobs: &[BlobRef]) -> String {
     let names: Vec<&str> = blobs.iter().map(BlobRef::as_str).collect();
     serde_json::to_string(&names).expect("names encode as JSON")
-}
-
-/// The blobs a `plugin_values.blobs` column names.
-fn blobs_of(column: &str) -> Result<Vec<BlobRef>, StorageError> {
-    decode(TABLE, "blobs", serde_json::from_str(column))
 }
 
 fn plugin_value(document: &str, revision: i64) -> Result<PluginValue, StorageError> {

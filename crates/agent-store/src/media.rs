@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use demi_provider_common::{MediaBytes, ResultPart};
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, DocumentSource, GoneCause, MediaSource, ModelMediaKind,
-    ToolCallBlock, ToolMediaSource, ToolResultContentBlock, ToolView, UserContentBlock,
+    ToolMediaSource, ToolResultContentBlock, UserContentBlock,
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, stream};
 
@@ -192,59 +192,6 @@ fn sources(block: &Block) -> Vec<Source<'_>> {
 /// The blobs a block's media reference.
 pub fn references(block: &Block) -> impl Iterator<Item = &BlobRef> {
     sources(block).into_iter().filter_map(Source::reference)
-}
-
-/// What in a block holds a blob it references.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Holder {
-    /// A message's or a steer's medium, from the user's uploads.
-    Message,
-    /// A tool result's image or video, which retirement may take
-    /// (`runtime.md` § Retired tool media).
-    ToolResult,
-    /// A side of a file a shell call's command edited, which only the user
-    /// sees (`edit-tracking.md` § Edit copies).
-    EditCopy,
-}
-
-/// One blob a block references, as a store indexes it for retention
-/// (`storage.md` § Retention).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BlockReference<'a> {
-    pub blob: &'a BlobRef,
-    pub holder: Holder,
-}
-
-/// The blobs a block references: its media in the order its parts hold
-/// them, then its edit copies, file by file and segment by segment, the
-/// original before the modified side.
-pub fn block_references(block: &Block) -> Vec<BlockReference<'_>> {
-    let media = sources(block).into_iter().filter_map(|source| {
-        Some(BlockReference {
-            blob: source.reference()?,
-            holder: match source {
-                Source::Tool(_) => Holder::ToolResult,
-                Source::Media(_) | Source::Document(_) => Holder::Message,
-            },
-        })
-    });
-    let files = match block {
-        Block::ToolCall(ToolCallBlock {
-            view: Some(ToolView::Shell(view)),
-            ..
-        }) => view.files.as_deref().unwrap_or_default(),
-        _ => &[],
-    };
-    let copies = files
-        .iter()
-        .flat_map(|file| &file.edits)
-        .filter_map(|edit| edit.copies.as_ref())
-        .flat_map(|copies| [&copies.original, &copies.modified])
-        .map(|blob| BlockReference {
-            blob,
-            holder: Holder::EditCopy,
-        });
-    media.chain(copies).collect()
 }
 
 /// The blobs the media of a message's or a steer's content reference, such

@@ -170,12 +170,11 @@ async fn keeps_no_job(harness: &Harness, device: &str) {
     .await;
 }
 
-/// Short idle windows, read often, and no retention pass by itself.
+/// Short idle windows, read often.
 pub(crate) fn idle_after(window: Duration) -> LifecycleTuning {
     LifecycleTuning {
         idle_window: window,
         idle_poll: Duration::from_millis(50),
-        retention_interval: None,
     }
 }
 

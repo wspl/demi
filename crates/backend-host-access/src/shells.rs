@@ -36,7 +36,6 @@ use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use crate::access::{ConversationHost, HostAccessError, Refusal};
-use crate::blobs::ConversationBlobs;
 use crate::{HostShard, conversation_of};
 
 impl dyn HostShard + '_ {
@@ -449,21 +448,14 @@ impl CommandKeeper for Keeper {
                 ended,
                 output: stored,
             };
-            let blobs = ConversationBlobs(self.blobs.clone());
             let recorded = self
                 .db
-                .call(move |connection| command_outputs::insert(connection, &blobs, &[row]))
+                .call(move |connection| command_outputs::insert(connection, &[row]))
                 .await;
             // The command ends all the same; `demi shell output` then finds
             // no record of it.
-            match recorded {
-                Ok(Ok(())) => {}
-                Ok(Err(refused)) => {
-                    tracing::warn!(conversation = %self.conversation, %command, "a command's output was not recorded: {refused}");
-                }
-                Err(error) => {
-                    tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a command's output was not recorded");
-                }
+            if let Err(error) = recorded {
+                tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a command's output was not recorded");
             }
         })
     }

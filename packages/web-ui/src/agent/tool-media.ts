@@ -1,4 +1,3 @@
-import dayjs from 'dayjs'
 import type { ToolMediaSource, ToolResultContentBlock } from '@demicodes/protocol'
 
 /**
@@ -15,17 +14,12 @@ type GoneMedium = Extract<ToolResultContentBlock, { type: 'gone' }>
 
 /**
  * The line a medium that is gone shows in its place: that it was not stored,
- * with the store's reason, or when it was removed, such as
- * `Image removed on Oct 1, 2026`.
+ * with the store's reason, such as
+ * `Video not stored: the object store refused the write`.
  */
 export function goneLine(part: GoneMedium): string {
   const kind = part.kind === 'image' ? 'Image' : 'Video'
-  switch (part.cause.type) {
-    case 'not_stored':
-      return `${kind} not stored: ${part.cause.error}`
-    case 'retired':
-      return `${kind} removed on ${dayjs(part.cause.at).format('MMM D, YYYY')}`
-  }
+  return `${kind} not stored: ${part.cause.error}`
 }
 
 /** What a call shows under its row, in the order of its result; its text is the call's own. */

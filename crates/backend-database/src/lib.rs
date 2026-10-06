@@ -1,13 +1,12 @@
 //! The SQLite databases (`storage.md`): the control service and every
 //! control record, the conversation index, each conversation's database with
-//! the tree store over it, its `blob_refs` index and its records of commands'
-//! outputs, the schemas and their migrations, and the encodings of stored
-//! values; and the record types it stores, which the domains above use. The
-//! object store is `backend-blobs`'.
+//! the tree store over it and its records of commands' outputs, the schemas
+//! and their migrations, and the encodings of stored values; and the record
+//! types it stores, which the domains above use. The object store is
+//! `backend-blobs`'.
 
 pub mod accounts;
 pub mod attachments;
-pub mod blob_refs;
 pub mod columns;
 pub mod command_outputs;
 pub mod control;

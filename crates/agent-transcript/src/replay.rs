@@ -277,11 +277,9 @@ impl<'a> RequestView<'a> {
                     Err(text) => ResultPart::Text(text),
                 }
             }
-            ToolResultContentBlock::Gone {
-                kind,
-                media_type,
-                cause,
-            } => ResultPart::Text(bound_text(&gone_text(*kind, media_type, cause)).into_owned()),
+            ToolResultContentBlock::Gone { kind, cause, .. } => {
+                ResultPart::Text(bound_text(&gone_text(*kind, cause)).into_owned())
+            }
         }
     }
 
