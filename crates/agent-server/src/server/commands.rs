@@ -102,7 +102,7 @@ struct ShowArgs {
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const AGENT_ENTRY: &str = "Runs helper agents, each with a fresh context of its own, that work in parallel on parts of a task and report back; sends them messages and checks on them. Use it for work that splits into independent pieces, a long investigation whose details would crowd your context, or a task one of the user's subagent profiles fits (`demi agent profiles`). Not for a step you can do yourself in a few commands.";
+const AGENT_ENTRY: &str = "Runs helper agents, each with a fresh context of its own, that work in parallel on parts of a task and report back; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites, pages or libraries to look into; for a long investigation whose details would crowd your context; or for a task one of the user's subagent profiles fits (`demi agent profiles`). A single lookup or edit is faster done yourself.";
 
 /// `demi agent spawn --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
