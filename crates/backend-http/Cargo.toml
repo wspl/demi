@@ -23,7 +23,6 @@ demi-agent-store = { path = "../agent-store" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-backend-accounts = { path = "../backend-accounts" }
 demi-backend-cloud = { path = "../backend-cloud" }
-demi-backend-expose = { path = "../backend-expose" }
 demi-backend-host-access = { path = "../backend-host-access" }
 demi-backend-blobs = { path = "../backend-blobs" }
 demi-backend-providers = { path = "../backend-providers" }
@@ -48,9 +47,9 @@ cookie = "0.18"
 futures-util.workspace = true
 garde.workspace = true
 http-body = "1"
-# The edge serves its connections itself, keeping header case, and the
-# expose relay forwards with the HTTP/1 client (`expose.md` § Rationale).
-hyper = { version = "1", features = ["client", "http1", "server"] }
+# The edge serves its connections itself, each with an idle deadline and a
+# close handle (`backend.md` § Runtime model).
+hyper = { version = "1", features = ["http1", "server"] }
 hyper-util = { version = "0.1", features = ["tokio"] }
 mime = "0.3"
 # A local store's command artifact, served as it was stored.
