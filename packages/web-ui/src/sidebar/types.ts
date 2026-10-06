@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 import type { ConversationStatus } from '@demicodes/web-ui/agent/conversation-status'
+import type { DeviceState } from '@demicodes/web-ui/devices/state'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 
 export type { ListLoad }
@@ -18,8 +19,8 @@ export type SidebarProjectHost =
   | { hostKind: 'cloud' }
   | {
     hostKind: 'device'
-    /** The device's runner is connected now; the row marks it with a dot. */
-    online: boolean
+    /** Whether the device's runner serves it now; the row marks it with a dot. */
+    state: DeviceState
   }
 
 export interface SidebarConversation {

@@ -22,12 +22,25 @@ pub enum DeviceKind {
 serde_plain::derive_display_from_serialize!(DeviceKind);
 serde_plain::derive_fromstr_from_deserialize!(DeviceKind);
 
+/// Whether a device's runner serves it: `online` while its runner is
+/// connected, `updating` while it replaces itself with the backend's runner
+/// release (`runner.md` § Runner updates), `offline` otherwise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceState {
+    Online,
+    Updating,
+    Offline,
+}
+
 /// A device as the web app sees it. `platform` is the one its runner
-/// reported; `online` says whether its runner is connected now; `home` is
+/// reported; `state` says whether its runner serves it now; `home` is
 /// the home directory it reported when it last connected, null until then
 /// (the backend keeps it in memory only); `installed` is what its runner
 /// last reported its artifact cache holds, kept while it is offline
-/// (`native-runtime.md` § Installed artifacts).
+/// (`native-runtime.md` § Installed artifacts); `start_command` is what a
+/// person types in a terminal on a paired device to start its runner again,
+/// null for the Cloud.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
@@ -39,11 +52,14 @@ pub struct DeviceDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
     pub last_seen_at: Option<Timestamp>,
-    pub online: bool,
+    pub state: DeviceState,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub home: Option<String>,
     pub installed: Vec<HostArtifact>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub start_command: Option<String>,
 }
 
 /// `GET /devices`: the caller's paired devices, oldest first.

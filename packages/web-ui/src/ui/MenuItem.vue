@@ -21,7 +21,7 @@ import {
   type MenuSlotRow
 } from './menu-context'
 
-export type MenuIndicator = 'success' | 'muted' | 'accent' | 'danger'
+export type MenuIndicator = 'success' | 'warning' | 'muted' | 'accent' | 'danger'
 
 defineOptions({ inheritAttrs: false })
 

@@ -9,6 +9,7 @@
 import type { Component } from 'vue'
 import type { Showing } from './file-cache'
 import type { SentenceText, TitleText } from '../ui/ui-text'
+import type { DeviceState } from '../devices/state'
 
 export type { Showing, ShownEntry } from './file-cache'
 
@@ -156,7 +157,7 @@ export interface FileBrowserPlaceGroup {
 export interface FileBrowserHost {
   id: string
   label: string
-  online: boolean
+  state: DeviceState
   /** A stopped host can be selected when its source wakes it on access. */
   canWake?: boolean
   icon?: Component

@@ -1200,6 +1200,15 @@ pub struct RunnerInfo {
         with = "unwrap_or_skip"
     )]
     pub managed: Option<bool>,
+    /// A paired device's installation directory, whose launcher starts the
+    /// runner again (`runner.md` § Installation, pairing and removal).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(inner(length(chars, min = 1, max = 4096)))]
+    pub installation: Option<String>,
 }
 
 /// The operating system a runner runs on, named as Node's
