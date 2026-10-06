@@ -45925,7 +45925,8 @@ pub mod browser_protocol {
             pub path: String,
             #[doc = "Cookie expiration date as the number of seconds since the UNIX epoch.\nThe value is set to -1 if the expiry date is not set.\nThe value can be null for values that cannot be represented in\nJSON (±Inf)."]
             #[serde(rename = "expires")]
-            pub expires: f64,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pub expires: Option<f64>,
             #[doc = "Cookie size."]
             #[serde(rename = "size")]
             pub size: i64,
@@ -46062,9 +46063,7 @@ pub mod browser_protocol {
                     path: self.path.ok_or_else(|| {
                         format!("Field `{}` is mandatory.", std::stringify!(path))
                     })?,
-                    expires: self.expires.ok_or_else(|| {
-                        format!("Field `{}` is mandatory.", std::stringify!(expires))
-                    })?,
+                    expires: self.expires,
                     size: self.size.ok_or_else(|| {
                         format!("Field `{}` is mandatory.", std::stringify!(size))
                     })?,

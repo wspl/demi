@@ -1,5 +1,5 @@
 use crate::families::with_browser_fixture;
-use serde_json::json;
+use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
 #[tokio::test]
@@ -167,6 +167,42 @@ async fn cdp_eviction_marks_truncation_and_worker_handles_expire() {
         assert_eq!(targets["targets"][0]["url"], "about:blank");
         fixture
     }).await;
+}
+
+/// About 3.5 s here: Chrome starts and loads two local pages.
+///
+/// Planted defects this catches: a cookie expiry typed as a number that is
+/// always there, which Chrome contradicts by writing null for an expiry JSON
+/// cannot hold (±Inf, as the protocol says), so the browser connection could
+/// not decode the event and lost the browser with every tab; and a catalog
+/// that rejects that null, or requires the deprecated `sameParty` Chrome 153
+/// no longer sends, either of which ended the debugging connection.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_cookie_expiry_chrome_writes_as_null_keeps_the_browser_and_reaches_cdp_events() {
+    let server = crate::server::Server::start("<!doctype html><title>Before</title>").await;
+    let url = format!("{}/unbounded-cookie", server.base);
+    with_browser_fixture(|fixture| async move {
+        let tab = fixture.open("cdp.html").await;
+        fixture.call("browser.cdp.send", json!({"tab":tab,"method":"Network.enable","params":"{}"})).await;
+        let before = fixture.call("browser.cdp.events", json!({"tab":tab})).await;
+        fixture.call("browser.goto", json!({"tab":tab,"url":url})).await;
+
+        // The browser's own connection read the event and goes on.
+        let info = fixture.call("browser.info", json!({"tab":tab})).await;
+        assert_eq!(info["title"], "Unbounded cookie", "{info}");
+
+        // The debugging connection records it as Chrome wrote it.
+        let events = fixture
+            .call("browser.cdp.events", json!({"tab":tab,"after":before["cursor"],"method":["Network.responseReceivedExtraInfo"],"timeout":5000}))
+            .await;
+        let blocked = events["events"][0]["params"]["blockedCookies"][0].clone();
+        assert_eq!(blocked["cookie"]["name"], "unbounded", "{events}");
+        assert_eq!(blocked["cookie"]["expires"], Value::Null, "{events}");
+        fixture
+    })
+    .await;
+    server.close().await;
 }
 
 #[tokio::test]
