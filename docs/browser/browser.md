@@ -335,7 +335,7 @@ runtime is not installed either:
 
 ```text
 $ demi browser open https://example.com
-Chrome for Testing 153.0.8010.36 is not installed on this Host yet. Install it with `demi browser install` (236 MB), then run this command again.
+Chrome for Testing 153.0.8010.36 is not installed on this Host yet. Install it with `demi browser install` (239 MB), then run this command again.
 ```
 
 Every new Host needs this once, so the group's help says so in its first
@@ -386,8 +386,10 @@ the variables reaches any other process: set in a shell, the runtime's
 libraries break the Host's own programs, which load them instead of the
 system's.
 
-A Host with an older glibc fails the installation with what it has and what
-it needs: `Chrome on Linux needs glibc 2.28 or newer; this Host has 2.26`.
+A Host with an older glibc, or none, as on a musl system such as Alpine,
+fails the installation with what it has and what it needs:
+`Chrome on Linux needs glibc 2.28 or newer; this Host has 2.26` (or `has
+none`).
 The program never downloads Chrome or looks for any other Chrome,
 and an unsupported platform fails the installation explicitly rather than
 using a different browser.
@@ -1110,7 +1112,7 @@ $ demi browser install
 Downloading Chrome for Testing 153.0.8010.36: 18 of 182 MB
 …
 Unpacking Chrome for Testing 153.0.8010.36
-Downloading the Chrome runtime 1: 12 of 54 MB
+Downloading the Chrome runtime 1: 12 of 52 MB
 …
 Unpacking the Chrome runtime 1
 Installed Chrome for Testing 153.0.8010.36 at /home/demi/.demi/artifacts/<sha256>/chrome-linux64/chrome

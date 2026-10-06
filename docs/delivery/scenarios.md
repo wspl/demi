@@ -358,9 +358,9 @@ after its `--`.
 
 ### Browser suite
 
-The browser suite runs where the Host would: as an ordinary user, since Chrome
-refuses root on Linux with its sandbox, with `DEMI_TEST_CHROME` naming the
-executable of an unpacked copy of the pinned release, with which each test
+The browser suite runs where the Host would, with `DEMI_TEST_CHROME` naming
+the executable of an unpacked copy of the pinned release, and on Linux
+`DEMI_TEST_CHROME_RUNTIME` naming the unpacked Chrome runtime, with which each test
 answers the browser program's request for Chrome, through a runner's
 artifact cache when the test goes through the backend, so no test downloads
 Chrome. An
