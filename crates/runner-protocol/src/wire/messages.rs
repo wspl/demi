@@ -8,6 +8,7 @@ use demi_command_protocol::{
     ArtifactLocation, CommandContext, EditCopies, EditKind, MAX_NUMBERS, PackageDescriptor,
     ServiceSequence, conversation_name, digest, without_nul,
 };
+use demi_shared_types::BlobRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -368,6 +369,19 @@ pub enum Inbound {
         version: Option<String>,
         output: PipeRef,
     },
+    /// The file's size and SHA-256, and none of its bytes, so the backend
+    /// can tell whether it holds them already (`runner.md` § File contents).
+    #[serde(rename = "fs_hashFile")]
+    FsHashFile {
+        id: String,
+        path: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        cwd: Option<String>,
+    },
     /// Fill the file from `input`, making the directories above it that are
     /// missing; `exists` says what to do when the path is taken. The answer
     /// names the file it wrote.
@@ -652,6 +666,7 @@ impl Inbound {
     pub fn fs_request_id(&self) -> Option<&str> {
         match self {
             Self::FsReadFile { id, .. }
+            | Self::FsHashFile { id, .. }
             | Self::FsWriteFile { id, .. }
             | Self::FsLook { id, .. }
             | Self::FsReadFiles { id, .. }
@@ -1224,6 +1239,24 @@ pub struct OpenedFile {
     pub stat: FileStat,
     pub version: String,
     pub unchanged: bool,
+}
+
+/// What `fs_hashFile` answers: the bytes hashed, and their SHA-256, which
+/// names their blob.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FileHash {
+    pub size: u64,
+    pub sha256: BlobRef,
+}
+
+impl FileHash {
+    /// The answer for `size` bytes whose SHA-256 is `sha256`, in lowercase
+    /// hexadecimal; anything else is refused.
+    pub fn new(size: u64, sha256: String) -> Result<Self, String> {
+        let sha256 = BlobRef::try_from(sha256)?;
+        Ok(Self { size, sha256 })
+    }
 }
 
 /// A file's version, from its size and modification time in milliseconds:
