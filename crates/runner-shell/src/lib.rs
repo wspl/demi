@@ -69,6 +69,7 @@ impl JobShell for ShellRuntime {
             let job = job::Job::start(
                 job.script,
                 job.cwd,
+                job.workspace,
                 job.env,
                 job.live,
                 job.output,

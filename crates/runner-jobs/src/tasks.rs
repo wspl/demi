@@ -111,6 +111,9 @@ struct Controls {
 pub enum TaskCommand {
     Shell {
         script: String,
+        /// Where the job starts when its cwd no longer exists: the
+        /// conversation's working directory (`runner.md` § Shell jobs).
+        workspace: PathBuf,
         stdin: Option<wire::PipeRef>,
         stdout: Option<wire::PipeRef>,
         /// The manifest and command context of a job with declared commands.
@@ -398,6 +401,7 @@ impl JobConfig {
             }
             TaskCommand::Shell {
                 script,
+                workspace,
                 stdin,
                 stdout,
                 commands,
@@ -469,6 +473,7 @@ impl JobConfig {
                     .start(JobStart {
                         script,
                         cwd: spec.cwd,
+                        workspace,
                         env,
                         live: stdin.is_none(),
                         output: stdout.is_none(),

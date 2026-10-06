@@ -473,6 +473,51 @@ async fn the_working_directory_carries_between_a_shells_jobs_and_nothing_else_do
     fixture.stop().await;
 }
 
+/// About 2 s here: four login shells one after another (about 0.4 s each in
+/// the Linux container). Before the fix, every job after the first failed
+/// with `i/o error: No such file or directory (os error 2)`.
+#[tokio::test(flavor = "local")]
+async fn a_job_whose_directory_went_with_the_last_job_starts_in_the_conversations_directory() {
+    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
+    let home = fixture.home().to_owned();
+    let shell = shell_on(fixture.host(), &[], None);
+    // A `mktemp -d` directory lives in the job's scratch directory, which
+    // goes when the job ends.
+    let first = run(&shell, "cd \"$(mktemp -d)\" && pwd").await;
+    assert_eq!(exited(&first), 0);
+    let gone = first.stdout.delta.trim_end().to_owned();
+    assert!(!Path::new(&gone).exists(), "{gone} outlived its job");
+    let said = format!("demi: {gone} no longer exists; starting in {home}\n");
+
+    let next = run(&shell, "pwd").await;
+    assert_eq!(exited(&next), 0, "{}", next.stderr.delta);
+    assert_eq!(next.stderr.delta, said);
+    assert_eq!(next.stdout.delta, format!("{home}\n"));
+    // The shell carries on from where that job ended.
+    let after = run(&shell, "pwd").await;
+    assert_eq!(after.stderr.delta, "");
+    assert_eq!(after.stdout.delta, format!("{home}\n"));
+
+    // A new shell told to start there does the same.
+    let fresh = shell
+        .exec(
+            ExecRequest {
+                script: "pwd".into(),
+                shell: ShellTarget::Ephemeral { cwd: Some(gone) },
+                window: ObservationWindow::from_millis(10_000).unwrap(),
+                caller: caller(),
+                tool_use_id: "call".into(),
+            },
+            CancellationToken::new(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(exited(&fresh), 0);
+    assert_eq!(fresh.stderr.delta, said);
+    assert_eq!(fresh.stdout.delta, format!("{home}\n"));
+    fixture.stop().await;
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_job_outliving_its_window_runs_takes_input_and_can_be_aborted() {
     let fixture = RunnerFixture::start(FixtureOptions::default()).await;

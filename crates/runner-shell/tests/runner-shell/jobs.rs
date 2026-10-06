@@ -46,6 +46,7 @@ async fn shell_cancellation_reports_the_requesting_signal() {
         let mut job = Job::start(
             "printf ready; sleep 60".into(),
             root.path().into(),
+            root.path().into(),
             crate::home(root.path()),
             true,
             true,
@@ -114,6 +115,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
     let mut sibling = Job::start(
         "printf '%s' $$; read go; printf done".into(),
         root.path().into(),
+        root.path().into(),
         crate::home(root.path()),
         false,
         true,
@@ -152,6 +154,7 @@ async fn jobs_share_the_runner_process_and_cancellation_is_isolated() {
         let scope = Scope::new(CancellationToken::new(), None);
         let mut job = Job::start(
             format!("printf ready; {script}"),
+            root.path().into(),
             root.path().into(),
             crate::home(root.path()),
             true,
@@ -209,6 +212,7 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
         let mut job = Job::start(
             script.into(),
             root.path().into(),
+            root.path().into(),
             crate::home(root.path()),
             false,
             true,
@@ -255,6 +259,7 @@ async fn job_completion_preserves_process_substitution_output() {
     std::fs::write(root.path().join("input"), &content).unwrap();
     let mut job = Job::start(
         "cat input | tee >(sleep 0.1; cat > copied) > /dev/null".into(),
+        root.path().into(),
         root.path().into(),
         crate::home(root.path()),
         false,

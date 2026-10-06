@@ -9,7 +9,7 @@ use demi_runner_process::{command_client::CONTEXT_ENV, stdio::is_live};
 use std::{
     collections::{BTreeMap, HashMap},
     fs::File,
-    io,
+    io::{self, Write as _},
     path::PathBuf,
     sync::Arc,
 };
@@ -20,6 +20,8 @@ pub struct ShellOptions {
     pub scope: Scope,
     pub login: bool,
     pub cwd: PathBuf,
+    /// Where the job starts when `cwd` no longer exists.
+    pub workspace: PathBuf,
     pub env: BTreeMap<String, String>,
     pub stdin: File,
     pub stdout: File,
@@ -35,6 +37,7 @@ pub async fn execute(
     script: &str,
     options: ShellOptions,
 ) -> Result<ShellResult, brush_core::Error> {
+    let cwd = start_directory(&options)?;
     // Every copy the shell makes of these goes through the job's scope, which
     // waits out a lack of open files (`runner.md` § Load).
     let control: Arc<dyn FileControl> = Arc::new(options.scope.clone());
@@ -83,7 +86,7 @@ pub async fn execute(
             Arc::new(options.scope.clone()) as Arc<dyn brush_core::execution_host::ExecutionHost>
         )
         .builtins(registrations)
-        .working_dir(options.cwd.clone())
+        .working_dir(cwd.clone())
         .login(options.login)
         .do_not_inherit_env(true)
         .fds(fds);
@@ -95,7 +98,7 @@ pub async fn execute(
     let mut shell = builder.build().await?;
     if options.login {
         restore_execution_context(&mut shell, &options.env)?;
-        shell.set_working_dir(options.cwd)?;
+        shell.set_working_dir(cwd)?;
     }
     let result = shell
         .run_string(script, &SourceInfo::default(), &shell.default_exec_params())
@@ -107,6 +110,24 @@ pub async fn execute(
         code: result.exit_code.into(),
         cwd: shell.working_dir().to_owned(),
     })
+}
+
+/// Where the job starts (`runner.md` § Shell jobs): the requested cwd, or,
+/// when that no longer exists, such as a directory under the previous job's
+/// scratch directory, the conversation's working directory, which the job's
+/// standard error says first. Standard output stays the script's alone, so a
+/// job whose stdout is piped elsewhere carries only the script's bytes.
+fn start_directory(options: &ShellOptions) -> io::Result<PathBuf> {
+    if options.cwd.try_exists()? {
+        return Ok(options.cwd.clone());
+    }
+    let line = format!(
+        "demi: {} no longer exists; starting in {}\n",
+        options.cwd.display(),
+        options.workspace.display()
+    );
+    (&options.stderr).write_all(line.as_bytes())?;
+    Ok(options.workspace.clone())
 }
 
 /// The builtins every job's shell has: brush's, the runner's own in place of
