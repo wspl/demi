@@ -329,35 +329,66 @@ Every other command finds the installation without downloading anything: the
 program asks the runner which installations of the line it holds, and starts
 Chrome only from the path of the pinned version. A Host without it fails the
 command at once, telling the agent that installing is its next step, how
-large the download is, and to run the command again afterwards:
+large the download is, Chrome with the runtime on Linux, and to run the
+command again afterwards. A Host that holds Chrome but not the pinned
+runtime is not installed either:
 
 ```text
 $ demi browser open https://example.com
-Chrome for Testing 153.0.8010.36 is not installed on this Host yet. Install it with `demi browser install` (182 MB), then run this command again.
+Chrome for Testing 153.0.8010.36 is not installed on this Host yet. Install it with `demi browser install` (229 MB), then run this command again.
 ```
 
 Every new Host needs this once, so the group's help says so in its first
 lines, before the agent's first browser command.
 
 The installation is shared by every conversation and every service of the
-runner. On Linux, Chrome needs system libraries and fonts that Demi does not
-install, on a Cloud or anywhere else: whoever runs the Host installs them, on
-a Cloud the agent with `sudo apt-get install`. Demi tells them what to
-install. The package's record lists, for the pinned version, the shared
-libraries Chrome loads, the Ubuntu package that provides each, and the font
-packages that let pages show emoji and Chinese, Japanese and Korean text.
-After it installs Chrome, `install` checks which of those libraries the Host
-lacks and which of those fonts it has no font of, and ends its output with
-what to install and the command that installs it
-([Installation](#installation)). Every command that starts Chrome checks
-what `install` checks first, the libraries and, on a Host that restricts
-user namespaces, the AppArmor profile, since either can be missing after the
-installation, as a Cloud's system reset removes the libraries while Chrome
-stays in the home: a command on a Host that lacks one fails before it starts
-Chrome, with the lines `install` would end with, so the agent reads one
-message and the commands to run, never the loader's error or "No usable
-sandbox!" inside a CDP connection failure. Missing fonts alone do not stop a
-start. The program never downloads Chrome or looks for any other Chrome,
+runner. On Linux, Chrome also needs shared libraries and fonts that a Host
+may not have: a minimal system, such as the Cloud image, has none of them.
+Demi ships them itself, as the **Chrome runtime**, so a Host needs no package
+manager and no root, only glibc 2.28 or newer:
+
+- **Libraries.** The 84 shared objects Chrome links and the five NSS modules
+  it loads at run time, beyond glibc and `libgcc_s`, taken from AlmaLinux 8's
+  packages, whose glibc 2.28 is the oldest the runtime runs on. One archive
+  per Linux architecture.
+- **Fonts.** The Noto family, which aims to cover every script: Noto Sans,
+  Serif and Mono for Latin, Greek and Cyrillic; Noto Sans CJK, regular and
+  bold, for Chinese, Japanese and Korean; Noto Color Emoji; Noto Sans for the
+  other common scripts (Arabic, Hebrew, Devanagari, Bengali, Tamil, Telugu,
+  Thai, Lao, Khmer, Myanmar, Georgian, Armenian, Ethiopic and the like) with
+  its symbol and math fonts; and Liberation, whose widths match Arial, Times
+  and Courier, so pages laid out for them do not shift. One archive for both
+  architectures, with a `fonts.conf` that searches the runtime's fonts first,
+  then the Host's (`/usr/share/fonts`, `/usr/local/share/fonts`) and the
+  user's (`~/.local/share/fonts`, `~/.fonts`), and keeps its cache in
+  `~/.cache/fontconfig`.
+
+The runtime is built and published by its own repository,
+[wspl/demi-chrome-runtime](https://github.com/wspl/demi-chrome-runtime),
+whose releases carry the archives with every package's license and the
+AlmaLinux source packages they come from, which the libraries' LGPL and MPL
+licenses require be offered with them
+([Chrome runtime](../delivery/builds-and-releases.md#chrome-runtime)). The
+`demi.browser` record pins one runtime release beside the Chrome version, with
+each archive's URL, size and SHA-256, and `install` installs both through the
+runner's artifact cache like the Chrome archive. A release changes only when
+a Chrome version needs a library the runtime lacks, or a package gets a fix.
+
+Chrome finds the runtime through its own environment alone, which every start
+on Linux sets: `LD_LIBRARY_PATH` naming the libraries, `FONTCONFIG_FILE`
+naming the `fonts.conf`, `NSS_IGNORE_SYSTEM_POLICY=1`, and
+`GIO_MODULE_DIR` naming an empty directory of the runtime. The last two keep
+the Host's own crypto policy and GIO modules, built for the Host's newer
+libraries, from loading into Chrome beside the runtime's older ones; Chrome
+also starts with `--disable-audio-output` there, since a desktop Host's audio
+plugins would load the same way and the live view carries no sound. None of
+the variables reaches any other process: set in a shell, the runtime's
+libraries break the Host's own programs, which load them instead of the
+system's.
+
+A Host with an older glibc fails the installation with what it has and what
+it needs: `Chrome on Linux needs glibc 2.28 or newer; this Host has 2.26`.
+The program never downloads Chrome or looks for any other Chrome,
 and an unsupported platform fails the installation explicitly rather than
 using a different browser.
 
@@ -372,11 +403,14 @@ remove the browser.
 Chrome runs headlessly. Its browser toolbar, address-bar WebUI, and their preload
 and process-overhead experiments are disabled: these internal interfaces are not
 agent pages and must not consume renderers while an agent opens its application.
-Page rendering and Chrome's sandbox remain enabled. On Linux, Chrome refuses
-to run as root with its sandbox, so a runner that runs as root cannot use the
-browser: its browser commands fail with `browser_unavailable`, saying to run
-the runner as an ordinary user, as a Cloud's runner is (UID 1000). The
-environment also loads
+Page rendering remains enabled. On macOS and Windows Chrome keeps its
+sandbox. On Linux it runs without it (`--no-sandbox`): the sandbox needs
+unprivileged user namespaces, which Ubuntu 23.10 and later restrict with
+AppArmor unless root installs a profile for the executable, and Chrome
+refuses to start with it as root. A renderer that a page compromises then
+has the rights of the runner's user, which the agent already has through its
+shell on that Host; a Cloud runs inside gVisor besides. The environment also
+loads
 the live view's capture extension, with a fixed key so that its ID can be
 allowlisted for tab capture ([Capture](live-view.md#capture)).
 
@@ -405,10 +439,9 @@ the user test how real sites and applications behave for real visitors:
   the locale environment on Linux, including inherited overrides). Chrome itself tells pages only the
   first language, as it does for any user. They do not change while the
   environment lives.
-- Chinese, Japanese and Korean text and color emoji need their fonts, which
-  the Cloud base does not carry: they are installed with Chrome's libraries,
-  on a Cloud as on any Linux Host, and the browser names the packages when
-  they are missing ([Browser distribution](#browser-distribution)).
+- On Linux, pages draw every common script and color emoji with the Chrome
+  runtime's fonts, on a Cloud as on any Host, and the Host's and the user's
+  own fonts stay available ([Browser distribution](#browser-distribution)).
 
 What cannot change without a GPU remains: on Cloud, WebGL reports its software
 renderer.
@@ -726,10 +759,7 @@ the entire page tree or a screenshot after every action.
 
 Page titles, text, attributes, and errors are quoted data. Escape control
 characters, newlines inside values, and terminal sequences so page content
-cannot forge a result header or command status. A `browser_unavailable`
-message keeps its lines: Demi writes it about the Host, before any page
-exists, and it carries the lines of what the Host lacks and the commands that
-supply it ([Browser distribution](#browser-distribution)). Observation of a password field
+cannot forge a result header or command status. Observation of a password field
 shows `[protected]`; filling it does not echo its value.
 
 Text column widths and line numbers are not a parsing contract. Scripts use
@@ -1069,63 +1099,25 @@ input went when it named none.
 ### Installation
 
 `install` installs the pinned Chrome for Testing on the Host, from its
-official URL ([Browser distribution](#browser-distribution)). It reports the
-download and the unpacking in its own output while they run, as a download in
-a terminal does, in lines the agent reads like the rest of the command's
-output, and prints where the browser is:
-Run again, it finds the installation and prints the same. On Linux it then
-names what the Host still lacks, from the package's record, and how to
-install it; it installs none of it:
+official URL, and on Linux the pinned Chrome runtime, from its release
+([Browser distribution](#browser-distribution)). It reports each download and
+unpacking in its own output while they run, as a download in a terminal does,
+in lines the agent reads like the rest of the command's output, and prints
+where the browser is:
 
 ```text
 $ demi browser install
 Downloading Chrome for Testing 153.0.8010.36: 18 of 182 MB
-Downloading Chrome for Testing 153.0.8010.36: 37 of 182 MB
 …
 Unpacking Chrome for Testing 153.0.8010.36
+Downloading the Chrome runtime 1: 12 of 47 MB
+…
+Unpacking the Chrome runtime 1
 Installed Chrome for Testing 153.0.8010.36 at /home/demi/.demi/artifacts/<sha256>/chrome-linux64/chrome
-Chrome needs system libraries this Host lacks: libnss3.so, libgbm.so.1, libasound.so.2
-Recommended fonts are missing: color emoji; Chinese, Japanese and Korean text
-On Ubuntu, install them by running this command as printed:
-  sudo apt-get update && sudo apt-get install -y libnss3 libgbm1 libasound2t64 fonts-noto-color-emoji fonts-noto-cjk
 ```
 
-On a Host that has everything, the first line is the whole output. The
-package names are Ubuntu's, the distribution of the Cloud image, and the
-command refreshes the package lists first, since the Cloud image ships none;
-on another distribution the libraries' names tell the user what to look
-for.
-
-Chrome keeps its sandbox, which needs user namespaces. Ubuntu 23.10 and
-later restrict them with AppArmor
-(`kernel.apparmor_restrict_unprivileged_userns`), so there Chrome stops with
-"No usable sandbox!" unless a profile allows them for its executable, as
-Ubuntu's own profile does for Google Chrome. When the Host restricts them and
-`/etc/apparmor.d/demi-chrome` holds no profile for this Chrome, `install`
-ends with the profile and the commands that write and load it. Only root may
-read which profiles the kernel loaded, so `install` looks at the file, which
-AppArmor loads at boot. The profile covers every version of the line this runner installs, each
-in a directory of its cache named by the archive's digest:
-
-```text
-This Host restricts user namespaces with AppArmor, so Chrome's sandbox cannot start.
-Allow them for this Chrome with a profile:
-sudo tee /etc/apparmor.d/demi-chrome > /dev/null <<'EOF'
-abi <abi/4.0>,
-include <tunables/global>
-
-profile demi-chrome /home/demi/.demi/artifacts/*/chrome-linux64/chrome flags=(unconfined) {
-  userns,
-
-  include if exists <local/demi-chrome>
-}
-EOF
-sudo apparmor_parser -r /etc/apparmor.d/demi-chrome
-```
-
-The commands start at the line's margin, so they can be pasted as printed.
-Demi never starts Chrome with `--no-sandbox`, and never lifts the
-restriction for the whole Host.
+Run again, it finds the installation and prints the last line only. It needs
+no root and changes nothing outside the runner's artifact cache.
 
 On a platform the pinned version has no archive for, it fails: `Chrome for
 Testing 153.0.8010.36 is unavailable on aarch64-pc-windows-msvc`.

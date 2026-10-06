@@ -112,9 +112,10 @@ commands use are Demi's executables, not the image's. Compilers, language
 runtimes such as Node.js and Python, and tools such as `gh` are installed on
 demand, by the agent or the user: with `apt` into the system layer, which a
 system reset empties, or with a version manager into the home, which every
-reset keeps. Nothing is there for the browser either: Chrome's system
-libraries and fonts are the agent's to install with Chrome, as on any Linux
-Host ([Browser distribution](../browser/browser.md#browser-distribution)).
+reset keeps. Nothing is there for the browser either: `demi browser install`
+brings Chrome with the libraries and fonts it needs into the home, which a
+system reset keeps, as on any Linux Host
+([Browser distribution](../browser/browser.md#browser-distribution)).
 The locale is `C.UTF-8`, the one the container image carries. The manifest
 records the resolved package versions rather than a second version list in
 documentation; with Demi's programs, the base is about 260 MB unpacked and

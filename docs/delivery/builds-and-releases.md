@@ -544,10 +544,12 @@ make the system ask before running them.
 Each Demi release pins one Chrome for Testing version, which `demi-browser`
 installs when the agent runs `demi browser install`
 ([Browser distribution](../browser/browser.md#browser-distribution)).
-`bun xtask browser-release` pins the version it is given:
+`bun xtask browser-release` pins the version it is given, with the Chrome
+runtime release that Linux Hosts install beside it
+([Chrome runtime](#chrome-runtime)):
 
 ```sh
-bun xtask browser-release 153.0.8010.36
+bun xtask browser-release 153.0.8010.36 --runtime 1
 ```
 
 It reads that version's official download metadata and, for each platform
@@ -557,18 +559,40 @@ checks that it holds the executable the record names. It then writes the
 release record, `crates/command-package-browser-protocol/src/release/chrome.json`,
 which the program compiles in; commit it with the change that adopts the
 version. Chrome for Testing publishes no Windows arm64 build, so the record
-carries five of the six targets. The downloads are not kept: nothing in a
-release carries Chrome.
+carries five of the six targets. It reads the runtime release's archives the
+same way, measures each one, and writes them into the same record. The
+downloads are not kept: nothing in a Demi release carries Chrome or the
+runtime.
 
-Beside it, `crates/command-package-browser-protocol/src/release/linux.json` lists
-what Chrome needs on Linux that Demi does not install: each shared library
-Chrome loads that Ubuntu does not ship by default, with the Ubuntu package
-that provides it, and the font packages that let pages show emoji and
-Chinese, Japanese and Korean text. `demi browser install` names from it what
-a Host lacks ([Installation](../browser/browser.md#installation)). The list is
-kept by hand: adopting a new version checks it on an Ubuntu Host of each
-architecture by installing Chrome on a minimal system, adding what the list
-names, and starting it.
+## Chrome runtime
+
+The Chrome runtime is the set of shared libraries and fonts that runs Chrome
+for Testing on any Linux with glibc 2.28 or newer
+([Browser distribution](../browser/browser.md#browser-distribution)). Its own
+repository, [wspl/demi-chrome-runtime](https://github.com/wspl/demi-chrome-runtime),
+builds it, so that the licenses and sources its libraries' terms require
+travel with it and nowhere else. A release, numbered `1`, `2`, …, holds:
+
+| Asset | Content |
+| --- | --- |
+| `libs-x86_64.tar.zst`, `libs-aarch64.tar.zst` | `lib/`: each shared object under its soname, the NSS modules, an empty `gio/modules` |
+| `fonts.tar.zst` | `fonts/` and `fontconfig/fonts.conf` |
+| `licenses.tar.zst` | Each package's license texts, and a `MANIFEST` naming every file with its package and version |
+| `sources/` | The AlmaLinux source packages of every library, and the fonts' sources |
+
+Its workflow runs on GitHub's hosted runners, one per architecture, in an
+AlmaLinux 8 container at a pinned point release. It installs the packages
+Chrome needs with dnf, copies the closure of Chrome's executable and of the
+NSS modules under `ldd`, leaving out glibc, the loader, glibc's own `libnss_*`
+modules and `libgcc_s`, and fails if any object needs a newer glibc than
+2.28. Then it starts the Chrome version it was given, with the runtime and
+`--no-sandbox`, in fresh containers of the oldest and newest distributions it
+supports (AlmaLinux 8, Debian 10, Ubuntu 20.04 and the latest Ubuntu and
+Fedora) and checks that a page draws Latin, CJK, emoji and the other bundled
+scripts, prints to PDF, loads an extension and encodes H.264 with WebCodecs;
+a failure blocks the release. Adopting a new Chrome version runs that check
+against the current runtime first, and makes a new runtime release only when
+it fails.
 
 ## gVisor runtime
 
@@ -622,7 +646,7 @@ its own copy of every shared dependency.
 | --- | --- |
 | `cargo check --workspace --all-targets --features demi-runner/test-fixtures` | The type check of every crate, test and example |
 | `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
-| `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release, unpacked; they run as an ordinary user, since Chrome refuses root on Linux with its sandbox |
+| `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release, unpacked; on Linux also with `DEMI_TEST_CHROME_RUNTIME=<directory>`, the pinned Chrome runtime unpacked |
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored real_browser` | The browser suite's scenario through the backend and a paired device's runner ([Browser suite](scenarios.md#browser-suite)), as an ordinary user with the same executable |
 | `DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored claude_code` | The Claude Code suite, with the executable of the vendor's CLI and the CA of the suite's local distribution |
 | `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `command-package-browser-chrome`; it first builds the programs the tests start, with the same selection |
@@ -649,9 +673,8 @@ installs a download, with hard links where the system allows them
 ([Install artifacts](../execution/native-runtime.md#install-artifacts)):
 no test downloads Chrome or needs the home. The live view tests decode the H.264
 pictures the view streams with WebCodecs in the Chrome under test, as the page
-does. On Linux the Chrome tests need an ordinary user: Chrome for Testing
-refuses to start as root with its sandbox, which Demi keeps
-([Native driver](../browser/browser.md#native-driver)). An ordinary test run
+does. On Linux the Chrome tests start Chrome with the pinned Chrome runtime,
+as a Host does ([Native driver](../browser/browser.md#native-driver)). An ordinary test run
 also skips the Cloud suite, which needs a machine manager, a Cloud image, and
 root. The machine manager builds only for Linux, and on Linux the one
 selection builds and runs its tests
