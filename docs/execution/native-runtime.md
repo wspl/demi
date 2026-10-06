@@ -1048,13 +1048,24 @@ install: `manifest.json`, which names the current release, and the release's
 directory with its own `manifest.json`, which lists each target's executable
 by size and SHA-256
 ([Packaging](../delivery/builds-and-releases.md#packaging)). The executables
-themselves are the release's files, sourced like a package's. The
-installer's download,
-`GET /runner-artifacts/<release>/<target>/<file>`, answers from the object
-store, sourcing the executable first when the store lacks it, and streams it
-from S3 as from the data directory, since an installer knows only the
-backend. A paired device's runner downloads its updates from the same route
-([Runner updates](runner.md#runner-updates)).
+themselves are the release's files, published compressed with zstd as
+`<file>.zst`, as a package's artifacts are, and sourced like a package's:
+compressed, a runner executable is about a quarter of its size, 10.6 MB
+instead of 38.8 MB for macOS's. The size and SHA-256 are the decompressed
+executable's.
+
+`GET /runner-artifacts/<release>/<target>/<file>.zst` answers the compressed
+file from the object store, sourcing it first when the store lacks it; a
+paired device's runner downloads its updates from it and decompresses them
+as it does any artifact ([Runner updates](runner.md#runner-updates)).
+`GET /runner-artifacts/<release>/<target>/<file>` answers the same file
+decompressed as it streams, for the installers, which know only the backend
+and have no zstd. Both stream from S3 as from the data directory.
+
+A backend sources the runner executables of its release for the targets of
+the paired devices it serves as soon as it starts, in the background, so an
+update never waits on the release's origin: a runner that reconnects after
+the server's upgrade finds its executable already in the store.
 
 ## Acceptance
 

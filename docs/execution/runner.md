@@ -39,7 +39,9 @@ drops a connection without closing it leaves the backend holding a socket
 nobody answers. So the backend pings the held connection and waits up to 5
 seconds: one that answers keeps the device, and the new hello is refused
 with `already_connected`, as a second runner sharing a token is; one that
-does not is closed, and the new hello is answered. For example, a laptop
+does not is closed, and the new hello is answered. A connection whose
+liveness checks are paused, as a Cloud's are while it is checkpointed, counts
+as answering. For example, a laptop
 whose Wi-Fi blinked reconnects within about 5 seconds instead of being
 refused until the backend's heartbeat gives the old socket up.
 It answers a known token with `hello_ok` once it has bound the connection to
@@ -100,9 +102,10 @@ checks it, starts it in its own place, and the new runner connects. The
 laptop is back online seconds after the backend, and nobody ran the
 installer.
 
-The runner opens its socket at `/api/runner` with two headers:
-`Demi-Runner-Release`, the release it was installed from, and
-`Demi-Runner-Target`, its target. Before the socket opens, the backend
+The runner opens its socket at `/api/runner` with three headers:
+`Demi-Runner-Release`, the release it was installed from,
+`Demi-Runner-Target`, its target, and `Demi-Runner-Token`, its device token,
+by which the backend knows which device a 409 sends to an update. Before the socket opens, the backend
 compares the release with its current runner release, the one `runners/`
 names ([Runner releases](native-runtime.md#runner-releases)). The same
 release opens the socket, and the hello follows as above. Another release
@@ -142,10 +145,13 @@ A paired device's runner that receives an executable updates itself:
    the new release: on Linux and macOS in its own process, on Windows beside
    it, and then it exits. The new runner connects.
 
-An update takes seconds: the download is one executable, and nothing else
-waits for it. While a runner updates, the backend shows its device as
-updating rather than offline, from the 409 that named the executable until
-the device's next hello or 5 minutes, whichever comes first.
+An update takes as long as one compressed executable's download, about
+10 MB, from a backend that already holds it. While a runner updates, the
+backend shows its device as updating rather than offline, from the 409 that
+named the executable to the device the request's token names until the
+device's next hello or 5 minutes, whichever comes first. A runner of a
+release before 0.1.14 sends no token, so its device shows as offline during
+that one update.
 
 An update that fails, such as a download that breaks off or an executable
 whose SHA-256 differs, leaves the runner on its release. It writes the
@@ -186,6 +192,15 @@ in the foreground until pairing ends:
 
 The runner writes the same lines to its log, so a person who closed the
 terminal early finds them there; closing it does not stop the runner.
+
+`run start` starts the installation's runner in the background again, as the
+installer does, and returns once it is connected or has said why it cannot
+connect; a runner already running is left as it is. It is how a person
+starts a runner that a restart of the computer or a kill stopped, and the
+web app shows it under a paired device that is offline, ready to copy, as
+`<installation>/run start` (on Windows,
+`powershell -ExecutionPolicy Bypass -File '<installation>\run.ps1' start`, so
+the default execution policy does not refuse it).
 
 `run uninstall` removes the runner of one backend from the device:
 
