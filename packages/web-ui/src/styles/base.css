@@ -1,5 +1,7 @@
 /* Math in messages and documents is KaTeX's HTML, laid out by its stylesheet. */
 @import 'katex/dist/katex.min.css';
+/* Every scrollbar is OverlayScrollbars' (`ui/scrollbars.ts`), in the theme below. */
+@import 'overlayscrollbars/overlayscrollbars.css';
 
 @theme {
   --color-surface-base: var(--surface-base);
@@ -477,10 +479,8 @@ svg.lucide {
   max-height: min(50vh, var(--overlay-available-height, 50vh));
 }
 
+/* The list's ScrollArea viewport. */
 .overlay-menu-scroll {
-  min-height: 0;
-  flex: 1 1 auto;
-  overflow-y: auto;
   overscroll-behavior: contain;
 }
 
@@ -688,15 +688,21 @@ svg.lucide {
   white-space: pre;
 }
 
-/* Lines: the text wraps, and past six lines scrolls. */
+/* Lines: the text wraps, and past six lines scrolls, with no scrollbar: the
+   caret and the wheel move through so few lines. */
 .composer-shell-expanded .composer-editor .ProseMirror {
   min-height: calc(var(--composer-line) * 2);
   max-height: calc(var(--composer-line) * var(--composer-editor-max-lines));
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: none;
   font-size: var(--agent-text);
   line-height: var(--composer-line);
   overflow-wrap: anywhere;
+}
+
+.composer-shell-expanded .composer-editor .ProseMirror::-webkit-scrollbar {
+  display: none;
 }
 
 /* An image in the composer stays a few lines tall. */
@@ -704,13 +710,6 @@ svg.lucide {
   max-height: calc(var(--composer-line) * 4);
 }
 
-/* Scrollbars stay out of the way: hidden until the pointer is inside the scroller or
-   the container marks itself active (transcript while scrolling). The fade lives in
-   the base layer so an element's own transition utilities keep precedence over it.
-   The hidden state is the thumb's own hue at zero alpha, never the `transparent`
-   keyword: Chromium interpolates scrollbar-color without premultiplying alpha (unlike
-   every other colour property), so from that keyword, black at zero alpha, the thumb
-   would fade in through dark greys and snap to white. */
 @layer base {
   /* While a ResizeHandle drags, the whole document keeps its cursor and selects nothing. */
   html.is-resizing-x,
@@ -723,22 +722,25 @@ svg.lucide {
     cursor: row-resize !important;
     user-select: none !important;
   }
+}
 
-  * {
-    scrollbar-width: thin;
-    scrollbar-color: rgb(from var(--color-overlay) r g b / 0) transparent;
-    transition: scrollbar-color 250ms ease;
-  }
-
-  @media (hover: hover) {
-    *:hover {
-      scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
-    }
-  }
-
-  .scrollbar-active {
-    scrollbar-color: color-mix(in srgb, var(--color-overlay) 12%, transparent) transparent;
-  }
+/* The scrollbar of every scroller (`ui/scrollbars.ts`): no track, a thumb 6px
+   thick, 2px from the edges, in the overlay hue, stronger under the pointer and
+   while dragged. It never takes room. No rule sets the standard scrollbar
+   properties globally: setting them makes Chrome trade the system's overlay
+   bars for classic ones that take room. Only a scroller meant to have no bar at
+   all hides its native one. */
+.os-theme-demi {
+  --os-size: 10px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 2px;
+  --os-track-border-radius: 9999px;
+  --os-handle-border-radius: 9999px;
+  --os-handle-min-size: 24px;
+  --os-handle-interactive-area-offset: 4px;
+  --os-handle-bg: color-mix(in srgb, var(--color-overlay) 12%, transparent);
+  --os-handle-bg-hover: color-mix(in srgb, var(--color-overlay) 25%, transparent);
+  --os-handle-bg-active: color-mix(in srgb, var(--color-overlay) 25%, transparent);
 }
 
 .thinking-shimmer {
@@ -940,57 +942,15 @@ svg.lucide {
 
 /* A code block, table or equation that scrolls sideways keeps its scrollbar out of
    the layout, so a code block's padding stays even whether or not its line
-   overflows. The native bar, which a system that shows scrollbars would put below
-   the padding, is hidden. The thumb is painted as the scroller's background, which
-   stays in place while the content scrolls and never adds to what scrolls: 2px
-   above the bottom edge, inside a code block's padding, 6px thick with round ends,
-   while the pointer is on the scroller, as a ScrollArea draws its own.
-   `useScrollThumbs` sets where it starts and how long it is. */
-@property --scroll-thumb-color {
-  syntax: '<color>';
-  inherits: false;
-  initial-value: transparent;
-}
-
-.markdown-body :is(pre, table, .katex-display) {
-  --thumb-x: var(--scroll-thumb-x, 0px);
-  --thumb-size: var(--scroll-thumb-size, 0px);
-  --thumb-cap: min(3px, var(--thumb-size) / 2);
+   overflows. `useContentScrollbars` gives it an overlay scrollbar when the pointer
+   first comes onto it; until then, as OverlayScrollbars does for an element it is
+   about to take over, the native bar is hidden. */
+.markdown-body :is(pre, table, .katex-display):not([data-overlayscrollbars]) {
   scrollbar-width: none;
-  background-image:
-    radial-gradient(circle 3px at 100% 50%, var(--scroll-thumb-color) 2.5px, transparent 3px),
-    linear-gradient(var(--scroll-thumb-color), var(--scroll-thumb-color)),
-    radial-gradient(circle 3px at 0 50%, var(--scroll-thumb-color) 2.5px, transparent 3px);
-  background-repeat: no-repeat;
-  background-size:
-    var(--thumb-cap) 6px,
-    max(0px, var(--thumb-size) - 6px) 6px,
-    var(--thumb-cap) 6px;
-  background-position:
-    left var(--thumb-x) bottom 2px,
-    left calc(var(--thumb-x) + 3px) bottom 2px,
-    left calc(var(--thumb-x) + var(--thumb-size) - var(--thumb-cap)) bottom 2px;
-  transition: --scroll-thumb-color 250ms ease-out;
 }
 
-.markdown-body :is(pre, table, .katex-display)::-webkit-scrollbar {
+.markdown-body :is(pre, table, .katex-display):not([data-overlayscrollbars])::-webkit-scrollbar {
   display: none;
-}
-
-@media (hover: hover) {
-  .markdown-body :is(pre, table, .katex-display):hover {
-    --scroll-thumb-color: color-mix(in srgb, var(--color-overlay) 12%, transparent);
-  }
-}
-
-.markdown-body :is(pre, table, .katex-display)[data-scroll-thumb="drag"] {
-  --scroll-thumb-color: color-mix(in srgb, var(--color-overlay) 25%, transparent);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .markdown-body :is(pre, table, .katex-display) {
-    transition: none;
-  }
 }
 
 .markdown-body th,
