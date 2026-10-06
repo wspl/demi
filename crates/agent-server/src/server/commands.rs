@@ -8,7 +8,8 @@ use std::rc::{Rc, Weak};
 
 use demi_agent_tools::HostResolver;
 use demi_host_interface::{
-    Call, CommandSet, GroupBuilder, LeafBuilder, RegisterError, RpcError, RpcPort, TypedRpc,
+    Call, CommandSet, DEMI_ROOT, GroupBuilder, LeafBuilder, RegisterError, RpcError, RpcPort,
+    TypedRpc,
 };
 use demi_shared_types::{NodeId, is_blank, trim};
 use schemars::JsonSchema;
@@ -149,14 +150,14 @@ pub(crate) fn with_runtime_groups<H: HostResolver>(
         agent_group(Rc::downgrade(server), can_spawn),
         shell_group(Rc::downgrade(server)),
     ];
-    let has_demi = commands.declarations().any(|root| root.name() == "demi");
+    let has_demi = commands.declarations().any(|root| root.name() == DEMI_ROOT);
     if has_demi {
         for group in groups {
-            commands.graft(&["demi"], group)?;
+            commands.graft(&[DEMI_ROOT], group)?;
         }
     } else {
         let demi = groups.into_iter().fold(
-            GroupBuilder::new("demi", "Demi agent runtime commands."),
+            GroupBuilder::new(DEMI_ROOT, "Demi agent runtime commands."),
             GroupBuilder::group,
         );
         commands.register(demi)?;
