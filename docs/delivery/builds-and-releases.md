@@ -578,7 +578,8 @@ travel with it and nowhere else. A release, numbered `1`, `2`, …, holds:
 | `libs-x86_64.tar.zst`, `libs-aarch64.tar.zst` | `lib/`: each shared object under its soname, the NSS modules, an empty `gio/modules` |
 | `fonts.tar.zst` | `fonts/` and `fontconfig/fonts.conf` |
 | `licenses.tar.zst` | Each package's license texts, and a `MANIFEST` naming every file with its package and version |
-| `sources/` | The AlmaLinux source packages of every library, and the fonts' sources |
+| `sources.tar` | The AlmaLinux source packages of every library, and the fonts' upstream source archives, in one file so the release lists only what is used |
+| `SHA256SUMS` | The digest of every other asset |
 
 Its workflow runs on GitHub's hosted runners, one per architecture, in an
 AlmaLinux 8 container at a pinned point release. It installs the packages
