@@ -1,4 +1,4 @@
-//! `cargo xtask cloud-image package` (`images.md` § Build pipeline): the
+//! `xtask cloud-image package` (`images.md` § Build pipeline): the
 //! second stage of a Cloud image build, which
 //! `cloud-guest-image/rootfs/build.sh` runs as root on a Linux builder of
 //! the image's architecture, with an `xtask` built for that architecture.

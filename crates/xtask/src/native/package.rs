@@ -1,4 +1,4 @@
-//! `cargo xtask native package` (`builds-and-releases.md` § Packaging): the
+//! `xtask native package` (`builds-and-releases.md` § Packaging): the
 //! built executables of the named targets become a release directory,
 //! published through `artifact`'s verified release publication. A command
 //! package's descriptor lists the operations its contract crate declares; a

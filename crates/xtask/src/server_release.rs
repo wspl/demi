@@ -1,5 +1,5 @@
-//! `cargo xtask server-release` (`builds-and-releases.md` § Server release):
-//! assembles a server release from the executables `cargo xtask native
+//! `xtask server-release` (`builds-and-releases.md` § Server release):
+//! assembles a server release from the executables `xtask native
 //! build` wrote. The root holds the runner release's manifests in
 //! `runners/`, each command package's descriptor in `commands/`, the record
 //! `release.json`, which says where the release's files are, and, when
