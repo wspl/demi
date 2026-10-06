@@ -122,7 +122,7 @@
       }
     }
   },
-  "help": "fixture: CLI fixture.\n\nSubcommands:\n  fixture read — Read a native file.\n\nfixture read: Read a native file.\n\nUsage:\n\n  fixture read <path> [--count <count>] [--upper [true|false]] [--tag <tag>] [--json] [-- <args>...] <<'EOF'\n  <body>\n  EOF\n    Success output: raw text by default; machine-readable JSON when --json is passed\n    Parameters:\n      <path> (required) - File path\n      --count <count> (optional) - Count\n      --upper [true|false] (optional) - Uppercase\n      --tag <tag> (optional, repeatable) - Tags\n      -- <args>... (optional) - Forwarded arguments\n    Stdin body: body - Text body\n    --json: emits machine-readable JSON for this command",
+  "help": "fixture read: Read a native file.\n\nUsage:\n\n  fixture read <path> [--count <count>] [--upper [true|false]] [--tag <tag>] [--json] [-- <args>...] <<'EOF'\n  <body>\n  EOF\n    Success output: raw text by default; machine-readable JSON when --json is passed\n    Parameters:\n      <path> (required) - File path\n      --count <count> (optional) - Count\n      --upper [true|false] (optional) - Uppercase\n      --tag <tag> (optional, repeatable) - Tags\n      -- <args>... (optional) - Forwarded arguments\n    Stdin body: body - Text body\n    --json: emits machine-readable JSON for this command",
   "cases": [
     {
       "argv": [],
