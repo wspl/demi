@@ -202,7 +202,8 @@ starts a runner that a restart of the computer or a kill stopped, and the
 web app shows it in the help of a paired device that is offline, ready to
 copy, as `<installation>/run start`, with the installation directory the
 runner reported in its last hello since the backend started, or the default
-one before that, and the home directory written as `~` (on Windows,
+one before that, and the home directory written as `~`, or as
+`$env:USERPROFILE` on Windows, where `powershell -File` does not expand `~` (on Windows,
 `powershell -ExecutionPolicy Bypass -File '<installation>\run.ps1' start`, so
 the default execution policy does not refuse it).
 
