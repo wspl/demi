@@ -17,6 +17,7 @@ use tokio_util::{
 
 use crate::driver::capture::CaptureChannel;
 use crate::driver::{
+    installation::Installation,
     numbers::TabNumbers,
     operation::{BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup},
     process::ChromeProcess,
@@ -305,9 +306,10 @@ async fn remove_directory(directory: &Path) -> Result<()> {
     }
 }
 
-/// The caller supplies the installed, verified release executable, never a PATH lookup.
+/// The caller supplies the installed, verified release, never a PATH lookup.
 pub struct LaunchOptions {
-    pub executable: PathBuf,
+    /// The executable, and on Linux the Chrome runtime it starts with.
+    pub installation: Installation,
     /// The release's version, for the user agent pages see.
     version: String,
     /// The user's time zone and languages; they do not change while the
@@ -316,10 +318,10 @@ pub struct LaunchOptions {
 }
 
 impl LaunchOptions {
-    /// The pinned release installed at `executable`, started in `locale`.
-    pub fn pinned(executable: PathBuf, locale: CommandLocale) -> Result<Self> {
+    /// The pinned release installed as `installation`, started in `locale`.
+    pub fn pinned(installation: Installation, locale: CommandLocale) -> Result<Self> {
         Ok(Self {
-            executable,
+            installation,
             version: crate::driver::installation::pinned_version()?,
             locale,
         })
@@ -359,13 +361,17 @@ where
     F: FnOnce(BrowserEnvironment) -> W,
     W: Future<Output = Result<T>>,
 {
-    if !options.executable.is_absolute() {
+    let Installation {
+        executable,
+        runtime,
+    } = options.installation;
+    if !executable.is_absolute() {
         return Err(BrowserError::Configuration(
             "Chrome executable must be absolute".into(),
         ));
     }
     let mut directories = EnvironmentDirectories::create(&DirectoryBases::host())?;
-    let mut process = ChromeProcess::new(directories.runtime(), &options.executable);
+    let mut process = ChromeProcess::new(directories.runtime(), &executable);
     let download_directory = directories.profile().join("downloads");
     tokio::fs::create_dir(&download_directory).await?;
     let upload_directory = directories.profile().join("uploads");
@@ -373,7 +379,7 @@ where
     let builder = BrowserConfig::builder()
         .respect_https_errors()
         .surface_invalid_messages()
-        .chrome_executable(options.executable)
+        .chrome_executable(executable)
         .user_data_dir(directories.profile())
         .viewport(Viewport {
             width: crate::tabs::viewport::UNWATCHED.width,
@@ -388,18 +394,21 @@ where
         directories.profile(),
         &options.version,
         &options.locale,
+        runtime.as_ref(),
         &capture.address()?,
     )
     .await?
     .build()
     .map_err(BrowserError::Configuration)?;
-    let platform_arguments = crate::driver::launch::platform_arguments(&options.locale);
     directories.keep_until_retired();
     let profile = directories.profile().to_owned();
     let launched = tokio::select! {
         biased;
         _ = stop.cancelled() => Err(BrowserError::Cancelled),
-        result = Browser::launch_with(config, |command| process.spawn(command.args(&platform_arguments), &profile)) => result.map_err(BrowserError::from),
+        result = Browser::launch_with(config, |command| {
+            let command = crate::driver::launch::complete(command, &options.locale, runtime.as_ref());
+            process.spawn(command, &profile)
+        }) => result.map_err(BrowserError::from),
     };
     let (browser, mut handler) = match launched {
         Ok(launched) => launched,

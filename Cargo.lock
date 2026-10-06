@@ -2128,7 +2128,6 @@ dependencies = [
  "tokio-util",
  "tracing",
  "url",
- "walkdir",
 ]
 
 [[package]]
@@ -2826,6 +2825,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tar",
  "tempfile",
  "thiserror",
  "tokio",

@@ -1,12 +1,16 @@
 //! How Chrome starts (`browser.md` § Native driver): an ordinary Chrome with no
 //! automation markers, in the user's time zone and languages, with the live
-//! view's capture extension loaded.
+//! view's capture extension loaded, and on Linux with the Chrome runtime and
+//! without its sandbox.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use chromiumoxide::browser::BrowserConfigBuilder;
 
 use demi_command_package_browser_protocol::live::VIDEO_CODEC;
+use demi_command_package_browser_protocol::release::{
+    RUNTIME_FONTS_ENTRY, RUNTIME_LIBRARIES_ENTRY,
+};
 use demi_command_protocol::CommandLocale;
 
 use crate::driver::operation::Result;
@@ -26,10 +30,65 @@ const CAPTURE_EXTENSION: &[(&str, &str)] = &[
 /// sees an outer size smaller than its inner size.
 pub const WINDOW_CHROME_HEIGHT: u32 = 87;
 
+/// An installed Chrome runtime, which Chrome starts with on Linux
+/// (`browser.md` § Browser distribution): the directory of its libraries,
+/// which holds the empty `gio/modules` too, and its fontconfig file.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Runtime {
+    pub libraries: PathBuf,
+    pub fonts: PathBuf,
+}
+
+/// The variable Chrome does not inherit with the runtime: it names more of
+/// the Host's GIO modules, which `GIO_MODULE_DIR` does not replace.
+const GIO_EXTRA_MODULES: &str = "GIO_EXTRA_MODULES";
+
+impl Runtime {
+    /// The runtime whose archives' entries are installed at `libraries`
+    /// and `fonts`.
+    pub fn installed(libraries: &Path, fonts: PathBuf) -> Self {
+        Self {
+            libraries: libraries
+                .parent()
+                .expect("the libraries' entry lies in their directory")
+                .to_owned(),
+            fonts,
+        }
+    }
+
+    /// The runtime with both archives unpacked into `directory`, as the
+    /// Chrome tests' `DEMI_TEST_CHROME_RUNTIME` names it.
+    pub fn unpacked(directory: &Path) -> Self {
+        Self::installed(
+            &directory.join(RUNTIME_LIBRARIES_ENTRY),
+            directory.join(RUNTIME_FONTS_ENTRY),
+        )
+    }
+
+    /// Chrome's environment with the runtime: its libraries before the
+    /// Host's, its fonts, and neither the Host's crypto policy nor its GIO
+    /// modules, which are built for the Host's newer libraries.
+    fn environment(&self) -> Vec<(String, String)> {
+        let path = |path: &Path| path.to_string_lossy().into_owned();
+        vec![
+            ("LD_LIBRARY_PATH".to_owned(), path(&self.libraries)),
+            ("FONTCONFIG_FILE".to_owned(), path(&self.fonts)),
+            ("NSS_IGNORE_SYSTEM_POLICY".to_owned(), "1".to_owned()),
+            (
+                "GIO_MODULE_DIR".to_owned(),
+                path(&self.libraries.join("gio").join("modules")),
+            ),
+        ]
+    }
+}
+
 /// Chrome's switches beside the ones the driver owns (profile, debugging
-/// port, extension): chromiumoxide's defaults without `enable-automation` and
-/// `lang`, headless without hidden scrollbars.
-fn switches(version: &str) -> Vec<(String, Option<String>)> {
+/// port, extension, sandbox): chromiumoxide's defaults without
+/// `enable-automation` and `lang`, headless without hidden scrollbars. With
+/// the runtime, a desktop Host's audio plugins would load beside its older
+/// libraries, and the live view carries no sound: Chrome has no audio
+/// output.
+fn switches(version: &str, runtime: Option<&Runtime>) -> Vec<(String, Option<String>)> {
     let mut switches: Vec<(String, Option<String>)> = [
         "disable-background-networking",
         "disable-background-timer-throttling",
@@ -91,6 +150,9 @@ fn switches(version: &str) -> Vec<(String, Option<String>)> {
         "allowlisted-extension-id".into(),
         Some(CAPTURE_EXTENSION_ID.into()),
     ));
+    if runtime.is_some() {
+        switches.push(("disable-audio-output".into(), None));
+    }
     switches
 }
 
@@ -118,12 +180,17 @@ fn desktop_user_agent(version: &str) -> String {
 
 /// Configures Chrome's switches, the user's locale and the capture extension
 /// on a profile about to be launched; the extension dials `capture` and
-/// encodes with the live protocol's codec.
+/// encodes with the live protocol's codec. With `runtime`, which a Linux
+/// Host starts Chrome with, Chrome finds the runtime through its own
+/// environment and runs without its sandbox: the sandbox needs user
+/// namespaces, which Ubuntu restricts, and Chrome refuses it as root
+/// (`browser.md` § Native driver).
 pub async fn configure(
     builder: BrowserConfigBuilder,
     profile: &Path,
     version: &str,
     locale: &CommandLocale,
+    runtime: Option<&Runtime>,
     capture: &str,
 ) -> Result<BrowserConfigBuilder> {
     let extension = profile.join("demi-capture");
@@ -158,8 +225,11 @@ pub async fn configure(
         .disable_default_args()
         .with_head()
         .extension(extension.to_string_lossy().into_owned())
-        .envs(environment(locale));
-    for (name, value) in switches(version) {
+        .envs(environment(locale, runtime));
+    if runtime.is_some() {
+        builder = builder.no_sandbox();
+    }
+    for (name, value) in switches(version, runtime) {
         builder = match value {
             Some(value) => builder.arg((name.as_str(), value.as_str())),
             None => builder.arg(name),
@@ -168,10 +238,15 @@ pub async fn configure(
     Ok(builder)
 }
 
-/// Chrome's environment: the time zone every renderer uses, and on Linux the
-/// locale that sets a page's default formats.
-fn environment(locale: &CommandLocale) -> Vec<(String, String)> {
+/// Chrome's environment: the time zone every renderer uses, on Linux the
+/// locale that sets a page's default formats, and the runtime's variables.
+/// They are Chrome's alone: set for the runner, the runtime's libraries
+/// would load into the Host's own programs.
+fn environment(locale: &CommandLocale, runtime: Option<&Runtime>) -> Vec<(String, String)> {
     let mut environment = vec![("TZ".to_owned(), locale.time_zone.clone())];
+    if let Some(runtime) = runtime {
+        environment.extend(runtime.environment());
+    }
     if cfg!(target_os = "linux")
         && let Some(language) = locale.languages.first()
     {
@@ -184,15 +259,25 @@ fn environment(locale: &CommandLocale) -> Vec<(String, String)> {
     environment
 }
 
-/// Arguments Chrome takes in the platform's own form: on macOS the first
-/// language as the application language, which sets a page's default formats.
-pub fn platform_arguments(locale: &CommandLocale) -> Vec<String> {
-    match locale.languages.first() {
-        Some(language) if cfg!(target_os = "macos") => {
-            vec!["-AppleLanguages".to_owned(), format!("({language})")]
-        }
-        _ => Vec::new(),
+/// Completes Chrome's command beyond what chromiumoxide's configuration
+/// can say: the arguments Chrome takes in the platform's own form, on macOS
+/// the first language as the application language, which sets a page's
+/// default formats; and, with the runtime, the inherited variable Chrome
+/// must not see, since the configuration only adds variables.
+pub fn complete<'a>(
+    command: &'a mut tokio::process::Command,
+    locale: &CommandLocale,
+    runtime: Option<&Runtime>,
+) -> &'a mut tokio::process::Command {
+    if cfg!(target_os = "macos")
+        && let Some(language) = locale.languages.first()
+    {
+        command.args(["-AppleLanguages".to_owned(), format!("({language})")]);
     }
+    if runtime.is_some() {
+        command.env_remove(GIO_EXTRA_MODULES);
+    }
+    command
 }
 
 #[cfg(test)]

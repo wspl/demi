@@ -1,5 +1,4 @@
 use std::{
-    path::PathBuf,
     sync::{
         Arc,
         atomic::{AtomicUsize, Ordering},
@@ -32,7 +31,7 @@ const DEADLINE: Duration = Duration::from_secs(5);
 #[ignore = "requires DEMI_TEST_CHROME pointing to an installed Chrome for Testing release"]
 async fn browser_contract_and_cleanup() {
     let _turn = crate::families::browser_turn().await;
-    let executable = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
+    let installation = demi_command_package_browser_chrome::driver::testing::installation();
     let requests = Arc::new(AtomicUsize::new(0));
     let effects = requests.clone();
     let app = Router::new()
@@ -60,7 +59,7 @@ async fn browser_contract_and_cleanup() {
     let save_tab = retained_tab.clone();
     let result = with_browser(
         LaunchOptions::pinned(
-            executable.clone(),
+            installation.clone(),
             demi_command_protocol::CommandLocale {
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],
@@ -87,7 +86,7 @@ async fn browser_contract_and_cleanup() {
 
     let result = with_browser(
         LaunchOptions::pinned(
-            executable.clone(),
+            installation.clone(),
             demi_command_protocol::CommandLocale {
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],
@@ -112,7 +111,7 @@ async fn browser_contract_and_cleanup() {
     let end = stop.clone();
     let result = with_browser(
         LaunchOptions::pinned(
-            executable,
+            installation,
             demi_command_protocol::CommandLocale {
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],

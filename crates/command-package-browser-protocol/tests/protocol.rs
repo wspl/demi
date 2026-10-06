@@ -10,7 +10,7 @@ use demi_command_package_browser_protocol::{
     },
     capture::{CaptureEvent, FrameHeader},
     live::{FileHeader, LiveViewerMessage, VideoHeader},
-    release::{BrowserRelease, LinuxRequirements},
+    release::BrowserRelease,
 };
 use serde_json::{Value, json};
 
@@ -384,10 +384,20 @@ fn release_records_are_checked() {
     record["platforms"][0]["sha256"] = json!("f".repeat(64));
     record["platforms"][0]["url"] = json!("not a url");
     assert!(BrowserRelease::parse(&record.to_string()).is_err());
-    // The hand-kept record of what Chrome needs on Linux, which only a
-    // Linux Host reads.
-    let requirements = LinuxRequirements::pinned().unwrap();
-    assert!(!requirements.libraries.is_empty() && !requirements.fonts.is_empty());
+    record["platforms"][0]["url"] = json!(release.platforms[0].url);
+    // Every Linux platform, and only those, starts Chrome with the runtime's
+    // libraries for its architecture.
+    for platform in &release.platforms {
+        assert_eq!(
+            release.runtime_archives(&platform.target).is_some(),
+            platform.target.contains("-linux-"),
+            "{}",
+            platform.target
+        );
+    }
+    assert!(BrowserRelease::parse(&record.to_string()).is_ok());
+    record["runtime"]["fonts"]["sha256"] = json!("F".repeat(64));
+    assert!(BrowserRelease::parse(&record.to_string()).is_err());
 }
 
 #[test]

@@ -18,7 +18,7 @@ use tokio_util::{
 };
 
 use demi_command_package_browser_chrome::driver::{
-    installation::{self, Chrome},
+    installation::Chrome,
     numbers::TabNumbers,
     operation::{BrowserError, Result},
     output,
@@ -30,7 +30,7 @@ use demi_command_package_browser_chrome::tabs::{
 };
 use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
-    ArtifactProgress, CommandLocale, Completion, ConversationRequest, ConversationStatus,
+    CommandLocale, Completion, ConversationRequest, ConversationStatus,
     MAX_MEDIUM_BYTES,
     StdoutTarget,
 };
@@ -44,6 +44,9 @@ use crate::protocol::{
 
 /// Requests waiting for an owner; a full queue holds back their senders.
 const REQUESTS: usize = 64;
+/// Lines of an install's progress not printed yet; a full queue holds back
+/// the install until the output takes them.
+const PROGRESS_LINES: usize = 16;
 
 enum CommandOutput {
     Json(serde_json::Value),
@@ -458,9 +461,9 @@ impl Owner {
             let publisher = publish.clone();
             let retire = owner_stop.clone();
             let result = async {
-                let executable = chrome.executable().await?;
+                let installation = chrome.installation().await?;
                 with_browser(
-                    LaunchOptions::pinned(executable, starting.locale)?,
+                    LaunchOptions::pinned(installation, starting.locale)?,
                     numbers,
                     owner_stop.clone(),
                     move |environment| async move {
@@ -560,13 +563,12 @@ impl Owner {
     }
 }
 
-/// Prints `progress`'s line in the output of `install`'s invocation, unless
-/// it answers in JSON, whose output is the one document.
-async fn print_progress(context: &InvocationContext, progress: ArtifactProgress) -> Result<()> {
+/// Prints a `line` of how `install` goes in the output of its invocation,
+/// unless it answers in JSON, whose output is the one document.
+async fn print_progress(context: &InvocationContext, line: String) -> Result<()> {
     if context.request.json == Some(true) {
         return Ok(());
     }
-    let line = installation::progress_line(progress)?;
     // An output that takes nothing more is an invocation that ended.
     context
         .output
@@ -935,12 +937,12 @@ impl Conversations {
         }
     }
 
-    /// Installs the pinned Chrome for `context`'s invocation, which prints
-    /// a line in its own output as each tenth of the download arrives and
-    /// as the archive is unpacked, unless it answers in JSON
-    /// (`browser.md` § Installation).
+    /// Installs the pinned Chrome, and on Linux the Chrome runtime, for
+    /// `context`'s invocation, which prints a line in its own output as each
+    /// tenth of a download arrives and as it is unpacked, unless it answers
+    /// in JSON (`browser.md` § Installation).
     async fn install(&self, context: &mut InvocationContext) -> Result<InstallResult> {
-        let (progress, mut reports) = demi_command_sdk::Artifacts::progress();
+        let (progress, mut reports) = mpsc::channel(PROGRESS_LINES);
         let installing = self.chrome.install(&context.request.invocation_id, progress);
         tokio::pin!(installing);
         let installed = loop {

@@ -1,9 +1,9 @@
 //! The browser suite through the whole stack (`scenarios.md` § Browser
 //! suite): the backend, a paired device's real runner, the `demi.browser`
 //! package the workspace built, and the pinned Chrome for Testing that
-//! `DEMI_TEST_CHROME` names, with a scripted model. An ordinary run ignores
-//! it; it runs as an ordinary user, since Chrome refuses root on Linux with
-//! its sandbox.
+//! `DEMI_TEST_CHROME` names, on Linux with the pinned Chrome runtime that
+//! `DEMI_TEST_CHROME_RUNTIME` names, with a scripted model. An ordinary run
+//! ignores it.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -23,7 +23,9 @@ use crate::conversations::{anthropic_at, create};
 use crate::streams::{self, Socket};
 use crate::support::{Harness, eventually};
 use crate::work::{Driven, say, shell, switch};
-use demi_command_package_browser_protocol::release::BrowserRelease;
+use demi_command_package_browser_protocol::release::{
+    BrowserRelease, RUNTIME_FONTS_ENTRY, RUNTIME_LIBRARIES_ENTRY,
+};
 use demi_command_protocol::host_target;
 
 const CONVERSATION: &str = "7b6a5c4d-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -198,7 +200,7 @@ impl View {
 /// device installs the package, Chrome starts, and the view's first picture
 /// is encoded.
 #[tokio::test]
-#[ignore = "the browser suite: needs DEMI_TEST_CHROME and an ordinary user (scenarios.md § Browser suite)"]
+#[ignore = "the browser suite: needs DEMI_TEST_CHROME, and DEMI_TEST_CHROME_RUNTIME on Linux (scenarios.md § Browser suite)"]
 async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_release() {
     let chrome = PathBuf::from(std::env::var_os("DEMI_TEST_CHROME").expect("DEMI_TEST_CHROME"));
     let page = Page::start().await;
@@ -222,14 +224,38 @@ async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_
         },
         entry: platform.executable.clone(),
     };
-    demi_shared_artifacts::testing::install_unpacked(
-        &artifacts,
-        &archive,
-        &chrome,
-        &tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .expect("DEMI_TEST_CHROME names an unpacked copy of the pinned release");
+    let cancel = tokio_util::sync::CancellationToken::new();
+    demi_shared_artifacts::testing::install_unpacked(&artifacts, &archive, &chrome, &cancel)
+        .await
+        .expect("DEMI_TEST_CHROME names an unpacked copy of the pinned release");
+    // On Linux, the runtime's archives too, from one directory that holds
+    // both unpacked.
+    if let Some(archives) = pinned.runtime_archives(host_target()) {
+        let runtime = PathBuf::from(
+            std::env::var_os("DEMI_TEST_CHROME_RUNTIME").expect("DEMI_TEST_CHROME_RUNTIME"),
+        );
+        let parts = [
+            (archives.libraries, RUNTIME_LIBRARIES_ENTRY),
+            (archives.fonts, RUNTIME_FONTS_ENTRY),
+        ];
+        for (archive, entry) in parts {
+            let archive = demi_shared_artifacts::Archive {
+                digest: demi_shared_artifacts::Digest {
+                    size: archive.size,
+                    sha256: archive.sha256.clone(),
+                },
+                entry: entry.to_owned(),
+            };
+            demi_shared_artifacts::testing::install_unpacked(
+                &artifacts,
+                &archive,
+                &runtime.join(entry),
+                &cancel,
+            )
+            .await
+            .expect("DEMI_TEST_CHROME_RUNTIME names the pinned Chrome runtime, unpacked");
+        }
+    }
     let provider = anthropic_at(&backend, &master, &vendor, "/laptop").await;
     create(&backend, &master, CONVERSATION).await;
     let home = laptop.runner.home_dir().to_owned();
