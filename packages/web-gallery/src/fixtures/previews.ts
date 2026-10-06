@@ -29,6 +29,22 @@ Open [auth.test.ts](packages/web/src/auth.test.ts) and fix the assertion.
 `
 
 /**
+ * A reply that quotes page text in every script, in a code block and in a
+ * sentence: Arabic joins its letters and runs right to left in both.
+ */
+export const scriptsMarkdown = `The page shows each script:
+
+\`\`\`
+中文：你好，世界。
+日本語：こんにちは、世界。
+한국어: 안녕하세요, 세계.
+العربية: مرحبا بالعالم
+\`\`\`
+
+The Arabic line reads \`مرحبا بالعالم\`, which is مرحبا بالعالم in a sentence.
+`
+
+/**
  * A reply with prices and math side by side: dollar signs before amounts stay
  * text, and math renders on its own and flush against Chinese text.
  */
