@@ -657,7 +657,9 @@ and in the order the
 uses:
 
 - A fresh temporary data directory, removed when the command ends, unless
-  `--keep` keeps it.
+  `--keep` keeps it; or, with `--data <dir>`, that directory, kept between
+  runs, whose account and models are seeded on its first run only, so a
+  restart comes back to the same account and conversations.
 - The backend scenarios' scripted machine manager, the backend crate's
   example program `scripted_machines`. A conversation's Cloud is a runner it
   starts on this machine, with a temporary home and the artifact cache the
