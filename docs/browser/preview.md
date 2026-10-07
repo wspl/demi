@@ -385,9 +385,16 @@ a CORS request without credentials. What this costs is in
 
 **The tab and its top document.** The runtime of a preview tab's top document
 tells the relay the page's address, title, icon and history state as they
-change (`tab-page`), and that the page is leaving (`tab-leaving`), and takes
-the address bar's Back, Forward, Reload and Stop as `tab-command`, so the strip
-and the address bar show the page as a browser's do. The relay reaches the
+change (`tab-page`), each move in its history (`tab-entry`, with the entry's
+key and how it was reached), and that the page is leaving (`tab-leaving`),
+and takes the address bar's Back, Forward, Reload and Stop as `tab-command`,
+so the strip and the address bar show the page as a browser's do. The relay
+keeps the tab's entries across the page's origins and enables Back and
+Forward from them: within one origin Back goes through the page's Navigation
+API, and to another origin's entry through `history.back()` and `forward()`
+of the frame's session history. An entry the Demi page itself added after the
+frame's would be stepped instead; the page adds none while a preview tab
+navigates, a limit to lift if it changes. The relay reaches the
 page's host through `PageHost.preview`, the `PreviewPlace` the shell gives the
 plugin: the deployment's scheme, domain and namespace, and the runtime's
 address in the web app's build.
@@ -422,7 +429,7 @@ the relay chooses.
 | --- | --- | --- |
 | `hello` | Relay | `{ scheme, domain, namespace, host }`: the first message, which labels need, since a user stream takes no arguments; the scheme is the one the product state carries |
 | `request` | Relay | `{ id, environment, request, client }`: the receiving environment the relay bound; the forwarder's request with real addresses, which also holds the initiator the relay resolved (an environment, or null when unknown), whether the user started it, and whether body frames follow; and the client description ([Upstream requests](#upstream-requests), [Mobile](#mobile)) |
-| `labels` | Relay | `{ id, environments }`: environments the runtime mapped itself, for the engine to compute their labels; the engine answers `labels` with `{ id, labels }`, and the relay keeps only what the engine computed, so labels have one implementation |
+| `labels` | Relay | `{ id, environments }`: at most 256 environments the runtime mapped itself, for the engine to compute their labels; the engine answers `labels` with `{ id, labels }`, and the relay keeps only what the engine computed, so labels have one implementation |
 | `request_body` | Relay | `id`, then up to 256 KiB of the request's body, on the engine's `pull`; an empty one ends it |
 | `response` | Engine | `{ id, status, headers, labels }`: the head of the answer, and the labels its rewriting computed, each with its environment |
 | `pull` | Either | `{ id }`: send the next chunk of that body |
@@ -897,8 +904,16 @@ Measured in Chrome 155, and checked again by the behavior cases
 Automated tests reach no outside network ([Testing](../delivery/testing.md)).
 
 - **Behavior cases**: the spike's lab, local fixtures each loaded directly and
-  through the preview, become scenario tests of the engine and the runtime,
-  driven through the relay as the page does. Each keeps the direct load as its
+  through the preview, is the preview lab suite,
+  `packages/browse/src/lab/preview-lab.test.ts`: it starts a development
+  backend with its echo model, the web app, a runner claimed through the API
+  and the lab's sites on free ports, creates the conversation through the
+  API, and drives Chrome through the relay as the page does. It runs when
+  `DEMI_TEST_CHROME` names Chrome ([Validation](../delivery/builds-and-releases.md#validation)),
+  `DEMI_TEST_PREVIEW_LAB_CASES` naming a subset, in about two minutes; the
+  last runs: 192 cases agree, 30 differ by policy, 22 are unsupported by
+  design, and one, a public page reaching loopback, needs a public site the
+  lab cannot provide. Each keeps the direct load as its
   baseline; a deliberate difference states its expected value. The cases the
   spike added last are kept: no cookies cross-site, a public page cannot reach
   loopback, a request resent when a reused connection closes, a site that

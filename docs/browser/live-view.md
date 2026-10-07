@@ -819,11 +819,9 @@ user waits in the panel, not in a script: for a `user` caller `open`, `goto`,
 waiting for the page to load, and the tab's content shows the loading. Each
 tab in the tab list and in the view's `state` carries `loading`: whether the
 browser is loading its top-level page; `canGoBack` and `canGoForward`:
-whether its history has an entry in that direction; and `favicon`: the page's
-icon, drawn 32 pixels square on the Host each time the page finishes loading
-from what the browser fetches outside the page, so the page's scripts and its
-list of resources never see the request,
-at most 16 KiB, which the strip shows as Chrome does, or none. While a
+whether its history has an entry in that direction. The strip shows a tab of
+the agent's browser with the agent's browser's one fixed icon, never the
+page's own ([Web preview](preview.md#what-the-user-sees)). While a
 navigation the user started loads, the tab's `url` is the address it loads and
 its `title` is empty, as Chrome's tab shows, until the new page commits or the
 load ends without one; the agent's `demi browser tabs` lists the same. Each tab list carries its
