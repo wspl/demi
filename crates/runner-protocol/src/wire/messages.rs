@@ -957,11 +957,14 @@ pub enum Outbound {
         id: String,
     },
     /// The paths something changed at under watch `id`, each once: created,
-    /// written, removed or renamed (both names of a rename).
+    /// written, removed or renamed (both names of a rename); `ignored` are
+    /// those of them git ignores in the watched path's repository.
     FsWatchChanged {
         id: String,
         #[garde(length(min = 1, max = MAX_WATCH_PATHS))]
         paths: Vec<String>,
+        #[garde(length(max = MAX_WATCH_PATHS))]
+        ignored: Vec<String>,
     },
     /// Watch `id` lost events: what it reported no longer tells what
     /// changed. It keeps running.

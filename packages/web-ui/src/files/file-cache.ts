@@ -91,8 +91,11 @@ class Entry<T> {
     this.state = reactive({ value: undefined, failure: null, reading: false }) as Entry<T>['state']
   }
 
-  /** Whether a report of a change at `path` concerns it. */
-  concerns(path: string): boolean {
+  /**
+   * Whether a report of a change at `path` concerns it; `ignored` when git
+   * ignores the path, which then changes no working tree's changes.
+   */
+  concerns(path: string, ignored: boolean): boolean {
     const own = this.spec.path
     switch (this.spec.kind) {
       case 'listing':
@@ -104,7 +107,7 @@ class Entry<T> {
       case 'sides':
         return within(own, path) || inGitDirectory(path)
       case 'changes':
-        return within(path, own) || inGitDirectory(path)
+        return (within(path, own) && !ignored) || inGitDirectory(path)
       case 'committed':
         return inGitDirectory(path)
     }
@@ -288,12 +291,16 @@ export class HostFiles {
   }
 
   /**
-   * Something changed at each of `paths`: every entry they concern is
-   * unconfirmed, and read again at once while a view shows it.
+   * Something changed at each of `paths`, of which git ignores `ignored`:
+   * every entry they concern is unconfirmed, and read again at once while a
+   * view shows it. An ignored path, such as a log a process appends to,
+   * concerns its file and folder but not the working tree's changes
+   * (`web-api.md` § File text and working tree changes).
    */
-  changed(paths: readonly string[]): void {
+  changed(paths: readonly string[], ignored: readonly string[] = []): void {
+    const ignoredPaths = new Set(ignored)
     for (const entry of this.entries.values()) {
-      if (!paths.some((path) => entry.concerns(path)))
+      if (!paths.some((path) => entry.concerns(path, ignoredPaths.has(path))))
         continue
       this.unconfirm(entry)
       if (entry.shown > 0)

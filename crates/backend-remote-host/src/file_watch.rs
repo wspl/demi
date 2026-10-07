@@ -20,8 +20,12 @@ const BACKLOG: usize = 256;
 pub enum WatchUpdate {
     /// The Host's watch runs: a change from now on is reported.
     Ready,
-    /// Absolute paths on the Host that something changed at.
-    Changed(Vec<String>),
+    /// Absolute paths on the Host that something changed at, and those of
+    /// them git ignores in the watched path's repository.
+    Changed {
+        paths: Vec<String>,
+        ignored: Vec<String>,
+    },
     /// The watch lost reports: what it reported no longer tells what
     /// changed. It keeps running.
     Lost,
@@ -43,7 +47,10 @@ enum Status {
 /// What a watch reports between its states.
 #[derive(Debug, Clone)]
 enum Report {
-    Changed(Vec<String>),
+    Changed {
+        paths: Vec<String>,
+        ignored: Vec<String>,
+    },
     Lost,
 }
 
@@ -101,10 +108,10 @@ impl LinkWatches {
         }
     }
 
-    pub(crate) fn changed(&self, id: &str, paths: Vec<String>) {
+    pub(crate) fn changed(&self, id: &str, paths: Vec<String>, ignored: Vec<String>) {
         if let Some(watch) = self.get(id) {
             // Nobody following now is nobody to tell.
-            let _ = watch.reports.send(Report::Changed(paths));
+            let _ = watch.reports.send(Report::Changed { paths, ignored });
         }
     }
 
@@ -220,7 +227,9 @@ impl HostWatch {
                     }
                 }
                 report = self.reports.recv() => match report {
-                    Ok(Report::Changed(paths)) => return WatchUpdate::Changed(paths),
+                    Ok(Report::Changed { paths, ignored }) => {
+                        return WatchUpdate::Changed { paths, ignored };
+                    }
                     Ok(Report::Lost) | Err(broadcast::error::RecvError::Lagged(_)) => {
                         return WatchUpdate::Lost;
                     }

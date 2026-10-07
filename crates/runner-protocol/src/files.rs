@@ -104,8 +104,13 @@ pub enum FileWatchMessage {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         reason: Option<String>,
     },
-    /// Absolute paths on the Host that something changed at, each once.
-    Changed { paths: Vec<String> },
+    /// Absolute paths on the Host that something changed at, each once, and
+    /// `ignored`, those of them git ignores in the working tree's repository:
+    /// they change what the File view shows, not the working tree's changes.
+    Changed {
+        paths: Vec<String>,
+        ignored: Vec<String>,
+    },
     /// Nothing else was sent for 30 seconds: the watch is quiet, not dead.
     Heartbeat,
 }
@@ -139,8 +144,12 @@ pub enum FileWatchState {
 pub enum WatchReport {
     /// The watch runs: a change from now on is reported.
     Ready,
-    /// Absolute paths something changed at.
-    Changed(Vec<String>),
+    /// Absolute paths something changed at, and those of them git ignores
+    /// in the watched path's repository.
+    Changed {
+        paths: Vec<String>,
+        ignored: Vec<String>,
+    },
     /// The watch lost reports; it keeps running.
     Lost,
     /// The Host cannot watch the path, for this reason; nothing more comes.
@@ -257,7 +266,9 @@ impl PageWatch {
                 *coverage = Coverage::Failed(reason);
                 Vec::new()
             }
-            WatchReport::Changed(paths) => vec![FileWatchMessage::Changed { paths }],
+            WatchReport::Changed { paths, ignored } => {
+                vec![FileWatchMessage::Changed { paths, ignored }]
+            }
             // Before the first `live` nothing was covered.
             WatchReport::Lost if self.initial && !self.unavailable => {
                 self.rescan = true;
