@@ -153,8 +153,8 @@ page                         backend (panel, plugin-browser)            Host
   the page stopped loading and, for a tab that shows no picture yet, such as
   one opening or reopening, until its first picture arrives; the agent's own
   navigations show the same way while the tab list says the page loads. Stop
-  is available for the whole loading: pressed while the tab is still
-  opening, it stops the page as soon as the tab exists. It
+  is available for the whole loading: pressed before the browser has the
+  tab, it gives up the address, as above. It
   appears in the same frame as the click or the Enter, before the request has
   left the page, since on a far backend the browser may start loading
   seconds later. Only a tab list that describes the page after the request
@@ -309,9 +309,14 @@ keeps looking at `t3`.
    and that the conversation belongs to the user, and passes the request to
    the user's shard.
 2. The shard admits the stream through the conversation's host access,
-   without waking a stopped Cloud: a stopped Cloud holds no browser, so the
-   shown tab's content says that the Cloud is stopped
+   without waking a stopped Cloud: a stopped Cloud holds no browser, and the
+   view is refused
    ([Host operations](../execution/sessions-and-targets.md#host-operations)).
+   A shown tab that needs the Cloud wakes it by opening its browser tab, and
+   the view connects again as soon as the Cloud runs, so that the Host learns
+   the panel's size before it creates the tab. The page keeps the view open
+   while a shown tab is still opening, watching nothing, for the same
+   reason.
 3. The shard mints two pipes and asks the primary Host's runner to open the
    `browser` user stream on them ([Service streams](../execution/runner.md#service-streams)).
 4. The runner invokes the declared operation on the resident `demi-browser`
@@ -578,8 +583,10 @@ of the tab being watched.
   picture it shows, and maps input back to page coordinates, by that
   picture's generation, never by a viewport the tab list already reports for
   a picture that has not arrived.
-- A Web tab nobody watches keeps its last size. A tab never watched is
-  1280 × 720.
+- A Web tab nobody watches keeps its last size. A tab opened while a view
+  of the conversation is open is created at that view's panel size, so its
+  first picture needs no resize; a tab opened with no view open, as the
+  agent's usually are, is 1280 × 720.
 - With several viewers, the viewer that operated most recently decides the Web
   size and the pixel ratio. The others see the same picture scaled.
 
