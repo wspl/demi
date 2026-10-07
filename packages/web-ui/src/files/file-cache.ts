@@ -301,9 +301,18 @@ export class HostFiles {
     }
   }
 
-  /** A watch is live: what it covers, read from now on, is confirmed. */
+  /**
+   * A watch is live: what it covers, read from now on, is confirmed. Each
+   * entry it covers that a view shows and no live watch confirmed is read
+   * again now: it may have changed unreported, or its last read failed while
+   * the Host was away, which a watch going live says it is no longer.
+   */
   cover(coverage: Coverage): void {
     this.coverages.add(coverage)
+    for (const entry of this.entries.values()) {
+      if (entry.shown > 0 && !entry.confirmed && coverage.covers(entry.spec.path))
+        void this.read(entry)
+    }
   }
 
   /**

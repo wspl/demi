@@ -81,7 +81,7 @@
     },
     "packages/plugin-sdk": {
       "name": "@demicodes/plugin-sdk",
-      "version": "1.0.0",
+      "version": "2.0.0",
       "dependencies": {
         "@demicodes/web-ui": "workspace:^",
         "vue": "^3.5.38",

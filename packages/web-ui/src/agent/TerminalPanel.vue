@@ -59,7 +59,7 @@ function closeTab(terminal: TerminalRecord): void {
         :is-active="terminal.id === active?.id"
         :status="terminalStatus(terminal.phase)"
         mark="terminal"
-        @pointerdown="activate(terminal.id)"
+        @select="activate(terminal.id)"
         @close="closeTab(terminal)"
       />
     </template>

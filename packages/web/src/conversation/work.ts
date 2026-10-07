@@ -152,16 +152,29 @@ export const useWorkPanel = defineStore('work-panel', () => {
     state.history = selectTab(state.history, id)
   }
 
-  /** A new tab, selected unless `options` says not, with the panel opened for it; returns its id. */
-  function add(conversationId: string, kind: string, data: unknown, options = { select: true }): string {
+  /**
+   * A new tab, after the others or at `options.index` among them, selected
+   * unless `options` says not, with the panel opened for it; returns its id.
+   */
+  function add(
+    conversationId: string,
+    kind: string,
+    data: unknown,
+    options: { select: boolean; index?: number } = { select: true },
+  ): string {
     const state = stateFor(conversationId)
     const id = crypto.randomUUID()
-    tabsOf(conversationId).change({ type: 'create', tab: { id, kind, data } })
+    tabsOf(conversationId).change({ type: 'create', tab: { id, kind, data }, index: options.index })
     if (options.select) {
       state.history = selectTab(state.history, id)
       state.open = true
     }
     return id
+  }
+
+  /** Moves the tab `id` to `index` among the others, where the user dragged it. */
+  function move(conversationId: string, id: string, index: number): void {
+    tabsOf(conversationId).change({ type: 'move', id, index })
   }
 
   /** The tab's next `data`, from its kind: only what changed is sent. */
@@ -204,5 +217,5 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return intentKind(PLUGIN_PAGES, enabled, intent) !== null
   }
 
-  return { stateFor, recorded, setOpen, load, select, add, update, closeTabs, updatePinned, openIn, canOpen }
+  return { stateFor, recorded, setOpen, load, select, add, move, update, closeTabs, updatePinned, openIn, canOpen }
 })

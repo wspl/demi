@@ -110,14 +110,18 @@ export function useGalleryWork(
     }
     open.value = true
   })
-  /** A new tab after the others, selected unless `options` says not; returns its id. */
-  function add(kind: string, data: unknown, options = { select: true }): string {
+  /** A new tab, after the others or at `options.index` among them, selected unless `options` says not; returns its id. */
+  function add(kind: string, data: unknown, options: { select: boolean; index?: number } = { select: true }): string {
     const id = crypto.randomUUID()
-    tabs.change({ type: 'create', tab: { id, kind, data } })
+    tabs.change({ type: 'create', tab: { id, kind, data }, index: options.index })
     if (options.select) {
       select(id)
     }
     return id
+  }
+  /** Moves the tab `id` to `index` among the others, where the user dragged it. */
+  function move(id: string, index: number) {
+    tabs.change({ type: 'move', id, index })
   }
   function update(id: string, data: unknown) {
     updatePanelTab(tabs, id, data)
@@ -206,6 +210,7 @@ export function useGalleryWork(
     host,
     select,
     add,
+    move,
     update,
     updatePinned,
     closeTabs,

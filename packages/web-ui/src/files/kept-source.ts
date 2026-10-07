@@ -26,6 +26,7 @@ import type {
 export interface ContentReads {
   url: FileContents['url']
   describe(path: string): Promise<FileDescription>
+  readStart?: FileContents['readStart']
 }
 
 /**
@@ -112,6 +113,8 @@ export function keptContents(
     url: reads.url,
     describe: (path) => files.get(spec(path)),
     showDescription: (path) => followed(files.show(spec(path)), absolute(path), follower),
+    // A part of a file is read for the view that shows it, never kept.
+    ...(reads.readStart ? { readStart: reads.readStart } : {}),
   }
 }
 
