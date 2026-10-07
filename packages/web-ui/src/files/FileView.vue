@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Code, Download, Eye, History, RefreshCw } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, Code, Download, Eye, FileText, History, RefreshCw } from '@lucide/vue'
 import type { StateEffect } from '@codemirror/state'
 import CodeEditor from '../editor/components/CodeEditor.vue'
 import { showToast } from '../infra/toast'
@@ -18,9 +18,11 @@ import MarkdownDocument from './MarkdownDocument.vue'
 import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
 import { TREE_WIDTH } from './file-view'
+import { formatBytes } from './format'
 import { baseName, normalizePath, parentPath } from './paths'
 import { hasSourceView, previewKind, TOO_LARGE_NOTE } from './preview'
 import { useShowing } from './showing'
+import { useTextStart } from './text-start'
 import type { FileBrowserSource } from './types'
 
 /**
@@ -34,7 +36,9 @@ import type { FileBrowserSource } from './types'
  *
  * The tree docks, hides and shows over the file as its frame (`TreeFrame`)
  * decides; the host keeps whether it is open, its width, and the Preview or
- * Source choice (v-model), so they hold across files. A click on another file
+ * Source choice (v-model), so they hold across files. A text file too large
+ * to read whole shows its start, with a line saying how much of it shows and
+ * Download (`file-previews.md` § Getting the bytes). A click on another file
  * in the tree, a pick from a crumb's menu, or a link in a Markdown document
  * asks the host to show it here; Back and Forward before the crumbs ask for
  * the files shown before and after. A path typed into the crumb row opens
@@ -93,7 +97,8 @@ type TextState =
   | { phase: 'idle' }
   | { phase: 'loading' }
   | { phase: 'ready'; text: string }
-  | { phase: 'card'; note: string | null }
+  /** A file the text read cannot show; a text file too large for it shows its start instead. */
+  | { phase: 'card'; tooLarge: boolean }
   | { phase: 'failed'; message: string }
 
 const shown = useShowing(
@@ -115,16 +120,42 @@ const state = computed<TextState>(() => {
   const failure = entry.failure
   if (!failure)
     return { phase: 'loading' }
-  // A file the text read cannot show is a card.
   if (failure.kind === 'binary' || failure.kind === 'too-large')
-    return { phase: 'card', note: failure.kind === 'too-large' ? TOO_LARGE_NOTE : null }
+    return { phase: 'card', tooLarge: failure.kind === 'too-large' }
   return { phase: 'failed', message: failure.message ?? 'The file could not be read.' }
+})
+
+/** How many times the text shown was read again successfully: a document's images that did not load try again then. */
+const reloads = ref(0)
+watch(() => shown.entry.value?.reading, (reading, wasReading) => {
+  if (wasReading && !reading && !shown.entry.value?.failure)
+    reloads.value += 1
 })
 
 /** Why the last read of the text shown failed, while the text it had stays. */
 const staleBecause = computed(() => {
   const entry = shown.entry.value
   return entry?.value !== undefined ? entry.failure?.message ?? (entry.failure ? 'The read failed.' : null) : null
+})
+
+/** The start of a text file too large for the text read, while one is shown. */
+const start = useTextStart(
+  () => props.source.contents,
+  () => state.value.phase === 'card' && state.value.tooLarge ? props.path : null,
+)
+/** The line over a large file's start: how much of how much shows. */
+const startNote = computed(() => start.value?.phase === 'ready'
+  ? `Showing the first ${formatBytes(start.value.shown)} of ${formatBytes(start.value.size)}.`
+  : null)
+
+/** What the region says while it shows no file: none chosen, a read on its way, or why the read failed. */
+const placeholder = computed(() => {
+  const current = state.value
+  if (current.phase === 'failed')
+    return { status: 'failed' as const, label: 'Could not read this file.', detail: current.message }
+  if (current.phase === 'idle')
+    return { status: 'note' as const, label: 'Select a file.', detail: null }
+  return { status: 'loading' as const, label: 'Reading…', detail: null }
 })
 
 /** Where each file this view showed was scrolled to, to open there again. */
@@ -136,8 +167,7 @@ const markdown = computed(() => kind.value === 'markdown' &&
   state.value.phase === 'ready' &&
   renderable(state.value.text))
 const tooLargeToRender = computed(() => kind.value === 'markdown' &&
-  state.value.phase === 'ready' &&
-  !renderable(state.value.text))
+  (state.value.phase === 'ready' ? !renderable(state.value.text) : start.value?.phase === 'ready'))
 const place = computed<DocumentPlace | null>(() => props.path === null
   ? null
   : {
@@ -268,6 +298,7 @@ onBeforeUnmount(() => {
         action="Retry"
         @action="shown.retry"
       />
+      <RegionNote v-if="startNote" :icon="FileText" :label="startNote" action="Download" @action="download" />
       <div class="min-h-0 flex-1">
         <FilePreview
           v-if="media && path && source.contents"
@@ -280,31 +311,32 @@ onBeforeUnmount(() => {
           v-else-if="markdown && state.phase === 'ready' && place"
           :text="state.text"
           :place="place"
+          :reloads="reloads"
           @open="emit('open', $event)"
         />
         <!-- One editor per file: a new text of it replaces the old in place. -->
         <CodeEditor
-          v-else-if="state.phase === 'ready' && path"
+          v-else-if="(state.phase === 'ready' || start?.phase === 'ready') && path"
           :key="path"
           class="h-full"
           :path="path"
-          :text="state.text"
+          :text="state.phase === 'ready' ? state.text : start?.phase === 'ready' ? start.text : ''"
           :scroll-to="scrolls.get(path)"
           @left="(left, snapshot) => scrolls.set(left, snapshot)"
         />
         <FileSummary
-          v-else-if="state.phase === 'card' && path"
+          v-else-if="state.phase === 'card' && start?.phase !== 'loading' && path"
           :path="path"
           :contents="source.contents"
-          :note="state.note"
+          :note="state.tooLarge ? TOO_LARGE_NOTE : null"
         />
         <RegionStatus
           v-else
           class="h-full"
-          :status="state.phase === 'loading' || state.phase === 'failed' ? state.phase : 'note'"
-          :label="state.phase === 'idle' ? 'Select a file.' : state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
+          :status="placeholder.status"
+          :label="placeholder.label"
           loading-label="Reading…"
-          :detail="state.phase === 'failed' ? state.message : null"
+          :detail="placeholder.detail"
           :on-retry="shown.retry"
         />
       </div>

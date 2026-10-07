@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LineCounts from './LineCounts.vue'
 import { computed, ref } from 'vue'
 import { RefreshCw } from '@lucide/vue'
 import HighlightText from '../ui/HighlightText.vue'
@@ -92,11 +93,7 @@ function activate(row: ChangeTreeRow): void {
     </template>
     <template #trailing="{ row }">
       <span v-if="row.change" class="ml-auto flex shrink-0 items-center gap-2 pl-2">
-        <!-- Counts as on the changed-file pills: added in green, removed in red, zero omitted. -->
-        <span class="inline-flex gap-1 font-mono text-[11px] tabular-nums">
-          <span v-if="row.change.added > 0" class="text-on-success">+{{ row.change.added }}</span>
-          <span v-if="row.change.removed > 0" class="text-on-danger">−{{ row.change.removed }}</span>
-        </span>
+        <LineCounts :added="row.change.added" :removed="row.change.removed" />
         <GitStatusLetter :status="row.change.status" />
       </span>
     </template>

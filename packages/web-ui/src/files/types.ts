@@ -64,6 +64,13 @@ export interface FileContents {
   describe(path: string): Promise<FileDescription>
   /** Shows the file's description until released, kept current as its source keeps it. */
   showDescription(path: string): Showing<FileDescription>
+  /**
+   * The file's first `length` bytes, or all of a shorter file, at `version`
+   * when given; absent when the source reads no part of a file. A text file
+   * too large to read whole shows them (`file-previews.md` § Getting the
+   * bytes).
+   */
+  readStart?(path: string, length: number, options?: { version?: string; signal?: AbortSignal }): Promise<Uint8Array>
 }
 
 /** A file's text and the version it was read at; null when its source has no versions. */

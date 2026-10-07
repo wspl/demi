@@ -54,6 +54,8 @@ export async function run(context: Context, argv: string[]): Promise<void> {
   if (!back.startsWith(webBase(slot))) {
     await page.goto(`${webBase(slot)}/`)
   }
+  // The shortcut works once the app has mounted; a page just opened may not have yet.
+  await element(context, 'role=main', 10_000)
   await page.keyboard.press('ControlOrMeta+Comma')
   await (await element(context, 'role=navigation[name="Settings sections"] >> role=button[name="Devices"]', 10_000)).click()
   await (await element(context, 'role=button[name="Add Device"]')).click()
