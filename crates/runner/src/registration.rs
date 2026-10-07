@@ -41,6 +41,10 @@ pub struct Options {
     /// The artifact cache (`native-runtime.md` § Install
     /// artifacts).
     pub artifacts: PathBuf,
+    /// Where each command package keeps what outlives it on the Host, in a
+    /// directory of its own (`native-runtime.md` § Invoke and retire a
+    /// service).
+    pub data: PathBuf,
     /// The Host's log, which `main` opened (`runner.md` § Host log).
     pub log: HostLogReader,
     /// The job root, where each shell job keeps its output under its
@@ -117,6 +121,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     let registry = ServiceRegistry::new(
         options.artifacts.clone(),
         image,
+        options.data.clone(),
         options.cwd.clone(),
         options.env.clone(),
     )

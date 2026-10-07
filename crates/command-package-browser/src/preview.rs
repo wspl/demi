@@ -1,6 +1,8 @@
 //! The web preview's stream, `browser.preview` (`preview.md` § The stream):
 //! one engine for every conversation of the Host, opened with the first
-//! stream, whose cookie jar this program keeps in its data directory.
+//! stream, whose cookie jar this program keeps in the data directory its
+//! runner instance names (`native-runtime.md` § Invoke and retire a
+//! service).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,29 +18,10 @@ use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 /// The jar's file in the data directory.
 const JAR_FILE: &str = "preview-cookies.json";
 
-/// The program's data directory: the user's application data directory of
-/// the platform, which a Cloud's home image keeps across stops.
-pub fn data_directory() -> Option<PathBuf> {
-    let home = std::env::home_dir()?;
-    Some(if cfg!(target_os = "macos") {
-        home.join("Library/Application Support/Demi/browser")
-    } else if cfg!(windows) {
-        std::env::var_os("LOCALAPPDATA")
-            .map(PathBuf::from)
-            .unwrap_or_else(|| home.join("AppData/Local"))
-            .join("Demi/browser")
-    } else {
-        std::env::var_os("XDG_DATA_HOME")
-            .map(PathBuf::from)
-            .filter(|directory| directory.is_absolute())
-            .unwrap_or_else(|| home.join(".local/share"))
-            .join("demi/browser")
-    })
-}
-
 /// The preview engine of the program and its open streams.
 pub(crate) struct Previews {
-    /// Where the engine keeps its jar; none when the Host names no home.
+    /// Where the engine keeps its jar; none when the runner named no data
+    /// directory.
     directory: Option<PathBuf>,
     engine: OnceCell<Arc<Engine>>,
     streams: TaskTracker,
@@ -61,7 +44,7 @@ impl Previews {
                 let directory = self
                     .directory
                     .as_ref()
-                    .ok_or_else(|| ServiceError::failed(std::io::Error::other("the Host names no home directory for the preview's cookies")))?;
+                    .ok_or_else(|| ServiceError::failed(std::io::Error::other("the runner named no data directory for the preview's cookie jar")))?;
                 Engine::open(directory.join(JAR_FILE)).map_err(ServiceError::failed)
             })
             .await

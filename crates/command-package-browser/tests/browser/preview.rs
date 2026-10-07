@@ -12,7 +12,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_browser::DemiBrowser;
 use demi_command_package_browser_protocol::preview::{
     CHUNK_FRAME, CONTROL_FRAME, PreviewClient, PreviewCredentials, PreviewEngineMessage, PreviewEnvironment,
-    PreviewMode, PreviewRelayMessage, PreviewRequest,
+    PreviewMode, PreviewRelayMessage, PreviewRequest, PreviewScheme,
 };
 use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale, Invocation, Record};
 use demi_command_sdk::{Handler, Input, InvocationContext, Output};
@@ -107,6 +107,7 @@ async fn the_program_serves_the_preview_stream_and_keeps_its_jar() {
     };
     for message in [
         PreviewRelayMessage::Hello {
+            scheme: PreviewScheme::Https,
             domain: "preview.test".into(),
             namespace: "k3f9a2ab".into(),
             host: "host-1".into(),

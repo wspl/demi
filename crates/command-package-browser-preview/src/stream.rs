@@ -276,11 +276,21 @@ impl Served {
 
     async fn receive(&mut self, frame: Inbound) -> Result<(), StreamError> {
         match frame {
-            Inbound::Control(PreviewRelayMessage::Hello { domain, namespace, host }) => {
+            Inbound::Control(PreviewRelayMessage::Hello {
+                scheme,
+                domain,
+                namespace,
+                host,
+            }) => {
                 if self.place.is_some() {
                     return Err(refused("a second hello"));
                 }
-                self.place = Some(Arc::new(Place { domain, namespace, host }));
+                self.place = Some(Arc::new(Place {
+                    scheme: scheme.to_string(),
+                    domain,
+                    namespace,
+                    host,
+                }));
             }
             Inbound::Control(PreviewRelayMessage::Request {
                 id,

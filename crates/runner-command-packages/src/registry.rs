@@ -83,12 +83,14 @@ pub struct ServiceRegistry {
 }
 
 impl ServiceRegistry {
-    /// Services start in `cwd` with exactly `env`; their artifacts are
+    /// Services start in `cwd` with exactly `env`, each package with its own
+    /// data directory under `data`, named by its id; their artifacts are
     /// cached in `cache`, or taken from the copies the Host's image
     /// preinstalled in `image`, when given.
     pub async fn new(
         cache: PathBuf,
         image: Option<PathBuf>,
+        data: PathBuf,
         cwd: PathBuf,
         env: BTreeMap<String, String>,
     ) -> Result<Self, RuntimeError> {
@@ -101,6 +103,7 @@ impl ServiceRegistry {
         let owner = Owner {
             cache,
             invocations: invocations.clone(),
+            data,
             cwd,
             env,
             entries: HashMap::new(),
@@ -350,6 +353,8 @@ impl Resident {
 struct Owner {
     cache: Arc<ArtifactCache>,
     invocations: Invocations,
+    /// Where each package's data directory is, named by its id.
+    data: PathBuf,
     cwd: PathBuf,
     env: BTreeMap<String, String>,
     entries: HashMap<String, Entry>,
@@ -538,6 +543,7 @@ impl Owner {
             checking: false,
         });
         let cache = self.cache.clone();
+        let data = self.data.join(&descriptor.id);
         let cwd = self.cwd.clone();
         let env = self.env.clone();
         let invocations = self.invocations.clone();
@@ -548,6 +554,7 @@ impl Owner {
                 invocations,
                 resolver: resolver.as_ref(),
                 numbers,
+                data: &data,
                 cwd: &cwd,
                 env: &env,
             };
@@ -810,6 +817,7 @@ struct Start<'a> {
     invocations: Invocations,
     resolver: &'a dyn ArtifactResolver,
     numbers: Arc<dyn NumberSource>,
+    data: &'a std::path::Path,
     cwd: &'a std::path::Path,
     env: &'a BTreeMap<String, String>,
 }
@@ -845,6 +853,7 @@ async fn live(
         ResidentService::start(
             &executable,
             descriptor,
+            start.data,
             start.cwd,
             start.env,
             start.numbers,
