@@ -209,7 +209,9 @@ otherwise.
 
 Intents and `panel.add` are the only ways a tab is opened from outside the
 strip, and `panel.add` adds only a tab of the page's own kinds: a page opens
-another plugin's tab only through an intent.
+another plugin's tab only through an intent. `panel.select` selects a tab of
+the page's own kinds that the strip already holds, as a browser selects the
+tab a click in a page opened.
 
 ## Data a page shows
 

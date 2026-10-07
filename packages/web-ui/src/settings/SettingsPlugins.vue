@@ -9,7 +9,8 @@ import type { SettingsPlugin } from './types'
  * The backend's plugins, one row each with a switch that turns it on or off
  * for the user (`plugins.md` § A user's plugins). A switch shows the choice
  * it asked for while the host saves it; the list the host passes back is the
- * one that holds.
+ * one that holds. The switch alone says whether a plugin is off; its row
+ * reads at full strength either way.
  */
 defineProps<{
   plugins: SettingsPlugin[]
@@ -25,7 +26,7 @@ const emit = defineEmits<{
 <template>
   <SettingsPage
     title="Plugins"
-    description="What the agent and this app can do. A change shows here at once; an open conversation offers to reload for new commands."
+    description="What the agent and this app can do. A change shows here at once; an open conversation offers to reload so its agent has the commands that are on."
   >
     <SettingsGroup>
       <SettingsRow
@@ -33,7 +34,6 @@ const emit = defineEmits<{
         :key="plugin.id"
         :label="plugin.name"
         :description="plugin.description"
-        :muted="!plugin.enabled"
       >
         <Switch
           :model-value="plugin.enabled"
