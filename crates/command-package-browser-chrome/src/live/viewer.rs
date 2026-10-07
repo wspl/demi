@@ -6,7 +6,7 @@ use std::{collections::VecDeque, future::Future, sync::Arc, time::Duration};
 
 use chromiumoxide::cdp::browser_protocol::page::EventJavascriptDialogOpening;
 use tokio::{
-    sync::{broadcast, mpsc, watch},
+    sync::{broadcast, mpsc, oneshot, watch},
     time::{Instant, MissedTickBehavior},
 };
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
@@ -251,7 +251,11 @@ impl<B: ViewedBrowser> Viewer<B> {
         }
     }
 
-    async fn view(&mut self, environment: BrowserEnvironment, live: &Hub) -> Result<(), Failure> {
+    async fn view(
+        &mut self,
+        environment: BrowserEnvironment,
+        live: &Arc<Hub>,
+    ) -> Result<(), Failure> {
         let Ok((membership, mut notices)) = live.join().await else {
             // The hub ends with the browser.
             self.end(EndReason::BrowserEnded).await;
@@ -375,6 +379,10 @@ struct Watched {
     stream: Option<StreamView>,
     dialog: watch::Receiver<Option<Arc<EventJavascriptDialogOpening>>>,
     observed: Option<Observing>,
+    /// The tab's observer while it starts: Chrome holds the commands that
+    /// start it until a navigation under way commits, and the view never
+    /// waits for them (`live-view.md` § Delivery).
+    starting: Option<oneshot::Receiver<BrowserResult<Arc<Observed>>>>,
 }
 
 struct Observing {
@@ -405,6 +413,8 @@ impl Observing {
 
 enum Update {
     Picture(Event),
+    /// The tab's observer started, or could not.
+    Observed(BrowserResult<Arc<Observed>>),
     StreamEnded,
     Dialog,
     Controls,
@@ -456,6 +466,12 @@ impl Watched {
                 }
             }
         };
+        let starting = async {
+            match watched.starting.as_mut() {
+                Some(starting) => starting.await,
+                None => std::future::pending().await,
+            }
+        };
         tokio::select! {
             event = events => match event {
                 Some(event) => Update::Picture(event),
@@ -463,8 +479,33 @@ impl Watched {
             },
             Ok(()) = watched.dialog.changed() => Update::Dialog,
             update = observed => update,
+            // A start the tab's end gave up answers nothing.
+            Ok(started) = starting => Update::Observed(started),
         }
     }
+}
+
+/// Starts the observer of `tab` beside the view, which hears of it once it
+/// started. The start ends with the tab: a navigation that never commits
+/// holds it until the tab closes or the browser ends.
+fn start_observer(
+    live: &Arc<Hub>,
+    tab: &BrowserTab,
+) -> oneshot::Receiver<BrowserResult<Arc<Observed>>> {
+    let (started, starting) = oneshot::channel();
+    let tasks = live.tasks().clone();
+    let live = live.clone();
+    let tab = tab.clone();
+    tasks.spawn(async move {
+        tokio::select! {
+            () = tab.ended().cancelled() => {}
+            observed = live.observer(&tab) => {
+                // A viewer that moved on no longer waits for it.
+                let _left = started.send(observed);
+            }
+        }
+    });
+    starting
 }
 
 /// The watched tab's stream, while its pictures come.
@@ -530,7 +571,7 @@ impl Delivery {
 
 struct Session<'a> {
     environment: &'a BrowserEnvironment,
-    live: &'a Hub,
+    live: &'a Arc<Hub>,
     membership: &'a Membership,
     input: &'a Input,
     writer: &'a Writer,
@@ -611,39 +652,15 @@ impl Session<'_> {
         self.delivery.awaiting_key = true;
         self.delivery.flight.clear();
         self.delivery.last = 0;
-        self.watched = match tab {
-            None => None,
-            Some(tab) => {
-                let observed = match self.live.observer(&tab).await {
-                    Ok(observed) => Some(Observing::new(observed)),
-                    Err(error) => {
-                        // Without its observer the viewer gets no cursor, native
-                        // controls or copied text of this tab.
-                        if !tab.ended().is_cancelled() {
-                            tracing::warn!("live view observer of {}: {error}", tab.id());
-                            self.writer.notice(error.code(), &error.to_string()).await;
-                        }
-                        None
-                    }
-                };
-                Some(Watched {
-                    dialog: tab.state().dialog.watch(),
-                    tab,
-                    stream,
-                    observed,
-                })
-            }
-        };
+        self.watched = tab.map(|tab| Watched {
+            dialog: tab.state().dialog.watch(),
+            starting: Some(start_observer(self.live, &tab)),
+            tab,
+            stream,
+            observed: None,
+        });
         if self.watched.is_some() {
-            for update in [
-                Update::Dialog,
-                Update::Controls,
-                Update::Regions,
-                Update::Cursor,
-                Update::Downloads,
-            ] {
-                self.update(update).await;
-            }
+            self.update(Update::Dialog).await;
         }
     }
 
@@ -733,6 +750,10 @@ impl Session<'_> {
     }
 
     async fn update(&mut self, update: Update) {
+        if let Update::Observed(started) = update {
+            self.observed(started).await;
+            return;
+        }
         let Some(watched) = &mut self.watched else {
             return;
         };
@@ -819,6 +840,8 @@ impl Session<'_> {
                     .await;
             }
             Update::StreamEnded => watched.stream = None,
+            // Taken above, without the borrow of the watched tab.
+            Update::Observed(_) => {}
             Update::Dialog => {
                 let dialog = watched
                     .dialog
@@ -900,6 +923,34 @@ impl Session<'_> {
             }
             // Input held in the old document is gone with it.
             Update::Document => self.input.control(Item::Release).await,
+        }
+    }
+
+    /// The watched tab's observer started: the viewer hears what it found.
+    async fn observed(&mut self, started: BrowserResult<Arc<Observed>>) {
+        let Some(watched) = &mut self.watched else {
+            return;
+        };
+        watched.starting = None;
+        match started {
+            Ok(observed) => watched.observed = Some(Observing::new(observed)),
+            // Without its observer the viewer gets no cursor, native controls
+            // or copied text of this tab.
+            Err(error) => {
+                if !watched.tab.ended().is_cancelled() {
+                    tracing::warn!("live view observer of {}: {error}", watched.tab.id());
+                    self.writer.notice(error.code(), &error.to_string()).await;
+                }
+                return;
+            }
+        }
+        for update in [
+            Update::Controls,
+            Update::Regions,
+            Update::Cursor,
+            Update::Downloads,
+        ] {
+            Box::pin(self.update(update)).await;
         }
     }
 
