@@ -439,7 +439,7 @@ fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> 
         model: core.model.clone(),
         provider: core
             .provider
-            .as_ref()
+            .held()
             .expect("the provider runtime is in its slot between runs")
             .fresh(),
         transcript: TranscriptLog::new(window, s.ids.clone(), core.clock()),

@@ -77,6 +77,45 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
     assert!(revision > version.revision);
 }
 
+// A page whose socket was lost mid-turn opens the conversation again while
+// the run holds the provider runtime: its handshake still ends with the
+// usage, and it receives the rest of the turn.
+#[tokio::test(flavor = "local")]
+async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_the_turn() {
+    let gate = Gate::new();
+    let script = ScriptedRuntime::new([held(
+        &gate,
+        vec![event::text("late"), event::response(1, 1)],
+    )]);
+    let fixture = Fixture::new(&script);
+    let first = fixture.opened().await;
+    first.send(send("m1", "hi")).await;
+    until(|| script.requests().len() == 1).await;
+
+    let mut second = fixture.client();
+    second.send(open()).await;
+    let handshake: Vec<String> = second.received().iter().map(frame_type).collect();
+    assert_eq!(
+        handshake,
+        [
+            "opened",
+            "transcript_reset",
+            "phase",
+            "queue",
+            "pending_steers",
+            "context_usage"
+        ]
+    );
+
+    gate.open();
+    let turn = second.next_until(is_idle).await;
+    assert!(
+        turn.iter()
+            .any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })),
+        "{turn:?}"
+    );
+}
+
 #[tokio::test(flavor = "local")]
 async fn two_opens_of_one_conversation_at_once_build_one_tree() {
     let script = ScriptedRuntime::new(Vec::new());
