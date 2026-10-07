@@ -10,7 +10,9 @@
 //!
 //! A capture starts only once the hub sized the tab, so it never captures at
 //! a size it is about to replace, and a new size or pixel ratio starts a new
-//! capture (`live-view.md` § Delivery). Each size, viewport or scale is a new
+//! capture (`live-view.md` § Delivery). A resize of the tab ends its capture
+//! before the page changes, and the next starts once the resize is published
+//! (`CaptureGate`). Each size, viewport or scale is a new
 //! generation for the viewers, which its first frame announces.
 
 use std::{collections::HashMap, sync::Arc, time::Duration};
@@ -225,6 +227,7 @@ async fn run(
 ) {
     let mut viewers: HashMap<u64, Viewer> = HashMap::new();
     let mut viewport = tab.state().viewport.subscribe();
+    let mut gate = tab.state().capture.subscribe();
     let mut running: Option<Running> = None;
     let mut epoch = 0;
     let mut retry = Duration::ZERO;
@@ -249,6 +252,7 @@ async fn run(
         let current = viewport.borrow_and_update().current;
         let size = pixels(&current, scale);
         let ready = *sized.borrow_and_update();
+        let resizing = gate.borrow_and_update().resizing();
         // The slowest viewer's budget; before any measured one, the budget a
         // sharp picture of this size needs.
         let bitrate = viewers
@@ -258,30 +262,32 @@ async fn run(
             .unwrap_or_else(|| rate::initial_bitrate(u64::from(size.0) * u64::from(size.1), fps));
         // A running tab capture cannot take a new size: Chrome refuses
         // `applyConstraints` that grow it ("Cannot satisfy constraints") and
-        // sends no frame after ones that shrink it. And a capture that runs
-        // while the screen's pixel ratio changes keeps a scale of its own on
-        // the page: a tab whose ratio went from 2 to 1 stayed at 1.0000000298
-        // until a new capture replaced it. Either change starts a new capture.
-        if running.as_ref().is_some_and(|running| {
-            running.size != size || running.viewport.device_pixel_ratio != current.device_pixel_ratio
-        }) {
+        // sends no frame after ones that shrink it. So a new size, from the
+        // viewers' scale, starts a new capture. A resize of the tab ends the
+        // capture before it changes the page: a capture larger than its page
+        // raises the page's own pixel ratio.
+        if resizing || running.as_ref().is_some_and(|running| running.size != size) {
             running = None;
         }
-        let changed = running
-            .as_mut()
-            .filter(|running| running.viewport != current || running.scale != scale);
+        // A viewport changes only in a resize, which ended the capture.
+        let changed = running.as_mut().filter(|running| running.scale != scale);
         if viewers.is_empty() {
             running = None;
         } else if let Some(running) = changed {
-            // The same pictures of another viewport, as a new generation that
+            // The same pictures at another scale, as a new generation that
             // its first frame, a key frame, announces.
             running.capture.key_frame();
             running.shown = None;
-            running.viewport = current;
             running.scale = scale;
-        } else if running.is_none() && ready && unavailable.is_none() && Instant::now() >= attempt {
+        } else if running.is_none()
+            && ready
+            && unavailable.is_none()
+            && Instant::now() >= attempt
+            // A resize that began since `resizing` was read wakes the loop.
+            && let Some(hold) = tab.state().capture.capture()
+        {
             match captures
-                .start(tab.target_id(), size.0, size.1, fps, bitrate, &stop)
+                .start(tab.target_id(), size.0, size.1, fps, bitrate, hold, &stop)
                 .await
             {
                 Ok(capture) => {
@@ -317,7 +323,10 @@ async fn run(
             running.capture.encoding(bitrate, fps);
             running.encoding = (bitrate, fps);
         }
-        let waiting = running.is_none() && unavailable.is_none() && !viewers.is_empty();
+        // Only a start that waits for its retry time sleeps: until the hub
+        // sized the tab, or while it resizes, the loop waits for them.
+        let waiting =
+            running.is_none() && ready && !resizing && unavailable.is_none() && !viewers.is_empty();
         let event = async {
             match running.as_mut() {
                 Some(running) => running.capture.events.recv().await,
@@ -327,6 +336,8 @@ async fn run(
         tokio::select! {
             _ = tab.ended().cancelled() => return,
             _ = viewport.changed() => {}
+            // The gate lives as long as the tab this stream holds.
+            _ = gate.changed() => {}
             // The hub drops a stream nobody watches.
             laid_out = sized.changed(), if !ready => if laid_out.is_err() {
                 return;
