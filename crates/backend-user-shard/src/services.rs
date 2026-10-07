@@ -179,7 +179,7 @@ impl Storage {
                 conversations::MAX_WRITERS,
             )
             .await?;
-            let blobs = BlobStores::new(objects);
+            let blobs = BlobStores::new(objects, clock.clone());
             Ok::<_, StorageError>((conversations, blobs))
         }
         .await;

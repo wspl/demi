@@ -1,21 +1,18 @@
 //! The collection of a user's blob namespace (`storage.md` § Deleting a
 //! conversation): after a deletion, in the background, a blob that no
-//! remaining record of the user names and that was written more than a day
-//! ago is removed, and so is each upload record of it. The day keeps a blob
-//! whose reference is not written yet, since a blob is stored before the row
-//! that names it. A user's collections run one at a time; one asked for
-//! while another runs starts after it. A collection fails closed: when one of
+//! remaining record of the user names, that was written more than a day ago
+//! and that was not put again since, is removed, and so is each upload
+//! record of it. The day keeps a blob whose reference is not written yet,
+//! since a blob is stored before the row that names it. A user's collections
+//! run one at a time; one asked for while another runs starts after it. A collection fails closed: when one of
 //! the records that may name a blob cannot be read, it removes nothing.
 
+use demi_backend_blobs::blobs::GRACE_MS;
 use demi_backend_database::references::conversation_blobs;
 use demi_shared_types::{BlobRef, Timestamp};
 use tokio::sync::watch;
 
 use crate::shard::Shard;
-
-/// How long after its object was written a blob stays whatever names it, in
-/// milliseconds: a day.
-const GRACE_MS: i64 = 24 * 60 * 60 * 1000;
 
 /// Where the user's collections stand.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -112,6 +109,9 @@ impl Shard {
             .await
             .map_err(|error| format!("the control records cannot be read: {error}"))?;
         let mut referenced = control.blobs;
+        // A put of a blob that existed wrote nothing, so the blob's age is
+        // its first write's; one put again within the day stays too.
+        referenced.extend(blobs.put_again_recently());
         for id in control.databases {
             let named = services
                 .conversations
@@ -143,5 +143,64 @@ impl Shard {
             .await
             .map_err(|error| format!("the upload records of removed blobs stay: {error}"))?;
         Ok(count)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::{Duration, SystemTime};
+
+    use bytes::Bytes;
+    use demi_backend_database::control::testing;
+
+    use crate::services::Services;
+    use crate::shard::{ShardPlacement, ShardPool};
+
+    use super::*;
+
+    /// Writes `bytes` into the user's namespace as a put two days ago left
+    /// them, and answers their name.
+    fn written_two_days_ago(data: &std::path::Path, user: &str, bytes: &[u8]) -> BlobRef {
+        let blob = BlobRef::of(bytes);
+        let directory = data.join("blobs").join(user);
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join(blob.as_str());
+        std::fs::write(&path, bytes).unwrap();
+        let two_days = Duration::from_secs(2 * 24 * 60 * 60);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(SystemTime::now() - two_days)
+            .unwrap();
+        blob
+    }
+
+    #[tokio::test(flavor = "local")]
+    async fn a_blob_put_again_within_the_day_stays_though_nothing_names_it() {
+        let data = tempfile::tempdir().unwrap();
+        let services = Services::start_for_tests(data.path()).await;
+        let owner = testing::master(&services.control).await.id;
+        let again = written_two_days_ago(data.path(), owner.as_str(), b"put again");
+        let left = written_two_days_ago(data.path(), owner.as_str(), b"left alone");
+        // A put of a blob the namespace holds writes nothing: the blob keeps
+        // the age of its first write.
+        let blobs = services.blobs.for_user(&owner);
+        assert_eq!(blobs.put(Bytes::from_static(b"put again")).await.unwrap(), again);
+        let pool = ShardPool::start(ShardPlacement::Inline, services)
+            .await
+            .unwrap();
+        let removed = pool
+            .shards()
+            .of(&owner)
+            .call(|shard, _| async move { shard.collect_once().await })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(removed, 1);
+        let namespace = data.path().join("blobs").join(owner.as_str());
+        assert!(namespace.join(again.as_str()).exists());
+        assert!(!namespace.join(left.as_str()).exists());
+        pool.close().await;
     }
 }
