@@ -131,8 +131,8 @@ page                         backend (panel, plugin-browser)            Host
   request's answer names the number of the last one before the request
   started, and a list with a higher number ends the line, in whatever order
   the answer and the lists reach the page. A refused request ends it at once
-  and the content says why, in the Writing page's words, not the Host's error
-  text. Back and Forward are unavailable while the tab has no page to go
+  and is reported as any failed request is, in a toast in the Writing page's
+  words, never in the tab's content (the gallery's Errors page). Back and Forward are unavailable while the tab has no page to go
   back or forward to, as in any browser. The
   address bar follows the page and writes its URL into `url` as it changes.
 - **Showing.** A tab with a browser tab shows it on the page's one view
