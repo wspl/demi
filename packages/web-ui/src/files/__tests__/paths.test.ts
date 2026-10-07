@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { baseName, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath } from '../paths'
+import { isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath } from '../paths'
 
 test('normalizePath collapses slashes and resolves dot segments from the root', () => {
   expect(normalizePath('/Users//zan/./Projects/')).toBe('/Users/zan/Projects')
@@ -9,14 +9,12 @@ test('normalizePath collapses slashes and resolves dot segments from the root', 
   expect(normalizePath('')).toBe('/')
 })
 
-test('joinPath, parentPath and baseName agree at the root', () => {
+test('joinPath and parentPath agree at the root', () => {
   expect(joinPath('/', 'src')).toBe('/src')
   expect(joinPath('/Users/zan', 'Projects')).toBe('/Users/zan/Projects')
   expect(parentPath('/Users/zan')).toBe('/Users')
   expect(parentPath('/Users')).toBe('/')
   expect(parentPath('/')).toBe('/')
-  expect(baseName('/Users/zan')).toBe('zan')
-  expect(baseName('/')).toBe('')
 })
 
 test('pathSegments lists the root and every ancestor', () => {

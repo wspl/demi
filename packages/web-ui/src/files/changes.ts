@@ -1,7 +1,7 @@
 import { editedFileSchema, type EditCopies } from '@demicodes/protocol'
 import { z } from 'zod'
 import { compareFileNames } from './file-browser-state'
-import { baseName } from './paths'
+import { baseName } from '@demicodes/utils'
 import type { Showing } from './file-cache'
 import type { TreeRow } from './tree'
 import type { FileContents, FileWatchNote } from './types'

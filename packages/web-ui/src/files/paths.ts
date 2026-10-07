@@ -38,11 +38,8 @@ export function parentPath(path: string): string {
   return index <= 0 ? '/' : normalized.slice(0, index)
 }
 
-/** The last segment; the root has the empty name. */
-export function baseName(path: string): string {
-  const normalized = normalizePath(path)
-  return normalized.slice(normalized.lastIndexOf('/') + 1)
-}
+/** The plugin kit takes its path helpers from here (`plugin-sdk` reaches only `web-ui`). */
+export { baseName } from '@demicodes/utils'
 
 /** `path` as it reads from `root`: `a/b` under it, `''` for `root` itself, any other path whole. */
 export function relativePath(root: string, path: string): string {

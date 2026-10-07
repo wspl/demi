@@ -7,7 +7,7 @@ import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing, type PairingResult } from '@demicodes/web-ui/devices/pairing'
-import { delay } from '@demicodes/utils'
+import { baseName, delay } from '@demicodes/utils'
 import { demoDeviceInstallation } from '../fixtures/device-installation'
 import type { WorkspaceDraft, WorkspaceHostChoice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
@@ -26,7 +26,6 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { createGalleryRemoteFileHosts, laptopTree } from '../fixtures/files'
 import { createGalleryWorkspace } from '../fixtures/workspace'
 import { useGalleryView } from '../gallery-views'
-import { baseName } from '@demicodes/web-ui/files/paths'
 
 const anatomy: [string, string][] = [
   [

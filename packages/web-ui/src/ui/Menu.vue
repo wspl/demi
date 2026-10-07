@@ -15,13 +15,15 @@ import {
   type MenuSlotRow
 } from './menu-context'
 import { provideLayerElevation } from '../overlay/layerElevation'
+import { useAutofocus } from './autofocus'
 import { ICON_PX } from './icon-metrics'
 import type { HeadlineText, PlaceholderText } from './ui-text'
 
 /**
  * A menu: `items` it lays out itself, filterable and virtual when asked, or
  * MenuItems in its slot. It takes the keyboard when it opens, unless it is a
- * submenu or `autofocus` is off. Without a filter field, typing a name moves
+ * submenu, `autofocus` is off, or it is pinned open in a catalog host
+ * (`useAutofocus`). Without a filter field, typing a name moves
  * to the first row that starts with it (`useTypeSelect`), and Enter chooses
  * the row the keys moved to.
  */
@@ -165,13 +167,15 @@ const virtualizer = useVirtualizer(computed(() => ({
   overscan: 5,
 })))
 
+const autofocus = useAutofocus()
+
 watch(inputRef, (el) => {
   if (!el)
     return
   filterQuery.value = props.initialQuery ?? ''
   focusedIndex.value = -1
   if (props.autofocus)
-    el.focus({ preventScroll: true })
+    autofocus({ focus: () => el.focus({ preventScroll: true }) })
 })
 
 watch(panelRef, (el) => {
@@ -181,7 +185,7 @@ watch(panelRef, (el) => {
   if (props.items == null && (nested || el.contains(document.activeElement)))
     return
   focusedIndex.value = -1
-  el.focus({ preventScroll: true })
+  autofocus({ focus: () => el.focus({ preventScroll: true }) })
 })
 
 watch(filteredItems, () => {

@@ -8,6 +8,7 @@ import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
+import { useDialogFocus } from '../overlay/dialogFocus'
 import { provideLayerElevation } from '../overlay/layerElevation'
 import { useOverlay } from '../composables/useOverlay'
 import type { HeadlineText } from './ui-text'
@@ -24,6 +25,9 @@ import type { HeadlineText } from './ui-text'
  * host of phone width shows the same.
  * Inline (a catalog host provides `overlayInlineKey`): the panel renders in flow at its
  * own size, with no scrim and no centering.
+ * Focus: a dialog over the page takes the focus when it opens, keeps Tab inside
+ * while it is the top layer, and gives the focus back when it closes
+ * (`useDialogFocus`). One in a catalog host takes no focus.
  * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
  * Escape and the scrim close only the top, and closing the one beneath takes the
  * stack with it. An Escape a field handled first (it called preventDefault, as a
@@ -79,7 +83,6 @@ const id = useOverlay(
   nested || props.stack ? 'stacked' : 'exclusive',
 )
 
-// An Escape a field inside used, to revert its edit or clear its filter, closes nothing.
 /**
  * How high the dialog stands: a dialog opened later stands above one opened
  * before it, whichever was mounted first, as a confirmation opened over the
@@ -96,6 +99,17 @@ watch(
   { immediate: true },
 )
 
+const panel = ref<HTMLElement>()
+// A dialog in a catalog host is a specimen beside others, not the page's: it leaves the focus alone.
+if (!container) {
+  useDialogFocus({
+    panel,
+    isOpen: () => props.isOpen,
+    isTop: () => props.overlayStore.isTop(id),
+  })
+}
+
+// An Escape a field inside used, to revert its edit or clear its filter, closes nothing.
 onKeyStroke('Escape', (event) => {
   if (!props.isOpen || container || !props.overlayStore.isTop(id) || event.defaultPrevented)
     return
@@ -116,13 +130,15 @@ onKeyStroke('Escape', (event) => {
         @click.self="!inline && emit('close')"
       >
         <div
-          class="dialog-panel overlay-dialog relative flex flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl"
+          ref="panel"
+          class="dialog-panel overlay-dialog relative flex flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl outline-none"
           :class="[
             inline ? 'w-full' : 'max-h-[calc(100%-2rem)] w-[calc(100%-2rem)]',
             !inline && fillsWhenNarrow && 'dialog-fill',
             size === 'full' ? 'h-[calc(100%-2rem)]' : size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : size === 'wide' ? 'max-w-xl' : 'max-w-md',
           ]"
           role="dialog"
+          tabindex="-1"
           :aria-modal="container ? undefined : 'true'"
           :aria-label="label"
         >

@@ -14,7 +14,7 @@
  */
 import { reactive } from 'vue'
 import { previewMediaType, TEXT_FILE_BYTES } from '@demicodes/protocol'
-import { delay } from '@demicodes/utils'
+import { baseName, delay } from '@demicodes/utils'
 import { HostFiles, type Coverage } from './file-cache'
 import { keptSource, type FileFollower, type FileReads } from './kept-source'
 import {
@@ -26,7 +26,7 @@ import {
   type FileContents,
   type FileWatchNote,
 } from './types'
-import { baseName, joinPath, normalizePath, parentPath } from './paths'
+import { joinPath, normalizePath, parentPath } from './paths'
 
 export interface MemoryFile {
   kind: 'file'

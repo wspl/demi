@@ -8,7 +8,7 @@ import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { vue } from '@codemirror/lang-vue'
 import { reportError } from '../infra/errors'
-import { baseName } from '../files/paths'
+import { baseName } from '@demicodes/utils'
 
 const nameOverrides: Record<string, string> = {
   Dockerfile: 'Dockerfile',

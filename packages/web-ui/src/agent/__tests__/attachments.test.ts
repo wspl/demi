@@ -14,7 +14,6 @@ import {
   composerRemoteAttachment,
   decodeRemoteReference,
   encodeRemoteReference,
-  fileNameFromPath,
   remoteAttachmentError,
   dataTransferFiles,
   filePreviewUrl,
@@ -85,7 +84,6 @@ test('a remote file is ready at once, and its reference names its host and full 
       path: '/Users/zan/Projects/demi/package.json'
     }
   )
-  expect(fileNameFromPath(remote.path)).toBe('package.json')
   expect(remote.name).toBe('package.json')
   expect(remote.kind).toBe('reference')
   expect(attachmentsReady([remote])).toBe(true)

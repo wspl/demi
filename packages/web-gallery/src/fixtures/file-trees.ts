@@ -4,7 +4,7 @@ import type { UploadItem } from '@demicodes/web-ui/files/file-uploads'
 import { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { keptSource } from '@demicodes/web-ui/files/kept-source'
 import { createMemoryFileSource, dir, file, memoryFileReads, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
-import { baseName } from '@demicodes/web-ui/files/paths'
+import { baseName } from '@demicodes/utils'
 
 /**
  * Workspaces for the file tree specimens: one with every kind of row, and
