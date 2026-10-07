@@ -16,12 +16,30 @@ use demi_shared_types::{ThinkingCapability, ThinkingConfig, ThinkingSummary};
 use tokio_util::sync::CancellationToken;
 
 #[test]
-fn the_first_message_titles_the_conversation_at_once_on_one_line() {
+fn the_first_message_titles_the_conversation_at_once_as_plain_text_on_one_line() {
     assert_eq!(
         title_from_message("  why does\n\tpnpm build   fail  "),
         "why does pnpm build fail"
     );
-    let long = "构".repeat(100);
+    // No Markdown mark or escape shows; a link is its text, and a file's
+    // capsule (U+FFFC) none.
+    assert_eq!(
+        title_from_message(
+            "Run `sleep 120`, then **Done.** \\*not\\* *it* ~~old~~ [the docs](https://x.dev) on \u{FFFC} \u{FFFC}"
+        ),
+        "Run sleep 120, then Done. *not* it old the docs on"
+    );
+    assert_eq!(title_from_message("**注意：**这是"), "注意：这是");
+    // What the message shows as typed stays: a line's list or quote marker,
+    // `_`, one `~`, `<…>`. A fenced block is its code.
+    assert_eq!(
+        title_from_message(
+            "## Plan\n1. Rename __init__\n2. Fix ~/.zshrc\n> see <https://x.dev>\n\n```sh\nls -la\n```"
+        ),
+        "## Plan 1. Rename __init__ 2. Fix ~/.zshrc > see <https://x.dev> ls -la"
+    );
+    // The cut never splits a scalar value, marks gone first.
+    let long = format!("**{}**", "构".repeat(100));
     assert_eq!(title_from_message(&long), "构".repeat(80));
 }
 
