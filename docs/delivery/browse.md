@@ -51,18 +51,18 @@ runs it as the body of an async function in which these are defined:
 
 | Name | What it is |
 | --- | --- |
-| `page` | The slot's browser page, a Playwright `Page`, open between calls; relative addresses go to the slot's web app |
+| `page` | The slot's browser page, a Playwright `Page`, open between calls; `page.goto` takes an address relative to the slot's web app, and actions wait at most 10 seconds for what they need, navigations 30, so a wrong locator fails quickly |
 | `context` | Its `BrowserContext` |
 | `expect` | Playwright's `expect`, whose assertions wait until they hold |
 | `cdp` | A DevTools protocol session on the page |
 | `demi` | The project's helpers, below |
 | `keep` | An object that keeps its properties from one call to the next, for values a later call needs |
 
-A call ends by printing what the script printed with `console.log`, then the
-page's state, so the agent rarely needs another call only to see where the page
+A call ends by printing what the script printed with `console.log` and the
+screenshots it wrote, then the page's state, so the agent rarely needs another call only to see where the page
 stands: its address and title, a dialog or layer that covers it, the focused
-element, the console errors and failed requests since the call began, and the
-screenshots the call wrote. A call has a time limit, ten minutes unless
+element, and the console errors and failed requests since the call began;
+requests the page itself abandoned are left out. A call has a time limit, ten minutes unless
 `--limit` says otherwise.
 
 **Failures.** A script that throws stops there. The call prints the line of the
