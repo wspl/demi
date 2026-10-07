@@ -11,6 +11,12 @@ export type PanelChange =
   | { type: 'remove'; id: string }
   | { type: 'move'; id: string; index: number }
 
+/** The place right after the tab `id` among `tabs`, where a tab opened from it goes; undefined without it. */
+export function indexAfter(tabs: readonly PanelTab[], id: string): number | undefined {
+  const at = tabs.findIndex((tab) => tab.id === id)
+  return at < 0 ? undefined : at + 1
+}
+
 /** The backend's panel: its tabs, and how many changes made them. */
 export interface PanelRead {
   revision: number
