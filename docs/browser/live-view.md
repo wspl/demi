@@ -121,15 +121,19 @@ page                         backend (panel, plugin-browser)            Host
 - **Navigating.** The user's address writes `url` at once and shows the page
   loading; once the tab has a browser tab, the content also asks the browser
   to load it ([The tab methods](#the-tab-methods)). Back, Forward and Reload
-  are requests on the bound tab. While the browser loads the tab's page, the
-  content shows a progress line over the picture it still shows, from the
-  user's request until the tab list says the page stopped loading. The line
+  are requests on the bound tab. While the tab is loading, it shows so the
+  way a browser does, in three places at once: Reload turns into Stop, which
+  asks the browser to stop loading the page; the tab's icon in the strip
+  turns into a spinner; and a progress line runs over the picture it still
+  shows. The loading lasts from the user's request until the tab list says
+  the page stopped loading, and the agent's own navigations show the same way
+  while the tab list says the page loads. It
   appears in the same frame as the click or the Enter, before the request has
   left the page, since on a far backend the browser may start loading
   seconds later. Only a tab list that describes the page after the request
   started can end it: the Host numbers the tab lists it produces, the
   request's answer names the number of the last one before the request
-  started, and a list with a higher number ends the line, in whatever order
+  started, and a list with a higher number ends the loading, in whatever order
   the answer and the lists reach the page. A refused request ends it at once
   and is reported as any failed request is, in a toast in the Writing page's
   words, never in the tab's content (the gallery's Errors page). Back and Forward are unavailable while the tab has no page to go
@@ -699,6 +703,7 @@ and `reload` names the number of the last list before the request started.
 | `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a job | Is not woken: every bound tab is closed |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |
 | `history` | `tab`, `action`: `back`, `forward` or `reload` | Moves the tab or reloads it | Is not woken: refused with `host_stopped` |
+| `stop` | `tab` | Stops loading the tab's page, as a browser's Stop does; a tab that is not loading is left as it is. Its answer names the tab list number as `history`'s does | Is not woken: refused with `host_stopped` |
 
 A tab the browser does not have is refused with the reason `tab_not_found`,
 and a refusal of the browser's operation is refused with the operation's own
