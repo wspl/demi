@@ -862,6 +862,78 @@ pub(crate) fn git_dir(root: &Path) -> Option<PathBuf> {
     locate(root).ok().flatten().map(|located| located.git_dir)
 }
 
+/// What git ignores in the repository a watched path lies in (`runner.md`
+/// § Watching files). The repository is found once per watch; the index and
+/// the rules are read at each report, so a change to them counts from the
+/// next one.
+pub(crate) struct IgnoreRules {
+    repo: gix::ThreadSafeRepository,
+    /// Canonical, as the platform reports paths.
+    workdir: PathBuf,
+    git_dir: PathBuf,
+}
+
+impl IgnoreRules {
+    /// The rules of the repository the canonical `path` lies in; none outside
+    /// a repository with a work tree.
+    pub(crate) fn of(path: &Path) -> Option<Self> {
+        let repo = match discover(path) {
+            Ok(Some(repo)) => repo,
+            Ok(None) => return None,
+            Err(error) => {
+                // Without the rules every path counts as not ignored, as before
+                // they existed: the page lists the changes once too often.
+                tracing::warn!("the repository of a watch could not be opened: {}", error.message());
+                return None;
+            }
+        };
+        let workdir = std::fs::canonicalize(repo.workdir()?).ok()?;
+        let git_dir = std::fs::canonicalize(repo.git_dir()).ok()?;
+        Some(Self {
+            repo: repo.into_sync(),
+            workdir,
+            git_dir,
+        })
+    }
+
+    /// Which of the canonical `paths` git ignores: untracked, and matched by
+    /// an exclude rule of their own or of a folder above them. A path in the
+    /// repository's `.git` or outside its work tree is not ignored.
+    pub(crate) fn ignored(&self, paths: &[PathBuf]) -> Result<Vec<PathBuf>, GitError> {
+        let repo = self.repo.to_thread_local();
+        let index = repo.index_or_empty().map_err(internal)?;
+        let mut excludes = repo
+            .excludes(
+                &index,
+                None,
+                gix::worktree::stack::state::ignore::Source::WorktreeThenIdMappingIfNotSkipped,
+            )
+            .map_err(internal)?;
+        let mut ignored = Vec::new();
+        for path in paths {
+            if path.starts_with(&self.git_dir) {
+                continue;
+            }
+            let Ok(relative) = path.strip_prefix(&self.workdir) else {
+                continue;
+            };
+            if relative.as_os_str().is_empty() {
+                continue;
+            }
+            let rela = gix::path::to_unix_separators_on_windows(gix::path::into_bstr(relative));
+            if index.entry_by_path(rela.as_ref()).is_some() || index.path_is_directory(rela.as_ref()) {
+                continue;
+            }
+            let directory = std::fs::symlink_metadata(path).is_ok_and(|metadata| metadata.is_dir());
+            let mode = directory.then_some(gix::index::entry::Mode::DIR);
+            if excludes.at_path(relative, mode).map_err(GitError::Io)?.is_excluded() {
+                ignored.push(path.clone());
+            }
+        }
+        Ok(ignored)
+    }
+}
+
 /// The `.gitignore` and `.gitattributes` of each directory above the root,
 /// up to the work tree, as they stand. They decide what git lists under the
 /// root too, but the watch covers only the root, so a request compares them

@@ -1928,14 +1928,17 @@ async fn pages_that_watch_one_path_share_the_runners_watch_which_the_last_one_en
     link.send(Outbound::FsWatchReady { id: id.clone() }).await;
     assert_eq!(first.next().await, WatchUpdate::Ready);
     assert_eq!(second.next().await, WatchUpdate::Ready);
-    let paths = vec!["/work/a.txt".to_owned()];
+    let paths = vec!["/work/a.txt".to_owned(), "/work/server.log".to_owned()];
+    let ignored = vec!["/work/server.log".to_owned()];
     link.send(Outbound::FsWatchChanged {
         id: id.clone(),
         paths: paths.clone(),
+        ignored: ignored.clone(),
     })
     .await;
-    assert_eq!(first.next().await, WatchUpdate::Changed(paths.clone()));
-    assert_eq!(second.next().await, WatchUpdate::Changed(paths));
+    let changed = WatchUpdate::Changed { paths, ignored };
+    assert_eq!(first.next().await, changed);
+    assert_eq!(second.next().await, changed);
 
     // A page that comes later hears that the watch runs, without asking
     // the runner again.

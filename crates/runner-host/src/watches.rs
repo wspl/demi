@@ -24,6 +24,7 @@ use demi_runner_protocol::wire::{self, Inbound};
 use tokio::sync::{mpsc, watch};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
+use crate::git::IgnoreRules;
 use crate::tree_watch::{Depth, TreeWatch, WatchEvent};
 
 /// Where a shared watch is.
@@ -319,9 +320,10 @@ impl Follow {
             .follow(|report| {
                 let message = match report {
                     WatchReport::Ready => wire::Outbound::FsWatchReady { id: id.clone() },
-                    WatchReport::Changed(paths) => wire::Outbound::FsWatchChanged {
+                    WatchReport::Changed { paths, ignored } => wire::Outbound::FsWatchChanged {
                         id: id.clone(),
                         paths,
+                        ignored,
                     },
                     WatchReport::Lost => wire::Outbound::FsWatchLost { id: id.clone() },
                     WatchReport::Failed(reason) => wire::Outbound::FsWatchFailed {
@@ -367,8 +369,8 @@ impl Watched<'_> {
     /// Follows the watch until it fails, `cancel` ends it, or `report`
     /// answers false, which it does once nothing hears it: `report` hears
     /// `Ready` once the watch runs, the paths that changed, gathered for
-    /// 100 ms and each once, `Lost`, also for more paths at once than one
-    /// report carries, and `Failed` last.
+    /// 100 ms and each once, with those git ignores, `Lost`, also for more
+    /// paths at once than one report carries, and `Failed` last.
     pub async fn follow<F>(self, mut report: impl FnMut(WatchReport) -> F)
     where
         F: std::future::Future<Output = bool>,
@@ -392,6 +394,16 @@ impl Watched<'_> {
                 return;
             }
         };
+        let rules = {
+            let canonical = canonical.clone();
+            match tokio::task::spawn_blocking(move || IgnoreRules::of(&canonical)).await {
+                Ok(rules) => rules.map(Arc::new),
+                Err(error) => {
+                    report(WatchReport::Failed(error.to_string())).await;
+                    return;
+                }
+            }
+        };
         let (events, mut received) = mpsc::unbounded_channel();
         let listener: Listener = Box::new(move |event| {
             // The follow's end drops the receiver and then the subscription.
@@ -400,8 +412,8 @@ impl Watched<'_> {
         let subscription = self.watches.subscribe(canonical.clone(), depth, listener);
         let mut statuses = subscription.statuses();
         let mut ready = false;
-        let mut gathered: Vec<String> = Vec::new();
-        let mut seen: HashSet<String> = HashSet::new();
+        let mut gathered: Vec<PathBuf> = Vec::new();
+        let mut seen: HashSet<PathBuf> = HashSet::new();
         let mut due: Option<tokio::time::Instant> = None;
         loop {
             let status = statuses.borrow_and_update().clone();
@@ -430,7 +442,6 @@ impl Watched<'_> {
                         if metadata && under_git(&path) {
                             continue;
                         }
-                        let path = respelled(&path, &canonical, &requested);
                         if seen.insert(path.clone()) {
                             gathered.push(path);
                         }
@@ -457,7 +468,17 @@ impl Watched<'_> {
                     let gathered = if paths.len() > wire::MAX_WATCH_PATHS {
                         WatchReport::Lost
                     } else {
-                        WatchReport::Changed(paths)
+                        let ignored = ignored_of(rules.clone(), &paths).await;
+                        WatchReport::Changed {
+                            paths: paths
+                                .iter()
+                                .map(|path| respelled(path, &canonical, &requested))
+                                .collect(),
+                            ignored: ignored
+                                .iter()
+                                .map(|path| respelled(path, &canonical, &requested))
+                                .collect(),
+                        }
                     };
                     if !report(gathered).await {
                         return;
@@ -466,6 +487,24 @@ impl Watched<'_> {
             }
         }
     }
+}
+
+/// Those of the canonical `paths` that git ignores in the repository of
+/// `rules`, none without one. A check that fails reports none ignored, which
+/// costs the page one listing of the changes too many, never one too few.
+async fn ignored_of(rules: Option<Arc<IgnoreRules>>, paths: &[PathBuf]) -> Vec<PathBuf> {
+    let Some(rules) = rules else {
+        return Vec::new();
+    };
+    let paths = paths.to_vec();
+    let checked = tokio::task::spawn_blocking(move || rules.ignored(&paths))
+        .await
+        .map_err(|error| error.to_string())
+        .and_then(|checked| checked.map_err(|error| error.message()));
+    checked.unwrap_or_else(|error| {
+        tracing::warn!("which changed paths git ignores could not be told: {error}");
+        Vec::new()
+    })
 }
 
 /// Whether `path` lies in a repository's `.git`, whose metadata alone

@@ -53,29 +53,98 @@ async fn ready(replies: &mut mpsc::Receiver<wire::Frame>) {
     }
 }
 
+/// What the `changed` messages of a watch named.
+#[derive(Default)]
+struct Reported {
+    paths: Vec<String>,
+    /// Those of them git ignores.
+    ignored: BTreeSet<String>,
+}
+
 /// The paths of each `changed` until every one of `wanted` was reported,
-/// each message checked to name a path once.
-async fn until_reported(replies: &mut mpsc::Receiver<wire::Frame>, wanted: &[PathBuf]) -> Vec<String> {
-    let mut wanted: BTreeSet<String> = wanted
-        .iter()
-        .map(|path| path.to_string_lossy().into_owned())
-        .collect();
-    let mut reported = Vec::new();
+/// each message checked to name a path once and to call ignored only paths
+/// it names.
+async fn until_reported(replies: &mut mpsc::Receiver<wire::Frame>, wanted: &[PathBuf]) -> Reported {
+    let mut wanted: BTreeSet<String> = wanted.iter().map(|path| spelled(path)).collect();
+    let mut reported = Reported::default();
     while !wanted.is_empty() {
         match next(replies).await {
-            Outbound::FsWatchChanged { id, paths } => {
+            Outbound::FsWatchChanged { id, paths, ignored } => {
                 assert_eq!(id, "w");
                 let unique: BTreeSet<&String> = paths.iter().collect();
                 assert_eq!(unique.len(), paths.len(), "a path twice in {paths:?}");
+                assert!(
+                    ignored.iter().all(|path| unique.contains(path)),
+                    "{ignored:?} not among {paths:?}"
+                );
                 for path in &paths {
                     wanted.remove(path);
                 }
-                reported.extend(paths);
+                reported.paths.extend(paths);
+                reported.ignored.extend(ignored);
             }
             other => panic!("expected changed paths, got {other:?}"),
         }
     }
     reported
+}
+
+fn spelled(path: &Path) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn git(repo: &Path, args: &[&str]) {
+    let status = std::process::Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .status()
+        .unwrap();
+    assert!(status.success(), "git {args:?}");
+}
+
+/// Each `changed` says which of its paths git ignores (`web-api.md` § File
+/// watch), so a page lists the working tree's changes again only for a
+/// path that can be among them: a log a process appends to, or a build's
+/// output, is ignored; a tracked file is not, whatever the rules say, nor is
+/// anything in `.git`, which the changes follow too.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_watch_names_the_changed_paths_git_ignores() {
+    tokio::time::timeout(GUARD, async {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().to_path_buf();
+        git(&root, &["init", "-q", "-b", "main"]);
+        std::fs::write(root.join(".gitignore"), "*.log\nbuild/\n").unwrap();
+        let tracked_log = root.join("kept.log");
+        std::fs::write(&tracked_log, "kept\n").unwrap();
+        git(&root, &["add", "-f", "kept.log"]);
+        std::fs::create_dir(root.join("build")).unwrap();
+        let (host, mut replies) = server(&root, "http://127.0.0.1:1");
+        watch(&host, &root, true);
+        ready(&mut replies).await;
+
+        let log = root.join("server.log");
+        let output = root.join("build/app.js");
+        let source = root.join("app.ts");
+        let in_git = root.join(".git/probe.log");
+        std::fs::write(&log, "line\n").unwrap();
+        std::fs::write(&output, "built").unwrap();
+        std::fs::write(&tracked_log, "kept\nmore\n").unwrap();
+        std::fs::write(&source, "code").unwrap();
+        std::fs::write(&in_git, "probe").unwrap();
+        let reported = until_reported(
+            &mut replies,
+            &[log.clone(), output.clone(), tracked_log.clone(), source.clone(), in_git.clone()],
+        )
+        .await;
+        assert!(reported.ignored.contains(&spelled(&log)), "{:?}", reported.ignored);
+        assert!(reported.ignored.contains(&spelled(&output)), "{:?}", reported.ignored);
+        for kept in [&tracked_log, &source, &in_git] {
+            assert!(!reported.ignored.contains(&spelled(kept)), "{:?}", reported.ignored);
+        }
+        host.close().await;
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -120,7 +189,7 @@ async fn a_watch_of_one_folder_reports_its_entries_and_not_what_lies_below_them(
         // Reported in order: had the deeper file been, it would come first.
         std::fs::write(&deep, "deep").unwrap();
         std::fs::write(&top, "top").unwrap();
-        let reported = until_reported(&mut replies, std::slice::from_ref(&top)).await;
+        let reported = until_reported(&mut replies, std::slice::from_ref(&top)).await.paths;
         assert!(
             !reported.contains(&deep.to_string_lossy().into_owned()),
             "{reported:?}"
@@ -147,7 +216,7 @@ async fn writes_that_come_together_report_their_file_once() {
             std::fs::write(&busy, format!("{index}\n")).unwrap();
         }
         std::fs::write(&marker, "").unwrap();
-        let reported = until_reported(&mut replies, &[busy.clone(), marker]).await;
+        let reported = until_reported(&mut replies, &[busy.clone(), marker]).await.paths;
         let busy = busy.to_string_lossy().into_owned();
         let times = reported.iter().filter(|path| **path == busy).count();
         assert!(times < WRITES, "reported {times} times");

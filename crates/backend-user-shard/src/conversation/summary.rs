@@ -51,7 +51,7 @@ impl Shard {
         let live = self
             .agent()
             .tree(&root_of(&record.id))
-            .map(|tree| (tree.is_quiescent(), tree.root().session().phase()));
+            .map(|tree| (tree.works(), tree.root().session().phase()));
         let facts = self
             .services()
             .conversations
@@ -117,12 +117,13 @@ fn settings(selection: &ModelSelection) -> Result<ModelSettings, StorageError> {
 /// A conversation's status: running or compacting while its live tree will
 /// go on working without the user, interrupted when its checkpoint was saved
 /// in a turn and no tree is live, else what its latest terminal block says.
+/// `live` is whether the live tree works, and its root's phase.
 fn status(live: Option<(bool, SessionPhase)>, facts: &SummaryFacts) -> ConversationStatus {
     match live {
-        Some((false, SessionPhase::Compacting)) => return ConversationStatus::Compacting,
-        Some((false, _)) => return ConversationStatus::Running,
+        Some((true, SessionPhase::Compacting)) => return ConversationStatus::Compacting,
+        Some((true, _)) => return ConversationStatus::Running,
         None if facts.phase != SessionPhase::Idle => return ConversationStatus::Interrupted,
-        Some((true, _)) | None => {}
+        Some((false, _)) | None => {}
     }
     match facts.last {
         Some(Terminal::Response) => ConversationStatus::Completed,

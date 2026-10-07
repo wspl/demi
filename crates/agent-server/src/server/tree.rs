@@ -412,14 +412,22 @@ impl<H: HostResolver> Tree<H> {
         &self.sink
     }
 
-    /// Whether the tree does nothing by itself: no child is live, no command
-    /// of it runs, and the root runs and waits for nothing and has no wakeup
-    /// scheduled.
+    /// Whether the tree will go on working without the user, which makes its
+    /// conversation running (`web-api.md` § Sidebar mutations and read
+    /// state): a child is live, or the root runs, waits or has a wakeup
+    /// scheduled. A command that outlives its turn does not count: its exit
+    /// wakes no one.
+    pub fn works(&self) -> bool {
+        !self.children.borrow().is_empty()
+            || !self.starting.borrow().is_empty()
+            || !quiescent(&self.root.session().status())
+    }
+
+    /// Whether the tree does nothing by itself: it does not work, and no
+    /// command of it runs, which is the conversation's work as well
+    /// (`resource-lifecycle.md` § Runtime).
     pub fn is_quiescent(&self) -> bool {
-        self.children.borrow().is_empty()
-            && self.starting.borrow().is_empty()
-            && !self.live.runs_commands()
-            && quiescent(&self.root.session().status())
+        !self.works() && !self.live.runs_commands()
     }
 
     /// Attaches a connection beside the others and sends it the open
@@ -606,8 +614,7 @@ fn quiescent(status: &Status) -> bool {
 }
 
 /// Tells the product, through `status_changed`, that the tree opened, and
-/// each time it starts or stops working by itself: whenever whether it is
-/// quiescent changes.
+/// each time it starts or stops working by itself.
 async fn report_working<H: HostResolver>(
     tree: Weak<Tree<H>>,
     mut status: watch::Receiver<Status>,
@@ -621,7 +628,7 @@ async fn report_working<H: HostResolver>(
         let Some(live) = tree.upgrade() else {
             return;
         };
-        let working = !live.is_quiescent();
+        let working = live.works();
         if reported != Some(working) {
             reported = Some(working);
             status_changed(live.root.id());

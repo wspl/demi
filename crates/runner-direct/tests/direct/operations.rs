@@ -194,7 +194,13 @@ impl Operations for Fake {
             async move {
                 let named = paths.recv().await?;
                 held.lock().unwrap().watched.push(named.clone());
-                Some((FileWatchMessage::Changed { paths: named }, paths))
+                Some((
+                    FileWatchMessage::Changed {
+                        paths: named,
+                        ignored: Vec::new(),
+                    },
+                    paths,
+                ))
             }
         });
         let said = futures_util::stream::unfold(says, |says| async move {

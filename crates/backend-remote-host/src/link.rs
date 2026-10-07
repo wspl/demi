@@ -856,8 +856,8 @@ impl Link {
                 self.refuse(&id, HostError::failed(Some(code), message));
             }
             Outbound::FsWatchReady { id } => self.with_watches(|watches| watches.ready(&id)),
-            Outbound::FsWatchChanged { id, paths } => {
-                self.with_watches(|watches| watches.changed(&id, paths));
+            Outbound::FsWatchChanged { id, paths, ignored } => {
+                self.with_watches(|watches| watches.changed(&id, paths, ignored));
             }
             Outbound::FsWatchLost { id } => self.with_watches(|watches| watches.lost(&id)),
             Outbound::FsWatchFailed { id, reason } => {
