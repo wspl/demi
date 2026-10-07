@@ -459,8 +459,9 @@ fork of it also holds. Deletion goes in four steps:
 
 1. One transaction of the control database removes the conversation's
    record and every record that belongs to it, such as its draft, work
-   panel, attached hosts, permission requests and grants and plugins'
-   conversation values, and records the deletion as pending. From this
+   panel, attached hosts and permission requests and grants, and records the
+   deletion as pending. The usage ledger keeps its rows: they are the
+   user's record of what was used. From this
    commit on, no request finds the conversation.
 2. The conversation's Host resources are released as archive releases them,
    and its tabs in the conversation browser are closed.
@@ -475,11 +476,17 @@ Then the user's blob namespace is collected, in the background: a blob that
 no remaining record of the user references, and that was written more than a
 day ago, is removed, and so is an upload record whose blob goes. A record
 references a blob when it names it: a block, an attachment, a command's
-output record or an edit copy in one of the user's conversation databases, a
-draft, or a plugin value's list of blobs. The day keeps a blob whose reference
-is not written yet, since a blob is published before the row that names it:
-an upload the composer holds before its draft is saved, or a tool's image
-before its checkpoint commits. The screenshot stays, because the fork's
+output record, an edit copy or a message queued in a checkpoint's state in
+one of the user's conversation databases, a fork's database still being
+made, a draft, a plugin value's or a plugin Host directory's list of blobs,
+or an upload record written in the last day. The day keeps a blob whose
+reference is not written yet, since a blob is published before the row that
+names it: an upload the composer holds before its draft is saved, or a
+tool's image before its checkpoint commits. A put of a blob that exists
+writes nothing, so the blob's own age is its first write's; the user's shard
+therefore remembers, for a day, each blob put again, and the collection
+keeps those too. A restart forgets them, and with them only references
+that the stopped process had not written and never will. The screenshot stays, because the fork's
 database names it. A user's collections run one at a time; a deletion during
 one starts another after it.
 
