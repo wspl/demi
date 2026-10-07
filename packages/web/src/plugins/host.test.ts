@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
+import { effectScope } from 'vue'
+import { until } from '@vueuse/core'
 import { z } from 'zod'
 import { waitFor } from '@demicodes/utils'
 import { pageReturned } from '@demicodes/web-ui/transport/liveness'
@@ -62,6 +64,9 @@ beforeEach(() => {
       unanswered += 1
       // What fetch rejects with when no connection could be made.
       throw new TypeError('Failed to fetch')
+    }
+    if (path === `/api/conversations/${CONVERSATION}/plugins/browser/state`) {
+      return Response.json({ revision: 1, state: { tabs: ['t1'] } })
     }
     calls.push([path, JSON.parse(String(init?.body))])
     if (path === '/api/plugins/skills/calls/set_enabled') {
@@ -133,11 +138,11 @@ function backendLeaves(): void {
   channels.last().end(1001, 'backend_closing')
 }
 
-/** The backend is back: the page connects again at once, and the channel's snapshot ends the banner. */
-function backendReturns(): void {
+/** The backend is back with `state`: the page connects again at once, and the channel's snapshot ends the banner. */
+function backendReturns(state = productState({ pluginStates: { skills } })): void {
   away = false
   pageReturned()
-  channels.last().connect(productState({ pluginStates: { skills } }))
+  channels.last().connect(state)
 }
 
 // `plugin-pages.md` § The page context: a call waits for the backend rather
@@ -157,6 +162,23 @@ test("an answer of the backend's own rejects at once, even while the banner show
   channels.last().end(1001, 'backend_closing')
   const fetched = page('skills').plugin.call('fetch_source', { source: 'src_1' }, z.null())
   await expect(fetched).rejects.toMatchObject({ reason: 'catalog_unavailable', message: 'The source could not be fetched' })
+})
+
+test("a read of a conversation's plugin state while the backend restarts shows no failure, and reads once it is back", async () => {
+  const withBrowser = productState({
+    pluginStates: { skills },
+    conversations: [conversationSummary(CONVERSATION, 'Work', { pluginRevisions: [{ plugin: 'browser', revision: 1 }] })],
+  })
+  channels.last().connect(withBrowser)
+  backendLeaves()
+  const scope = effectScope()
+  const tabs = scope.run(() => page('browser').plugin.conversation(CONVERSATION).state(z.object({ tabs: z.array(z.string()) })))!
+  await waitFor(() => unanswered === 1, () => 'the state was not read')
+  // A snapshot that names no newer revision, so only the read that waited reads.
+  backendReturns()
+  await until(tabs.value).toMatch((state) => state?.tabs[0] === 't1')
+  expect(tabs.error.value).toBeNull()
+  scope.stop()
 })
 
 test('a waiting call whose caller leaves rejects with the abort and is never sent', async () => {

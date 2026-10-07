@@ -18,17 +18,22 @@ interface Held {
   again: boolean
 }
 
+/** Sends a request until the backend answers it, as the product state's `untilReached` does. */
+export type Reach = <T>(send: () => Promise<T>) => Promise<T>
+
 /**
  * The plugins' conversation states, as a page reads them by revision
  * (`web-api.md` § Conversation state of plugins): while anything follows a
  * plugin's state of a conversation, the page reads it whenever the
  * conversation's summary carries a newer revision than the one it holds, a
  * count of another run of the backend included (`web-api.md` § Revisions
- * counted in memory).
+ * counted in memory). A read that cannot reach the backend waits for it
+ * through `reached` and shows no failure (`plugin-pages.md` § The page
+ * context).
  * What it read stays for the page's lifetime, so following again shows it at
  * once.
  */
-export function conversationStates(snapshot: () => ProductState | null) {
+export function conversationStates(snapshot: () => ProductState | null, reached: Reach) {
   const held = reactive(new Map<string, Held>())
   /** Each followed state's watch, which outlives the scope of whoever follows first. */
   const watching = new Map<string, EffectScope>()
@@ -57,7 +62,7 @@ export function conversationStates(snapshot: () => ProductState | null) {
     entry.reading = true
     try {
       const path = `/conversations/${encodeURIComponent(conversation)}/plugins/${encodeURIComponent(plugin)}/state`
-      const answer = await readResponse(await apiRequest(path), pluginStateAnswerSchema)
+      const answer = await reached(async () => readResponse(await apiRequest(path), pluginStateAnswerSchema))
       const taken = { run: snapshot()?.run ?? null, revision: answer.revision }
       if (isNewer(taken, entry.held)) {
         entry.held = taken
