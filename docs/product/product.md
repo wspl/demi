@@ -318,14 +318,17 @@ A user remembers that a conversation explained a TS2307 error, but not which
 one. ⌘K, or Search in the sidebar, opens the search window: a field, and
 under it the most recent conversations. Typing `TS2307` lists, a moment after
 the typing pauses, the conversations whose title or messages contain it, each
-with its title, a line of the message around the match with the match
-marked, and when the conversation was last active. ↑ and ↓ move through the
+with its title, a line of the message around the match, and when the
+conversation was last active; the matches are marked in the title and in the
+line. The window is as tall as its list, up to a limit past which the list
+scrolls, and its field stays where it is as the list grows and shrinks, as
+in Spotlight and Raycast. ↑ and ↓ move through the
 list; Return or a click opens the selected conversation at the message that
 matched, which scrolls into view and is marked for a moment; Escape closes the
 window, as ⌘K does in Slack, Linear and ChatGPT.
 
-A query searches what was said: titles, the user's messages and the text of
-the answers. Thinking, tool calls, commands' output and attached files are
+A query searches what was said: titles, the user's messages, steers among
+them, and the text of the answers. Thinking, tool calls, commands' output and attached files are
 not searched, since they would bury the message the user remembers under
 logs, and neither are subagents' histories, whose conversation its own
 messages find. Each word of the query must appear, in any order, ignoring
@@ -362,7 +365,9 @@ on by default:
 A notification shows only while its conversation is not in front of the
 user: the page is hidden or not focused, or it shows another conversation. A
 turn the user stopped notifies nothing, since the user was there. The pages
-learn of these events from their synchronization channel, so notifications
+learn of these events from their synchronization channel, a turn's end from
+the conversation's summary
+([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)), so notifications
 come while any Demi page of the browser is open, and none come when none is,
 which would need push notifications. Each notification is tagged with its
 conversation and turn, or its permission request, so several open pages show

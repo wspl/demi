@@ -114,6 +114,8 @@ pub enum ErrorCode {
     /// The caller owns no device of that id, or not one the route takes,
     /// such as the Cloud for revocation.
     DeviceNotFound,
+    /// The device is the caller's Cloud, which keeps its name.
+    DeviceManaged,
     /// The device's runner is not connected.
     DeviceOffline,
     /// The device is the caller's Cloud, which no direct channel reaches
