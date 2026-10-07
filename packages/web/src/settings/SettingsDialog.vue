@@ -6,6 +6,7 @@ import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
+import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
@@ -31,6 +32,7 @@ import { useSession } from '../auth/session'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
+import { useNotifications } from '../state/notifications'
 import { useConversations } from '../conversation/store'
 import DevicesPanel from './DevicesPanel.vue'
 import { useSettingsAddress } from './address'
@@ -41,6 +43,7 @@ const emit = defineEmits<{ signOut: [] }>()
 const resources = useResources()
 const product = useProduct()
 const preferences = usePreferences()
+const notifications = useNotifications()
 const session = useSession()
 const conversations = useConversations()
 const router = useRouter()
@@ -441,6 +444,15 @@ function resetShortcuts(): void {
       @resend-email="resendEmail"
       @submit-password="submitPassword"
       @sign-out="emit('signOut')"
+    />
+    <SettingsNotifications
+      v-else-if="section === 'notifications'"
+      v-model:enabled="notifications.settings.enabled"
+      v-model:turn-finishes="notifications.settings.turnFinishes"
+      v-model:turn-fails="notifications.settings.turnFails"
+      v-model:needs-permission="notifications.settings.needsPermission"
+      :permission="notifications.permission"
+      :request-permission="notifications.requestPermission"
     />
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />

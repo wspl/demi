@@ -15,7 +15,7 @@ use demi_runner_protocol::wire::{
     self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo,
     RunnerPlatform, StreamArtifactOwner,
 };
-use demi_web_api_protocol::devices::{ClaimedDevice, DeviceKind, DeviceLog, DeviceState};
+use demi_web_api_protocol::devices::{DeviceAnswer, DeviceKind, DeviceLog, DeviceState};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::Directory;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -25,7 +25,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
 use crate::conversations::{FIRST, Socket, create};
-use crate::support::{Harness, TestBackend, eventually, stored_token};
+use crate::support::{Harness, Session, TestBackend, eventually, stored_token};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked() {
@@ -55,7 +55,7 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
         "{}",
         String::from_utf8_lossy(&claimed.body)
     );
-    let device = claimed.json::<ClaimedDevice>().device;
+    let device = claimed.json::<DeviceAnswer>().device;
     assert_eq!(
         (device.name.as_str(), device.kind),
         ("laptop", DeviceKind::User)
@@ -133,7 +133,7 @@ async fn a_waiting_runners_code_changes_while_it_waits_and_claims_are_limited() 
         claim(&first).await.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::InvalidCode)
     );
-    let device = claimed.json::<ClaimedDevice>().device;
+    let device = claimed.json::<DeviceAnswer>().device;
     backend
         .until_online(&master, device.id.as_str(), true)
         .await;
@@ -888,5 +888,84 @@ async fn after_a_backend_restart_the_devices_are_kept_and_their_runners_come_bac
     let names: Vec<&str> = devices.iter().map(|device| device.name.as_str()).collect();
     assert_eq!(names, ["laptop", "desktop"]);
     assert!(devices.iter().all(|device| device.last_seen_at.is_some()));
+    backend.close().await;
+}
+
+/// A device shows the operating system and the runner release its runner's
+/// hello named, the Cloud's too; a paired device takes a new name, trimmed,
+/// which the user's pages see at once, while the Cloud keeps its name and
+/// another user's device is not the caller's to rename (`web-api.md`
+/// § Workspaces, devices, and attached hosts).
+// About half a second: a runner pairs and the Cloud boots.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_new_name() {
+    use demi_web_api_protocol::auth::Role;
+    use demi_web_api_protocol::state::SyncEvent;
+
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    harness.add_user("ana@example.test", "ana-pass-1", Role::User);
+    let ana = backend.login("ana@example.test", "ana-pass-1").await;
+    let laptop = backend.pair(&master, "laptop").await;
+    // The conversation's first file listing boots the Cloud, whose runner
+    // says hello as a paired one does.
+    create(&backend, &master, FIRST).await;
+    let listed = backend
+        .get(&format!("/api/conversations/{FIRST}/fs"), Some(&master))
+        .await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+
+    let devices = backend.devices(&master).await;
+    let paired = &devices[0];
+    let os = paired.os.as_ref().expect("the hello named the system");
+    assert!(!os.name.is_empty());
+    assert_eq!(os.arch, std::env::consts::ARCH);
+    assert_eq!(paired.runner_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+    let mut page = backend.sync(&master).await;
+    let state = page.snapshot().await;
+    let cloud = state
+        .devices
+        .iter()
+        .find(|device| device.kind == DeviceKind::Managed)
+        .expect("the Cloud booted");
+    assert!(cloud.os.is_some(), "{cloud:?}");
+    assert_eq!(cloud.runner_version.as_deref(), Some(env!("CARGO_PKG_VERSION")));
+
+    let rename = async |id: &str, session: &Session, name: &str| {
+        backend
+            .patch(&format!("/api/devices/{id}"), session, json!({ "name": name }))
+            .await
+    };
+    let renamed = rename(laptop.id(), &master, "  Studio Mac  ").await;
+    assert_eq!(renamed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&renamed.body));
+    assert_eq!(renamed.json::<DeviceAnswer>().device.name, "Studio Mac");
+    page.until(|event| {
+        matches!(event, SyncEvent::Devices { devices }
+            if devices.iter().any(|device| device.name == "Studio Mac"))
+    })
+    .await;
+    assert_eq!(backend.devices(&master).await[0].name, "Studio Mac");
+
+    // 1 to 64 characters, counted as characters.
+    for refused in ["   ".to_owned(), "x".repeat(65)] {
+        assert_eq!(
+            rename(laptop.id(), &master, &refused).await.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
+        );
+    }
+    let longest = "é".repeat(64);
+    let renamed = rename(laptop.id(), &master, &longest).await;
+    assert_eq!(renamed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&renamed.body));
+    assert_eq!(renamed.json::<DeviceAnswer>().device.name, longest);
+
+    assert_eq!(
+        rename(cloud.id.as_str(), &master, "Mine").await.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::DeviceManaged)
+    );
+    assert_eq!(
+        rename(laptop.id(), &ana, "Mine").await.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound)
+    );
+    assert_eq!(backend.devices(&master).await[0].name, longest);
     backend.close().await;
 }
