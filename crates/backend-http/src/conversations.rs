@@ -3,7 +3,7 @@
 //! conversation under the id the web app chose, listing the caller's
 //! conversations, changing their fields one patch at a time or in a batch,
 //! forking one, reading one's history as its database holds it,
-//! acknowledging its output, and its socket, `WS /conversations/:id/stream`,
+//! acknowledging its output, deleting it, and its socket, `WS /conversations/:id/stream`,
 //! which moves into the caller's shard once upgraded. A conversation the
 //! caller does not own answers like a missing one.
 
@@ -231,6 +231,27 @@ pub(super) async fn patch(
         StatusCode::MULTI_STATUS
     };
     Ok((status, Json(update)))
+}
+
+/// `DELETE /conversations/:id`: deletes the conversation, archived or not,
+/// 204. Nothing refuses it: its work stops first. A conversation the caller
+/// does not have, one whose deletion has begun included, answers 404.
+pub(super) async fn delete(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<StatusCode, ApiError> {
+    let id = ConversationId::try_from(id).map_err(|_| not_found())?;
+    let deleted = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.delete_conversation(&id).await })
+        .await??;
+    if deleted {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(not_found())
+    }
 }
 
 /// `POST /conversations/batch { items }`: up to 100 patches, each answered

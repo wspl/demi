@@ -19,7 +19,7 @@ use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
 use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, web_build};
-use demi_backend_user_shard::conversation::{rearm_wakeups, recover_forks};
+use demi_backend_user_shard::conversation::{finish_deletions, rearm_wakeups, recover_forks};
 use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
@@ -218,6 +218,15 @@ impl Backend {
             services.close_providers().await;
             return Err(StartError::Storage(error));
         }
+        // Each deletion an earlier backend left pending is finished before
+        // the backend serves. A failure does not stop the start: the next
+        // start finishes it, and no request finds its conversation meanwhile.
+        if let Err(error) = finish_deletions(&services.control, &shards.shards()).await {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the pending deletions cannot be listed"
+            );
+        }
         // Each saved wakeup is armed again, so it fires with no page open
         // (`runtime.md` § Yield wakeups). A failure does not stop the start:
         // a wakeup not armed here still fires once a page opens its
@@ -336,6 +345,17 @@ impl Backend {
             .expect("the user's shard serves while the backend runs")
     }
 
+    /// Resolves once no collection of `user`'s blob namespace runs or is to
+    /// follow (`storage.md` § Deleting a conversation).
+    #[cfg(feature = "testing")]
+    pub async fn until_collected(&self, user: &demi_web_api_protocol::ids::UserId) {
+        self.shards
+            .shards()
+            .of(user)
+            .call(|shard, _| async move { shard.until_collected().await })
+            .await
+            .expect("the user's shard serves while the backend runs");
+    }
 
     /// Shuts the backend down. The listener closes first, so no new work
     /// starts and a new request on an open connection answers 503

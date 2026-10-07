@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Archive, ArrowRight, Copy, FolderInput, Pin, PinOff, TextCursorInput } from '@lucide/vue'
+import { Archive, ArrowRight, Copy, FolderInput, Pin, PinOff, TextCursorInput, Trash2 } from '@lucide/vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import type { SidebarConversation, SidebarProject } from './types'
 
-/** One row gets open, rename and copy ID; any count gets pin, move and archive. Conversations are never deleted. */
+/** One row gets open, rename and copy ID; any count gets pin, move, archive and delete, which asks first. */
 const props = defineProps<{
   targets: SidebarConversation[]
   projects: SidebarProject[]
@@ -19,6 +19,8 @@ const emit = defineEmits<{
   pin: [ids: string[], pinned: boolean]
   moveTo: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
+  /** Delete…: the host asks before anything goes. */
+  delete: [ids: string[]]
 }>()
 
 const ids = computed(() => props.targets.map((target) => target.id))
@@ -93,6 +95,13 @@ const many = computed(
       :icon="Archive"
       :label="`Archive${many}`"
       @select="emit('archive', ids)"
+    />
+    <MenuDivider />
+    <MenuItem
+      :icon="Trash2"
+      :label="`Delete${many}…`"
+      is-danger
+      @select="emit('delete', ids)"
     />
   </Menu>
 </template>

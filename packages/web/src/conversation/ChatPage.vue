@@ -58,6 +58,19 @@ watch(
   },
   { immediate: true },
 )
+// A conversation deleted while the page shows it, by this page or another,
+// gives way to a new one (`product.md` § Conversations and projects). Under
+// open settings the address waits until they close, since moving it would
+// close them.
+watch(
+  () => props.id !== undefined && store.deleted.has(props.id) && router.currentRoute.value.path.startsWith('/chat/'),
+  (gone) => {
+    if (gone) {
+      void router.replace(`/chat/${store.create()}`)
+    }
+  },
+  { immediate: true },
+)
 // A conversation the backend has a record of has permissions to read.
 watch(
   () => conversation.value?.persistence === 'synced' ? conversation.value.id : null,
