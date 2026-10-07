@@ -49,6 +49,12 @@ export const browserTabDataSchema = z.object({
   title: z.string().optional(),
   /** How many times the agent showed the browser tab; absent while it never did (`live-view.md` § Showing a tab). */
   shows: z.number().int().min(1).optional(),
+  /**
+   * The panel tab whose page opened it: by Open Link in New Tab, or by a link
+   * or script of the page, which the plugin writes as it adds the tab
+   * (`live-view.md` § A browser tab in the panel).
+   */
+  openedBy: z.string().optional(),
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 

@@ -91,6 +91,39 @@ export function selectedTab(state: PanelState, kinds: readonly PanelTabKind[]): 
   return state.tabs.find((tab) => tab.id === shown) ?? null
 }
 
+/**
+ * Where a tab of `kind` with `data` goes among `tabs` as it is added: right
+ * after the tab its kind says opened it (`PanelKind.openedBy`), behind the
+ * tabs that tab opened before that still stand right after it, as a web
+ * browser places the tabs a link opens; after the others (undefined) when
+ * its kind names no opener or the panel no longer has that tab. The browser
+ * plugin places the tabs a page opens by the same rule on the backend
+ * (`live-view.md` § A browser tab in the panel).
+ */
+export function openedTabIndex(
+  tabs: readonly PanelTab[],
+  pages: readonly AnyPluginPage[],
+  kind: string,
+  data: unknown,
+): number | undefined {
+  const kinds = pages.flatMap((page) => page.kinds ?? [])
+  const openerOf = (tab: Pick<PanelTab, 'kind' | 'data'>) => {
+    const found = kinds.find((candidate) => candidate.kind === tab.kind)
+    const parsed = found?.openedBy ? found.schema.safeParse(tab.data) : null
+    return found?.openedBy && parsed?.success ? found.openedBy(parsed.data) : undefined
+  }
+  const opener = openerOf({ kind, data })
+  const at = opener === undefined ? -1 : tabs.findIndex((tab) => tab.id === opener)
+  if (at < 0) {
+    return undefined
+  }
+  let end = at + 1
+  while (end < tabs.length && openerOf(tabs[end]!) === opener) {
+    end += 1
+  }
+  return end
+}
+
 /** The state after `ids` close: they leave the tabs and the history, so the panel shows what was selected before. */
 export function removeTabs(state: PanelState, ids: readonly string[]): PanelState {
   return closeTabs(state.tabs, state.history, ids)

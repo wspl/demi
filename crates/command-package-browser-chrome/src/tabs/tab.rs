@@ -45,8 +45,8 @@ pub struct TabState {
     /// The open dialog and the input it holds back.
     pub dialog: DialogInput,
     pub viewport: watch::Sender<crate::tabs::viewport::Viewports>,
-    /// Whether the tab loads its top-level page.
-    pub loading: watch::Sender<bool>,
+    /// Where the tab's top-level page is in its loading.
+    pub load: watch::Sender<crate::tabs::loading::PageLoad>,
     /// Which ends of its history the tab is away from.
     pub history: watch::Sender<crate::tabs::history::HistoryEnds>,
     /// The page's icon as a PNG `data:` URL, while it has one.
@@ -73,7 +73,7 @@ impl TabState {
             .event_listener::<EventJavascriptDialogOpening>()
             .await?;
         let console = crate::tabs::logs::observe(page, ended.clone(), tasks).await?;
-        let loading =
+        let load =
             crate::tabs::loading::observe(page, ended.clone(), tasks, changes.clone()).await?;
         let history =
             crate::tabs::history::observe(page, ended.clone(), tasks, changes.clone()).await?;
@@ -87,7 +87,7 @@ impl TabState {
             console,
             dialog,
             viewport: watch::channel(Default::default()).0,
-            loading,
+            load,
             history,
             favicon,
             shows: watch::channel(0).0,

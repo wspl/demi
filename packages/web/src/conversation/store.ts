@@ -270,7 +270,6 @@ export const useConversations = defineStore('conversations', () => {
         if (current.persistence !== 'synced') {
           return current
         }
-        const revisionChanged = current.revision !== record.revision
         const contextChanged = current.contextVersion !== record.contextVersion
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
@@ -287,14 +286,9 @@ export const useConversations = defineStore('conversations', () => {
         if (current.savedDraft && record.draftRevision > current.savedDraft.revision) {
           void draftSync.read(current).catch((error) => report('Could Not Read the Draft', error))
         }
-        if (
-          revisionChanged &&
-          cached &&
-          !contextChanged &&
-          !archiveChanged
-        ) {
-          void loadHosts(current, cached.controller.signal).catch((error) => report('Could Not Load the Conversation Hosts', error))
-        }
+        // Attaching, renaming or detaching a host advances the context
+        // version, whose new opening reads the hosts again; output, which
+        // advances the revision, changes none of them.
         if (contextChanged || archiveChanged) {
           cache.delete(current.id)
           current.load = 'loading'
@@ -895,19 +889,6 @@ export const useConversations = defineStore('conversations', () => {
       )
     }
     return runtime
-  }
-
-  async function loadHosts(
-    conversation: Conversation,
-    signal = lifetime.signal,
-  ): Promise<void> {
-    const response = await apiRequest(
-      `/conversations/${encodeURIComponent(conversation.id)}/hosts`,
-      { signal },
-    )
-    const result = await readResponse(response, attachedHostsSchema)
-    signal.throwIfAborted()
-    conversation.attachedHosts = result.hosts
   }
 
   /**

@@ -1199,6 +1199,69 @@ async fn two_viewers_share_a_tab_and_the_last_to_operate_decides() {
     .await;
 }
 
+/// A panel that changes size while the watched tab loads an address that
+/// does not answer leaves the tab at its size until the navigation ends:
+/// Chrome holds the page's commands meanwhile but resizes its window at once,
+/// so the capture letterboxed the page in black, and the hub, waiting for the
+/// page, left every viewer's request, a reloaded page's view included,
+/// unanswered until Chrome gave up on the held command 30 s later
+/// (`live-view.md` § Delivery). About 2 s.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_panel_resized_while_a_navigation_hangs_keeps_the_picture_and_the_view_answers() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let tab = fixture
+            .call("browser.open", json!({"url": site.base, "timeout": 120000}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        watch(&mut view, &tab).await;
+        request(&fixture, "browser.goto", json!({"tab": tab, "url": format!("{}slow", site.base)})).await;
+        view.until("the tab loading", |message| {
+            message["type"] == "state" && message["tabs"][0]["loading"] == json!(true)
+        })
+        .await;
+        view.send(json!({
+            "type": "panel", "width": 700, "height": 500, "devicePixelRatio": 2,
+            "screenWidth": 1440, "screenHeight": 900,
+        }));
+        // Another page's view opens and is answered while the page hangs:
+        // far sooner than Chrome's 30 s for a held command, and in time for a
+        // busy machine.
+        let prompt = Duration::from_secs(10);
+        let mut reloaded = View::open(&fixture);
+        hello(&reloaded, "mac");
+        tokio::time::timeout(prompt, reloaded.message("state"))
+            .await
+            .expect("the view answers a new viewer while the page hangs");
+        reloaded.send(json!({"type": "watch", "tab": tab}));
+        let stream = tokio::time::timeout(prompt, reloaded.message("stream"))
+            .await
+            .expect("the view answers a watch while the page hangs");
+        assert_eq!(
+            (stream["width"].as_u64(), stream["height"].as_u64()),
+            (Some(1600), Some(1200)),
+            "the tab keeps its size while its navigation is under way: {stream}"
+        );
+        assert_eq!(reloaded.close().await.exit_code, 0);
+        // Once the navigation ends, the tab takes the panel's new size.
+        request(&fixture, "browser.stop", json!({"tab": tab})).await;
+        view.until("a 1400-wide stream", |message| {
+            message["type"] == "stream" && message["width"] == 1400
+        })
+        .await;
+        eventually(&fixture, &tab, "innerWidth === 700 && innerHeight === 500").await;
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
 /// Decodes a key frame as the page does (`pictures.ts`: WebCodecs, with the
 /// live protocol's codec) and keeps the picture in the page as a PNG in
 /// base64, the form in which a picture leaves Chrome whole; answers its

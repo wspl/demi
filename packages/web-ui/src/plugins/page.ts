@@ -118,13 +118,12 @@ export interface PageHost {
     /** The `data` of the panel's tabs of `kind`, as saved. */
     tabs(conversation: string, kind: string): unknown[]
     /**
-     * Adds a tab of `kind`; `select` selects it and opens the panel. It goes
-     * right after the tab `after`, behind the tabs added after that tab
-     * before that still stand right after it, as a web browser places the
-     * links opened from one tab; after the others without one or once the
-     * panel no longer has that tab.
+     * Adds a tab of `kind`; `select` selects it and opens the panel. A tab
+     * whose kind names the tab that opened it (`openedBy`) goes where
+     * `openedTabIndex` places it, as a web browser places the tabs a link
+     * opens; any other after the others.
      */
-    add(conversation: string, kind: string, data: unknown, options?: { select: boolean; after?: string }): void
+    add(conversation: string, kind: string, data: unknown, options?: { select: boolean }): void
     /**
      * Selects the tab `id` of `kind` and opens the panel, as a browser
      * selects the tab a click opened; a tab the panel does not have yet is
@@ -259,6 +258,14 @@ export interface PanelKind<Data, Session = undefined> {
    * (`plugin-pages.md` § Work panel kinds).
    */
   shows?(data: Data): number
+  /**
+   * The id of the tab that opened this one, from its data, such as the
+   * browser tab whose link it opened. A tab added with one goes right after
+   * that tab, behind the tabs it opened before that still stand right after
+   * it (`openedTabIndex`); the data keeps it, so the order holds across
+   * reloads and pages.
+   */
+  openedBy?(data: Data): string | undefined
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `conversation`, `data`. */
   badge?: Component
   /** The intents it opens: for each, the data its tab shows next, from the payload and what it shows now. */
