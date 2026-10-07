@@ -8,7 +8,7 @@ use bytes::{BufMut, BytesMut};
 use demi_command_package_browser_preview::StreamError;
 use demi_command_package_browser_protocol::preview::{
     BODY_CHUNK_BYTES, CHUNK_FRAME, CONTROL_FRAME, PreviewEngineMessage, PreviewMode, PreviewRelayMessage, PreviewRequest,
-    SOCKET_MESSAGE_FRAME,
+    PreviewScheme, SOCKET_MESSAGE_FRAME,
 };
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
@@ -117,6 +117,7 @@ async fn a_frame_the_protocol_refuses_ends_the_stream() {
         bytes.freeze()
     };
     let hello = serde_json::to_vec(&PreviewRelayMessage::Hello {
+        scheme: PreviewScheme::Https,
         domain: "preview.test".into(),
         namespace: "k3f9a2ab".into(),
         host: "host-1".into(),

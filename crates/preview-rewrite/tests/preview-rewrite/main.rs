@@ -18,6 +18,7 @@ const RUNTIME: &str = "/__demi/page/runtime/0.1.0.js";
 /// The context of a preview tab's top document at `origin`.
 fn top_document(origin: &str) -> Context {
     Context {
+        scheme: "https".into(),
         domain: DOMAIN.into(),
         namespace: NAMESPACE.into(),
         host: HOST.into(),

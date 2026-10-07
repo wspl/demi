@@ -90,10 +90,11 @@ const SAVE_DELAY: Duration = Duration::from_millis(500);
 const REWRITE_CACHE_CHARACTERS: usize = 128 * 1024 * 1024;
 
 /// Where previews live, as the relay's `hello` names them: the preview
-/// domain, the deployment's namespace and the Host, which every label the
-/// engine computes is a digest of.
+/// domain's scheme and the domain, the deployment's namespace and the Host,
+/// which every label the engine computes is a digest of.
 #[derive(Clone, Debug)]
 pub(crate) struct Place {
+    pub scheme: String,
     pub domain: String,
     pub namespace: String,
     pub host: String,
@@ -103,6 +104,7 @@ impl Place {
     pub fn context(&self, document: Environment) -> Context {
         let top_level = is_top_level(&document);
         Context {
+            scheme: self.scheme.clone(),
             domain: self.domain.clone(),
             namespace: self.namespace.clone(),
             host: self.host.clone(),
@@ -121,13 +123,14 @@ impl Place {
     /// The CSP of every preview document: no network outside the preview
     /// domain (`preview.md` § Response headers).
     fn content_policy(&self) -> String {
+        let scheme = &self.scheme;
         // A page may build a preview address from the host alone, without
         // the port.
         let host = self.domain.split(':').next().unwrap_or_default();
         let previews = if host == self.domain {
-            format!("https://*.{host}")
+            format!("{scheme}://*.{host}")
         } else {
-            format!("https://*.{} https://*.{host}", self.domain)
+            format!("{scheme}://*.{} {scheme}://*.{host}", self.domain)
         };
         format!("default-src {previews} data: blob: 'unsafe-inline' 'unsafe-eval'")
     }

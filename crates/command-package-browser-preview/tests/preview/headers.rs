@@ -1,7 +1,7 @@
 //! What the engine changes in an answer and in the request upstream sees
 //! (`preview.md` § CORS, CORP and Referer, § Response headers).
 
-use demi_command_package_browser_protocol::preview::{PreviewCredentials, PreviewHeader, PreviewMode, PreviewRequest};
+use demi_command_package_browser_protocol::preview::{PreviewCredentials, PreviewHeader, PreviewMode, PreviewRequest, PreviewScheme};
 
 use crate::support::{Relay, Site, echoed_header, embedded, encoded, engine, opening, preview_origin, request, top};
 
@@ -35,6 +35,24 @@ async fn a_sites_content_policies_give_way_to_the_previews() {
         .map(|header| header.value.as_str())
         .collect();
     assert_eq!(policies, ["default-src https://*.preview.test data: blob: 'unsafe-inline' 'unsafe-eval'"]);
+}
+
+#[tokio::test]
+async fn a_preview_domain_served_over_http_is_allowed_over_http_with_its_port() {
+    let directory = tempfile::tempdir().unwrap();
+    let site = Site::start().await;
+    let mut relay = Relay::open_on(engine(&directory), PreviewScheme::Http, "demi-preview.localhost:5174");
+    let other = site.origin("other.test");
+    let page = format!("/content?type=text/html&body={}", encoded(&format!(r#"<img src="{other}/i.png">"#)));
+    let www = top(&site.origin("www.site.test"));
+    let opened = relay.fetch(www.clone(), opening(&site.https("www.site.test", &page))).await.unwrap();
+    assert_eq!(
+        opened.header("content-security-policy"),
+        Some("default-src http://*.demi-preview.localhost:5174 http://*.demi-preview.localhost data: blob: 'unsafe-inline' 'unsafe-eval'")
+    );
+    let image = embedded(&other, &www.top, true);
+    let origin = preview_origin(&image).replace("https://", "http://").replace(".preview.test", ".demi-preview.localhost:5174");
+    assert!(opened.text().contains(&format!(r#"src="{origin}/i.png""#)), "{}", opened.text());
 }
 
 #[tokio::test]

@@ -44,12 +44,13 @@ impl DemiBrowser {
         Self {
             browsers: Arc::new(conversations::Conversations::new(chrome.clone())),
             chrome,
-            previews: Arc::new(preview::Previews::new(preview::data_directory())),
+            previews: Arc::new(preview::Previews::new(None)),
         }
     }
 
-    /// The service, keeping what it keeps on the Host, the web preview's
-    /// cookie jar, in `directory` rather than the user's data directory.
+    /// The service, keeping what outlives it on the Host, the web
+    /// preview's cookie jar, in `directory`: the package's data directory,
+    /// which the runner names when it starts the program.
     pub fn with_data_directory(mut self, directory: std::path::PathBuf) -> Self {
         self.previews = Arc::new(preview::Previews::new(Some(directory)));
         self
