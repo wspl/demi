@@ -553,7 +553,7 @@ fn attach_descendants(socket: &mut Connection<WireEvent>, session: SessionId) ->
 }
 
 /// Complete a driver-owned debugging setup/cleanup request on its private socket.
-pub(crate) async fn roundtrip(
+async fn roundtrip(
     socket: &mut Connection<WireEvent>,
     method: &str,
     params: Value,
@@ -593,7 +593,7 @@ fn reply(response: chromiumoxide::types::Response) -> Result<Value> {
 // This envelope preserves it; payload validation still uses the pinned catalog.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct WireEvent {
+struct WireEvent {
     method: String,
     params: Value,
     session_id: Option<String>,

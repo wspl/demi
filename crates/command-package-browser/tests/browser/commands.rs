@@ -93,6 +93,7 @@ async fn conversation_browser_commands_share_state_and_retire() {
             edits: None,
             json: Some(true),
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: conversation.clone(),
                 caller: CommandCaller::agent(1),
                 locale: CommandLocale {
@@ -398,6 +399,7 @@ fn invocation(
         edits: None,
         json,
         context: CommandContext {
+            color_scheme: demi_command_protocol::ColorScheme::Light,
             conversation: uuid::Uuid::new_v4().to_string(),
             caller: CommandCaller::agent(1),
             locale: CommandLocale {
