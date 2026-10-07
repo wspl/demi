@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import type { OverlayStore } from '../overlay/overlayStore'
-import Button from '../ui/Button.vue'
-import Dialog from '../ui/Dialog.vue'
+import ConfirmDialog from '../ui/ConfirmDialog.vue'
 
 /**
  * The confirmation before a device is revoked: the device leaves the user's
@@ -24,36 +23,23 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <Dialog
+  <ConfirmDialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Revoke this device?"
+    title="Revoke this device?"
+    action="Revoke"
+    :goes="projects"
     @close="emit('close')"
+    @confirm="emit('revoke')"
   >
-    <div class="flex flex-col gap-4 p-5">
-      <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">
-        Revoke this device?
-      </h3>
-      <p class="text-[13px] leading-5 text-fg-muted">
-        “{{ device }}” leaves your devices. If its runner is connected, it
-        removes itself from the device.
-      </p>
-      <template v-if="projects.length">
-        <p class="text-[13px] leading-5 text-fg-muted">
-          {{ projects.length === 1 ? 'This project goes' : 'These projects go' }}
-          with it. Their files stay on the device, and their conversations stay
-          in the sidebar.
-        </p>
-        <ul class="flex flex-col gap-1 pl-4 text-[13px] leading-5 text-fg-emphasis">
-          <li v-for="(project, index) in projects" :key="index" class="list-disc">
-            {{ project }}
-          </li>
-        </ul>
-      </template>
-      <div class="flex justify-end gap-2">
-        <Button @click="emit('close')">Cancel</Button>
-        <Button variant="danger" @click="emit('revoke')">Revoke</Button>
-      </div>
-    </div>
-  </Dialog>
+    <p>
+      “{{ device }}” leaves your devices. If its runner is connected, it
+      removes itself from the device.
+    </p>
+    <p v-if="projects.length">
+      {{ projects.length === 1 ? 'This project goes' : 'These projects go' }}
+      with it. Their files stay on the device, and their conversations stay
+      in the sidebar.
+    </p>
+  </ConfirmDialog>
 </template>

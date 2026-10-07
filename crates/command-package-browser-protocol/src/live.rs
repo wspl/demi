@@ -246,6 +246,15 @@ closed_set! {
     }
 }
 
+closed_set! {
+    /// Where a download the user started in the page stands.
+    pub enum DownloadState {
+        InProgress = "inProgress",
+        Complete = "complete",
+        Canceled = "canceled",
+    }
+}
+
 /// A file the viewer chose for an upload; its bytes follow as file frames.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -568,6 +577,56 @@ pub struct LiveTab {
     pub favicon: Option<String>,
 }
 
+/// What lies under the viewer's right click in the watched tab, which the
+/// page builds the browser's menu from (`live-view.md` § A browser tab in the
+/// panel). The page's own `contextmenu` handler that cancels the event shows
+/// its own menu instead, and none of this is sent.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LiveMenu {
+    /// The click in tab CSS pixels.
+    #[garde(skip)]
+    pub x: f64,
+    #[garde(skip)]
+    pub y: f64,
+    /// The address of the link under the click; empty when none.
+    #[garde(length(chars, max = 8192))]
+    pub link: String,
+    /// Whether the page has selected text to copy.
+    #[garde(skip)]
+    pub selection: bool,
+    /// Whether the click is in a field that takes text.
+    #[garde(skip)]
+    pub editable: bool,
+}
+
+/// A download the user started in the watched tab, as a browser's download
+/// bubble shows it (`live-view.md` § A browser tab in the panel).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LiveDownload {
+    /// The browser's identity of the download.
+    #[garde(length(chars, min = 1, max = 100))]
+    pub id: String,
+    /// The file's name, as the page suggested it.
+    #[garde(length(chars, min = 1, max = 255))]
+    pub name: String,
+    #[garde(skip)]
+    pub state: DownloadState,
+    /// The bytes received so far.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub received: u64,
+    /// The file's size; 0 while the server has not said it.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub total: u64,
+    /// The file on the Host once complete; empty before.
+    #[garde(length(chars, max = 4096))]
+    pub path: String,
+}
+
+/// The most downloads a tab's bubble keeps, the newest.
+pub const MAX_DOWNLOADS: usize = 20;
+
 /// The watched tab's JavaScript dialog.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -666,6 +725,21 @@ pub enum LiveModuleMessage {
         token: ControlToken,
         #[garde(skip)]
         accepted: bool,
+    },
+    /// The viewer's right click reached the page, which left it to the
+    /// browser: the page shows the browser's menu.
+    Menu {
+        #[garde(skip)]
+        tab: TabId,
+        #[garde(dive)]
+        menu: LiveMenu,
+    },
+    /// The downloads the user started in the tab, the newest last.
+    Downloads {
+        #[garde(skip)]
+        tab: TabId,
+        #[garde(length(max = MAX_DOWNLOADS), dive)]
+        downloads: Vec<LiveDownload>,
     },
     /// Something the viewer asked for failed; the stream goes on.
     Notice {

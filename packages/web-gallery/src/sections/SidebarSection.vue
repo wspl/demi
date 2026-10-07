@@ -40,7 +40,7 @@ const pluginOn = (plugin: string) =>
 const settingsSections = computed(() => withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, pluginOn))
 const sectionEntries = computed(() => sidebarEntries(PLUGIN_PAGES, pluginOn))
 const settingsOpen = ref(false)
-const settingsTab = ref<SettingsTab>('general')
+const settingsTab = ref<SettingsTab | null>(null)
 
 /** Opens the settings dialog, on `section` when an entry names one, as the product does. */
 function openSettings(section?: string): void {
@@ -278,6 +278,7 @@ onBeforeUnmount(() => listRestore.stop())
           </div>
           <template #dialogs>
             <SettingsDialog
+              v-slot="{ section }"
               v-model:tab="settingsTab"
               :is-open="settingsOpen"
               :overlay-store="appOverlayStore"
@@ -285,7 +286,7 @@ onBeforeUnmount(() => listRestore.stop())
               :sections="settingsSections"
               @close="settingsOpen = false"
             >
-              <GallerySettingsFull :tab="settingsTab" :state="settings" />
+              <GallerySettingsFull :tab="section ?? ''" :state="settings" />
             </SettingsDialog>
           </template>
           </SidebarLayout>

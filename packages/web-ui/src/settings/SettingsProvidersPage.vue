@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { showToast } from '../infra/toast'
 import {
   Brain,
@@ -38,6 +38,7 @@ import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AddProviderDialog from './AddProviderDialog.vue'
 import ModelDialog from './ModelDialog.vue'
+import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsListItem from './SettingsListItem.vue'
 import SettingsPage from './SettingsPage.vue'
@@ -55,12 +56,15 @@ import {
   type SettingsWireApi,
 } from './types'
 import { formatTokens } from '../ui/token-count'
+import type { TitleText } from '../ui/ui-text'
 
 /**
  * Models & Providers: a rail of providers beside the selected one. Every supported
  * subscription is always listed and manages its accounts; an API key is added from
- * the rail and edits its endpoint, key and model list on its page. Field edits land
- * on the entry itself; everything that needs the host is emitted.
+ * the rail and edits its endpoint, key and model list on its page. Adding opens the
+ * new entry's form, and the entry joins the list once the host saved it. Removing
+ * an entry, an account or a model asks first. Field edits land on the entry itself;
+ * everything that needs the host is emitted.
  */
 const props = defineProps<{
   saveModel: (
@@ -68,7 +72,13 @@ const props = defineProps<{
     draft: SettingsModelDraft,
     original: SettingsProviderModel | null,
   ) => Promise<void>
+  /** The saved providers, which the list shows. */
   providers: SettingsProviderEntry[]
+  /**
+   * The provider being added, whose form the detail shows while it is
+   * selected; it is not in the list until it is saved.
+   */
+  draft?: SettingsProviderEntry | null
   vendors: SettingsVendor[]
   load?: 'loading' | 'ready' | 'failed'
   vendorLoad?: 'loading' | 'ready' | 'failed'
@@ -124,7 +134,9 @@ const apiKeys = computed(() =>
   props.providers.filter((p) => p.kind === 'api_key'),
 )
 const selected = computed(
-  () => props.providers.find((p) => p.id === selectedId.value) ?? null,
+  () =>
+    props.providers.find((p) => p.id === selectedId.value) ??
+    (props.draft?.id === selectedId.value ? props.draft : null),
 )
 const splitOpen = computed({
   get: () => detailOpen.value && selected.value !== null,
@@ -133,7 +145,8 @@ const splitOpen = computed({
   },
 })
 
-// Match the visible rail order, including catalogs that arrive after mount.
+// Match the visible rail order, including catalogs that arrive after mount. Only the
+// selection follows: a narrow page opens on its list, never straight into a detail.
 watch(
   () =>
     JSON.stringify([
@@ -151,15 +164,9 @@ watch(
     }
     const first = subscriptions.value[0] ?? apiKeys.value[0]
     selectedId.value = first?.id ?? null
-    detailOpen.value = !!first
   },
   { immediate: true },
 )
-onMounted(() => {
-  if (selected.value) {
-    detailOpen.value = true
-  }
-})
 
 /**
  * Rail dots say what needs attention, for every kind of provider alike: none
@@ -175,6 +182,75 @@ const providerBadge = {
   unreachable: 'danger',
   disabled: undefined,
 } as const
+/** What each dot says when the pointer is over the mark it sits on. */
+const providerBadgeLabel = {
+  ready: undefined,
+  unconfigured: 'Not set up',
+  'signed-out': 'Signed out',
+  error: 'Failed',
+  unreachable: 'Cannot be reached',
+  disabled: undefined,
+} as const
+
+/** Editing the connection waits only for a write; a test or a refresh only reads. */
+function fieldsLocked(provider: SettingsProviderEntry): boolean {
+  const kind = props.operations?.[provider.id]?.kind
+  return kind === 'saving' || kind === 'removing'
+}
+
+/**
+ * The question before something the user set up goes (`ConfirmDialog`):
+ * its title, what it says, and what runs on the answer.
+ */
+const confirming = ref<{
+  title: string
+  action: TitleText
+  body: string[]
+  run: () => void
+} | null>(null)
+const confirmOpen = ref(false)
+
+function ask(question: NonNullable<typeof confirming.value>): void {
+  confirming.value = question
+  confirmOpen.value = true
+}
+
+function confirm(): void {
+  confirming.value?.run()
+  confirmOpen.value = false
+}
+
+function askRemoveProvider(provider: SettingsProviderEntry): void {
+  ask({
+    title: `Remove “${provider.name}”?`,
+    action: 'Remove',
+    body: [
+      provider.models.length === 0
+        ? 'Its API key goes with it.'
+        : `Its API key and ${provider.models.length === 1 ? 'its model' : `its ${provider.models.length} models`} go with it.`,
+      'Conversations that use one of its models keep their history, and their next message needs another model.',
+    ],
+    run: () => emit('remove', provider.id),
+  })
+}
+
+function askRemoveAccount(provider: SettingsProviderEntry, account: { id: string; label: string }): void {
+  ask({
+    title: `Remove the account “${account.label}”?`,
+    action: 'Remove',
+    body: [`${provider.name} stops using it, and Demi forgets its sign-in. You can add it again with Add Account.`],
+    run: () => emit('removeAccount', provider, account.id),
+  })
+}
+
+function askRemoveModel(provider: SettingsProviderEntry, model: SettingsProviderModel): void {
+  ask({
+    title: `Remove the model “${model.name || model.id}”?`,
+    action: 'Remove',
+    body: [`It leaves ${provider.name}’s model list and the model menus. You can add it again with its ID.`],
+    run: () => emit('removeModel', provider, model),
+  })
+}
 const wireOptions = (Object.keys(WIRE_API_LABELS) as SettingsWireApi[]).map(
   (value) => ({
     value,
@@ -372,6 +448,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
             :label="p.name"
             :selected="p.id === selectedId"
             :badge="providerBadge[p.state]"
+            :badge-label="providerBadgeLabel[p.state]"
             :muted="!p.enabled"
             @select="select(p.id)"
           >
@@ -395,12 +472,13 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
             :label="p.name"
             :selected="p.id === selectedId"
             :badge="providerBadge[p.state]"
+            :badge-label="providerBadgeLabel[p.state]"
             :muted="!p.enabled"
             removable
             :removing="operations?.[p.id]?.kind === 'removing'"
             :remove-disabled="!!operations?.[p.id]"
             @select="select(p.id)"
-            @remove="emit('remove', p.id)"
+            @remove="askRemoveProvider(p)"
           >
             <template #leading
               ><VendorMark :label="p.name" :src="p.logo" size="sm"
@@ -461,6 +539,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       >
                       <Switch
                         :model-value="selected.enabled"
+                        label="Show in model menu"
                         @update:model-value="
                           emit('change', selected, { enabled: $event })
                         "
@@ -469,6 +548,12 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       />
                     </div>
                   </div>
+                  <p
+                    v-if="selected.id === draft?.id"
+                    class="mt-0.5 text-[13px] leading-5 text-fg-muted"
+                  >
+                    New. It joins the list once it has its API key{{ selected.modelSource === 'manual' ? ' and a model' : '' }}.
+                  </p>
                 </header>
               </template>
 
@@ -553,7 +638,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                         !!operations?.[selected.id] &&
                         !accountPending(selected.id, account.id, 'remove')
                       "
-                      @click="emit('removeAccount', selected, account.id)"
+                      @click="askRemoveAccount(selected, account)"
                   /></Tooltip>
                 </SettingsRow>
                 <div
@@ -568,7 +653,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
               <template v-else>
                 <SettingsRow label="Base URL">
                   <CommitTextInput
-                    :disabled="!!operations?.[selected.id]"
+                    :disabled="fieldsLocked(selected)"
                     :model-value="selected.baseUrl"
                     aria-label="Base URL"
                     class="w-72 max-w-full"
@@ -605,7 +690,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   description="Stored encrypted on the server."
                 >
                   <CommitTextInput
-                    :disabled="!!operations?.[selected.id]"
+                    :disabled="fieldsLocked(selected)"
                     :model-value="selected.apiKey"
                     aria-label="API key"
                     @commit="emit('change', selected, { apiKey: $event })"
@@ -898,7 +983,8 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                           selected.configured !== false &&
                           selected.models.length === 1
                         "
-                        @click="emit('removeModel', selected, m)"
+                        disabled-reason="A saved provider keeps at least one model"
+                        @click="askRemoveModel(selected, m)"
                     /></Tooltip>
                   </template>
                   <Tooltip v-else content="Details"
@@ -957,6 +1043,16 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
         }
       "
     />
+    <ConfirmDialog
+      :is-open="confirmOpen"
+      :overlay-store="overlayStore"
+      :title="confirming?.title ?? ''"
+      :action="confirming?.action ?? 'Remove'"
+      @close="confirmOpen = false"
+      @confirm="confirm"
+    >
+      <p v-for="(line, index) in confirming?.body" :key="index">{{ line }}</p>
+    </ConfirmDialog>
     <ModelDialog
       v-if="modelEditor"
       :is-open="modelEditor.open"

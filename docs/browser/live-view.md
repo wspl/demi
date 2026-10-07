@@ -210,8 +210,12 @@ page                         backend (panel, plugin-browser)            Host
   the list for one conversation one piece of work at a time, so it never
   adds a tab for a browser tab it is opening for a panel tab, and never marks
   a tab closed on a list read before the tab opened.
-- **A Host that cannot be reached.** An offline device or a lost connection
-  changes no tab: the browser may still run there. The content keeps what it
+- **A Host that cannot be reached.** A page that lost the backend, or a
+  device the backend cannot reach for a moment, changes no tab: the browser
+  may still run there. A runner whose connection to the backend ended stops
+  its resident services on reconnecting, the browser among them
+  ([Command lifetime](../execution/runner.md#command-lifetime)), so its tabs
+  are then lost with the browser, as above. The content keeps what it
   shows and says over it what is wrong, reconnects by itself where that can
   help, and offers Retry where it cannot. A stopped Cloud is not this case: it
   keeps no browser, so its tabs are gone from the Host, as above.
@@ -302,7 +306,11 @@ The view carries only what a request cannot
 the user's input and its answers to dialogs and native controls, which must
 reach the page in order, and what belongs to this viewer's view, the watched
 tab, the panel's size and ratio, the viewport mode that follows them, and
-frame acknowledgements. Listing, opening, closing and navigating tabs, and
+frame acknowledgements; and, from the module, the watched tab's page menu
+(`menu`: a right click the page leaves to the browser, with the link, the
+selection and whether it is in a field) and the downloads the user started in
+it (`downloads`: each file's name, size and path, kept while the view
+reconnects). Listing, opening, closing and navigating tabs, and
 Back, Forward and Reload, are
 [requests](#the-tab-methods): each has an answer the
 content can show, and each works while no view is open.

@@ -50,19 +50,6 @@ export const useResources = defineStore('resources', () => {
   let controller = new AbortController()
   const selectedProviderId = ref<string | null>(null)
   const providerDetailOpen = ref(false)
-  const settingsTab = ref('general')
-  const settingsOpen = ref(false)
-  /**
-   * Opens the settings dialog, on `tab` when one is named. The dialog shows
-   * General instead when the rail has no enabled `tab`, so a plugin's section
-   * opens while its plugin is on and no other time.
-   */
-  function openSettings(tab?: string) {
-    if (tab) {
-      settingsTab.value = tab
-    }
-    settingsOpen.value = true
-  }
   /** The sidebar's entries of the plugin pages the user has on, each opening its settings section. */
   const sectionEntries = computed(() =>
     sidebarEntries(PLUGIN_PAGES, (plugin) => pluginEnabled(product.snapshot, plugin)),
@@ -85,7 +72,6 @@ export const useResources = defineStore('resources', () => {
     (id) => {
       controller.abort()
       controller = new AbortController()
-      settingsOpen.value = false
       targetOpen.value = false
       pairingRequest.value = null
       sidebarOpen.value = false
@@ -284,9 +270,6 @@ export const useResources = defineStore('resources', () => {
     local,
     selectedProviderId,
     providerDetailOpen,
-    settingsTab,
-    settingsOpen,
-    openSettings,
     sectionEntries,
     targetOpen,
     pairingRequest,

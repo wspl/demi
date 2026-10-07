@@ -55,6 +55,7 @@ const emit = defineEmits<{
     :open-delay-ms="80"
   >
     <div
+      :data-setting="label"
       class="flex items-center gap-y-2 @sm:flex-nowrap"
       :class="[
       inset ? 'min-h-9 flex-nowrap gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? 'min-h-10 flex-wrap gap-x-3 px-3 py-1.5' : 'min-h-14 flex-wrap gap-x-4 px-4 py-3',
@@ -120,3 +121,17 @@ const emit = defineEmits<{
     </div>
   </Tooltip>
 </template>
+
+<style>
+/* The row the settings filter opened, flashed once (`setting-highlight.ts`). */
+.setting-highlight {
+  animation: setting-highlight 1.6s ease-out;
+}
+
+@keyframes setting-highlight {
+  0%,
+  45% {
+    background-color: color-mix(in srgb, var(--surface-current), var(--tint-accent-mix));
+  }
+}
+</style>

@@ -105,6 +105,12 @@ impl EmailChanges {
         }
     }
 
+    /// Whether a sender is configured, without which every start is
+    /// refused as `MailUnavailable`.
+    pub fn delivers(&self) -> bool {
+        self.mail.is_some()
+    }
+
     /// Checks the current password and sends a code to `email`.
     pub async fn start(
         &self,

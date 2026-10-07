@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
+import { addedPanelTab } from '@demicodes/plugin-browser/live/tabs'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
 import {
   openIntent,
@@ -70,7 +71,7 @@ export function useGalleryWork(
   // user made for each, the agent's with the id the plugin gives them. A panel without the browser's page has none.
   if (shown.some((page) => page.plugin === 'browser')) {
     for (const tab of browser.listed.value.tabs) {
-      const id = tab.createdBy.kind === 'user' ? `user-${tab.id}` : `browser-${tab.id}`
+      const id = tab.createdBy.kind === 'user' ? `user-${tab.id}` : addedPanelTab(tab.id)
       backend.apply({ type: 'create', tab: { id, kind: 'browser', data: { url: tab.url, tab: tab.id, title: tab.title } } })
     }
   }
@@ -161,6 +162,10 @@ export function useGalleryWork(
     panel: {
       tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       add: (_conversation, kind, data, options = { select: false }) => void add(kind, data, options),
+      select: (_conversation, _kind, id) => {
+        select(id)
+        open.value = true
+      },
     },
   })
   const bound = bindPages(shown, host, CONVERSATION)

@@ -11,13 +11,14 @@ import { useProviderSettings } from './providers'
 const resources = useResources()
 const product = useProduct()
 const settings = useProviderSettings()
-const { providers, testing, refreshing, login } = storeToRefs(settings)
+const { providers, draft, testing, refreshing, login } = storeToRefs(settings)
 const {
   report,
   change,
   addProvider,
   addEndpoint,
   removeProvider,
+  discardDraft,
   beginLogin,
   closeLogin,
   test,
@@ -66,7 +67,11 @@ watch(
   },
   { immediate: true },
 )
-onUnmounted(closeLogin)
+// Leaving the page leaves the form of a provider being added, as choosing another does.
+onUnmounted(() => {
+  closeLogin()
+  discardDraft()
+})
 </script>
 
 <template>
@@ -75,6 +80,7 @@ onUnmounted(closeLogin)
     v-model:selected-id="resources.selectedProviderId"
     v-model:detail-open="resources.providerDetailOpen"
     :providers="providers"
+    :draft="draft"
     :load="product.load !== 'ready' ? product.load : product.vendorLoad"
     :vendor-load="product.vendorLoad"
     :model-load="product.catalogLoad"

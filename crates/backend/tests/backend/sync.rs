@@ -172,6 +172,8 @@ async fn the_snapshot_is_the_users_product_state() {
             plugin_states: [("skills".to_owned(), json!({ "sources": [] }))].into(),
             // The backend serves no web app.
             web_build: None,
+            // No mail sender is configured: the page offers no email change.
+            mail: false,
             // An id chosen at start, checked below.
             run: state.run.clone(),
         }

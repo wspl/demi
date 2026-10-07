@@ -119,6 +119,12 @@ export interface PageHost {
     tabs(conversation: string, kind: string): unknown[]
     /** Adds a tab of `kind`; `select` selects it and opens the panel. */
     add(conversation: string, kind: string, data: unknown, options?: { select: boolean }): void
+    /**
+     * Selects the tab `id` of `kind` and opens the panel, as a browser
+     * selects the tab a click opened; a tab the panel does not have yet is
+     * selected once it arrives.
+     */
+    select(conversation: string, kind: string, id: string): void
   }
   /** Opens a section of the settings dialog, such as `devices`. */
   openSettings(section: string): void
@@ -457,6 +463,10 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       add(conversation, kind, data, options) {
         own(kind)
         host.panel.add(conversation, kind, data, options)
+      },
+      select(conversation, kind, id) {
+        own(kind)
+        host.panel.select(conversation, kind, id)
       },
     },
     settings: { open: (section) => host.openSettings(section) },

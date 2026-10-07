@@ -13,7 +13,8 @@ defineProps<{
 </script>
 
 <template>
-  <section class="flex flex-col gap-3">
+  <!-- The group is the container its aside is placed by: the page's width, not the dialog's. -->
+  <section class="@container flex flex-col gap-3">
     <slot name="header">
       <header v-if="title" class="select-none">
         <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">{{ title }}</h3>

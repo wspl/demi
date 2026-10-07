@@ -8,13 +8,14 @@ import { IconButton } from '@demicodes/plugin-sdk'
 import { Switch } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
 import { Button } from '@demicodes/plugin-sdk'
+import { ConfirmDialog } from '@demicodes/plugin-sdk'
 import { ScrollArea } from '@demicodes/plugin-sdk'
 import { ICON_PX } from '@demicodes/plugin-sdk'
 import AddSkillSourceDialog from './AddSkillSourceDialog.vue'
 import { SettingsGroup } from '@demicodes/plugin-sdk'
 import { SettingsPage } from '@demicodes/plugin-sdk'
 import { SettingsRow } from '@demicodes/plugin-sdk'
-import type { SettingsSkill, SettingsSkillDraft, SettingsSkillSource } from './types'
+import type { AddSourceAnswer, SettingsSkill, SettingsSkillDraft, SettingsSkillSource } from './types'
 
 /**
  * Skill sources (`skills.md` § The page): one git repository is a pack,
@@ -23,7 +24,8 @@ import type { SettingsSkill, SettingsSkillDraft, SettingsSkillSource } from './t
  * skills scrolls inside the pack. Each skill is a row you can turn on, with
  * its own status labels; the SKILL.md files that are not skills follow, with
  * why. The pack's switch is on when any skill is on; flipping it sets every
- * skill in the pack.
+ * skill in the pack. Removing a source asks first, naming its skills, which
+ * go with it.
  */
 const SKILL_LIST_CAP = 6
 
@@ -32,10 +34,11 @@ const props = defineProps<{
   overlayStore: OverlayStore
   /** The sources with a change being saved. */
   pending?: readonly string[]
+  /** Adds a source; the dialog stays open until it is added. */
+  addSource: (draft: SettingsSkillDraft) => Promise<AddSourceAnswer>
 }>()
 
 const emit = defineEmits<{
-  add: [draft: SettingsSkillDraft]
   remove: [source: string]
   update: [source: string]
   switch: [source: string, skill: string, enabled: boolean]
@@ -55,7 +58,8 @@ function name(source: SettingsSkillSource): string {
 /** The source's state: the fetch that runs, the last one's failure, or an update to fetch. */
 function sourceStatuses(source: SettingsSkillSource): SettingsRowStatus[] {
   if (source.fetching) {
-    return [{ label: 'Updating' }]
+    // A source with no commit and no failure has never been fetched: its first fetch adds it.
+    return [{ label: !source.commit && !source.failure ? 'Adding' : 'Updating' }]
   }
   if (source.failure) {
     return [{ label: 'Failed', tone: 'danger', detail: source.failure.message }]
@@ -118,6 +122,33 @@ function foldable(source: SettingsSkillSource): boolean {
 }
 
 const empty = computed(() => props.sources.length === 0)
+
+/** The source whose removal is being asked about; it stays shown while the dialog closes. */
+const removing = ref<SettingsSkillSource | null>(null)
+const removeOpen = ref(false)
+/** At most this many of the source's skills are named in the question; the rest are counted. */
+const NAMED_SKILLS = 8
+
+function askRemove(source: SettingsSkillSource): void {
+  removing.value = source
+  removeOpen.value = true
+}
+
+/** The skills that go with the source, as the question names them. */
+const removedSkills = computed(() => {
+  const names = (removing.value?.skills ?? []).map((skill) => skill.name)
+  if (names.length <= NAMED_SKILLS) {
+    return names
+  }
+  return [...names.slice(0, NAMED_SKILLS), `and ${names.length - NAMED_SKILLS} more`]
+})
+
+function confirmRemove(): void {
+  if (removing.value) {
+    emit('remove', removing.value.id)
+  }
+  removeOpen.value = false
+}
 </script>
 
 <template>
@@ -188,7 +219,7 @@ const empty = computed(() => props.sources.length === 0)
                 variant="danger"
                 aria-label="Remove"
                 :disabled="busy(source)"
-                @click="emit('remove', source.id)"
+                @click="askRemove(source)"
               />
             </Tooltip>
           </div>
@@ -248,9 +279,24 @@ const empty = computed(() => props.sources.length === 0)
     <AddSkillSourceDialog
       :is-open="addOpen"
       :overlay-store="overlayStore"
+      :add-source="addSource"
       @close="addOpen = false"
-      @add="emit('add', $event)"
     />
+    <ConfirmDialog
+      :is-open="removeOpen"
+      :overlay-store="overlayStore"
+      :title="`Remove “${removing ? name(removing) : ''}”?`"
+      action="Remove"
+      :goes="removedSkills"
+      @close="removeOpen = false"
+      @confirm="confirmRemove"
+    >
+      <p>
+        {{ removing?.skills.length
+          ? 'Its skills go with it, and the agent is no longer offered them. You can add the repository again later.'
+          : 'The source leaves your skills. You can add the repository again later.' }}
+      </p>
+    </ConfirmDialog>
   </SettingsPage>
 </template>
 

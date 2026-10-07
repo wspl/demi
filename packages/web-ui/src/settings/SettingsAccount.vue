@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { accountInitial } from '../auth/account-display'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
+import InlineError from '../ui/InlineError.vue'
 import Tag from '../ui/Tag.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
 import ChangeEmailDialog, {
@@ -14,6 +15,7 @@ import ChangePasswordDialog, {
   type ChangePasswordPhase,
 } from './ChangePasswordDialog.vue'
 import { IN_DEVELOPMENT } from '../ui/disabled'
+import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -29,6 +31,12 @@ const props = defineProps<{
   nameSaving?: boolean
   email: string
   emailVerified?: boolean
+  /**
+   * Why the email cannot be changed, when it cannot: the server sends no
+   * mail, which the change needs for its code. The row says so from the
+   * start and offers no change.
+   */
+  emailUnavailable?: SentenceText
   /** When the password last changed, formatted by the host. */
   passwordChanged?: string | null
   emailPhase: ChangeEmailPhase
@@ -58,6 +66,12 @@ const emit = defineEmits<{
 }>()
 
 const initial = computed(() => accountInitial(name.value, props.email))
+
+/** Why the name in the field is not saved; it stays in the field until it is fixed. */
+const nameProblem = ref<string | null>(null)
+function checkName(value: string): string | null {
+  return value.trim() ? null : 'Enter a name. Your messages and the sidebar show it.'
+}
 </script>
 
 <template>
@@ -76,11 +90,16 @@ const initial = computed(() => accountInitial(name.value, props.email))
         label="Display name"
         description="Shown on your messages and in the sidebar."
       >
+        <template v-if="nameProblem" #detail>
+          <InlineError :message="nameProblem" />
+        </template>
         <CommitTextInput
           :model-value="name"
           :disabled="nameSaving"
           aria-label="Display name"
-          @commit="name = $event"
+          :validate="checkName"
+          @problem="nameProblem = $event"
+          @commit="name = $event.trim()"
           maxlength="50"
           class="w-56 max-w-full"
         />
@@ -88,12 +107,17 @@ const initial = computed(() => accountInitial(name.value, props.email))
              the name. A save that failed is the product's toast; the field keeps the draft. -->
         <span v-if="nameSaving" class="text-[12px] text-fg-subtle" role="status">Saving…</span>
       </SettingsRow>
-      <SettingsRow label="Email">
+      <SettingsRow label="Email" :description="emailUnavailable">
         <template v-if="emailVerified" #tags
           ><Tag tone="success">Verified</Tag></template
         >
         <span class="text-chrome text-fg-muted">{{ email }}</span>
-        <Button size="sm" aria-label="Change email" @click="emit('changeEmail')"
+        <Button
+          size="sm"
+          aria-label="Change email"
+          :disabled="!!emailUnavailable"
+          :disabled-reason="emailUnavailable"
+          @click="emit('changeEmail')"
           >Change</Button
         >
       </SettingsRow>

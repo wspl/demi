@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ModelInfo, ProviderInfo } from '../../transport/protocol'
-import { profileMissing } from '../subagent-profiles'
+import { profileMissing, profileNameProblem } from '../subagent-profiles'
 
 const providers: ProviderInfo[] = [{ id: 'work', label: 'Work', isAvailable: true }]
 const haiku: ModelInfo = {
@@ -34,4 +34,14 @@ test('a profile is unavailable while its entry, model, effort or tier is gone, a
   expect(profileMissing(settings({ serviceTierId: 'flex' }), providers, models)).toBe(
     'Haiku no longer offers the tier flex. Choose another tier.',
   )
+})
+
+test('a profile name that breaks the rule says how to fix it as it is typed', () => {
+  expect(profileNameProblem('')).toBeNull()
+  expect(profileNameProblem('explore-2')).toBeNull()
+  expect(profileNameProblem('Explore')).toBe('Use only lowercase letters, digits and hyphens.')
+  expect(profileNameProblem('code review')).toBe('Use only lowercase letters, digits and hyphens.')
+  expect(profileNameProblem('2nd')).toBe('Start the name with a letter.')
+  expect(profileNameProblem('a'.repeat(41))).toBe('Use at most 40 characters.')
+  expect(profileNameProblem('default')).not.toBeNull()
 })

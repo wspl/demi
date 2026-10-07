@@ -1,9 +1,12 @@
 //! The page observers of watched tabs (`live-view.md` § Input): an
 //! isolated world in each of the tab's documents reports the cursors, the
-//! native form controls and copied text, and applies the viewer's choices.
+//! native form controls, copied text and the right clicks the page leaves to
+//! the browser, and applies the viewer's choices. The tab's downloads are
+//! followed beside it.
 
 use std::{
     collections::{BTreeMap, HashMap},
+    path::Path,
     sync::Arc,
 };
 
@@ -33,7 +36,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use crate::driver::operation::{BrowserError, Result};
 use crate::tabs::tab::BrowserTab;
 use demi_command_package_browser_protocol::live::{
-    ControlToken, CursorRegion, LiveControl, MAX_CURSOR_REGIONS,
+    ControlToken, CursorRegion, LiveControl, LiveDownload, LiveMenu, MAX_CURSOR_REGIONS,
 };
 
 /// The isolated world's name, shared by its script and its binding.
@@ -58,6 +61,10 @@ pub(crate) struct Observed {
     pub pointer: watch::Sender<Option<(f64, f64)>>,
     /// Text the page copied.
     pub copies: broadcast::Sender<String>,
+    /// Right clicks the page left to the browser, in the tab's CSS pixels.
+    pub menus: broadcast::Sender<LiveMenu>,
+    /// The downloads the user started in the tab, the newest last.
+    pub downloads: watch::Sender<Vec<LiveDownload>>,
     /// Counts the tab's main documents: a new one ends the input held in the
     /// old one.
     pub documents: watch::Sender<u64>,
@@ -71,6 +78,15 @@ enum Report {
     Cursors { regions: Vec<CursorRegion> },
     Controls { controls: Vec<LiveControl> },
     Copy { text: String },
+    /// A right click the page left to the browser, in the reporting frame's
+    /// viewport's CSS pixels.
+    Menu {
+        x: f64,
+        y: f64,
+        link: String,
+        selection: bool,
+        editable: bool,
+    },
 }
 
 /// A document of the tab whose observer reports: the renderer session it
@@ -107,8 +123,13 @@ struct Observing {
 }
 
 /// Starts the observer of `tab` in every frame of it, cross-site frames in
-/// their own processes included; it ends with the tab.
-pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<Observed>> {
+/// their own processes included, and follows the downloads its user starts
+/// into `downloads`, the browser's download directory; it ends with the tab.
+pub(crate) async fn start(
+    tab: &BrowserTab,
+    downloads: &Path,
+    tasks: &TaskTracker,
+) -> Result<Arc<Observed>> {
     let (heard, mut hearing) = mpsc::channel(64);
     listen(tab.page(), true, heard.clone(), tab.ended().clone(), tasks).await?;
     // The tab a viewer watches is the one in front, as the viewer's page
@@ -127,8 +148,11 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
         regions: watch::channel(Vec::new()).0,
         pointer: watch::channel(None).0,
         copies: broadcast::channel(4).0,
+        menus: broadcast::channel(4).0,
+        downloads: watch::channel(Vec::new()).0,
         documents: watch::channel(0).0,
     });
+    crate::live::downloads::follow(tab, downloads.to_owned(), observed.downloads.clone(), tasks).await?;
     let mut pages = HashMap::from([(
         tab.page().target_id().clone(),
         Observing {
@@ -189,6 +213,18 @@ pub(crate) async fn start(tab: &BrowserTab, tasks: &TaskTracker) -> Result<Arc<O
                         }
                         Ok(Report::Copy { text }) => {
                             let _unwatched = reporting.copies.send(text);
+                        }
+                        Ok(Report::Menu { x, y, link, selection, editable }) => {
+                            // A frame whose place cannot be read is going away with its click.
+                            let Some(frame) = frames.documents.get(&world) else {
+                                continue;
+                            };
+                            let page = TargetId::new(world.page.clone());
+                            let Some((left, top)) = frame_origin(&pages, &page, frame).await else {
+                                continue;
+                            };
+                            let menu = LiveMenu { x: x + left, y: y + top, link, selection, editable };
+                            let _unwatched = reporting.menus.send(menu);
                         }
                         Err(error) => tracing::warn!("live view observer report: {error}"),
                     }
