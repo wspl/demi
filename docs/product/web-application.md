@@ -473,7 +473,11 @@ the instance still needs its master account. Later route changes use the
 current state, so opening a local conversation does not wait for an
 authentication request. Each state has its pages: setup needed only
 `/setup`, signed out only `/login`, and signed in the product, which sends
-`/login` and `/setup` to the chat.
+`/login` and `/setup` to the chat. A page opened while signed out, such as a
+link to a conversation, is kept, and signing in goes on to it, as GitHub and
+Slack do. Settings have addresses of their own, `/settings/<section>`, over
+the page they opened from: a link opens a section, Back closes the dialog or
+returns to the previous section, and a reload keeps it open.
 
 On an instance without accounts, the first visitor creates the master account
 on the setup page: a name, which becomes the account's nickname, the email,

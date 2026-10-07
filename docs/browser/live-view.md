@@ -108,8 +108,9 @@ page                         backend (panel, plugin-browser)            Host
   ([Browser distribution](browser.md#browser-distribution)). Tabs already
   open stay as they are.
 - **Opening.** The strip's control creates a tab with `url: 'about:blank'`
-  and selects it. Its content shows at once what a new tab is: the address
-  bar on `about:blank` and a blank page
+  and selects it. Its content shows at once what a new tab is in any browser:
+  the strip names it New Tab, the address bar is empty with the focus in it,
+  and the page is blank
   ([Responding to the user](../product/web-application.md#responding-to-the-user)).
   The backend tells the plugin, which opens a browser tab on the tab's `url`
   as it is when the open starts, starting the environment when needed and
@@ -161,6 +162,25 @@ page                         backend (panel, plugin-browser)            Host
   others. A tab id is used once per conversation, so a tab the user closed
   never comes back, and a tab is added once however often the list is read.
   Adding a tab does not select it; only [showing](#showing-a-tab) does.
+- **The address bar.** It reads what the user types as Chrome's omnibox
+  does: `localhost`, `*.localhost`, an IP address or `host:port` without a
+  scheme opens over `http://`; another text with a dot and no space opens
+  over `https://`; anything else, words or a single word, is a Google search.
+  With the focus in the panel, ⌘L focuses the address bar, ⌘[ and ⌘] go Back
+  and Forward, and ⌘R reloads, as in a browser.
+- **The page's own menus and dialogs.** A right click on the page opens the
+  menu a browser gives there, built by the page: Back, Forward and Reload; on
+  a link, Open Link in New Tab and Copy Link Address; on a selection, Copy;
+  in a field, Cut, Copy and Paste. A JavaScript dialog is titled with the
+  page's host, "localhost:8000 says", takes the focus on its default button,
+  and answers Enter and Escape.
+- **Downloads.** A download the user starts in the page, by a link or a
+  button, is saved by the browser on the Host as the agent's are
+  ([Upload, download, and clipboard](browser.md#upload-download-and-clipboard)),
+  and the page shows it as a browser's download bubble does: the file's name
+  and size with Save, which saves it on the user's computer through the file
+  route, and Show in Files on the Host. The file stays in the browser's
+  download directory until the browser retires.
 - **Tabs a page opens.** A link with `target=_blank`, a `window.open`, a
   sign-in or payment pop-up: the new tab appears in the strip at once, as in
   any browser, not when the agent's next job ends. The view's tab list names
