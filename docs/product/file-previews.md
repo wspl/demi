@@ -275,6 +275,10 @@ from a server that answers ranges, and every player seeks with them.
 
 ## Changes
 
+A working directory outside a git repository has no changes to show: the
+Change view says so, and the page never lists changes for it, however often
+its files change.
+
 In Uncommitted mode, a file with a preview shows its committed version beside
 its working-tree version. An added file has only the working-tree side, a
 deleted file only the committed side, and a renamed file takes its committed

@@ -516,6 +516,12 @@ keeps running. Booting the VM's kernel with `arm64.nosme` restores capture.
 
 ### Modes
 
+A tab whose navigation has not committed keeps its size until it commits:
+Chrome holds every command for the page until then but would resize its
+window at once, and the capture would letterbox the old page. A size or mode
+asked for meanwhile applies when the new document commits, and the view goes
+on answering its viewer meanwhile.
+
 Each tab has one viewport mode. The menu beside the address bar shows the mode
 of the tab being watched.
 
