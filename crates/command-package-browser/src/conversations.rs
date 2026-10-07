@@ -641,6 +641,10 @@ impl demi_command_package_browser_chrome::live::viewer::ViewedBrowser for Conver
     fn released(&self) -> &CancellationToken {
         &self.cancellation
     }
+
+    fn list_number(&self) -> u64 {
+        self.numbers.list_number()
+    }
 }
 
 /// Requests to the conversations' owner.
@@ -996,8 +1000,8 @@ impl Conversations {
         let Some(environment) = environment else {
             if matches!(command, BrowserOperation::Tabs(_)) {
                 return Ok(CommandOutput::Json(output::value(TabsResult {
-                    // No browser runs: no list of its sequence.
-                    list: user.then_some(0),
+                    // No browser runs: the conversation's latest list number.
+                    list: user.then(|| browser.numbers.list_number()),
                     tabs: Vec::new(),
                     truncated: false,
                     closed: user.then(|| browser.numbers.closed()),
