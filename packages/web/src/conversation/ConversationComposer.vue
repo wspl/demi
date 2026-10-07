@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Cloud } from '@lucide/vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -45,6 +45,15 @@ const selectedModel = computed(() => modelState.value.selected?.model)
 const canSend = computed(() => modelState.value.kind === 'ready')
 
 const composer = ref<InstanceType<typeof SessionComposer>>()
+// New pressed on this very draft: the message takes the focus again.
+watch(() => store.composerFocusRequests, () => composer.value?.focusDraft())
+/**
+ * The message that starts a turn is on its way: the turn is as good as
+ * running, so Stop shows from the send on, never a disabled Send first.
+ */
+const startingTurn = computed(() =>
+  props.conversation.phase === 'idle' && props.conversation.pendingSend?.error === null,
+)
 
 /** The store takes the files; their capsules go into the message where the composer said they would land. */
 function addFiles(files: File[]) {
@@ -165,7 +174,8 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :upload="uploadAttachment"
       @submit-edit="store.submitEdit(conversation)"
       placeholder="Ask Demi…"
-      :running="conversation.phase === 'running'"
+      focus-on-show
+      :running="conversation.phase === 'running' || startingTurn"
       :compacting="conversation.phase === 'compacting'"
       :disabled="!!conversation.pendingSend"
       :can-configure="resources.canConfigure"
@@ -191,7 +201,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @reload-plugins="store.reloadPlugins(conversation)"
       @submit="send"
       @configure="openProviders"
-      @restore="store.archive([conversation.id], false)"
+      @restore="store.restore([conversation.id])"
       @add-files="addFiles"
       @attach-remote="remotePicker?.open()"
       @arrange-attachments="store.arrangeFiles(conversation, $event)"
