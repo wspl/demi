@@ -2,9 +2,10 @@
 //! service draws them from the conversation's `tab` sequence in the backend
 //! eight at a time (`native-runtime.md` § Conversation numbers), so most
 //! tabs take theirs without waiting; a number it never uses is a gap.
-//! Since a tab's id outlasts each browser of the conversation, so does the
-//! record of the tabs closed on purpose (`live-view.md` § A browser tab in
-//! the panel).
+//! Since a tab's id outlasts each browser of the conversation, so do the
+//! record of the tabs closed on purpose and the count that numbers the tab
+//! lists, which only grows within the conversation (`live-view.md` § A
+//! browser tab in the panel).
 
 use std::{
     collections::VecDeque,
@@ -14,6 +15,7 @@ use std::{
 
 use demi_command_protocol::ServiceSequence;
 use demi_command_sdk::Numbers;
+use tokio::sync::watch;
 
 use crate::driver::operation::{BrowserError, Result};
 use demi_command_package_browser_protocol::browser::TabId;
@@ -28,8 +30,9 @@ const DRAW_TIMEOUT: Duration = Duration::from_secs(15);
 /// before this many follow it; an older one reads as lost with the browser.
 const CLOSED: usize = 256;
 
-/// One conversation's tab numbers at hand, where more come from, and the
-/// tabs closed on purpose. Cloning shares them.
+/// One conversation's tab numbers at hand, where more come from, the tabs
+/// closed on purpose, and the count of changes its tab lists are numbered
+/// by. Cloning shares them.
 #[derive(Clone)]
 pub struct TabNumbers(Arc<Inner>);
 
@@ -41,6 +44,10 @@ struct Inner {
     spare: Mutex<VecDeque<u64>>,
     /// The latest tabs closed on purpose, oldest first.
     closed: Mutex<VecDeque<TabId>>,
+    /// Counts the changes to what the conversation's browsers show, each
+    /// browser's after the one before, so a tab list is numbered after every
+    /// list an earlier browser numbered.
+    changes: watch::Sender<u64>,
 }
 
 impl TabNumbers {
@@ -57,6 +64,7 @@ impl TabNumbers {
             conversation,
             spare: Mutex::new(VecDeque::new()),
             closed: Mutex::new(VecDeque::new()),
+            changes: watch::channel(0).0,
         }))
     }
 
@@ -80,6 +88,20 @@ impl TabNumbers {
         let mut spare = self.spare();
         spare.extend(first..first + u64::from(DRAW));
         Ok(spare.pop_front().expect("a draw gives at least one number"))
+    }
+
+    /// The count of changes a new browser of the conversation numbers its tab
+    /// lists by. Its start is a change of what the browser shows, so its
+    /// first list is numbered above every list of the browsers before it.
+    pub fn browser_changes(&self) -> watch::Sender<u64> {
+        self.0.changes.send_modify(|revision| *revision += 1);
+        self.0.changes.clone()
+    }
+
+    /// The number of the conversation's latest tab list, which a list read
+    /// while no browser runs carries.
+    pub fn list_number(&self) -> u64 {
+        *self.0.changes.borrow()
     }
 
     /// Records that `tab` was closed on purpose, by a command or by its own

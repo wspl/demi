@@ -342,7 +342,8 @@ pub struct BrowserEnvironment {
     /// The capture extension's connection (`live-view.md` § Capture).
     pub(crate) captures: CaptureChannel,
     /// Counts the changes to what the browser shows: its tabs, their titles
-    /// and URLs, and their viewports.
+    /// and URLs, and their viewports; counted on from the conversation's
+    /// browsers before it ([`TabNumbers::browser_changes`]).
     pub(crate) changes: watch::Sender<u64>,
 }
 
@@ -430,7 +431,7 @@ where
     let _end_on_drop = ended.clone().drop_guard();
     let captures = CaptureChannel::open(&observers, ended.clone());
     capture.serve(captures.clone(), &observers, ended.clone());
-    let changes = watch::channel(0).0;
+    let changes = numbers.browser_changes();
     let pump_ended = ended.clone();
     let pump_failure = failure.clone();
     let pump = AbortOnDropHandle::new(tokio::spawn(async move {
