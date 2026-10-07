@@ -168,6 +168,7 @@ its tabs.
 | `icon(data)` | The strip's icon for a tab, such as a page's favicon; the kind's own icon otherwise |
 | `commands(data)` | The kind's own entries in a tab's menu, ahead of the strip's Close entries, such as a browser tab's Reload and Duplicate |
 | `duplicate(data)` | The data of a new tab showing what this one shows, for its Duplicate |
+| `openedBy(data)` | The panel tab that opened this one, which places it beside its opener |
 | `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
 | `shows(data)` | How many times something asked that the user see this tab, from its data. When the count is higher than the one the page last applied for the tab, the panel opens and selects the tab, whether the panel was open or closed, and records the count beside its selection history; the browser's agent-shown tabs use it ([Showing a tab](../browser/live-view.md#showing-a-tab)) |
@@ -210,8 +211,10 @@ an intent asks first whether any page opens it, and shows plain text
 otherwise.
 
 Intents and `panel.add` are the only ways a tab is opened from outside the
-strip, and `panel.add` adds only a tab of the page's own kinds, at the end or
-`after` a given tab, as a browser opens a link's tab beside its page: a page opens
+strip, and `panel.add` adds only a tab of the page's own kinds; a kind whose
+tabs name the tab that opened them, by its `openedBy(data)`, has each placed
+right after that tab, behind the tabs it opened before, as a browser places a
+link's tab: a page opens
 another plugin's tab only through an intent. `panel.select` selects a tab of
 the page's own kinds that the strip already holds, as a browser selects the
 tab a click in a page opened.

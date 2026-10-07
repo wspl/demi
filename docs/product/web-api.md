@@ -929,7 +929,10 @@ would change them ([Reload](#a-users-plugins)). `draftRevision` is
 the revision of the conversation's
 [draft](#conversation-drafts), 0 before its first save: the page reads the
 draft itself only when this number is higher than the revision it holds, so a
-summary carries no draft's text. `panelRevision` is the revision of the
+summary carries no draft's text. `hostsRevision` is the revision of the
+conversation's [attached hosts](../execution/sessions-and-targets.md#attached-hosts),
+which an attach, a detach, a rename or the directory a host's shell recorded
+raises, read by the page the same way. `panelRevision` is the revision of the
 conversation's [work panel](#work-panel-state), 0 before its first change,
 read the same way. `pluginRevisions` does the same for each
 plugin's [conversation state](#conversation-state-of-plugins), as
