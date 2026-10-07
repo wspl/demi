@@ -1,13 +1,26 @@
-import { expect, test } from 'bun:test'
-import { HostFiles } from '../file-cache'
+import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
+import { HostFiles, LISTING_REREAD_MS } from '../file-cache'
 import { keptSource } from '../kept-source'
 import type { FileBrowserEntry } from '../types'
 
 // The page's own writes (`web-application.md` § Requests for one action):
 // an upload's entry shows in its folder as the answer says, with no listing
 // after it; the Host's watch reports the folder, which is listed once then.
+// Cost: no I/O, fake timers; a few milliseconds.
 
-const settle = () => new Promise((resolve) => setTimeout(resolve, 0))
+beforeEach(() => {
+  jest.useFakeTimers()
+})
+
+afterEach(() => {
+  jest.useRealTimers()
+})
+
+/** Lets the Host's answers land: they land in microtasks. */
+async function settle(): Promise<void> {
+  for (let tick = 0; tick < 10; tick++)
+    await Promise.resolve()
+}
 
 function host() {
   const lists: string[] = []
@@ -52,8 +65,10 @@ test('an upload adds its entry to the folder shown, without listing it, until th
   await settle()
   expect(lists).toEqual(['/w', '/w/src'])
 
-  // The watch's report of the writes lists each folder once.
+  // The watch's report of the writes lists each folder once, as the
+  // second since its last listing ends.
   files.changed(['/w/src/new.ts', '/w/src/app.ts'])
+  jest.advanceTimersByTime(LISTING_REREAD_MS)
   await settle()
   expect(lists).toEqual(['/w', '/w/src', '/w/src'])
 })
