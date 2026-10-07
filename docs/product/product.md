@@ -287,7 +287,10 @@ simply changes; a rename made meanwhile wins and stays. Afterwards Detect
 Title is unavailable until the user sends another message.
 
 Every title records its origin, one of `placeholder` ("New conversation",
-before any send), `message`, `generated`, and `user`. A generated title is
+before any send), `message`, `generated`, and `user`. A `message` title is
+the message as the user reads it, plain text: `` `pnpm build` `` gives
+`pnpm build`, and no Markdown mark or escape shows, its lines joined by
+spaces. A generated title is
 written only while the title is still the one the request started from, in the
 same statement that checks it, so a rename that lands while the request is in
 flight wins and is never overwritten. A rename is a title that differs from
