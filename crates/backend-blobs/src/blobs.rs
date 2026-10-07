@@ -3,14 +3,17 @@
 //! by their SHA-256 in lowercase hexadecimal. A name identifies bytes only
 //! within its user's namespace, so knowing another user's hash reaches
 //! nothing of theirs. A collection of the namespace lists it and deletes
-//! the blobs nothing names (`storage.md` § Deleting a conversation).
+//! the blobs nothing names (`storage.md` § Deleting a conversation); every
+//! put of a blob the namespace holds already is remembered for a day, since
+//! it writes nothing that would show its age.
 
-use std::sync::Arc;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use bytes::Bytes;
 use demi_agent_store::StoreError;
 use demi_agent_store::media::BlobStore;
-use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
+use demi_shared_types::{B64Bytes, BlobRef, Clock, Timestamp};
 use demi_web_api_protocol::ids::UserId;
 use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
@@ -40,16 +43,29 @@ pub struct StoredBlob {
     pub written: Timestamp,
 }
 
-/// Every user's blob namespace.
+/// How long a blob stays whatever names it, in milliseconds: a day after its
+/// object was written or it was put again (`storage.md` § Deleting a
+/// conversation). A blob is stored before the row that names it, and the
+/// day covers the wait.
+pub const GRACE_MS: i64 = 24 * 60 * 60 * 1000;
+
+/// Every user's blob namespace, with the puts of blobs that existed already.
 #[derive(Clone)]
 pub struct BlobStores {
     objects: Arc<dyn ObjectStore>,
+    again: Arc<PutAgain>,
 }
 
 impl BlobStores {
-    /// The namespaces in `objects`.
-    pub fn new(objects: Arc<dyn ObjectStore>) -> Self {
-        Self { objects }
+    /// The namespaces in `objects`, whose puts are timed by `clock`.
+    pub fn new(objects: Arc<dyn ObjectStore>, clock: Arc<dyn Clock>) -> Self {
+        Self {
+            objects,
+            again: Arc::new(PutAgain {
+                clock,
+                puts: Mutex::new(HashMap::new()),
+            }),
+        }
     }
 
     /// `user`'s namespace: the signed-in user's for uploads and downloads,
@@ -58,7 +74,56 @@ impl BlobStores {
         UserBlobs {
             objects: self.objects.clone(),
             namespace: Path::from_iter(["blobs", user.as_str()]),
+            user: user.clone(),
+            again: self.again.clone(),
         }
+    }
+}
+
+/// When each user's blobs that existed already were last put again, within
+/// the grace. It lives with the process: a restart forgets it, and with it
+/// only references the stopped process had not written and never will.
+struct PutAgain {
+    clock: Arc<dyn Clock>,
+    /// A `std` mutex: uploads at the edge and the shard threads share it,
+    /// and each section only reads or changes the map.
+    puts: Mutex<HashMap<UserId, HashMap<BlobRef, Timestamp>>>,
+}
+
+impl PutAgain {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<UserId, HashMap<BlobRef, Timestamp>>> {
+        // No section panics while it holds the lock, so a poisoned one still
+        // holds a whole map.
+        self.puts.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The time, in milliseconds, before which a put at `now` is past the
+    /// grace.
+    fn cutoff(now: Timestamp) -> i64 {
+        now.as_millisecond() - GRACE_MS
+    }
+
+    fn record(&self, user: &UserId, blob: &BlobRef) {
+        let now = self.clock.now();
+        let cutoff = Self::cutoff(now);
+        let mut puts = self.lock();
+        let user_puts = puts.entry(user.clone()).or_default();
+        user_puts.retain(|_, at| at.as_millisecond() >= cutoff);
+        user_puts.insert(blob.clone(), now);
+    }
+
+    fn recent(&self, user: &UserId) -> HashSet<BlobRef> {
+        let cutoff = Self::cutoff(self.clock.now());
+        let mut puts = self.lock();
+        let Some(user_puts) = puts.get_mut(user) else {
+            return HashSet::new();
+        };
+        user_puts.retain(|_, at| at.as_millisecond() >= cutoff);
+        let recent = user_puts.keys().cloned().collect();
+        if user_puts.is_empty() {
+            puts.remove(user);
+        }
+        recent
     }
 }
 
@@ -67,6 +132,8 @@ impl BlobStores {
 pub struct UserBlobs {
     objects: Arc<dyn ObjectStore>,
     namespace: Path,
+    user: UserId,
+    again: Arc<PutAgain>,
 }
 
 impl UserBlobs {
@@ -96,7 +163,10 @@ impl UserBlobs {
     async fn store(&self, blob: &BlobRef, bytes: Bytes) -> Result<(), ObjectError> {
         let location = self.location(blob);
         match self.objects.head(&location).await {
-            Ok(_) => return Ok(()),
+            Ok(_) => {
+                self.again.record(&self.user, blob);
+                return Ok(());
+            }
             Err(object_store::Error::NotFound { .. }) => {}
             Err(error) => return Err(error.into()),
         }
@@ -109,8 +179,12 @@ impl UserBlobs {
             .put_opts(&location, PutPayload::from_bytes(bytes), create)
             .await
         {
-            // A put of the same bytes may have created it since the HEAD.
-            Ok(_) | Err(object_store::Error::AlreadyExists { .. }) => Ok(()),
+            Ok(_) => Ok(()),
+            // A put of the same bytes created it since the HEAD.
+            Err(object_store::Error::AlreadyExists { .. }) => {
+                self.again.record(&self.user, blob);
+                Ok(())
+            }
             Err(error) => Err(error.into()),
         }
     }
@@ -164,6 +238,13 @@ impl UserBlobs {
             blobs.push(StoredBlob { blob, written });
         }
         Ok(blobs)
+    }
+
+    /// The blobs put again within the last [`GRACE_MS`]: each a put of a
+    /// blob the namespace held already, which wrote nothing. Older ones are
+    /// forgotten.
+    pub fn put_again_recently(&self) -> HashSet<BlobRef> {
+        self.again.recent(&self.user)
     }
 
     /// Deletes `blob`; one the namespace does not hold is deleted already.
