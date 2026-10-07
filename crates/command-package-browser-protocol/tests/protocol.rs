@@ -197,11 +197,30 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         );
     }
     // Every listed name decodes, so the descriptor lists nothing unserved.
-    assert_eq!(Operation::names().count(), OPERATIONS.len() + 2);
+    assert_eq!(Operation::names().count(), OPERATIONS.len() + 3);
+    let opening = json!({
+        "url": "http://localhost:5173/",
+        "scheme": "https",
+        "domain": "demi-preview.dev",
+        "namespace": "k3f9a2ab",
+        "host": "device",
+    });
+    assert!(matches!(
+        Operation::parse("browser.preview_open", opening.clone()),
+        Ok(Operation::PreviewOpen(_))
+    ));
+    // Only an address the web shows opens in a tab of the user's browser.
+    let mut file = opening.clone();
+    file["url"] = json!("file:///etc/passwd");
+    assert!(matches!(
+        Operation::parse("browser.preview_open", file),
+        Err(OperationError::Invalid(_))
+    ));
     for name in Operation::names() {
+        let args = if name == "browser.preview_open" { opening.clone() } else { json!({}) };
         assert!(
             !matches!(
-                Operation::parse(name, json!({})),
+                Operation::parse(name, args),
                 Err(OperationError::Unknown(_) | OperationError::Unserved(_))
             ),
             "{name}"

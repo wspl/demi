@@ -621,7 +621,6 @@ impl Session<'_> {
                     loading: listed.tab.loading(),
                     can_go_back: listed.tab.history().back,
                     can_go_forward: listed.tab.history().forward,
-                    favicon: listed.tab.favicon(),
                 }
             })
             .collect();
