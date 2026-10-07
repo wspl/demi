@@ -7,9 +7,10 @@ use std::cell::{Cell, RefCell};
 use std::rc::{Rc, Weak};
 
 use demi_command_declarations::NativeOperation;
+use demi_host_interface::PortError;
 use demi_plugin_browser::Browser;
 use demi_plugin_interface::{
-    CallKind, PanelTabChange, Plugin, PluginFactory, PortRefusal, Reply, Request, Topic,
+    CallKind, PanelTabChange, Plugin, PluginFactory, PortFailure, PortRefusal, Reply, Request, Topic,
     testing::{TestDemi, loopback},
 };
 use demi_web_api_protocol::error::ErrorCode;
@@ -21,7 +22,7 @@ use crate::page::{call, conversation};
 
 /// What the test's browser answers an operation, with the Demi whose panel
 /// the user changes meanwhile.
-type Answer = Box<dyn Fn(&TestDemi, &str, &Map<String, Value>) -> Result<Value, PortRefusal>>;
+type Answer = Box<dyn Fn(&TestDemi, &str, &Map<String, Value>) -> Result<Value, PortFailure>>;
 
 fn world(answer: Answer) -> (Rc<dyn Plugin>, Rc<TestDemi>) {
     let demi = TestDemi::new();
@@ -173,11 +174,11 @@ async fn a_tab_that_could_not_open_says_why_and_opens_when_its_user_retries() {
         "browser.open" => {
             counted.set(counted.get() + 1);
             if counted.get() == 1 {
-                return Err(PortRefusal::Host {
+                return Err(PortFailure::Refused(PortRefusal::Host {
                     code: ErrorCode::DeviceOffline,
                     status: 409,
                     message: "The device is offline".into(),
-                });
+                }));
             }
             Ok(json!({ "tab": "t2", "url": "about:blank" }))
         }
@@ -202,6 +203,70 @@ async fn a_tab_that_could_not_open_says_why_and_opens_when_its_user_retries() {
         json!({ "url": "about:blank", "tab": "t2" })
     );
     assert_eq!(opens.get(), 2);
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_tab_whose_address_could_not_load_once_it_opened_says_why_and_loads_it_when_retried() {
+    // As on a device whose link to the backend reset mid-call: the browser
+    // opened the tab, and the address the user typed meanwhile never got there.
+    let gotos = Rc::new(Cell::new(0));
+    let counted = gotos.clone();
+    let (plugin, demi) = world(Box::new(move |demi, operation, _| match operation {
+        "browser.open" => {
+            demi.change_panel(PanelChange::Update {
+                id: "a".into(),
+                data: data(json!({ "url": "https://example.test/" })),
+            });
+            Ok(json!({ "tab": "t1", "url": "about:blank" }))
+        }
+        "browser.goto" => {
+            counted.set(counted.get() + 1);
+            if counted.get() == 1 {
+                return Err(PortFailure::Port(PortError::Failed(
+                    "pipe failed: WebSocket protocol error: Connection reset without closing handshake"
+                        .into(),
+                )));
+            }
+            Ok(json!({ "tab": "t1", "url": "https://example.test/", "list": 4 }))
+        }
+        _ => Ok(json!({})),
+    }));
+    let tab = created(&demi, "a", json!({ "url": "about:blank" }));
+    told(&plugin, &demi, PanelTabChange::Created, tab).await;
+    assert_eq!(
+        tab_data(&demi, "a"),
+        json!({
+            "url": "https://example.test/",
+            "tab": "t1",
+            "failure": {
+                "code": "failed",
+                "message": "pipe failed: WebSocket protocol error: Connection reset without closing handshake",
+            },
+        })
+    );
+
+    // Retry loads the address in the tab that opened, as a browser's Reload
+    // does after a load that failed, rather than opening another.
+    assert_eq!(
+        call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
+        Ok(json!({ "tab": "t1" }))
+    );
+    assert_eq!(
+        tab_data(&demi, "a"),
+        json!({ "url": "https://example.test/", "tab": "t1" })
+    );
+    assert_eq!(
+        calls(&demi),
+        [
+            (
+                "browser.open".to_owned(),
+                CallKind::Starts,
+                json!("about:blank")
+            ),
+            ("browser.goto".to_owned(), CallKind::Operates, json!("t1")),
+            ("browser.goto".to_owned(), CallKind::Operates, json!("t1")),
+        ]
+    );
 }
 
 #[tokio::test(flavor = "local")]

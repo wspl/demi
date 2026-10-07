@@ -86,7 +86,10 @@ impl Work {
     /// tab its user created, one that failed to open, which Retry opens
     /// again, and one whose browser tab the browser lost, shown again.
     /// Answers the browser tab the panel tab shows now; none when the panel
-    /// no longer has it or it could not open one, which its data says.
+    /// no longer has it or it could not open one, which its data says: any
+    /// step that fails is the tab's `failure`, which its content shows with
+    /// Retry (`live-view.md` § A browser tab in the panel), since nobody waits
+    /// for the answer to the change that created the tab.
     pub async fn bind(
         &self,
         conversation: &ConversationId,
@@ -103,31 +106,13 @@ impl Work {
         {
             return Ok(Some(tab.to_owned()));
         }
-        let asked = data.url.clone();
-        let opened = match page::open(port, &asked).await {
-            Ok(opened) => opened,
+        match open_for(port, id, data).await {
+            Ok(tab) => Ok(tab),
             Err(error) => {
                 port.update_panel_tab(id, fields([("failure", failure(&error))]))
                     .await?;
-                return Ok(None);
+                Ok(None)
             }
-        };
-        let tab = opened.id.to_string();
-        let bound = fields([
-            ("tab", Value::String(tab.clone())),
-            ("closed", Value::Null),
-            ("failure", Value::Null),
-        ]);
-        port.update_panel_tab(id, bound).await?;
-        match data_of(port, id).await? {
-            // Its user closed it while it opened.
-            None => page::close(port, &tab).await.map(|()| None),
-            // Its user asked for another address while it opened: the last
-            // one they asked for is where it goes.
-            Some(now) if now.url != asked => page::navigate(port, &tab, now.url)
-                .await
-                .map(|_| Some(tab)),
-            Some(_) => Ok(Some(tab)),
         }
     }
 
@@ -268,6 +253,39 @@ fn after_opened(order: &[Placed], at: usize) -> usize {
         .take_while(|placed| placed.opened_by.as_deref() == Some(opener))
         .count();
     at + 1 + run
+}
+
+/// Gives the panel tab `id`, with `data`, a browser tab on the address its
+/// user asked for last. A tab whose browser tab opened but whose address could
+/// not load there loads it in that tab again, as a browser's Reload does after
+/// a load that failed; any other opens one on its address. If the user asked
+/// for another address meanwhile, the tab loads that one; if the user closed
+/// the panel tab meanwhile, its browser tab closes.
+async fn open_for(
+    port: &PluginPort,
+    id: &str,
+    data: TabData,
+) -> Result<Option<String>, PluginError> {
+    let (tab, at) = match data.live() {
+        Some(tab) => (tab.to_owned(), None),
+        None => {
+            let opened = page::open(port, &data.url).await?;
+            (opened.id.to_string(), Some(data.url))
+        }
+    };
+    let bound = fields([
+        ("tab", Value::String(tab.clone())),
+        ("closed", Value::Null),
+        ("failure", Value::Null),
+    ]);
+    port.update_panel_tab(id, bound).await?;
+    match data_of(port, id).await? {
+        None => page::close(port, &tab).await.map(|()| None),
+        Some(now) if at.as_ref() != Some(&now.url) => page::navigate(port, &tab, now.url)
+            .await
+            .map(|_| Some(tab)),
+        Some(_) => Ok(Some(tab)),
+    }
 }
 
 /// Why a browser tab could not be opened, as the tab's content shows it:
