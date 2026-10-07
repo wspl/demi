@@ -159,8 +159,3 @@ export function localKey(event: KeyInput): boolean {
   const shortcut = (event.ctrlKey || event.metaKey) && !event.getModifierState('AltGraph')
   return shortcut && event.key.toLowerCase() === 'v'
 }
-
-/** A key that arrives while an input method is composing belongs to the composition. */
-export function composingKey(event: { keyCode: number; key: string; isComposing?: boolean }): boolean {
-  return Boolean(event.isComposing) || event.keyCode === 229 || event.key === 'Dead'
-}

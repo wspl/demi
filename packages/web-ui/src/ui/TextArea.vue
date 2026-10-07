@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, useAttrs, watch } from 'vue'
 import { useOverlayScrollbars } from 'overlayscrollbars-vue'
+import { keepComposition } from '@demicodes/utils'
 import { disabledTooltip } from './disabled'
 import { scrollbarsOptions, scrollbarsTarget } from './scrollbars'
 import Tooltip from './Tooltip.vue'
@@ -83,6 +84,7 @@ defineExpose({
     :class="attrs['class'] ? '' : 'w-full'"
     :open-delay-ms="80"
   >
+    <!-- An input method's keys stay with the field: a candidate's Enter submits nothing. -->
     <div
       ref="frameRef"
       class="relative flex min-w-0 flex-1 rounded-md bg-surface-raised ring-1 transition-[box-shadow] duration-200 ease-out"
@@ -90,6 +92,7 @@ defineExpose({
         isFocused ? 'ring-line-focus' : 'ring-line',
         disabled ? 'cursor-not-allowed opacity-40' : '',
       ]"
+      @keydown.capture="keepComposition"
     >
       <textarea
         ref="fieldRef"
