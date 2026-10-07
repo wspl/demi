@@ -1,7 +1,7 @@
 // `bun browse press <key>...`: presses keys one after another, each a key or
 // a shortcut in Playwright's names: Enter, Escape, ArrowDown, Meta+Comma.
 import { CommandFailure, parse, type Context } from '../command'
-import { element } from '../find'
+import { reachable } from '../find'
 
 const USAGE = 'press <key>... [--into <locator>]'
 const OPTIONS = { into: { type: 'string' } } as const
@@ -12,7 +12,7 @@ export async function run(context: Context, argv: string[]): Promise<void> {
     throw new CommandFailure(`Usage: bun browse ${USAGE}`)
   }
   if (values.into !== undefined) {
-    const target = await element(context, values.into)
+    const target = await reachable(context, values.into, 'keys')
     for (const key of positionals) {
       await target.press(key)
     }

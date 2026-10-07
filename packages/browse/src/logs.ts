@@ -1,19 +1,35 @@
 // What the page logged, requested, and sent or received on its sockets
-// since the daemon attached to the browser (browse.md § Watching), kept in the
-// daemon so that `log` finds what happened before anyone asked.
+// since the tool attached to the browser (browse.md § Watching), kept in the
+// daemon so that `log` finds what happened before anyone asked. A daemon
+// that ends for changed code leaves them in the slot's folder for the next
+// one, which attaches to the same browser and goes on from them.
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import type { BrowserContext, Page, Request, WebSocket } from 'playwright'
+import { z } from 'zod'
 
 export const LOG_KINDS = ['console', 'network', 'sockets'] as const
 export type LogKind = typeof LOG_KINDS[number]
 
-interface Entry {
-  sequence: number
-  /** Milliseconds since the daemon attached to the browser. */
-  at: number
-  text: string
+const entrySchema = z.object({
+  sequence: z.number().int(),
+  /** Milliseconds since the tool attached to the browser. */
+  at: z.number(),
+  text: z.string(),
   /** Whether a network entry is the dev server's module traffic, which `log network` leaves out. */
-  module?: boolean
-}
+  module: z.boolean(),
+})
+type Entry = z.infer<typeof entrySchema>
+
+/** The logs a daemon leaves for the next, with the browser they were kept for. */
+const savedSchema = z.object({
+  /** The DevTools endpoint of the browser the logs are of. */
+  browser: z.string(),
+  started: z.number(),
+  sequence: z.number().int(),
+  markAt: z.number().int(),
+  markName: z.string().nullable(),
+  entries: z.object({ console: z.array(entrySchema), network: z.array(entrySchema), sockets: z.array(entrySchema) }),
+})
 
 /** How many entries each kind keeps; older ones go. */
 const LIMIT = 20_000
@@ -22,7 +38,7 @@ const LIMIT = 20_000
 const FRAME_TEXT = 300
 
 export class Logs {
-  private readonly entries: Record<LogKind, Entry[]> = { console: [], network: [], sockets: [] }
+  private entries: Record<LogKind, Entry[]> = { console: [], network: [], sockets: [] }
   private sequence = 0
   private started = Date.now()
   /** The sequence `log mark` set; entries after it are the ones `log` prints. */
@@ -39,7 +55,41 @@ export class Logs {
     this.markName = null
   }
 
-  private add(kind: LogKind, text: string, module = false): void {
+  /** Leaves the logs of the browser at `browser` in the file `path`, for the next daemon. */
+  save(path: string, browser: string): void {
+    const saved: z.infer<typeof savedSchema> = {
+      browser,
+      started: this.started,
+      sequence: this.sequence,
+      markAt: this.markAt,
+      markName: this.markName,
+      entries: this.entries,
+    }
+    writeFileSync(path, JSON.stringify(saved))
+  }
+
+  /**
+   * Goes on from the logs a daemon left in `path` when they are of the
+   * browser at `browser`, and starts over otherwise; the file is used once.
+   */
+  restore(path: string, browser: string): void {
+    this.reset()
+    if (!existsSync(path)) {
+      return
+    }
+    const saved = savedSchema.parse(JSON.parse(readFileSync(path, 'utf8')))
+    rmSync(path)
+    if (saved.browser !== browser) {
+      return
+    }
+    this.entries = saved.entries
+    this.started = saved.started
+    this.sequence = saved.sequence
+    this.markAt = saved.markAt
+    this.markName = saved.markName
+  }
+
+  add(kind: LogKind, text: string, module = false): void {
     this.sequence += 1
     const list = this.entries[kind]
     list.push({ sequence: this.sequence, at: Date.now() - this.started, text, module })

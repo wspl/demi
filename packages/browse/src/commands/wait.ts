@@ -4,7 +4,7 @@
 // turn. Every wait has a timeout, and its failure says what it waited for.
 import { errors } from 'playwright'
 import { CommandFailure, parse, timeoutMs, timeoutOption, type Context } from '../command'
-import { failure } from '../find'
+import { failure, several } from '../find'
 import { locate, parseTarget } from '../locator'
 import { matcher } from '../pattern'
 import { conversationId, summary, waitTurnEnd } from '../turn'
@@ -54,7 +54,13 @@ export async function run(context: Context, argv: string[]): Promise<void> {
     switch (kind) {
       case 'gone': {
         const text = needs(argument)
-        return [`${text} to go`, (timeout) => locator(text).waitFor({ state: 'hidden', timeout })]
+        return [`${text} to go`, async (timeout) => {
+          const found = locator(text)
+          if (await found.count() > 1) {
+            throw await several(context, found, text)
+          }
+          await found.waitFor({ state: 'hidden', timeout })
+        }]
       }
       case 'text': {
         const text = needs(argument)
@@ -73,7 +79,14 @@ export async function run(context: Context, argv: string[]): Promise<void> {
         if (argument !== undefined) {
           throw new CommandFailure(`Usage: bun browse ${USAGE}`)
         }
-        return [`${kind} to appear`, (timeout) => locator(kind).waitFor({ state: 'visible', timeout })]
+        return [`${kind} to appear`, async (timeout) => {
+          // A locator names one element, as for every command; one that names several fails with the list, not Playwright's call log.
+          const found = locator(kind)
+          await found.first().waitFor({ state: 'visible', timeout })
+          if (await found.count() > 1) {
+            throw await several(context, found, kind)
+          }
+        }]
       }
     }
   }
