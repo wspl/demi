@@ -50,14 +50,15 @@ const storage = computed(() => {
 })
 function begin() {
   submitted.value = false
-  operationId.value = crypto.randomUUID()
   open.value = true
 }
+/** Every request is a reset of its own, a retry too, so its status is never an earlier one's. */
 function reset() {
   if (busy.value) {
     return
   }
   submitted.value = true
+  operationId.value = crypto.randomUUID()
   emit('reset', operationId.value)
 }
 </script>

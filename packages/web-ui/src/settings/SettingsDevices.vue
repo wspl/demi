@@ -96,7 +96,7 @@ function revoke() {
           <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">
             Your Devices
           </h3>
-          <Button size="sm" @click="open()">Add Device</Button>
+          <Button size="sm" @click="open()">Add Device…</Button>
         </header>
       </template>
       <AsyncRegion

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { RouterView, useRoute } from 'vue-router'
+import { RouterView, useRoute, useRouter } from 'vue-router'
 import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -18,8 +18,10 @@ import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
+import { pageUnderSettings, useSettingsAddress } from './settings/address'
 import TargetDialog from './targets/TargetDialog.vue'
 import WorkPane from './conversation/WorkPane.vue'
+import ChatPage from './conversation/ChatPage.vue'
 import { useConversations } from './conversation/store'
 import { useConversationNavigation } from './conversation/navigation'
 import { useWorkPanel } from './conversation/work'
@@ -59,6 +61,15 @@ watch(() => resources.sidebarWidth, (width) => { sidebarWidth.value = width })
 const asideShare = ref(resources.asideShare)
 watch(() => resources.asideShare, (share) => { asideShare.value = share })
 const route = useRoute()
+const router = useRouter()
+const settingsAddress = useSettingsAddress()
+/**
+ * The address the window shows: under open settings, the page they opened
+ * over, which stays as it was behind the dialog (`settings/address.ts`).
+ */
+const pageRoute = computed(() =>
+  settingsAddress.section.value === undefined ? route : router.resolve(pageUnderSettings(router)),
+)
 const { open, create } = useConversationNavigation()
 const folded = computed({
   get: () => resources.local.foldedProjects,
@@ -66,7 +77,7 @@ const folded = computed({
     resources.local.foldedProjects = value
   },
 })
-// Connect New Device, from the host menu or elsewhere, pairs right here rather than in settings;
+// Add Device, from the host menu or elsewhere, pairs right here rather than in settings;
 // started beside a device menu, it hands that menu the device it pairs.
 const pairing = useDevicePairing(claimDevice)
 const installation = useDeviceInstallation()
@@ -81,7 +92,7 @@ watch(
   },
 )
 const activeId = computed(() =>
-  typeof route.params.id === 'string' ? route.params.id : null,
+  typeof pageRoute.value.params.id === 'string' ? pageRoute.value.params.id : null,
 )
 // The panel opens per conversation; the frame shows the open conversation's.
 const work = useWorkPanel()
@@ -157,7 +168,7 @@ const actions: Record<string, () => void> = {
   sidebar: () => {
     resources.sidebarOpen = !resources.sidebarOpen
   },
-  settings: () => resources.openSettings(),
+  settings: () => void settingsAddress.open(),
 }
 useAppShortcuts(
   () => resources.signedIn,
@@ -206,11 +217,12 @@ useAppShortcuts(
           @pin="conversations.pin"
           @move-to-project="conversations.move"
           @archive="conversations.archive"
-          @open-settings="resources.openSettings"
+          @open-settings="settingsAddress.open"
           @sign-out="signOut"
         />
       </template>
-      <RouterView />
+      <!-- Signed in, every address shows the chat: its own, or the one settings opened over. -->
+      <ChatPage :id="activeId ?? undefined" />
       <template #aside>
         <!-- The panel belongs to the open conversation; the frame shows it only while one is open. -->
         <WorkPane

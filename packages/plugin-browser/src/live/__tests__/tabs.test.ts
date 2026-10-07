@@ -1,5 +1,5 @@
 import { expect, jest, test } from 'bun:test'
-import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveViewerMessage } from '../../generated/plugin'
+import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveTab, type LiveViewerMessage } from '../../generated/plugin'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
 import { effectScope, ref, shallowRef } from 'vue'
@@ -24,6 +24,7 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {},
       tabs: { value: list, error },
       bind: async () => null,
       sync: async () => void (syncs += 1),
+      select: () => {},
       navigate: async () => 0,
       history: async () => 0,
       stop: async () => 0,
@@ -534,5 +535,57 @@ test('a Reload the lost browser answered ends on the new browser’s first list,
   const tab = { id: 't1', title: 'Orders', url, createdBy: { kind: 'user' } as const, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false }
   opened[1]!.data(framed({ type: 'state', running: true, list: 28, tabs: [tab], watched: 't1' }))
   expect(controller.loading('t1', url)).toBe(false)
+  end()
+})
+
+test('a tab a page opens joins the strip at once, selected when the user’s click in the watched tab opened it', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const selected: string[] = []
+  const { controller, syncs, end } = harness(
+    { stream: recordingStream(views), select: (panelTab) => void selected.push(panelTab) },
+    { pictures: async () => true },
+  )
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('t1')
+  const tab = (id: string, createdBy: LiveTab['createdBy']): LiveTab => ({
+    id, title: id, url: `https://example.test/${id}`, createdBy, viewport: VIEWPORT,
+    loading: false, canGoBack: false, canGoForward: false,
+  })
+  const state = (list: number, tabs: LiveTab[]) =>
+    views[0]!.handlers.data(framed({ type: 'state', running: true, list, tabs, watched: 't1' }))
+  const watchedTab = tab('t1', { kind: 'agent', number: 1 })
+  state(1, [watchedTab])
+  expect(syncs()).toBe(0)
+  // A page that opens a tab by itself, as a timer's window.open does: the strip has it at once, not selected.
+  state(2, [watchedTab, tab('t2', { kind: 'page', opener: 't1' })])
+  expect(syncs()).toBe(1)
+  expect(selected).toEqual([])
+  // The user's click on a target=_blank link: the browser selects the tab it opens.
+  controller.session.value!.input({
+    type: 'pointer', tab: 't1', action: 'down', x: 10, y: 10, button: 'left', buttons: 1, clickCount: 1, modifiers: 0,
+  })
+  state(3, [watchedTab, tab('t2', { kind: 'page', opener: 't1' }), tab('t3', { kind: 'page', opener: 't1' })])
+  expect(syncs()).toBe(2)
+  expect(selected).toEqual(['browser-t3'])
+  // A list that names no new tab asks for nothing.
+  state(4, [watchedTab, tab('t2', { kind: 'page', opener: 't1' }), tab('t3', { kind: 'page', opener: 't1' })])
+  expect(syncs()).toBe(2)
+  end()
+})
+
+test('the user’s downloads in a tab stay listed while its view opens again', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const { controller, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true })
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('t1')
+  const report = { id: 'g1', name: 'report.pdf', state: 'complete', received: 48, total: 48, path: '/tmp/downloads/report.pdf' } as const
+  views[0]!.handlers.data(framed({ type: 'downloads', tab: 't1', downloads: [report] }))
+  expect(controller.downloadsOf('t1')).toEqual([report])
+  expect(controller.downloadsOf('t2')).toEqual([])
+  // A lost connection ends the view; the bubble keeps what it showed.
+  views[0]!.handlers.closed('lost')
+  expect(controller.downloadsOf('t1')).toEqual([report])
   end()
 })

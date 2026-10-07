@@ -113,6 +113,12 @@ export const COMMANDS: CommandEntry[] = [
     load: () => import('./timeline'),
   },
   {
+    name: 'download',
+    usage: 'download \'<command>\' [--timeout <s>]',
+    summary: 'Run one command and keep the download it starts in the browser, with its name and size',
+    load: () => import('./download'),
+  },
+  {
     name: 'pixel',
     usage: 'pixel <x> <y>',
     summary: 'Print the colour the page shows at a point',

@@ -387,7 +387,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             :devices="hostDevices"
             :bound-ids="['build']"
             @select="productWould(`Selected ${$event}`)"
-            @connect="productWould('Connect New Device')"
+            @connect="productWould('Add Device')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="status dots · virtual list without icons">
@@ -406,7 +406,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             @switch-primary="productWould(`Move the Conversation to ${deviceName($event)}`)"
             @attach="productWould(`Attach ${deviceName($event)}`)"
             @detach="productWould(`Detach ${deviceName($event)}`)"
-            @connect="productWould('Connect New Device')"
+            @connect="productWould('Add Device')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">
@@ -417,7 +417,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             @switch-primary="productWould(`Move the Conversation to ${deviceName($event)}`)"
             @attach="productWould(`Attach ${deviceName($event)}`)"
             @detach="productWould(`Detach ${deviceName($event)}`)"
-            @connect="productWould('Connect New Device')"
+            @connect="productWould('Add Device')"
           />
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · label/value and status">
@@ -428,7 +428,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             @switch-primary="switchPrimaryHost"
             @attach="attachHost"
             @detach="detachHost"
-            @connect="productWould('Connect New Device')"
+            @connect="productWould('Add Device')"
           />
         </GallerySpecimen>
         <div class="specimen-row specimen-row-wide items-start">
@@ -790,7 +790,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Toast"
-        note="The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. Danger, a rejected action whose title wraps, a fact, Copied, and live host."
+        note="The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, a fact, Copied, and live host."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="danger">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
-import { Monitor, Ruler, Smartphone } from '@lucide/vue'
+import { ArrowDownToLine, Download, File, FolderSearch, Monitor, Ruler, Smartphone } from '@lucide/vue'
 import { AddressBar } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
 import { Menu } from '@demicodes/plugin-sdk'
@@ -9,8 +9,11 @@ import { Popover } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
 import { RegionStatus } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
-import { usePage } from '@demicodes/plugin-sdk'
+import { downloadUrl, formatBytes, usePage } from '@demicodes/plugin-sdk'
+import { clientPlatform } from '@demicodes/utils'
+import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
+import { browserShortcut } from './input'
 import { NEW_TAB_URL, refusalSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
 import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
@@ -41,8 +44,12 @@ const emit = defineEmits<{ update: [data: BrowserTabData] }>()
 const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
 const menu = ref(false)
 const anchor = ref<HTMLElement | null>(null)
+const addressBar = ref<InstanceType<typeof AddressBar> | null>(null)
+/** The address the bar shows: a new tab's is empty, waiting for where to go, as in a browser. */
+const address = computed(() => (props.data.url === NEW_TAB_URL ? '' : props.data.url))
 
-const { overlays, errors } = usePage()
+const { overlays, errors, files, intents, panel } = usePage()
+const platform = clientPlatform(navigator)
 /** The plugin opens a browser tab for this panel tab again. */
 const opening = computed(() => props.session.opening(props.tabId, props.data))
 const view = computed(() => props.session.session.value)
@@ -196,6 +203,77 @@ function history(action: 'back' | 'forward' | 'reload'): void {
   }
 }
 
+/**
+ * The browser's own shortcuts, with the focus anywhere in the tab's content
+ * (`live-view.md` § A browser tab in the panel): they act here, never in the
+ * page, and never reach the page around the panel, whose ⌘R would reload
+ * Demi itself.
+ */
+function shortcut(event: KeyboardEvent): void {
+  const action = browserShortcut(event, platform)
+  if (action === null) {
+    return
+  }
+  event.preventDefault()
+  event.stopPropagation()
+  if (event.type !== 'keydown') {
+    return
+  }
+  if (action === 'address') {
+    addressBar.value?.focus()
+  } else if (action === 'reload' || (action === 'back' ? backReason.value : forwardReason.value) === null) {
+    history(action)
+  }
+}
+
+/** A link the browser's menu opens in a new tab, beside this one and not selected, as a browser opens it. */
+function openLink(url: string): void {
+  panel.add(props.conversation, 'browser', { url }, { select: false })
+}
+
+/** The downloads the user started in this tab, the newest first, as a browser's bubble lists them. */
+const downloads = computed(() => [...props.session.downloadsOf(bound.value)].reverse())
+const bubble = ref(false)
+const bubbleAnchor = ref<HTMLElement | null>(null)
+// A download that starts opens the bubble, as a browser shows a download it starts.
+watch(
+  () => downloads.value[0]?.id,
+  (id, before) => {
+    if (id !== undefined && id !== before && props.shown) {
+      bubble.value = true
+    }
+  },
+)
+
+/** What the bubble says of a download: its size, how much has come, or that it stopped. */
+function downloadDetail(download: LiveDownload): string {
+  if (download.state === 'canceled') {
+    return 'Canceled'
+  }
+  if (download.state === 'complete') {
+    return formatBytes(download.total)
+  }
+  return download.total > 0
+    ? `${formatBytes(download.received)} of ${formatBytes(download.total)}`
+    : formatBytes(download.received)
+}
+
+/** Save: the file goes from the Host to the user's computer through the file route, as Download does in Files. */
+function save(download: LiveDownload): void {
+  const contents = files(props.conversation).workspace?.source.contents
+  if (!contents) {
+    errors.report('Could Not Save the Download', new Error('The Host’s files can’t be reached.'))
+    return
+  }
+  downloadUrl(contents.url(download.path, { download: true }))
+}
+
+/** Show in Files: the file the browser saved, on the Host. */
+function showInFiles(download: LiveDownload): void {
+  bubble.value = false
+  intents.open(props.conversation, { intent: 'file', payload: { path: download.path } })
+}
+
 /** What a toast names when Stop was refused. */
 const COULD_NOT_STOP = 'Could Not Stop Loading'
 
@@ -235,9 +313,10 @@ watch(
 </script>
 
 <template>
-  <div class="flex min-h-0 flex-1 flex-col">
+  <div class="flex min-h-0 flex-1 flex-col" @keydown.capture="shortcut" @keyup.capture="shortcut">
     <AddressBar
-      :address="data.url"
+      ref="addressBar"
+      :address="address"
       :back-reason="backReason"
       :forward-reason="forwardReason"
       :can-reload="bound !== undefined"
@@ -249,10 +328,23 @@ watch(
       @reload="history('reload')"
       @stop="stop"
     >
-      <template v-if="viewport" #trailing>
+      <template v-if="viewport || downloads.length > 0" #trailing>
+        <!-- The downloads, once the user started one here, as a browser's toolbar shows them. -->
+        <Tooltip v-if="downloads.length > 0" content="Downloads" class="shrink-0">
+          <span ref="bubbleAnchor" class="flex">
+            <IconButton
+              :icon="ArrowDownToLine"
+              variant="ghost"
+              aria-label="Downloads"
+              aria-haspopup="menu"
+              :pressed="bubble"
+              @click="bubble = !bubble"
+            />
+          </span>
+        </Tooltip>
         <!-- The mode alone, as its icon, on a button like the bar's others: the size is the panel's and
              says nothing the picture does not. -->
-        <Tooltip content="Viewport" class="shrink-0">
+        <Tooltip v-if="viewport" content="Viewport" class="shrink-0">
           <span ref="anchor" class="flex">
             <IconButton
               :icon="MODE_ICONS[viewport.mode]"
@@ -291,6 +383,8 @@ watch(
         :shown="shown"
         :panel="measured"
         :snap="snap"
+        @history="history"
+        @open-link="openLink"
       />
       <!-- What a tab shows before its picture: a blank page, as the browser's new tab is. -->
       <div
@@ -298,6 +392,47 @@ watch(
         class="min-h-0 flex-1 bg-white"
       />
     </div>
+    <Popover
+      :overlay-store="overlays"
+      :is-open="bubble && downloads.length > 0"
+      :anchor-el="bubbleAnchor"
+      placement="bottom-end"
+      @close="bubble = false"
+    >
+      <Menu aria-label="Downloads">
+        <MenuItem
+          v-for="download in downloads"
+          :key="download.id"
+          :icon="File"
+          :label="download.name"
+          :value="downloadDetail(download)"
+          @select="download.state === 'complete' && showInFiles(download)"
+        >
+          <template #actions>
+            <Tooltip content="Save" class="inline-flex">
+              <IconButton
+                :icon="Download"
+                variant="ghost"
+                size="xs"
+                aria-label="Save"
+                :disabled="download.state !== 'complete'"
+                @click.stop="save(download)"
+              />
+            </Tooltip>
+            <Tooltip content="Show in Files" class="inline-flex">
+              <IconButton
+                :icon="FolderSearch"
+                variant="ghost"
+                size="xs"
+                aria-label="Show in Files"
+                :disabled="download.state !== 'complete'"
+                @click.stop="showInFiles(download)"
+              />
+            </Tooltip>
+          </template>
+        </MenuItem>
+      </Menu>
+    </Popover>
     <Popover
       :overlay-store="overlays"
       :is-open="menu"

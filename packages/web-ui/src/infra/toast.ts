@@ -13,6 +13,9 @@ import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
  * toast names its tone, so none claims a success by default.
  *
  * A toast may offer one action, such as Reload, which closes it.
+ *
+ * A failure stays until it is closed; any other toast closes by itself after
+ * `TOAST_DURATION_MS`, counted only while the pointer is not over the toasts.
  */
 export type ToastTone = 'success' | 'neutral' | 'danger'
 
@@ -29,18 +32,35 @@ export interface Toast {
   action?: ToastAction
 }
 
+/** How long a toast that is not a failure stays while the pointer is not over the toasts. */
 export const TOAST_DURATION_MS = 6000
 
 export const toasts = reactive<Toast[]>([])
 
-const timers = new Map<string, ReturnType<typeof setTimeout>>()
+/**
+ * The countdown of each toast that closes by itself: its timer while it runs,
+ * and the time it has left. A failure has none, since the reader may need
+ * longer than any countdown to read it, as Slack and Linear keep theirs.
+ */
+interface Countdown {
+  timer: ReturnType<typeof setTimeout> | null
+  remainingMs: number
+  startedAt: number
+}
+
+const countdowns = new Map<string, Countdown>()
+/** The pointer is over the toasts, which holds every countdown where it is. */
+let held = false
+
+function run(id: string, countdown: Countdown): void {
+  countdown.startedAt = Date.now()
+  countdown.timer = setTimeout(() => dismissToast(id), countdown.remainingMs)
+}
 
 export function showToast(input: {
   title: HeadlineText
   message?: SentenceText
   tone: ToastTone
-  /** How long it stays; 0 keeps it until it is closed. */
-  durationMs?: number
   action?: ToastAction
 }): string {
   const id = createId()
@@ -51,20 +71,54 @@ export function showToast(input: {
     tone: input.tone,
     action: input.action,
   })
-  const duration = input.durationMs ?? TOAST_DURATION_MS
-  if (duration > 0) {
-    timers.set(id, setTimeout(() => dismissToast(id), duration))
+  if (input.tone !== 'danger') {
+    const countdown: Countdown = { timer: null, remainingMs: TOAST_DURATION_MS, startedAt: 0 }
+    countdowns.set(id, countdown)
+    if (!held) {
+      run(id, countdown)
+    }
   }
   return id
 }
 
-export function dismissToast(id: string): void {
-  const timer = timers.get(id)
-  if (timer != null) {
-    clearTimeout(timer)
-    timers.delete(id)
+/** The pointer entered the toasts: every countdown stops where it is. */
+export function holdToasts(): void {
+  if (held) {
+    return
   }
+  held = true
+  const now = Date.now()
+  for (const countdown of countdowns.values()) {
+    if (countdown.timer !== null) {
+      clearTimeout(countdown.timer)
+      countdown.timer = null
+      countdown.remainingMs = Math.max(0, countdown.remainingMs - (now - countdown.startedAt))
+    }
+  }
+}
+
+/** The pointer left the toasts: every countdown goes on from where it stopped. */
+export function releaseToasts(): void {
+  if (!held) {
+    return
+  }
+  held = false
+  for (const [id, countdown] of countdowns) {
+    run(id, countdown)
+  }
+}
+
+export function dismissToast(id: string): void {
+  const countdown = countdowns.get(id)
+  if (countdown?.timer != null) {
+    clearTimeout(countdown.timer)
+  }
+  countdowns.delete(id)
   const index = toasts.findIndex((toast) => toast.id === id)
   if (index >= 0)
     toasts.splice(index, 1)
+  // A toast closed under the pointer takes its leave event with it.
+  if (!toasts.length) {
+    held = false
+  }
 }

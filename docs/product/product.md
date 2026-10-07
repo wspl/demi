@@ -118,8 +118,9 @@ so in a toast with Undo, as Gmail and Linear do. Archived history remains
 readable: a conversation in the Archived list opens read-only with a bar that
 offers Restore, and sending and metadata changes require restore.
 
-Removing something the user set up, such as a provider, a subagent profile or
-a skill source, asks first in a dialog that names what goes with it, as
+Removing something the user set up, such as a provider, an account of a
+subscription, a model added by hand, a subagent profile or a skill source,
+asks first in a dialog that names what goes with it, as
 revoking a device does; nothing the user set up disappears on one click. Persistent ordering
 is independent of activity; its storage rules belong to
 [Storage](../backend/storage.md#control-records).

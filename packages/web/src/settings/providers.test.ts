@@ -5,6 +5,7 @@ import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import type { ProductState } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
+import { useResources } from '../state/resources'
 import { useProviderSettings } from './providers'
 import { dismissToast, toasts } from '@demicodes/web-ui/infra/toast'
 
@@ -103,16 +104,66 @@ async function idle(): Promise<void> {
   throw new Error('Provider operation did not finish')
 }
 
-test('reopening settings and a new snapshot preserve default provider IDs', async () => {
+test('the list holds only saved providers; a vendor added joins it only once saved', async () => {
   const settings = useProviderSettings()
-  const ids = settings.providers.map((provider) => provider.id)
-  expect(ids).toContain('codex')
-  expect(ids).toHaveLength(3)
+  const resources = useResources()
+  const listed = () => settings.providers.map((provider) => provider.id)
+  // The subscriptions and the saved key; no vendor the user never added.
+  expect(listed()).toEqual(['codex', 'configured'])
   channels.last().send({ type: 'snapshot', state })
   await nextTick()
-  expect(
-    useProviderSettings().providers.map((provider) => provider.id),
-  ).toEqual(ids)
+  expect(listed()).toEqual(['codex', 'configured'])
+
+  settings.addProvider(resources.vendors.find((vendor) => vendor.id === 'anthropic')!)
+  expect(settings.draft?.name).toBe('Anthropic')
+  expect(resources.selectedProviderId).toBe(settings.draft!.id)
+  expect(listed()).toEqual(['codex', 'configured'])
+
+  // Choosing another provider leaves the form; nothing of it stays.
+  resources.selectedProviderId = 'configured'
+  await nextTick()
+  expect(settings.draft).toBeNull()
+  expect(listed()).toEqual(['codex', 'configured'])
+})
+
+test('an edit made while a test runs shows at once and is saved when the test ends', async () => {
+  const settings = useProviderSettings()
+  let answerTest!: () => void
+  const testing = new Promise<void>((resolve) => {
+    answerTest = resolve
+  })
+  const plainFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === '/api/providers/configured/test') {
+      await testing
+      return Response.json({ type: 'passed', model: 'gpt' })
+    }
+    return plainFetch(input, init)
+  }) as typeof fetch
+  const provider = () => settings.providers.find((entry) => entry.id === 'configured')!
+  const gpt = {
+    id: 'gpt',
+    name: 'GPT',
+    contextWindow: 200_000,
+    outputLimit: null,
+    efforts: [],
+    extensions: null,
+    fastTier: null,
+    enabled: true,
+  }
+  settings.test({ ...provider(), models: [gpt] })
+  await nextTick()
+  expect(settings.operations.configured?.kind).toBe('testing')
+
+  settings.change(provider(), { name: 'Renamed' })
+  expect(provider().name).toBe('Renamed')
+  expect(writes).toBe(0)
+
+  answerTest()
+  await idle()
+  await idle()
+  expect(writes).toBe(1)
+  expect(state.providers[0]!.label).toBe('Renamed')
 })
 
 test('quota refreshes coalesce per account and do not block other accounts or edits', async () => {

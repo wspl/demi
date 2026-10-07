@@ -1,24 +1,22 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { useElementSize } from '@vueuse/core'
 import { accountDisplayName, accountInitial } from '../auth/account-display'
-import { ChevronDown, Search } from '@lucide/vue'
+import { ChevronLeft, Search } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
+import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
-import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
-import Menu from '@demicodes/web-ui/ui/Menu.vue'
-import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
-import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useTouchOnly } from '../ui/touch-only'
 import { SETTINGS_SECTIONS } from './sections'
+import { filterSettings, firstMatch } from './settings-filter'
+import { highlightSetting } from './setting-highlight'
 import type {
   SettingsAccountInfo,
   SettingsNavGroup,
-  SettingsNavItem,
   SettingsTab
 } from './types'
 
@@ -26,7 +24,13 @@ import type {
  * The settings surface: one large dialog with a section rail and one page at a time.
  * The rail sits on the page surface, the page on the dialog surface, so the two read
  * as the app's own sidebar and content. Layout follows the dialog width, not the viewport.
- * On a narrow screen the dialog fills the window (Dialog's xl size).
+ * On a narrow screen the dialog fills the window (Dialog's xl size) and reads as iOS
+ * Settings does: the rail is a list of the sections, and a section opens as a page of
+ * its own with a back button to the list.
+ *
+ * The rail's filter finds sections and the settings they hold (`SettingsEntry`); a
+ * setting found opens its section with its row highlighted. Escape in the filter
+ * clears it before it closes anything.
  */
 const props = withDefaults(defineProps<{
   isOpen: boolean
@@ -38,7 +42,11 @@ const props = withDefaults(defineProps<{
   sections: () => SETTINGS_SECTIONS,
 })
 
-const tab = defineModel<SettingsTab>('tab', { default: 'general' })
+/**
+ * The open section; null for none, which a narrow dialog shows as the list of
+ * sections and a wide one as its first section.
+ */
+const tab = defineModel<SettingsTab | null>('tab', { default: null })
 
 const emit = defineEmits<{
   close: []
@@ -52,44 +60,57 @@ const shownSections = computed(() =>
     .filter((group) => group.items.length),
 )
 const items = computed(() => shownSections.value.flatMap((group) => group.items))
+const firstSection = computed(() => items.value.find((item) => !item.disabled)?.id ?? null)
+/** The section a wide dialog shows: the open one, or its first. */
+const shown = computed(() => tab.value ?? firstSection.value)
 
-// The rail filter narrows the sections by label or keyword; Enter opens the first hit.
+const container = ref<HTMLElement>()
+const { width } = useElementSize(container)
+/** Narrow as the container queries below are (28rem): the list rows take a finger's height. */
+const narrow = computed(() => width.value > 0 && width.value < 448)
+
 const query = ref('')
-const matches = (item: SettingsNavItem) => {
-  const q = query.value.trim().toLowerCase()
-  return !q ||
-    item.label.toLowerCase().includes(q) ||
-    (item.keywords ?? []).some((k) => k.toLowerCase().includes(q))
-}
-const filteredSections = computed(() =>
-  shownSections.value.map((group) => ({
-      ...group,
-      items: group.items.filter(matches)
-    })).filter(
-    (group) => group.items.length
-  ),
-)
-function openFirstMatch() {
-  for (const group of filteredSections.value) {
-    const first = group.items.find((item) => !item.disabled)
-    if (first) {
-      tab.value = first.id
-      return
-    }
-  }
-}
+const filtered = computed(() => filterSettings(shownSections.value, query.value))
 
-function selectSection(id: string) {
+/** The page, where a setting the filter opened is looked for. */
+const page = ref<HTMLElement>()
+let finding: AbortController | null = null
+
+function open(id: string, setting: string | null = null): void {
   const item = items.value.find((entry) => entry.id === id)
   if (!item || item.disabled)
     return
   tab.value = id
+  finding?.abort()
+  finding = null
+  if (setting && page.value) {
+    finding = new AbortController()
+    highlightSetting(page.value, setting, finding.signal)
+  }
 }
-const current = computed(
-  () => items.value.find((item) => item.id === tab.value) ?? items.value[0]
-)
-// Few sections split one row evenly; a long rail becomes a picker so nothing scrolls off.
-const narrowAsRow = computed(() => items.value.length <= 4)
+
+function openFirstMatch(): void {
+  const match = firstMatch(filtered.value)
+  if (match)
+    open(match.section, match.setting)
+}
+
+/** Escape with text in the filter clears it; the next Escape closes the dialog. */
+function clearFilter(event: KeyboardEvent): void {
+  if (!query.value)
+    return
+  event.preventDefault()
+  query.value = ''
+}
+
+watch(() => props.isOpen, (isOpen) => {
+  if (!isOpen) {
+    finding?.abort()
+    finding = null
+  }
+})
+onBeforeUnmount(() => finding?.abort())
+
 const displayName = computed(() =>
   accountDisplayName(props.account?.name ?? '', props.account?.email)
 )
@@ -111,49 +132,51 @@ const initials = computed(() =>
     <!-- The query container must be an ancestor of what it sizes, so it wraps the row. -->
     <!-- The rail and the page scroll on their own. min-h-0 lets the body shrink to a
          floating panel's cap; grow lets it fill a panel that fills a narrow window. -->
-    <div class="@container h-[36rem] min-h-0 shrink grow">
+    <div ref="container" class="@container h-[36rem] min-h-0 shrink grow">
       <div class="flex h-full flex-col overflow-hidden @md:flex-row">
-      <!-- Wide: a rail beside the page. Narrow: a compact header and the sections in one row or a picker. -->
-      <!-- The account and the filter stay put; only the section list scrolls. -->
+        <!-- Wide: a rail beside the page. Narrow: the list of sections, until one opens. -->
+        <!-- The account and the filter stay put; only the section list scrolls. -->
         <aside
-          class="flex shrink-0 flex-col bg-surface @md:w-56 @md:gap-3 @md:px-3 @md:py-3"
+          class="min-h-0 shrink-0 flex-col gap-3 bg-surface px-3 pb-3 @md:flex @md:w-56 @md:pt-3"
+          :class="tab === null ? 'flex flex-1 @md:flex-none' : 'hidden'"
         >
-          <div class="flex h-11 select-none items-center pl-4 pr-12 @md:hidden">
+          <div class="-mx-3 -mb-3 flex h-11 shrink-0 select-none items-center pl-4 pr-12 @md:hidden">
             <span class="text-[15px] font-medium text-fg-emphasis">Settings</span>
           </div>
           <div
             v-if="account"
-            class="hidden h-9 select-none items-center gap-2 px-1.5 @md:flex"
+            class="flex h-9 shrink-0 select-none items-center gap-2 px-1.5"
           >
             <span
               class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent"
             >
-            {{ initials }}
+              {{ initials }}
             </span>
             <span class="min-w-0 truncate text-chrome text-fg">{{ displayName }}</span>
           </div>
-          <div class="hidden @md:block">
-            <TextInput
-              v-model="query"
-              placeholder="Filter settings"
-              aria-label="Filter settings"
-              @keydown.enter="openFirstMatch"
-            >
-              <template #prefix><Search :size="ICON_PX.in24" /></template>
-            </TextInput>
-          </div>
-        <!-- The list spans the rail edge to edge; its thumb is drawn over the content, taking no room. -->
+          <TextInput
+            v-model="query"
+            class="shrink-0"
+            :size="narrow ? 'lg' : 'md'"
+            placeholder="Filter settings"
+            aria-label="Filter settings"
+            @keydown.enter="openFirstMatch"
+            @keydown.escape="clearFilter"
+          >
+            <template #prefix><Search :size="ICON_PX.in24" /></template>
+          </TextInput>
+          <!-- The list spans the rail edge to edge; its thumb is drawn over the content, taking no room. -->
           <ScrollArea
-            class="hidden min-h-0 flex-1 @md:-mx-3 @md:flex"
-            viewport-class="@md:px-3"
+            class="-mx-3 min-h-0 flex-1"
+            viewport-class="px-3"
           >
             <nav class="flex flex-col gap-3" aria-label="Settings sections">
               <div
-                v-if="!filteredSections.length"
+                v-if="!filtered.length"
                 class="select-none px-2 py-3 text-[12px] text-fg-subtle"
               >Nothing matches.</div>
               <div
-                v-for="(group, index) in filteredSections"
+                v-for="(group, index) in filtered"
                 :key="group.label ?? index"
                 class="flex flex-col gap-0.5"
               >
@@ -161,115 +184,56 @@ const initials = computed(() =>
                   v-if="group.label"
                   class="select-none px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
                 >
-              {{ group.label }}
+                  {{ group.label }}
                 </div>
-                <SidebarNavItem
-                  v-for="item in group.items"
-                  :key="item.id"
-                  :icon="item.icon"
-                  :label="item.label"
-                  :pressed="tab === item.id"
-                  :disabled="item.disabled"
-                  :disabled-reason="item.disabledReason"
-                  @click="selectSection(item.id)"
-                />
+                <template v-for="match in group.matches" :key="match.item.id">
+                  <SidebarNavItem
+                    :icon="match.item.icon"
+                    :label="match.item.label"
+                    :size="narrow ? 'lg' : 'md'"
+                    :pressed="!narrow && shown === match.item.id"
+                    :disabled="match.item.disabled"
+                    :disabled-reason="match.item.disabledReason"
+                    @click="open(match.item.id)"
+                  />
+                  <!-- The settings the filter found, under their section, each opening it on its row. -->
+                  <div
+                    v-for="setting in match.settings"
+                    :key="setting.label"
+                    class="pl-6"
+                  >
+                    <SidebarNavItem
+                      :label="setting.label"
+                      :size="narrow ? 'lg' : 'md'"
+                      :disabled="match.item.disabled"
+                      :disabled-reason="match.item.disabledReason"
+                      @click="open(match.item.id, setting.label)"
+                    />
+                  </div>
+                </template>
               </div>
             </nav>
           </ScrollArea>
-          <nav
-            v-if="narrowAsRow"
-            class="grid grid-cols-4 gap-1 px-2 pb-2 @md:hidden"
-            aria-label="Settings sections"
-          >
-            <Tooltip
-              v-for="item in items"
-              :key="item.id"
-              :content="item.disabledReason"
-              :disabled="!item.disabled || !item.disabledReason"
-              :open-delay-ms="80"
-            >
-              <button
-                type="button"
-                class="flex h-7 w-full cursor-default select-none items-center justify-center rounded-md text-[12px] transition-colors duration-200 ease-out"
-                :class="item.disabled
-                ? 'cursor-not-allowed text-fg-faint'
-                : tab === item.id ? 'bg-active text-fg-emphasis' : 'text-fg-muted hover:bg-hover hover:text-fg'"
-                :aria-pressed="tab === item.id"
-                :aria-disabled="item.disabled || undefined"
-                @click="selectSection(item.id)"
-              >
-              {{ item.label }}
-              </button>
-            </Tooltip>
-          </nav>
-          <div v-else class="px-2 pb-2 @md:hidden">
-            <Dropdown
-              :overlay-store="overlayStore"
-              width="fill"
-            >
-              <template #trigger="{ isOpen: pickerOpen }">
-                <span
-                  role="button"
-                  aria-label="Settings section"
-                  class="flex h-8 w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
-                  :class="pickerOpen ? 'bg-active' : 'bg-hover hover:bg-active'"
-                >
-                  <component
-                    :is="current?.icon"
-                    :size="ICON_PX.in28"
-                    class="shrink-0 text-fg-muted"
-                  />
-                  <span class="min-w-0 flex-1 truncate">{{ current?.label }}</span>
-                  <ChevronDown
-                    :size="ICON_PX.in24"
-                    class="shrink-0 text-fg-subtle"
-                  />
-                </span>
-              </template>
-              <template #content="{ close }">
-                <Menu>
-                  <template
-                    v-for="(group, index) in shownSections"
-                    :key="group.label ?? index"
-                  >
-                    <MenuGroup v-if="group.label" :label="group.label">
-                      <MenuItem
-                        v-for="item in group.items"
-                        :key="item.id"
-                        :icon="item.icon"
-                        :label="item.label"
-                        choice
-                        :is-selected="tab === item.id"
-                        :disabled="item.disabled"
-                        :disabled-reason="item.disabledReason"
-                        @select="selectSection(item.id); close()"
-                      />
-                    </MenuGroup>
-                    <template v-else>
-                      <MenuItem
-                        v-for="item in group.items"
-                        :key="item.id"
-                        :icon="item.icon"
-                        :label="item.label"
-                        choice
-                        :is-selected="tab === item.id"
-                        :disabled="item.disabled"
-                        :disabled-reason="item.disabledReason"
-                        @select="selectSection(item.id); close()"
-                      />
-                    </template>
-                  </template>
-                </Menu>
-              </template>
-            </Dropdown>
-          </div>
         </aside>
-        <ScrollArea
-          class="relative min-w-0 flex-1"
-          viewport-class="flex flex-col px-5 py-6 @md:px-8 @md:py-8"
+        <section
+          class="relative min-h-0 min-w-0 flex-1 flex-col @md:flex"
+          :class="tab === null ? 'hidden' : 'flex'"
         >
-          <slot />
-        </ScrollArea>
+          <div class="flex h-11 shrink-0 select-none items-center pl-2 pr-12 @md:hidden">
+            <Button variant="ghost" size="sm" @click="tab = null">
+              <ChevronLeft :size="ICON_PX.in24" />
+              Settings
+            </Button>
+          </div>
+          <ScrollArea
+            class="min-h-0 flex-1"
+            viewport-class="flex flex-col px-5 pb-6 pt-2 @md:px-8 @md:py-8"
+          >
+            <div ref="page" class="contents">
+              <slot :section="shown" />
+            </div>
+          </ScrollArea>
+        </section>
       </div>
     </div>
   </Dialog>

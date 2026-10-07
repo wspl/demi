@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Trash2 } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
+import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
+import type { SentenceText } from '../ui/ui-text'
 
 /** One entry in a SettingsSplit list: its mark (the `leading` slot), the name, and a dot when its state matters. */
 defineProps<{
@@ -9,6 +11,8 @@ defineProps<{
   selected?: boolean
   /** A dot on the mark's corner. Omit it when there is nothing to say. */
   badge?: 'success' | 'warning' | 'danger'
+  /** What the dot means, said when the pointer is over the mark. */
+  badgeLabel?: SentenceText
   muted?: boolean
   /** Shows a remove button on hover; the entry's page carries no such action. */
   removable?: boolean
@@ -33,7 +37,12 @@ const emit = defineEmits<{
     ]"
     @click="emit('select')"
   >
-    <span class="relative flex shrink-0 items-center">
+    <Tooltip
+      tag="span"
+      class="relative flex shrink-0 items-center"
+      :content="badgeLabel ?? ''"
+      :disabled="!badge || !badgeLabel"
+    >
       <slot name="leading" />
       <span
         v-if="badge"
@@ -44,7 +53,7 @@ const emit = defineEmits<{
           'bg-on-danger': badge === 'danger',
         }"
       />
-    </span>
+    </Tooltip>
     <span class="flex min-w-0 flex-1 flex-col leading-4">
       <TruncatedText
         class="text-chrome"

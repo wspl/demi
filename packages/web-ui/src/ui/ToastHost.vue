@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { dismissToast, toasts, type Toast as ShownToast } from '../infra/toast'
+import { dismissToast, holdToasts, releaseToasts, toasts, type Toast as ShownToast } from '../infra/toast'
 import Toast from './Toast.vue'
 
 /** Runs the toast's action, which closes it. */
@@ -42,6 +42,8 @@ function pinLeavingToast(el: Element) {
         v-for="toast in toasts"
         :key="toast.id"
         class="pointer-events-auto w-80 max-w-[calc(100vw-2rem)]"
+        @pointerenter="holdToasts"
+        @pointerleave="releaseToasts"
       >
         <Toast
           :title="toast.title"

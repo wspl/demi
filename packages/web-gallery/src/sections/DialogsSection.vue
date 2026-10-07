@@ -7,6 +7,7 @@ import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import AddSkillSourceDialog from '@demicodes/plugin-skills/AddSkillSourceDialog.vue'
+import type { AddSourceAnswer } from '@demicodes/plugin-skills/types'
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import DeviceRevokeDialog from '@demicodes/web-ui/devices/DeviceRevokeDialog.vue'
@@ -43,6 +44,19 @@ const { view } = useGalleryView()
 function finish(close: () => void, title: HeadlineText): void {
   close()
   productWould(title)
+}
+
+/**
+ * The plugin's answer after a beat: an origin with no slash is refused as the
+ * plugin refuses it, and the dialog says so under its field; any other is added.
+ */
+async function addSkillSource(draft: { origin: string }): Promise<AddSourceAnswer> {
+  await new Promise((resolve) => window.setTimeout(resolve, 600))
+  if (!draft.origin.includes('/')) {
+    return { kind: 'refused', message: `"${draft.origin}" is neither owner/repo nor an https URL` }
+  }
+  productWould(`Add the Skill Source ${draft.origin}`)
+  return { kind: 'added' }
 }
 
 const emailPhases: { variant: string; phase: ChangeEmailPhase }[] = [
@@ -185,6 +199,7 @@ const resetPhases: {
   busy: boolean
 }[] = [
   { variant: 'confirm', phase: null, submitted: false, error: null, busy: false },
+  { variant: 'starting · before the server answers', phase: null, submitted: true, error: null, busy: true },
   { variant: 'rebuilding', phase: 'rebuilding', submitted: true, error: null, busy: true },
   { variant: 'ready', phase: 'ready', submitted: true, error: null, busy: false },
   {
@@ -377,7 +392,7 @@ const resetPhases: {
                 @close="close"
                 @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Create the Project at ${draft.path} and Open a New Conversation in It`)"
                 @choose="(choice) => (projectLastHosts[index] = choice)"
-                @connect-device="productWould('Connect New Device')"
+                @connect-device="productWould('Add Device')"
                 @retry="productWould('Load the Devices Again')"
               />
             </GalleryDialogFrame>
@@ -421,7 +436,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'cloud'">
-      <GallerySection title="Reset Cloud Environment" note="Confirmed, then followed step by step. A failed reset stays in the dialog with Retry reset.">
+      <GallerySection title="Reset Cloud Environment" note="Confirmed, then followed step by step: Reset and Retry Reset turn into the spinner at once. A failed reset stays in the dialog with Retry Reset, its reason in words.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="item in resetPhases" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -447,8 +462,8 @@ const resetPhases: {
           <AddSkillSourceDialog
             :is-open="open"
             :overlay-store="appOverlayStore"
+            :add-source="addSkillSource"
             @close="close"
-            @add="(draft) => finish(close, `Add the Skill Source ${draft.origin}`)"
           />
         </GalleryDialogFrame>
       </GallerySection>
