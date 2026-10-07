@@ -1,6 +1,7 @@
-//! Preview addresses: `https://<namespace>--<label>.<preview domain>/<path>`, where the label
-//! names a document environment (`docs/browser/preview.md` § Addresses and labels). Paths stay as the
-//! site wrote them, so only absolute addresses are mapped.
+//! Preview addresses: `<scheme>://<namespace>--<label>.<preview domain>/<path>`, where the
+//! scheme is the backend's (`http` for a development domain), and the label names a document environment
+//! (`docs/browser/preview.md` § Addresses and labels). Paths stay as the site wrote them, so
+//! only absolute addresses are mapped.
 
 use std::collections::BTreeMap;
 use std::sync::Mutex;
@@ -23,7 +24,11 @@ pub struct Environment {
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Context {
-    /// The preview domain, with a port when it is not 443: `demi-preview.dev`.
+    /// The preview domain's scheme, as the backend decided it: `https`, or
+    /// `http` for a development domain under `.localhost`.
+    pub scheme: String,
+    /// The preview domain, with a port when it is not the scheme's default:
+    /// `demi-preview.dev`.
     pub domain: String,
     pub namespace: String,
     pub host: String,
@@ -84,6 +89,11 @@ fn scheme_site(scheme: &str) -> &str {
 /// to a new site use it in the page, and those are mapped again by the engine before they load.
 #[cfg(feature = "public-suffix")]
 fn registrable_domain(host: &str) -> String {
+    // An address is its own site; the list would take its last two numbers
+    // for a domain, and the engine's labels would differ from the runtime's.
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return host.to_owned();
+    }
     psl::domain_str(host).unwrap_or(host).to_owned()
 }
 
@@ -176,13 +186,13 @@ impl Context {
 
     /// Every preview origin of this namespace starts with this.
     pub fn namespace_prefix(&self) -> String {
-        format!("https://{}--", self.namespace)
+        format!("{}://{}--", self.scheme, self.namespace)
     }
 
     /// The preview origin of an environment, remembered for reflection and the relay.
     pub fn preview_origin(&self, environment: &Environment) -> String {
         let label = label(&self.namespace, &self.host, environment);
-        let origin = format!("https://{}--{label}.{}", self.namespace, self.domain);
+        let origin = format!("{}://{}--{label}.{}", self.scheme, self.namespace, self.domain);
         self.labels.lock().expect("labels lock").entry(label).or_insert_with(|| environment.clone());
         origin
     }
@@ -210,7 +220,7 @@ impl Context {
         // An address a page built from the preview host alone, without the port, still names
         // the same origin wherever the preview domain is served on the default port.
         let port_matches = url.port() == self.domain_port() || url.port().is_none();
-        if url.scheme() != "https" || !port_matches || label.contains('.') {
+        if url.scheme() != self.scheme || !port_matches || label.contains('.') {
             return None;
         }
         let bootstrap = url.path() == self.boot;

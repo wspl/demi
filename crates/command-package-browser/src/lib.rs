@@ -1,6 +1,6 @@
 //! The `demi.browser` package (`crates-and-packages.md` § command-package-browser): the
-//! conversations' browsers, as a resident command service composed of the
-//! browser libraries.
+//! conversations' browsers and the Host's web preview engine, as a resident
+//! command service composed of the browser libraries.
 
 // Whether the service is `Send` and `Sync` is decided through a conversation's
 // browser and the channels that answer with it, deeper than the default 128
@@ -8,6 +8,7 @@
 #![recursion_limit = "256"]
 
 mod conversations;
+mod preview;
 
 use std::{future::Future, pin::Pin, sync::Arc};
 
@@ -22,6 +23,7 @@ use demi_command_sdk::{
 pub struct DemiBrowser {
     browsers: Arc<conversations::Conversations>,
     chrome: Chrome,
+    previews: Arc<preview::Previews>,
 }
 
 impl Default for DemiBrowser {
@@ -42,7 +44,16 @@ impl DemiBrowser {
         Self {
             browsers: Arc::new(conversations::Conversations::new(chrome.clone())),
             chrome,
+            previews: Arc::new(preview::Previews::new(None)),
         }
+    }
+
+    /// The service, keeping what outlives it on the Host, the web
+    /// preview's cookie jar, in `directory`: the package's data directory,
+    /// which the runner names when it starts the program.
+    pub fn with_data_directory(mut self, directory: std::path::PathBuf) -> Self {
+        self.previews = Arc::new(preview::Previews::new(Some(directory)));
+        self
     }
 
     /// The Chrome the browsers start, for finding what its processes left.
@@ -64,7 +75,12 @@ impl Handler for DemiBrowser {
 
     fn close(&self) -> Pin<Box<dyn Future<Output = Result<(), ServiceError>> + Send>> {
         let browsers = self.browsers.clone();
-        Box::pin(async move { browsers.close().await })
+        let previews = self.previews.clone();
+        Box::pin(async move {
+            let browsers = browsers.close().await;
+            previews.close().await?;
+            browsers
+        })
     }
 
     /// The browsers number their tabs from the conversations' `tab`
@@ -91,6 +107,10 @@ impl Handler for DemiBrowser {
                 Box::pin(async move { browsers.invoke(context, Ok(*operation)).await })
             }
             Ok(Operation::Live) => Box::pin(async move { browsers.live(context).await }),
+            Ok(Operation::Preview) => {
+                let previews = self.previews.clone();
+                Box::pin(async move { previews.serve(context).await })
+            }
             Err(OperationError::Unknown(operation)) => {
                 Box::pin(async move { Err(ServiceError::UnknownOperation(operation)) })
             }

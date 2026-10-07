@@ -176,6 +176,10 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         Operation::parse("browser.live", json!({})),
         Ok(Operation::Live)
     ));
+    assert!(matches!(
+        Operation::parse("browser.preview", json!({})),
+        Ok(Operation::Preview)
+    ));
     // The browser reports a refused argument and an unserved browser
     // operation itself; a name outside the package is unknown to it.
     assert!(matches!(
@@ -193,7 +197,7 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         );
     }
     // Every listed name decodes, so the descriptor lists nothing unserved.
-    assert_eq!(Operation::names().count(), OPERATIONS.len() + 1);
+    assert_eq!(Operation::names().count(), OPERATIONS.len() + 2);
     for name in Operation::names() {
         assert!(
             !matches!(

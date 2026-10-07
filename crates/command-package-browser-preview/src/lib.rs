@@ -1,11 +1,22 @@
 //! The web preview's engine (`crates-and-packages.md`
 //! § command-package-browser-preview, `docs/browser/preview.md` § The preview
-//! engine). So far it holds the upstream requests alone (`upstream`): the
-//! client with a browser's fingerprint and the local network rule on the
-//! address it connects to. The stream handler that `command-package-browser`
-//! composes comes with the engine; until then the upstream client is the
-//! crate's boundary.
+//! engine): the `preview` stream's requests and WebSockets, made upstream
+//! from the Host as the logical browser would make them, with the Host's
+//! cookie jar, and answered rewritten. `command-package-browser` composes
+//! one engine for every conversation of the Host and serves its stream.
 
+mod cookies;
+mod engine;
+mod headers;
+mod policy;
+mod socket;
+mod sourcemap;
+mod stream;
 mod upstream;
 
-pub use upstream::{Space, Upstream, UpstreamError};
+#[cfg(feature = "testing")]
+pub mod testing;
+
+pub use cookies::{CookieSameSite, JarCookie};
+pub use engine::{Engine, EngineError};
+pub use stream::{StreamError, serve};

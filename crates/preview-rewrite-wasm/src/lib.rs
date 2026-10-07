@@ -40,7 +40,7 @@ pub struct Rewriter {
 
 #[wasm_bindgen]
 impl Rewriter {
-    /// `context` is the boot data (`{ domain, namespace, host, boot, runtime, document, labels }`)
+    /// `context` is the boot data (`{ scheme, domain, namespace, host, boot, runtime, document, labels }`)
     /// with the runtime's `topLevel`.
     #[wasm_bindgen(constructor)]
     pub fn new(context: &str) -> Result<Rewriter, JsError> {
