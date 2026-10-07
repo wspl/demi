@@ -3,6 +3,8 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import type { LiveTab } from '../generated/plugin'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
+import { RegionStatus } from '@demicodes/plugin-sdk'
+import { refusalSentence } from './tabs'
 import { CanvasPictures } from './pictures'
 import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
@@ -300,6 +302,14 @@ onBeforeUnmount(() => {
       @contextmenu.prevent
     />
     <div v-if="!painted" class="pointer-events-none absolute inset-0 bg-white" />
+    <!-- A notice that leaves no picture takes the picture's place; the page's controls and dialogs stay over it. -->
+    <RegionStatus
+      v-if="state?.pictureless"
+      class="absolute inset-0 bg-surface"
+      failed
+      label="Couldn’t show this page."
+      :detail="refusalSentence(state.pictureless)"
+    />
     <input
       ref="bridge"
       class="pointer-events-none absolute h-[2px] w-[2px] border-0 bg-transparent p-0 text-transparent caret-transparent outline-none"

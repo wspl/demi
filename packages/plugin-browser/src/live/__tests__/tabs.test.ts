@@ -13,8 +13,8 @@ import {
   type PictureSupport,
 } from '../tabs'
 
-/** A controller in a panel session's effect scope, over a tab list the test sets. */
-function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {}) {
+/** A controller in a panel session's effect scope, over a tab list the test sets; what it reports to the user lands in `reported`. */
+function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {}, reported: Array<[string, unknown]> = []) {
   const list = shallowRef<BrowserTabList | null>(null)
   const error = shallowRef<BrowserTabsError | null>(null)
   let syncs = 0
@@ -30,7 +30,7 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {})
       installed: () => [],
       ...api,
     },
-    () => {},
+    { report: (title, error) => void reported.push([title, error]), defect: () => {} },
     { visibility: ref<DocumentVisibilityState>('visible'), ...options },
   ))!
   return { controller, list, syncs: () => syncs, end: () => { controller.dispose(); scope.stop() } }
@@ -96,6 +96,23 @@ test('a new tab waits for the Host to hold the browser the tab list names', () =
   // The agent's `demi browser install` reports the pinned one.
   installed.value = [...installed.value, { package: 'demi.browser', ...chrome }]
   expect(controller.unavailable.value).toBeNull()
+  end()
+})
+
+test('a notice the picture shows through is a toast in the page’s words, once; one that leaves no picture is none', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const reported: Array<[string, unknown]> = []
+  const { controller, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true }, reported)
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('t1')
+  views[0]!.handlers.data(framed({ type: 'notice', code: 'input_failed', message: 'Input.dispatchKeyEvent: target closed' }))
+  views[0]!.handlers.data(framed({ type: 'notice', code: 'capture_unavailable', message: 'this CPU reports SME without SVE' }))
+  expect(reported).toHaveLength(1)
+  const [title, error] = reported[0]!
+  expect(title).toBe('Could Not Operate the Browser')
+  expect(error).toMatchObject({ code: 'input_failed', message: 'The page didn’t receive your input.' })
+  expect(controller.session.value?.state.pictureless).toBe('capture_unavailable')
   end()
 })
 

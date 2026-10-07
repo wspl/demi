@@ -228,9 +228,17 @@ input! {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TabsResult {
-    /// The list's number in the Host's sequence (`live-view.md` § The tab
-    /// methods).
-    pub list: u64,
+    /// The list's number in the Host's sequence, for a `user` caller only
+    /// (`live-view.md` § The tab methods). The model has no use for it, so
+    /// the agent's command never prints it and its `--json` schema does not
+    /// name it (`runtime.md`, "Only what the model uses").
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(skip)]
+    pub list: Option<u64>,
     pub tabs: Vec<BrowserTab>,
     pub truncated: bool,
 }
@@ -306,7 +314,8 @@ input! {
 /// What a navigation answers: the URL it observed, with the title when the
 /// same document reported it in time. A user's navigation, which answers
 /// before the page loads, names instead the number of the last tab list
-/// before it started (`live-view.md` § The tab methods).
+/// before it started (`live-view.md` § The tab methods); the agent's never
+/// does, so its `--json` schema does not name that number.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NavigationResult {
@@ -324,7 +333,7 @@ pub struct NavigationResult {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "u64")]
+    #[schemars(skip)]
     pub list: Option<u64>,
 }
 
