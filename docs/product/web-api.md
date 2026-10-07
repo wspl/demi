@@ -1335,7 +1335,8 @@ since git's copy is decoded whole before it is sent
 ([Runner](../execution/runner.md#working-tree)).
 
 The page lists the working tree again when the [file watch](#file-watch)
-reports a path in it or under its repository's `.git`, and on its Refresh
+reports a path in it that git does not ignore, or one under its repository's
+`.git`, and on its Refresh
 control ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
 It never polls.
 
@@ -1363,7 +1364,7 @@ The backend sends:
 | Message | Carries | Sent when |
 | --- | --- | --- |
 | `state` | `state`: `live`, `lost`, `unavailable` or `offline`, and for `unavailable` the Host's `reason` | `live` once the Host's watches run, so what is read from then on is covered, and again once the watches of each `paths` message run, so the page trusts a path outside the working tree only after the `live` that answers the message naming it; `lost` when a watch lost reports, so nothing read before is confirmed, followed by `live` again; `unavailable` when the Host cannot watch, after which the socket sends no other state; `offline` while the Host is out of reach or a stopped Cloud |
-| `changed` | `paths`, absolute paths on the Host that changed | The Host reports them, at most every 100 ms, a path once per message. More than 1,000 paths at once come as `lost`. |
+| `changed` | `paths`, absolute paths on the Host that changed, and `ignored`, those of them git ignores in the working tree's repository | The Host reports them, at most every 100 ms, a path once per message. More than 1,000 paths at once come as `lost`. An ignored path, such as a build output or a log a process appends to, changes what the File view shows but not the working tree's changes, as VS Code's Source Control ignores it |
 | `heartbeat` | Nothing | 30 seconds pass without another message, so the page tells a quiet watch from a dead one ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
 
 The backend closes the socket with the user streams' codes: 1011
