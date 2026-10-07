@@ -437,6 +437,8 @@ the user test how real sites and applications behave for real visitors:
   live view therefore has the color Chrome paints that scheme's empty page,
   `#ffffff` or `#121212`, from its first frame
   ([A browser tab in the panel](live-view.md#a-browser-tab-in-the-panel)).
+  Chrome takes it with `--blink-settings=preferredColorScheme`, and a running
+  browser keeps the scheme it started with, as it keeps its time zone.
 - Time zone and languages are the ones the user's browser last reported,
   which arrive in the starting invocation's
   [command context](../execution/native-runtime.md#command-context); the Host's own
