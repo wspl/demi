@@ -1,5 +1,5 @@
 import { ConversationClient, createWebSocketTransport } from '@demicodes/conversation-client'
-import { watchSilence } from './liveness'
+import { openSocket, watchSilence } from './liveness'
 
 /**
  * The connection itself could not be made, was lost, or went silent: a
@@ -13,9 +13,6 @@ export class ConversationSocketError extends Error {
   }
 }
 
-/** How long a socket may take to open. */
-const CONNECT_TIMEOUT_MS = 15_000
-
 /**
  * Opens the conversation socket at `url` and answers its client. A socket
  * lifetime is a connection lifetime, never a server-task lifetime. Until the
@@ -28,9 +25,9 @@ const CONNECT_TIMEOUT_MS = 15_000
 export function connectConversationClient(url: string, signal?: AbortSignal): Promise<ConversationClient> {
   return new Promise((resolve, reject) => {
     signal?.throwIfAborted()
-    const socket = new WebSocket(url)
+    // A handshake that takes too long ends as a close (`openSocket`).
+    const socket = openSocket(url)
     const release = () => {
-      clearTimeout(timeout)
       socket.removeEventListener('open', opened)
       socket.removeEventListener('error', failed)
       socket.removeEventListener('close', failed)
@@ -67,7 +64,6 @@ export function connectConversationClient(url: string, signal?: AbortSignal): Pr
       })
       resolve(client)
     }
-    const timeout = setTimeout(failed, CONNECT_TIMEOUT_MS)
     socket.addEventListener('open', opened)
     socket.addEventListener('error', failed)
     socket.addEventListener('close', failed)

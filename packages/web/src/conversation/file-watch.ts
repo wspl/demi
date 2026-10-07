@@ -4,7 +4,7 @@ import type { Coverage, HostFiles } from '@demicodes/web-ui/files/file-cache'
 import type { FileFollower } from '@demicodes/web-ui/files/kept-source'
 import { parentPath } from '@demicodes/web-ui/files/paths'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { openSocket, waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { apiUrl } from '../api/client'
 import { fileWatchMessageSchema, type FileWatchMessage, type FileWatchRequest } from '../api/generated/web-api'
 
@@ -48,7 +48,7 @@ export type OpenWatchLink = (conversationId: string, handlers: WatchLinkHandlers
 export const relayWatchLink: OpenWatchLink = (conversationId, handlers) => {
   const url = new URL(apiUrl(`/conversations/${encodeURIComponent(conversationId)}/fs/watch`), window.location.href)
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-  const socket = new WebSocket(url)
+  const socket = openSocket(url)
   socket.addEventListener('open', () => handlers.opened())
   socket.addEventListener('message', (event) => handlers.message(event.data))
   socket.addEventListener('close', () => handlers.closed())

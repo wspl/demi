@@ -5,6 +5,11 @@ import type { ClientFrame, ServerFrame } from '@demicodes/protocol'
  * would: it lets the socket open, sends frames and ends it.
  */
 export class TestSocket extends EventTarget {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSING = 2
+  static readonly CLOSED = 3
+  readyState: number = TestSocket.CONNECTING
   /** Whether the page closed the socket, or the test ended it. */
   closed = false
   /** What the page sent, as frames. */
@@ -25,11 +30,13 @@ export class TestSocket extends EventTarget {
       return
     }
     this.closed = true
+    this.readyState = TestSocket.CLOSED
     this.dispatchEvent(new Event('close'))
   }
 
   /** The upgrade succeeds. */
   open(): void {
+    this.readyState = TestSocket.OPEN
     this.dispatchEvent(new Event('open'))
   }
 
@@ -40,6 +47,7 @@ export class TestSocket extends EventTarget {
   /** The backend or the network ends it, as a backend that restarts does. */
   end(): void {
     this.closed = true
+    this.readyState = TestSocket.CLOSED
     this.dispatchEvent(new CloseEvent('close', { code: 1006 }))
   }
 }
