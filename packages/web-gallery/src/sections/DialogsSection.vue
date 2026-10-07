@@ -10,6 +10,7 @@ import AddSkillSourceDialog from '@demicodes/plugin-skills/AddSkillSourceDialog.
 import type { AddSourceAnswer } from '@demicodes/plugin-skills/types'
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
+import DeviceRenameDialog from '@demicodes/web-ui/devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '@demicodes/web-ui/devices/DeviceRevokeDialog.vue'
 import ConfirmDialog from '@demicodes/web-ui/ui/ConfirmDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
@@ -71,6 +72,8 @@ const revokeConfirmations: { variant: string; device: string; projects: string[]
   { variant: 'with projects', device: 'zan-mbp', projects: ['demi', 'notes'] },
   { variant: 'without projects', device: 'build-01', projects: [] },
 ]
+/** The name the Rename Device specimen opens on; a rename keeps the new one, as the device's row would. */
+const renamedDevice = ref('zan-mbp')
 const passwordPhases: { variant: string; phase: ChangePasswordPhase }[] = [
   { variant: 'form', phase: { kind: 'form' } },
   { variant: 'form · busy', phase: { kind: 'form', busy: true } },
@@ -374,6 +377,22 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'devices'">
+      <GallerySection title="Rename Device" note="Rename… on a paired device’s row in Settings. The field opens on the current name, selected, so typing replaces it; Return or Rename takes the name trimmed, and an empty one cannot be taken. The specimen keeps the new name and opens on it next time, as the row shows it. A refusal is a toast; the Cloud keeps its name and has no Rename….">
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen wide variant="paired device">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <DeviceRenameDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                :name="renamedDevice"
+                :max-length="64"
+                @close="close"
+                @rename="renamedDevice = $event"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
       <GallerySection title="Add Device" note="One flow for a local computer, a remote server or a headless machine: start the runner, paste its pairing code, use the connected device.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(item, index) in pairingPhases" :key="item.variant" wide :variant="item.variant">

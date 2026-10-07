@@ -2,7 +2,7 @@ import { computed, type ComputedRef } from 'vue'
 import type { PairingResult } from '@demicodes/web-ui/devices/pairing'
 import { deviceInstallationAt, type DeviceInstallation } from '@demicodes/web-ui/devices/installation'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
-import { claimedDeviceSchema, type Claim } from '../api/generated/web-api'
+import { deviceAnswerSchema, type Claim } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 
 /**
@@ -29,7 +29,7 @@ export async function claimDevice(
       ...jsonBody({ code } satisfies Claim),
     })
     // The device list shows it once the channel brings the devices.
-    const { device } = await readResponse(response, claimedDeviceSchema)
+    const { device } = await readResponse(response, deviceAnswerSchema)
     return {
       ok: true,
       device: { id: device.id, name: device.name },

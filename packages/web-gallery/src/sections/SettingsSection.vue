@@ -31,7 +31,7 @@ import { productWould } from '../product-would'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
-import { demoDeviceInstallation, demoDeviceStart } from '../fixtures/device-installation'
+import { demoDeviceInstallation, demoDeviceReport, demoDeviceStart } from '../fixtures/device-installation'
 import { ago } from '../fixtures/time'
 
 const { view } = useGalleryView()
@@ -45,9 +45,16 @@ const directPaths = [
   { value: 'blocked', label: 'Blocked by the Browser' },
 ] as const
 const directDevices = ref<SettingsDevice[]>([
-  { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0) },
-  { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * 24 * 60 * 60 * 1000), start: demoDeviceStart('linux') },
-  { id: 'lab', name: 'lab-01', state: 'updating', seen: ago(0) },
+  { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), ...demoDeviceReport('macos') },
+  {
+    id: 'build',
+    name: 'build-01',
+    state: 'offline',
+    seen: ago(3 * 24 * 60 * 60 * 1000),
+    start: demoDeviceStart('linux'),
+    ...demoDeviceReport('linux'),
+  },
+  { id: 'lab', name: 'lab-01', state: 'updating', seen: ago(0), ...demoDeviceReport('linux', '0.1.15') },
 ])
 /** Each device as the Devices page lists it: an online one directly connected, a blocked browser blocking every one. */
 const directListed = computed(() =>
@@ -64,8 +71,21 @@ const directListed = computed(() =>
 function revokeDirectDevice(id: string) {
   directDevices.value = directDevices.value.filter((device) => device.id !== id)
 }
+/** A renamed device's row takes its new name, as the product's state brings it. */
+function renameDirectDevice(id: string, name: string) {
+  const device = directDevices.value.find((candidate) => candidate.id === id)
+  if (device) {
+    device.name = name
+  }
+}
 async function claimDirectDevice(_code: string) {
-  const device = { id: `device-${Date.now()}`, name: `host-${directDevices.value.length + 1}`, state: 'online' as const, seen: ago(0) }
+  const device = {
+    id: `device-${Date.now()}`,
+    name: `host-${directDevices.value.length + 1}`,
+    state: 'online' as const,
+    seen: ago(0),
+    ...demoDeviceReport('macos'),
+  }
   directDevices.value.push(device)
   return { ok: true as const, device }
 }
@@ -207,7 +227,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="An online paired device’s row says in a few words how this page reaches it, Connected directly or Through the server; switch the page’s path to see each. While the browser blocks local network access, its ? says how to allow it. A device whose runner updates itself reads Updating; an offline one says when it was last seen, and its ? opens the command that starts its runner, with Copy. Escape or a click outside closes the help."
+        note="Under a device’s name, the system, architecture and runner release its runner last reported, then, for an online one, in a few words how this page reaches it, Connected directly or Through the server; switch the page’s path to see each. While the browser blocks local network access, its ? says how to allow it. A device whose runner updates itself reads Updating; an offline one says when it was last seen, and its ? opens the command that starts its runner, with Copy. Escape or a click outside closes the help. Rename… asks for a new name and the row takes it; Revoke… asks first and the row goes."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented v-model="directPath" :options="directPaths" size="sm" />
@@ -218,7 +238,9 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
               :overlay-store="appOverlayStore"
               :installation="demoDeviceInstallation"
               :claim-device="claimDirectDevice"
+              :name-max-length="64"
               @revoke="revokeDirectDevice"
+              @rename="renameDirectDevice"
               @retry="productWould('Load the Devices Again')"
             />
           </div>
