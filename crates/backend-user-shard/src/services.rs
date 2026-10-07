@@ -14,6 +14,7 @@ use demi_backend_cloud::CloudServices;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::{self, ConversationStores};
+use demi_backend_database::search::SearchIndexes;
 use demi_backend_host_access::stream::UserStreams;
 use demi_backend_page_sync::SyncRegistry;
 use demi_backend_plugins::{Registry, RegistryError};
@@ -41,6 +42,7 @@ use crate::tuning::{ConversationTuning, LifecycleTuning, PageTuning, RunnerTunin
 
 const CONTROL_DATABASE: &str = "control.sqlite";
 const CONVERSATION_DATABASES: &str = "conversations";
+const SEARCH_INDEXES: &str = "search";
 
 /// The services that span users, or that are needed before the user is
 /// known. The edge and every shard share them.
@@ -50,6 +52,8 @@ pub struct Services {
     pub clock: Arc<dyn Clock>,
     pub control: ControlService,
     pub conversations: ConversationStores,
+    /// Each user's search index, which the user's shard keeps.
+    pub search: SearchIndexes,
     pub blobs: BlobStores,
     pub hasher: PasswordHasher,
     pub sessions: WebSessions,
@@ -153,6 +157,7 @@ pub enum ServicesError {
 pub struct Storage {
     pub control: ControlService,
     pub conversations: ConversationStores,
+    pub search: SearchIndexes,
     pub blobs: BlobStores,
 }
 
@@ -179,14 +184,16 @@ impl Storage {
                 conversations::MAX_WRITERS,
             )
             .await?;
+            let search = SearchIndexes::open(data_dir.join(SEARCH_INDEXES)).await?;
             let blobs = BlobStores::new(objects);
-            Ok::<_, StorageError>((conversations, blobs))
+            Ok::<_, StorageError>((conversations, search, blobs))
         }
         .await;
         match rest {
-            Ok((conversations, blobs)) => Ok(Self {
+            Ok((conversations, search, blobs)) => Ok(Self {
                 control,
                 conversations,
+                search,
                 blobs,
             }),
             Err(error) => {
@@ -232,6 +239,7 @@ impl Services {
         let Storage {
             control,
             conversations,
+            search,
             blobs,
         } = storage;
         let native = &settings.native;
@@ -284,6 +292,7 @@ impl Services {
             hasher,
             control,
             conversations,
+            search,
             blobs,
             vault,
             assembly,

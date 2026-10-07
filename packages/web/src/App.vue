@@ -17,6 +17,9 @@ import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
+import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
+import type { SearchRow } from '@demicodes/web-ui/search/search'
+import { searchConversations } from './api/search'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
 import { pageUnderSettings, useSettingsAddress } from './settings/address'
@@ -34,6 +37,8 @@ import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { productPageHost } from './plugins/host'
 import { useProduct } from './state/product'
 provideBlobUrl(blobUrl)
+/** How many recent conversations the search window lists before the user types. */
+const RECENT_CONVERSATIONS = 20
 const product = useProduct()
 providePageHost(productPageHost())
 // A page of another build than the backend serves loads that build, once
@@ -71,7 +76,28 @@ const settingsAddress = useSettingsAddress()
 const pageRoute = computed(() =>
   settingsAddress.section.value === undefined ? route : router.resolve(pageUnderSettings(router)),
 )
-const { open, create } = useConversationNavigation()
+const { open, openFound, create } = useConversationNavigation()
+/** The search window (`product.md` § Finding a conversation). */
+const searchOpen = ref(false)
+/** What the search window lists before the user types: the conversations most recently active. */
+const recentConversations = computed<SearchRow[]>(() =>
+  conversations.items
+    .filter((conversation) => conversation.persistence === 'synced')
+    .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+    .slice(0, RECENT_CONVERSATIONS)
+    .map((conversation) => ({
+      conversationId: conversation.id,
+      title: conversation.title,
+      titleRanges: [],
+      archived: conversation.archived,
+      lastActiveAt: conversation.updatedAt,
+      match: null,
+    })),
+)
+function openSearchResult(row: SearchRow): void {
+  searchOpen.value = false
+  openFound(row.conversationId, row.match?.blockId ?? null)
+}
 const folded = computed({
   get: () => resources.local.foldedProjects,
   set: (value) => {
@@ -166,6 +192,9 @@ async function signOut(): Promise<void> {
 /** The bindings from the keyboard settings, by the action each one names. */
 const actions: Record<string, () => void> = {
   new: () => create(null),
+  search: () => {
+    searchOpen.value = true
+  },
   sidebar: () => {
     resources.sidebarOpen = !resources.sidebarOpen
   },
@@ -208,6 +237,8 @@ useAppShortcuts(
           :pending-ids="conversations.pendingChanges"
           :section-entries="resources.sectionEntries"
           :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"
+          :search-shortcut="resources.keys.find((binding) => binding.id === 'search')?.keys"
+          @search="searchOpen = true"
           @retry-list="conversations.reloadList"
           @reorder="reorder"
           @select="open"
@@ -236,6 +267,14 @@ useAppShortcuts(
         <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
         <SettingsDialog @sign-out="signOut" />
         <TargetDialog />
+        <SearchDialog
+          :is-open="searchOpen"
+          :overlay-store="appOverlayStore"
+          :recent="recentConversations"
+          :search="searchConversations"
+          @close="searchOpen = false"
+          @open="openSearchResult"
+        />
         <DevicePairingDialog
           v-if="installation"
           :is-open="pairing.isOpen.value"

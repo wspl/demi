@@ -27,7 +27,7 @@ use crate::conversations::{
 use crate::support::Harness;
 
 /// The outcome of the edit `frame` asks for, which `socket` answers.
-async fn edit(socket: &mut Socket, frame: &ClientFrame) -> EditOutcome {
+pub(crate) async fn edit(socket: &mut Socket, frame: &ClientFrame) -> EditOutcome {
     socket.send(frame).await;
     let answered = socket
         .until(|frame| matches!(frame, ServerFrame::EditResult { .. }))
@@ -41,7 +41,7 @@ async fn edit(socket: &mut Socket, frame: &ClientFrame) -> EditOutcome {
 /// An edit, as operation `operation`, of the user's message `target` into
 /// `replacement`, from the snapshot the editor reads over `socket` now: the
 /// transcript and its version.
-async fn edit_request(
+pub(crate) async fn edit_request(
     socket: &mut Socket,
     target: &str,
     operation: &str,
@@ -75,7 +75,7 @@ async fn edit_request(
 }
 
 /// Whether a frame tells the page that the session is idle.
-fn idle(frame: &ServerFrame) -> bool {
+pub(crate) fn idle(frame: &ServerFrame) -> bool {
     matches!(
         frame,
         ServerFrame::Phase {
