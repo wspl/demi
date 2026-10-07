@@ -286,6 +286,7 @@ impl Operations for HostOperations {
                     conversation: scope.conversation,
                     caller: CommandCaller::User {},
                     locale: request.introduction.locale.clone(),
+                    color_scheme: request.introduction.color_scheme,
                 },
                 package: request.binding.package,
                 operation: request.binding.operation,

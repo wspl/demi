@@ -38402,6 +38402,584 @@ pub mod browser_protocol {
             }
         }
     }
+    #[doc = "Defines commands and events for browser extensions."]
+    pub mod extensions {
+        use serde::{Deserialize, Serialize};
+        #[doc = "Storage areas."]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        pub enum StorageArea {
+            #[serde(rename = "session")]
+            Session,
+            #[serde(rename = "local")]
+            Local,
+            #[serde(rename = "sync")]
+            Sync,
+            #[serde(rename = "managed")]
+            Managed,
+        }
+        impl AsRef<str> for StorageArea {
+            fn as_ref(&self) -> &str {
+                match self {
+                    StorageArea::Session => "session",
+                    StorageArea::Local => "local",
+                    StorageArea::Sync => "sync",
+                    StorageArea::Managed => "managed",
+                }
+            }
+        }
+        impl ::std::str::FromStr for StorageArea {
+            type Err = String;
+            fn from_str(s: &str) -> Result<Self, Self::Err> {
+                match s {
+                    "session" | "Session" => Ok(StorageArea::Session),
+                    "local" | "Local" => Ok(StorageArea::Local),
+                    "sync" | "Sync" => Ok(StorageArea::Sync),
+                    "managed" | "Managed" => Ok(StorageArea::Managed),
+                    _ => Err(s.to_string()),
+                }
+            }
+        }
+        #[doc = "Installs an unpacked extension from the filesystem similar to\n--load-extension CLI flags. Returns extension ID once the extension\nhas been installed. Available if the client is connected using the\n--remote-debugging-pipe flag and the --enable-unsafe-extension-debugging\nflag is set.\n[loadUnpacked](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-loadUnpacked)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct LoadUnpackedParams {
+            #[doc = "Absolute file path."]
+            #[serde(rename = "path")]
+            pub path: String,
+        }
+        impl LoadUnpackedParams {
+            pub fn new(path: impl Into<String>) -> Self {
+                Self { path: path.into() }
+            }
+        }
+        impl<T: Into<String>> From<T> for LoadUnpackedParams {
+            fn from(url: T) -> Self {
+                LoadUnpackedParams::new(url)
+            }
+        }
+        impl LoadUnpackedParams {
+            pub fn builder() -> LoadUnpackedParamsBuilder {
+                LoadUnpackedParamsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct LoadUnpackedParamsBuilder {
+            path: Option<String>,
+        }
+        impl LoadUnpackedParamsBuilder {
+            pub fn path(mut self, path: impl Into<String>) -> Self {
+                self.path = Some(path.into());
+                self
+            }
+            pub fn build(self) -> Result<LoadUnpackedParams, String> {
+                Ok(LoadUnpackedParams {
+                    path: self.path.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(path))
+                    })?,
+                })
+            }
+        }
+        impl LoadUnpackedParams {
+            pub const IDENTIFIER: &'static str = "Extensions.loadUnpacked";
+        }
+        impl chromiumoxide_types::Method for LoadUnpackedParams {
+            fn identifier(&self) -> chromiumoxide_types::MethodId {
+                Self::IDENTIFIER.into()
+            }
+        }
+        impl chromiumoxide_types::MethodType for LoadUnpackedParams {
+            fn method_id() -> chromiumoxide_types::MethodId
+            where
+                Self: Sized,
+            {
+                Self::IDENTIFIER.into()
+            }
+        }
+        #[doc = "Installs an unpacked extension from the filesystem similar to\n--load-extension CLI flags. Returns extension ID once the extension\nhas been installed. Available if the client is connected using the\n--remote-debugging-pipe flag and the --enable-unsafe-extension-debugging\nflag is set.\n[loadUnpacked](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-loadUnpacked)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct LoadUnpackedReturns {
+            #[doc = "Extension id."]
+            #[serde(rename = "id")]
+            pub id: String,
+        }
+        impl LoadUnpackedReturns {
+            pub fn new(id: impl Into<String>) -> Self {
+                Self { id: id.into() }
+            }
+        }
+        impl<T: Into<String>> From<T> for LoadUnpackedReturns {
+            fn from(url: T) -> Self {
+                LoadUnpackedReturns::new(url)
+            }
+        }
+        impl LoadUnpackedReturns {
+            pub fn builder() -> LoadUnpackedReturnsBuilder {
+                LoadUnpackedReturnsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct LoadUnpackedReturnsBuilder {
+            id: Option<String>,
+        }
+        impl LoadUnpackedReturnsBuilder {
+            pub fn id(mut self, id: impl Into<String>) -> Self {
+                self.id = Some(id.into());
+                self
+            }
+            pub fn build(self) -> Result<LoadUnpackedReturns, String> {
+                Ok(LoadUnpackedReturns {
+                    id: self
+                        .id
+                        .ok_or_else(|| format!("Field `{}` is mandatory.", std::stringify!(id)))?,
+                })
+            }
+        }
+        impl chromiumoxide_types::Command for LoadUnpackedParams {
+            type Response = LoadUnpackedReturns;
+        }
+        #[doc = "Uninstalls an unpacked extension (others not supported) from the profile.\nAvailable if the client is connected using the --remote-debugging-pipe flag\nand the --enable-unsafe-extension-debugging.\n[uninstall](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-uninstall)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct UninstallParams {
+            #[doc = "Extension id."]
+            #[serde(rename = "id")]
+            pub id: String,
+        }
+        impl UninstallParams {
+            pub fn new(id: impl Into<String>) -> Self {
+                Self { id: id.into() }
+            }
+        }
+        impl<T: Into<String>> From<T> for UninstallParams {
+            fn from(url: T) -> Self {
+                UninstallParams::new(url)
+            }
+        }
+        impl UninstallParams {
+            pub fn builder() -> UninstallParamsBuilder {
+                UninstallParamsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct UninstallParamsBuilder {
+            id: Option<String>,
+        }
+        impl UninstallParamsBuilder {
+            pub fn id(mut self, id: impl Into<String>) -> Self {
+                self.id = Some(id.into());
+                self
+            }
+            pub fn build(self) -> Result<UninstallParams, String> {
+                Ok(UninstallParams {
+                    id: self
+                        .id
+                        .ok_or_else(|| format!("Field `{}` is mandatory.", std::stringify!(id)))?,
+                })
+            }
+        }
+        impl UninstallParams {
+            pub const IDENTIFIER: &'static str = "Extensions.uninstall";
+        }
+        impl chromiumoxide_types::Method for UninstallParams {
+            fn identifier(&self) -> chromiumoxide_types::MethodId {
+                Self::IDENTIFIER.into()
+            }
+        }
+        impl chromiumoxide_types::MethodType for UninstallParams {
+            fn method_id() -> chromiumoxide_types::MethodId
+            where
+                Self: Sized,
+            {
+                Self::IDENTIFIER.into()
+            }
+        }
+        #[doc = "Uninstalls an unpacked extension (others not supported) from the profile.\nAvailable if the client is connected using the --remote-debugging-pipe flag\nand the --enable-unsafe-extension-debugging.\n[uninstall](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-uninstall)"]
+        #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+        pub struct UninstallReturns {}
+        impl chromiumoxide_types::Command for UninstallParams {
+            type Response = UninstallReturns;
+        }
+        #[doc = "Gets data from extension storage in the given `storageArea`. If `keys` is\nspecified, these are used to filter the result.\n[getStorageItems](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-getStorageItems)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct GetStorageItemsParams {
+            #[doc = "ID of extension."]
+            #[serde(rename = "id")]
+            pub id: String,
+            #[doc = "StorageArea to retrieve data from."]
+            #[serde(rename = "storageArea")]
+            #[serde(deserialize_with = "super::super::de::deserialize_from_str")]
+            pub storage_area: StorageArea,
+            #[doc = "Keys to retrieve."]
+            #[serde(rename = "keys")]
+            #[serde(skip_serializing_if = "Option::is_none")]
+            pub keys: Option<Vec<String>>,
+        }
+        impl GetStorageItemsParams {
+            pub fn new(id: impl Into<String>, storage_area: impl Into<StorageArea>) -> Self {
+                Self {
+                    id: id.into(),
+                    storage_area: storage_area.into(),
+                    keys: None,
+                }
+            }
+        }
+        impl GetStorageItemsParams {
+            pub fn builder() -> GetStorageItemsParamsBuilder {
+                GetStorageItemsParamsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct GetStorageItemsParamsBuilder {
+            id: Option<String>,
+            storage_area: Option<StorageArea>,
+            keys: Option<Vec<String>>,
+        }
+        impl GetStorageItemsParamsBuilder {
+            pub fn id(mut self, id: impl Into<String>) -> Self {
+                self.id = Some(id.into());
+                self
+            }
+            pub fn storage_area(mut self, storage_area: impl Into<StorageArea>) -> Self {
+                self.storage_area = Some(storage_area.into());
+                self
+            }
+            pub fn key(mut self, key: impl Into<String>) -> Self {
+                let v = self.keys.get_or_insert(Vec::new());
+                v.push(key.into());
+                self
+            }
+            pub fn keys<I, S>(mut self, keys: I) -> Self
+            where
+                I: IntoIterator<Item = S>,
+                S: Into<String>,
+            {
+                let v = self.keys.get_or_insert(Vec::new());
+                for val in keys {
+                    v.push(val.into());
+                }
+                self
+            }
+            pub fn build(self) -> Result<GetStorageItemsParams, String> {
+                Ok(GetStorageItemsParams {
+                    id: self
+                        .id
+                        .ok_or_else(|| format!("Field `{}` is mandatory.", std::stringify!(id)))?,
+                    storage_area: self.storage_area.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(storage_area))
+                    })?,
+                    keys: self.keys,
+                })
+            }
+        }
+        impl GetStorageItemsParams {
+            pub const IDENTIFIER: &'static str = "Extensions.getStorageItems";
+        }
+        impl chromiumoxide_types::Method for GetStorageItemsParams {
+            fn identifier(&self) -> chromiumoxide_types::MethodId {
+                Self::IDENTIFIER.into()
+            }
+        }
+        impl chromiumoxide_types::MethodType for GetStorageItemsParams {
+            fn method_id() -> chromiumoxide_types::MethodId
+            where
+                Self: Sized,
+            {
+                Self::IDENTIFIER.into()
+            }
+        }
+        #[doc = "Gets data from extension storage in the given `storageArea`. If `keys` is\nspecified, these are used to filter the result.\n[getStorageItems](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-getStorageItems)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct GetStorageItemsReturns {
+            #[serde(rename = "data")]
+            pub data: serde_json::Value,
+        }
+        impl GetStorageItemsReturns {
+            pub fn new(data: impl Into<serde_json::Value>) -> Self {
+                Self { data: data.into() }
+            }
+        }
+        impl GetStorageItemsReturns {
+            pub fn builder() -> GetStorageItemsReturnsBuilder {
+                GetStorageItemsReturnsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct GetStorageItemsReturnsBuilder {
+            data: Option<serde_json::Value>,
+        }
+        impl GetStorageItemsReturnsBuilder {
+            pub fn data(mut self, data: impl Into<serde_json::Value>) -> Self {
+                self.data = Some(data.into());
+                self
+            }
+            pub fn build(self) -> Result<GetStorageItemsReturns, String> {
+                Ok(GetStorageItemsReturns {
+                    data: self.data.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(data))
+                    })?,
+                })
+            }
+        }
+        impl chromiumoxide_types::Command for GetStorageItemsParams {
+            type Response = GetStorageItemsReturns;
+        }
+        #[doc = "Removes `keys` from extension storage in the given `storageArea`.\n[removeStorageItems](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-removeStorageItems)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct RemoveStorageItemsParams {
+            #[doc = "ID of extension."]
+            #[serde(rename = "id")]
+            pub id: String,
+            #[doc = "StorageArea to remove data from."]
+            #[serde(rename = "storageArea")]
+            #[serde(deserialize_with = "super::super::de::deserialize_from_str")]
+            pub storage_area: StorageArea,
+            #[doc = "Keys to remove."]
+            #[serde(rename = "keys")]
+            #[serde(skip_serializing_if = "Vec::is_empty")]
+            pub keys: Vec<String>,
+        }
+        impl RemoveStorageItemsParams {
+            pub fn new(
+                id: impl Into<String>,
+                storage_area: impl Into<StorageArea>,
+                keys: Vec<String>,
+            ) -> Self {
+                Self {
+                    id: id.into(),
+                    storage_area: storage_area.into(),
+                    keys,
+                }
+            }
+        }
+        impl RemoveStorageItemsParams {
+            pub fn builder() -> RemoveStorageItemsParamsBuilder {
+                RemoveStorageItemsParamsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct RemoveStorageItemsParamsBuilder {
+            id: Option<String>,
+            storage_area: Option<StorageArea>,
+            keys: Option<Vec<String>>,
+        }
+        impl RemoveStorageItemsParamsBuilder {
+            pub fn id(mut self, id: impl Into<String>) -> Self {
+                self.id = Some(id.into());
+                self
+            }
+            pub fn storage_area(mut self, storage_area: impl Into<StorageArea>) -> Self {
+                self.storage_area = Some(storage_area.into());
+                self
+            }
+            pub fn key(mut self, key: impl Into<String>) -> Self {
+                let v = self.keys.get_or_insert(Vec::new());
+                v.push(key.into());
+                self
+            }
+            pub fn keys<I, S>(mut self, keys: I) -> Self
+            where
+                I: IntoIterator<Item = S>,
+                S: Into<String>,
+            {
+                let v = self.keys.get_or_insert(Vec::new());
+                for val in keys {
+                    v.push(val.into());
+                }
+                self
+            }
+            pub fn build(self) -> Result<RemoveStorageItemsParams, String> {
+                Ok(RemoveStorageItemsParams {
+                    id: self
+                        .id
+                        .ok_or_else(|| format!("Field `{}` is mandatory.", std::stringify!(id)))?,
+                    storage_area: self.storage_area.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(storage_area))
+                    })?,
+                    keys: self.keys.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(keys))
+                    })?,
+                })
+            }
+        }
+        impl RemoveStorageItemsParams {
+            pub const IDENTIFIER: &'static str = "Extensions.removeStorageItems";
+        }
+        impl chromiumoxide_types::Method for RemoveStorageItemsParams {
+            fn identifier(&self) -> chromiumoxide_types::MethodId {
+                Self::IDENTIFIER.into()
+            }
+        }
+        impl chromiumoxide_types::MethodType for RemoveStorageItemsParams {
+            fn method_id() -> chromiumoxide_types::MethodId
+            where
+                Self: Sized,
+            {
+                Self::IDENTIFIER.into()
+            }
+        }
+        #[doc = "Removes `keys` from extension storage in the given `storageArea`.\n[removeStorageItems](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-removeStorageItems)"]
+        #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+        pub struct RemoveStorageItemsReturns {}
+        impl chromiumoxide_types::Command for RemoveStorageItemsParams {
+            type Response = RemoveStorageItemsReturns;
+        }
+        #[doc = "Clears extension storage in the given `storageArea`.\n[clearStorageItems](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-clearStorageItems)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct ClearStorageItemsParams {
+            #[doc = "ID of extension."]
+            #[serde(rename = "id")]
+            pub id: String,
+            #[doc = "StorageArea to remove data from."]
+            #[serde(rename = "storageArea")]
+            #[serde(deserialize_with = "super::super::de::deserialize_from_str")]
+            pub storage_area: StorageArea,
+        }
+        impl ClearStorageItemsParams {
+            pub fn new(id: impl Into<String>, storage_area: impl Into<StorageArea>) -> Self {
+                Self {
+                    id: id.into(),
+                    storage_area: storage_area.into(),
+                }
+            }
+        }
+        impl ClearStorageItemsParams {
+            pub fn builder() -> ClearStorageItemsParamsBuilder {
+                ClearStorageItemsParamsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct ClearStorageItemsParamsBuilder {
+            id: Option<String>,
+            storage_area: Option<StorageArea>,
+        }
+        impl ClearStorageItemsParamsBuilder {
+            pub fn id(mut self, id: impl Into<String>) -> Self {
+                self.id = Some(id.into());
+                self
+            }
+            pub fn storage_area(mut self, storage_area: impl Into<StorageArea>) -> Self {
+                self.storage_area = Some(storage_area.into());
+                self
+            }
+            pub fn build(self) -> Result<ClearStorageItemsParams, String> {
+                Ok(ClearStorageItemsParams {
+                    id: self
+                        .id
+                        .ok_or_else(|| format!("Field `{}` is mandatory.", std::stringify!(id)))?,
+                    storage_area: self.storage_area.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(storage_area))
+                    })?,
+                })
+            }
+        }
+        impl ClearStorageItemsParams {
+            pub const IDENTIFIER: &'static str = "Extensions.clearStorageItems";
+        }
+        impl chromiumoxide_types::Method for ClearStorageItemsParams {
+            fn identifier(&self) -> chromiumoxide_types::MethodId {
+                Self::IDENTIFIER.into()
+            }
+        }
+        impl chromiumoxide_types::MethodType for ClearStorageItemsParams {
+            fn method_id() -> chromiumoxide_types::MethodId
+            where
+                Self: Sized,
+            {
+                Self::IDENTIFIER.into()
+            }
+        }
+        #[doc = "Clears extension storage in the given `storageArea`.\n[clearStorageItems](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-clearStorageItems)"]
+        #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+        pub struct ClearStorageItemsReturns {}
+        impl chromiumoxide_types::Command for ClearStorageItemsParams {
+            type Response = ClearStorageItemsReturns;
+        }
+        #[doc = "Sets `values` in extension storage in the given `storageArea`. The provided `values`\nwill be merged with existing values in the storage area.\n[setStorageItems](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-setStorageItems)"]
+        #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+        pub struct SetStorageItemsParams {
+            #[doc = "ID of extension."]
+            #[serde(rename = "id")]
+            pub id: String,
+            #[doc = "StorageArea to set data in."]
+            #[serde(rename = "storageArea")]
+            #[serde(deserialize_with = "super::super::de::deserialize_from_str")]
+            pub storage_area: StorageArea,
+            #[doc = "Values to set."]
+            #[serde(rename = "values")]
+            pub values: serde_json::Value,
+        }
+        impl SetStorageItemsParams {
+            pub fn new(
+                id: impl Into<String>,
+                storage_area: impl Into<StorageArea>,
+                values: impl Into<serde_json::Value>,
+            ) -> Self {
+                Self {
+                    id: id.into(),
+                    storage_area: storage_area.into(),
+                    values: values.into(),
+                }
+            }
+        }
+        impl SetStorageItemsParams {
+            pub fn builder() -> SetStorageItemsParamsBuilder {
+                SetStorageItemsParamsBuilder::default()
+            }
+        }
+        #[derive(Default, Clone)]
+        pub struct SetStorageItemsParamsBuilder {
+            id: Option<String>,
+            storage_area: Option<StorageArea>,
+            values: Option<serde_json::Value>,
+        }
+        impl SetStorageItemsParamsBuilder {
+            pub fn id(mut self, id: impl Into<String>) -> Self {
+                self.id = Some(id.into());
+                self
+            }
+            pub fn storage_area(mut self, storage_area: impl Into<StorageArea>) -> Self {
+                self.storage_area = Some(storage_area.into());
+                self
+            }
+            pub fn values(mut self, values: impl Into<serde_json::Value>) -> Self {
+                self.values = Some(values.into());
+                self
+            }
+            pub fn build(self) -> Result<SetStorageItemsParams, String> {
+                Ok(SetStorageItemsParams {
+                    id: self
+                        .id
+                        .ok_or_else(|| format!("Field `{}` is mandatory.", std::stringify!(id)))?,
+                    storage_area: self.storage_area.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(storage_area))
+                    })?,
+                    values: self.values.ok_or_else(|| {
+                        format!("Field `{}` is mandatory.", std::stringify!(values))
+                    })?,
+                })
+            }
+        }
+        impl SetStorageItemsParams {
+            pub const IDENTIFIER: &'static str = "Extensions.setStorageItems";
+        }
+        impl chromiumoxide_types::Method for SetStorageItemsParams {
+            fn identifier(&self) -> chromiumoxide_types::MethodId {
+                Self::IDENTIFIER.into()
+            }
+        }
+        impl chromiumoxide_types::MethodType for SetStorageItemsParams {
+            fn method_id() -> chromiumoxide_types::MethodId
+            where
+                Self: Sized,
+            {
+                Self::IDENTIFIER.into()
+            }
+        }
+        #[doc = "Sets `values` in extension storage in the given `storageArea`. The provided `values`\nwill be merged with existing values in the storage area.\n[setStorageItems](https://chromedevtools.github.io/devtools-protocol/tot/Extensions/#method-setStorageItems)"]
+        #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+        pub struct SetStorageItemsReturns {}
+        impl chromiumoxide_types::Command for SetStorageItemsParams {
+            type Response = SetStorageItemsReturns;
+        }
+    }
     #[doc = "A domain for letting clients substitute browser's network layer with client code."]
     pub mod fetch {
         use serde::{Deserialize, Serialize};

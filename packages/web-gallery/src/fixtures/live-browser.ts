@@ -3,7 +3,7 @@
  * draws a page, encodes it as the Host's capture would, and speaks the live
  * protocol, so the view's pictures, input, controls and dialogs show here.
  */
-import { LIVE_CAPTURE_UNAVAILABLE, LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/plugin'
+import { LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/plugin'
 import type {
   BrowserTab,
   BrowserViewport,
@@ -216,6 +216,8 @@ class GalleryBrowserView {
   private pressed = false
   private overText = false
   private status = 'open'
+  /** Whether the Host stopped capturing until the viewer asks again, as after a failed recreation of its extension. */
+  private stopped = false
 
   constructor(
     private readonly handlers: UserStreamHandlers,
@@ -231,6 +233,8 @@ class GalleryBrowserView {
     private readonly downloads: GalleryDownloads,
     /** Whether the Host holds back what its browser is doing, so the page has not read it yet. */
     private readonly unread: () => boolean,
+    /** The viewer asked to capture again, which the Host does for every view. */
+    private readonly recaptured: () => void,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
@@ -238,6 +242,18 @@ class GalleryBrowserView {
 
   private send(value: LiveModuleMessage): void {
     this.handlers.data(message(value))
+  }
+
+  /** Even recreating the capture extension failed: the pictures stop until the viewer's Retry. */
+  stopCapture(): void {
+    this.stopped = true
+    this.restart()
+  }
+
+  /** The Host recreated its capture extension: the pictures come back. */
+  resumeCapture(): void {
+    this.stopped = false
+    this.restart()
   }
 
   /** Something the Host could not do for this viewer, as the module tells it. */
@@ -387,6 +403,9 @@ class GalleryBrowserView {
       case 'keyframe':
         this.restart()
         break
+      case 'recapture':
+        this.recaptured()
+        break
       default:
         break
     }
@@ -419,6 +438,10 @@ class GalleryBrowserView {
     this.send({ type: 'downloads', tab: tab.id, downloads: this.downloads.of(tab.id) })
     if (!this.capture) {
       this.notice(LIVE_CAPTURE_UNAVAILABLE, 'this CPU reports SME without SVE, and Chrome cannot capture on it')
+      return
+    }
+    if (this.stopped) {
+      this.notice(LIVE_CAPTURE_STOPPED, 'the capture extension could not be recreated')
       return
     }
     // A real Host can report controls before its encoder starts a generation.
@@ -476,7 +499,10 @@ class GalleryBrowserView {
     const viewport = tab.viewport
     const ratio = viewport.devicePixelRatio
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
-    context.fillStyle = '#ffffff'
+    // The Host's Chrome runs in the user's scheme, here the gallery's: it paints an empty page #121212 in
+    // the dark one, and a page of its own, which declares no scheme, on white.
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark'
+    context.fillStyle = tab.url === 'about:blank' && dark ? '#121212' : '#ffffff'
     context.fillRect(0, 0, viewport.width, viewport.height)
     if (tab.url === 'about:blank') {
       return
@@ -578,6 +604,8 @@ export interface GalleryBrowser {
   agentOpens(url: string, options: { show: boolean }): void
   /** The Host fails what a viewer asked, such as its input, and tells every view, as the module's notice does. */
   fail(code: string, message: string): void
+  /** Even recreating the capture extension fails on the Host: every view loses its pictures and says so, until Retry. */
+  stopCapture(): void
   stream: OpenUserStream
   /** What the Host holds of the browser's package. */
   installed(): readonly HostArtifact[]
@@ -745,9 +773,32 @@ export function galleryBrowser(
     },
   }
 
+  /** Whether the Host stopped capturing, as after a failed recreation of its extension, until a viewer's Retry. */
+  let captureStopped = false
+  /** A viewer's Retry: the Host recreates its extension, and every view's pictures come back. */
+  function recaptured(): void {
+    captureStopped = false
+    for (const view of views) {
+      view.resumeCapture()
+    }
+  }
+
   const stream: OpenUserStream = (handlers) => {
-    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture, pageOpens, downloads, () => held.value === 'connecting')
+    const browser = new GalleryBrowserView(
+      handlers,
+      tabs,
+      () => lists,
+      capture,
+      pageOpens,
+      downloads,
+      () => held.value === 'connecting',
+      recaptured,
+    )
     views.add(browser)
+    // A Host that stopped capturing says so to a view that opens meanwhile.
+    if (captureStopped) {
+      browser.stopCapture()
+    }
     return {
       send: (bytes) => browser.receive(bytes),
       close: () => {
@@ -928,6 +979,12 @@ export function galleryBrowser(
     fail: (code, message) => {
       for (const view of views) {
         view.notice(code, message)
+      }
+    },
+    stopCapture: () => {
+      captureStopped = true
+      for (const view of views) {
+        view.stopCapture()
       }
     },
     stream,

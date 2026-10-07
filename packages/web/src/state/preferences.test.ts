@@ -5,6 +5,7 @@ import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { usePreferences } from './preferences'
 import { useProduct } from './product'
+import { setThemeChoice } from '@demicodes/web-ui/theme/appTheme'
 
 const realFetch = globalThis.fetch
 const realLanguages = Object.getOwnPropertyDescriptor(navigator, 'languages')
@@ -51,7 +52,7 @@ afterEach(() => {
   }
 })
 
-test('the web browser reports its time zone and languages once, and again when they differ from the stored ones', async () => {
+test('the web browser reports its time zone, languages and color scheme once, and again what differs from the stored ones', async () => {
   useProduct().start()
   channels.last().connect(productState({ preferences: saved }))
   const preferences = usePreferences()
@@ -59,16 +60,22 @@ test('the web browser reports its time zone and languages once, and again when t
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     languages: ['zh-CN', 'en'],
   }
-  await preferences.reportLocale()
-  expect(patches).toEqual([{ locale }])
+  setThemeChoice('dark')
+  await preferences.reportBrowser()
+  expect(patches).toEqual([{ locale, colorScheme: 'dark' }])
   expect(useProduct().snapshot?.preferences.locale).toEqual(locale)
-  await preferences.reportLocale()
+  await preferences.reportBrowser()
   expect(patches).toHaveLength(1)
 
   // Another web browser of the same user reported its own, which the channel
   // brings; this one reports again.
   saved = { ...saved, locale: { timeZone: 'Europe/Berlin', languages: ['de-DE'] } }
   channels.last().send({ type: 'preferences', preferences: saved })
-  await preferences.reportLocale()
-  expect(patches).toEqual([{ locale }, { locale }])
+  await preferences.reportBrowser()
+  expect(patches).toEqual([{ locale, colorScheme: 'dark' }, { locale }])
+
+  // The page turns light: the conversation browser starts light from now on.
+  setThemeChoice('light')
+  await preferences.reportBrowser()
+  expect(patches.at(-1)).toEqual({ colorScheme: 'light' })
 })

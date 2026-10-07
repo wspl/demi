@@ -6,7 +6,9 @@
 use std::collections::BTreeMap;
 use std::time::Duration;
 
-use demi_command_protocol::{CommandLocale, PackageDescriptor, conversation_name, without_nul};
+use demi_command_protocol::{
+    ColorScheme, CommandLocale, PackageDescriptor, conversation_name, without_nul,
+};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -41,8 +43,8 @@ pub struct ServiceBinding {
 
 /// What the runner needs of the introducing user to act as the relay
 /// would, which only the backend knows: the user streams the user's
-/// plugins declare, by name, and the locale a command of the user's
-/// receives.
+/// plugins declare, by name, and the locale and color scheme a command of
+/// the user's receives.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Introduction {
@@ -50,6 +52,8 @@ pub struct Introduction {
     pub streams: BTreeMap<String, ServiceBinding>,
     #[garde(dive)]
     pub locale: CommandLocale,
+    #[garde(skip)]
+    pub color_scheme: ColorScheme,
 }
 
 /// Why a runner did not answer an offer.

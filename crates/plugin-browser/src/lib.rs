@@ -136,6 +136,11 @@ fn live_stream() -> Stream {
             "A notice's code when the watched tab's capture failed.",
             live::CAPTURE_FAILED,
         )
+        .constant(
+            "LIVE_CAPTURE_STOPPED",
+            "A notice's code when the Host stopped trying to capture until the viewer asks again.",
+            live::CAPTURE_STOPPED,
+        )
 }
 
 /// The web preview's user stream (`preview.md` § The stream), with the

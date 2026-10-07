@@ -3,15 +3,18 @@
 //! captures over it, and receives their encoded frames. It binds before Chrome
 //! starts, since the extension learns its address from its own files, and
 //! accepts only this environment's token. One owner task, the capture
-//! channel, keeps the extension's connection and routes the captures on it.
+//! channel, keeps the extension's connection and routes the captures on it,
+//! and recreates the extension when it cannot work: Chrome may never start
+//! it, or end its document, and the extension never dials again by itself.
 
-use std::{collections::HashMap, future::Future, pin::Pin};
+use std::{collections::HashMap, future::Future, pin::Pin, time::Duration};
 
 use bytes::Bytes;
-use futures_util::{SinkExt, StreamExt, stream::FuturesUnordered};
+use futures_util::{SinkExt, StreamExt, future::BoxFuture, stream::FuturesUnordered};
 use tokio::{
     net::{TcpListener, TcpStream},
     sync::{mpsc, oneshot, watch},
+    time::Instant,
 };
 use tokio_tungstenite::{
     WebSocketStream,
@@ -31,6 +34,17 @@ use crate::driver::operation::{BrowserError, Result};
 /// Frames a capture's consumer has not taken yet; beyond them the consumer
 /// is behind and the newest frames are dropped until it asks for a key frame.
 const FRAME_QUEUE: usize = 8;
+
+/// How long a capture waits for the extension's connection, and how long a
+/// recreated extension has to connect before it is recreated again. Chrome
+/// starts the extension within about a second of its own start or of a
+/// reload.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Loads the capture extension into the running Chrome again, which ends
+/// its worker, its document and their captures and starts them anew; the
+/// pages and their state stay.
+pub type Recreate = Box<dyn Fn() -> BoxFuture<'static, Result<()>> + Send + Sync>;
 
 /// Why this Host cannot capture, or none (`live-view.md` §
 /// Capture). On Linux arm64, Chrome's SME code faults on a CPU that reports
@@ -266,6 +280,10 @@ enum ChannelRequest {
     },
     /// An ack, a key frame request or an encoding for a capture.
     Command(CaptureCommand),
+    /// A capture waited for the extension in vain.
+    Recreate,
+    /// The viewer asks to capture again after a recreation failed.
+    Retry,
 }
 
 /// What an extension connection's reader hands the owner.
@@ -283,14 +301,19 @@ enum Inbound {
 pub struct CaptureChannel {
     requests: mpsc::Sender<ChannelRequest>,
     connected: watch::Receiver<bool>,
+    /// Why captures wait for the viewer to ask again, once even recreating
+    /// the extension failed.
+    stopped: watch::Receiver<Option<String>>,
 }
 
 impl CaptureChannel {
-    /// Starts the channel's owner; it ends with the environment.
-    pub fn open(tasks: &TaskTracker, ended: CancellationToken) -> Self {
+    /// Starts the channel's owner, which recreates the extension with
+    /// `recreate`; it ends with the environment.
+    pub fn open(tasks: &TaskTracker, ended: CancellationToken, recreate: Recreate) -> Self {
         let (requests, received) = mpsc::channel(REQUESTS);
         let (inbound, routed) = mpsc::channel(INBOUND);
         let (connected, watched) = watch::channel(false);
+        let (stopped, halted) = watch::channel(None);
         let owner = Owner {
             tasks: tasks.clone(),
             ended: ended.clone(),
@@ -302,17 +325,36 @@ impl CaptureChannel {
             connected,
             inbound,
             closings: FuturesUnordered::new(),
+            recreate,
+            recreated: None,
+            stopped,
         };
         tasks.spawn(owner.run(received, routed));
         Self {
             requests,
             connected: watched,
+            stopped: halted,
         }
     }
 
+    /// Why captures stop until [`CaptureChannel::retry`], while they do.
+    pub fn stopped(&self) -> watch::Receiver<Option<String>> {
+        self.stopped.clone()
+    }
+
+    /// Recreates the extension once more after a recreation failed, and
+    /// lets captures start again.
+    pub async fn retry(&self) {
+        // The owner ended with the environment, which has no captures left.
+        let _ended = self.requests.send(ChannelRequest::Retry).await;
+    }
+
     /// Captures the tab of CDP `target` at `width` × `height` pixels, once
-    /// the extension has connected, which it does as Chrome starts. `hold`
-    /// lasts until Chrome released the capture.
+    /// the extension has connected, which it does as Chrome starts; an
+    /// extension that does not connect in time is recreated for the next
+    /// attempt, and none starts once even a recreation failed, until
+    /// [`CaptureChannel::retry`]. `hold` lasts until Chrome released the
+    /// capture.
     pub async fn start(
         &self,
         target: &str,
@@ -327,19 +369,29 @@ impl CaptureChannel {
             return Err(BrowserError::UnsupportedCapability(reason.into()));
         }
         let mut connected = self.connected.clone();
+        let mut stopped = self.stopped.clone();
         let connection = async {
             tokio::select! {
                 _ = cancel.cancelled() => Err(BrowserError::Cancelled),
                 connected = connected.wait_for(|connected| *connected) => {
                     connected.map(|_| ()).map_err(|_| BrowserError::Closed)
                 }
+                stopped = stopped.wait_for(Option::is_some) => match stopped {
+                    Ok(reason) => Err(BrowserError::CaptureStopped(
+                        reason.clone().expect("the wait ends on a reason"),
+                    )),
+                    Err(_) => Err(BrowserError::Closed),
+                },
             }
         };
-        tokio::time::timeout(std::time::Duration::from_secs(10), connection)
-            .await
-            .map_err(|_| {
-                BrowserError::Unavailable("the capture extension did not connect".into())
-            })??;
+        let Ok(connection) = tokio::time::timeout(CONNECT_TIMEOUT, connection).await else {
+            // The owner ended with the environment, as this start does then.
+            let _ended = self.requests.send(ChannelRequest::Recreate).await;
+            return Err(BrowserError::Capture(
+                "the capture extension did not connect".into(),
+            ));
+        };
+        connection?;
         let (reply, answer) = oneshot::channel();
         self.requests
             .send(ChannelRequest::Start {
@@ -422,6 +474,10 @@ struct Owner {
     inbound: mpsc::Sender<(u64, Inbound)>,
     /// Each capture's queue closing, which stops the capture.
     closings: FuturesUnordered<Closing>,
+    recreate: Recreate,
+    /// When the extension was last recreated, until it connects again.
+    recreated: Option<Instant>,
+    stopped: watch::Sender<Option<String>>,
 }
 
 impl Owner {
@@ -474,6 +530,12 @@ impl Owner {
                     let _dropped = connection.commands.try_send(command);
                 }
             }
+            ChannelRequest::Recreate => self.recreate("it did not connect"),
+            ChannelRequest::Retry => {
+                self.stopped.send_replace(None);
+                self.recreated = None;
+                self.recreate("the viewer asked again");
+            }
         }
     }
 
@@ -481,6 +543,8 @@ impl Owner {
     /// first, so its late teardown cannot fail their replacements.
     fn connected(&mut self, socket: WebSocketStream<TcpStream>) {
         self.disconnect();
+        self.recreated = None;
+        self.stopped.send_replace(None);
         self.generation += 1;
         let (commands, outgoing) = mpsc::channel(EXTENSION_COMMANDS);
         let stop = self.ended.child_token();
@@ -506,7 +570,7 @@ impl Owner {
         hold: CaptureHold,
     ) -> Result<(u32, mpsc::Receiver<CaptureEvent>)> {
         let Some(connection) = &self.connection else {
-            return Err(BrowserError::Unavailable(
+            return Err(BrowserError::Capture(
                 "the capture extension is not connected".into(),
             ));
         };
@@ -521,8 +585,8 @@ impl Owner {
             bitrate,
         };
         if connection.commands.try_send(command).is_err() {
-            self.disconnect();
-            return Err(BrowserError::Unavailable(
+            self.recreate("it is not keeping up");
+            return Err(BrowserError::Capture(
                 "the capture extension is not keeping up".into(),
             ));
         }
@@ -549,7 +613,7 @@ impl Owner {
                 .try_send(CaptureCommand::Stop { capture })
                 .is_err()
         {
-            self.disconnect();
+            self.recreate("it is not keeping up");
         }
     }
 
@@ -571,8 +635,11 @@ impl Owner {
                 extension::CaptureEvent::Error { capture, message } => {
                     self.deliver(capture, CaptureEvent::Failed(message))
                 }
+                extension::CaptureEvent::Recreate {} => {
+                    self.recreate("Chrome keeps a capture it cannot release")
+                }
             },
-            Inbound::Ended => self.disconnect(),
+            Inbound::Ended => self.recreate("its connection ended"),
         }
     }
 
@@ -582,6 +649,38 @@ impl Owner {
         if let Some(events) = self.routes.get(&capture) {
             let _behind = events.try_send(event);
         }
+    }
+
+    /// Ends the connection and loads the extension again, since the
+    /// extension does not dial again by itself; its captures fail, and their
+    /// streams restart them once the extension connects. A recreated
+    /// extension has the time to connect before it is recreated again. A
+    /// recreation that fails stops captures until the viewer asks again.
+    fn recreate(&mut self, why: &str) {
+        self.disconnect();
+        if self
+            .recreated
+            .is_some_and(|recreated| recreated.elapsed() < CONNECT_TIMEOUT)
+        {
+            return;
+        }
+        self.recreated = Some(Instant::now());
+        tracing::warn!("recreating the capture extension: {why}");
+        let recreation = (self.recreate)();
+        let ended = self.ended.clone();
+        let stopped = self.stopped.clone();
+        self.tasks.spawn(async move {
+            tokio::select! {
+                // The extension ends with the browser.
+                _ = ended.cancelled() => {}
+                recreated = recreation => if let Err(error) = recreated {
+                    tracing::warn!("the capture extension could not be recreated: {error}");
+                    stopped.send_replace(Some(format!(
+                        "the capture extension could not be recreated: {error}"
+                    )));
+                }
+            }
+        });
     }
 
     /// Ends the connection; its captures fail, and their streams restart
@@ -706,5 +805,34 @@ mod tests {
         assert!(!sme_without_sve(hwcap, 0x32_6181));
         // A CPU with both, such as a server with SVE and SME.
         assert!(!sme_without_sve(hwcap | 1 << 22, 0x1a0_3fb2_6181));
+    }
+
+    /// A capture that waits in vain for the extension, as when Chrome never
+    /// started its worker, has the extension recreated for the next attempt.
+    #[tokio::test(start_paused = true)]
+    async fn a_capture_that_waits_in_vain_recreates_the_extension() {
+        let tasks = TaskTracker::new();
+        let ended = CancellationToken::new();
+        let (recreated, mut recreations) = mpsc::unbounded_channel();
+        let channel = CaptureChannel::open(
+            &tasks,
+            ended.clone(),
+            Box::new(move || {
+                // The test outlives the channel: its receiver is never gone.
+                let _sent = recreated.send(());
+                Box::pin(async { Ok(()) })
+            }),
+        );
+        let gate = CaptureGate::default();
+        let hold = gate.capture().expect("no resize is under way");
+        let started = channel
+            .start("target", 800, 600, 30, 1_000_000, hold, &CancellationToken::new())
+            .await;
+        assert!(matches!(started, Err(BrowserError::Capture(_))));
+        let recreation = tokio::time::timeout(Duration::from_secs(1), recreations.recv()).await;
+        assert!(matches!(recreation, Ok(Some(()))), "the extension is recreated");
+        ended.cancel();
+        tasks.close();
+        tasks.wait().await;
     }
 }

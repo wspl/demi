@@ -534,6 +534,23 @@ test('a notice that leaves no picture stands in its place until a picture; any o
   expect(told).toEqual(['input_failed', 'timeout'])
 })
 
+test('a Host that stopped trying to capture is asked again by Retry, and says it tries until a picture', () => {
+  const view = session()
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
+  // Retry is only for a Host that stopped: one still trying is not asked.
+  view.receive(moduleFrame({ type: 'notice', code: 'capture_failed', message: 'capture extension disconnected' }))
+  view.live.recapture()
+  expect(view.sent.filter((message) => message.type === 'recapture')).toHaveLength(0)
+  view.receive(moduleFrame({ type: 'notice', code: 'capture_stopped', message: 'the capture extension could not be recreated' }))
+  expect(view.live.state.pictureless).toBe('capture_stopped')
+  view.live.recapture()
+  expect(view.sent.filter((message) => message.type === 'recapture')).toHaveLength(1)
+  expect(view.live.state.pictureless).toBe('capture_failed')
+  view.receive(video(TAB.id, 1, 1, true, [0, 0, 0, 1]))
+  expect(view.live.state.pictureless).toBeNull()
+})
+
 test('a message the protocol refuses is never sent, so the module does not end the view', () => {
   const view = session()
   view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))

@@ -30,7 +30,7 @@ use demi_command_package_browser_chrome::tabs::{
 };
 use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
-    CommandLocale, Completion, ConversationRequest, ConversationStatus,
+    ColorScheme, CommandLocale, Completion, ConversationRequest, ConversationStatus,
     MAX_MEDIUM_BYTES,
     StdoutTarget,
 };
@@ -96,10 +96,12 @@ struct ConversationBrowser {
     numbers: TabNumbers,
 }
 
-/// What starts a conversation's browser: the starting caller's locale.
+/// What starts a conversation's browser: the starting caller's locale and
+/// color scheme.
 #[derive(Clone)]
 pub(crate) struct Starting {
     pub(crate) locale: CommandLocale,
+    pub(crate) color_scheme: ColorScheme,
 }
 
 enum Request {
@@ -452,7 +454,8 @@ impl Owner {
         }
     }
 
-    /// Starts the conversation's Chrome in the starting caller's locale,
+    /// Starts the conversation's Chrome in the starting caller's locale and
+    /// color scheme,
     /// from the installation the Host holds (`browser.md` § Browser
     /// distribution).
     fn start(&mut self, starting: Starting) -> watch::Receiver<Readiness> {
@@ -467,7 +470,7 @@ impl Owner {
             let result = async {
                 let installation = chrome.installation().await?;
                 with_browser(
-                    LaunchOptions::pinned(installation, starting.locale)?,
+                    LaunchOptions::pinned(installation, starting.locale, starting.color_scheme)?,
                     numbers,
                     owner_stop.clone(),
                     move |environment| async move {
@@ -995,6 +998,7 @@ impl Conversations {
         );
         let starting = starts.then(|| Starting {
             locale: context.request.context.locale.clone(),
+            color_scheme: context.request.context.color_scheme,
         });
         let environment = browser.environment(starting.as_ref(), cancellation).await?;
         let Some(environment) = environment else {

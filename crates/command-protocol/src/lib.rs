@@ -26,7 +26,7 @@ pub use edits::{
 };
 pub use invocation::{
     COMMAND_LOCALE_LANGUAGES, CONVERSATION_NAME_CHARS, CommandCaller, CommandContext, CommandError,
-    CommandLocale, Completion, Invocation, LocalInvocation, conversation_name, without_nul,
+    ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, conversation_name, without_nul,
 };
 pub use media::{MAX_MEDIUM_BYTES, StdoutTarget, sniff_media_type};
 pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};

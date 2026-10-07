@@ -68,6 +68,7 @@ async fn draw(client: &Client, conversation: &str, count: u32) -> String {
             operation: "draw".into(),
             invocation_id: "draw".into(),
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: conversation.into(),
                 caller: CommandCaller::agent(0),
                 locale: CommandLocale {

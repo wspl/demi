@@ -35,6 +35,7 @@ async fn call(
 ) -> (Completion, Vec<u8>, Vec<u8>) {
     let request = Invocation {
         context: CommandContext {
+            color_scheme: demi_command_protocol::ColorScheme::Light,
             conversation: "file-test-conversation".into(),
             caller: CommandCaller::agent(1),
             locale: CommandLocale {

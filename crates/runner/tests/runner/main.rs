@@ -175,6 +175,7 @@ async fn next(socket: &mut WebSocketStream<TcpStream>, process: &RunnerProcess) 
 /// A command context for jobs that run no declared command.
 fn context() -> CommandContext {
     CommandContext {
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         conversation: "conversation".into(),
         caller: CommandCaller::agent(1),
         locale: CommandLocale {

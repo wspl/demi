@@ -578,6 +578,7 @@ backend, the runner, and every native service link:
 | `conversation` | The conversation the work belongs to. Work that belongs to no conversation, such as installing the Claude Code CLI after an account is added, names the provider entry it serves instead. Either is a name of ASCII letters, digits, `-` and `_`, at most 64 characters, which the wire checks where it is decoded, as it checks the conversation a release names: the runner names a job's directory after it ([Pipes and output](runner.md#pipes-and-output)). |
 | `caller` | Who started the work: `agent`, with the agent's `number` as the model knows it ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)), or `user`, for a [user stream](#user-streams). |
 | `locale` | The time zone, an IANA name, and the languages, BCP 47 tags in preference order, that the web app last reported for the conversation's user ([User preferences](../product/web-api.md#user-preferences)), or `UTC` and `en-US` until it reports them. |
+| `colorScheme` | `light` or `dark`, the scheme the web app last reported for the user, `light` until it reports one; the conversation browser starts with it ([Native driver](../browser/browser.md#native-driver)). |
 
 The backend is the context's only source, and nothing reads it from
 environment variables: a script can change those, and every program the job

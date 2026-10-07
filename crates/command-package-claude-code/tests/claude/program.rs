@@ -55,6 +55,7 @@ async fn invoke(service: &ServiceProcess, operation: &str, input: Vec<u8>) -> (V
             operation: operation.into(),
             invocation_id: "invocation".into(),
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: "conversation".into(),
                 caller: CommandCaller::agent(1),
                 locale: CommandLocale {

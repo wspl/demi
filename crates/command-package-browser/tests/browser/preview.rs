@@ -75,6 +75,7 @@ async fn the_program_serves_the_preview_stream_and_keeps_its_jar() {
             operation: "browser.preview".into(),
             invocation_id: "preview".into(),
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: "conversation".into(),
                 caller: CommandCaller::User {},
                 locale: CommandLocale {
@@ -170,6 +171,7 @@ async fn the_program_names_the_label_an_address_opens_under() {
                 operation: "browser.preview_open".into(),
                 invocation_id: "opening".into(),
                 context: CommandContext {
+                    color_scheme: demi_command_protocol::ColorScheme::Light,
                     conversation: "conversation".into(),
                     caller: CommandCaller::User {},
                     locale: CommandLocale {

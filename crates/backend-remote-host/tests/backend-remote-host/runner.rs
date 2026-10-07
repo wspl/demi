@@ -1637,6 +1637,7 @@ async fn a_running_job_keeps_its_manifest_while_the_next_job_installs_another() 
 /// The conversation's user, as a live view calls a service.
 fn user_context() -> CommandContext {
     CommandContext {
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         caller: CommandCaller::User {},
         ..test_command_context()
     }

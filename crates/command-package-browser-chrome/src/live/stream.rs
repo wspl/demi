@@ -53,6 +53,8 @@ pub(crate) enum Event {
     Unavailable(String),
     /// The capture failed for this reason; the stream tries again.
     Failed(String),
+    /// Captures stopped for this reason until the viewer asks again.
+    Stopped(String),
 }
 
 /// What a viewer last told its tab's stream.
@@ -235,6 +237,9 @@ async fn run(
     let mut unavailable: Option<String> = None;
     // Why the viewers get no picture, as they were last told.
     let mut failure: Option<String> = None;
+    // Why captures stopped until a viewer asks again, while they do.
+    let mut halted = captures.stopped();
+    let mut stopped: Option<String> = None;
     // Ends a capture start that waits for the extension when the tab closes
     // or the stream ends.
     let stop = tab.ended().child_token();
@@ -282,6 +287,7 @@ async fn run(
         } else if running.is_none()
             && ready
             && unavailable.is_none()
+            && stopped.is_none()
             && Instant::now() >= attempt
             // A resize that began since `resizing` was read wakes the loop.
             && let Some(hold) = tab.state().capture.capture()
@@ -309,6 +315,15 @@ async fn run(
                     }
                     unavailable = Some(reason);
                 }
+                // The channel says when captures may start again.
+                Err(BrowserError::CaptureStopped(reason)) => {
+                    tracing::warn!("live view capture of {} stopped: {reason}", tab.id());
+                    for viewer in viewers.values() {
+                        let _behind = viewer.events.try_send(Event::Stopped(reason.clone()));
+                    }
+                    failure = None;
+                    stopped = Some(reason);
+                }
                 Err(error) => {
                     tracing::warn!("live view capture of {}: {error}", tab.id());
                     report(&viewers, &mut failure, error.to_string());
@@ -325,8 +340,12 @@ async fn run(
         }
         // Only a start that waits for its retry time sleeps: until the hub
         // sized the tab, or while it resizes, the loop waits for them.
-        let waiting =
-            running.is_none() && ready && !resizing && unavailable.is_none() && !viewers.is_empty();
+        let waiting = running.is_none()
+            && ready
+            && !resizing
+            && unavailable.is_none()
+            && stopped.is_none()
+            && !viewers.is_empty();
         let event = async {
             match running.as_mut() {
                 Some(running) => running.capture.events.recv().await,
@@ -343,6 +362,18 @@ async fn run(
                 return;
             },
             _ = tokio::time::sleep_until(attempt), if waiting => {}
+            // A viewer asked again, or the extension came back by itself.
+            resumed = halted.changed(), if stopped.is_some() => {
+                // The channel ends with the environment, as the tab does.
+                if resumed.is_err() {
+                    return;
+                }
+                if halted.borrow_and_update().is_none() {
+                    stopped = None;
+                    retry = Duration::ZERO;
+                    attempt = Instant::now();
+                }
+            }
             changed = members.changed() => {
                 // The hub drops a stream nobody watches.
                 if changed.is_err() {
@@ -359,6 +390,9 @@ async fn run(
                     }
                     if let Some(reason) = &failure {
                         let _behind = member.events.try_send(Event::Failed(reason.clone()));
+                    }
+                    if let Some(reason) = &stopped {
+                        let _behind = member.events.try_send(Event::Stopped(reason.clone()));
                     }
                     if let Some(running) = &running {
                         if let Some(restart) = running.restart() {

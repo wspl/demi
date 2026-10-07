@@ -87,6 +87,7 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
     preferences.last_model = patch.last_model.or(preferences.last_model);
     preferences.last_project_host = patch.last_project_host.or(preferences.last_project_host);
     preferences.locale = patch.locale.or(preferences.locale);
+    preferences.color_scheme = patch.color_scheme.or(preferences.color_scheme);
     if let Some(change) = patch.context_limit {
         set_context_limit(&mut preferences.context_limits, change);
     }
