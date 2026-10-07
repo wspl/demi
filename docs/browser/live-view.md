@@ -703,7 +703,7 @@ and `reload` names the number of the last list before the request started.
 | `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a job | Is not woken: every bound tab is closed |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |
 | `history` | `tab`, `action`: `back`, `forward` or `reload` | Moves the tab or reloads it | Is not woken: refused with `host_stopped` |
-| `stop` | `tab` | Stops loading the tab's page, as a browser's Stop does; a tab that is not loading is left as it is. Its answer names the tab list number as `history`'s does | Is not woken: refused with `host_stopped` |
+| `stop` | `tab` | Stops loading the tab's page, as a browser's Stop does; a tab that is not loading is left as it is. Its answer names the tab list number as `history`'s does. It runs the package's `browser.stop` operation, which only a `user` caller reaches: the agent waits for its commands rather than stopping a load, so `demi browser` has no `stop` command | Is not woken: refused with `host_stopped` |
 
 A tab the browser does not have is refused with the reason `tab_not_found`,
 and a refusal of the browser's operation is refused with the operation's own
