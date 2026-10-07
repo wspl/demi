@@ -11,6 +11,7 @@ import {
   Sparkles
 } from '@lucide/vue'
 import { IN_DEVELOPMENT } from '../ui/disabled'
+import { APP_SHORTCUTS } from './shortcuts'
 import type { SettingsNavGroup } from './types'
 
 const deferred = { disabled: true, disabledReason: IN_DEVELOPMENT } as const
@@ -121,11 +122,10 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         id: 'keyboard',
         label: 'Keyboard',
         icon: Keyboard,
+        keyboard: true,
         keywords: ['shortcut', 'hotkey', 'binding'],
         settings: [
-          { label: 'New conversation' },
-          { label: 'Toggle sidebar' },
-          { label: 'Open settings' },
+          ...APP_SHORTCUTS.map((shortcut) => ({ label: shortcut.action })),
           { label: 'Reset all shortcuts' },
         ],
       },

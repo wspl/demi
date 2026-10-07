@@ -10,6 +10,7 @@ import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import { APP_SHORTCUTS, isAppShortcut } from '@demicodes/web-ui/settings/shortcuts'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
@@ -372,34 +373,23 @@ async function restore(id: string): Promise<void> {
   if (conversations.pendingChanges.includes(id)) {
     return
   }
-  if (await conversations.archive([id], false)) {
-    await router.push(`/chat/${id}`)
+  if (await conversations.restore([id])) {
+    await openConversation(id)
   }
+}
+/** An archived conversation opens read-only, with the bar that offers Restore; leaving settings' address closes them. */
+async function openConversation(id: string): Promise<void> {
+  await router.push(`/chat/${id}`)
 }
 
-const keyMessage = ref('')
 function rebind(id: string, keys: string): void {
-  if (id !== 'new' && id !== 'sidebar' && id !== 'settings') {
-    return
+  if (isAppShortcut(id)) {
+    preferences.update({ shortcuts: { [id]: keys } })
   }
-  const taken = resources.keys.find(
-    (binding) => binding.id !== id && keys !== '' && binding.keys === keys,
-  )
-  if (taken) {
-    keyMessage.value = `${keys} is already bound to “${taken.action}”.`
-    return
-  }
-  keyMessage.value = ''
-  preferences.update({ shortcuts: { [id]: keys } })
 }
 function resetShortcuts(): void {
-  keyMessage.value = ''
   preferences.update({
-    shortcuts: {
-      new: null,
-      sidebar: null,
-      settings: null,
-    },
+    shortcuts: Object.fromEntries(APP_SHORTCUTS.map((shortcut) => [shortcut.id, null])),
   })
 }
 </script>
@@ -472,12 +462,12 @@ function resetShortcuts(): void {
       :load="conversations.listStatus"
       :pending-ids="conversations.pendingChanges"
       @retry="conversations.reloadList"
+      @open="openConversation"
       @restore="restore"
     />
     <SettingsKeyboard
       v-else-if="section === 'keyboard'"
       :bindings="resources.keys"
-      :message="keyMessage"
       @rebind="rebind"
       @reset="resetShortcuts"
     />

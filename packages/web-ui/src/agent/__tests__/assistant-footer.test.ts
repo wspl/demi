@@ -22,7 +22,7 @@ test('earlier final replies keep footers while the next request runs', () => {
 })
 
 test('thinking, steer and failed tool continuations do not finalize progress text', () => {
-  for (const type of ['thinking', 'steer', 'error', 'abort'] as const) {
+  for (const type of ['thinking', 'steer', 'error'] as const) {
     expect(assistantFooterIds([
       { id: 'progress', type: 'text' },
       { id: 'continuation', type },
@@ -43,4 +43,12 @@ test('a compaction after the final reply leaves its footer', () => {
     { id: 'final', type: 'text' },
     { id: 'marker', type: 'compaction_marker' },
   ], 'idle')]).toEqual(['final'])
+})
+
+test('a reply the user stopped keeps its footer, Copy among it', () => {
+  expect([...assistantFooterIds([
+    { id: 'request', type: 'user' },
+    { id: 'cut-off', type: 'text' },
+    { id: 'stopped', type: 'abort' },
+  ], 'idle')]).toEqual(['cut-off'])
 })

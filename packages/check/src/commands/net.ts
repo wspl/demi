@@ -2,10 +2,13 @@
 // § Conditions), for every request and socket between the page and the web
 // app: offline or online, a round trip's latency, a bandwidth limit, or a
 // cut of the connections whose requests match a pattern, which closes their
-// sockets without a close frame, as a lost connection does.
+// sockets without a close frame, as a lost connection does. `unreachable`
+// holds the page's traffic and refuses its new connections while the browser
+// still reports a network, as when the way to a far server is lost: the page
+// sees its sockets go quiet and its reconnects fail, not that it is offline.
 import { CheckFailure, numeric, parse, type Context } from '../command'
 
-const USAGE = 'net [offline | online | latency <ms> | bandwidth <kbit/s>|off | cut <pattern> | reset]'
+const USAGE = 'net [offline | unreachable | online | latency <ms> | bandwidth <kbit/s>|off | cut <pattern> | reset]'
 
 export async function run(context: Context, argv: string[]): Promise<void> {
   const { positionals } = parse(argv, {}, USAGE)
@@ -19,6 +22,9 @@ export async function run(context: Context, argv: string[]): Promise<void> {
       network.set({ offline: true })
       // The page's own view: navigator.onLine and requests to other servers.
       await (await browserContext()).setOffline(true)
+      break
+    case 'unreachable':
+      network.set({ offline: true })
       break
     case 'online':
       network.set({ offline: false })

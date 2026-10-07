@@ -10,6 +10,7 @@ import SidebarNavItem from '@demicodes/web-ui/sidebar/SidebarNavItem.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { useTouchOnly } from '../ui/touch-only'
 import { SETTINGS_SECTIONS } from './sections'
 import { filterSettings, firstMatch } from './settings-filter'
 import { highlightSetting } from './setting-highlight'
@@ -52,7 +53,14 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const items = computed(() => props.sections.flatMap((group) => group.items))
+const touchOnly = useTouchOnly()
+/** The sections this device lists: a touch phone has no keyboard to set up. */
+const shownSections = computed(() =>
+  props.sections
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.keyboard || !touchOnly.value) }))
+    .filter((group) => group.items.length),
+)
+const items = computed(() => shownSections.value.flatMap((group) => group.items))
 const firstSection = computed(() => items.value.find((item) => !item.disabled)?.id ?? null)
 /** The section a wide dialog shows: the open one, or its first. */
 const shown = computed(() => tab.value ?? firstSection.value)
@@ -77,7 +85,7 @@ function back(): void {
 }
 
 const query = ref('')
-const filtered = computed(() => filterSettings(props.sections, query.value))
+const filtered = computed(() => filterSettings(shownSections.value, query.value))
 
 /** The page, where a setting the filter opened is looked for. */
 const page = ref<HTMLElement>()

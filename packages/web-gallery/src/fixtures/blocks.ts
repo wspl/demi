@@ -93,7 +93,7 @@ export const permissionReceiptMessages: AgentMessage[] = [
   event: { type: 'permission' as const, outcome, action: 'manage skills' },
 }))
 
-export const demoImageUrl = '/fixtures/attachment-thumb.png'
+export const demoImageUrl = '/fixtures/preview/photo.png'
 
 export const longUserText = [
   'The login test in packages/web/src/auth.test.ts started failing after we renamed the session cookie from sid to session. CI is red on main and on this branch.',

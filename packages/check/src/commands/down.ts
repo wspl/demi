@@ -1,8 +1,11 @@
-// `bun check down` (product-checks.md § The slot's servers): stops exactly
-// the process groups the slot's state records (the runner, the web app, the
-// gallery, then the backend, which stops its Cloud as it ends), removes the
-// runner's installation, deletes the `.env` that `up` copied, and closes the
-// browser. Nothing found by name is ever stopped.
+// `bun check down [backend] [web] [gallery] [runner]` (product-checks.md
+// § The slot's servers): stops exactly the process groups the slot's state
+// records (the runner, the web app, the gallery, then the backend, which
+// stops its Cloud as it ends), removes the runner's installation, deletes the
+// `.env` that `up` copied, and closes the browser. Naming servers stops only
+// those and keeps the rest, the browser and the account, as a check of a
+// backend that goes away and comes back with `up backend` needs. Nothing
+// found by name is ever stopped.
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { CheckFailure, parse, type Context } from '../command'
@@ -16,13 +19,20 @@ const ORDER: ServerName[] = ['runner', 'web', 'gallery', 'backend']
 /** How long each may take to stop before it is killed; the backend hibernates the Cloud first. */
 const GRACE_MS: Record<ServerName, number> = { runner: 15_000, web: 10_000, gallery: 10_000, backend: 30_000 }
 
+const USAGE = 'down [backend] [web] [gallery] [runner]'
+
 export async function run(context: Context, argv: string[]): Promise<void> {
-  const { positionals } = parse(argv, {}, 'down')
-  if (positionals.length > 0) {
-    throw new CheckFailure('Usage: bun check down')
+  const { positionals } = parse(argv, {}, USAGE)
+  const unknown = positionals.filter((name) => !ORDER.some((server) => server === name))
+  if (unknown.length > 0) {
+    throw new CheckFailure(`down stops ${ORDER.join(', ')}, not ${unknown.join(', ')}`)
   }
   const state = readState(context.slot)
+  const named = positionals.length > 0
   for (const name of ORDER) {
+    if (named && !positionals.includes(name)) {
+      continue
+    }
     const group = state.servers[name]
     if (!group) {
       continue
@@ -32,6 +42,9 @@ export async function run(context: Context, argv: string[]): Promise<void> {
       delete current.servers[name]
     })
     context.print(`${name.padEnd(8)} ${outcome}`)
+  }
+  if (named) {
+    return
   }
   rmSync(slotPaths(context.slot).runnerHome, { recursive: true, force: true })
   if (state.envCopied) {

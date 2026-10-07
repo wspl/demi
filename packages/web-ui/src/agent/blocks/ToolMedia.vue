@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import type { ToolResultContentBlock } from '@demicodes/protocol'
 import { ICON_PX } from '../../ui/icon-metrics'
 import { toolMedia } from '../tool-media'
-import ToolMediumPreview from './ToolMediumPreview.vue'
+import MediumThumbnail from '../MediumThumbnail.vue'
 
 /**
  * The images and videos a call's result carries, under the call's row, side
@@ -34,7 +34,7 @@ const media = computed(() => toolMedia(props.output))
         v-if="medium.kind === 'gone'"
         class="w-full whitespace-pre-wrap break-words font-mono text-xs leading-5 text-fg-subtle"
       >{{ medium.text }}</p>
-      <ToolMediumPreview
+      <MediumThumbnail
         v-else
         :kind="medium.kind"
         :source="medium.source"

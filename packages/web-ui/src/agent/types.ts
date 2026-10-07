@@ -19,6 +19,12 @@ export interface PendingSubmissionState {
   attachments: ComposerAttachment[]
   /** Why the delivery failed; null while the message is on its way. */
   error: string | null
+  /**
+   * The page cannot reach the backend for now: the message waits, and goes
+   * with its id once the conversation opens again (`web-application.md`
+   * § A page of another build).
+   */
+  waiting: boolean
 }
 
 /** One conversation's live state, as the runtime keeps it and `ChatSession` reads it. */

@@ -10,7 +10,11 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsArchivedConversation } from './types'
 
-/** What was put away: a searchable list, each row with Restore. The host brings one back and opens it. */
+/**
+ * What was put away: a searchable list. A row opens its conversation to read,
+ * with the bar that offers Restore (`product.md` § Conversations and
+ * projects); its Restore button brings it back and opens it.
+ */
 const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
   pendingIds?: string[]
@@ -19,6 +23,8 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   retry: []
+  /** Open the conversation read-only. */
+  open: [id: string]
   restore: [id: string]
 }>()
 
@@ -36,7 +42,7 @@ const shown = computed(() => {
 <template>
   <SettingsPage
     title="Archived"
-    description="Conversations put away from the sidebar. Restore brings one back and opens it."
+    description="Conversations put away from the sidebar. Click one to read it; Restore brings it back."
   >
     <SettingsGroup>
       <template #header>
@@ -58,7 +64,11 @@ const shown = computed(() => {
           :key="conversation.id"
           :label="conversation.title"
           :description="conversation.detail"
+          interactive
+          isolate-controls
+          @click="emit('open', conversation.id)"
         >
+          <Button size="sm" variant="ghost" @click="emit('open', conversation.id)">Open</Button>
           <Button
             size="sm"
             :loading="pendingIds?.includes(conversation.id)"
