@@ -40,8 +40,8 @@ pub(crate) enum Migration {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema; 0.1.14 and 0.1.15
-/// shipped the one of 0.1.15, and 0.1.16 the last one in it.
+/// release before the one that ships the current schema; 0.1.16 shipped the
+/// last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -95,9 +95,12 @@ const CONTROL_FROM_0_1_15: &str = "
 ALTER TABLE conversations ADD COLUMN hosts_revision INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0);
 ";
 
-/// From 0.1.16's control schema: a conversation's deletion is recorded as
+/// From 0.1.16's control schema: a device keeps the runner release its
+/// runner reports, which a device migrated from 0.1.16 learns at its
+/// runner's next hello; and a conversation's deletion is recorded as
 /// pending until its last step (`storage.md` § Deleting a conversation).
 const CONTROL_FROM_0_1_16: &str = "
+ALTER TABLE devices ADD COLUMN runner_version TEXT;
 CREATE TABLE conversation_deletions (
   id         TEXT PRIMARY KEY COLLATE NOCASE,
   user_id    TEXT NOT NULL REFERENCES users (id),
@@ -335,9 +338,10 @@ CREATE TABLE devices (
   claimed_at   INTEGER NOT NULL,
   last_seen_at INTEGER,
   installed    TEXT NOT NULL DEFAULT '[]',
-  -- The operating system its runner last reported, JSON; none before its
-  -- runner first connected.
-  os           TEXT
+  -- The operating system its runner last reported, JSON, and the runner
+  -- release it reported with it; none before its runner first connected.
+  os           TEXT,
+  runner_version TEXT
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 

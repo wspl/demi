@@ -1,4 +1,5 @@
 import { deviceInstallationAt, type DeviceStart, type DeviceSystem } from '@demicodes/web-ui/devices/installation'
+import type { DeviceReport } from '@demicodes/web-ui/devices/report'
 
 /** Proposed installer endpoints for the visual prototype, not published downloads. */
 export const demoDeviceInstallation = deviceInstallationAt('https://demi.example.com')
@@ -16,4 +17,14 @@ export function demoDeviceStart(system: DeviceSystem): DeviceStart {
       ? `powershell -ExecutionPolicy Bypass -File "$env:USERPROFILE\\.demi\\instances\\${demoInstallationId}\\run.ps1" start`
       : `~/.demi/instances/${demoInstallationId}/run start`
   return { command, system }
+}
+
+/** What a demo device's runner reports of its machine and itself, by its system; `release` is the runner's. */
+export function demoDeviceReport(system: DeviceSystem, release = '0.1.16'): DeviceReport {
+  const os = {
+    macos: { name: 'macOS 26.5', arch: 'aarch64' },
+    linux: { name: 'Ubuntu 26.04', arch: 'x86_64' },
+    windows: { name: 'Windows 11 Pro (build 26100)', arch: 'x86_64' },
+  }[system]
+  return { os, runnerVersion: release }
 }

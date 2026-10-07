@@ -5,7 +5,14 @@ import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
-import { restoreMessageEdit, sentEditRequest, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
+import {
+  regenerateMessage,
+  restoreMessageEdit,
+  sentEditRequest,
+  submitMessageEdit,
+  type MessageEditHost,
+  type MessageEditRequest,
+} from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { forkConversation } from '../api/message-fork'
@@ -673,6 +680,19 @@ export const useConversations = defineStore('conversations', () => {
     conversation.draft = draft.text
     uploads.showFiles(conversation, files)
     conversation.draftShown += 1
+  }
+
+  /** Where a conversation's edit is kept while it is sent, and the session it is sent to. */
+  function editHost(conversation: Conversation): MessageEditHost {
+    return {
+      get: () => conversation.messageEdit,
+      set: (state) => { conversation.messageEdit = state },
+      send: async (request) => {
+        const edit = sentEditRequest(request)
+        const runtime = await runtimeFor(conversation)
+        await runtime.editAndSend(edit)
+      },
+    }
   }
 
   async function activate(id: string | null): Promise<void> {
@@ -1763,15 +1783,9 @@ export const useConversations = defineStore('conversations', () => {
     send,
     editVersion: (conversation: Conversation) =>
       cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,
-    submitEdit: (conversation: Conversation) => submitMessageEdit({
-      get: () => conversation.messageEdit,
-      set: (state) => { conversation.messageEdit = state },
-      send: async (request) => {
-        const edit = sentEditRequest(request)
-        const runtime = await runtimeFor(conversation)
-        await runtime.editAndSend(edit)
-      },
-    }),
+    submitEdit: (conversation: Conversation) => submitMessageEdit(editHost(conversation)),
+    regenerate: (conversation: Conversation, request: MessageEditRequest) =>
+      regenerateMessage(editHost(conversation), request),
     addFiles,
     arrangeFiles,
     retryFile,
