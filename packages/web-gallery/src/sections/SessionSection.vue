@@ -229,7 +229,7 @@ const frameSearchable = computed(() =>
 )
 const frameRecent = computed<SearchRow[]>(() =>
   frameSearchable.value
-    .map(({ messages: _messages, ...row }) => ({ ...row, match: null }))
+    .map(({ messages: _messages, ...row }) => ({ ...row, titleRanges: [], match: null }))
     .toSorted((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)),
 )
 const frameSearch = fixtureSearch(() => frameSearchable.value)

@@ -32,6 +32,8 @@ import type { HeadlineText } from './ui-text'
  * Escape and the scrim close only the top, and closing the one beneath takes the
  * stack with it. An Escape a field handled first (it called preventDefault, as a
  * field reverting its edit does) closes nothing.
+ * Anchor: centered by default; `top` hangs the panel from a line near the top, for a
+ * panel whose height follows its content, such as the search window's list.
  * Scrolling: content scrolls as a whole by default. Set `scrollContent` to false
  * when content owns its scroll region: use a `flex min-h-0 flex-col` root,
  * non-shrinking header/footer and a shrinking ScrollArea for the body.
@@ -52,6 +54,12 @@ const props = defineProps<{
   scrollContent?: boolean
   /** Stack on whatever dialog is open instead of replacing it, for a dialog mounted at the app root but opened from inside another. */
   stack?: boolean
+  /**
+   * Top: the panel hangs from a fixed line near the top of the window instead of
+   * being centered, so its top stays where it is while content that grows or
+   * shrinks changes its height, as Spotlight's and Raycast's windows do.
+   */
+  anchor?: 'center' | 'top'
 }>()
 
 const emit = defineEmits<{
@@ -125,7 +133,9 @@ onKeyStroke('Escape', (event) => {
     <Transition name="dialog" appear>
       <div
         v-if="isOpen"
-        :class="inline ? 'dialog-scrim relative grid' : 'dialog-scrim dialog-host fixed inset-0 z-50 grid place-items-center bg-black/40'"
+        :class="inline
+          ? 'dialog-scrim relative grid'
+          : ['dialog-scrim dialog-host fixed inset-0 z-50 grid bg-black/40', anchor === 'top' ? 'items-start justify-items-center pt-[12vh]' : 'place-items-center']"
         :style="inline || depth === 0 ? undefined : { zIndex: 50 + depth }"
         @click.self="!inline && emit('close')"
       >

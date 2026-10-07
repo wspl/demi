@@ -7,7 +7,7 @@ import { SEARCH_PAUSE_MS, useConversationSearch, type SearchRow } from '../searc
 // one; about 10 ms.
 
 function row(title: string): SearchRow {
-  return { conversationId: title, title, archived: false, lastActiveAt: '2026-10-07T08:00:00.000Z', match: null }
+  return { conversationId: title, title, titleRanges: [], archived: false, lastActiveAt: '2026-10-07T08:00:00.000Z', match: null }
 }
 
 let stop = () => {}

@@ -88,6 +88,7 @@ const recentConversations = computed<SearchRow[]>(() =>
     .map((conversation) => ({
       conversationId: conversation.id,
       title: conversation.title,
+      titleRanges: [],
       archived: conversation.archived,
       lastActiveAt: conversation.updatedAt,
       match: null,

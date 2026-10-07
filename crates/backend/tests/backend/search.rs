@@ -2,14 +2,18 @@
 //! `web-api.md` § Search, `storage.md` § Search index): a query lists the
 //! conversations whose title matches first, then those whose messages do,
 //! each group most recently active first, archived ones marked; a match is
-//! the newest message that holds every word, with the line around it and
-//! the words' places in UTF-16. Thinking is not searched. An edit that
+//! the newest message that holds every word, steers among them, with the
+//! line around it and the words' places in UTF-16, and the words are marked
+//! in a matching title too. Thinking is not searched. An edit that
 //! removes a message removes it from the results, and an index of another
 //! schema is built again at start. No test calls a real model.
 
 use std::time::Duration;
 
-use demi_conversation_socket_protocol::ClientFrame;
+use demi_agent_server::testing::client_text;
+use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
+use demi_provider_common::testing::MockResponse;
+use demi_shared_types::BlockId;
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::search::{SearchResult, SearchResults};
 use jiff::SignedDuration;
@@ -17,19 +21,28 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::conversations::{
-    FIRST, SECOND, Socket, THIRD, anthropic, answer, choose, create, message, text_block,
+    FIRST, SECOND, Socket, THIRD, anthropic, answer, choose, create, message, send, text_block,
     thinking_block,
 };
 use crate::editing::{edit, edit_request, idle};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, eventually};
 
-/// What a search for `query` answers, each result as the conversation, whether
-/// it is archived, and its match's line with the marked pieces of it.
-async fn search(
-    backend: &TestBackend,
-    session: &Session,
-    query: &str,
-) -> Vec<(String, bool, Option<(String, Vec<String>)>)> {
+/// A result as `search` gives it: the conversation, whether it is archived,
+/// the marked pieces of its title, and its match's line with the marked
+/// pieces of it.
+type Found = (String, bool, Vec<String>, Option<(String, Vec<String>)>);
+
+/// The pieces of `text` that UTF-16 `ranges` name.
+fn pieces(text: &str, ranges: &[[u32; 2]]) -> Vec<String> {
+    let units: Vec<u16> = text.encode_utf16().collect();
+    ranges
+        .iter()
+        .map(|[start, end]| String::from_utf16(&units[*start as usize..*end as usize]).unwrap())
+        .collect()
+}
+
+/// What a search for `query` answers.
+async fn search(backend: &TestBackend, session: &Session, query: &str) -> Vec<Found> {
     let path = format!("/api/search?q={}", urlencode(query));
     let answer = backend.get(&path, Some(session)).await;
     assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
@@ -37,17 +50,12 @@ async fn search(
         .json::<SearchResults>()
         .results
         .into_iter()
-        .map(|SearchResult { conversation_id, archived, r#match, .. }| {
+        .map(|SearchResult { conversation_id, title, title_ranges, archived, r#match, .. }| {
             let r#match = r#match.map(|found| {
-                let units: Vec<u16> = found.text.encode_utf16().collect();
-                let marked = found
-                    .ranges
-                    .iter()
-                    .map(|[start, end]| String::from_utf16(&units[*start as usize..*end as usize]).unwrap())
-                    .collect();
+                let marked = pieces(&found.text, &found.ranges);
                 (found.text, marked)
             });
-            (conversation_id.into_string(), archived, r#match)
+            (conversation_id.into_string(), archived, pieces(&title, &title_ranges), r#match)
         })
         .collect()
 }
@@ -62,6 +70,11 @@ fn urlencode(text: &str) -> String {
             _ => format!("%{byte:02X}"),
         })
         .collect()
+}
+
+/// Marked pieces as `search` gives them.
+fn marks(pieces: &[&str]) -> Vec<String> {
+    pieces.iter().map(|&piece| piece.to_owned()).collect()
 }
 
 /// A match as `search` gives it.
@@ -101,6 +114,21 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     third.open().await;
     vendor.respond(answer(&["Clear the ts2307 cache"], 1, 1));
     third.chat("m1", "relogin is broken").await;
+    // A steer is a message of the user's too: Stop writes it while the
+    // request it waited behind still streams.
+    vendor.respond(MockResponse::event_stream(": thinking\n\n").stay_open());
+    third.send(&send("m2", "Hold on")).await;
+    vendor.received(3).await;
+    third
+        .send(&ClientFrame::Steer {
+            steer_id: BlockId::try_from("s1").unwrap(),
+            content: client_text("Also check the kubeconfig"),
+        })
+        .await;
+    third
+        .until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
+        .await;
+    third.stop().await;
     drop(third);
     let renamed = backend
         .patch(&format!("/api/conversations/{SECOND}"), &master, json!({ "title": "TS2307 after the split" }))
@@ -112,9 +140,9 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     assert_eq!(archived.status, StatusCode::OK);
 
     let expected = vec![
-        (SECOND.to_owned(), false, None),
-        (THIRD.to_owned(), true, found("Clear the ts2307 cache", &["ts2307"])),
-        (FIRST.to_owned(), false, found("Missing 路径 mapping for TS2307", &["TS2307"])),
+        (SECOND.to_owned(), false, marks(&["TS2307"]), None),
+        (THIRD.to_owned(), true, marks(&[]), found("Clear the ts2307 cache", &["ts2307"])),
+        (FIRST.to_owned(), false, marks(&[]), found("Missing 路径 mapping for TS2307", &["TS2307"])),
     ];
     eventually("the index holds every change", || async {
         search(&backend, &master, "ts2307").await == expected
@@ -124,15 +152,19 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     // in one message; thinking is not searched.
     assert_eq!(
         search(&backend, &master, "LOGIN").await,
-        vec![(THIRD.to_owned(), true, found("relogin is broken", &["login"]))]
+        vec![(THIRD.to_owned(), true, marks(&["login"]), found("relogin is broken", &["login"]))]
     );
     assert_eq!(
         search(&backend, &master, "路径").await,
-        vec![(FIRST.to_owned(), false, found("Missing 路径 mapping for TS2307", &["路径"]))]
+        vec![(FIRST.to_owned(), false, marks(&[]), found("Missing 路径 mapping for TS2307", &["路径"]))]
     );
     assert_eq!(
         search(&backend, &master, "mapping ts2307").await,
-        vec![(FIRST.to_owned(), false, found("Missing 路径 mapping for TS2307", &["mapping", "TS2307"]))]
+        vec![(FIRST.to_owned(), false, marks(&[]), found("Missing 路径 mapping for TS2307", &["mapping", "TS2307"]))]
+    );
+    assert_eq!(
+        search(&backend, &master, "kubeconfig").await,
+        vec![(THIRD.to_owned(), true, marks(&[]), found("Also check the kubeconfig", &["kubeconfig"]))]
     );
     assert_eq!(search(&backend, &master, "relogin cache").await, vec![]);
     assert_eq!(search(&backend, &master, "unsearchedthought").await, vec![]);
@@ -148,8 +180,8 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     first.until(idle).await;
     drop(first);
     let edited = vec![
-        (SECOND.to_owned(), false, None),
-        (THIRD.to_owned(), true, found("Clear the ts2307 cache", &["ts2307"])),
+        (SECOND.to_owned(), false, marks(&["TS2307"]), None),
+        (THIRD.to_owned(), true, marks(&[]), found("Clear the ts2307 cache", &["ts2307"])),
     ];
     eventually("the edit is indexed", || async {
         search(&backend, &master, "ts2307").await == edited
@@ -158,7 +190,7 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     assert_eq!(search(&backend, &master, "路径").await, vec![]);
     assert_eq!(
         search(&backend, &master, "fail").await,
-        vec![(FIRST.to_owned(), false, found("Why does it fail?", &["fail"]))]
+        vec![(FIRST.to_owned(), false, marks(&["fail"]), found("Why does it fail?", &["fail"]))]
     );
 
     // An index of another schema is built again at the next start, in the

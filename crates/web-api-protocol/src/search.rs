@@ -72,6 +72,9 @@ pub struct SearchResults {
 pub struct SearchResult {
     pub conversation_id: ConversationId,
     pub title: String,
+    /// The places of the query's words in the title, as `SearchMatch`'s
+    /// ranges give them; empty when the title does not match.
+    pub title_ranges: Vec<[u32; 2]>,
     pub archived: bool,
     /// When the conversation's latest message was written.
     pub last_active_at: Timestamp,

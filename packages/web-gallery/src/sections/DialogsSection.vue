@@ -67,7 +67,7 @@ async function addSkillSource(draft: { origin: string }): Promise<AddSourceAnswe
 /** The search window's conversations, and their rows before the user types, most recently active first. */
 const searchable = searchConversations()
 const recentRows: SearchRow[] = searchable
-  .map(({ messages: _messages, ...row }) => ({ ...row, match: null }))
+  .map(({ messages: _messages, ...row }) => ({ ...row, titleRanges: [], match: null }))
   .toSorted((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt))
 const searchFixtures = fixtureSearch(() => searchable)
 /** A search whose first answer fails, as a backend out of reach does; Retry then answers from the fixtures. */
@@ -537,7 +537,7 @@ const resetPhases: {
     <template v-if="view === 'search'">
       <GallerySection
         title="Search"
-        note="⌘K or Search in the sidebar opens it. The recent conversations until the user types; then, once typing pauses, title matches first and then message matches, each most recently active first, with the matching line marked. ↑ and ↓ move, Return or a click opens, Escape closes. Try TS2307, login or 路径."
+        note="⌘K or Search in the sidebar opens it. The recent conversations until the user types; then, once typing pauses, title matches first and then message matches, each most recently active first, the matches marked in the title and the line. The window fits its list up to a limit and keeps its field in place. ↑ and ↓ move, Return or a click opens, Escape closes. Try TS2307, login or 路径."
       >
         <div class="grid items-start gap-6 xl:grid-cols-2">
           <GallerySpecimen wide variant="live">

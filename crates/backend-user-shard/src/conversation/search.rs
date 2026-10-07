@@ -212,7 +212,7 @@ pub async fn index_at_start(
 }
 
 /// What a search finds of a transcript: the text of each of the root's
-/// `user` messages and of its answers. Thinking, tool calls and their
+/// `user` messages and steers, the user's messages both, and of its answers. Thinking, tool calls and their
 /// results, commands' output, files and the blocks the runtime writes are
 /// left out, and so is a message without text.
 fn searchable(blocks: &[Block]) -> Vec<IndexedMessage> {
@@ -221,7 +221,7 @@ fn searchable(blocks: &[Block]) -> Vec<IndexedMessage> {
         .enumerate()
         .filter_map(|(position, block)| {
             let text = match block {
-                Block::User(_) => message_text(block)?,
+                Block::User(_) | Block::Steer(_) => message_text(block)?,
                 Block::Text(answer) if !answer.text.trim().is_empty() => answer.text.clone(),
                 _ => return None,
             };
@@ -283,8 +283,14 @@ pub async fn search(
                     ranges,
                 })
             });
+            let title_ranges = if found.title {
+                title_ranges(&record.title, &words)
+            } else {
+                Vec::new()
+            };
             SearchResult {
                 conversation_id: record.id,
+                title_ranges,
                 title: record.title,
                 archived: record.archived,
                 last_active_at: record.updated_at,
@@ -348,20 +354,36 @@ fn match_line(text: &str, words: &[String]) -> (String, Vec<[u32; 2]>) {
     if cut_end {
         line.push('…');
     }
+    let ellipsis = if cut_start { '…'.len_utf16() } else { 0 };
+    let ranges = utf16_ranges(&characters[start..end], ellipsis, &found, start);
+    (line, ranges)
+}
+
+/// The places of every word in the whole title, as UTF-16 offsets, found
+/// as a match line's are.
+fn title_ranges(title: &str, words: &[String]) -> Vec<[u32; 2]> {
+    let characters: Vec<char> = title.chars().collect();
+    let found = occurrences(&characters, words);
+    utf16_ranges(&characters, 0, &found, 0)
+}
+
+/// `found`, character positions in a text, as UTF-16 offsets in `shown`, the
+/// piece of the text that starts at character `start` and follows `lead`
+/// UTF-16 units of its own, such as an ellipsis; pieces outside it are cut.
+fn utf16_ranges(shown: &[char], lead: usize, found: &[(usize, usize)], start: usize) -> Vec<[u32; 2]> {
+    let end = start + shown.len();
     let offset = |position: usize| -> u32 {
-        let before: usize = characters[start..position]
+        let before: usize = shown[..position - start]
             .iter()
             .map(|character| character.len_utf16())
             .sum();
-        let ellipsis = if cut_start { '…'.len_utf16() } else { 0 };
-        u32::try_from(ellipsis + before).expect("a line of 160 characters fits u32")
+        u32::try_from(lead + before).expect("a line of 256 characters fits u32")
     };
-    let ranges = found
-        .into_iter()
-        .filter(|&(from, to)| from < end && to > start)
-        .map(|(from, to)| [offset(from.max(start)), offset(to.min(end))])
-        .collect();
-    (line, ranges)
+    found
+        .iter()
+        .filter(|&&(from, to)| from < end && to > start)
+        .map(|&(from, to)| [offset(from.max(start)), offset(to.min(end))])
+        .collect()
 }
 
 /// Where the words occur in `characters`, as character positions, end
