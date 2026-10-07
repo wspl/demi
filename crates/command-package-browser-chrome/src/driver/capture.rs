@@ -85,6 +85,88 @@ pub enum CaptureEvent {
     Failed(String),
 }
 
+/// How many captures of one page Chrome holds, and how many resizes of it
+/// are under way; the two exclude each other (`live-view.md` § Pixel ratio).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Gated {
+    captures: u32,
+    resizes: u32,
+}
+
+impl Gated {
+    /// Whether a resize is under way, which no capture may start during.
+    pub fn resizing(&self) -> bool {
+        self.resizes > 0
+    }
+}
+
+/// Keeps a page's captures and its resizes apart. Chrome's HiDPI tab capture
+/// raises the device scale factor of a page smaller than its capture until
+/// the page fills it: a page resized to 1000 × 800 pixels under a capture of
+/// 1600 × 1200 rendered at up to 1.5 times its pixel ratio, and the capture
+/// that replaced the old one could take such a picture as its first. So a
+/// resize waits until Chrome has released every capture of the page, and no
+/// capture starts until the resize ends.
+#[derive(Debug)]
+pub struct CaptureGate(watch::Sender<Gated>);
+
+impl Default for CaptureGate {
+    fn default() -> Self {
+        Self(watch::Sender::new(Gated::default()))
+    }
+}
+
+impl CaptureGate {
+    /// A hold for one capture of the page, which lasts until Chrome released
+    /// the capture; none while a resize is under way.
+    pub fn capture(&self) -> Option<CaptureHold> {
+        self.0
+            .send_if_modified(|gated| {
+                if gated.resizing() {
+                    return false;
+                }
+                gated.captures += 1;
+                true
+            })
+            .then(|| CaptureHold(self.0.clone()))
+    }
+
+    /// Holds new captures off and waits until Chrome has released the
+    /// running ones; the resize lasts until the hold is dropped.
+    pub async fn resize(&self) -> ResizeHold {
+        self.0.send_modify(|gated| gated.resizes += 1);
+        let hold = ResizeHold(self.0.clone());
+        let mut gated = self.0.subscribe();
+        // The hold keeps a sender, so the wait cannot lose it.
+        let _held = gated.wait_for(|gated| gated.captures == 0).await;
+        hold
+    }
+
+    pub fn subscribe(&self) -> watch::Receiver<Gated> {
+        self.0.subscribe()
+    }
+}
+
+/// One capture of a page, from its start until Chrome released it.
+#[derive(Debug)]
+pub struct CaptureHold(watch::Sender<Gated>);
+
+impl Drop for CaptureHold {
+    fn drop(&mut self) {
+        self.0.send_modify(|gated| gated.captures -= 1);
+    }
+}
+
+/// One resize of a page, during which no capture of it starts.
+#[derive(Debug)]
+pub struct ResizeHold(watch::Sender<Gated>);
+
+impl Drop for ResizeHold {
+    fn drop(&mut self) {
+        self.0.send_modify(|gated| gated.resizes -= 1);
+    }
+}
+
 /// The socket, bound before Chrome starts.
 pub struct CaptureServer {
     listener: TcpListener,
@@ -179,6 +261,7 @@ enum ChannelRequest {
         height: u32,
         fps: u32,
         bitrate: u32,
+        hold: CaptureHold,
         reply: oneshot::Sender<Result<(u32, mpsc::Receiver<CaptureEvent>)>>,
     },
     /// An ack, a key frame request or an encoding for a capture.
@@ -214,6 +297,7 @@ impl CaptureChannel {
             connection: None,
             generation: 0,
             routes: HashMap::new(),
+            holds: HashMap::new(),
             next: 0,
             connected,
             inbound,
@@ -227,7 +311,8 @@ impl CaptureChannel {
     }
 
     /// Captures the tab of CDP `target` at `width` × `height` pixels, once
-    /// the extension has connected, which it does as Chrome starts.
+    /// the extension has connected, which it does as Chrome starts. `hold`
+    /// lasts until Chrome released the capture.
     pub async fn start(
         &self,
         target: &str,
@@ -235,6 +320,7 @@ impl CaptureChannel {
         height: u32,
         fps: u32,
         bitrate: u32,
+        hold: CaptureHold,
         cancel: &CancellationToken,
     ) -> Result<Capture> {
         if let Some(reason) = unavailable() {
@@ -262,6 +348,7 @@ impl CaptureChannel {
                 height,
                 fps,
                 bitrate,
+                hold,
                 reply,
             })
             .await
@@ -327,6 +414,9 @@ struct Owner {
     /// Counts the connections, so messages of a replaced one are ignored.
     generation: u64,
     routes: HashMap<u32, mpsc::Sender<CaptureEvent>>,
+    /// The holds of the captures Chrome has not released yet: those that
+    /// run, and those stopped until the extension reports them stopped.
+    holds: HashMap<u32, CaptureHold>,
     next: u32,
     connected: watch::Sender<bool>,
     inbound: mpsc::Sender<(u64, Inbound)>,
@@ -372,9 +462,10 @@ impl Owner {
                 height,
                 fps,
                 bitrate,
+                hold,
                 reply,
             } => {
-                let started = self.start(target, width, height, fps, bitrate);
+                let started = self.start(target, width, height, fps, bitrate, hold);
                 // A requester that left drops the capture, which stops it.
                 let _left = reply.send(started);
             }
@@ -412,6 +503,7 @@ impl Owner {
         height: u32,
         fps: u32,
         bitrate: u32,
+        hold: CaptureHold,
     ) -> Result<(u32, mpsc::Receiver<CaptureEvent>)> {
         let Some(connection) = &self.connection else {
             return Err(BrowserError::Unavailable(
@@ -436,6 +528,7 @@ impl Owner {
         }
         let (sender, events) = mpsc::channel(FRAME_QUEUE);
         self.routes.insert(id, sender.clone());
+        self.holds.insert(id, hold);
         self.closings.push(Box::pin(async move {
             sender.closed().await;
             id
@@ -443,7 +536,8 @@ impl Owner {
         Ok((id, events))
     }
 
-    /// A capture's consumer dropped it: the extension stops it.
+    /// A capture's consumer dropped it: the extension stops it, and its hold
+    /// lasts until the extension reports it stopped.
     fn stopped(&mut self, capture: u32) {
         if self.routes.remove(&capture).is_none() {
             // It failed with a connection that is gone.
@@ -464,7 +558,10 @@ impl Owner {
             // A consumer that is behind loses the newest pictures, not the socket.
             Inbound::Frame(capture, frame) => self.deliver(capture, CaptureEvent::Frame(frame)),
             Inbound::Event(event) => match event {
-                extension::CaptureEvent::Ready {} | extension::CaptureEvent::Stopped { .. } => {}
+                extension::CaptureEvent::Ready {} => {}
+                extension::CaptureEvent::Stopped { capture } => {
+                    self.holds.remove(&capture);
+                }
                 extension::CaptureEvent::Started { capture } => {
                     self.deliver(capture, CaptureEvent::Started)
                 }
@@ -488,11 +585,14 @@ impl Owner {
     }
 
     /// Ends the connection; its captures fail, and their streams restart
-    /// them once the extension connects again.
+    /// them once the extension connects again. Their holds end with it: the
+    /// extension stops its captures as its connection closes, and nothing
+    /// would report them stopped.
     fn disconnect(&mut self) {
         if let Some(connection) = self.connection.take() {
             connection.stop.cancel();
         }
+        self.holds.clear();
         self.connected.send_replace(false);
         for (_, events) in self.routes.drain() {
             let _gone = events.try_send(CaptureEvent::Failed(

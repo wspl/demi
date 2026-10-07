@@ -1614,7 +1614,8 @@ async fn decoded(fixture: &BrowserFixture, tab: &str, frame: &[u8]) -> (u32, Vec
 async fn a_narrow_still_picture_matches_the_page_coordinates() {
     with_browser_fixture(|fixture| async move {
         let path = fixture.root.path().join("still.html");
-        std::fs::write(&path, "<!doctype html><style>body{margin:0;background:white}</style><div style=\"position:fixed;left:10px;top:100px;width:100px;height:30px;background:red\"></div>").unwrap();
+        // The page notes each pixel ratio it is shown at.
+        std::fs::write(&path, "<!doctype html><style>body{margin:0;background:white}</style><div style=\"position:fixed;left:10px;top:100px;width:100px;height:30px;background:red\"></div><script>window.ratios=[];(function watch(){ratios.push(devicePixelRatio);matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener('change',watch,{once:true})})()</script>").unwrap();
         let tab = fixture
             .call("browser.open", json!({"url": url::Url::from_file_path(path).unwrap().as_str()}))
             .await["tab"]
@@ -1683,6 +1684,13 @@ async fn a_narrow_still_picture_matches_the_page_coordinates() {
                 assert!(if inside { red(pixel) } else { white(pixel) }, "the rectangle's edge at {x}, ratio {ratio}: {pixel:?}");
             }
         }
+        // The page is shown only at the ratios its viewer had. A capture that
+        // outlived a resize raised it: 800 × 600 at 2 resized to 500 × 400
+        // under the capture of 1600 × 1200 pixels came to 2.0000000596 every
+        // time, and now and then a new capture's first picture showed it at 3.
+        let ratios = evaluate(&fixture, &tab, "JSON.stringify(ratios)").await;
+        let ratios: Vec<f64> = serde_json::from_str(ratios.as_str().unwrap()).unwrap();
+        assert!(ratios.iter().all(|ratio| [1.0, 2.0].contains(ratio)), "the page's pixel ratios: {ratios:?}");
         view.close().await;
         fixture
     })

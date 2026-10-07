@@ -117,17 +117,26 @@ async function open(message) {
   return { tabId, stream, track, reader: new MediaStreamTrackProcessor({ track }).readable.getReader() };
 }
 
-async function stop(id) {
+// Captures being stopped, until Chrome released them. A failure stops its
+// capture at once; the module's stop of it then waits for the same release,
+// since its `stopped` tells the module the tab may be resized.
+const stopping = new Map();
+
+function stop(id) {
   const state = captures.get(id);
-  if (!state) return;
+  if (!state) return stopping.get(id) ?? Promise.resolve();
   captures.delete(id);
   clearInterval(state.timer);
   clearTimeout(state.watchdog);
   state.latest?.close();
   if (state.encoder && state.encoder.state !== 'closed') state.encoder.close();
   for (const track of state.stream.getTracks()) track.stop();
-  await state.reader.cancel().catch(() => {});
-  await ask({ type: 'released', tabId: state.tabId }).catch(error => console.warn(error));
+  const released = (async () => {
+    await state.reader.cancel().catch(() => {});
+    await ask({ type: 'released', tabId: state.tabId }).catch(error => console.warn(error));
+  })().finally(() => stopping.delete(id));
+  stopping.set(id, released);
+  return released;
 }
 
 // Reconfiguring the same sides keeps the stream: its next frame is a delta
