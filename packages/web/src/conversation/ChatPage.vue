@@ -192,6 +192,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :message-edit="conversation.messageEdit"
     :aside-open="work.stateFor(conversation.id).open"
     @update:message-edit="conversation.messageEdit = $event"
+    @regenerate="store.regenerate(conversation, $event)"
     @save-scroll="saveScroll"
     @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
   >

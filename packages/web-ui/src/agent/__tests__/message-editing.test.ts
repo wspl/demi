@@ -8,9 +8,11 @@ import {
   EditRejectedError,
   messageEditSuffixIds,
   lastEditableUserMessageId,
+  regenerateMessage,
   restoreMessageEdit,
   sentEditRequest,
   submitMessageEdit,
+  unchangedEditRequest,
   type MessageEditState,
   type MessageEditRequest,
 } from '../message-editing'
@@ -170,4 +172,35 @@ test('a late result cannot clear a different editor or conversation draft', asyn
   accepted.resolve()
   await pending
   expect(state).toBe(other)
+})
+
+test('Regenerate sends the message unchanged without the editor; a lost answer leaves it for Retry', async () => {
+  const block = {
+    ...userBlock('user-B', 'turn-B', 'unused'),
+    content: [{ type: 'image' as const, source: { type: 'ref' as const, ref: SHA('a'), mediaType: 'image/png' } }],
+  }
+  let state: MessageEditState | null = null
+  const phases: (string | undefined)[] = []
+  const requests: MessageEditRequest[] = []
+  const host = {
+    get: () => state,
+    set: (next: MessageEditState | null) => { state = next },
+    send: async (request: MessageEditRequest) => {
+      phases.push(state?.phase)
+      requests.push(request)
+      if (requests.length === 1) throw new Error('connection lost')
+    },
+  }
+  const request = unchangedEditRequest(block, { epoch: 'epoch', revision: 4 })
+  await regenerateMessage(host, request)
+  // Sent as it is, an image alone without a line of text added, and never shown in the editor.
+  expect(requests[0]!.content).toEqual(block.content)
+  expect(phases).toEqual(['regenerating'])
+  expect(host.get()).toEqual({ phase: 'uncertain', request })
+  // While an edit is in progress, Regenerate sends nothing; Retry sends the same operation.
+  await regenerateMessage(host, unchangedEditRequest(block, { epoch: 'epoch', revision: 4 }))
+  expect(requests).toHaveLength(1)
+  await submitMessageEdit(host)
+  expect(requests).toEqual([request, request])
+  expect(host.get()).toBeNull()
 })

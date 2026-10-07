@@ -311,12 +311,17 @@ export interface MessageKeyOptions {
   submit: () => void
   /** Escape: true when it ended something, such as an edit. */
   cancel: () => boolean
+  /** Up Arrow in an empty composer: true when it opened something, such as the editor on the last message. */
+  editLast: () => boolean
 }
 
 /**
  * The composer's keys: Enter sends and Shift+Enter breaks the line; in a
  * code block Enter breaks the line and ⌘/Ctrl+Enter sends. A line typed as a
- * fence opens or closes a code block when it ends.
+ * fence opens or closes a code block when it ends. Up Arrow in a composer
+ * with no text and no files may open the editor on the last message. During
+ * an input method's composition ProseMirror gives none of these keys to the
+ * keymap, so they act on the composition.
  */
 const MessageKeys = Extension.create<MessageKeyOptions>({
   name: 'messageKeys',
@@ -325,6 +330,7 @@ const MessageKeys = Extension.create<MessageKeyOptions>({
     return {
       submit: () => {},
       cancel: () => false,
+      editLast: () => false,
     }
   },
   addKeyboardShortcuts() {
@@ -344,6 +350,7 @@ const MessageKeys = Extension.create<MessageKeyOptions>({
         return true
       },
       Escape: () => this.options.cancel(),
+      ArrowUp: ({ editor }) => editor.isEmpty && this.options.editLast(),
     }
   },
 })
@@ -434,7 +441,7 @@ export function composerExtensions(options: MessageKeyOptions & { placeholder: s
   return [
     ...messageExtensions(false),
     MessageFormat,
-    MessageKeys.configure({ submit: options.submit, cancel: options.cancel }),
+    MessageKeys.configure({ submit: options.submit, cancel: options.cancel, editLast: options.editLast }),
     Placeholder.configure({ placeholder: options.placeholder }),
     UndoRedo,
     Dropcursor.configure({ class: 'message-drop-cursor', color: false, width: 2 }),
