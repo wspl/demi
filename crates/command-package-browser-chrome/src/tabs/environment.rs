@@ -433,7 +433,27 @@ where
         ended: ended.clone(),
     };
     let _end_on_drop = ended.clone().drop_guard();
-    let captures = CaptureChannel::open(&observers, ended.clone());
+    let extension = crate::driver::launch::capture_extension(&profile)
+        .to_string_lossy()
+        .into_owned();
+    let recreation = handle.clone();
+    let captures = CaptureChannel::open(
+        &observers,
+        ended.clone(),
+        Box::new(move || {
+            use chromiumoxide::cdp::browser_protocol::extensions::LoadUnpackedParams;
+            let browser = recreation.clone();
+            let extension = extension.clone();
+            Box::pin(async move {
+                // Loading the extension Chrome already has replaces it.
+                browser
+                    .call()?
+                    .execute(LoadUnpackedParams::new(extension))
+                    .await?;
+                Ok(())
+            })
+        }),
+    );
     capture.serve(captures.clone(), &observers, ended.clone());
     let changes = numbers.browser_changes();
     let pump_ended = ended.clone();
