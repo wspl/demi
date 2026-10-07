@@ -3,7 +3,7 @@ import { useSession } from '../auth/session'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
-import { apiRequest, jsonBody, readResponse } from '../api/client'
+import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   cloudResetAnswerSchema,
   revokedDeviceSchema,
@@ -80,9 +80,16 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       reset.value = { status: 'idle' }
     } catch (error) {
       if (!current.signal.aborted) {
+        // The backend's refusal is a sentence for the reader; anything else
+        // (a proxy's page, a dropped connection) is said in words of our own,
+        // and its own text goes to the console.
+        const refused = error instanceof ApiError && error.code !== null
+        if (!refused) {
+          console.error('[demi] Cloud reset failed:', error)
+        }
         reset.value = {
           status: 'failed',
-          message: error instanceof Error ? error.message : String(error),
+          message: refused ? error.message : 'The reset could not start. Check your connection and try again.',
         }
       }
     }

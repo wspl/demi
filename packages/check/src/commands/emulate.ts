@@ -25,6 +25,13 @@ export async function run(context: Context, argv: string[]): Promise<void> {
   }
   const before = readState(context.slot).emulation ?? {}
   const change: Emulation = values.reset ? {} : { ...before }
+  // A phone brings its own screen: a size or a scale set before it would
+  // otherwise stay and give the phone a desktop's viewport.
+  if (values.device !== undefined) {
+    delete change.width
+    delete change.height
+    delete change.scale
+  }
   if (values.size !== undefined) {
     const size = /^(\d+)x(\d+)$/.exec(values.size)
     if (!size) {

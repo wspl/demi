@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, provide } from 'vue'
+import { computed, inject, provide, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
 import ScrollArea from './ScrollArea.vue'
@@ -26,7 +26,8 @@ import type { HeadlineText } from './ui-text'
  * own size, with no scrim and no centering.
  * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
  * Escape and the scrim close only the top, and closing the one beneath takes the
- * stack with it.
+ * stack with it. An Escape a field handled first (it called preventDefault, as a
+ * field reverting its edit does) closes nothing.
  * Scrolling: content scrolls as a whole by default. Set `scrollContent` to false
  * when content owns its scroll region: use a `flex min-h-0 flex-col` root,
  * non-shrinking header/footer and a shrinking ScrollArea for the body.
@@ -78,8 +79,25 @@ const id = useOverlay(
   nested || props.stack ? 'stacked' : 'exclusive',
 )
 
+// An Escape a field inside used, to revert its edit or clear its filter, closes nothing.
+/**
+ * How high the dialog stands: a dialog opened later stands above one opened
+ * before it, whichever was mounted first, as a confirmation opened over the
+ * dialog that asked for it must. A leaving dialog keeps its height while it fades.
+ */
+const depth = ref(0)
+watch(
+  () => props.overlayStore.state.entries.findIndex((entry) => entry.id === id),
+  (index) => {
+    if (index >= 0) {
+      depth.value = index
+    }
+  },
+  { immediate: true },
+)
+
 onKeyStroke('Escape', (event) => {
-  if (!props.isOpen || container || !props.overlayStore.isTop(id))
+  if (!props.isOpen || container || !props.overlayStore.isTop(id) || event.defaultPrevented)
     return
   event.preventDefault()
   emit('close')
@@ -94,6 +112,7 @@ onKeyStroke('Escape', (event) => {
       <div
         v-if="isOpen"
         :class="inline ? 'dialog-scrim relative grid' : 'dialog-scrim dialog-host fixed inset-0 z-50 grid place-items-center bg-black/40'"
+        :style="inline || depth === 0 ? undefined : { zIndex: 50 + depth }"
         @click.self="!inline && emit('close')"
       >
         <div

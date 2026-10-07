@@ -35,6 +35,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     subagents: { enabled: true, profiles: [] },
     plugins: [{ id: 'skills', name: 'Skills', description: 'Skills the agent follows.', enabled: true, packages: [] }],
     pluginStates: { skills: { sources: [] } },
+    mail: false,
     run: 'run-1',
     ...parts,
   })

@@ -1,8 +1,4 @@
-import type {
-  SettingsProviderEntry,
-  SettingsVendor,
-  SettingsWireApi,
-} from './types'
+import type { SettingsVendor, SettingsWireApi } from './types'
 
 const OFFICIAL_VENDOR_BY_PROTOCOL: Record<SettingsWireApi, string> = {
   'anthropic-messages': 'anthropic',
@@ -11,19 +7,13 @@ const OFFICIAL_VENDOR_BY_PROTOCOL: Record<SettingsWireApi, string> = {
   'google-generative': 'google',
 }
 
-const DEFAULT_API_VENDORS = ['openai', 'anthropic'] as const
+/** The vendors Add Provider lists first, in this order, before the rest of the catalog. */
+const FIRST_VENDORS = ['openai', 'anthropic', 'google']
 
-/** Offer common vendors once, using the host's catalog for endpoint metadata. */
-export function defaultApiVendors(
-  vendors: readonly SettingsVendor[],
-  providers: readonly Pick<SettingsProviderEntry, 'vendorId'>[],
-): SettingsVendor[] {
-  return DEFAULT_API_VENDORS.flatMap((id) => {
-    const vendor = vendors.find((entry) => entry.id === id)
-    return vendor && !providers.some((entry) => entry.vendorId === id)
-      ? [vendor]
-      : []
-  })
+/** The catalog's vendors in the order Add Provider lists them: the common ones first, then the rest as they come. */
+export function vendorsInListOrder(vendors: readonly SettingsVendor[]): SettingsVendor[] {
+  const first = FIRST_VENDORS.flatMap((id) => vendors.filter((vendor) => vendor.id === id))
+  return [...first, ...vendors.filter((vendor) => !FIRST_VENDORS.includes(vendor.id))]
 }
 
 /** Bare protocol entries start from the official vendor's catalog endpoint. */

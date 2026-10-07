@@ -458,6 +458,13 @@ async fn login_locks_out_after_five_failures_and_logout_ends_the_session() {
         locked.refusal(),
         (StatusCode::TOO_MANY_REQUESTS, ErrorCode::TooManyAttempts)
     );
+    // It says how long the lock still holds, which the sign-in page counts down.
+    let retry_after: u64 = locked.headers["retry-after"]
+        .to_str()
+        .unwrap()
+        .parse()
+        .unwrap();
+    assert!((1..=60).contains(&retry_after), "{retry_after}");
     // The lock never touches sessions already open.
     assert_eq!(
         backend.get("/api/auth/me", Some(&signed_in)).await.status,
@@ -673,6 +680,8 @@ async fn email_identity_is_normalized_and_the_nickname_persists() {
 async fn an_email_change_needs_a_delivered_unexpired_single_use_code_and_survives_restart() {
     let harness = Harness::new().with_mail();
     let (backend, master) = harness.start_set_up().await;
+    // With a sender the product state offers the change.
+    assert!(backend.sync(&master).await.snapshot().await.mail);
 
     let wrong = backend
         .post(

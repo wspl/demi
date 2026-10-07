@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import { computed, onScopeDispose, ref } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
-import {
-  defaultApiVendors,
-  defaultEndpointUrl,
-} from '@demicodes/web-ui/settings/provider-defaults'
+import { defaultEndpointUrl } from '@demicodes/web-ui/settings/provider-defaults'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   WIRE_API_LABELS,
@@ -37,22 +34,8 @@ const props = defineProps<{
 const s = computed(() => props.state)
 const testing = ref<string | null>(null)
 
-for (const vendor of defaultApiVendors(mockVendors, s.value.providers)) {
-  s.value.providers.push(
-    provider({
-      id: `default-${vendor.id}`,
-      name: `${vendor.name} API`,
-      kind: 'api_key',
-      family: vendor.id,
-      vendorId: vendor.id,
-      baseUrl: vendor.baseUrl ?? '',
-      wireApi: vendor.wireApi,
-      logo: vendor.logo,
-      configured: false,
-      state: 'unconfigured',
-    }),
-  )
-}
+/** The provider being added: its form shows, and it joins the list once it has a key, as the product saves it then. */
+const draft = ref<MockProvider | null>(null)
 
 function changeProvider(
   entry: SettingsProviderEntry,
@@ -64,6 +47,10 @@ function changeProvider(
     entry.apiKey = ''
     entry.configured = true
     entry.keyConfigured = true
+    if (draft.value === entry) {
+      s.value.providers.push(draft.value)
+      draft.value = null
+    }
   }
 }
 
@@ -72,41 +59,47 @@ function select(id: string) {
   s.value.providerDetailOpen = true
 }
 
+/** Choosing another provider leaves the form of the one being added. */
+watch(
+  () => s.value.selectedProviderId,
+  (id) => {
+    if (draft.value && draft.value.id !== id) {
+      draft.value = null
+    }
+  },
+)
+
 function addProvider(vendor: SettingsVendor) {
   const id = `p-${Date.now()}`
-  s.value.providers.push(
-    provider({
-      id,
-      name: vendor.name,
-      kind: 'api_key',
-      family: vendor.id,
-      vendorId: vendor.id,
-      baseUrl: vendor.baseUrl ?? '',
-      wireApi: vendor.wireApi,
-      modelSource: 'catalog',
-      catalogFetched: 'just now',
-      logo: vendor.logo,
-      state: 'unconfigured',
-    }),
-  )
+  draft.value = provider({
+    id,
+    name: vendor.name,
+    kind: 'api_key',
+    family: vendor.id,
+    vendorId: vendor.id,
+    baseUrl: vendor.baseUrl ?? '',
+    wireApi: vendor.wireApi,
+    modelSource: 'catalog',
+    catalogFetched: 'just now',
+    logo: vendor.logo,
+    state: 'unconfigured',
+  })
   select(id)
 }
 
 function addEndpoint(wireApi: SettingsWireApi) {
   const id = `p-${Date.now()}`
-  s.value.providers.push(
-    provider({
-      id,
-      name: `${WIRE_API_LABELS[wireApi]} API`,
-      kind: 'api_key',
-      family: 'custom',
-      vendorId: null,
-      wireApi,
-      baseUrl: defaultEndpointUrl(mockVendors, wireApi),
-      modelSource: 'manual',
-      state: 'unconfigured',
-    }),
-  )
+  draft.value = provider({
+    id,
+    name: `${WIRE_API_LABELS[wireApi]} API`,
+    kind: 'api_key',
+    family: 'custom',
+    vendorId: null,
+    wireApi,
+    baseUrl: defaultEndpointUrl(mockVendors, wireApi),
+    modelSource: 'manual',
+    state: 'unconfigured',
+  })
   select(id)
 }
 
@@ -415,6 +408,7 @@ function closeLogin() {
     v-model:selected-id="s.selectedProviderId"
     v-model:detail-open="s.providerDetailOpen"
     :providers="s.providers"
+    :draft="draft"
     :vendors="mockVendors"
     :overlay-store="appOverlayStore"
     :testing="testing"

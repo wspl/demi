@@ -24,12 +24,14 @@ import { fileSource } from '../api/files'
 import { uploadAttachment } from '../api/uploads'
 import type { Conversation } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
+import { useSettingsAddress } from '../settings/address'
 
 const props = defineProps<{ conversation: Conversation }>()
 const store = useConversations()
 const resources = useResources()
 const preferences = usePreferences()
 const product = useProduct()
+const settings = useSettingsAddress()
 
 const modelState = computed(() =>
   composerModel(
@@ -63,7 +65,7 @@ const replaced = computed(() => {
 })
 
 function openProviders() {
-  resources.openSettings('models')
+  void settings.open('models')
 }
 function send() {
   if (canSend.value) {

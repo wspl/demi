@@ -25,6 +25,8 @@ use demi_backend_user_shard::shard::ShardUnavailable;
 pub(crate) struct ApiError {
     status: StatusCode,
     body: ErrorBody,
+    /// The `Retry-After` the answer carries, in whole seconds.
+    retry_after: Option<u64>,
 }
 
 impl ApiError {
@@ -36,7 +38,15 @@ impl ApiError {
                 message: message.into(),
                 reason: None,
             },
+            retry_after: None,
         }
+    }
+
+    /// The error with how long, at least, the client waits before trying
+    /// again, as `Retry-After` says it; rounded up to whole seconds.
+    pub(crate) fn with_retry_after(mut self, wait: std::time::Duration) -> Self {
+        self.retry_after = Some(wait.as_secs() + u64::from(wait.subsec_nanos() > 0));
+        self
     }
 
     /// The error with a plugin's own word for its refusal.
@@ -177,7 +187,13 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        (self.status, Json(self.body)).into_response()
+        let mut response = (self.status, Json(self.body)).into_response();
+        if let Some(seconds) = self.retry_after {
+            response
+                .headers_mut()
+                .insert(axum::http::header::RETRY_AFTER, seconds.into());
+        }
+        response
     }
 }
 

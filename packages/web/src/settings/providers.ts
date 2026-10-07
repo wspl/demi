@@ -6,10 +6,7 @@ import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
-import {
-  defaultApiVendors,
-  defaultEndpointUrl,
-} from '@demicodes/web-ui/settings/provider-defaults'
+import { defaultEndpointUrl } from '@demicodes/web-ui/settings/provider-defaults'
 import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
@@ -46,7 +43,11 @@ import { subscriptionName, type ProductProvider } from '../state/catalog'
 export const useProviderSettings = defineStore('provider-settings', () => {
   const resources = useResources()
   const product = useProduct()
-  const drafts = ref<ProductProvider[]>([])
+  /**
+   * The provider being added: its form shows in the page's detail, and it
+   * joins the list only once it is saved. Choosing another provider drops it.
+   */
+  const draft = ref<ProductProvider | null>(null)
   const modelEditor = ref<SettingsModelEditor | null>(null)
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
   const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
@@ -80,6 +81,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const clis = ref<Record<string, SettingsProviderCli>>({})
   let lifetime = new AbortController()
   const writes = new SerialQueue()
+  /** The operation running for each provider, which an edit made during a test waits for. */
+  const running = new Map<string, Promise<void>>()
   const providers = computed(() => {
     const configured = resources.providers.map((provider) => ({
       ...provider,
@@ -110,7 +113,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       (provider) =>
         !subscriptions.some((subscription) => subscription.id === provider.id),
     )
-    return [...subscriptions, ...remaining, ...drafts.value]
+    return [...subscriptions, ...remaining]
   })
 
   function report(error: unknown): void {
@@ -132,12 +135,15 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     const current = lifetime
     operations.value[id] = operation
+    const done = writes.run(async () => {
+      current.signal.throwIfAborted()
+      await action(current.signal)
+    })
+    running.set(id, done.then(() => {}, () => {}))
     try {
-      await writes.run(async () => {
-        current.signal.throwIfAborted()
-        await action(current.signal)
-      })
+      await done
     } finally {
+      running.delete(id)
       if (current === lifetime) {
         delete operations.value[id]
       }
@@ -199,29 +205,36 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     return provider
   }
 
-  function addProvider(vendor: SettingsVendor): void {
-    const provider = vendorDraft(vendor)
-    drafts.value.push(provider)
+  /** Opens `provider`'s form in place of any other draft. */
+  function openDraft(provider: ProductProvider): void {
+    if (draft.value) {
+      delete edits.value[draft.value.id]
+    }
+    draft.value = provider
     select(provider.id)
   }
 
+  function addProvider(vendor: SettingsVendor): void {
+    openDraft(vendorDraft(vendor))
+  }
+
+  /** Drops the provider being added; nothing of it was saved. */
+  function discardDraft(): void {
+    if (!draft.value || operations.value[draft.value.id]) {
+      return
+    }
+    delete edits.value[draft.value.id]
+    draft.value = null
+  }
+
+  // Choosing another provider leaves the form of the one being added.
   watch(
-    () => [
-      product.vendors,
-      JSON.stringify(resources.providers.map((provider) => provider.id)),
-    ],
-    () => {
-      const defaults = defaultApiVendors(resources.vendors, [
-        ...resources.providers,
-        ...drafts.value,
-      ])
-      for (const vendor of defaults) {
-        const provider = vendorDraft(vendor)
-        provider.name = `${vendor.name} API`
-        drafts.value.push(provider)
+    () => resources.selectedProviderId,
+    (id) => {
+      if (draft.value && id !== draft.value.id) {
+        discardDraft()
       }
     },
-    { immediate: true },
   )
 
   function addEndpoint(wireApi: SettingsWireApi): void {
@@ -233,8 +246,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     provider.wireApi = wireApi
     provider.baseUrl = defaultEndpointUrl(resources.vendors, wireApi)
     provider.modelSource = 'manual'
-    drafts.value.push(provider)
-    select(provider.id)
+    openDraft(provider)
   }
 
   function modelConfig(model: SettingsModelDraft): ConfiguredModel {
@@ -300,8 +312,10 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     // follows the channel's providers (`web-application.md` § Requests for
     // one action).
     await product.until((state) => state.providers.some((entry) => entry.id === saved.provider.id), signal)
+    if (draft.value?.id === provider.id) {
+      draft.value = null
+    }
     select(saved.provider.id)
-    drafts.value = drafts.value.filter((draft) => draft.id !== provider.id)
   }
 
   async function patch(
@@ -324,31 +338,36 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     provider: SettingsProviderEntry,
     changes: Partial<SettingsProviderEntry>,
   ): void {
+    const adding = draft.value?.id === provider.id ? draft.value : null
     if (changes.enabled !== undefined) {
-      const draft = drafts.value.find((entry) => entry.id === provider.id)
-      if (draft) {
-        draft.enabled = changes.enabled
+      if (adding) {
+        adding.enabled = changes.enabled
       } else {
         resources.hideProvider(provider.id, changes.enabled)
       }
       return
     }
-    if (operations.value[provider.id]) {
+    const busy = operations.value[provider.id]
+    if (busy && busy.kind !== 'testing' && busy.kind !== 'refreshing') {
       return
     }
     changes = { ...edits.value[provider.id], ...changes }
     edits.value[provider.id] = changes
-    const draft = drafts.value.find((entry) => entry.id === provider.id)
-    if (draft) {
-      Object.assign(draft, changes)
-      if (!canPersistDraft(draft)) {
+    if (busy) {
+      // A test or a refresh only reads: the edit shows at once and is saved when it ends.
+      void running.get(provider.id)?.then(() => change(provider, {}))
+      return
+    }
+    if (adding) {
+      Object.assign(adding, changes)
+      if (!canPersistDraft(adding)) {
         delete edits.value[provider.id]
         return
       }
     }
     perform(provider.id, { kind: 'saving' }, async (signal) => {
-      if (draft) {
-        await saveDraft(draft)
+      if (adding) {
+        await saveDraft(adding)
         delete edits.value[provider.id]
         return
       }
@@ -390,10 +409,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   function removeProvider(id: string): void {
     perform(id, { kind: 'removing' }, async (signal) => {
-      if (drafts.value.some((provider) => provider.id === id)) {
-        drafts.value = drafts.value.filter((provider) => provider.id !== id)
-        return
-      }
       await apiRequest(`/providers/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         signal,
@@ -409,17 +424,17 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     if (operations.value[provider.id]) {
       throw new Error('Wait for the current provider operation to finish.')
     }
-    const draft = drafts.value.find((entry) => entry.id === provider.id)
-    if (draft) {
-      draft.models = models
-      if (!canPersistDraft(draft)) {
+    const adding = draft.value?.id === provider.id ? draft.value : null
+    if (adding) {
+      adding.models = models
+      if (!canPersistDraft(adding)) {
         return
       }
     }
     await run(provider.id, { kind: 'saving' }, async (signal) => {
       signal.throwIfAborted()
-      if (draft) {
-        await saveDraft(draft)
+      if (adding) {
+        await saveDraft(adding)
         return
       }
       await patch(provider, { models: models.map(modelConfig) })
@@ -819,7 +834,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       lifetime.abort()
       lifetime = new AbortController()
       closeLogin()
-      drafts.value = []
+      draft.value = null
       edits.value = {}
       modelEditor.value = null
       manualDrafts.value = {}
@@ -841,6 +856,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     operations,
     refreshingUsage,
     providers,
+    draft,
+    discardDraft,
     testing,
     refreshing,
     login,

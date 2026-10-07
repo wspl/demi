@@ -10,6 +10,7 @@ import { useWorkPanel } from '../conversation/work'
 import { useProduct } from '../state/product'
 import { packageInstalled } from '../state/installed'
 import { useResources } from '../state/resources'
+import { useSettingsAddress } from '../settings/address'
 import { executionFor } from '../targets/execution'
 import { callFailure } from './errors'
 import { conversationStates } from './states'
@@ -28,6 +29,7 @@ export function productPageHost(): PageHost {
   const product = useProduct()
   const work = useWorkPanel()
   const resources = useResources()
+  const settings = useSettingsAddress()
   const states = conversationStates(() => product.snapshot)
   /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
   function primaryHost(plugin: string, conversation: string) {
@@ -77,7 +79,7 @@ export function productPageHost(): PageHost {
         work.stateFor(conversation).panel.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       add: (conversation, kind, data, options = { select: false }) => void work.add(conversation, kind, data, options),
     },
-    openSettings: (section) => resources.openSettings(section),
+    openSettings: (section) => void settings.open(section),
     overlays: appOverlayStore,
   }
 }
