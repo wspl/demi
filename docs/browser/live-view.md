@@ -134,7 +134,8 @@ page                         backend (panel, plugin-browser)            Host
   appears in the same frame as the click or the Enter, before the request has
   left the page, since on a far backend the browser may start loading
   seconds later. Only a tab list that describes the page after the request
-  started can end it: the Host numbers the tab lists it produces, the
+  started can end it: the Host numbers the tab lists it produces, numbers
+  that only grow within a conversation, across its browsers too, the
   request's answer names the number of the last one before the request
   started, and a list with a higher number ends the loading, in whatever order
   the answer and the lists reach the page. A refused request ends it at once
