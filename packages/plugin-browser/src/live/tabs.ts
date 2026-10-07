@@ -447,33 +447,46 @@ export class BrowserTabsController {
 
   /**
    * What Demi does for the panel tab `panelTab`, with `data`, before the
-   * browser has its tab: while it opens, the first time or again, and while
-   * it waits to (`live-view.md` § A browser tab in the panel). The Cloud
-   * starting comes first, which the product state says; then connecting,
-   * while neither a view nor the plugin's list has said what the
-   * conversation's browser holds; then the browser starting, while it has
-   * no tabs, as the view, or else the plugin's list, last said; then the
-   * browser opening the tab. Null once the browser has the tab, and for a
-   * tab that could not open and was not retried.
+   * browser has its tab (`live-view.md` § A browser tab in the panel): while
+   * it opens, the first time or again, while it waits to, and while the
+   * browser's tab list does not name the browser tab its data names, which
+   * the browser may have lost, as after a restart. The Cloud starting comes
+   * first, which the product state says; then connecting, while neither a
+   * view nor the plugin's list has said what the conversation's browser
+   * holds; then the browser starting, while it has no tabs; then the browser
+   * opening the tab. Null once the list names the tab, and for a tab that
+   * could not open and was not retried.
    */
   startingPhase(panelTab: string, data: BrowserTabData): StartingPhase | null {
-    const before = this.opening(panelTab, data)
-      || (!data.failure && (data.tab === undefined || data.closed === true))
-    if (!before) {
+    const opening = this.opening(panelTab, data)
+    if (!opening && data.failure) {
+      return null
+    }
+    const tabs = this.browserTabs()
+    const listed = data.tab !== undefined && !data.closed && tabs?.some((tab) => tab.id === data.tab) === true
+    if (!opening && listed) {
       return null
     }
     if (this.api.hostStarting()) {
       return 'cloud'
     }
-    const view = this.session.value
-    if (view?.state.connection === 'live') {
-      return view.state.running && view.state.tabs.length > 0 ? 'page' : 'browser'
-    }
-    const list = this.list.value
-    if (list === null) {
+    if (tabs === null) {
       return 'connecting'
     }
-    return list.tabs.length > 0 ? 'page' : 'browser'
+    return tabs.length > 0 ? 'page' : 'browser'
+  }
+
+  /**
+   * The conversation browser's tabs: as the view last reported them while it
+   * is connected, else as the plugin last listed them; null while neither
+   * has said what the browser holds.
+   */
+  private browserTabs(): readonly { id: string }[] | null {
+    const view = this.session.value?.state
+    if (view?.connection === 'live' || view?.connection === 'stalled') {
+      return view.running ? view.tabs : []
+    }
+    return this.list.value?.tabs ?? null
   }
 
   /**
