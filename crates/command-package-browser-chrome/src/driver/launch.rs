@@ -19,6 +19,11 @@ use crate::driver::operation::Result;
 /// tab capture can allowlist it (`live-view.md` § Capture).
 pub const CAPTURE_EXTENSION_ID: &str = "ekadkclcinpnbbdeloemlmaimcklplko";
 
+/// Where the capture extension of the browser with `profile` lies.
+pub fn capture_extension(profile: &Path) -> PathBuf {
+    profile.join("demi-capture")
+}
+
 const CAPTURE_EXTENSION: &[(&str, &str)] = &[
     ("manifest.json", include_str!("capture/manifest.json")),
     ("background.js", include_str!("capture/background.js")),
@@ -193,7 +198,7 @@ pub async fn configure(
     runtime: Option<&Runtime>,
     capture: &str,
 ) -> Result<BrowserConfigBuilder> {
-    let extension = profile.join("demi-capture");
+    let extension = capture_extension(profile);
     tokio::fs::create_dir(&extension).await?;
     for (name, contents) in CAPTURE_EXTENSION {
         tokio::fs::write(extension.join(name), contents).await?;

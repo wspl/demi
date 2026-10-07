@@ -12,7 +12,7 @@ for (const scenario of ['stopped', 'silent', 'aborted', 'disconnected']) {
     const timers = new Map<number, { callback: () => void; delay: number }>()
     const grants: string[] = []
     const stopped: string[] = []
-    const resets: string[] = []
+    const sent: string[] = []
     let timerId = 0
     let socket: Socket | undefined
     let releaseSecond: () => void = () => { throw new Error('second grant has not started') }
@@ -26,7 +26,9 @@ for (const scenario of ['stopped', 'silent', 'aborted', 'disconnected']) {
       addEventListener(name: string, listener: (event: { data: string }) => void): void {
         listeners.set(name, listener)
       }
-      send(): void {}
+      send(message: string): void {
+        sent.push(JSON.parse(message).type)
+      }
       close(): void {
         this.readyState = 3
         listeners.get('close')?.({ data: '' })
@@ -45,7 +47,6 @@ for (const scenario of ['stopped', 'silent', 'aborted', 'disconnected']) {
       WebSocket: Socket,
       MediaStreamTrackProcessor: Processor,
       chrome: { runtime: { sendMessage: async (message: { type: string; target: string }) => {
-        if (message.type === 'reset') resets.push(message.type)
         if (message.type !== 'grant') return {}
         grants.push(message.target)
         if (message.target === 'second') await secondGrant
@@ -77,7 +78,8 @@ for (const scenario of ['stopped', 'silent', 'aborted', 'disconnected']) {
       message({ data: JSON.stringify({ type: 'start', capture: 1, target: 'first', width: 800, height: 600, fps: 60, bitrate: 1000000 }) })
       await setImmediate()
       if (scenario === 'aborted') {
-        expect(resets).toEqual(['reset'])
+        // The Host recreates the extension; the capture fails meanwhile.
+        expect(sent).toEqual(['recreate', 'error'])
         expect(grants).toEqual(['first'])
         expect(stopped).toEqual([])
         return

@@ -27,6 +27,7 @@ const USED: &[&str] = &[
     "DOM",
     "Debugger",
     "Emulation",
+    "Extensions",
     "Fetch",
     "Input",
     "Log",

@@ -59,6 +59,9 @@ pub enum CaptureEvent {
     Stopped { capture: u32 },
     /// The capture failed and the extension released it.
     Error { capture: u32, message: String },
+    /// Chrome keeps a capture request the extension cannot release, which
+    /// fails every later capture until the Host recreates the extension.
+    Recreate {},
 }
 
 impl CaptureEvent {

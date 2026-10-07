@@ -1900,64 +1900,81 @@ async fn the_capture_extension_runs_beside_the_pages_and_is_never_a_tab() {
     .await;
 }
 
-/// A reload of the capture extension, as Chrome may do, keeps the pages as
-/// they were and brings its worker back each time (`live-view.md` § Capture).
+/// The capture extension stops running, here because Chrome ends its
+/// document, as Chrome may also never start its worker: the extension never
+/// dials again by itself, so the Host recreates it, the next capture pictures
+/// the tab, and the pages keep their state (`live-view.md` § Capture). Two
+/// rounds, since each recreated extension must recover too; about 2 s here.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
-async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
-    crate::fixture::with_fixture(|environment, _| async move {
+async fn a_capture_extension_that_stops_running_is_recreated_and_the_pages_stay() {
+    use demi_command_package_browser_chrome::driver::capture::CaptureEvent;
+    use demi_command_package_browser_chrome::driver::operation::BrowserError;
+    use demi_command_package_browser_chrome::page::evaluation::evaluate;
+    crate::fixture::with_fixture(|environment, base| async move {
         let cancel = CancellationToken::new();
         let timeout = Duration::from_secs(30);
-        let tab = environment.open("about:blank", &cancel, timeout).await?;
-        let worker_url = format!(
-            "chrome-extension://{}/background.js",
+        let tab = environment.open(&base, &cancel, timeout).await?;
+        // The page animates, so every capture has a picture, and its field
+        // holds what the user typed.
+        demi_command_package_browser_chrome::page::testing::fill_css(&tab, "#text", "kept", &cancel, timeout)
+            .await?;
+        let document = format!(
+            "chrome-extension://{}/offscreen.html",
             demi_command_package_browser_chrome::driver::testing::CAPTURE_EXTENSION_ID
         );
-        let offscreen_url = worker_url.replace("background.js", "offscreen.html");
-        let mut previous = None;
-        for round in 0..4 {
-            let worker = tokio::time::timeout(timeout, async {
+        let size = demi_command_package_browser_chrome::tabs::viewport::pixels(
+            &tab.state().viewport.borrow().current,
+            1.0,
+        );
+        for round in 0..2 {
+            let running = tokio::time::timeout(timeout, async {
                 loop {
-                    let targets = environment.targets().await?;
-                    // Target discovery precedes the worker's start: the
-                    // offscreen document shows its startup code has run.
-                    let started = targets.iter().any(|target| target.url == offscreen_url);
-                    let worker = targets.into_iter().find(|target| {
-                        target.url == worker_url && previous.as_ref() != Some(&target.target_id)
-                    });
-                    if let Some(worker) = worker.filter(|_| started) {
-                        return Ok::<
-                            _,
-                            demi_command_package_browser_chrome::driver::operation::BrowserError,
-                        >(worker.target_id);
+                    if let Some(target) = environment
+                        .targets()
+                        .await?
+                        .into_iter()
+                        .find(|target| target.url == document)
+                    {
+                        return Ok::<_, BrowserError>(target.target_id);
                     }
                     tokio::time::sleep(Duration::from_millis(50)).await;
                 }
             })
             .await
-            .expect("the capture worker returns after every reload")?;
+            .expect("the capture extension's document runs")?;
+            demi_command_package_browser_chrome::cdp::testing::close(&environment, running).await?;
+            // Captures start again as the live view's stream starts them,
+            // retrying a failed start.
+            let pictured = tokio::time::timeout(Duration::from_secs(20), async {
+                loop {
+                    let hold = tab.state().capture.capture().expect("no resize is under way");
+                    match environment
+                        .captures()
+                        .start(tab.target_id(), size.0, size.1, 30, 4_000_000, hold, &cancel)
+                        .await
+                    {
+                        Ok(mut capture) => {
+                            while let Some(event) = capture.events.recv().await {
+                                match event {
+                                    CaptureEvent::Frame(_) => return,
+                                    CaptureEvent::Failed(_) => break,
+                                    CaptureEvent::Started | CaptureEvent::Stalled => {}
+                                }
+                            }
+                        }
+                        Err(error) => eprintln!("round {round}: {error}"),
+                    }
+                    tokio::time::sleep(Duration::from_millis(500)).await;
+                }
+            })
+            .await;
+            assert!(pictured.is_ok(), "round {round}: no picture after the capture extension stopped running");
             assert_eq!(environment.tabs(&cancel, timeout).await?.len(), 1);
             assert_eq!(
-                demi_command_package_browser_chrome::page::evaluation::evaluate(
-                    &tab,
-                    "document.URL",
-                    &cancel,
-                    timeout
-                )
-                .await?,
-                json!("about:blank")
+                evaluate(&tab, "document.querySelector('#text').value", &cancel, timeout).await?,
+                json!("kept")
             );
-            if round == 3 {
-                break;
-            }
-            let reloading = demi_command_package_browser_chrome::cdp::testing::evaluate_in(
-                &environment,
-                worker.clone(),
-                "setTimeout(() => chrome.runtime.reload(), 100); true",
-            )
-            .await?;
-            assert_eq!(reloading, json!(true));
-            previous = Some(worker);
         }
         Ok(())
     })
