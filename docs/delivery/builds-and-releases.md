@@ -628,6 +628,53 @@ A developer's Linux host gets the pinned version the same way, with
 `demi-server runtime`, which fetches it into `/opt/demi/gvisor/<version>/`
 alone.
 
+## Vendored crates
+
+The [web preview](../browser/preview.md#upstream-requests)'s engine requests
+upstream with Chrome's TLS fingerprint, which takes two changes that are not
+upstream yet: wreq with three more TLS options (the trust anchors extension
+and signature algorithm lists that start with values only declared), and
+btls-sys whose BoringSSL carries a 124-line patch listing those algorithms in
+the ClientHello. Both live in `vendor/wreq` and `vendor/btls-sys`, BoringSSL's
+source included (about 29 MB), and the workspace's `[patch.crates-io]` puts
+them in place of the published crates. Each keeps its patch as a file beside
+it, so a new upstream version takes the patch again. BoringSSL builds with
+CMake, which the toolchain therefore needs on every build machine, and it
+must cross-build for every target `demi-browser` ships
+([Executables and targets](#executables-and-targets)); the engine's first
+work package proves each target builds before the engine depends on it.
+
+## Preview runtime
+
+The [preview runtime](../browser/preview.md#the-runtime) is one script that
+embeds the rewriter as WebAssembly. `bun xtask preview-runtime` builds it:
+`preview-rewrite-wasm` for `wasm32-unknown-unknown` in the release profile
+with `opt-level = "s"`, `wasm-bindgen` of the version the workspace pins
+(0.2.129, as `wasm-bindgen-cli` must match the crate), then esbuild bundles
+`@demicodes/preview-runtime` with the WebAssembly inlined. The web app's build
+runs it first and carries the result as `runtime/<release>.js`, so a Cargo
+build of any executable needs none of it. The toolchain file lists
+`wasm32-unknown-unknown` beside the six targets.
+
+## Preview domain deployment
+
+The [preview domain service](../browser/preview.md#the-preview-domain-service)
+is one Cloudflare Worker with a KV namespace, in the project's Cloudflare
+account, serving `demi-preview.dev` through a proxied wildcard DNS record and
+Universal SSL. `.github/workflows/preview-domain.yml` deploys
+`services/preview-domain` with Wrangler when a commit on the release branch
+changes it, using the repository secrets `CLOUDFLARE_API_TOKEN` and
+`CLOUDFLARE_ACCOUNT_ID`. A deployment only adds: the files under
+`/__demi/v<N>/` of a published version never change and are never removed,
+since pages built against them may still be open, so a change to them
+publishes `v<N+1>` and the web app's build names the version it uses. The
+domain renews itself and is registrar-locked, and the account uses two-factor
+sign-in. Its entry in the public suffix list is requested once the service
+runs. Development and tests run the same Worker locally with Wrangler's
+development server under `demi-preview.localhost`, whose subdomains Chrome
+resolves to the loopback address and treats as secure contexts over plain
+HTTP, so they need no certificate; they never reach the deployed domain.
+
 ## Validation
 
 [Testing](testing.md) says what a test must be; this section says how the tests run.

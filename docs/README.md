@@ -52,6 +52,7 @@ layout and interaction; these documents do not repeat it.
 
 - [Conversation browser](browser/browser.md): browser automation for a conversation and the `demi browser` command reference.
 - [Live view](browser/live-view.md): watching and operating the conversation's browser tabs from the page.
+- [Web preview](browser/preview.md): a page of the Host rendered in the user's own browser, with every request leaving from the Host: the preview domain, the forwarder and relay, the stream, the engine, the runtime, page state between the two browsers, and security.
 
 ## How are providers, models and credentials handled?
 
