@@ -512,17 +512,26 @@ test('a view the module ended and the socket then closed opens again once', () =
   }
 })
 
-test('a picture ends the notice that capture failed, and no other', () => {
-  const view = session()
+test('a notice that leaves no picture stands in its place until a picture; any other is told once', () => {
+  const told: string[] = []
+  const view = session({ onNotice: (code) => told.push(code) })
   view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.receive(moduleFrame({ type: 'notice', code: 'capture_failed', message: 'the capture extension did not connect' }))
-  expect(view.live.state.notice?.code).toBe('capture_failed')
+  expect(view.live.state.pictureless).toBe('capture_failed')
   view.receive(video(TAB.id, 1, 1, true, [0, 0, 0, 1]))
-  expect(view.live.state.notice).toBeNull()
+  expect(view.live.state.pictureless).toBeNull()
   view.receive(moduleFrame({ type: 'notice', code: 'input_failed', message: 'the page went away' }))
+  view.receive(moduleFrame({ type: 'notice', code: 'timeout', message: 'screen: timed out' }))
   view.receive(video(TAB.id, 1, 2, false, [0, 0, 0, 1]))
-  expect(view.live.state.notice?.code).toBe('input_failed')
+  expect(view.live.state.pictureless).toBeNull()
+  expect(told).toEqual(['input_failed', 'timeout'])
+  // A Host that cannot capture says so for each tab the page watches.
+  view.receive(moduleFrame({ type: 'notice', code: 'capture_unavailable', message: 'this CPU reports SME without SVE' }))
+  expect(view.live.state.pictureless).toBe('capture_unavailable')
+  view.live.watch(null)
+  expect(view.live.state.pictureless).toBeNull()
+  expect(told).toEqual(['input_failed', 'timeout'])
 })
 
 test('a message the protocol refuses is never sent, so the module does not end the view', () => {
