@@ -155,10 +155,17 @@ test('production imports stay within the importing package\'s line', () => {
   expect(violations).toEqual([])
 })
 
-test('no production source imports a Node built-in', () => {
+/**
+ * The packages that are command-line tools run by Bun rather than code a
+ * page loads: `check`, the product-check tool (`product-checks.md`), drives
+ * a browser and the slot's servers through Node's built-ins.
+ */
+const TOOLS = new Set(['check'])
+
+test('no production source of a package a page loads imports a Node built-in', () => {
   const builtins = new Set(builtinModules)
   const violations: string[] = []
-  for (const pkg of packages) {
+  for (const pkg of packages.filter((candidate) => !TOOLS.has(candidate.name))) {
     for (const path of productionSources(pkg)) {
       for (const specifier of specifiers(path)) {
         if (specifier.startsWith('node:') || builtins.has(specifier.split('/')[0]))

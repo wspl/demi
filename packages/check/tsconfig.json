@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    // Callbacks the page runs (`page.evaluate`) use the browser's types.
+    "lib": ["ES2023", "DOM"]
+  },
+  "include": ["src"],
+  "exclude": []
+}
