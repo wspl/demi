@@ -22,6 +22,8 @@ import ChatPage from './conversation/ChatPage.vue'
 import LoginPage from './auth/LoginPage.vue'
 import SetupPage from './auth/SetupPage.vue'
 import App from './App.vue'
+import { SETTINGS_ROUTE } from './settings/address'
+import { returnAddress, signInAddress } from './auth/return'
 import './style.css'
 
 const pinia = createPinia()
@@ -32,8 +34,15 @@ const router = createRouter({
       path: '/',
       redirect: '/chat',
     },
+    // Signed in, App shows the chat of the address, or of the page settings
+    // opened over (`settings/address.ts`); the records name it for the router.
     {
       path: '/chat/:id?',
+      component: ChatPage,
+    },
+    {
+      path: '/settings/:section?',
+      name: SETTINGS_ROUTE,
       component: ChatPage,
     },
     {
@@ -97,7 +106,7 @@ const stopExpiry = onSessionExpired(() => {
     status: 'signedOut',
     reason: 'expired',
   }
-  void router.replace('/login?reason=expired')
+  void router.replace(signInAddress(router.currentRoute.value.fullPath, 'expired'))
 })
 router.beforeEach(async (to) => {
   await restored
@@ -111,9 +120,10 @@ router.beforeEach(async (to) => {
     return to.path === '/setup' ? true : '/setup'
   }
   if (status === 'signedIn') {
-    return to.path === '/login' || to.path === '/setup' ? '/chat' : true
+    // Signing in goes on to the page that was opened signed out.
+    return to.path === '/login' || to.path === '/setup' ? returnAddress(to.query) : true
   }
-  return to.path === '/login' ? true : '/login'
+  return to.path === '/login' ? true : signInAddress(to.fullPath)
 })
 for (const [axis, value] of Object.entries(productAppearance)) {
   document.documentElement.setAttribute(`data-${axis}`, value)

@@ -25,7 +25,7 @@ import TextArea from '../ui/TextArea.vue'
 import TextInput from '../ui/TextInput.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import SettingsRow from './SettingsRow.vue'
-import { profileMissing, profileModelLabel } from './subagent-profiles'
+import { profileMissing, profileModelLabel, profileNameProblem } from './subagent-profiles'
 import type { SettingsSubagentDraft } from './types'
 
 /**
@@ -138,9 +138,13 @@ function changeModel(change: ModelSettingsChange): void {
   ownModel.value = applyModelChange(ownModel.value, change)
 }
 
+/** What breaks the name rule, said under the field as the name is typed. */
+const nameProblem = computed(() => profileNameProblem(draft.value.name.trim()))
+
 const canSave = computed(() =>
   !props.pending &&
   draft.value.name.trim() !== '' &&
+  nameProblem.value === null &&
   draft.value.description.trim() !== '' &&
   (modelSource.value === 'parent' || modelChosen.value) &&
   (promptSource.value === 'parent' || ownPrompt.value.trim() !== ''),
@@ -181,7 +185,10 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
       <!-- Only the fields scroll; the title and the buttons stay in place. -->
       <ScrollArea :inert="pending" class="min-h-0" viewport-class="flex flex-col gap-3 px-5">
         <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-          <SettingsRow label="Name" description="Lowercase letters, digits and hyphens.">
+          <SettingsRow label="Name" description="Required. Lowercase letters, digits and hyphens, starting with a letter.">
+            <template v-if="nameProblem" #detail>
+              <InlineError :message="nameProblem" />
+            </template>
             <TextInput
               v-model="draft.name"
               :focused="mode === 'create'"
@@ -191,7 +198,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               @keydown.enter="save"
             />
           </SettingsRow>
-          <SettingsRow label="Description" description="When the agent should use it, in one line.">
+          <SettingsRow label="Description" description="Required. When the agent should use it, in one line.">
             <TextInput
               v-model="draft.description"
               class="w-80 max-w-full"

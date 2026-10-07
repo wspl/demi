@@ -36,22 +36,23 @@ impl LoginLimiter {
         }
     }
 
-    pub fn locked(&self, email: &EmailAddress) -> bool {
+    /// How long `email` stays locked; `None` while it is not.
+    pub fn locked_for(&self, email: &EmailAddress) -> Option<Duration> {
         let now = Instant::now();
         let mut failures = self
             .failures
             .lock()
             .expect("the login limiter's lock is not poisoned");
         let Some(entry) = failures.get(email) else {
-            return false;
+            return None;
         };
-        if entry.locked_until.is_some_and(|until| until > now) {
-            return true;
+        if let Some(until) = entry.locked_until.filter(|until| *until > now) {
+            return Some(until - now);
         }
         if entry.forget_at <= now {
             failures.remove(email);
         }
-        false
+        None
     }
 
     pub fn failed(&self, email: &EmailAddress) {
@@ -109,12 +110,12 @@ mod tests {
         for _ in 1..LOCK_AFTER {
             limiter.failed(&address("a"));
         }
-        assert!(limiter.locked(&address("a")));
-        assert!(!limiter.locked(&address("b")));
+        assert!(limiter.locked_for(&address("a")).is_some());
+        assert!(limiter.locked_for(&address("b")).is_none());
         assert_eq!(tracked(&limiter), 3);
 
         tokio::time::advance(WINDOW).await;
-        assert!(!limiter.locked(&address("a")));
+        assert!(limiter.locked_for(&address("a")).is_none());
         // A failure sweeps what the window forgot, so sprayed addresses do
         // not accumulate.
         limiter.failed(&address("d"));
@@ -130,17 +131,17 @@ mod tests {
             tokio::time::advance(WINDOW - Duration::from_secs(1)).await;
         }
         limiter.failed(&ana);
-        assert!(limiter.locked(&ana));
+        assert_eq!(limiter.locked_for(&ana), Some(WINDOW));
         tokio::time::advance(WINDOW - Duration::from_secs(1)).await;
-        assert!(limiter.locked(&ana));
+        assert_eq!(limiter.locked_for(&ana), Some(Duration::from_secs(1)));
         tokio::time::advance(Duration::from_secs(1)).await;
-        assert!(!limiter.locked(&ana));
+        assert!(limiter.locked_for(&ana).is_none());
 
         for _ in 1..LOCK_AFTER {
             limiter.failed(&ana);
         }
         limiter.succeeded(&ana);
         limiter.failed(&ana);
-        assert!(!limiter.locked(&ana));
+        assert!(limiter.locked_for(&ana).is_none());
     }
 }

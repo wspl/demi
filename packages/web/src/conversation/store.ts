@@ -92,6 +92,11 @@ export const useConversations = defineStore('conversations', () => {
   })
   let lifetime = new AbortController()
   const cache = new ConversationCache()
+  /**
+   * Counts the times New gave the user the draft already shown, whose
+   * composer then takes the focus again.
+   */
+  const composerFocusRequests = ref(0)
   /** The delivery of each conversation's sent message, while it is on its way. */
   const sending = new Map<string, Promise<void>>()
   let storageErrorReported = false
@@ -1614,6 +1619,7 @@ export const useConversations = defineStore('conversations', () => {
   return {
     items,
     listStatus,
+    composerFocusRequests,
     activate,
     create,
     fork,
