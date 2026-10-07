@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import LineCounts from '../../files/LineCounts.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { baseName } from '@demicodes/utils'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import CornerDot from '../../ui/CornerDot.vue'
 import type { ChangeFile } from '../../files/changes'
@@ -33,11 +34,6 @@ const fitCount = ref(props.files.length)
 
 const visibleCount = computed(() => expanded.value ? props.files.length : fitCount.value)
 const hidden = computed(() => props.files.length - visibleCount.value)
-
-function baseName(path: string): string {
-  const normalized = path.replaceAll('\\', '/')
-  return normalized.slice(normalized.lastIndexOf('/') + 1)
-}
 
 function rowOf(el: HTMLElement, top: number, rowHeight: number): number {
   return Math.round((el.offsetTop - top) / rowHeight)

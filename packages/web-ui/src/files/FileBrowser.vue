@@ -44,7 +44,8 @@ import {
   type FileBrowserSort,
   type FileBrowserSortKey,
 } from './file-browser-state'
-import { baseName, joinPath, normalizePath, parentPath } from './paths'
+import { baseName } from '@demicodes/utils'
+import { joinPath, normalizePath, parentPath } from './paths'
 import { useShowing } from './showing'
 import {
   FileBrowserError,

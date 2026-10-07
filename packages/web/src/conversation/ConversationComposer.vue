@@ -4,12 +4,12 @@ import { Cloud } from '@lucide/vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { baseName } from '@demicodes/utils'
 
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 
 import {
   composerRemoteAttachment,
-  fileNameFromPath,
   remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
@@ -67,7 +67,7 @@ const replaced = computed(() => {
     ? {
         markdown: version.text,
         fileNames: version.files.map((file) =>
-          file.type === 'upload' ? file.fileName : fileNameFromPath(file.path),
+          file.type === 'upload' ? file.fileName : baseName(file.path),
         ),
       }
     : null

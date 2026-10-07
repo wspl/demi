@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { Cloud, FolderOpen, Monitor, Plus, X } from '@lucide/vue'
 import { hostIcon } from './icons'
 import { ICON_PX } from '../ui/icon-metrics'
-import { baseName } from '../files/paths'
+import { baseName } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import Button from '../ui/Button.vue'
@@ -106,7 +106,7 @@ const browserSource = computed(() => props.sourceFor(deviceId.value))
 const browserPlaces = computed(() => props.placesFor?.(deviceId.value) ?? [])
 const online = computed(() => device.value?.state === 'online')
 /** What a device project will be called: the directory's name. */
-const projectName = computed(() => baseName(path.value.replace(/\/$/, '')))
+const projectName = computed(() => baseName(path.value))
 const canCreate = computed(
   () =>
     !props.pending &&
