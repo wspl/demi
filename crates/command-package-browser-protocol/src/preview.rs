@@ -172,6 +172,14 @@ pub struct PreviewHeader {
 }
 
 closed_set! {
+    /// The preview domain's scheme, as the backend decided it.
+    pub enum PreviewScheme {
+        Https = "https",
+        Http = "http",
+    }
+}
+
+closed_set! {
     /// A request's mode, as the forwarder's `Request.mode` gives it.
     pub enum PreviewMode {
         Navigate = "navigate",
@@ -245,10 +253,13 @@ pub struct PreviewRequest {
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum PreviewRelayMessage {
     /// First: where previews live, which the engine's labels and rewriting
-    /// name.
+    /// name, as the backend's product state carries it.
     Hello {
-        /// The preview domain, with a port when it is not the default:
-        /// `demi-preview.dev`.
+        /// `https`, or `http` for a development domain.
+        #[garde(skip)]
+        scheme: PreviewScheme,
+        /// The preview domain, with a port when it is not the scheme's
+        /// default: `demi-preview.dev`.
         #[garde(length(chars, min = 1, max = 253))]
         domain: String,
         /// The deployment's namespace.

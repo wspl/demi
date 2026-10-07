@@ -16,7 +16,7 @@ use demi_command_package_browser_preview::testing::{Network, Space};
 use demi_command_package_browser_preview::{Engine, StreamError};
 use demi_command_package_browser_protocol::preview::{
     BodyHeader, CHUNK_FRAME, CONTROL_FRAME, PreviewClient, PreviewCredentials, PreviewEngineMessage,
-    PreviewEnvironment, PreviewHeader, PreviewMode, PreviewRelayMessage, PreviewRequest, REQUEST_BODY_FRAME,
+    PreviewEnvironment, PreviewHeader, PreviewMode, PreviewRelayMessage, PreviewRequest, PreviewScheme, REQUEST_BODY_FRAME,
     SOCKET_MESSAGE_FRAME, SocketHeader,
 };
 use demi_preview_rewrite::address::{Environment, label, site_of};
@@ -188,9 +188,15 @@ pub struct Relay {
 impl Relay {
     /// A stream of `engine`, after its hello.
     pub fn open(engine: Arc<Engine>) -> Self {
+        Self::open_on(engine, PreviewScheme::Https, DOMAIN)
+    }
+
+    /// A stream of `engine` whose previews live under `scheme` and `domain`.
+    pub fn open_on(engine: Arc<Engine>, scheme: PreviewScheme, domain: &str) -> Self {
         let relay = Self::unopened(engine);
         relay.send(&PreviewRelayMessage::Hello {
-            domain: DOMAIN.into(),
+            scheme,
+            domain: domain.into(),
             namespace: NAMESPACE.into(),
             host: HOST.into(),
         });

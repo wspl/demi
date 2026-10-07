@@ -1,7 +1,8 @@
 import { wasm } from './rewriter.js';
 
-// Preview addresses: https://<namespace>--<label>.<preview domain>/<path>, where the label
-// names a document environment (`docs/browser/preview.md` § Addresses and labels); the rules live in the
+// Preview addresses: <scheme>://<namespace>--<label>.<preview domain>/<path>, the scheme the
+// backend's (http for a development domain), where the label names a document environment
+// (`docs/browser/preview.md` § Addresses and labels); the rules live in the
 // Rust rewriter (crates/preview-rewrite/src/address.rs). A realm's rewriter starts from its boot data,
 // and reports every new label it maps to the Demi page, which checks it.
 let rewriter;
