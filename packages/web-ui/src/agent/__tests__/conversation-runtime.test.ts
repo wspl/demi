@@ -330,6 +330,69 @@ test('a connection lost before the session answered opens the conversation again
   }
 })
 
+// The product's stuck page: a message sent just before the socket dropped
+// showed as not delivered, and each Retry failed the same way. Fake sockets
+// and a fake clock: a few milliseconds.
+test('a message whose socket is lost before the session confirmed it waits for the connection and is sent again with its id', async () => {
+  const sockets = playSockets()
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    connect: (signal) => connectConversationClient('ws://fixture', signal),
+  })
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(0)
+  try {
+    const opening = runtime.connect()
+    const lost = sockets.last()
+    lost.open()
+    await turn()
+    lost.receive({ type: 'opened' })
+    await opening
+    let settled = false
+    const sending = runtime.submit([{ type: 'text', text: 'Hello' }], 'message').finally(() => {
+      settled = true
+    })
+    await turn()
+    expect(lost.sent.at(-1)).toEqual({ type: 'send', messageId: 'message', content: [{ type: 'text', text: 'Hello' }] })
+    // The network drops the socket before the session's confirmation arrives.
+    lost.end()
+    await turn()
+    expect(settled).toBe(false)
+    expect(current.load).toBe('reconnecting')
+    expect(current.lastError).toBeNull()
+    // The send waits for the page's first wait like the connection does.
+    jest.advanceTimersByTime(999)
+    await turn()
+    expect(sockets.last()).toBe(lost)
+    jest.advanceTimersByTime(1)
+    await turn()
+    const next = sockets.last()
+    expect(next).not.toBe(lost)
+    next.open()
+    await turn()
+    next.receive({ type: 'opened' })
+    await turn()
+    expect(next.sent).toEqual([
+      { type: 'open' },
+      { type: 'send', messageId: 'message', content: [{ type: 'text', text: 'Hello' }] },
+    ])
+    next.receive({
+      type: 'transcript_reset',
+      version: { epoch: 'epoch', revision: 1 },
+      blocks: [userBlock('block', 'message', 'Hello')],
+    })
+    await sending
+    expect(current.load).toBe('ready')
+    expect(current.lastError).toBeNull()
+  } finally {
+    random.mockRestore()
+    jest.useRealTimers()
+    runtime.dispose()
+    sockets.restore()
+  }
+})
+
 test('a page back from sleep breaks a conversation socket silent past the watch and opens the conversation again at once', async () => {
   const sockets = playSockets()
   const current = state()
@@ -350,7 +413,8 @@ test('a page back from sleep breaks a conversation socket silent past the watch 
     jest.setSystemTime(Date.now() + 80_000)
     pageReturned()
     expect(slept.closed).toBe(true)
-    // The conversation connects again without waiting.
+    // The conversation connects again without waiting: no timer runs before it.
+    await turn()
     const next = sockets.last()
     expect(next).not.toBe(slept)
     expect(current.load).toBe('reconnecting')

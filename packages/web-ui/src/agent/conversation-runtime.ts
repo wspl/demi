@@ -1,9 +1,9 @@
 import { shallowRef, triggerRef } from 'vue'
 import { SessionError, SteerRejectedError, type ConversationClient, type ClientSessionEvent } from '@demicodes/conversation-client'
-import { asError, deferred } from '@demicodes/utils'
+import { asError, createId, deferred } from '@demicodes/utils'
 import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
-import { waitToReconnect, type ReconnectWait } from '../transport/liveness'
+import { waitToReconnect } from '../transport/liveness'
 import { hasAcceptedSubmission } from './submission'
 import type { ConversationState } from './types'
 
@@ -47,7 +47,7 @@ const OPEN_TIMEOUT_MS = 30_000
  * Connecting, the composer stays) and tries again after the page's reconnect
  * waits (`web-application.md` § Liveness and reconnection) until the socket
  * is back or the view is disposed. An action taken meanwhile waits for the
- * connection.
+ * connection, without cutting a wait short.
  * Only the session refusing to open is a failure, told once through `load`
  * `failed` and `lastError`.
  */
@@ -57,8 +57,6 @@ export class ConversationRuntime {
   private opening: Promise<ConversationClient> | null = null
   private controller: AbortController | null = null
   private unsubscribe: (() => void) | null = null
-  /** The wait before the next connection, while the socket is closed. */
-  private waiting: ReconnectWait | null = null
   /** Consecutive connections lost or not made since the session last opened. */
   private connectionFailures = 0
   private disposed = false
@@ -71,13 +69,30 @@ export class ConversationRuntime {
     return this.client.value !== null
   }
 
-  async submit(content: ClientContent[], messageId?: string): Promise<void> {
+  /**
+   * Sends a message; resolves once the session holds it, in the transcript
+   * or the queue. A connection lost before the session confirmed it fails
+   * nothing: the send waits for the connection to come back, then sends the
+   * message again with its id, which the session takes only once
+   * (`runtime.md` § Messages and the queue), unless what the reopened
+   * conversation shows already holds it.
+   */
+  async submit(content: ClientContent[], messageId: string = createId()): Promise<void> {
     this.options.state.lastError = null
-    const client = await this.ensureOpen()
-    if (messageId && hasAcceptedSubmission(this.options.state, messageId)) {
-      return
+    for (;;) {
+      const client = await this.ensureOpen()
+      if (hasAcceptedSubmission(this.options.state, messageId)) {
+        return
+      }
+      try {
+        await client.submit(content, messageId)
+        return
+      } catch (error) {
+        if (!(error instanceof ConversationSocketError)) {
+          throw error
+        }
+      }
     }
-    await client.submit(content, messageId)
   }
 
   transcriptVersion(): TranscriptVersion | null {
@@ -243,8 +258,6 @@ export class ConversationRuntime {
 
   private releaseConnection(): void {
     this.settlePendingAction()
-    this.waiting?.cancel()
-    this.waiting = null
     this.unsubscribe?.()
     this.unsubscribe = null
     const controller = this.controller
@@ -262,17 +275,29 @@ export class ConversationRuntime {
     if (this.client.value) {
       return Promise.resolve(this.client.value)
     }
-    if (!this.opening) {
-      const controller = new AbortController()
-      this.controller = controller
-      this.opening = this.openSession(controller)
-    }
-    return this.opening
+    return this.opening ?? this.startOpening(false)
   }
 
-  /** One opening: attempts until the session opens, waiting after each connection not made. */
-  private async openSession(controller: AbortController): Promise<ConversationClient> {
-    for (;;) {
+  /**
+   * Starts the one opening, which the actions taken meanwhile wait for;
+   * after a lost connection, it waits before its first attempt.
+   */
+  private startOpening(afterLoss: boolean): Promise<ConversationClient> {
+    const controller = new AbortController()
+    this.controller = controller
+    const opening = this.openSession(controller, afterLoss)
+    this.opening = opening
+    return opening
+  }
+
+  /** One opening: attempts until the session opens, waiting before each attempt after a connection lost or not made. */
+  private async openSession(controller: AbortController, afterLoss: boolean): Promise<ConversationClient> {
+    for (let wait = afterLoss; ; wait = true) {
+      if (wait) {
+        this.options.state.load = 'reconnecting'
+        this.connectionFailures += 1
+        await this.pause(controller.signal)
+      }
       try {
         const client = await this.openOnce(controller)
         this.connectionFailures = 0
@@ -290,9 +315,6 @@ export class ConversationRuntime {
             error instanceof Error ? error.message : String(error)
           throw error
         }
-        this.options.state.load = 'reconnecting'
-        this.connectionFailures += 1
-        await this.pause(controller.signal)
       }
     }
   }
@@ -351,15 +373,12 @@ export class ConversationRuntime {
     return new Promise((resolve, reject) => {
       const onAbort = () => {
         wait.cancel()
-        this.waiting = null
         reject(signal.reason ?? new Error('The connection attempt was released'))
       }
       const wait = waitToReconnect(this.connectionFailures, () => {
         signal.removeEventListener('abort', onAbort)
-        this.waiting = null
         resolve()
       })
-      this.waiting = wait
       signal.addEventListener('abort', onAbort, { once: true })
     })
   }
@@ -406,13 +425,9 @@ export class ConversationRuntime {
       case 'disconnected':
         this.releaseConnection()
         if (!this.disposed) {
-          state.load = 'reconnecting'
-          this.connectionFailures += 1
-          this.waiting = waitToReconnect(this.connectionFailures, () => {
-            this.waiting = null
-            // The opening keeps trying on its own; only a refused open rejects here.
-            void this.connect().catch(() => {})
-          })
+          // The opening keeps trying on its own, and a refused open shows
+          // through `load` and `lastError`; a release ends it with the view.
+          this.startOpening(true).catch(() => {})
         }
         break
     }
