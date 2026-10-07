@@ -42,7 +42,10 @@ browse down` or after 30 minutes without a command. The browser runs as a
 process of its own that the tool's server reaches over the DevTools protocol,
 so when the tool's own code changes, only the server restarts, with the
 agent's current code, and the browser, its pages and what was typed in them
-stay as they were. A command starts the browser again when it crashed. The slot comes from the working directory: slot *n*
+stay as they were; the new server keeps the browser's `net` settings, which
+the slot's state holds until the browser stops, and goes on from the page's
+logs and the log mark the last one left. A command starts the browser again
+when it crashed. The slot comes from the working directory: slot *n*
 for `../demi-slots/n`, slot 0 for the user's own checkout.
 
 **The slot's servers.** `bun browse up [backend] [web] [gallery]` starts what
@@ -58,7 +61,10 @@ servers and other slots' are never touched; `down <server>…` stops only those.
 it. The backend's data lives in the slot's `.cache/browse/`, through `bun xtask
 dev --data`, and survives `down` and `up`, so a check can restart the backend
 as an upgrade does and see a page come back to the same account and
-conversations; the paired runner stays too. `down --wipe` removes both. The
+conversations; the paired runner stays too. `down --wipe` removes both. `up web` keeps the page the
+browser shows when the backend still knows its session; otherwise it signs in
+and loads the same page again, so a sign-in page goes on to the page it was
+opened for. Only a page outside the web app opens `/`. The
 web app's development server keeps its live-update connection on its own
 port rather than through the forwarder, so a restart of the tool never
 reloads the page.
@@ -68,14 +74,20 @@ reloads the page.
 `label=Email`, `testid=…`, or CSS. `text=` matches the whole visible text of
 an element, as a person reads a label; `text~=` matches a part of it. A
 textbox locator also finds a field the page marks as a combobox, as a person
-sees one. A locator that matches more than one element fails at once, and one that matches nothing after two seconds, time
+sees one, and also finds an editable element with that label, such as the
+composer. A role's quoted name, `role=button[name="Add Device"]`, matches the
+whole accessible name ignoring a trailing ellipsis, as a person reads "Add
+Device…"; `[name~="device"]` matches a part of it in any case. A locator that
+matches more than one element fails at once, as do `wait` and `wait gone`, and one that matches nothing after two seconds, time
 for a menu or dialog still opening; either failure says what it looked for
 and what it found, with a screenshot. Gallery specimens open by address, `bun browse open
 gallery:/session?view=blocks`.
 
 **Acting.** `click`, `fill`, `type`, `press`, `hover`, `select`, `upload`,
 `drag`, `scroll`, and `ime <text>`, which composes the text through an input
-method and commits it, as a Chinese or Japanese input method does.
+method and commits it, as a Chinese or Japanese input method does. An action
+on an element a dialog covers fails at once and names the dialog, since the
+dialog would take the click, the typing or the keys.
 
 **Waiting for what happens, never for time.** `wait` takes a locator to appear
 or go, text, a URL, a JavaScript condition, or `turn`, the end of the open
@@ -105,15 +117,15 @@ access.
 page logged, requested and sent or received since the browser started or
 since a mark, `log mark`.
 
-**The real product's other parts.** `message <text>` sends a message in the
-open conversation and waits for its turn to end; `runner` starts the slot's
+**The real product's other parts.** `message <text>` replaces any draft and sends the
+text in the open conversation and waits for its turn to end; `runner` starts the slot's
 built runner with its own installation folder under `.cache/browse/` and pairs
 it to the slot's backend through Add Device; `runner stop` and `runner start`
 stop and start that same runner, as a device that goes away and comes back,
 and `runner --new` pairs a new one. `focus` says which element has the
 focus, and `download '<command>'` keeps the file a command downloads.
 
-**Anything else.** `eval <js>` runs JavaScript in the page and prints the
+**Anything else.** `eval <js>` runs JavaScript in the page, `await` included, and prints the
 result, `cdp <method> [params]` sends a DevTools protocol command, and
 `script <file>` runs a script with the page, its context and a CDP session, for
 a step no command covers yet.
