@@ -1,4 +1,4 @@
-import { expect, test } from 'bun:test'
+import { expect, jest, test } from 'bun:test'
 import { deferred, type Deferred } from '@demicodes/utils'
 import { HostFiles, type Coverage, type KeptSpec } from '../file-cache'
 import { FileBrowserError } from '../types'
@@ -29,13 +29,17 @@ function host() {
       size: (text) => text.length,
     }
   }
-  /** Answers every read on its way with `text`, and lets the answers land. */
+  /**
+   * Answers every read on its way with `text`, and lets the answers land:
+   * they land in microtasks, so this works under fake timers too.
+   */
   async function answer(text: string): Promise<void> {
     for (const read of reads.filter((read) => !read.answered)) {
       read.answer.resolve(text)
       read.answered = true
     }
-    await new Promise((resolve) => setTimeout(resolve, 0))
+    for (let tick = 0; tick < 10; tick++)
+      await Promise.resolve()
   }
   const asked = () => reads.map((read) => read.key)
   return { reads, spec, answer, asked }
@@ -85,6 +89,46 @@ test('a report unconfirms the file, its folder and the changes list, and reads a
   expect(changesAgain.entry).toMatchObject({ value: 'before', reading: true })
   files.show(spec('text', '/w/README.md'))
   expect(asked().slice(5)).toEqual(['listing /w/src', 'changes /w'])
+})
+
+test('a report reads a shown listing again at once, and a burst of them once at once and once as each second ends', async () => {
+  // Cost: no I/O, fake timers; a few milliseconds.
+  jest.useFakeTimers()
+  try {
+    const files = new HostFiles()
+    files.cover(everything)
+    const { spec, answer, asked } = host()
+    files.show(spec('listing', '/w/logs'))
+    files.show(spec('text', '/w/logs/app.log'))
+    await answer('0')
+    jest.advanceTimersByTime(5000)
+    const listingReads = () => asked().filter((key) => key === 'listing /w/logs').length
+    const textReads = () => asked().filter((key) => key === 'text /w/logs/app.log').length
+
+    // A single change, a second or more after the last read, reads at once.
+    files.changed(['/w/logs/app.log'])
+    expect(listingReads()).toBe(2)
+    await answer('1')
+
+    // A log appended every 100 ms for 3 s: its text is read at each report,
+    // its folder's listing at the first and then as each second ends.
+    for (let step = 1; step <= 30; step++) {
+      jest.advanceTimersByTime(100)
+      files.changed(['/w/logs/app.log'])
+      await answer(String(step))
+    }
+    expect(textReads()).toBe(1 + 1 + 30)
+    expect(listingReads()).toBe(1 + 1 + 3)
+
+    // The last report is not dropped: the end of its second reads it.
+    jest.advanceTimersByTime(1000)
+    expect(listingReads()).toBe(1 + 1 + 4)
+    await answer('last')
+    jest.advanceTimersByTime(5000)
+    expect(listingReads()).toBe(1 + 1 + 4)
+  } finally {
+    jest.useRealTimers()
+  }
 })
 
 test('a change under .git unconfirms the changes list and the committed sides', async () => {
