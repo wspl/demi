@@ -2,7 +2,7 @@ import { onBeforeUnmount, onMounted, watch, type Ref } from 'vue'
 import { ChangeSet, EditorState, type Extension, type StateEffect, type Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { getOriginalDoc, originalDocChangeEffect } from '@codemirror/merge'
-import { baseName } from '../files/paths'
+import { baseName } from '@demicodes/utils'
 import { loadFileLanguage } from './language'
 import { editorTheme, trackEditorView, untrackEditorView } from './theme/cmTheme'
 

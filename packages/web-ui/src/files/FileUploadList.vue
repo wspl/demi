@@ -11,7 +11,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from './FileIcon.vue'
 import { uploadFiles, uploadSize, type FileUpload, type FileUploads } from './file-uploads'
 import { formatBytes } from './format'
-import { baseName } from './paths'
+import { baseName } from '@demicodes/utils'
 
 /**
  * A source's uploads, and nothing while there are none; its host sets its
