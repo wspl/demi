@@ -64,6 +64,8 @@ export function slotPaths(slot: Slot) {
     shots: join(slot.folder, 'shots'),
     logs: join(slot.folder, 'logs'),
     state: join(slot.folder, 'state.json'),
+    /** The page's logs a daemon that ends for changed code leaves for the next one. */
+    pageLogs: join(slot.folder, 'page-logs.json'),
     runnerHome: join(slot.folder, 'runner'),
     /** The development backend's data directory, which outlives the backend until `down --wipe`. */
     backendData: join(slot.folder, 'backend'),

@@ -13,7 +13,7 @@ export const COMMANDS: CommandEntry[] = [
   {
     name: 'up',
     usage: 'up [backend] [web] [gallery]',
-    summary: 'Start the slot\'s servers (backend and web by default), wait until they answer, sign the browser in',
+    summary: 'Start the slot\'s servers (backend and web by default), wait until they answer, sign the browser in unless its session still holds, keeping its page',
     load: () => import('./up'),
   },
   {
@@ -163,7 +163,7 @@ export const COMMANDS: CommandEntry[] = [
   {
     name: 'eval',
     usage: 'eval <javascript>',
-    summary: 'Run JavaScript in the page and print the result',
+    summary: 'Run JavaScript in the page, which may await, and print the result',
     load: () => import('./eval'),
   },
   {

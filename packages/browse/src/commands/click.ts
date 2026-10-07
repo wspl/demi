@@ -47,6 +47,6 @@ export async function run(context: Context, argv: string[]): Promise<void> {
     }
     return
   }
-  await uncovered(context, target.locator, target.text)
+  await uncovered(context, target.locator, target.text, 'click')
   await target.locator.click({ button, clickCount, modifiers: held, timeout: 10_000 })
 }

@@ -11,14 +11,10 @@
 // hundreds of modules would take minutes to load at a far backend's pace.
 import net from 'node:net'
 import { matcher } from './pattern'
+import type { Conditions } from './state'
 
-export interface Conditions {
-  /** The round trip it adds, in milliseconds: half on each way. */
-  latencyMs: number
-  /** The limit on each way, in kilobits per second; null for none. */
-  kbps: number | null
-  offline: boolean
-}
+/** The conditions of a network nothing slows or holds. */
+export const NORMAL: Readonly<Conditions> = { latencyMs: 0, kbps: null, reach: 'online' }
 
 /** One of the page's connections and what it has carried. */
 interface Connection {
@@ -79,7 +75,7 @@ class Lane {
       this.timer = null
     }
     const conditions = this.conditions()
-    if (conditions.offline) {
+    if (conditions.reach !== 'online') {
       return
     }
     while (this.queue.length > 0) {
@@ -118,20 +114,21 @@ class Lane {
 const REQUEST_LINE = /^(GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS) (\S+) HTTP\/1\.[01]\r\n/
 
 export class Network {
-  private readonly conditions: Conditions = { latencyMs: 0, kbps: null, offline: false }
+  private readonly conditions: Conditions
   private readonly connections = new Map<number, Connection>()
   private nextId = 1
   private readonly server: net.Server
 
-  private constructor(server: net.Server) {
+  private constructor(server: net.Server, conditions: Conditions) {
     this.server = server
+    this.conditions = { ...conditions }
   }
 
-  /** Listens on `port` and forwards each connection to `target` on this machine. */
-  static async listen(port: number, target: number): Promise<Network> {
+  /** Listens on `port` and forwards each connection to `target` on this machine, under `conditions`. */
+  static async listen(port: number, target: number, conditions: Conditions = NORMAL): Promise<Network> {
     // Each way ends on its own, once what it holds is delivered.
     const server = net.createServer({ allowHalfOpen: true })
-    const network = new Network(server)
+    const network = new Network(server, conditions)
     server.on('connection', (client) => network.accept(client, target))
     await new Promise<void>((resolve, reject) => {
       server.once('error', reject)
@@ -145,7 +142,7 @@ export class Network {
 
   private accept(client: net.Socket, target: number): void {
     // Offline, a new connection fails as one to an unreachable server does.
-    if (this.conditions.offline) {
+    if (this.conditions.reach !== 'online') {
       client.resetAndDestroy()
       return
     }
@@ -165,7 +162,7 @@ export class Network {
     client.on('data', (chunk: Buffer) => this.observe(connection, chunk))
     const conditions = (): Conditions => connection.paced
       ? this.conditions
-      : { latencyMs: 0, kbps: null, offline: this.conditions.offline }
+      : { ...NORMAL, reach: this.conditions.reach }
     connection.lanes = [new Lane(client, server, conditions), new Lane(server, client, conditions)]
     // A failure on either side ends both at once, as a broken connection
     // does; the connection is gone once both sides have closed.

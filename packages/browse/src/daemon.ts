@@ -16,6 +16,7 @@ import { findCommand } from './commands'
 import { Network } from './network'
 import { requestSchema, type Reply } from './protocol'
 import { currentSlot, slotPaths } from './slot'
+import { readState, updateState } from './state'
 
 /** How long the daemon waits without a command before it ends. */
 const IDLE_MS = 30 * 60 * 1000
@@ -49,6 +50,9 @@ waitIdle()
 // The network listens from the start: a page the browser still shows
 // reaches the web app through it again before any command asks for it.
 openNetwork().catch((error) => console.error(`the network does not listen: ${error}`))
+// A browser the last daemon left is attached to at once, so that its page's
+// logs go on from where that daemon left them.
+browser.attachRunning().catch((error) => console.error(`the browser could not be attached to: ${error}`))
 process.on('SIGTERM', () => void end('with the browser'))
 process.on('SIGINT', () => void end('with the browser'))
 
@@ -108,8 +112,10 @@ async function serve(socket: net.Socket): Promise<void> {
     // is now: the caller asks a new daemon instead, which can listen once
     // this one no longer does, and which attaches to the same browser.
     stopListening()
-    // The next daemon listens on the network's port as it starts.
+    // The next daemon listens on the network's port as it starts, and goes
+    // on from the page's logs as it attaches to the browser.
     await closeNetwork()
+    await browser.leave()
     send({ restart: true })
     socket.end()
     console.log('the tool\'s code changed: ending for a new daemon, leaving the browser')
@@ -172,7 +178,8 @@ async function runCommand(context: Context, argv: string[]): Promise<void> {
 
 function openNetwork(): Promise<Network> {
   if (!network) {
-    network = Network.listen(slot.ports.network, slot.ports.web)
+    // The conditions `net` set, which a daemon that started again keeps.
+    network = Network.listen(slot.ports.network, slot.ports.web, readState(slot).net)
     network.catch(() => {
       network = null
     })
@@ -212,6 +219,10 @@ async function end(how: 'with the browser' | 'leaving the browser'): Promise<voi
   await closeNetwork()
   if (how === 'with the browser') {
     await browser.close()
+    // `net`'s conditions are the browser's: the next browser starts online.
+    updateState(slot, (state) => {
+      delete state.net
+    })
   }
   process.exit(0)
 }

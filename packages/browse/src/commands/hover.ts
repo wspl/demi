@@ -16,6 +16,6 @@ export async function run(context: Context, argv: string[]): Promise<void> {
     await page.mouse.move(target.x, target.y)
     return
   }
-  await uncovered(context, target.locator, target.text)
+  await uncovered(context, target.locator, target.text, 'pointer')
   await target.locator.hover({ timeout: 10_000 })
 }

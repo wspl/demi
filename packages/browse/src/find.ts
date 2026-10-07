@@ -66,7 +66,12 @@ async function one(context: Context, target: Extract<Target, { kind: 'locator' }
   if (count === 0) {
     throw await failure(context, [`Nothing matches ${target.text} at ${page.url()}.`, ...await nearby(page, target.text)])
   }
-  throw await failure(context, [`${count} elements match ${target.text}; it must name one.`, ...await describeAll(locator)])
+  throw await several(context, locator, target.text)
+}
+
+/** The failure of a locator `text` that matches more than one element, listing them. */
+export async function several(context: Context, locator: Locator, text: string): Promise<CommandFailure> {
+  return failure(context, [`${await locator.count()} elements match ${text}; it must name one.`, ...await describeAll(locator)])
 }
 
 async function countOf(locator: Locator, text: string): Promise<number> {
@@ -78,15 +83,19 @@ async function countOf(locator: Locator, text: string): Promise<number> {
   }
 }
 
+/** What an action sends to an element, which whatever covers the element would take instead. */
+export type Input = 'click' | 'pointer' | 'typing' | 'keys'
+
 /**
  * Fails plainly when something covers the middle of `locator`, where a
  * click or the pointer would land, such as a dialog or its backdrop that
  * is still open: the failure names what covers it, rather than leaving
- * Playwright to retry until its timeout and print its call log. A target
- * that is not ready for another reason, such as one still disabled, is left
- * to the action's own wait.
+ * Playwright to retry until its timeout and print its call log. Typing
+ * and keys are blocked the same way, since a modal dialog keeps the focus
+ * and would take them. A target that is not ready for another reason, such
+ * as one still disabled, is left to the action's own wait.
  */
-export async function uncovered(context: Context, locator: Locator, text: string): Promise<void> {
+export async function uncovered(context: Context, locator: Locator, text: string, input: Input): Promise<void> {
   try {
     // A trial click waits until the element is shown, steady, enabled and the one a click would reach.
     await locator.click({ trial: true, timeout: SETTLE_MS })
@@ -98,8 +107,15 @@ export async function uncovered(context: Context, locator: Locator, text: string
   }
   const cover = await locator.evaluate(coverOf)
   if (cover !== null) {
-    throw await failure(context, [`${text} is covered by ${cover}, which would take the click. Close or finish it first, or act on it instead.`])
+    throw await failure(context, [`${text} is covered by ${cover}, which would take the ${input}. Close or finish it first, or act on it instead.`])
   }
+}
+
+/** The one element `text` names, which nothing covers, for an action that sends it `input`. */
+export async function reachable(context: Context, text: string, input: Input): Promise<Locator> {
+  const locator = await element(context, text)
+  await uncovered(context, locator, text, input)
+  return locator
 }
 
 /** What covers the middle of `node`, in words, or null when nothing does. Runs in the page. */

@@ -1,13 +1,16 @@
 // `bun browse up [backend] [web] [gallery]` (browse.md § The slot's
 // servers): starts what it names on the slot's ports, the backend and the
 // web app when it names nothing, waits until each answers, and signs the
-// browser in with the development account once the web app is up. The web
+// browser in with the development account once the web app is up, unless
+// its session is still good, keeping the page it shows. The web
 // app needs the backend, so naming it starts the backend too. Each server
 // leads a process group the slot's state records for `down`. The backend
 // keeps its data in the slot's folder, so it comes back with the account
 // and the conversations it had until `down --wipe`.
 import { copyFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { identitySchema } from '@demicodes/web/src/api/generated/web-api'
+import { errors, type Page } from 'playwright'
 import { CommandFailure, parse, webBase, type Context } from '../command'
 import { startGroup, type Started } from '../processes'
 import {
@@ -133,27 +136,64 @@ async function startWeb(context: Context): Promise<void> {
   await signIn(context, account)
 }
 
-/** Signs the browser in through the web app, as its sign-in form does. */
+/** Pages of the web app a signed-in page never stays on: the sign-in and setup pages, and `/`, which goes on to the conversations. */
+function signedOutPage(path: string): boolean {
+  return path === '/' || path.startsWith('/login') || path.startsWith('/setup')
+}
+
+/**
+ * Signs the browser in with the development account when the backend does
+ * not know its session, as the sign-in form does, and keeps the page it
+ * shows: a page of the web app stays, the sign-in page goes on to the page
+ * it was opened for, and a page elsewhere opens the web app.
+ */
 async function signIn(context: Context, account: { email: string, password: string | null }): Promise<void> {
+  await context.network()
+  const page = await context.browser.page()
+  const base = webBase(context.slot)
+  const shown = new URL(page.url())
+  const session = await page.request.get(`${base}/api/auth/me`)
+  let email: string
+  let signedInNow: boolean
+  if (session.ok()) {
+    email = identitySchema.parse(await session.json()).user.email
+    signedInNow = false
+  } else if (session.status() === 401) {
+    email = await logIn(context, page, account)
+    signedInNow = true
+  } else {
+    throw new CommandFailure(`Asking the backend for the browser's session failed: ${session.status()} ${await session.text()}`)
+  }
+  if (shown.origin !== new URL(base).origin) {
+    await page.goto(`${base}/`)
+  } else if (signedInNow || signedOutPage(shown.pathname)) {
+    // The app reads the session as it loads: the page loads again, and a
+    // sign-in page goes on to the page it was opened for.
+    await page.goto(shown.href)
+  }
+  try {
+    await page.waitForURL((url) => !signedOutPage(url.pathname), { timeout: 15_000 })
+  } catch (error) {
+    if (!(error instanceof errors.TimeoutError)) {
+      throw error
+    }
+    throw new CommandFailure(`The backend signed ${email} in, but the page stays at ${page.url()}`)
+  }
+  const how = signedInNow ? 'signed in as' : 'already signed in as'
+  context.print(`          ${how} ${email} at ${page.url()}; the browser reaches the web app at ${base}, where net acts`)
+}
+
+/** Signs the browser's context in with `account`, as the sign-in form does; answers the email signed in. */
+async function logIn(context: Context, page: Page, account: { email: string, password: string | null }): Promise<string> {
   const password = account.password ?? dotEnvValue(context.slot.root, 'DEMI_DEV_PASSWORD')
   if (password === undefined) {
     throw new CommandFailure('The backend took the account\'s password from DEMI_DEV_PASSWORD, which the slot\'s .env no longer has')
   }
-  await context.network()
-  const page = await context.browser.page()
-  const base = webBase(context.slot)
-  const answer = await page.request.post(`${base}/api/auth/login`, { data: { email: account.email, password } })
+  const answer = await page.request.post(`${webBase(context.slot)}/api/auth/login`, { data: { email: account.email, password } })
   if (!answer.ok()) {
     throw new CommandFailure(`Signing in as ${account.email} failed: ${answer.status()} ${await answer.text()}`)
   }
-  await page.goto(`${base}/`)
-  // The app sends a signed-in page from `/` to its conversations, and
-  // any other to the sign-in page.
-  await page.waitForURL((url) => url.pathname.startsWith('/chat') || url.pathname.startsWith('/login'), { timeout: 30_000 })
-  if (!new URL(page.url()).pathname.startsWith('/chat')) {
-    throw new CommandFailure(`The backend signed ${account.email} in, but the page shows ${page.url()}`)
-  }
-  context.print(`          signed in as ${account.email}; the browser reaches the web app at ${base}, where net acts`)
+  return identitySchema.parse(await answer.json()).user.email
 }
 
 async function startGallery(context: Context): Promise<void> {
