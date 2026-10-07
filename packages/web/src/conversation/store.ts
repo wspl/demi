@@ -34,7 +34,6 @@ import {
   isComposerFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
-import { loadDraft } from '../api/drafts'
 import { ApiError, apiRequest, apiUrl, jsonBody, readResponse, unreachable } from '../api/client'
 import {
   attachedHostsSchema,
@@ -767,12 +766,24 @@ export const useConversations = defineStore('conversations', () => {
   /** Conversations whose record this page just created, which their opening does not read back. */
   const madeHere = new Set<string>()
 
+  /**
+   * Starts the opening's reads. Each one that cannot reach the backend
+   * waits for it, so the conversation shows it loading under the connection
+   * banner, and fails only for the backend's own answer (`web-application.md`
+   * § A page of another build).
+   */
   function openingReads(id: string, signal: AbortSignal): OpeningReads {
     const path = `/conversations/${encodeURIComponent(id)}`
     const reads = {
-      transcript: apiRequest(`${path}/transcript`, { signal }).then((response) => readResponse(response, transcriptSchema)),
-      hosts: apiRequest(`${path}/hosts`, { signal }).then((response) => readResponse(response, attachedHostsSchema)),
-      draft: loadDraft(id, signal),
+      transcript: product.untilReached(
+        async () => readResponse(await apiRequest(`${path}/transcript`, { signal }), transcriptSchema),
+        signal,
+      ),
+      hosts: product.untilReached(
+        async () => readResponse(await apiRequest(`${path}/hosts`, { signal }), attachedHostsSchema),
+        signal,
+      ),
+      draft: draftSync.fetch(id, signal),
     }
     // The opening that takes them reports their failures; one never taken has nobody to tell.
     for (const read of Object.values(reads)) {
@@ -912,10 +923,11 @@ export const useConversations = defineStore('conversations', () => {
    */
   async function readHosts(conversation: Conversation): Promise<void> {
     const revision = conversation.hostsRevision
-    const response = await apiRequest(`/conversations/${encodeURIComponent(conversation.id)}/hosts`, {
-      signal: lifetime.signal,
-    })
-    const answer = await readResponse(response, attachedHostsSchema)
+    const { signal } = lifetime
+    const answer = await product.untilReached(async () => {
+      const response = await apiRequest(`/conversations/${encodeURIComponent(conversation.id)}/hosts`, { signal })
+      return readResponse(response, attachedHostsSchema)
+    }, signal)
     if (conversation.hostsRevision === revision) {
       conversation.attachedHosts = answer.hosts
     }
