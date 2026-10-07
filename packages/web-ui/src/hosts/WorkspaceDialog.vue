@@ -314,7 +314,7 @@ function selectDevice(id: string, close: () => void): void {
                     @click="emit('connectDevice', paired)"
                   >
                     <Plus :size="14" />
-                    Add Device
+                    Add Device…
                   </Button>
                 </span>
               </div>

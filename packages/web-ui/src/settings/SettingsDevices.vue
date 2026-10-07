@@ -17,6 +17,8 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
+import { deviceReportLine } from '../devices/report'
+import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import HelpPopover from '../ui/HelpPopover.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
@@ -24,7 +26,12 @@ import { useDevicePairing, type PairingResult } from '../devices/pairing'
 
 const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
+  /** The devices whose revocation is under way. */
   pendingIds?: string[]
+  /** The devices whose rename is under way. */
+  renamingIds?: string[]
+  /** The most characters a device's name has; null for no limit. */
+  nameMaxLength: number | null
   cloud: CloudState | null
   resetPending?: boolean
   resetError?: string | null
@@ -39,6 +46,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   retry: []
   revoke: [id: string]
+  rename: [id: string, name: string]
   resetCloud: [operationId: string]
 }>()
 /**
@@ -75,6 +83,18 @@ function revoke() {
     emit('revoke', confirming.value.id)
   }
 }
+/** The device Rename… asks a name for; it stays while the dialog closes, as `confirming` does. */
+const renaming = ref<SettingsDevice | null>(null)
+const renameOpen = ref(false)
+function startRename(device: SettingsDevice) {
+  renaming.value = device
+  renameOpen.value = true
+}
+function rename(name: string) {
+  if (renaming.value) {
+    emit('rename', renaming.value.id, name)
+  }
+}
 </script>
 
 <template>
@@ -107,10 +127,13 @@ function revoke() {
         <template v-for="device in devices" :key="device.id">
           <SettingsRow :label="device.name">
             <template #description>
-              <template v-if="device.state === 'offline' && device.seen">
-                Last seen <RelativeTime :timestamp="device.seen" />
-              </template>
-              <template v-else>{{ reachedAs(device) }}</template>
+              <span v-if="deviceReportLine(device)" class="block">{{ deviceReportLine(device) }}</span>
+              <span class="block">
+                <template v-if="device.state === 'offline' && device.seen">
+                  Last seen <RelativeTime :timestamp="device.seen" />
+                </template>
+                <template v-else>{{ reachedAs(device) }}</template>
+              </span>
             </template>
             <template #leading>
               <span class="relative flex">
@@ -141,9 +164,15 @@ function revoke() {
             </HelpPopover>
             <Button
               size="sm"
+              :loading="renamingIds?.includes(device.id)"
+              @click="startRename(device)"
+              >Rename…</Button
+            >
+            <Button
+              size="sm"
               :loading="pendingIds?.includes(device.id)"
               @click="confirmRevoke(device)"
-              >Revoke</Button
+              >Revoke…</Button
             >
           </SettingsRow>
         </template>
@@ -162,6 +191,14 @@ function revoke() {
       :projects="confirmingProjects"
       @close="confirmOpen = false"
       @revoke="revoke"
+    />
+    <DeviceRenameDialog
+      :is-open="renameOpen"
+      :overlay-store="overlayStore"
+      :name="renaming?.name ?? ''"
+      :max-length="nameMaxLength"
+      @close="renameOpen = false"
+      @rename="rename"
     />
     <DevicePairingDialog
       v-if="installation"
