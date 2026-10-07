@@ -2,7 +2,7 @@
 //! reading it back.
 
 use demi_preview_rewrite::address::{
-    Environment, Role, label, logical_url, map_module_specifier, map_url, map_written_url, with_parameter,
+    Environment, Role, label, logical_url, map_module_specifier, map_url, map_written_url, site_of, with_parameter,
 };
 
 use super::{BOOT, HOST, NAMESPACE, preview_origin, top_document};
@@ -25,6 +25,16 @@ fn one_environment_always_gets_the_same_label_and_another_environment_another() 
     for other in others {
         assert_ne!(other, first);
     }
+}
+
+#[test]
+fn an_address_written_as_a_number_is_its_own_site() {
+    // The engine, with the public suffix list, and the runtime, without it,
+    // must agree, or a development page at an address gets two labels.
+    assert_eq!(site_of("http://127.0.0.1:5173"), "http://127.0.0.1");
+    assert_eq!(site_of("https://192.168.1.20"), "https://192.168.1.20");
+    assert_eq!(site_of("http://[::1]:3000"), "http://::1");
+    assert_eq!(site_of("https://www.example.co.uk"), "https://example.co.uk");
 }
 
 #[test]
