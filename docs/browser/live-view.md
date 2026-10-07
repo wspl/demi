@@ -128,13 +128,16 @@ page                         backend (panel, plugin-browser)            Host
 
   | While | The content says |
   | --- | --- |
+  | The page has not read yet what the Host is doing: the conversation's browser state has not arrived | Connecting… |
   | The Cloud starts | Starting Cloud… |
   | The browser starts on the Host: the conversation's browser has no tabs yet | Starting the browser… |
   | The browser opens the tab | Opening the page… |
 
-  The words appear only once the wait passes half a second, so a tab opened
-  on a running browser, which takes about a third of a second, never flashes
-  them. The strip's spinner, Stop and the address bar show the tab loading
+  The words appear in the same frame as the Enter or the click that opens the
+  tab, since the page already knows which of these it waits for; an empty
+  area would read as Demi doing nothing, and on a running browser the words
+  show for about a third of a second, as a browser's tab says Loading for as
+  long as it loads. The strip's spinner, Stop and the address bar show the tab loading
   meanwhile, as below; Stop then gives up the address, and the tab opens
   blank, as stopping a page before it shows anything leaves a browser's tab
   blank. A device that is offline is a Host that cannot be reached, below.
