@@ -1,8 +1,9 @@
 {
   "extends": "../../tsconfig.json",
   "compilerOptions": {
-    // Callbacks the page runs (`page.evaluate`) use the browser's types.
-    "lib": ["ES2023", "DOM"]
+    // Callbacks the page runs (`page.evaluate`) use the browser's types;
+    // locators escape names with `RegExp.escape`, which Bun has.
+    "lib": ["ES2023", "ES2025.RegExp", "DOM"]
   },
   "include": ["src"],
   "exclude": []
