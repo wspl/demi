@@ -22,7 +22,11 @@ use serde_json::Value;
 use crate::driver::operation::{BrowserError, Result};
 use crate::tabs::tab::BrowserTab;
 
-/// The page-state codec, one expression that defines `__demiPageState`.
+/// The page-state codec, one expression that defines `__demiPageState`. Its
+/// one copy is the preview domain's published file, which the user's browser
+/// loads from every preview origin; this crate includes it from
+/// `services/preview-domain`, across the tree, so both browsers run the same
+/// code, and a published version of it never changes.
 const CODEC: &str = include_str!("../../../../services/preview-domain/static/__demi/v1/state.js");
 /// The world the codec runs in, apart from the page's own scripts.
 const WORLD: &str = "demi-page-state";

@@ -77,7 +77,7 @@ export function relayDriver(relay: PreviewRelay): PreviewDriver {
       return top ? readState(top.origin, top.environment.origin) : null
     },
     origins: (tab) => relay.origins(tab),
-    keepState: (tab, place, origins, storage) => tab.connection.keepState(place, origins, storage),
+    keepState: (tab, place, token, origins, storage) => tab.connection.keepState(place, token, origins, storage),
     async icon(tab, place, page) {
       const environment = relay.top(tab)?.environment
       if (!environment) {
