@@ -1013,8 +1013,10 @@ beyond current output are refused.
 `GET /api/search?q=<query>` answers `{ results }`: the caller's conversations
 that match the query, at most 50, in the order
 [Finding a conversation](product.md#finding-a-conversation) gives. A result is
-`{ conversationId, title, archived, lastActiveAt, match }`, where
-`lastActiveAt` is when the conversation's latest message was written. `match`
+`{ conversationId, title, titleRanges, archived, lastActiveAt, match }`, where
+`titleRanges` are the ranges of the query's words in the title, as `match`
+gives them below, empty when the title does not match, and `lastActiveAt` is
+when the conversation's latest message was written. `match`
 is null when only the title matches, and otherwise `{ blockId, text, ranges }`:
 the block of the matching message, newest first when several match, a line of
 its text of at most 160 characters around the first match, and the ranges of
