@@ -5,6 +5,7 @@ import { skillsStateSchema, type SkillsState } from '@demicodes/plugin-skills'
 import { PluginCallError, definePage, pageContext } from '@demicodes/web-ui/plugins/page'
 import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
+import { useWorkPanel } from '../conversation/work'
 import { useProduct } from '../state/product'
 import { productPageHost } from './host'
 
@@ -131,4 +132,17 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
   ])
   // A conversation the page does not know has no Host.
   expect(browser.conversation('unknown').installed.value).toEqual([])
+})
+
+test('a tab a page adds after another stands right after it, as a link opened from a tab does, and after the others once that one is gone', () => {
+  const panel = productPageHost().panel
+  const urls = () => useWorkPanel().stateFor(CONVERSATION).panel.tabs.map((tab) => z.object({ url: z.string() }).parse(tab.data).url)
+  panel.add(CONVERSATION, 'browser', { url: 'https://a.test/' })
+  panel.add(CONVERSATION, 'browser', { url: 'https://b.test/' })
+  const opener = useWorkPanel().stateFor(CONVERSATION).panel.tabs[0]!.id
+  // Open Link in New Tab on the first tab.
+  panel.add(CONVERSATION, 'browser', { url: 'https://link.test/' }, { select: false, after: opener })
+  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://b.test/'])
+  panel.add(CONVERSATION, 'browser', { url: 'https://late.test/' }, { select: false, after: 'closed-meanwhile' })
+  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://b.test/', 'https://late.test/'])
 })
