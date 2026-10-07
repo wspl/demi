@@ -235,6 +235,8 @@ impl Plugin for Instance {
                 Request::PageCall {
                     conversation: None, ..
                 } => Err(PluginError::undeclared("user method")),
+                // A tab of the user's browser has nothing on the Host to open or close.
+                Request::PanelTab { tab, .. } if tab.kind == panel::PREVIEW_KIND => Ok(Reply::Done),
                 Request::PanelTab {
                     conversation,
                     change,

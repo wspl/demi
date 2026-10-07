@@ -16,11 +16,53 @@ use serde::{Deserialize, Serialize};
 /// § User streams).
 pub const OPERATION: &str = "browser.preview";
 
+/// The page method's operation that gives the top-level environment and
+/// label of an address the user opens in a tab of their browser, waking a
+/// stopped Cloud first as opening any tab does (`preview.md` § The stream).
+pub const OPEN_OPERATION: &str = "browser.preview_open";
+
 /// The stream's arguments: none; the relay and the engine speak over the
 /// stream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PreviewInput {}
+
+/// `browser.preview_open`: an address the user opens, and where previews
+/// live, as the page's `hello` names it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct PreviewOpenInput {
+    /// An `http:` or `https:` address.
+    #[garde(length(chars, min = 1, max = MAX_URL_CHARS), custom(web_address))]
+    pub url: String,
+    #[garde(skip)]
+    pub scheme: PreviewScheme,
+    #[garde(length(chars, min = 1, max = 253))]
+    pub domain: String,
+    #[garde(length(chars, min = 1, max = 63))]
+    pub namespace: String,
+    #[garde(length(chars, min = 1, max = 256))]
+    pub host: String,
+}
+
+fn web_address(value: &str, _: &()) -> garde::Result {
+    if value.starts_with("http://") || value.starts_with("https://") {
+        Ok(())
+    } else {
+        Err(garde::Error::new("is not an http or https address"))
+    }
+}
+
+/// What `browser.preview_open` answers: the top-level environment of the
+/// address and its label, which the page opens the boot page of.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PreviewOpened {
+    pub label: String,
+    pub environment: PreviewEnvironment,
+    /// The preview origin of the label: `<scheme>://<namespace>--<label>.<domain>`.
+    pub origin: String,
+}
 
 /// A frame's kind, the byte after its length: UTF-8 JSON of one message.
 pub const CONTROL_FRAME: u8 = 1;

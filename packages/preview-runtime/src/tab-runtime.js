@@ -9,7 +9,7 @@ import { available, on, send } from './document-channel.js';
 const remoteWindows = new WeakSet();
 export const isRemoteWindow = object => remoteWindows.has(object);
 
-export function installTabRuntime({ currentBaseUrl, topLevel }) {
+export function installTabRuntime({ currentBaseUrl, currentLogicalUrl, topLevel }) {
   if (!available()) return;
   const NativeURL = globalThis.URL;
   const nativeClose = window.close;
@@ -108,5 +108,49 @@ export function installTabRuntime({ currentBaseUrl, topLevel }) {
     if (!newWindow && !(target === '_top' && !topLevel)) return;
     event.preventDefault();
     window.open(link.href, newWindow ? '_blank' : '_top');
+  });
+
+  if (topLevel) installTabPage({ currentLogicalUrl });
+}
+
+// What a tab's top document tells the Demi page of the page it shows, for the tab's address bar and
+// strip: its address, title, icon and whether it has a page to go back or forward to; that it leaves,
+// as its tab starts loading; and the bar's Back, Forward, Reload and Stop, which act in the page.
+function installTabPage({ currentLogicalUrl }) {
+  // The browser's, before a page's polyfill replaces it.
+  const NativeURL = globalThis.URL;
+  const history = globalThis.navigation;
+  let reported = '';
+  const report = () => {
+    const icon = document.querySelector('link[rel~="icon"][href]');
+    const page = {
+      url: currentLogicalUrl(),
+      title: document.title,
+      icon: icon ? new NativeURL(icon.getAttribute('href'), document.baseURI).href : new NativeURL('/favicon.ico', currentLogicalUrl()).href,
+      canGoBack: history?.canGoBack ?? false,
+      canGoForward: history?.canGoForward ?? false,
+    };
+    const text = JSON.stringify(page);
+    if (text === reported) return;
+    reported = text;
+    send({ type: 'tab-page', page });
+  };
+  // The title and the icon change with the head; the address with the history.
+  const watch = () => new MutationObserver(report).observe(document.head ?? document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['href', 'rel'] });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { watch(); report(); }, { once: true });
+  else watch();
+  report();
+  history?.addEventListener('currententrychange', report);
+  window.addEventListener('popstate', report);
+  window.addEventListener('hashchange', report);
+  window.addEventListener('load', report);
+  window.addEventListener('pagehide', () => send({ type: 'tab-leaving' }));
+  // A move with no page that way is no move: its promises' rejection says so, to nobody.
+  const move = result => { result?.committed?.catch(() => {}); result?.finished?.catch(() => {}); };
+  on('tab-command', ({ command }) => {
+    if (command === 'back') history ? move(history.back()) : window.history.back();
+    else if (command === 'forward') history ? move(history.forward()) : window.history.forward();
+    else if (command === 'reload') location.reload();
+    else if (command === 'stop') window.stop();
   });
 }

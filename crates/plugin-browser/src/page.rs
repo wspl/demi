@@ -13,6 +13,7 @@
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
+use demi_command_package_browser_protocol::preview::{PreviewOpenInput, PreviewOpened};
 use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_command_package_browser_protocol::browser::{
     BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab, CloseInput,
@@ -29,7 +30,7 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::panel::{KIND, Work};
+use crate::panel::{KIND, PREVIEW_KIND, Work};
 
 /// The most characters of a URL a method takes.
 pub const URL_MAX: usize = 4096;
@@ -126,6 +127,9 @@ pub(crate) fn page() -> Page {
                 .calls(operation("tabs")),
         )
         .panel_kind(KIND)
+        // The tabs of the user's browser, which the page alone serves: the
+        // plugin opens nothing for them (`preview.md` § What the user sees).
+        .panel_kind(PREVIEW_KIND)
         .told(Topic::Jobs)
         .method(
             Method::new::<BindTab, TabBound>("bind", Scope::Conversation)
@@ -147,6 +151,10 @@ pub(crate) fn page() -> Page {
         .method(
             Method::new::<StopTab, TabMoved>("stop", Scope::Conversation)
                 .calls(operation("stop")),
+        )
+        .method(
+            Method::new::<PreviewOpenInput, PreviewOpened>("preview_open", Scope::Conversation)
+                .calls(operation("preview_open")),
         )
 }
 
@@ -245,8 +253,8 @@ pub(crate) async fn navigate(
 
 /// Answers the page call `method` with `params`, which its schema checked,
 /// for `conversation`, and marks the tab list changed once the method did
-/// its work: every method opens, closes or moves a tab, and one the browser
-/// refused changed none.
+/// its work: every method but `preview_open` opens, closes or moves a tab
+/// of the agent's browser, and one the browser refused changed none.
 pub(crate) async fn call(
     method: &str,
     params: Map<String, Value>,
@@ -255,7 +263,10 @@ pub(crate) async fn call(
     conversation: &ConversationId,
 ) -> Result<Value, PluginError> {
     let result = run_method(method, params, port, work, conversation).await?;
-    port.changed(Scope::Conversation).await?;
+    // Opening a tab of the user's browser touches no tab of the agent's.
+    if method != "preview_open" {
+        port.changed(Scope::Conversation).await?;
+    }
     Ok(result)
 }
 
@@ -322,6 +333,23 @@ async fn run_method(
                 .await
                 .map_err(refused)?;
             to_value(stopped)
+        }
+        // A tab of the user's browser opens: work the user starts, which
+        // wakes a stopped Cloud, though the stream it then opens never does
+        // (`preview.md` § The stream).
+        "preview_open" => {
+            let input: PreviewOpenInput = decode(params)?;
+            let Ok(Value::Object(args)) = serde_json::to_value(&input) else {
+                unreachable!("an opening serializes to an object")
+            };
+            let opened = port
+                .package_call(operation("preview_open"), args, CallKind::Starts)
+                .await
+                .map_err(refused)?;
+            let opened: PreviewOpened = serde_json::from_value(opened).map_err(|error| {
+                PluginError::failed(format!("the browser answered what the plugin cannot read: {error}"))
+            })?;
+            to_value(opened)
         }
         method => Err(PluginError::failed(format!(
             "the browser has no method {method}"

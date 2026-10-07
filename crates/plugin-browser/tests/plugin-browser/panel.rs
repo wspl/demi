@@ -490,3 +490,22 @@ async fn a_tab_a_page_opened_stands_beside_its_opener() {
         ["a", "link", "browser-t3", "browser-t4", "browser-t8", "b", "browser-t5", "browser-t6", "browser-t7"]
     );
 }
+
+/// A tab of the user's browser is the page's alone: creating and removing it
+/// opens and closes nothing on the Host (`preview.md` § What the user sees).
+#[tokio::test(flavor = "local")]
+async fn a_tab_of_the_users_browser_opens_nothing_on_the_host() {
+    let (plugin, demi) = world(Box::new(|_, operation, _| panic!("{operation} was called")));
+    let create = CreatePanelTab {
+        id: "p".into(),
+        kind: "preview".into(),
+        data: data(json!({ "url": "http://localhost:5173/" })),
+        index: None,
+    };
+    demi.change_panel(PanelChange::Create(create));
+    let tab = demi.panel_tab("p").expect("the panel has the tab it created");
+    told(&plugin, &demi, PanelTabChange::Created, tab.clone()).await;
+    told(&plugin, &demi, PanelTabChange::Removed, tab).await;
+    assert_eq!(calls(&demi), []);
+    assert_eq!(demi.changes(), 0);
+}
