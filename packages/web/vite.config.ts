@@ -61,8 +61,24 @@ function directServiceWorker(): Plugin {
   }
 }
 
+/**
+ * Keeps the page's hot-update socket on the development server itself,
+ * even for a page loaded through a forwarder in front of it, as `bun browse`
+ * loads it (`browse.md` § The slot's servers): Vite reloads a page whose
+ * hot-update socket closed once the server answers again, so a restart of
+ * the forwarder would otherwise reload the page and lose what was typed in
+ * it. The port is the one the server listens on, `--port` included.
+ */
+function directHotUpdates(): Plugin {
+  return {
+    name: 'demi-direct-hot-updates',
+    apply: 'serve',
+    config: (config) => ({ server: { hmr: { clientPort: config.server?.port } } }),
+  }
+}
+
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), webBuild(), directServiceWorker()],
+  plugins: [vue(), tailwindcss(), webBuild(), directServiceWorker(), directHotUpdates()],
   // The repository's `.env` carries the local development account
   // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
   // during development only.
