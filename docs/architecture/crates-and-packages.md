@@ -1702,6 +1702,7 @@ server -> backend-database, machine-manager-protocol, shared-artifacts
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
+command-package-browser-preview -> none
 preview-rewrite -> none
 preview-rewrite-wasm -> preview-rewrite
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk

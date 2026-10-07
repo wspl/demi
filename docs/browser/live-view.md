@@ -140,6 +140,11 @@ page                         backend (panel, plugin-browser)            Host
   | The browser starts on the Host: the conversation's browser has no tabs yet | Starting the browser… |
   | The browser opens the tab | Opening the page… |
 
+  A new tab with no address yet is not loading anything, so it shows none of
+  this: it is the blank New Tab at once, with the focus in the address bar
+  and no spinner, Stop or progress line, as a browser's new tab is, while the
+  browser opens its tab unseen. Once the user enters an address before the
+  browser has the tab, the tab loads and says what it waits for.
   The words appear in the same frame as the Enter or the click that opens the
   tab, since the page already knows which of these it waits for; an empty
   area would read as Demi doing nothing, and on a running browser the words
