@@ -7,6 +7,8 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
 export interface SearchRow {
   conversationId: string
   title: string
+  /** The matched pieces of the title as `[start, end]` UTF-16 offsets; empty when the title did not match. */
+  titleRanges: readonly (readonly number[])[]
   archived: boolean
   /** When the conversation's latest message was written. */
   lastActiveAt: string
