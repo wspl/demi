@@ -312,3 +312,31 @@ export function afterLeaveTab(el: Element): void {
   leaveParents.delete(tab)
   releaseStrip(parent)
 }
+
+/** How far the pointer moves before a pressed tab starts to drag, so a click with a tremor stays a click. */
+export const TAB_DRAG_PX = 4
+
+/**
+ * Where a dragged tab lands: its index among the other tabs, the `move`
+ * index, by how many of their centers its own center has passed. `centers`
+ * are the tabs' centers in strip order, the dragged one at `from` included,
+ * and `center` is the dragged tab's center where the pointer holds it.
+ */
+export function dragTarget(centers: readonly number[], from: number, center: number): number {
+  return centers.filter((other, index) => index !== from && other < center).length
+}
+
+/**
+ * Which way the tab at `index` steps aside while the tab at `from` is held
+ * over the slot `to` (`dragTarget`): -1 to the left, 1 to the right, 0 when it
+ * stays, as a web browser's tabs make room for the one dragged.
+ */
+export function dragShift(index: number, from: number, to: number): -1 | 0 | 1 {
+  if (index > from && index - 1 < to) {
+    return -1
+  }
+  if (index < from && index >= to) {
+    return 1
+  }
+  return 0
+}

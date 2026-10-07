@@ -77,6 +77,20 @@ async fn site() -> Site {
                 async { Html(PAGE) }
             }),
         )
+        // A page that names its icon, one from its own site.
+        .route(
+            "/icon",
+            get(|| async { Html(r#"<!doctype html><link rel="icon" href="/icon.svg"><title>Icon</title>"#) }),
+        )
+        .route(
+            "/icon.svg",
+            get(|| async {
+                (
+                    [(axum::http::header::CONTENT_TYPE, "image/svg+xml")],
+                    r#"<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16"><rect width="16" height="16" fill="red"/></svg>"#,
+                )
+            }),
+        )
         // A page that does not answer while a test runs.
         .route(
             "/slow",
@@ -1056,6 +1070,34 @@ async fn the_users_requests_answer_without_waiting_for_a_page() {
             "the new browser's list {listed} is not numbered after {last}"
         );
         request(&fixture, "browser.close", json!({"tab": reopened["tab"]})).await;
+        fixture
+    })
+    .await;
+}
+
+/// A tab lists its page's icon as a web browser's tab shows it, and a page
+/// without one, whose site has no `/favicon.ico` either, lists none. Costs
+/// a browser start and two page loads, about 2 s.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_tab_lists_its_pages_icon() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let icon = format!("{}icon", site.base);
+        let opened = request(&fixture, "browser.open", json!({"url": icon})).await;
+        let tab = opened["tab"].as_str().unwrap().to_owned();
+        listed_until(&fixture, &tab, |_, row| {
+            row["favicon"]
+                .as_str()
+                .is_some_and(|url| url.starts_with("data:image/png;base64,"))
+        })
+        .await;
+        let went = request(&fixture, "browser.goto", json!({"tab": tab, "url": site.base})).await;
+        let list = moved(&went, &tab, &site.base);
+        listed_until(&fixture, &tab, |number, row| {
+            number > list && row["loading"] == json!(false) && row.get("favicon").is_none()
+        })
+        .await;
         fixture
     })
     .await;

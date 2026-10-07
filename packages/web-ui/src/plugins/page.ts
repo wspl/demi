@@ -14,7 +14,7 @@ import {
   type PropType,
 } from 'vue'
 import { z } from 'zod'
-import type { PanelTabKind } from '../agent/panel-kinds/kind'
+import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
 import type { HostArtifact } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { FileBrowserSource } from '../files/types'
@@ -196,6 +196,11 @@ export interface PanelKind<Data, Session = undefined> {
   /** The strip's mark. Props: `data`. */
   mark: Component
   /**
+   * A picture the strip shows in place of the mark, such as a web page's
+   * icon, as an image URL; null while there is none. Read reactively.
+   */
+  icon?(data: Data, tab: KindTab<Session>, id: string): string | null
+  /**
    * Whether the tab `id` is at work, such as a page that loads, read
    * reactively: the strip shows a spinner in place of its mark meanwhile.
    */
@@ -224,8 +229,17 @@ export interface PanelKind<Data, Session = undefined> {
    * lives in the page's memory. Its id is the kind's id.
    */
   pinned?: { data(): Data }
-  /** What a tab shows next when its user picks it in the strip, even while it is selected. */
-  picked?(data: Data): Data
+  /**
+   * What the tab's menu offers before its Close commands, such as a
+   * browser tab's Reload, read when the menu opens.
+   */
+  commands?(data: Data, tab: KindTab<Session>, id: string): readonly TabCommand[]
+  /**
+   * The data of a copy of a tab, which its menu's Duplicate opens right
+   * after it, selected, as a web browser duplicates a tab; without it the
+   * menu offers no Duplicate.
+   */
+  duplicate?(data: Data): Data
   /**
    * How many times something asked that the user see the tab, from its
    * data. When the count rises above the one the page last applied for the
@@ -525,17 +539,19 @@ function bindKind(
         })
     },
   })
-  const { badge, picked, busy } = kind
+  const { badge, icon, busy, commands, duplicate } = kind
   return {
     kind: kind.kind,
     schema: kind.schema,
     title: (data) => kind.title(data, tab),
     mark: kind.mark,
+    icon: icon && ((data, id) => icon(data, tab, id)),
     busy: busy && ((data, id) => busy(data, tab, id)),
     content,
     create: kind.create && bindCreate(kind.create, tab),
     pinned: kind.pinned,
-    picked: picked && ((data) => picked(data)),
+    commands: commands && ((data, id) => commands(data, tab, id)),
+    duplicate: duplicate && ((data) => duplicate(data)),
     badge: badge
       ? defineComponent({
           props: { data: { required: true } },
