@@ -13,6 +13,7 @@ import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { useTouchOnly } from '../ui/touch-only'
 import { SETTINGS_SECTIONS } from './sections'
 import type {
   SettingsAccountInfo,
@@ -43,7 +44,14 @@ const emit = defineEmits<{
   close: []
 }>()
 
-const items = computed(() => props.sections.flatMap((group) => group.items))
+const touchOnly = useTouchOnly()
+/** The sections this device lists: a touch phone has no keyboard to set up. */
+const shownSections = computed(() =>
+  props.sections
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.keyboard || !touchOnly.value) }))
+    .filter((group) => group.items.length),
+)
+const items = computed(() => shownSections.value.flatMap((group) => group.items))
 
 // The rail filter narrows the sections by label or keyword; Enter opens the first hit.
 const query = ref('')
@@ -54,7 +62,7 @@ const matches = (item: SettingsNavItem) => {
     (item.keywords ?? []).some((k) => k.toLowerCase().includes(q))
 }
 const filteredSections = computed(() =>
-  props.sections.map((group) => ({
+  shownSections.value.map((group) => ({
       ...group,
       items: group.items.filter(matches)
     })).filter(
@@ -221,7 +229,7 @@ const initials = computed(() =>
               <template #content="{ close }">
                 <Menu>
                   <template
-                    v-for="(group, index) in sections"
+                    v-for="(group, index) in shownSections"
                     :key="group.label ?? index"
                   >
                     <MenuGroup v-if="group.label" :label="group.label">

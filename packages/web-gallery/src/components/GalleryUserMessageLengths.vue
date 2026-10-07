@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { productWould } from '../product-would'
 import type { UserContentBlock } from '@demicodes/protocol'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import { provideMessageFiles } from '@demicodes/web-ui/markdown/message-files'
@@ -58,7 +59,7 @@ const table = [
   '| 4816 | main | passed |',
 ].join('\n')
 
-const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?: boolean; actions?: boolean }[] = [
+const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?: 'steer' | 'queued'; actions?: boolean }[] = [
   { variant: 'One line', content: text('Rename the session cookie in the login test.') },
   { variant: 'Five lines · whole', content: text(steps.join('\n')) },
   {
@@ -108,7 +109,7 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
       { type: 'text', text: ` shows it. ${longUserText}` },
     ],
   },
-  { variant: 'Pending', content: text(longUserText), pending: true },
+  { variant: 'Queued', content: text(longUserText), pending: 'queued' },
   { variant: 'Actions on the last line', content: text(longUserText), actions: true },
 ]
 </script>
@@ -135,6 +136,8 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
               :content="specimen.content"
               :pending="specimen.pending"
               :actions-pinned="specimen.actions"
+              @send-now="productWould('Send the Queued Message Now')"
+              @remove="productWould('Remove the Queued Message')"
             />
           </div>
         </div>

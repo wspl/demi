@@ -45,6 +45,8 @@ const props = defineProps<{
   listStatus?: ListLoad
   /** The entries between New and Archived, each opening its settings section. */
   sectionEntries?: readonly SidebarEntry[]
+  /** The keys New conversation has in the keyboard settings, which New shows; none when it has none. */
+  newShortcut?: string
 }>()
 
 const emit = defineEmits<{
@@ -375,7 +377,7 @@ function selectProjectConversations(project: SidebarProject): void {
       <SidebarNavItem
         :icon="SquarePen"
         label="New"
-        shortcut="⌘N"
+        :shortcut="newShortcut"
         @click="emit('create', null)"
       />
       <SidebarNavItem

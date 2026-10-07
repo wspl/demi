@@ -9,7 +9,7 @@ import AgentReceiptBlock from './AgentReceiptBlock.vue'
 import AssistantTextBlock from './AssistantTextBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
-import AbortedBlock from './AbortedBlock.vue'
+import StoppedBlock from './StoppedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
 import QueueDivider from './QueueDivider.vue'
 import PendingSubmission from '../PendingSubmission.vue'
@@ -74,20 +74,16 @@ const entersAsChrome = computed(() =>
     v-else-if="block.type === 'pending_steer'"
     v-bind="attrs"
     :content="block.content"
-    pending
-    deletable
-    interruptible
-    @delete="emit('deletePendingSteer', block.pendingSteerId)"
-    @interrupt="emit('interruptPendingSteer', block.pendingSteerId)"
+    pending="steer"
+    @remove="emit('deletePendingSteer', block.pendingSteerId)"
+    @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
   />
   <UserBlock
     v-else-if="block.type === 'queued_message'"
     v-bind="attrs"
     :content="block.content"
-    pending
-    deletable
-    sendable
-    @delete="emit('deleteQueued', block.queueId)"
+    pending="queued"
+    @remove="emit('deleteQueued', block.queueId)"
     @send-now="emit('sendQueued', block.queueId)"
   />
   <QueueDivider
@@ -143,7 +139,7 @@ const entersAsChrome = computed(() =>
       v-else-if="block.type === 'abort'"
       class="px-[var(--agent-pad-x,2rem)]"
     >
-      <AbortedBlock />
+      <StoppedBlock />
     </div>
     <CompactionBlock
       v-else-if="block.type === 'compaction_marker' || block.type === 'compaction_boundary'"

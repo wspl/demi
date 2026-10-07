@@ -17,6 +17,7 @@ import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import SettingsGeneral from '@demicodes/web-ui/settings/SettingsGeneral.vue'
 import SettingsKeyboard from '@demicodes/web-ui/settings/SettingsKeyboard.vue'
+import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotifications.vue'
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import { PageScope, settingsPage } from '@demicodes/web-ui/plugins/page'
@@ -223,37 +224,19 @@ async function claimDevice(_code: string) {
   return { ok: true as const, device }
 }
 
-const keyMessage = ref('')
-
-/** A binding another action already holds is refused; the row keeps its old keys. */
+/** A change the keyboard settings accepted: the row takes the keys, as the product's preference does. */
 function rebind(id: string, keys: string) {
-  const list = s.value.keys
-  const target = list.find((b) => b.id === id)
-  if (!target)
-    return
-  const taken = list.find((b) => b.id !== id && b.keys === keys)
-  if (taken) {
-    keyMessage.value = `${keys} is already bound to “${taken.action}”.`
-    return
+  const target = s.value.keys.find((binding) => binding.id === id)
+  if (target) {
+    target.keys = keys
   }
-  keyMessage.value = ''
-  target.keys = keys
 }
 
-const DEFAULT_KEYS: Record<string, string> = {
-  new: '⌘⇧O',
-  send: '⏎',
-  stop: '⎋',
-  sidebar: '⌘B',
-  search: '⌘K',
-  focus: '⌘J',
-  settings: '⌘,'
-}
 function resetShortcuts() {
-  for (const binding of s.value.keys) binding.keys = DEFAULT_KEYS[binding.id] ?? binding.keys
-  keyMessage.value = ''
+  for (const binding of s.value.keys) {
+    binding.keys = APP_SHORTCUTS.find((shortcut) => shortcut.id === binding.id)?.keys ?? binding.keys
+  }
 }
-
 </script>
 
 <template>
@@ -317,6 +300,7 @@ function resetShortcuts() {
   <SettingsArchived
     v-else-if="tab === 'archived'"
     :conversations="s.archived"
+    @open="productWould('Open the Conversation Read-Only')"
     @restore="restoreArchived"
   />
 
@@ -337,7 +321,6 @@ function resetShortcuts() {
   <SettingsKeyboard
     v-else-if="tab === 'keyboard'"
     :bindings="s.keys"
-    :message="keyMessage"
     @rebind="rebind"
     @reset="resetShortcuts"
   />
