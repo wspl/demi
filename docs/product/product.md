@@ -318,8 +318,11 @@ A user remembers that a conversation explained a TS2307 error, but not which
 one. ⌘K, or Search in the sidebar, opens the search window: a field, and
 under it the most recent conversations. Typing `TS2307` lists, a moment after
 the typing pauses, the conversations whose title or messages contain it, each
-with its title, a line of the message around the match with the match
-marked, and when the conversation was last active. ↑ and ↓ move through the
+with its title, a line of the message around the match, and when the
+conversation was last active; the matches are marked in the title and in the
+line. The window is as tall as its list, up to a limit past which the list
+scrolls, and its field stays where it is as the list grows and shrinks, as
+in Spotlight and Raycast. ↑ and ↓ move through the
 list; Return or a click opens the selected conversation at the message that
 matched, which scrolls into view and is marked for a moment; Escape closes the
 window, as ⌘K does in Slack, Linear and ChatGPT.
