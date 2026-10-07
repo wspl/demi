@@ -172,6 +172,15 @@
   // Native controls the viewer opens with its own pickers: each has an
   // identity and a revision that changes whenever what it reports changes.
   const KINDS = ['select', 'date', 'month', 'week', 'time', 'datetime-local', 'color', 'suggestions', 'file'];
+  // A label's own words: one that wraps its control would otherwise name it
+  // with the control's text too, a select's every option.
+  const labelText = element => {
+    const label = element.labels?.[0];
+    if (!label) return '';
+    const words = label.cloneNode(true);
+    for (const control of words.querySelectorAll('select, input, textarea, button')) control.remove();
+    return words.textContent.trim();
+  };
   const identities = new WeakMap();
   const controls = new Map();
   let lastControls = '';
@@ -202,7 +211,7 @@
       }).slice(0, 1000);
       const data = {
         kind,
-        label: clip(element.labels?.[0]?.textContent.trim() || element.getAttribute('aria-label') || element.id || kind, 2000),
+        label: clip(labelText(element) || element.getAttribute('aria-label') || element.id || kind, 2000),
         value: clip(element.value, 10000),
         min: clip(element.min, 100),
         max: clip(element.max, 100),
@@ -301,6 +310,38 @@
       setTimeout(() => copied(taken), 0);
     }, true);
   }
+
+  // A right click the page leaves to the browser: what lies under it, for the
+  // browser's menu the viewer's page builds. The page's own handlers run
+  // first, on the element and at the window alike, so the menu is decided
+  // once the event has finished.
+  addEventListener('contextmenu', event => {
+    const path = event.composedPath();
+    const target = path.find(node => node instanceof Element) ?? null;
+    const link = path.find(node => node instanceof Element && node.matches('a[href], area[href]'));
+    const at = { x: event.clientX, y: event.clientY };
+    setTimeout(() => {
+      if (event.defaultPrevented) return;
+      report({
+        type: 'menu',
+        ...at,
+        link: clip(link?.href, 8192),
+        selection: Boolean(selected()),
+        editable: target !== null && editable(target),
+      });
+    }, 0);
+  }, true);
+
+  // A document the browser keeps for Back and Forward comes back with this
+  // observer as it left: what it last reported was cleared with the document
+  // it replaced, so it reports everything again.
+  addEventListener('pageshow', event => {
+    if (!event.persisted) return;
+    lastRegions = '';
+    lastCursor = '';
+    lastControls = '';
+    dirty = true;
+  });
 
   if (top) {
     // What the page writes with the Clipboard API; the browser lets this

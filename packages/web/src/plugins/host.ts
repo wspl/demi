@@ -78,6 +78,10 @@ export function productPageHost(): PageHost {
       tabs: (conversation, kind) =>
         work.stateFor(conversation).panel.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       add: (conversation, kind, data, options = { select: false }) => void work.add(conversation, kind, data, options),
+      select: (conversation, _kind, id) => {
+        work.select(conversation, id)
+        work.setOpen(work.stateFor(conversation), true)
+      },
     },
     openSettings: (section) => void settings.open(section),
     overlays: appOverlayStore,
