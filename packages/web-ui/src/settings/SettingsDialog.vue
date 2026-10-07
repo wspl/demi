@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { accountDisplayName, accountInitial } from '../auth/account-display'
 import { ChevronLeft, Search } from '@lucide/vue'
@@ -13,6 +13,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { SETTINGS_SECTIONS } from './sections'
 import { filterSettings, firstMatch } from './settings-filter'
 import { highlightSetting } from './setting-highlight'
+import { settingsLevelKey, type SettingsLevel } from './navigation'
 import type {
   SettingsAccountInfo,
   SettingsNavGroup,
@@ -60,6 +61,20 @@ const container = ref<HTMLElement>()
 const { width } = useElementSize(container)
 /** Narrow as the container queries below are (28rem): the list rows take a finger's height. */
 const narrow = computed(() => width.value > 0 && width.value < 448)
+
+/** A level the open page opened inside itself, which the narrow bar goes back from first. */
+// Shallow: a split takes its level off only while it is the one it put on, by identity.
+const level = shallowRef<SettingsLevel | null>(null)
+provide(settingsLevelKey, level)
+
+/** The narrow bar's back button: out of a page's inner level, else to the list of sections. */
+function back(): void {
+  if (level.value) {
+    level.value.back()
+    return
+  }
+  tab.value = null
+}
 
 const query = ref('')
 const filtered = computed(() => filterSettings(props.sections, query.value))
@@ -212,9 +227,9 @@ const initials = computed(() =>
           :class="tab === null ? 'hidden' : 'flex'"
         >
           <div class="flex h-11 shrink-0 select-none items-center pl-2 pr-12 @md:hidden">
-            <Button variant="ghost" size="sm" @click="tab = null">
+            <Button variant="ghost" size="sm" @click="back">
               <ChevronLeft :size="ICON_PX.in24" />
-              Settings
+              {{ level?.label ?? 'Settings' }}
             </Button>
           </div>
           <ScrollArea

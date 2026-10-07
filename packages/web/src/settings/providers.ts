@@ -421,8 +421,10 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     provider: SettingsProviderEntry,
     models: SettingsProviderModel[],
   ): Promise<void> {
-    if (operations.value[provider.id]) {
-      throw new Error('Wait for the current provider operation to finish.')
+    // A model saved during a test, a refresh or another save waits for it to
+    // end, and for an edit queued behind it, rather than being refused.
+    for (let pending = running.get(provider.id); pending; pending = running.get(provider.id)) {
+      await pending
     }
     const adding = draft.value?.id === provider.id ? draft.value : null
     if (adding) {
