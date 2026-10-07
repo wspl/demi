@@ -8,6 +8,7 @@ import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import { useConversations } from './store'
+import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { useWorkPanel } from './work'
@@ -29,6 +30,7 @@ const permissions = usePermissions()
  */
 const props = defineProps<{ id?: string }>()
 const router = useRouter()
+const navigation = useConversationNavigation()
 const conversation = computed(() =>
   store.items.find((c) => c.id === props.id),
 )
@@ -53,7 +55,7 @@ watch(
   () => router.currentRoute.value.path === '/chat' && store.listStatus === 'ready',
   (start) => {
     if (start) {
-      void router.replace(`/chat/${store.create()}`)
+      navigation.replaceWithNew()
     }
   },
   { immediate: true },
@@ -66,7 +68,20 @@ watch(
   () => props.id !== undefined && store.deleted.has(props.id) && router.currentRoute.value.path.startsWith('/chat/'),
   (gone) => {
     if (gone) {
-      void router.replace(`/chat/${store.create()}`)
+      navigation.replaceWithNew()
+    }
+  },
+  { immediate: true },
+)
+// An address the page has no conversation for, once it knows them all,
+// was a new conversation's when its history entry says so, as a reload of
+// it finds: a new conversation opens again (`web-application.md` § What the
+// reload opens). Any other shows that the conversation is not found.
+watch(
+  () => props.id !== undefined && !conversation.value && store.listStatus === 'ready' && router.currentRoute.value.path.startsWith('/chat/'),
+  (missing) => {
+    if (missing) {
+      navigation.reopenNew()
     }
   },
   { immediate: true },
@@ -81,12 +96,6 @@ watch(
   },
   { immediate: true },
 )
-async function create() {
-  const id = await store.create()
-  if (id) {
-    await router.push(`/chat/${id}`)
-  }
-}
 const project = computed(() =>
   resources.projects.find((p) => p.id === conversation.value?.projectId),
 )
@@ -227,7 +236,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     <SessionStatus
       :kind="pageKind === 'session' ? 'missing' : pageKind"
       @retry="store.reloadList()"
-      @create="create"
+      @create="navigation.create(null)"
     />
   </section>
 </template>

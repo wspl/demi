@@ -121,3 +121,43 @@ test('New on the empty draft already shown gives it back with the focus asked fo
   expect(router.currentRoute.value.params.id).toBe(draft)
   expect(conversations.composerFocusRequests).toBe(1)
 })
+
+test('a reload of a new conversation, which has no record yet, opens a new conversation again, and an unknown address stays not found', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/chat/:id?', component: defineComponent({ render: () => null }) }],
+  })
+  const app = createApp({})
+  app.use(pinia)
+  app.use(router)
+  const navigation = app.runWithContext(() => useConversationNavigation())
+  navigation.create(null)
+  await waitFor(() => router.currentRoute.value.path.startsWith('/chat/'), () => router.currentRoute.value.fullPath)
+  const shown = router.currentRoute.value.params.id
+
+  // The reload: a new page, whose stores know nothing of the draft, on the
+  // same history entry, which the web browser keeps.
+  useConversations().stopAll()
+  useProduct().stop()
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  useConversations()
+  useProduct().start()
+  channels.last().connect(productState())
+  const reloaded = createApp({})
+  reloaded.use(pinia)
+  reloaded.use(router)
+  const again = reloaded.runWithContext(() => useConversationNavigation())
+  expect(useConversations().items.some((item) => item.id === shown)).toBe(false)
+  expect(again.reopenNew()).toBe(true)
+  await waitFor(() => router.currentRoute.value.params.id !== shown, () => router.currentRoute.value.fullPath)
+  const opened = useConversations().items.find((item) => item.id === router.currentRoute.value.params.id)
+  expect(opened?.persistence).toBe('draft')
+
+  // An address that never showed a new conversation, as a link to a
+  // deleted one, is not taken for one.
+  await router.push('/chat/00000000-0000-4000-8000-00000000dead')
+  expect(again.reopenNew()).toBe(false)
+  expect(router.currentRoute.value.params.id).toBe('00000000-0000-4000-8000-00000000dead')
+})
