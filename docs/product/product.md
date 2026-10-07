@@ -324,8 +324,8 @@ list; Return or a click opens the selected conversation at the message that
 matched, which scrolls into view and is marked for a moment; Escape closes the
 window, as ⌘K does in Slack, Linear and ChatGPT.
 
-A query searches what was said: titles, the user's messages and the text of
-the answers. Thinking, tool calls, commands' output and attached files are
+A query searches what was said: titles, the user's messages, steers among
+them, and the text of the answers. Thinking, tool calls, commands' output and attached files are
 not searched, since they would bury the message the user remembers under
 logs, and neither are subagents' histories, whose conversation its own
 messages find. Each word of the query must appear, in any order, ignoring

@@ -504,7 +504,7 @@ Cloud's disks belong to the machine manager
 Each user has a search index, `search/<userId>.sqlite`, that
 [Search](../product/web-api.md#search) reads: an SQLite FTS5 table with one
 row per searchable text, a conversation's title or the text of one of its
-root's `user` blocks or answers, each with its conversation's and block's
+root's `user` or `steer` blocks or answers, each with its conversation's and block's
 ids. Its tokenizer is FTS5's `trigram`, which matches any piece of text of
 three characters or more in every language without splitting words, as
 Chinese needs; a query word of one or two characters is matched by a scan of
@@ -518,9 +518,10 @@ is never migrated, backed up or replicated, and it is the one stored copy of
 data that this document allows to be derived, for speed. Its version is the
 digest of its schema, as for the databases; an index of another version, or
 one that fails to open, is deleted and built again. For each conversation it
-records the transcript version it indexed, the transcript's epoch and
-revision ([Patches and versions](../agent/runtime.md#patches-and-versions)),
-and the title. The backend indexes a conversation again, in one transaction
+records what it indexed: the root's persisted output revision and its number
+of blocks, which a save that changes the transcript changes, and the title.
+The transcript's epoch would not do, since it lives only in a running
+session and a restart starts a new one. The backend indexes a conversation again, in one transaction
 that replaces its rows, so a search sees it either as it was or as it is:
 
 - after a checkpoint changes the root's transcript, at most once every two
