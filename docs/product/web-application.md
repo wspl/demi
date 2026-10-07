@@ -329,7 +329,10 @@ wait shortened by a random part so that the pages of all users do not return
 at once after a restart. A channel that the backend closed because it shuts
 down is the exception: the page connects again every one to two seconds
 instead
-([A page of another build](#a-page-of-another-build)). The waits start over at a second once the socket
+([A page of another build](#a-page-of-another-build)). When the channel's
+snapshot arrives after the backend was away, every other socket of the page
+that waits to connect connects at once, as at the page's return, so no part
+of the page still says it is connecting after the banner went. The waits start over at a second once the socket
 works again: the channel when its snapshot arrives, a conversation when it
 opens, a live view when its first `state` arrives. Meanwhile the page keeps
 the channel's copy as it was and shows the connection banner
