@@ -149,6 +149,28 @@ describe('cookie session', () => {
     expect(session.user).toBeNull()
   })
 
+  // A first check the backend fails with its own answer shows that failure
+  // with Retry, never the sign-in page (`web-application.md` § Page
+  // synchronization); only a 401 signs the page out.
+  test('a first check the backend fails shows the failure, and its Retry signs in', async () => {
+    const session = useSession()
+    respond({ code: 'internal_error', message: 'The session store could not be read' }, 500)
+    await session.restore()
+    expect(session.current).toEqual({ status: 'failed', error: 'The session store could not be read' })
+    respond({ user })
+    await session.restore()
+    expect(session.user).toEqual(user)
+  })
+
+  test('a Retry the backend answers with 401 goes to sign in', async () => {
+    const session = useSession()
+    respond({ code: 'internal_error', message: 'The session store could not be read' }, 500)
+    await session.restore()
+    serve({ 'GET /api/auth/me': signedOut, 'GET /api/setup': [{ needed: false }, 200] })
+    await session.restore()
+    expect(session.current).toEqual({ status: 'signedOut' })
+  })
+
   test('outages do not expire an established session', async () => {
     const session = useSession()
     respond({ user })
