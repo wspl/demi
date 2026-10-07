@@ -165,7 +165,9 @@ its tabs.
 | `content` | The tab's content (props: `conversation`, `session`, `tabId`, `data`, `shown`, whether it is the tab the panel shows: a content stays mounted while another tab is selected ([Work panel](../product/web-application.md#work-panel)); emits `update` with the next `data`, and `close`) |
 | `create` | Whether the strip's new-tab control offers it, with its label, icon and a new tab's `data` |
 | `pinned` | The kind has one tab in every conversation's panel, ahead of the other tabs, never created, closed or kept by the backend; its data starts from the data this gives and lives in the page's memory; its id is the kind's id |
-| `picked(data)` | What a tab shows next when its user picks it in the strip, even while it is selected: the Change view returns to Uncommitted ([Delivery to the conversation](../execution/edit-tracking.md#delivery-to-the-conversation)) |
+| `icon(data)` | The strip's icon for a tab, such as a page's favicon; the kind's own icon otherwise |
+| `commands(data)` | The kind's own entries in a tab's menu, ahead of the strip's Close entries, such as a browser tab's Reload and Duplicate |
+| `duplicate(data)` | The data of a new tab showing what this one shows, for its Duplicate |
 | `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
 | `shows(data)` | How many times something asked that the user see this tab, from its data. When the count is higher than the one the page last applied for the tab, the panel opens and selects the tab, whether the panel was open or closed, and records the count beside its selection history; the browser's agent-shown tabs use it ([Showing a tab](../browser/live-view.md#showing-a-tab)) |

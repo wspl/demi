@@ -175,8 +175,8 @@ view ([Rendering boundary](../agent/runtime.md#rendering-boundary)). Picking a
 pill opens the `edit` intent, which the work panel's Change view opens in
 Conversation mode on that call, with the picked file selected
 ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
-plugin off, the pills are not controls. Picking the Change tab in the strip
-returns to Uncommitted, including when it is already selected. Its header counts always
+plugin off, the pills are not controls. The Change tab keeps its mode and file
+when the user leaves it and comes back, as any tab keeps what it shows. Its header counts always
 describe the uncommitted working tree, not the retained edit. This mode receives only that file's metadata, command ID and
 edit segments, not the call's file list. Its two sides, fetched from the blob
 route, show in the same diff editor the Uncommitted mode uses. If the file

@@ -292,7 +292,8 @@ file as it is now.
 ## Getting the bytes
 
 Text, including Markdown and SVG source, comes from the text route: at most
-8 MiB of UTF-8. A larger text file shows its first 8 MiB, with a line above
+8 MiB of UTF-8. A larger text file shows its first 8 MiB, read from the raw route with a
+byte range and cut before a character the range splits, with a line above
 saying how much of how much it shows and Download, as VS Code opens a large
 file rather than refusing it. Everything else comes from the raw route as a stream:
 
