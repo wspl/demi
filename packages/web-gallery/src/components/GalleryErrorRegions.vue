@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
+import { errorFacts } from '@demicodes/web-ui/agent/error-detail'
 import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
@@ -45,7 +46,7 @@ const usageLimitPayload = JSON.stringify({
       <GallerySpecimen wide variant="A plain sentence is the whole record · when it lifts leads the facts · the vendor payload behind a disclosure">
         <ErrorNotice
           label="The usage limit has been reached"
-          :facts="['Resets 9/22/2026, 3:37:39 PM']"
+          :facts="errorFacts('2026-09-22T07:37:39.000Z')"
           :raw="usageLimitPayload"
           copy-text="The usage limit has been reached"
         />
@@ -76,7 +77,7 @@ const usageLimitPayload = JSON.stringify({
             <RegionStatus
               status="failed"
               label="Couldn't load this conversation."
-              loading-label="Loading conversation"
+              loading-label="Loading conversation…"
               detail="Could not load the transcript: HTTP 502 Bad Gateway"
               :on-retry="retryRestore"
             />
@@ -84,7 +85,7 @@ const usageLimitPayload = JSON.stringify({
         </GallerySpecimen>
         <GallerySpecimen wide variant="Loading">
           <div class="rounded-xl border border-line bg-surface">
-            <RegionStatus status="loading" label="Loading conversation" />
+            <RegionStatus status="loading" label="Loading conversation…" />
           </div>
         </GallerySpecimen>
         <GallerySpecimen wide variant="Empty">

@@ -18,7 +18,7 @@ const rules = [
   {
     where: 'In the conversation: a failed turn, an undelivered message, a refused request',
     component: 'ErrorNotice',
-    form: 'A tinted bar in the transcript flow: sentence, upstream message, facts, Copy, and Retry where the failure is the tail. Never under the composer.',
+    form: 'A tinted bar in the transcript flow: sentence, upstream message, facts, Copy, and Retry on an undelivered message. A failed turn carries no button: Resume sits in the dock. Never under the composer.',
     examples: 'Provider errors, undelivered message, refused request. Never a lost connection: that reconnects on its own',
   },
   {
