@@ -836,11 +836,21 @@ Mobile in a tab of your browser makes the page a phone's in two layers:
   `appVersion`, `platform` (`Linux armv81`) and `maxTouchPoints` (5), and
   `NavigatorUAData`'s `mobile` and `platform`. JD.com, which redirects to its
   phone site from a script that reads the User-Agent, needs this layer too.
-- **Frame**: 390 × 844, scaled to fit the panel; `devicePixelRatio` stays the
-  user's own, as the live view's Mobile does.
+- **Frame**: 390 × 844, scaled to fit the panel and centred;
+  `devicePixelRatio` stays the user's own, as the live view's Mobile does. The
+  phone's size has one source, `live::PHONE` in
+  `command-package-browser-protocol`, which the page receives as
+  `PHONE_WIDTH` and `PHONE_HEIGHT`, and the live view's Mobile uses too.
+- **The mode moves with the page**: the panel tab keeps its `mobile` flag;
+  `state` says whether the agent's tab was in Mobile, so a tab of your
+  browser takes the mode before its first request, and `browser.handover`
+  takes `mobile` and puts the agent's tab in Mobile before it writes the state
+  and loads the page.
 
-Not covered yet: `getHighEntropyValues()`, `navigator` in workers, the
-`pointer` and `hover` media features, `screen`'s size, and touch events.
+Not covered yet: `getHighEntropyValues()`; `navigator` in workers, which keep
+the user's own, since a worker's boot line comes from the engine's cache,
+which would have to key on the client; the `pointer` and `hover` media
+features; `screen`'s size; and touch events.
 
 ## Security
 
