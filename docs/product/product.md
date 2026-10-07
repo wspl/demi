@@ -358,7 +358,7 @@ on by default:
 
 | Switch | Notifies when | The notification says |
 | --- | --- | --- |
-| A turn finishes | A turn of the conversation's root ends with an answer | The title, and the start of the answer, cut to 120 characters |
+| A turn finishes | A turn of the conversation's root ends with an answer, and the conversation no longer [runs](web-api.md#sidebar-mutations-and-read-state): its subagents are done too | The title, and the start of the answer as plain text, cut to 120 characters |
 | A turn fails | A turn of the root ends with an error, which offers Resume | The title, and that the turn stopped with an error |
 | Demi needs permission | The conversation asks for a [permission](../agent/permissions.md) | The title, and what the request asks |
 
