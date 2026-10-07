@@ -55,10 +55,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
   function tabsOf(conversationId: string): PanelTabs {
     let tabs = panels.get(conversationId)
     if (!tabs) {
-      const backend = panelBackend(conversationId)
-      // A read that cannot reach the backend waits for it (`web-application.md` § A page of another build).
-      const reached = { ...backend, read: () => product.untilReached(backend.read) }
-      const created = new PanelTabs(reached, (error) => {
+      const created = new PanelTabs(panelBackend(conversationId), (error) => {
         reportError('Could Not Change the Work Panel', error, { userVisible: true })
       })
       panels.set(conversationId, created)

@@ -268,15 +268,21 @@ test('a channel lost without the backend saying so shows no banner until its fir
   }
 })
 
-test('a first connection that fails shows its failure in the regions, not the banner', () => {
+test('a first connection that cannot reach the backend says the page connects; one the backend fails shows its failure in the regions, not the banner', () => {
   jest.useFakeTimers()
   const random = spyOn(Math, 'random').mockReturnValue(0)
   try {
     const product = useProduct()
     product.start()
+    expect(product.connecting).toBe(false)
     channels.last().end(1006)
     jest.advanceTimersByTime(1_000)
     channels.last().end(1006)
+    expect(product.load).toBe('loading')
+    expect(product.connecting).toBe(true)
+    expect(product.connection).toBeNull()
+    jest.advanceTimersByTime(2_000)
+    channels.last().end(1011, 'internal_error')
     expect(product.load).toBe('failed')
     expect(product.connection).toBeNull()
   } finally {
@@ -319,7 +325,7 @@ test('a channel that brings nothing for 75 seconds is taken as broken and replac
   }
 })
 
-test('a first connection that fails shows the failure, asks whether the session ended, and a retry connects at once', async () => {
+test('a first connection that fails asks whether the session ended, and a retry connects at once', async () => {
   const ended: string[] = []
   const stopListening = onSessionExpired(() => ended.push('ended'))
   try {
@@ -327,7 +333,7 @@ test('a first connection that fails shows the failure, asks whether the session 
     product.start()
     const refused = channels.last()
     refused.end(1006)
-    expect(product.load).toBe('failed')
+    expect(product.connecting).toBe(true)
     // The web browser does not say why the upgrade failed; the session's read
     // does, and its 401 ends the session.
     await waitFor(() => ended.length > 0, () => `session reads: ${sessionReads}`)
