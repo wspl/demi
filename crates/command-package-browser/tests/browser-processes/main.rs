@@ -67,6 +67,7 @@ async fn chrome_process_tree_and_profile_retire_together() {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()],
                 },
+                demi_command_protocol::ColorScheme::Light,
             )
             .unwrap(),
             TabNumbers::new(counting_numbers(), "conversation".into()),

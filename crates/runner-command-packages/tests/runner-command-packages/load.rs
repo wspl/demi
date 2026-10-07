@@ -33,6 +33,7 @@ impl ArtifactResolver for Local {
 
 fn command_context(conversation: &str) -> CommandContext {
     CommandContext {
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         conversation: conversation.into(),
         caller: CommandCaller::agent(1),
         locale: CommandLocale {

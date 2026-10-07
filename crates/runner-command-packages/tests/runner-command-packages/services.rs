@@ -343,6 +343,7 @@ async fn a_service_that_dies_reports_its_status_and_standard_error() {
         let mut resident = acquire(&services, &descriptor, resolver.clone()).await;
         let invocation = Invocation {
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: "c".into(),
                 caller: CommandCaller::agent(1),
                 locale: CommandLocale {
@@ -776,6 +777,7 @@ async fn invoke(
         .client()
         .invoke(&Invocation {
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: conversation.into(),
                 caller: CommandCaller::agent(1),
                 locale: CommandLocale {

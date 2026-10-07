@@ -15,7 +15,7 @@ import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
 import { browserShortcut } from './input'
 import { NEW_TAB_URL, STARTING_LABELS, refusalSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
-import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
+import { BLANK_PAGE, deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
  * A `browser` tab's content (`live-view.md` § A browser tab in the panel).
@@ -408,7 +408,8 @@ watch(
            unseen: a blank page, as the browser's new tab is. -->
       <div
         v-else
-        class="min-h-0 flex-1 bg-white"
+        class="min-h-0 flex-1"
+        :class="BLANK_PAGE"
       />
     </div>
     <Popover

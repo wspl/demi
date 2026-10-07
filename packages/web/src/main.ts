@@ -7,6 +7,7 @@ import {
   productAppearance,
 } from '@demicodes/web-ui/theme/productAppearance'
 import {
+  appThemeStore,
   applyThemeToDocument,
   setThemeChoice,
 } from '@demicodes/web-ui/theme/appTheme'
@@ -167,12 +168,12 @@ const stopAppearance = watch(
 )
 const stopTheme = applyThemeToDocument()
 const stopLocale = watch(
-  () => product.snapshot?.preferences,
-  () => void preferences.reportLocale(),
+  [() => product.snapshot?.preferences, () => appThemeStore.state.mode],
+  () => void preferences.reportBrowser(),
   { immediate: true },
 )
-const reportLocale = () => void preferences.reportLocale()
-window.addEventListener('languagechange', reportLocale)
+const reportBrowser = () => void preferences.reportBrowser()
+window.addEventListener('languagechange', reportBrowser)
 const saveDrafts = () => {
   // The backend's saves go first: the web browser sends them after the page is gone.
   conversations.flushDrafts(true)
@@ -190,7 +191,7 @@ const refreshVisible = () => {
   if (document.visibilityState !== 'visible' || !session.signedIn) {
     return
   }
-  void preferences.reportLocale()
+  void preferences.reportBrowser()
   const id = product.activeConversationId
   if (id) {
     void conversations.markRead(id)
@@ -210,7 +211,7 @@ if (import.meta.hot) {
     stopTheme()
     stopLocale()
     notifications.stop()
-    window.removeEventListener('languagechange', reportLocale)
+    window.removeEventListener('languagechange', reportBrowser)
     conversations.stopAll()
     closeDraftStorage()
     preferences.stop()

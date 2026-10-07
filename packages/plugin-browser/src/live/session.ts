@@ -8,7 +8,7 @@
  * § Liveness and reconnection).
  */
 import { liveViewerMessageSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
-import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
+import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
 import { reactive } from 'vue'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
 import type { OpenUserStream, StreamBytes, UserStream } from '@demicodes/plugin-sdk'
@@ -51,7 +51,7 @@ export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
  * shows in place of the picture; every other notice the picture still shows
  * through (`live-view.md` § Opening a view).
  */
-const PICTURELESS: ReadonlySet<string> = new Set([LIVE_CAPTURE_UNAVAILABLE, LIVE_CAPTURE_FAILED])
+const PICTURELESS: ReadonlySet<string> = new Set([LIVE_CAPTURE_UNAVAILABLE, LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED])
 
 export interface LiveState {
   connection: LiveConnection
@@ -443,6 +443,19 @@ export class LiveSession {
     this.state.pictureless = null
     this.pictures?.stop()
     this.send({ type: 'watch', tab })
+  }
+
+  /**
+   * Asks the Host to capture again after it stopped trying: it recreates its
+   * capture extension, and the view says it tries again until a picture or
+   * another notice (`live-view.md` § Capture).
+   */
+  recapture(): void {
+    if (this.state.pictureless !== LIVE_CAPTURE_STOPPED) {
+      return
+    }
+    this.state.pictureless = LIVE_CAPTURE_FAILED
+    this.send({ type: 'recapture' })
   }
 
   mode(tab: string, mode: 'web' | 'mobile'): void {

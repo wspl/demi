@@ -1981,6 +1981,138 @@ async fn a_capture_extension_that_stops_running_is_recreated_and_the_pages_stay(
     .await;
 }
 
+/// The browser renders in the color scheme the starting invocation carries,
+/// the user's, whatever the Host's appearance: pages match its
+/// `prefers-color-scheme`, and an empty page's picture has the color Chrome
+/// paints that scheme's, #121212 or white, which the view's blank page has
+/// too (`browser.md` § Native driver). A browser per scheme, since one keeps
+/// the scheme it started with; about 3 s here.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn the_browser_renders_in_the_users_color_scheme() {
+    use demi_command_protocol::ColorScheme;
+    with_browser_fixture(|fixture| async move {
+        let mut fixture = fixture;
+        let decoder_page = fixture.root.path().join("decoder.html");
+        std::fs::write(&decoder_page, "<!doctype html>").unwrap();
+        let decoder_url = url::Url::from_file_path(&decoder_page).unwrap();
+        for (scheme, dark, empty) in [(ColorScheme::Dark, true, 18), (ColorScheme::Light, false, 255)] {
+            fixture.color_scheme = scheme;
+            let tab = request(&fixture, "browser.open", json!({"url": "about:blank"})).await;
+            let tab = tab["tab"].as_str().unwrap().to_owned();
+            assert_eq!(
+                run_in_page(&fixture, &tab, "matchMedia('(prefers-color-scheme: dark)').matches").await,
+                json!(dark),
+                "{scheme:?}"
+            );
+            let mut view = View::open(&fixture);
+            hello(&view, "mac");
+            view.send(json!({"type": "watch", "tab": tab}));
+            let stream = view.message("stream").await;
+            let (_, _, _, _, picture) = view.picture(stream["generation"].as_u64().unwrap()).await;
+            view.close().await;
+            // WebCodecs decodes only in a secure context, which about:blank is not.
+            let decoder = request(&fixture, "browser.open", json!({"url": decoder_url.as_str()})).await;
+            let decoder = decoder["tab"].as_str().unwrap().to_owned();
+            let (width, pixels) = decoded(&fixture, &decoder, &picture).await;
+            let middle = ((pixels.len() / 3 / width as usize / 2 * width as usize + width as usize / 2) * 3) as usize;
+            for channel in &pixels[middle..middle + 3] {
+                // H.264's limited range moves a sample by a step or two.
+                assert!(channel.abs_diff(empty) <= 3, "{scheme:?}: {:?}", &pixels[middle..middle + 3]);
+            }
+            // Closing the last tab ends the browser; the next starts in the next scheme.
+            request(&fixture, "browser.close", json!({"tab": decoder})).await;
+            request(&fixture, "browser.close", json!({"tab": tab})).await;
+        }
+        fixture
+    })
+    .await;
+}
+
+/// When even recreating the capture extension fails, here because its files
+/// are gone, captures stop at once instead of waiting for it; once the
+/// viewer asks again and the files are back, the next capture pictures the
+/// tab (`live-view.md` § Capture). About 2 s here.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn captures_stop_when_the_capture_extension_cannot_be_recreated_until_asked_again() {
+    use demi_command_package_browser_chrome::driver::capture::CaptureEvent;
+    use demi_command_package_browser_chrome::driver::operation::BrowserError;
+    crate::fixture::with_fixture(|environment, base| async move {
+        let cancel = CancellationToken::new();
+        let timeout = Duration::from_secs(30);
+        let tab = environment.open(&base, &cancel, timeout).await?;
+        let document = format!(
+            "chrome-extension://{}/offscreen.html",
+            demi_command_package_browser_chrome::driver::testing::CAPTURE_EXTENSION_ID
+        );
+        let size = demi_command_package_browser_chrome::tabs::viewport::pixels(
+            &tab.state().viewport.borrow().current,
+            1.0,
+        );
+        let profile = environment.download_directory().parent().unwrap().to_owned();
+        let extension = demi_command_package_browser_chrome::driver::launch::capture_extension(&profile);
+        let aside = profile.join("demi-capture-aside");
+        let running = tokio::time::timeout(timeout, async {
+            loop {
+                if let Some(target) = environment
+                    .targets()
+                    .await?
+                    .into_iter()
+                    .find(|target| target.url == document)
+                {
+                    return Ok::<_, BrowserError>(target.target_id);
+                }
+                tokio::time::sleep(Duration::from_millis(50)).await;
+            }
+        })
+        .await
+        .expect("the capture extension's document runs")?;
+        std::fs::rename(&extension, &aside)?;
+        demi_command_package_browser_chrome::cdp::testing::close(&environment, running).await?;
+        let start = || {
+            let hold = tab.state().capture.capture().expect("no resize is under way");
+            environment
+                .captures()
+                .start(tab.target_id(), size.0, size.1, 30, 4_000_000, hold, &cancel)
+        };
+        // Captures that start meanwhile fail with the connection; well within
+        // the 10 s a capture would wait for the extension, none starts.
+        let stopped = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                match start().await {
+                    Err(BrowserError::CaptureStopped(_)) => return,
+                    // The capture fails with the connection, as the stream sees it.
+                    Ok(mut capture) => while !matches!(capture.events.recv().await, Some(CaptureEvent::Failed(_)) | None) {},
+                    Err(_) => {}
+                }
+            }
+        })
+        .await;
+        assert!(stopped.is_ok(), "captures stop once the recreation failed");
+        std::fs::rename(&aside, &extension)?;
+        environment.captures().retry().await;
+        let pictured = tokio::time::timeout(Duration::from_secs(20), async {
+            loop {
+                if let Ok(mut capture) = start().await {
+                    while let Some(event) = capture.events.recv().await {
+                        match event {
+                            CaptureEvent::Frame(_) => return,
+                            CaptureEvent::Failed(_) => break,
+                            CaptureEvent::Started | CaptureEvent::Stalled => {}
+                        }
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+        })
+        .await;
+        assert!(pictured.is_ok(), "no picture after the viewer asked again");
+        Ok(())
+    })
+    .await;
+}
+
 /// A page with a link, a field, an element whose own menu the page shows, a
 /// download and a select, for the browser's menu, the user's downloads and a
 /// page Back brings back.
