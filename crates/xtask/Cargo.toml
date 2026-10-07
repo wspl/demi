@@ -26,6 +26,7 @@ garde.workspace = true
 # builds it with the features the backend gives it.
 reqwest.workspace = true
 schemars.workspace = true
+semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 similar = "2"
@@ -34,6 +35,9 @@ thiserror.workspace = true
 tempfile = "3"
 tokio.workspace = true
 tokio-util.workspace = true
+# Generates the JavaScript glue of the preview rewriter's WebAssembly
+# (`xtask preview-runtime`), as the `wasm-bindgen` command would.
+wasm-bindgen-cli-support.workspace = true
 zstd = { version = "0.13", default-features = false }
 
 [features]

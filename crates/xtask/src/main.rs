@@ -13,6 +13,7 @@ mod contracts;
 #[cfg(all(unix, feature = "developer"))]
 mod dev;
 mod native;
+mod preview_runtime;
 mod server_release;
 mod vendor;
 
@@ -37,6 +38,8 @@ enum Command {
     /// Builds the native executables and packages their releases.
     #[command(subcommand)]
     Native(native::Command),
+    /// Builds the web preview's runtime with the rewriter's WebAssembly.
+    PreviewRuntime(preview_runtime::Options),
     /// Assembles a server release root from the built executables.
     ServerRelease(server_release::Options),
     /// Pins a Chrome for Testing version: writes its release record.
@@ -144,6 +147,13 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask native: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::PreviewRuntime(options) => match preview_runtime::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask preview-runtime: {error}");
                 ExitCode::FAILURE
             }
         },
