@@ -26,7 +26,6 @@ const phase = ref<EmailLoginPhase>(
   initial.status === 'signedOut'
     ? {
         reason: expired ? 'expired' : initial.reason,
-        error: initial.error,
       }
     : {},
 )

@@ -16,8 +16,13 @@ type SessionState =
   | {
       status: 'signedOut'
       reason?: 'expired'
-      error?: string
     }
+  /**
+   * The backend answered the first session check with its own failure; the
+   * page shows it with Retry, which checks again (`web-application.md`
+   * § Page synchronization).
+   */
+  | { status: 'failed'; error: string }
   | {
       status: 'signedIn'
       user: User
@@ -54,8 +59,14 @@ export const useSession = defineStore('session', {
       state.current.status === 'signedIn' ? state.current.user : null,
   },
   actions: {
+    /**
+     * Checks who is signed in. A check the backend cannot answer waits for it
+     * in the HTTP client; only its 401 signs the page out. The first check,
+     * or its retry, that the backend fails otherwise shows the failure.
+     */
     async restore(signal?: AbortSignal): Promise<void> {
       const previous = this.current
+      const first = previous.status === 'checking' || previous.status === 'failed'
       try {
         const response = await apiRequest('/auth/me', { signal })
         const user = await readIdentity(response)
@@ -67,7 +78,7 @@ export const useSession = defineStore('session', {
       } catch (error) {
         signal?.throwIfAborted()
         if (error instanceof ApiError && error.code === 'unauthenticated') {
-          if (previous.status === 'checking' && (await setupNeeded(signal))) {
+          if (first && (await setupNeeded(signal))) {
             this.current = { status: 'setupNeeded' }
             return
           }
@@ -77,11 +88,8 @@ export const useSession = defineStore('session', {
           }
           return
         }
-        if (previous.status === 'checking') {
-          this.current = {
-            status: 'signedOut',
-            error: 'Could not check your session. Please try signing in.',
-          }
+        if (first) {
+          this.current = { status: 'failed', error: error instanceof Error ? error.message : String(error) }
           return
         }
         throw error
