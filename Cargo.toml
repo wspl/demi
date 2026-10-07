@@ -41,6 +41,7 @@ members = [
   "crates/shared-types",
   "crates/command-package-browser",
   "crates/command-package-browser-chrome",
+  "crates/command-package-browser-preview",
   "crates/command-package-claude-code",
   "crates/command-package-file",
   "crates/command-package-file-protocol",
@@ -142,6 +143,10 @@ opt-level = "s"
 strip = true
 
 [patch.crates-io]
+# Chrome 154's ClientHello for the web preview's upstream requests
+# (`builds-and-releases.md` § Vendored crates).
+wreq = { path = "vendor/wreq/wreq" }
+btls-sys = { path = "vendor/btls/btls-sys" }
 chromiumoxide = { path = "vendor/chromiumoxide/chromiumoxide" }
 chromiumoxide_cdp = { path = "vendor/chromiumoxide/chromiumoxide_cdp" }
 jaq-core = { path = "vendor/jaq/jaq-core" }

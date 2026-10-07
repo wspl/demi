@@ -635,14 +635,21 @@ upstream with Chrome's TLS fingerprint, which takes two changes that are not
 upstream yet: wreq with three more TLS options (the trust anchors extension
 and signature algorithm lists that start with values only declared), and
 btls-sys whose BoringSSL carries a 124-line patch listing those algorithms in
-the ClientHello. Both live in `vendor/wreq` and `vendor/btls-sys`, BoringSSL's
-source included (about 29 MB), and the workspace's `[patch.crates-io]` puts
-them in place of the published crates. Each keeps its patch as a file beside
-it, so a new upstream version takes the patch again. BoringSSL builds with
-CMake, which the toolchain therefore needs on every build machine, and it
-must cross-build for every target `demi-browser` ships
-([Executables and targets](#executables-and-targets)); the engine's first
-work package proves each target builds before the engine depends on it.
+the ClientHello. Both live under `vendor/<upstream>/<crate>`, as
+`vendor/wreq/wreq` and `vendor/btls/btls-sys`, BoringSSL's source included
+(about 29 MB), and the workspace's `[patch.crates-io]` puts them in place of
+the published crates. Each keeps its changes as a patch file beside it
+(`vendor/wreq/wreq.patch`, `vendor/btls/btls-sys.patch`), so a new upstream
+version takes them again, and `bun xtask vendor diff` lists them.
+
+BoringSSL builds with CMake, so every machine that builds the workspace needs
+CMake on its `PATH`, a developer's included (`brew install cmake` on macOS),
+and git, which btls-sys applies its patches with, and libclang for bindgen.
+Windows cross builds with cargo-xwin also need Ninja (`brew install ninja`).
+BoringSSL builds for Windows without its assembly, from any build machine, as
+upstream does on Windows: its x86-64 assembly would need NASM, and the
+emulated cipher order fixes the fingerprint either way, so the cost is only
+slower cryptography on Windows. All six targets have been built this way.
 
 ## Preview runtime
 
