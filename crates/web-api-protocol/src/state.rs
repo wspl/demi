@@ -11,7 +11,7 @@ use crate::auth::UserDto;
 use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
 use crate::devices::DeviceDto;
-use crate::ids::ConversationId;
+use crate::ids::{ConversationId, PreviewNamespace};
 use crate::plugins::PluginEntry;
 use crate::providers::ProviderState;
 use crate::settings::{InstanceMode, Preferences};
@@ -24,8 +24,9 @@ use crate::workspaces::WorkspaceDto;
 /// Cloud, the backend's public URL, the summaries of the user's
 /// conversations, the active ones first, then the archived, the Cloud's
 /// status, the user's Subagent switch and profiles, the backend's plugins with whether the user has each on, and the
-/// state of each plugin the user has on that gives one, by its id. The backend
-/// reads it for each channel, without waking a Cloud or running inference.
+/// state of each plugin the user has on that gives one, by its id, and the
+/// preview domain with the deployment's namespace at it. The backend reads
+/// it for each channel, without waking a Cloud or running inference.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductState {
@@ -52,6 +53,10 @@ pub struct ProductState {
     /// build is out of date (`web-application.md` § A page of another
     /// build).
     pub web_build: Option<String>,
+    /// The preview domain the page embeds previews from, with the
+    /// deployment's namespace at it, or none until the backend has
+    /// registered one (`preview.md` § The preview domain service).
+    pub preview: Option<PreviewDomain>,
     /// Whether the backend can send account mail, which an email change
     /// needs for its code (`web-api.md` § Account API); without it the page
     /// offers no email change.
@@ -62,6 +67,19 @@ pub struct ProductState {
     /// one of another run reads again (`web-api.md` § Revisions counted in
     /// memory).
     pub run: String,
+}
+
+/// The preview domain and the deployment's namespace at it: a preview's
+/// origin is `<namespace>--<label>.<domain>`, over HTTP when the domain is
+/// under `.localhost` and over HTTPS otherwise (`preview.md` § Addresses and
+/// labels).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PreviewDomain {
+    /// `DEMI_PREVIEW_DOMAIN`, with its port if it has one, such as
+    /// `demi-preview.dev` or `demi-preview.localhost:8787`.
+    pub domain: String,
+    pub namespace: PreviewNamespace,
 }
 
 /// A message of the page's synchronization channel, `WS /sync`: the whole
@@ -122,6 +140,11 @@ pub enum SyncEvent {
     /// disabled or deleted a profile.
     Subagents {
         subagents: SubagentSettings,
+    },
+    /// The backend registered a namespace at the preview domain, its first
+    /// or one that replaces an expired one.
+    Preview {
+        preview: PreviewDomain,
     },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,

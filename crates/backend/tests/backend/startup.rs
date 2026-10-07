@@ -90,6 +90,18 @@ fn s3_settings_without_an_s3_store_stop_startup_naming_them() {
     refused_naming(&start(&variables), "DEMI_S3_REGION");
 }
 
+/// A preview domain carries a port only under `.localhost`, and the origins
+/// the namespace admits are secure-context origins.
+#[test]
+fn an_unusable_preview_domain_or_origin_stops_startup_naming_the_variable() {
+    let mut variables = REQUIRED.to_vec();
+    variables.push(("DEMI_PREVIEW_DOMAIN", "demi-preview.dev:8443"));
+    refused_naming(&start(&variables), "DEMI_PREVIEW_DOMAIN");
+    let mut variables = REQUIRED.to_vec();
+    variables.push(("DEMI_PREVIEW_ORIGINS", "http://127.0.0.1:18934,http://192.168.1.20:3271"));
+    refused_naming(&start(&variables), "DEMI_PREVIEW_ORIGINS");
+}
+
 #[test]
 fn a_missing_public_url_stops_startup_naming_the_variable() {
     let variables: Vec<_> = REQUIRED
