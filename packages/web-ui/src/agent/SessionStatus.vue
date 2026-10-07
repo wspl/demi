@@ -34,7 +34,7 @@ const status = computed(() => (props.kind === 'loading' || props.kind === 'faile
     :label="copy.label"
     :loading-label="sessionStatusCopy('loading').label"
     :detail="detail"
-    :action="copy.action === 'create' ? 'Start a conversation' : undefined"
+    :action="copy.action === 'create' ? 'Start a Conversation' : undefined"
     :on-retry="copy.action === 'retry' ? () => emit('retry') : undefined"
     @action="emit('create')"
   />

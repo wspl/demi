@@ -90,7 +90,7 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
   action?: 'retry' | 'create'
 } {
   if (kind === 'loading') {
-    return { label: 'Loading conversation' }
+    return { label: 'Loading conversation…' }
   }
   if (kind === 'failed') {
     return {

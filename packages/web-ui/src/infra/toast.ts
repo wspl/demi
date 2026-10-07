@@ -15,7 +15,8 @@ import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
  * A toast may offer one action, such as Reload, which closes it.
  *
  * A failure stays until it is closed; any other toast closes by itself after
- * `TOAST_DURATION_MS`, counted only while the pointer is not over the toasts.
+ * `TOAST_DURATION_MS`, or `ACTION_TOAST_DURATION_MS` when it offers an action,
+ * counted only while the pointer is not over the toasts.
  */
 export type ToastTone = 'success' | 'neutral' | 'danger'
 
@@ -34,6 +35,13 @@ export interface Toast {
 
 /** How long a toast that is not a failure stays while the pointer is not over the toasts. */
 export const TOAST_DURATION_MS = 6000
+
+/**
+ * How long a toast that offers an action, such as Undo, stays while the
+ * pointer is not over the toasts: long enough to reach for it, as Gmail keeps
+ * its Undo.
+ */
+export const ACTION_TOAST_DURATION_MS = 10000
 
 export const toasts = reactive<Toast[]>([])
 
@@ -72,7 +80,8 @@ export function showToast(input: {
     action: input.action,
   })
   if (input.tone !== 'danger') {
-    const countdown: Countdown = { timer: null, remainingMs: TOAST_DURATION_MS, startedAt: 0 }
+    const durationMs = input.action ? ACTION_TOAST_DURATION_MS : TOAST_DURATION_MS
+    const countdown: Countdown = { timer: null, remainingMs: durationMs, startedAt: 0 }
     countdowns.set(id, countdown)
     if (!held) {
       run(id, countdown)

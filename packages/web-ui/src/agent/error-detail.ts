@@ -1,5 +1,6 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
 import { z } from 'zod'
+import { formatMoment } from '../composables/useRelativeTime'
 import type { SentenceText } from '../ui/ui-text'
 
 /** A first line stays one line: past this the source's text goes in the body. */
@@ -60,7 +61,9 @@ export function errorPresentation(message: string): ErrorPresentation {
  * ids are bookkeeping for a support thread; they go in the copied report.
  */
 export function errorFacts(retryAt: string | null): string[] {
-  return retryAt === null ? [] : [`resets ${new Date(retryAt).toLocaleString()}`]
+  if (retryAt === null)
+    return []
+  return [`Resets ${formatMoment(retryAt)}`]
 }
 
 /** What the copy button puts on the clipboard: the upstream message and every diagnostic. */

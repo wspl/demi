@@ -129,12 +129,12 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
             <ProviderLoginDialog
               :is-open="open"
               :overlay-store="appOverlayStore"
-              vendor-name="Model provider"
+              vendor-name="Claude Code"
               :phase="providerLogin"
               @close="close"
-              @retry="productWould('Start the Model Provider Sign-in Again')"
+              @retry="productWould('Start the Claude Code Sign-In Again')"
               @open="(url) => productWould(`Open ${url} in a New Browser Tab`)"
-              @submit-token="productWould('Sign In to Model Provider with the Token')"
+              @submit-token="productWould('Sign In to Claude Code with the Token')"
             />
           </GalleryDialogFrame>
         </GallerySpecimen>
@@ -186,7 +186,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
                 extensions: ['.png'],
                 fastTier: null,
               }"
-              error="The provider rejected this model id. Check the id against the provider's catalog."
+              error="The provider rejected this model ID. Check the ID against the provider's catalog."
               @close="close"
               @save="(saved) => productWould(`Save ${saved.name || saved.id}`)"
             />

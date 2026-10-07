@@ -18,7 +18,7 @@ const rules = [
   {
     where: 'In the conversation: a failed turn, an undelivered message, a refused request',
     component: 'ErrorNotice',
-    form: 'A tinted bar in the transcript flow: sentence, upstream message, facts, Copy, and Retry where the failure is the tail. Never under the composer.',
+    form: 'A tinted bar in the transcript flow: sentence, upstream message, facts, Copy, and Retry on an undelivered message. A failed turn carries no button: Resume sits in the dock. Never under the composer.',
     examples: 'Provider errors, undelivered message, refused request. Never a lost connection: that reconnects on its own',
   },
   {
@@ -36,7 +36,7 @@ const rules = [
   {
     where: 'The request itself failed, not the input',
     component: 'Toast',
-    form: 'Through reportError: title, and a message only when it adds a fact. It stays until it is closed, as Slack and Linear keep theirs; a toast that is not a failure closes after six seconds, counted only while the pointer is not over it. Never inline, never for success, never for a background refresh or a lost connection.',
+    form: 'Through reportError: title, and a message only when it adds a fact. It stays until it is closed, as Slack and Linear keep theirs; a toast that is not a failure closes after six seconds, or ten when it offers an action such as Undo, counted only while the pointer is not over it. Never inline, never for success, never for a background refresh or a lost connection.',
     examples: 'Save failed, fork failed, edit refused, upload failed, sign out, revoke device',
   },
 ]

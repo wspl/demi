@@ -8,13 +8,23 @@ import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
+import { baseName } from '@demicodes/web-ui/files/paths'
+import { provideMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import GalleryAppearanceMenu from './components/GalleryAppearanceMenu.vue'
 import { useGalleryView } from './gallery-views'
 import { galleryBlobUrl } from './fixtures/blobs'
+import { galleryConversationFiles } from './fixtures/message-files'
+import { createGalleryWorkspace } from './fixtures/workspace'
+import { productWould } from './product-would'
 import { NAV } from './router'
 
 provideBlobUrl(galleryBlobUrl)
+// A transcript shown outside a session still names the gallery workspace's
+// files, as a conversation's does; a file a click opens says what the product would do.
+const workspace = createGalleryWorkspace()
+const messageFiles = galleryConversationFiles(workspace.source, (path) => productWould(`Open ${baseName(path)}`))
+provideMessageFiles(() => ({ ...messageFiles, cwd: workspace.root }))
 const mediaViewer = provideMediaViewer()
 const route = useRoute()
 const main = ref<InstanceType<typeof ScrollArea>>()
