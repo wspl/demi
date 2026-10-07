@@ -223,10 +223,15 @@ storage ([Preview domain deployment](../delivery/builds-and-releases.md#preview-
   as written.
 - A namespace lives 90 days. The backend registers its namespace when it first
   starts, with the origins it serves its pages on (its public URL, and in
-  development the web dev server's), keeps the namespace and its secret as a
-  control record ([Storage](../backend/storage.md#control-records)), renews it
-  once a day, and replaces its origins when they change. An expired namespace
-  answers 410, and a new one is registered. A namespace is never reused,
+  development the web dev server's, `DEMI_PREVIEW_ORIGINS`), keeps the
+  namespace and its secret as a control record
+  ([Storage](../backend/storage.md#control-records)), renews it a day after
+  its last registration or renewal, and replaces its origins when they
+  change. A namespace the service answers 410, 404 or 401 for is gone, and a
+  new one is registered, as is one whose stored secret no longer opens; any
+  other failure is retried with waits that double, and the backend serves
+  meanwhile, with previews unavailable. `backend-user-shard`'s `preview`
+  module owns this. A namespace is never reused,
   since a browser may still hold its previous owner's storage.
 - Creation is rate-limited by source address. Nothing checks that the origins
   belong to whoever registers them: registering another's origin only lets
