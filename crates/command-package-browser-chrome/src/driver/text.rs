@@ -969,7 +969,7 @@ mod tests {
                 json!({"tabs": [
                     {"id": "t1", "title": "Sign in", "url": "http://localhost:3000/login", "createdBy": {"kind": "agent", "number": 0}, "loading": false, "canGoBack": false, "canGoForward": false, "shows": 0},
                     {"id": "t2", "title": "Admin", "url": "http://localhost:3000/admin", "createdBy": {"kind": "page", "opener": "t1"}, "loading": true, "canGoBack": true, "canGoForward": false, "shows": 1},
-                ], "list": 4, "truncated": false}),
+                ], "truncated": false}),
                 vec![
                     "Tab  Title    Created by  URL\n",
                     "t1  Sign in  agent 0  http://localhost:3000/login\n",

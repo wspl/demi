@@ -22,7 +22,7 @@ export function browserPage(options: BrowserTabsOptions = {}) {
     panel: (conversation, page) =>
       new BrowserTabsController(
         browserTabsApi(page.plugin.conversation(conversation)),
-        page.errors.defect,
+        page.errors,
         options,
       ),
   })

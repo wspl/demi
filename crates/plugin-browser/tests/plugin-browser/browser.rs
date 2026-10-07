@@ -76,3 +76,14 @@ fn every_operation_has_a_command_that_takes_each_operand_from_one_source() {
     );
     assert!(help(&root, &["browser"]).contains("demi browser probe"));
 }
+
+/// The `--json` results the model reads name no tab list number: only the
+/// page's `user` calls answer it (`runtime.md`, "Only what the model uses").
+#[test]
+fn no_json_result_names_the_tab_list_number() {
+    let root = roots(Browser::new().manifest()).remove(0);
+    for leaf in root.leaves() {
+        let schema = serde_json::to_string(leaf.json_output().expect("every leaf prints JSON")).unwrap();
+        assert!(!schema.contains("\"list\""), "{}: {schema}", leaf.name);
+    }
+}
