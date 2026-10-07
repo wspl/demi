@@ -111,6 +111,7 @@ import { galleryTerminals } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
+import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryContextLimit from '../components/GalleryContextLimit.vue'
@@ -724,7 +725,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'composer'">
       <GallerySection
         title="Composer"
-        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button's reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line's end. One send; a running turn queues. When a later save replaced a version of the draft, a row above the input offers it by its first line: Restore exchanges it with the draft, which the row then offers, and × dismisses it. When the user's plugins changed since the conversation opened, a row above the input offers Reload, and goes once the conversation opened again. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure Models or Restore Conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
+        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button's reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line's end. One send; a running turn queues, and Stop stays beside Queue for the whole turn. When a later save replaced a version of the draft, a row above the input offers it by its first line: Restore exchanges it with the draft, which the row then offers, and × dismisses it. When the user's plugins changed since the conversation opened, a row above the input offers Reload, and goes once the conversation opened again. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure Models or Restore Conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The input keeps at least 128px: where the model chip's name and level would leave it less, the chip is its sparkle alone, the name and level in its tooltip, and it names the model again once there is room; loading and a failed load give way the same. The narrow composer resizes from its corner."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -927,7 +928,7 @@ onBeforeUnmount(() => {
             </GalleryOverlayWell>
           </GallerySpecimen>
           <GallerySpecimen
-            variant="queue"
+            variant="queue · Stop stays beside it"
             wide
           >
             <GalleryComposer
@@ -1295,12 +1296,9 @@ onBeforeUnmount(() => {
               <UserBlock
                 v-if="pendingSteerShown"
                 :content="steerPrompt"
-                pending
-                deletable
-                interruptible
-                actions-pinned
-                @delete="pendingSteerShown = false"
-                @interrupt="pendingSteerShown = false"
+                pending="steer"
+                @remove="pendingSteerShown = false"
+                @send-now="pendingSteerShown = false"
               />
             </div>
           </GallerySpecimen>
@@ -1314,11 +1312,8 @@ onBeforeUnmount(() => {
               <UserBlock
                 v-if="queuedShown"
                 :content="queuedBubble"
-                pending
-                deletable
-                sendable
-                actions-pinned
-                @delete="queuedShown = false"
+                pending="queued"
+                @remove="queuedShown = false"
                 @send-now="queuedShown = false"
               />
             </div>
@@ -1602,7 +1597,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'turns'">
       <GallerySection
         title="Turn"
-        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Resume, Retry and Connect wait for the server first."
+        note="Requesting from the send, then each block rolls into the tail row. The message shows at once as it will stay, and its delivery is part of the same wait: when the server confirms it, the row keeps its word and its clock. Not Delivered fails the delivery instead: the message says so with Retry, which sends it again with the same ID and shows Requesting from then. Offline sends while the backend cannot be reached: the message says it waits to be sent, never that it failed, and goes with its ID once Demi is back. Resume, Retry and Connect wait for the server first."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button
@@ -1615,6 +1610,11 @@ onBeforeUnmount(() => {
             size="sm"
             @click="playTurn('undelivered')"
           >Not Delivered</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            @click="playTurn('offline')"
+          >Offline</Button>
           <Button
             variant="ghost"
             size="sm"
@@ -1948,6 +1948,7 @@ onBeforeUnmount(() => {
             >
               <template #sidebar>
                 <AppSidebar
+                  :new-shortcut="APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys"
                   :account="demoAccount"
                   :projects="panelProjects"
                   :conversations="panelConversations"

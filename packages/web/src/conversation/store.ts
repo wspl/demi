@@ -7,6 +7,7 @@ import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/ag
 import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import { restoreMessageEdit, sentEditRequest, submitMessageEdit } from '@demicodes/web-ui/agent/message-editing'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import {
@@ -27,7 +28,7 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
-import { apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
+import { apiRequest, apiUrl, jsonBody, readResponse, unreachable } from '../api/client'
 import {
   attachedHostsSchema,
   batchAnswerSchema,
@@ -91,6 +92,8 @@ export const useConversations = defineStore('conversations', () => {
   })
   let lifetime = new AbortController()
   const cache = new ConversationCache()
+  /** The delivery of each conversation's sent message, while it is on its way. */
+  const sending = new Map<string, Promise<void>>()
   let storageErrorReported = false
 
   // A failed operation is a toast; server state is never replaced by a message.
@@ -1042,6 +1045,25 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /**
+   * Archives the conversations and says so in a toast whose Undo restores
+   * the ones it archived (`product.md` § Conversations and projects).
+   * Answers whether every one was archived.
+   */
+  async function archive(ids: string[]): Promise<boolean> {
+    const done = await batch(ids, { archived: true })
+    const archived = ids.filter((id) => items.value.find((item) => item.id === id)?.archived)
+    if (archived.length) {
+      showArchived(archived.length, () => void restore(archived))
+    }
+    return done
+  }
+
+  /** Brings archived conversations back; answers whether every one came back. */
+  function restore(ids: string[]): Promise<boolean> {
+    return batch(ids, { archived: false })
+  }
+
   function create(projectId: string | null = null): string {
     const empty = items.value.find(
       (item) =>
@@ -1447,6 +1469,26 @@ export const useConversations = defineStore('conversations', () => {
       conversation.attachmentIds = []
     }
     const pending = conversation.pendingSend
+    const delivery = deliver(conversation, pending)
+    sending.set(conversation.id, delivery)
+    try {
+      await delivery
+    } finally {
+      if (sending.get(conversation.id) === delivery) {
+        sending.delete(conversation.id)
+      }
+    }
+  }
+
+  /**
+   * Delivers the message the conversation holds as sent: makes its record
+   * first when it has none, then gives the message to the session with its
+   * id, which takes it once.
+   */
+  async function deliver(
+    conversation: Conversation,
+    pending: NonNullable<Conversation['pendingSend']>,
+  ): Promise<void> {
     const signal = lifetime.signal
     pending.error = null
     // The files in the order of their marks in the text.
@@ -1454,29 +1496,44 @@ export const useConversations = defineStore('conversations', () => {
       conversation.files.filter((file) => file.id === id),
     )
     saveDrafts()
-    try {
-      await persistConversation(conversation)
-      const references = files.map((file): ClientContent => {
-        if (!isComposerFile(file)) {
-          return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
+    // A backend out of reach fails nothing: the message waits, and goes with
+    // its id once the backend answers again (`web-application.md` § A page of
+    // another build). Only a refusal is a failed delivery.
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await persistConversation(conversation)
+        const references = files.map((file): ClientContent => {
+          if (!isComposerFile(file)) {
+            return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
+          }
+          if (!file.upload) {
+            throw new Error(`${file.name} has not finished uploading.`)
+          }
+          return { type: 'upload', ref: file.upload.id, fileName: file.name }
+        })
+        // Each file where its capsule stands in the text.
+        const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
+        await (await runtimeFor(conversation)).submit(content, pending.id)
+        clearSubmission(conversation, pending.id)
+        break
+      } catch (error) {
+        if (signal.aborted || conversation.pendingSend?.id !== pending.id) {
+          break
         }
-        if (!file.upload) {
-          throw new Error(`${file.name} has not finished uploading.`)
+        if (!unreachable(error) && product.connection === null) {
+          pending.error = error instanceof Error ? error.message : String(error)
+          break
         }
-        return { type: 'upload', ref: file.upload.id, fileName: file.name }
-      })
-      // Each file where its capsule stands in the text.
-      const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
-      await (await runtimeFor(conversation)).submit(content, pending.id)
-      clearSubmission(conversation, pending.id)
-    } catch (error) {
-      if (!signal.aborted && conversation.pendingSend?.id === pending.id) {
-        pending.error = error instanceof Error ? error.message : String(error)
+        try {
+          await product.reachable(attempt, signal)
+        } catch {
+          // The page let the conversations go, as a sign-out does: nothing waits for the backend any more.
+          break
+        }
       }
-    } finally {
-      if (!signal.aborted) {
-        saveDrafts()
-      }
+    }
+    if (!signal.aborted) {
+      saveDrafts()
     }
   }
 
@@ -1525,11 +1582,25 @@ export const useConversations = defineStore('conversations', () => {
       })
   }
 
+  /**
+   * Stops the conversation's turn. A Stop pressed while the message that
+   * starts the turn is still on its way stops that turn once the session
+   * holds the message; a message that was not delivered started nothing.
+   */
+  async function stop(conversation: Conversation): Promise<void> {
+    await sending.get(conversation.id)
+    if (conversation.pendingSend) {
+      return
+    }
+    action(conversation, (runtime) => runtime.abort())
+  }
+
   function stopAll(): void {
     pendingChanges.value = []
     cache.clear()
     earlyReads.clear()
     madeHere.clear()
+    sending.clear()
     draftSync.stop()
     lifetime.abort()
     lifetime = new AbortController()
@@ -1553,7 +1624,8 @@ export const useConversations = defineStore('conversations', () => {
     reloadList: () => product.reconnect(),
     reloadSession,
     pin: (ids: string[], pinned: boolean) => batch(ids, { pinned }),
-    archive: (ids: string[], archived = true) => batch(ids, { archived }),
+    archive,
+    restore,
     move: (ids: string[], projectId: string | null) =>
       batch(ids, {
         target: projectId
@@ -1624,8 +1696,7 @@ export const useConversations = defineStore('conversations', () => {
       action(conversation, (runtime) => runtime.abortTerminal(id)),
     start: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.resume()),
-    stop: (conversation: Conversation) =>
-      action(conversation, (runtime) => runtime.abort()),
+    stop,
     compact: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.compact()),
     removeQueued: (conversation: Conversation, id: string) =>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { isFocusedElementEditable } from '@vueuse/core'
 import type { ContextUsage } from '@demicodes/protocol'
 import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
@@ -34,10 +35,15 @@ import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { PlaceholderText } from '../ui/ui-text'
+import { useTouchOnly } from '../ui/touch-only'
 
 const props = withDefaults(
   defineProps<{
     placeholder: PlaceholderText
+    /**
+     * A turn runs, or the message that starts one is on its way: Stop shows
+     * from the send to the turn's end, and a message is queued meanwhile.
+     */
     running?: boolean
     compacting?: boolean
     disabled?: boolean
@@ -48,6 +54,13 @@ const props = withDefaults(
     /** The conversation has a host with files: the menu offers a remote file beside local ones. */
     remoteFiles?: boolean
     focused?: boolean
+    /**
+     * The draft takes the focus as the composer shows, so a new or opened
+     * conversation is typed into at once (`product.md` § Conversations and
+     * projects); not on a touch phone, where it would raise the on-screen
+     * keyboard, nor while another field holds the focus.
+     */
+    focusOnShow?: boolean
     attachOpen?: boolean
     dropping?: boolean
     modelLoad?: 'loading' | 'ready' | 'failed'
@@ -122,6 +135,8 @@ const edit = useMessageEditComposer({
   update: (state) => emit('update:messageEdit', state),
   upload: (file, options) => props.upload(file, options),
 })
+/** Read once, as the composer shows: the focus it finds then decides. */
+const takesFocus = props.focusOnShow && !useTouchOnly().value && !isFocusedElementEditable()
 /** The editor shown: the edit's, or the draft's. */
 const editor = ref<InstanceType<typeof MessageEditor>>()
 const focused = ref(false)
@@ -274,6 +289,8 @@ function fileChange(event: Event) {
   const input = event.target as HTMLInputElement
   addFiles([...(input.files ?? [])])
   input.value = ''
+  // The menu that opened the chooser took the focus with it: the message gets it back, to go on typing.
+  editor.value?.focus()
 }
 
 function dropFiles(files: File[], event: DragEvent) {
@@ -411,6 +428,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :markdown="draft"
             :attachments="carried"
             :shown-from-outside="draftShown"
+            :autofocus="takesFocus"
             :placeholder="placeholder"
             label="Message"
             @change="changeDraft"
@@ -487,6 +505,17 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @keydown.enter.space.prevent="edit.cancel"
             />
           </Tooltip>
+          <!-- Stop stays for the whole turn, beside Queue while the message holds text. -->
+          <Tooltip v-if="(running || compacting) && !messageEdit" content="Stop">
+            <IconButton
+              :icon="Square"
+              variant="ghost"
+              circle
+              aria-label="Stop"
+              @mousedown.prevent
+              @click="emit('stop')"
+            />
+          </Tooltip>
           <!-- A press on the send button takes no focus: the message keeps it. -->
           <Tooltip
             v-if="hasDraft"
@@ -506,17 +535,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @click="submit"
             />
           </Tooltip>
-          <Tooltip v-else-if="running || compacting" content="Stop">
-            <IconButton
-              :icon="Square"
-              variant="ghost"
-              circle
-              aria-label="Stop"
-              @click="emit('stop')"
-            />
-          </Tooltip>
           <IconButton
-            v-else
+            v-else-if="!running && !compacting"
             :icon="ArrowUp"
             variant="ghost"
             circle
