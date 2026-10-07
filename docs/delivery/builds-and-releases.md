@@ -645,7 +645,13 @@ version takes them again, and `bun xtask vendor diff` lists them.
 BoringSSL builds with CMake, so every machine that builds the workspace needs
 CMake on its `PATH`, a developer's included (`brew install cmake` on macOS),
 and git, which btls-sys applies its patches with, and libclang for bindgen.
-Windows cross builds with cargo-xwin also need Ninja (`brew install ninja`).
+Every Windows build of BoringSSL uses CMake's Ninja generator, so it compiles
+with the compiler and the MSVC toolset the final link uses: Visual Studio's
+own generator would pick its newest installed toolset, and objects compiled
+with a newer toolset than the link's call library functions the older one
+lacks (on GitHub's Windows ARM runner, 14.51 against 14.44). Ninja comes with
+Visual Studio's developer environment on Windows, and cross builds with
+cargo-xwin need it installed (`brew install ninja`).
 BoringSSL builds for Windows without its assembly, from any build machine, as
 upstream does on Windows: its x86-64 assembly would need NASM, and the
 emulated cipher order fixes the fingerprint either way, so the cost is only
