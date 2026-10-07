@@ -17,8 +17,8 @@
         "zod": "^4.0.0",
       },
     },
-    "packages/check": {
-      "name": "@demicodes/check",
+    "packages/browse": {
+      "name": "@demicodes/browse",
       "version": "0.0.0",
       "dependencies": {
         "@demicodes/web": "workspace:^",
@@ -365,7 +365,7 @@
 
     "@codemirror/view": ["@codemirror/view@6.40.0", "", { "dependencies": { "@codemirror/state": "^6.6.0", "crelt": "^1.0.6", "style-mod": "^4.1.0", "w3c-keyname": "^2.2.4" } }, "sha512-WA0zdU7xfF10+5I3HhUUq3kqOx3KjqmtQ9lqZjfK7jtYk4G72YW9rezcSywpaUMCWOMlq+6E0pO1IWg1TNIhtg=="],
 
-    "@demicodes/check": ["@demicodes/check@workspace:packages/check"],
+    "@demicodes/browse": ["@demicodes/browse@workspace:packages/browse"],
 
     "@demicodes/conversation-client": ["@demicodes/conversation-client@workspace:packages/conversation-client"],
 

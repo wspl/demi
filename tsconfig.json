@@ -20,7 +20,7 @@
   },
   "include": ["packages/*/src", "scripts", "crates/command-package-browser-chrome/src/driver/capture"],
   "exclude": [
-    "packages/check",
+    "packages/browse",
     "packages/web-ui",
     "packages/plugin-sdk",
     "packages/plugin-browser",
