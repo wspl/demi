@@ -67,10 +67,13 @@ export interface BrowserTabList {
 /** Why the strip cannot make a browser tab: the Host lacks the browser, which only the agent installs. */
 export const NO_BROWSER: SentenceText = 'No browser on this Host. Ask the agent to run demi browser install.'
 
-/** A request the backend or the conversation browser refused, with the answer's own code and message. */
+/**
+ * A request the backend or the conversation browser refused, with the
+ * answer's own code and message, or one no answer reached the page for.
+ */
 export class BrowserTabsError extends Error {
   constructor(
-    /** The backend's code; null when something in front of it answered. */
+    /** The backend's code; null when no answer of the backend's reached the page: it could not reach the backend. */
     readonly code: string | null,
     message: string,
   ) {
@@ -138,6 +141,16 @@ export interface BrowserTabsApi {
 
 /** Refusals of a Host that cannot be reached for the moment: an offline device, a stopped Cloud. */
 const UNREACHED = new Set(['device_offline', 'host_stopped'])
+
+/**
+ * Whether a request failed because the page could not reach the backend, as
+ * while it restarts, or the backend could not reach the Host: neither
+ * changes a tab, since the browser may still run there, and neither is a
+ * defect of the page (`live-view.md` § A browser tab in the panel).
+ */
+function unreached(error: unknown): boolean {
+  return error instanceof BrowserTabsError && (error.code === null || UNREACHED.has(error.code))
+}
 
 /** Answers that will not change by asking again. */
 const FINAL_CODES = new Set(['conversation_not_found', 'conversation_archived'])
@@ -323,8 +336,10 @@ export class BrowserTabsController {
    * Otherwise the page loads while the browser last said it does: in a view,
    * or, for a tab not shown, in the plugin's tab list. A shown tab no view
    * reported yet is one whose browser tab is still opening, and it loads
-   * while it asks for an address. A tab shown again keeps what
-   * the browser last said, so a page that had loaded shows no loading.
+   * while it asks for an address; one not shown that the list lacks too was
+   * lost with the browser, and waits, not loading, until it is shown. A tab
+   * shown again keeps what the browser last said, so a page that had loaded
+   * shows no loading.
    */
   loading(tab: string | undefined, url: string): boolean {
     if (this.requested(tab)) {
@@ -334,12 +349,9 @@ export class BrowserTabsController {
     if (live) {
       return live.loading
     }
-    // A tab the strip shows beside the shown one, which no view reported yet, as the plugin last listed it.
+    // A tab the strip shows beside the shown one, which no view reported, as the plugin last listed it.
     if (tab !== undefined && tab !== this.shownTab.value) {
-      const row = this.list.value?.tabs.find((candidate) => candidate.id === tab)
-      if (row) {
-        return row.loading
-      }
+      return this.list.value?.tabs.find((candidate) => candidate.id === tab)?.loading ?? false
     }
     return url !== NEW_TAB_URL
   }
@@ -548,7 +560,7 @@ export class BrowserTabsController {
       if (this.requests.get(tab) === asked) {
         this.requests.delete(tab)
       }
-      throw asTabsError(error)
+      throw error
     }
     // A later request on the tab replaced this one.
     if (this.requests.get(tab) === asked) {
@@ -680,7 +692,8 @@ export class BrowserTabsController {
    * asked to read the browser's tabs. One that the page the user watches
    * opened right after the user's click or key there is the user's, and is
    * selected, as a browser selects the tab a click opens; one a page opened
-   * by itself is only added.
+   * by itself is only added. A read that cannot reach the backend or the Host
+   * is asked for again with the next list.
    */
   private pageOpened(tabs: readonly LiveTab[]): void {
     const heard = this.heard
@@ -692,7 +705,15 @@ export class BrowserTabsController {
     if (opened.length === 0) {
       return
     }
-    this.api.sync().catch((error: unknown) => this.errors.defect('The panel could not add the tabs a page opened', error))
+    this.api.sync().catch((error: unknown) => {
+      if (!unreached(error)) {
+        this.errors.defect('The panel could not add the tabs a page opened', error)
+        return
+      }
+      for (const tab of opened) {
+        this.heard?.delete(tab.id)
+      }
+    })
     const shown = this.shownTab.value
     const view = this.session.value
     for (const tab of opened) {
@@ -709,6 +730,8 @@ export class BrowserTabsController {
    * lost, which opens it again at once while it is shown. A view that ends
    * asks too, since a browser that ended or a Cloud that stopped took the
    * tab with it, and the view may wait long before it reads a list again.
+   * A read that cannot reach the backend or the Host changes no tab, and the
+   * next list or end asks again.
    */
   private lookForShown(): void {
     const shown = this.shownTab.value
@@ -717,12 +740,13 @@ export class BrowserTabsController {
     }
     this.missed = shown
     this.api.sync().catch((error: unknown) => {
-      // A Host that cannot be reached changes no tab: its browser may still
-      // run there (`live-view.md` § A browser tab in the panel).
-      if (error instanceof BrowserTabsError && error.code !== null && UNREACHED.has(error.code)) {
+      if (!unreached(error)) {
+        this.errors.defect('The panel could not look for a closed tab', error)
         return
       }
-      this.errors.defect('The panel could not look for a closed tab', error)
+      if (this.missed === shown) {
+        this.missed = null
+      }
     })
   }
 
