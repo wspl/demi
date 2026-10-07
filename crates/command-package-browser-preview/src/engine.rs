@@ -16,7 +16,7 @@ use base64::engine::general_purpose::STANDARD;
 use bytes::Bytes;
 use demi_command_package_browser_protocol::preview::{
     FILES_VERSION, PreviewClient, PreviewCredentials, PreviewEnvironment, PreviewMode,
-    PreviewRequest,
+    PreviewOpenInput, PreviewOpened, PreviewRequest,
 };
 use demi_preview_rewrite::address::{self, Context, Environment, Role, site_of};
 use demi_preview_rewrite::attributes::{REMOVED_CONTENT_POLICIES, rewrite_refresh};
@@ -134,6 +134,42 @@ impl Place {
         };
         format!("default-src {previews} data: blob: 'unsafe-inline' 'unsafe-eval'")
     }
+}
+
+/// The top-level environment of the address the user opens in a tab of
+/// their browser, with its label and preview origin (`preview.md` § Opening
+/// and navigating).
+pub fn opening(input: &PreviewOpenInput) -> Result<PreviewOpened, String> {
+    let url = Url::parse(&input.url).map_err(|error| format!("not an address: {error}"))?;
+    let origin = origin_of(&url);
+    let environment = Environment {
+        top: site_of(&origin),
+        origin,
+        cross: false,
+    };
+    let place = Place {
+        scheme: input.scheme.to_string(),
+        domain: input.domain.clone(),
+        namespace: input.namespace.clone(),
+        host: input.host.clone(),
+    };
+    let context = place.context(environment.clone());
+    let preview = context.preview_origin(&environment);
+    Ok(PreviewOpened {
+        label: address::label(&place.namespace, &place.host, &environment),
+        environment: preview_environment(environment),
+        origin: preview,
+    })
+}
+
+/// The labels of `environments` in `place`, each with its environment: what
+/// the relay registers for the environments a document's runtime names
+/// (`preview.md` § The forwarder and the relay).
+pub(crate) fn labels_of(place: &Place, environments: Vec<PreviewEnvironment>) -> BTreeMap<String, PreviewEnvironment> {
+    environments
+        .into_iter()
+        .map(|environment| (address::label(&place.namespace, &place.host, &environment_of(&environment)), environment))
+        .collect()
 }
 
 /// A document environment is a preview tab's top frame when nothing above it

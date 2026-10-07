@@ -186,6 +186,11 @@ fn preview_stream() -> Stream {
         count(preview::BODY_CHUNK_BYTES),
     )
     .constant(
+        "PREVIEW_MAX_LABELS",
+        "The most environments one labels message names.",
+        count(preview::MAX_LABELS),
+    )
+    .constant(
         "PREVIEW_BODY_HEADER_BYTES",
         "A body frame's header: the request's id, u32 big-endian.",
         count(preview::BodyHeader::BYTES),
@@ -240,6 +245,8 @@ impl Plugin for Instance {
                 Request::PageCall {
                     conversation: None, ..
                 } => Err(PluginError::undeclared("user method")),
+                // A tab of the user's browser has nothing on the Host to open or close.
+                Request::PanelTab { tab, .. } if tab.kind == panel::PREVIEW_KIND => Ok(Reply::Done),
                 Request::PanelTab {
                     conversation,
                     change,

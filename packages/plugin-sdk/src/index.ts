@@ -25,6 +25,7 @@ export {
   type PluginPage,
   type PluginSettingsSection,
   type PluginState,
+  type PreviewPlace,
 } from '@demicodes/web-ui/plugins/page'
 export { pendingCalls, type PendingCalls } from '@demicodes/web-ui/plugins/calls'
 export type { IntentName, IntentPayloads, IntentRequest } from '@demicodes/web-ui/plugins/intents'

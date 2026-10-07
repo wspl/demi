@@ -29,6 +29,29 @@ fn framed(message: &PreviewRelayMessage) -> Bytes {
     bytes.freeze()
 }
 
+/// A user's invocation of `operation` in a conversation.
+fn invocation(operation: &str, args: serde_json::Value, json: Option<bool>) -> Invocation {
+    Invocation {
+        operation: operation.into(),
+        invocation_id: operation.into(),
+        context: CommandContext {
+            color_scheme: demi_command_protocol::ColorScheme::Light,
+            conversation: "conversation".into(),
+            caller: CommandCaller::User {},
+            locale: CommandLocale {
+                time_zone: "UTC".into(),
+                languages: vec!["en-US".into()],
+            },
+        },
+        args,
+        cwd: "/".into(),
+        env: BTreeMap::new(),
+        edits: None,
+        json,
+        stdout: None,
+    }
+}
+
 /// The engine's frames, from its invocation's records.
 struct Frames {
     records: mpsc::Receiver<Record>,
@@ -71,25 +94,7 @@ async fn the_program_serves_the_preview_stream_and_keeps_its_jar() {
     let (input, received) = mpsc::unbounded_channel::<Result<Bytes, demi_command_sdk::ServiceError>>();
     let (output, records) = Output::channel(CancellationToken::new());
     let stream = service.invoke(InvocationContext {
-        request: Invocation {
-            operation: "browser.preview".into(),
-            invocation_id: "preview".into(),
-            context: CommandContext {
-                color_scheme: demi_command_protocol::ColorScheme::Light,
-                conversation: "conversation".into(),
-                caller: CommandCaller::User {},
-                locale: CommandLocale {
-                    time_zone: "UTC".into(),
-                    languages: vec!["en-US".into()],
-                },
-            },
-            args: serde_json::json!({}),
-            cwd: "/".into(),
-            env: BTreeMap::new(),
-            edits: None,
-            json: None,
-            stdout: None,
-        },
+        request: invocation("browser.preview", serde_json::json!({}), None),
         input: Input::from_stream(futures_util::stream::unfold(received, |mut received| async move {
             received.recv().await.map(|item| (item, received))
         })),
@@ -156,4 +161,45 @@ async fn the_program_serves_the_preview_stream_and_keeps_its_jar() {
     service.close().await.unwrap();
     let jar = std::fs::read_to_string(data.path().join("preview-cookies.json")).unwrap();
     assert!(jar.contains("signed=in"), "{jar}");
+}
+
+/// `browser.preview_open`: the label of the address's top-level environment,
+/// the one the rewriter pins (`preview-rewrite`'s address tests), with its
+/// preview origin.
+#[tokio::test]
+async fn the_program_names_the_label_an_address_opens_under() {
+    let service = DemiBrowser::new();
+    let (output, mut records) = Output::channel(CancellationToken::new());
+    let completion = service
+        .invoke(InvocationContext {
+            request: invocation(
+                "browser.preview_open",
+                serde_json::json!({
+                    "url": "http://localhost:5173/editor?x=1",
+                    "scheme": "http",
+                    "domain": "demi-preview.localhost:8787",
+                    "namespace": "k3f9x2ab",
+                    "host": "host-1",
+                }),
+                Some(true),
+            ),
+            input: Input::from_stream(futures_util::stream::empty()),
+            output,
+            cancellation: CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(completion.exit_code, 0);
+    let Some(Record::Stdout(bytes)) = records.recv().await else {
+        panic!("an answer on standard output");
+    };
+    let opened: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        opened,
+        serde_json::json!({
+            "label": "selbnt2qp6d94in3",
+            "environment": { "origin": "http://localhost:5173", "top": "http://localhost", "cross": false },
+            "origin": "http://k3f9x2ab--selbnt2qp6d94in3.demi-preview.localhost:8787",
+        })
+    );
 }

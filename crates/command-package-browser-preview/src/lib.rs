@@ -18,5 +18,5 @@ mod upstream;
 pub mod testing;
 
 pub use cookies::{CookieSameSite, JarCookie};
-pub use engine::{Engine, EngineError};
+pub use engine::{Engine, EngineError, opening};
 pub use stream::{StreamError, serve};
