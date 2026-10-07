@@ -210,7 +210,7 @@ impl PageStates for SignedIn {
         let storage = self.storage.clone();
         Box::pin(async move {
             match tab.as_str() {
-                "t1" => Ok(TakenState { url: "http://localhost:3000/app".into(), title: "App".into(), storage }),
+                "t1" => Ok(TakenState { url: "http://localhost:3000/app".into(), title: "App".into(), mobile: true, storage }),
                 _ => Err("The tab is gone.".into()),
             }
         })
@@ -248,6 +248,7 @@ async fn page_states_move_over_the_stream() {
             id: 1,
             url: "http://localhost:3000/app".into(),
             title: "App".into(),
+            mobile: true,
             storage: Some(storage("signed-in")),
             too_large: false,
         }

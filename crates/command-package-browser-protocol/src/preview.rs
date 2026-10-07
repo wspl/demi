@@ -77,6 +77,10 @@ pub struct HandoverInput {
     pub url: String,
     #[garde(length(chars, min = 1, max = 64))]
     pub state: String,
+    /// The tab opens in Mobile, as the tab of the user's browser showed the
+    /// page (`preview.md` § Mobile).
+    #[garde(skip)]
+    pub mobile: bool,
 }
 
 /// One origin's storage as the page-state codec reads it from a page and
@@ -484,9 +488,9 @@ pub enum PreviewEngineMessage {
         #[garde(dive)]
         labels: BTreeMap<String, PreviewEnvironment>,
     },
-    /// The page state of `state_take`: the tab's address and title, and its
-    /// top-level origin's storage; none when it was larger than
-    /// [`MAX_STORAGE_BYTES`], which `too_large` says.
+    /// The page state of `state_take`: the tab's address and title, whether
+    /// it shows the page in Mobile, and its top-level origin's storage; none
+    /// when it was larger than [`MAX_STORAGE_BYTES`], which `too_large` says.
     State {
         #[garde(skip)]
         id: u32,
@@ -494,6 +498,8 @@ pub enum PreviewEngineMessage {
         url: String,
         #[garde(skip)]
         title: String,
+        #[garde(skip)]
+        mobile: bool,
         #[garde(skip)]
         storage: Option<PageStorage>,
         #[garde(skip)]

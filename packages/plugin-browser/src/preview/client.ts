@@ -38,6 +38,22 @@ export function previewClient(): PreviewClient {
 }
 
 /**
+ * The user's browser as a phone, for a tab of the user's browser in Mobile
+ * (`preview.md` § Mobile): Android Chrome of the user's own version, with
+ * the user's brands, `mobile` and the Android platform, so the user agent
+ * and the client hints agree.
+ */
+export function mobileClient(client: PreviewClient): PreviewClient {
+  const version = /Chrome\/(\d+)/.exec(client.userAgent)?.[1] ?? '0'
+  return {
+    ...client,
+    userAgent: `Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${version}.0.0.0 Mobile Safari/537.36`,
+    mobile: true,
+    platform: 'Android',
+  }
+}
+
+/**
  * Why this page cannot show a preview, or null when it can
  * (`preview.md` § Where the preview cannot run): the forwarder is a service
  * worker, which only a secure context registers, and the preview is built

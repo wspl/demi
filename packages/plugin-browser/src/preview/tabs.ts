@@ -31,6 +31,8 @@ export const previewTabDataSchema = z.object({
    * reload opens the address alone.
    */
   from: z.string().optional(),
+  /** The tab shows its pages as a phone does, Mobile in its size menu (`preview.md` § Mobile); Web without it. */
+  mobile: z.literal(true).optional(),
 })
 export type PreviewTabData = z.infer<typeof previewTabDataSchema>
 
@@ -242,6 +244,26 @@ export class PreviewTab implements RelayTab {
     return this.host.frame()?.contentWindow ?? null
   }
 
+  mobile(): boolean {
+    return this.host.data().mobile === true
+  }
+
+  /**
+   * Web or Mobile, as the size menu chooses: the tab keeps it, and its page
+   * loads again, since a phone's user agent and hints reach only what loads
+   * after them (`live-view.md` § Modes).
+   */
+  setMobile(mobile: boolean): void {
+    if (mobile === this.mobile()) {
+      return
+    }
+    const { mobile: _was, ...data } = this.host.data()
+    this.host.update(mobile ? { ...data, mobile: true } : data)
+    if (this.view.page) {
+      this.history('reload')
+    }
+  }
+
   start(): void {
     this.unregister = this.tabs.driver.register(this)
   }
@@ -308,6 +330,9 @@ export class PreviewTab implements RelayTab {
     this.host.update(data)
     try {
       const taken = await this.tabs.driver.takeState(this, place, from)
+      // The page shows as the agent's tab showed it, Web or Mobile, from its first request.
+      const { mobile: _was, ...rest } = this.host.data()
+      this.host.update(taken.mobile ? { ...rest, mobile: true } : rest)
       if (taken.tooLarge) {
         this.tabs.api.notify(COOKIES_ONLY, TOO_LARGE)
       }
@@ -547,7 +572,7 @@ export class PreviewTabs implements PanelSession {
       return
     }
     const handover = crypto.randomUUID()
-    this.api.addAgentTab({ url, openedBy: id, handover }, true)
+    this.api.addAgentTab({ url, openedBy: id, handover, ...(tab.mobile() ? { mobile: true } : {}) }, true)
     let origins = this.driver.origins(tab)
     let storage: PageStorage | null = null
     try {

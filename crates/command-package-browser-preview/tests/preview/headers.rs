@@ -206,3 +206,38 @@ async fn the_referer_upstream_is_the_real_one_under_the_pages_policy() {
     let navigated = relay.fetch(frame, navigation).await.unwrap();
     assert_eq!(referer(navigated), Some(format!("{}/", page.origin)));
 }
+
+/// A tab of the user's browser in Mobile describes an Android Chrome
+/// (`preview.md` § Mobile): its user agent and client hints reach the site,
+/// and a document's boot data carries the device its runtime shows the
+/// page's scripts.
+#[tokio::test]
+async fn an_android_client_is_the_phone_its_requests_and_documents_describe() {
+    let directory = tempfile::tempdir().unwrap();
+    let site = Site::start().await;
+    let mut relay = Relay::open(engine(&directory));
+    let android = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36";
+    relay.client = demi_command_package_browser_protocol::preview::PreviewClient {
+        user_agent: android.into(),
+        mobile: true,
+        platform: "Android".into(),
+        ..relay.client.clone()
+    };
+    let page = top(&site.origin("www.site.test"));
+    let echoed = relay.fetch(page.clone(), opening(&site.https("www.site.test", "/echo"))).await.unwrap().echoed();
+    assert_eq!(echoed_header(&echoed, "user-agent"), Some(android));
+    assert_eq!(echoed_header(&echoed, "sec-ch-ua-mobile"), Some("?1"));
+    assert_eq!(echoed_header(&echoed, "sec-ch-ua-platform"), Some("\"Android\""));
+    let document = relay
+        .fetch(page, opening(&site.https("www.site.test", &format!("/content?type=text/html&body={}", encoded("<p>phone</p>")))))
+        .await
+        .unwrap();
+    let boot = document.text();
+    let device = &boot[boot.find("\"device\":").expect("the boot data's device")..];
+    let device: serde_json::Value = serde_json::Deserializer::from_str(&device["\"device\":".len()..])
+        .into_iter()
+        .next()
+        .unwrap()
+        .unwrap();
+    assert_eq!(device, serde_json::json!({ "userAgent": android, "mobile": true, "platform": "Android" }));
+}

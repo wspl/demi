@@ -198,7 +198,7 @@ impl Previews {
             }
             None => (Vec::new(), None),
         };
-        browsers.handover(context, &input.url, cookies, storage.as_ref()).await
+        browsers.handover(context, &input.url, input.mobile, cookies, storage.as_ref()).await
     }
 
     /// Ends every stream, then writes the jar's latest changes.
@@ -257,6 +257,7 @@ impl PageStates for BrowserStates {
             Ok(TakenState {
                 url: state.url,
                 title: state.title,
+                mobile: state.mobile,
                 storage,
             })
         })

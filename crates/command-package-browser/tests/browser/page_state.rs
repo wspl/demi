@@ -256,7 +256,7 @@ async fn the_agents_page_moves_into_the_users_browser_with_its_state() {
         // Before: the jar knows nothing of the site.
         assert_eq!(preview.get(1, &format!("{}/cookie", site.origin)).await, "");
         preview.send(&PreviewRelayMessage::StateTake { id: 2, tab: tab.clone() });
-        let PreviewEngineMessage::State { id: 2, url, title, storage: Some(storage), too_large: false } = preview.message().await else {
+        let PreviewEngineMessage::State { id: 2, url, title, mobile: false, storage: Some(storage), too_large: false } = preview.message().await else {
             panic!("the agent's page state");
         };
         assert_eq!((url, title), (format!("{}/?write=agent", site.origin), "State".to_owned()));
@@ -285,7 +285,9 @@ async fn the_agents_page_moves_into_the_users_browser_with_its_state() {
 /// Open in Agent's Browser: the jar's cookies of the page's sites and the
 /// storage the user's browser handed over, which arrive after the tab began
 /// to open, are in place before the page's first script, an `HttpOnly`
-/// cookie reaching the server but not `document.cookie`.
+/// cookie reaching the server but not `document.cookie`; the tab opens in
+/// Mobile as the user's did, and a page state taken from it carries Mobile
+/// back.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_users_page_opens_in_the_agents_browser_with_its_state_before_its_first_script() {
@@ -313,7 +315,7 @@ async fn the_users_page_opens_in_the_agents_browser_with_its_state_before_its_fi
         let opening = fixture.result_for(
             CommandCaller::User {},
             "browser.handover",
-            json!({"url": format!("{}/", site.origin), "state": "kept-1"}),
+            json!({"url": format!("{}/", site.origin), "state": "kept-1", "mobile": true}),
             CancellationToken::new(),
             Vec::new(),
         );
@@ -335,6 +337,11 @@ async fn the_users_page_opens_in_the_agents_browser_with_its_state_before_its_fi
         assert_eq!(settled(&fixture, &tab, "window.idbRead").await, json!("from-user-idb"));
         let server = settled(&fixture, &tab, "window.serverCookie").await;
         assert!(server.as_str().unwrap().contains("signed=in"), "{server}");
+        // The tab opened in Mobile, as the user's tab showed the page, and a
+        // page state taken from it says so.
+        assert_eq!(settled(&fixture, &tab, "navigator.userAgent.includes('Android')").await, json!(true));
+        preview.send(&PreviewRelayMessage::StateTake { id: 3, tab: tab.clone() });
+        assert!(matches!(preview.message().await, PreviewEngineMessage::State { id: 3, mobile: true, .. }));
         fixture
     })
     .await;
