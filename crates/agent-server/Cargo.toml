@@ -20,6 +20,9 @@ testing = ["demi-agent-tools/testing", "demi-shared-gates/testing", "demi-provid
 
 [dependencies]
 bytes.workspace = true
+# Reads a user message's Markdown for the title it gives
+# (`product.md` § Conversation titles).
+comrak = { version = "0.56", default-features = false }
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-session = { path = "../agent-session" }
 demi-agent-store = { path = "../agent-store" }
