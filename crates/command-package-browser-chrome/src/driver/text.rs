@@ -38,6 +38,8 @@ pub(crate) fn render(operation: &BrowserOperation, value: Value) -> Result<Strin
             navigation("Navigated to", &typed(value)?)
         }
         BrowserOperation::Reload(_) => navigation("Reloaded", &typed(value)?),
+        // Only the user's page stops a load, and it reads the JSON.
+        BrowserOperation::Stop(_) => "Stopped loading.\n".to_owned(),
         BrowserOperation::History(_) => history(&typed(value)?),
         BrowserOperation::Close(_) => {
             let result: CloseResult = typed(value)?;

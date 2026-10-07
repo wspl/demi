@@ -45,7 +45,7 @@ watch(() => props.viewer.shown.value, (shown) => {
         <RegionStatus
           v-if="failed"
           class="h-full"
-          failed
+          status="failed"
           :label="`Could not show this ${medium.kind}.`"
         />
         <ImagePreview

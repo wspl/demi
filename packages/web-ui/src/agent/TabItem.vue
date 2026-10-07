@@ -4,6 +4,7 @@ import type { ConversationStatus } from './conversation-status'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import ConversationStatusDot from './ConversationStatusDot.vue'
+import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
@@ -22,6 +23,8 @@ defineProps<{
   status?: ConversationStatus
   /** The built-in mark; the `mark` slot replaces it. */
   mark?: 'bot' | 'terminal'
+  /** The tab is at work, as a loading page is: a spinner stands in for its mark. */
+  busy?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -55,7 +58,8 @@ const emit = defineEmits<{
       data-tab-mark
       class="relative ml-1.5 flex shrink-0 items-center justify-center"
     >
-      <slot name="mark">
+      <IndeterminateSpinner v-if="busy" :size="ICON_PX.markIn28" class="text-fg-subtle" />
+      <slot v-else name="mark">
         <Bot
           v-if="mark === 'bot'"
           :size="ICON_PX.markIn28"

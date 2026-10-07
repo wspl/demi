@@ -40,6 +40,8 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   // The agent's showings, which the plugin carries from the tab list (`live-view.md` § Showing a tab).
   shows: (data) => data.shows ?? 0,
   mark: BrowserTabMark,
+  // The page loads: the strip shows it as a web browser's tab does.
+  busy: (data, tab, id) => tab.session.busy(id, data),
   content: BrowserTabContent,
   create: {
     label: "New Tab in the Conversation's Browser",

@@ -4,9 +4,11 @@ import { BrowserTabsError, refusalSentence, type BrowserTabsApi } from './live/t
 import { PluginCallError, type ConversationPlugin } from '@demicodes/plugin-sdk'
 import {
   browserTabsSchema,
+  tabBoundSchema,
   tabMovedSchema,
   type BindTab,
   type NavigateTab,
+  type StopTab,
   type SyncTabs,
   type TabHistory,
 } from './generated/plugin'
@@ -56,13 +58,15 @@ export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
       }),
     },
     bind: async (panelTab) => {
-      await call('bind', { panelTab } satisfies BindTab, z.null(), BIND_TIMEOUT_MS)
+      const bound = await call('bind', { panelTab } satisfies BindTab, tabBoundSchema, BIND_TIMEOUT_MS)
+      return bound.tab
     },
     sync: async () => {
       await call('sync', {} satisfies SyncTabs, z.null())
     },
     navigate: (tab, url) => move('navigate', { tab, url } satisfies NavigateTab),
     history: (tab, action) => move('history', { tab, action } satisfies TabHistory),
+    stop: (tab) => move('stop', { tab } satisfies StopTab),
     stream: plugin.stream('browser'),
     installed: () => plugin.installed.value,
   }

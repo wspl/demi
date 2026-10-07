@@ -1156,6 +1156,9 @@ impl Owner {
             // a popup this one just opened.
             self.reconcile().await;
             if self.book.closable(&target) && self.book.only(&target, *self.holds.borrow()) {
+                if let Some(id) = self.book.public_id(&target) {
+                    self.numbers.closed_on_purpose(id);
+                }
                 self.book.sealed = true;
                 self.context.tabs.emptied.cancel();
                 let _gone = reply.send(Ok(Closed::Environment));
@@ -1197,9 +1200,12 @@ impl Owner {
 
     fn gone(&mut self, target: &TargetId) {
         let (tab, changed) = self.book.gone(target);
-        // The tab's debugging connections end with it.
+        // The tab's debugging connections end with it. Only a running
+        // browser's tab is gone here: one closed by a command, or by its own
+        // page. A browser that ends loses its tabs without this.
         if let Some(tab) = tab {
             tab.ended.cancel();
+            self.numbers.closed_on_purpose(tab.id().clone());
         }
         if changed {
             self.publish();

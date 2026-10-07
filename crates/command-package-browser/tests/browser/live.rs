@@ -1017,6 +1017,15 @@ async fn the_users_requests_answer_without_waiting_for_a_page() {
         let went = request(&fixture, "browser.goto", json!({"tab": tab, "url": slow})).await;
         assert!(started.elapsed() < prompt, "goto waited for its page");
         moved(&went, &tab, &slow);
+        // The user's Stop ends the load, which would otherwise last the test
+        // out: a list numbered after it says the tab no longer loads.
+        listed_until(&fixture, &tab, |_, row| row["loading"] == json!(true)).await;
+        let stopped = request(&fixture, "browser.stop", json!({"tab": tab})).await;
+        let list = stopped["list"].as_u64().expect("Stop names its tab list");
+        listed_until(&fixture, &tab, |number, row| {
+            number > list && row["loading"] == json!(false)
+        })
+        .await;
 
         let missing = "t999";
         let (code, refused) = user_result(&fixture, "browser.close", json!({"tab": missing})).await;
@@ -1030,6 +1039,9 @@ async fn the_users_requests_answer_without_waiting_for_a_page() {
         }
         let tabs = request(&fixture, "browser.tabs", json!({})).await;
         assert_eq!(tabs["tabs"], json!([]));
+        // Both were closed on purpose, the last one with its browser, so the
+        // work panel removes their tabs rather than open them again.
+        assert_eq!(tabs["closed"], json!([other, tab]));
         fixture
     })
     .await;

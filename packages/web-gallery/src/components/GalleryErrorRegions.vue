@@ -13,6 +13,11 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * each one sits; this page is the reference for what each one looks like.
  */
 
+/** A restore the gallery simulates: it fails again after a moment, as a backend still down would. */
+function retryRestore(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 1500))
+}
+
 const usageLimitPayload = JSON.stringify({
   type: 'error',
   error: {
@@ -62,27 +67,29 @@ const usageLimitPayload = JSON.stringify({
     </GallerySection>
     <GallerySection
       title="RegionStatus · Content Cannot Be Shown"
-      note="One pane for every region: the session, a settings list, the sidebar, a dialog body. A glyph for the kind, one sentence, the reason, and Retry, which returns the region to loading."
+      note="One pane for every region: the session, a settings list, the sidebar, a dialog body. A glyph for the kind, one sentence, the reason, and Retry, which returns the region to loading in the same frame, before the retried work answers; only a new failure brings the reason back. This specimen's Retry fails again after a moment, as a backend still down would."
     >
       <div class="grid gap-6 lg:grid-cols-3">
         <GallerySpecimen wide variant="Failed">
           <div class="rounded-xl border border-line bg-surface">
+            <!-- Retry loads again and, as the gallery has no backend, fails the same way after a moment. -->
             <RegionStatus
-              failed
+              status="failed"
               label="Couldn't load this conversation."
+              loading-label="Loading conversation"
               detail="Could not load the transcript: HTTP 502 Bad Gateway"
-              action="Retry"
+              :on-retry="retryRestore"
             />
           </div>
         </GallerySpecimen>
         <GallerySpecimen wide variant="Loading">
           <div class="rounded-xl border border-line bg-surface">
-            <RegionStatus busy label="Loading conversation" />
+            <RegionStatus status="loading" label="Loading conversation" />
           </div>
         </GallerySpecimen>
         <GallerySpecimen wide variant="Empty">
           <div class="rounded-xl border border-line bg-surface">
-            <RegionStatus label="No messages yet." />
+            <RegionStatus status="note" label="No messages yet." />
           </div>
         </GallerySpecimen>
       </div>

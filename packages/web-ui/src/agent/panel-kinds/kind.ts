@@ -15,6 +15,8 @@ export interface PanelTabKind<Data = unknown> {
   title(data: Data): string
   /** The strip's mark. Props: `data`. */
   mark: Component
+  /** Whether the tab `id` is at work, read reactively: its mark is a spinner meanwhile. */
+  busy?(data: Data, id: string): boolean
   /**
    * The tab's content. Props: `tabId`, `data`, and `shown`, whether the tab is
    * the panel's selection. Emits `update` with the tab's next `data`, and

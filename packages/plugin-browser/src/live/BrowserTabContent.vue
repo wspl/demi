@@ -2,14 +2,12 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
 import { Monitor, Ruler, Smartphone } from '@lucide/vue'
 import { AddressBar } from '@demicodes/plugin-sdk'
-import { Button } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
 import { Menu } from '@demicodes/plugin-sdk'
 import { MenuItem } from '@demicodes/plugin-sdk'
 import { Popover } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
 import { RegionStatus } from '@demicodes/plugin-sdk'
-import { pendingCalls } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
 import { usePage } from '@demicodes/plugin-sdk'
 import LiveView from './LiveView.vue'
@@ -24,8 +22,10 @@ import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportCh
  * user submits shows at once, with the page loading over the picture the tab
  * still shows. The plugin opens, binds and closes the browser tab on the
  * backend; only a failure interrupts, where it happened, with a way on. A
- * content stays mounted while another tab is selected (`shown` false), so
- * shown again it shows its picture, address and title at once.
+ * tab whose browser tab the browser lost opens again on its address as soon
+ * as it is shown, loading as any page does. A content stays mounted while
+ * another tab is selected (`shown` false), so shown again it shows its
+ * picture, address and title at once.
  */
 const props = defineProps<{
   conversation: string
@@ -35,7 +35,7 @@ const props = defineProps<{
   data: BrowserTabData
   shown: boolean
 }>()
-const emit = defineEmits<{ update: [data: BrowserTabData]; close: [] }>()
+const emit = defineEmits<{ update: [data: BrowserTabData] }>()
 
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
 const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
@@ -43,11 +43,8 @@ const menu = ref(false)
 const anchor = ref<HTMLElement | null>(null)
 
 const { overlays, errors } = usePage()
-/** Retry and Reload of a tab without its browser tab, which wait for the plugin's answer. */
-const calls = pendingCalls(errors)
-/** The key of that call among the content's pending calls. */
-const BIND = 'bind'
-const rebinding = computed(() => calls.pending.value.includes(BIND))
+/** The plugin opens a browser tab for this panel tab again. */
+const opening = computed(() => props.session.opening(props.tabId, props.data))
 const view = computed(() => props.session.session.value)
 /** The browser tab the panel tab shows, while the browser has it. */
 const bound = computed(() => (props.data.closed ? undefined : props.data.tab))
@@ -57,7 +54,10 @@ const viewport = computed(() => live.value?.viewport ?? null)
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
-const loading = computed(() => props.session.loading(bound.value, props.data.url))
+/** The tab loads: Stop, the strip's spinner and the progress line show it. */
+const busy = computed(() => props.session.busy(props.tabId, props.data))
+/** Why Stop cannot act yet: the browser tab it would stop is still opening. */
+const stopReason = computed(() => (bound.value === undefined ? 'The page is still opening.' : null))
 /** Back and Forward are unavailable while the browser says the tab has no page that way, or has said nothing yet. */
 const backReason = computed(() => (live.value?.canGoBack ? null : 'No page to go back to'))
 const forwardReason = computed(() => (live.value?.canGoForward ? null : 'No page to go forward to'))
@@ -198,10 +198,33 @@ function history(action: 'back' | 'forward' | 'reload'): void {
   }
 }
 
-/** Retry and Reload: the plugin opens a browser tab for this panel tab again. */
-function rebind(): void {
-  void calls.run(BIND, 'Could Not Open the Page', () => props.session.api.bind(props.tabId))
+/** Stop, on the bound tab; a refusal is reported as any failed request is. */
+function stop(): void {
+  if (bound.value !== undefined) {
+    props.session.stop(bound.value).catch((error: unknown) => errors.report('Could Not Stop Loading', error))
+  }
 }
+
+/**
+ * Retry, and a lost tab shown: the plugin opens a browser tab for this panel
+ * tab again, and the tab loads meanwhile. A failure to open it is the tab's
+ * own state; a refused request is a toast.
+ */
+function reopen(): Promise<void> {
+  return props.session.bind(props.tabId).catch((error: unknown) => errors.report('Could Not Open the Page', error))
+}
+
+// A tab whose browser tab the browser lost opens again once shown, as a web browser reloads a tab it
+// discarded; one whose reopening failed waits for its Retry.
+watch(
+  () => props.shown && props.data.closed === true && !props.data.failure,
+  (lost) => {
+    if (lost) {
+      void reopen()
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -211,11 +234,14 @@ function rebind(): void {
       :back-reason="backReason"
       :forward-reason="forwardReason"
       :can-reload="bound !== undefined"
+      :loading="busy"
+      :stop-reason="stopReason"
       :focused="fresh"
       @submit="submit"
       @back="history('back')"
       @forward="history('forward')"
       @reload="history('reload')"
+      @stop="stop"
     >
       <template v-if="viewport" #trailing>
         <!-- The mode alone, as its icon, on a button like the bar's others: the size is the panel's and
@@ -235,28 +261,17 @@ function rebind(): void {
       </template>
     </AddressBar>
     <div ref="area" class="relative flex min-h-0 flex-1 flex-col border-t border-line">
-      <ProgressLine :active="loading && !data.failure && !data.closed" />
-      <!-- A tab the plugin could not open cannot be shown at all: Retry returns it to opening. -->
+      <ProgressLine :active="busy" />
+      <!-- A tab the plugin could not open cannot be shown at all. Retry returns it to opening in the same
+           frame: the region leaves, and the tab loads as a new one does. -->
       <RegionStatus
-        v-if="data.failure || (rebinding && !data.closed)"
+        v-if="data.failure && !opening"
         class="min-h-0 flex-1"
-        :busy="rebinding"
-        :failed="!rebinding"
-        :label="rebinding ? 'Opening the page…' : 'Couldn’t open this page.'"
-        :detail="rebinding ? null : refusalSentence(data.failure?.code ?? null)"
-        :action="rebinding ? undefined : 'Retry'"
-        @action="rebind"
+        status="failed"
+        label="Couldn’t open this page."
+        :detail="refusalSentence(data.failure.code)"
+        :on-retry="reopen"
       />
-      <div
-        v-else-if="data.closed"
-        class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-[13px] text-fg-faint"
-      >
-        <span>This page was closed on the device.</span>
-        <span class="flex items-center gap-2">
-          <Button variant="default" size="sm" @click="emit('close')">Close Tab</Button>
-          <Button variant="default" size="sm" :disabled="rebinding" @click="rebind">Reload</Button>
-        </span>
-      </div>
       <div
         v-else-if="bound !== undefined && props.session.pictures.value === 'unsupported'"
         class="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-fg-faint"

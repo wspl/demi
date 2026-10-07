@@ -78,21 +78,25 @@ impl Work {
     }
 
     /// Opens a browser tab for the panel tab `id`, unless it shows one: the
-    /// tab its user created, or one whose browser tab closed or failed to
-    /// open, which Reload and Retry open again.
+    /// tab its user created, one that failed to open, which Retry opens
+    /// again, and one whose browser tab the browser lost, shown again.
+    /// Answers the browser tab the panel tab shows now; none when the panel
+    /// no longer has it or it could not open one, which its data says.
     pub async fn bind(
         &self,
         conversation: &ConversationId,
         port: &PluginPort,
         id: &str,
-    ) -> Result<(), PluginError> {
+    ) -> Result<Option<String>, PluginError> {
         let lock = self.lock(conversation);
         let _turn = lock.lock().await;
         let Some(data) = data_of(port, id).await? else {
-            return Ok(());
+            return Ok(None);
         };
-        if data.live().is_some() && data.failure.is_none() {
-            return Ok(());
+        if let Some(tab) = data.live()
+            && data.failure.is_none()
+        {
+            return Ok(Some(tab.to_owned()));
         }
         let asked = data.url.clone();
         let opened = match page::open(port, &asked).await {
@@ -100,7 +104,7 @@ impl Work {
             Err(error) => {
                 port.update_panel_tab(id, fields([("failure", failure(&error))]))
                     .await?;
-                return Ok(());
+                return Ok(None);
             }
         };
         let tab = opened.id.to_string();
@@ -112,11 +116,13 @@ impl Work {
         port.update_panel_tab(id, bound).await?;
         match data_of(port, id).await? {
             // Its user closed it while it opened.
-            None => page::close(port, &tab).await,
+            None => page::close(port, &tab).await.map(|()| None),
             // Its user asked for another address while it opened: the last
             // one they asked for is where it goes.
-            Some(now) if now.url != asked => page::navigate(port, &tab, now.url).await.map(|_| ()),
-            Some(_) => Ok(()),
+            Some(now) if now.url != asked => page::navigate(port, &tab, now.url)
+                .await
+                .map(|_| Some(tab)),
+            Some(_) => Ok(Some(tab)),
         }
     }
 
@@ -138,8 +144,10 @@ impl Work {
     /// Reads the browser's tabs and updates the panel from them: a tab for
     /// each tab the agent or a page opened, each bound tab's count of the
     /// times the agent showed its browser tab when the count rose
-    /// (`live-view.md` § Showing a tab), and every bound tab whose browser
-    /// tab is gone marked closed.
+    /// (`live-view.md` § Showing a tab), every bound tab whose browser tab
+    /// was closed on purpose removed, and every one whose browser tab was
+    /// lost with the browser marked closed, to open again when shown
+    /// (`live-view.md` § A browser tab in the panel).
     pub async fn sync(
         &self,
         conversation: &ConversationId,
@@ -147,7 +155,10 @@ impl Work {
     ) -> Result<(), PluginError> {
         let lock = self.lock(conversation);
         let _turn = lock.lock().await;
-        let listed = page::list(port).await?;
+        let page::Listing {
+            tabs: listed,
+            closed,
+        } = page::list(port).await?;
         let panel = port.panel_tabs().await?;
         let bound: Vec<(String, TabData)> = panel
             .tabs
@@ -178,6 +189,9 @@ impl Work {
                 continue;
             };
             match present.get(browser_tab) {
+                None if closed.iter().any(|tab| tab.as_str() == browser_tab) => {
+                    port.remove_panel_tab(id.as_str()).await?;
+                }
                 None => {
                     port.update_panel_tab(id.as_str(), fields([("closed", Value::Bool(true))]))
                         .await?;

@@ -4,7 +4,7 @@
 //! browser logic. The tab list is the plugin's conversation state, which
 //! follows the conversation's jobs, since the agent's commands open and
 //! close tabs; listing never wakes a stopped Cloud and is no activity.
-//! Closing and moving a tab operate the browser without waking it; opening
+//! Closing, moving and stopping a tab operate the browser without waking it; opening
 //! a tab is work the user starts. Each method that did its work marks the
 //! tab list changed. Opening and closing browser tabs for panel tabs is the
 //! panel's work ([`crate::panel`]), through the same operations.
@@ -17,7 +17,7 @@ use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_command_package_browser_protocol::browser::{
     BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab, CloseInput,
     FailureDocument, ForwardInput, GotoInput, NavigationResult, OpenInput, OpenResult, PREFIX,
-    ReloadInput, TabId, TabMoved, TabsInput, TabsResult,
+    ReloadInput, StopInput, TabId, TabMoved, TabsInput, TabsResult,
 };
 use demi_plugin_interface::{
     CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope, State, Topic,
@@ -59,6 +59,16 @@ pub struct BindTab {
     pub panel_tab: String,
 }
 
+/// What `bind` answers: the browser tab the panel tab shows now, so the page
+/// knows its data is up to date once it names that tab; none when the panel
+/// no longer has the tab or no browser tab could be opened for it, which its
+/// data says.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct TabBound {
+    pub tab: Option<String>,
+}
+
 /// `sync {}`: the panel's tabs updated from the browser's.
 #[derive(Debug, Default, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -90,6 +100,13 @@ pub struct TabHistory {
     pub action: HistoryAction,
 }
 
+/// `stop { tab }`: the user's Stop.
+#[derive(Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StopTab {
+    pub tab: String,
+}
+
 /// The operation `operation` names, in the browser's package.
 fn operation(name: &str) -> NativeOperation {
     NativeOperation {
@@ -111,7 +128,7 @@ pub(crate) fn page() -> Page {
         .panel_kind(KIND)
         .told(Topic::Jobs)
         .method(
-            Method::new::<BindTab, ()>("bind", Scope::Conversation)
+            Method::new::<BindTab, TabBound>("bind", Scope::Conversation)
                 .calls(operation("open"))
                 .calls(operation("goto"))
                 .calls(operation("close")),
@@ -127,22 +144,37 @@ pub(crate) fn page() -> Page {
                 .calls(operation("forward"))
                 .calls(operation("reload")),
         )
+        .method(
+            Method::new::<StopTab, TabMoved>("stop", Scope::Conversation)
+                .calls(operation("stop")),
+        )
 }
 
-/// The browser's tabs; none while it does not run, a stopped Cloud's
-/// included.
-pub(crate) async fn list(port: &PluginPort) -> Result<Vec<BrowserTab>, PluginError> {
+/// The browser's tabs, and the latest ones closed on purpose; none while it
+/// does not run, a stopped Cloud's included, whose tabs it lost.
+pub(crate) async fn list(port: &PluginPort) -> Result<Listing, PluginError> {
     let input = TabsInput {
         offset: None,
         limit: None,
         timeout: None,
     };
     match run::<TabsResult, _>(port, BrowserOperation::Tabs, input, CallKind::Looks).await {
-        Ok(listed) => Ok(listed.tabs),
+        Ok(listed) => Ok(Listing {
+            tabs: listed.tabs,
+            closed: listed.closed.unwrap_or_default(),
+        }),
         // A stopped Cloud runs no browser.
-        Err(failure) if stopped(&failure) => Ok(Vec::new()),
+        Err(failure) if stopped(&failure) => Ok(Listing::default()),
         Err(failure) => Err(refused(failure)),
     }
+}
+
+/// The browser's tabs as the plugin reads them.
+#[derive(Debug, Default)]
+pub(crate) struct Listing {
+    pub tabs: Vec<BrowserTab>,
+    /// The latest tabs closed on purpose, by a command or by their own page.
+    pub closed: Vec<TabId>,
 }
 
 /// The conversation state: the browser's tabs, and the browser they need.
@@ -153,7 +185,7 @@ pub(crate) async fn tabs(port: &PluginPort) -> Result<Value, PluginError> {
             name: ARTIFACT.to_owned(),
             version: pinned.version,
         },
-        tabs: list(port).await?,
+        tabs: list(port).await?.tabs,
     })
 }
 
@@ -236,8 +268,8 @@ async fn run_method(
     match method {
         "bind" => {
             let BindTab { panel_tab } = decode(params)?;
-            work.bind(conversation, port, &panel_tab).await?;
-            Ok(Value::Null)
+            let tab = work.bind(conversation, port, &panel_tab).await?;
+            to_value(TabBound { tab })
         }
         "sync" => {
             let SyncTabs {} = decode(params)?;
@@ -278,6 +310,17 @@ async fn run_method(
                 }
             };
             to_value(moved(navigated)?)
+        }
+        "stop" => {
+            let StopTab { tab } = decode(params)?;
+            let input = StopInput {
+                tab: tab_id(tab)?,
+                timeout: None,
+            };
+            let stopped = run::<TabMoved, _>(port, BrowserOperation::Stop, input, CallKind::Operates)
+                .await
+                .map_err(refused)?;
+            to_value(stopped)
         }
         method => Err(PluginError::failed(format!(
             "the browser has no method {method}"

@@ -43,7 +43,6 @@ fn every_operation_decodes_its_smallest_input() {
             _ => json!({"tab": TAB}),
         }
     };
-    assert_eq!(OPERATIONS.len(), 49);
     for operation in OPERATIONS {
         let name = operation.strip_prefix("browser.").unwrap();
         let decoded = parse(name, smallest(name)).unwrap_or_else(|error| panic!("{name}: {error}"));
@@ -194,7 +193,7 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         );
     }
     // Every listed name decodes, so the descriptor lists nothing unserved.
-    assert_eq!(Operation::names().count(), 49 + 1);
+    assert_eq!(Operation::names().count(), OPERATIONS.len() + 1);
     for name in Operation::names() {
         assert!(
             !matches!(

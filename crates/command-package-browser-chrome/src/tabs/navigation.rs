@@ -13,6 +13,7 @@ use chromiumoxide::{
             EventFrameNavigated, EventFrameStartedLoading, EventLifecycleEvent,
             EventNavigatedWithinDocument, FrameId, GetFrameTreeParams, GetNavigationHistoryParams,
             NavigateParams, NavigateToHistoryEntryParams, NavigationEntry, ReloadParams,
+            StopLoadingParams,
         },
     },
     listeners::EventStream,
@@ -22,7 +23,7 @@ use futures_util::{FutureExt, StreamExt};
 use crate::driver::operation::{BrowserError, Operation, Result};
 
 use crate::tabs::{
-    protocol::{BrowserOperation, Load, NavigationResult},
+    protocol::{BrowserOperation, Load, NavigationResult, TabMoved},
     tab::BrowserTab,
 };
 
@@ -486,6 +487,20 @@ pub async fn steer(
         title: None,
         list: Some(list),
     })
+}
+
+/// The user's Stop (`live-view.md` § The tab methods): stops loading the
+/// tab's page, and answers the number of the last tab list before it.
+pub async fn stop(tab: &BrowserTab, operation: &Operation<'_>) -> Result<TabMoved> {
+    let list = tab.list_number();
+    operation
+        .run(async { Ok(tab.page.execute(StopLoadingParams {}).await?) })
+        .await?;
+    // The page's loading ends only on a list numbered after the request. A
+    // tab that had stopped loading already changes nothing that would number
+    // one, so the Host reads the list again.
+    tab.state.changes.send_modify(|revision| *revision += 1);
+    Ok(TabMoved { list })
 }
 
 /// Compile the browser URL glob; regex escaping owns every literal character.
