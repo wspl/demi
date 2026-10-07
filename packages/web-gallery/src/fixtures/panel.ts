@@ -6,7 +6,8 @@
  */
 import { BrowserTabsError, addedPanelTab, browserTabDataSchema, type BrowserTabData } from '@demicodes/plugin-browser/live/tabs'
 import { applyPanelChange, type PanelAnswer, type PanelBackend, type PanelChange, type PanelRead } from '@demicodes/web-ui/agent/panel-changes'
-import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
+import { openedTabIndex, type PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
+import type { AnyPluginPage } from '@demicodes/web-ui/plugins/page'
 import type { BrowserTab } from '@demicodes/plugin-browser/generated/plugin'
 import type { GalleryBrowser } from './live-browser'
 
@@ -109,28 +110,18 @@ function live(data: BrowserTabData): string | undefined {
 }
 
 /**
- * Where the panel tab for `tab` goes, among the panel tabs that show
- * `order`'s browser tabs, as the backend's plugin places it: a tab a page
- * opened right after its opener's, after the tabs the same opener opened
- * before it there, as Chrome places the tabs a link opens; any other tab, or
- * one whose opener the panel does not show, after the others (undefined).
+ * The panel tab that shows the browser tab whose page opened `tab`; none for
+ * a tab no page opened, or whose opener the panel does not show.
  */
-function besideOpener(order: readonly (string | undefined)[], listed: readonly BrowserTab[], tab: BrowserTab): number | undefined {
+function openerFor(panel: GalleryPanel, tab: BrowserTab): string | undefined {
   if (tab.createdBy.kind !== 'page') {
     return undefined
   }
   const opener = tab.createdBy.opener
-  const at = order.indexOf(opener)
-  if (at < 0) {
-    return undefined
-  }
-  const openedByOpener = (shown: string | undefined) => listed.some((other) =>
-    other.id === shown && other.createdBy.kind === 'page' && other.createdBy.opener === opener)
-  let end = at + 1
-  while (end < order.length && openedByOpener(order[end])) {
-    end += 1
-  }
-  return end
+  return panel.all.find((each) => {
+    const data = each.kind === 'browser' ? browserData(each) : null
+    return data !== null && live(data) === opener
+  })?.id
 }
 
 /** The browser plugin's part in the panel's `browser` tabs, as the backend's plugin does it. */
@@ -143,7 +134,12 @@ export interface GalleryBrowserPlugin {
   sync(): Promise<void>
 }
 
-export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPanel): GalleryBrowserPlugin {
+/** `pages` are the panel's, whose kinds say which tab opened which. */
+export function galleryBrowserPlugin(
+  browser: GalleryBrowser,
+  panel: GalleryPanel,
+  pages: readonly AnyPluginPage[],
+): GalleryBrowserPlugin {
   // One piece of the conversation's work at a time, as the plugin does it.
   let turn: Promise<void> = Promise.resolve()
   function inTurn<T>(work: () => Promise<T>): Promise<T> {
@@ -198,17 +194,19 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
         .filter((tab) => tab.kind === 'browser')
         .map((tab) => ({ id: tab.id, data: browserData(tab) }))
       const shown = new Set(bound.map((tab) => tab.data?.tab))
-      // The browser tab each panel tab shows, in the panel's order, as this sync leaves it.
-      const order = panel.all.map((tab) => {
-        const data = tab.kind === 'browser' ? browserData(tab) : null
-        return data ? live(data) : undefined
-      })
       for (const tab of listed) {
         if (tab.createdBy.kind !== 'user' && !shown.has(tab.id)) {
-          const data = { url: tab.url, tab: tab.id, title: tab.title, ...(tab.shows > 0 ? { shows: tab.shows } : {}) }
-          const index = besideOpener(order, listed, tab)
+          const data: BrowserTabData = { url: tab.url, tab: tab.id, title: tab.title }
+          if (tab.shows > 0) {
+            data.shows = tab.shows
+          }
+          const opener = openerFor(panel, tab)
+          if (opener !== undefined) {
+            data.openedBy = opener
+          }
+          // Beside its opener, as the backend's plugin places it, by the rule the page places Open Link in New Tab.
+          const index = openedTabIndex(panel.all, pages, 'browser', data)
           panel.apply({ type: 'create', tab: { id: addedPanelTab(tab.id), kind: 'browser', data }, index })
-          order.splice(index ?? order.length, 0, tab.id)
         }
       }
       for (const { id, data } of bound) {

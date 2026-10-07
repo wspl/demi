@@ -22,6 +22,7 @@ use crate::driver::{
 };
 
 use crate::tabs::{
+    loading::PageLoad,
     protocol::{BrowserViewport, ViewportMode},
     tab::BrowserTab,
 };
@@ -179,7 +180,26 @@ impl BrowserTab {
 
     /// Whether the browser loads the tab's top-level page.
     pub fn loading(&self) -> bool {
-        *self.state.loading.borrow()
+        *self.state.load.borrow() != PageLoad::Idle
+    }
+
+    /// Whether Chrome holds the commands for the tab's page, as it does
+    /// while a navigation's new document has not committed
+    /// (`PageLoad::Navigating`).
+    pub fn navigating(&self) -> bool {
+        *self.state.load.borrow() == PageLoad::Navigating
+    }
+
+    /// Waits until Chrome takes commands for the tab's page again: at once
+    /// unless a navigation is under way, else once its document commits or
+    /// it ends without one, or the tab ends.
+    pub async fn committed(&self) {
+        let mut load = self.state.load.subscribe();
+        tokio::select! {
+            // The tab's state outlives the wait, so its sender is never dropped.
+            _ = load.wait_for(|load| *load != PageLoad::Navigating) => {}
+            () = self.ended.cancelled() => {}
+        }
     }
 
     /// Which ends of its history the tab is away from.
@@ -202,8 +222,14 @@ impl BrowserTab {
     /// Pins the page's viewport and sizes its window to it plus the browser's
     /// own chrome, so the page never sees an outer size smaller than its inner
     /// size. Entering or leaving Mobile mode turns the phone's touch and user
-    /// agent on or off.
+    /// agent on or off. While a navigation of the tab is under way, it waits
+    /// for its document to commit (`committed`).
     pub async fn set_viewport(&self, viewport: BrowserViewport) -> Result<()> {
+        // Chrome holds the page's metrics while a navigation is under way but
+        // resizes the window at once: the page would stand at its old size in
+        // a window of the new one, which its capture letterboxes in black, until
+        // the navigation ended. So the page takes commands again first.
+        self.committed().await;
         let mobile = viewport.mode == ViewportMode::Mobile;
         if mobile != (self.viewport().mode == ViewportMode::Mobile) {
             let agent = if mobile {
