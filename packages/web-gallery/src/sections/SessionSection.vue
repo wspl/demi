@@ -16,7 +16,6 @@ import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind, HandoffBlock } from '@demicodes/web-ui/agent/activity-slot'
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
-import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { galleryFiles, useGalleryWork } from '../fixtures/work-panel'
 import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, showChange } from '@demicodes/plugin-changes/data'
@@ -28,7 +27,7 @@ import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace, gallerySides } from '../fixtures/workspace'
 import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
-import { galleryAttachment } from '../fixtures/attachments'
+import { galleryConversationFiles } from '../fixtures/message-files'
 import GalleryAttachmentMessage from '../components/GalleryAttachmentMessage.vue'
 import { productWould } from '../product-would'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
@@ -327,15 +326,11 @@ function agentOpens(show: boolean) {
   void panelWork.agentOpens(show ? 'https://example.test/orders' : 'https://example.test/docs', show)
 }
 /** The session's messages reach the gallery workspace: images from its fixtures, files opened in the frame's panel. */
-const sessionFiles: ConversationFiles = {
-  imageUrl: (path) => workspace.source.contents.url(path),
-  attachment: galleryAttachment,
-  open: (path) => {
-    panelWork.openIn({ intent: 'file', payload: { path } })
-    panelAsideOpen.value = true
-    view.value = 'panel'
-  },
-}
+const sessionFiles = galleryConversationFiles(workspace.source, (path) => {
+  panelWork.openIn({ intent: 'file', payload: { path } })
+  panelAsideOpen.value = true
+  view.value = 'panel'
+})
 // The tabs specimen starts on an empty strip, with the globe-plus add control.
 const exhibitWork = useWorkTabs('file', { browser: galleryBrowser([]) })
 const editWork = useWorkTabs('change')

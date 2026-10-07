@@ -7,6 +7,7 @@ import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
@@ -49,6 +50,8 @@ const flow = useTurnFlow({
 })
 const session = flow.state
 useLiveGalleryCommand(session.terminals)
+// The session's messages find the files the gallery provides its transcripts.
+const messageFiles = useMessageFiles()
 const hosts = createGalleryFileHosts()
 const devices: HostDeviceOption[] = hosts.map((host) => ({
   id: host.id,
@@ -121,6 +124,7 @@ function detach(id: string): void {
       </template>
       <ChatSession
         :conversation="session"
+        :files="messageFiles()"
         @rename="session.title = $event"
         :retitle="retitle"
         @retitle="updateTitle"
