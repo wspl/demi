@@ -203,6 +203,11 @@ pub struct ConversationSummary {
     /// change (`web-api.md` § Work panel state), read the same way.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub panel_revision: u64,
+    /// The revision of the conversation's attached hosts, raised by an
+    /// attach, a detach, a rename or the directory a host's shell recorded
+    /// (`web-api.md` § Sidebar mutations and read state), read the same way.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub hosts_revision: u64,
     /// The revision of each plugin's conversation state, in registration
     /// order (`web-api.md` § Conversation state of plugins): a page reads a
     /// state only when its revision is newer than the one it holds, counted
