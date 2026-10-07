@@ -1,6 +1,10 @@
 // What the page logged, requested, and sent or received on its sockets
 // since the tool attached to the browser (browse.md § Watching), kept in the
-// daemon so that `log` finds what happened before anyone asked. A daemon
+// daemon so that `log` finds what happened before anyone asked. A page that
+// reaches a runner over a direct channel (`direct-channel.md`) runs its file
+// operations and its file watch on data channels, which no network event
+// shows: a script in the page tells the console about them, and they are
+// kept with the requests and the sockets. A daemon
 // that ends for changed code leaves them in the slot's folder for the next
 // one, which attaches to the same browser and goes on from them.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -30,6 +34,9 @@ const savedSchema = z.object({
   markName: z.string().nullable(),
   entries: z.object({ console: z.array(entrySchema), network: z.array(entrySchema), sockets: z.array(entrySchema) }),
 })
+
+/** What starts a console line the page's direct channel script writes, followed by its log kind. */
+const DIRECT_MARK = '[browse direct]'
 
 /** How many entries each kind keeps; older ones go. */
 const LIMIT = 20_000
@@ -121,9 +128,13 @@ export class Logs {
   }
 
   /** Records what `context` and each of its pages do from now on. */
-  watch(context: BrowserContext): void {
+  async watch(context: BrowserContext): Promise<void> {
+    await context.addInitScript(recordDirectChannels, DIRECT_MARK)
     for (const page of context.pages()) {
       this.watchPage(page)
+      // A page open before the tool attached gets the script now; one a
+      // daemon before this one gave it keeps it.
+      await page.evaluate(recordDirectChannels, DIRECT_MARK).catch(() => undefined)
     }
     context.on('page', (page) => this.watchPage(page))
     const started = new Map<Request, number>()
@@ -145,9 +156,20 @@ export class Logs {
   }
 
   private watchPage(page: Page): void {
-    page.on('console', (message) => this.add('console', `${message.type()}: ${message.text()}`))
+    page.on('console', (message) => this.console(`${message.type()}: ${message.text()}`))
     page.on('pageerror', (error) => this.add('console', `uncaught: ${error.message}`))
     page.on('websocket', (socket) => this.watchSocket(socket))
+  }
+
+  /** A line of the page's console, or of its direct channel script, which names the kind it belongs to. */
+  console(line: string): void {
+    const direct = new RegExp(`^debug: ${RegExp.escape(DIRECT_MARK)} (network|sockets) (.*)$`, 's').exec(line)
+    if (!direct) {
+      this.add('console', line)
+      return
+    }
+    const [, kind, text] = direct
+    this.add(kind === 'network' ? 'network' : 'sockets', kind === 'sockets' ? frameText(text) : text)
   }
 
   private watchSocket(socket: WebSocket): void {
@@ -158,6 +180,90 @@ export class Logs {
     socket.on('framereceived', (frame) => this.add('sockets', `received ${name} ${frameText(frame.payload)}`))
     socket.on('socketerror', (error) => this.add('sockets', `error ${name} ${error}`))
     socket.on('close', () => this.add('sockets', `closed ${name}`))
+  }
+}
+
+/**
+ * Runs in the page, so it uses nothing outside itself: tells the console,
+ * after `mark`, about each data channel the page opens to a runner
+ * (`direct-channel.md` § Operations on the channel). The runner's answer
+ * goes with the requests, as `direct <op> <ok or error code> <path> <ms>
+ * ms`; a watch's messages after its header and answer, such as `paths` and
+ * `changed`, go with the sockets, as the relay's watch socket's do. A file's
+ * text or bytes are not logged. Installed once per page.
+ */
+export function recordDirectChannels(mark: string): void {
+  const prototype = globalThis.RTCPeerConnection?.prototype
+  if (!prototype || Object.hasOwn(prototype, 'browseRecordsDirectChannels')) {
+    return
+  }
+  Object.defineProperty(prototype, 'browseRecordsDirectChannels', { value: true })
+  const create = prototype.createDataChannel
+  prototype.createDataChannel = function (this: RTCPeerConnection, ...args: Parameters<RTCPeerConnection['createDataChannel']>) {
+    const channel = create.apply(this, args)
+    const began = performance.now()
+    /** What the page's first message names: the operation, and its path or stream. */
+    let header: { op: string, path: string } | null = null
+    let answered = false
+    const send = channel.send
+    channel.send = function (this: RTCDataChannel, ...data: unknown[]) {
+      const [text] = data
+      if (typeof text === 'string') {
+        if (header === null) {
+          let op = channel.label
+          let path = ''
+          try {
+            const value: unknown = JSON.parse(text)
+            if (value && typeof value === 'object') {
+              op = 'op' in value && typeof value.op === 'string' ? value.op : op
+              path = 'path' in value && typeof value.path === 'string' ? value.path : 'stream' in value && typeof value.stream === 'string' ? value.stream : ''
+            }
+          } catch {
+            // A header that is not JSON is named by its channel alone.
+          }
+          header = { op, path }
+        } else if (header.op === 'watch') {
+          console.debug(`${mark} sockets sent direct watch ${text}`)
+        }
+      }
+      Reflect.apply(send, channel, data)
+    }
+    /** The request entry of the channel's operation, as `log network` prints a request's. */
+    const request = (answer: string) => {
+      const op = header?.op ?? channel.label
+      const path = header?.path ? ` ${header.path}` : ''
+      console.debug(`${mark} network direct ${op} ${answer}${path} ${Math.round(performance.now() - began)} ms`)
+    }
+    channel.addEventListener('message', (event: MessageEvent) => {
+      if (typeof event.data !== 'string') {
+        return
+      }
+      if (answered) {
+        if (header?.op === 'watch') {
+          console.debug(`${mark} sockets received direct watch ${event.data}`)
+        }
+        return
+      }
+      answered = true
+      let answer = 'answered'
+      try {
+        const value: unknown = JSON.parse(event.data)
+        if (value && typeof value === 'object' && 'ok' in value) {
+          answer = 'ok'
+        } else if (value && typeof value === 'object' && 'error' in value && value.error && typeof value.error === 'object' && 'code' in value.error) {
+          answer = String(value.error.code)
+        }
+      } catch {
+        // An answer that is not JSON is told as answered.
+      }
+      request(answer)
+    })
+    channel.addEventListener('close', () => {
+      if (!answered) {
+        request('FAILED')
+      }
+    })
+    return channel
   }
 }
 
