@@ -1,8 +1,8 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index e266ec1..3575203 100644
+index e266ec1..9763d76 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -105,3 +105,16 @@ version = "0.2"
+@@ -105,3 +105,17 @@ version = "0.2"
  level = "allow"
  priority = 0
  check-cfg = ["cfg(const_fn)"]
@@ -17,10 +17,11 @@ index e266ec1..3575203 100644
 +    "All of these changes are vendor/btls/btls-sys.patch. BoringSSL takes patches/browser-fingerprint.patch after upstream's own patches: SSL_CTX_set_grease_sigalgs_enabled and SSL_CTX_set1_advertised_sigalgs list a GREASE value and algorithms only declared ahead of the verification preferences in the ClientHello's signature_algorithms, as Chrome 154 does",
 +    "The build script names only the library directories the build made, so the linker warns about none missing (Zig's, for every Linux target)",
 +    "Every Windows build, from any build machine, compiles BoringSSL without assembly (OPENSSL_NO_ASM), as upstream already did on a Windows build machine, and takes the C runtime from crt-static even under a CMake toolchain file such as cargo-xwin's: the x86-64 assembly would need NASM, and the toolchain file's early return dropped the runtime choice",
++    "An MSVC build generates for Ninja, as cargo-xwin's does, so BoringSSL compiles with the build's compiler and the MSVC toolset its environment selected: cmake's default Visual Studio generator compiled with Visual Studio's newest toolset (14.51) instead of the pinned 14.44, whose static C++ library then lacked the ARM64 vectorized algorithms the newer STL headers called (__std_find_trivial_1 and others), so aarch64-pc-windows-msvc failed to link on a Windows runner; disabling _USE_STD_VECTOR_ALGORITHMS would hide that symptom but still link one toolset's objects against an older one's libraries",
 +    "suspicious_runtime_symbol_definitions is allowed: the bindings declare the C library's malloc and realloc with C's types, which the pinned nightly's lint flags, and nothing calls them",
 +]
 diff --git a/build/main.rs b/build/main.rs
-index 0825ff5..2e174e0 100644
+index 0825ff5..9dcd05d 100644
 --- a/build/main.rs
 +++ b/build/main.rs
 @@ -212,10 +212,6 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
@@ -34,7 +35,7 @@ index 0825ff5..2e174e0 100644
      if config.target_os == "windows" {
          // Explicitly use the non-debug CRT.
          // This is required now because newest BoringSSL requires CMake 3.22 which
-@@ -226,6 +222,16 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
+@@ -226,6 +222,26 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
          } else {
              boringssl_cmake.define("CMAKE_MSVC_RUNTIME_LIBRARY", "MultiThreadedDLL");
          }
@@ -44,6 +45,16 @@ index 0825ff5..2e174e0 100644
 +        // before a toolchain file's early return, since cargo-xwin's names
 +        // only the compilers.
 +        boringssl_cmake.define("OPENSSL_NO_ASM", "YES");
++        // Demi's: an MSVC build generates for Ninja, as cargo-xwin's does,
++        // so CMake compiles with the build's own compiler and the MSVC
++        // toolset its environment selected, which the final link uses too.
++        // cmake's default Visual Studio generator ignores both: it compiles
++        // with Visual Studio's newest toolset, whose STL headers can name
++        // functions the selected toolset's static C++ library lacks (MSVC
++        // 14.51's ARM64 vectorized algorithms, absent from 14.44's libcpmt).
++        if config.target_env == "msvc" {
++            boringssl_cmake.generator("Ninja");
++        }
 +    }
 +
 +    if config.env.cmake_toolchain_file.is_some() {
@@ -51,7 +62,7 @@ index 0825ff5..2e174e0 100644
      }
  
      if config.host == config.target {
-@@ -311,12 +317,6 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
+@@ -311,12 +327,6 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
              boringssl_cmake.cflag(&cflag);
          }
  
@@ -64,7 +75,7 @@ index 0825ff5..2e174e0 100644
          "linux" => match &*config.target_arch {
              "x86" => {
                  boringssl_cmake.define(
-@@ -479,6 +479,10 @@ fn ensure_patches_applied(config: &Config) -> io::Result<()> {
+@@ -479,6 +489,10 @@ fn ensure_patches_applied(config: &Config) -> io::Result<()> {
      println!("cargo:warning=applying windows cross compile patch to boringssl");
      apply_patch(config, "boringssl-windows.patch")?;
  
@@ -75,7 +86,7 @@ index 0825ff5..2e174e0 100644
      if config.features.underscore_wildcards {
          println!("cargo:warning=applying underscore wildcards patch to boringssl");
          apply_patch(config, "underscore-wildcards.patch")?;
-@@ -702,7 +706,11 @@ fn emit_link_directives(config: &Config) {
+@@ -702,7 +716,11 @@ fn emit_link_directives(config: &Config) {
              .map(|s| dir.join(s))
              .filter(|d| d.exists())
              .unwrap_or(dir);

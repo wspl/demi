@@ -228,6 +228,16 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
         // before a toolchain file's early return, since cargo-xwin's names
         // only the compilers.
         boringssl_cmake.define("OPENSSL_NO_ASM", "YES");
+        // Demi's: an MSVC build generates for Ninja, as cargo-xwin's does,
+        // so CMake compiles with the build's own compiler and the MSVC
+        // toolset its environment selected, which the final link uses too.
+        // cmake's default Visual Studio generator ignores both: it compiles
+        // with Visual Studio's newest toolset, whose STL headers can name
+        // functions the selected toolset's static C++ library lacks (MSVC
+        // 14.51's ARM64 vectorized algorithms, absent from 14.44's libcpmt).
+        if config.target_env == "msvc" {
+            boringssl_cmake.generator("Ninja");
+        }
     }
 
     if config.env.cmake_toolchain_file.is_some() {
