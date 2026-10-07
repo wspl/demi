@@ -498,6 +498,13 @@ function failInput() {
 /** The Host cannot even recreate its capture extension: the view stops trying, and its Retry asks again. */
 function stopCapture() {
   browserWork.browser.stopCapture()
+  // What it does shows on a browser tab: a specimen showing another kind shows its first browser tab.
+  if (shownBrowserTab.value === null) {
+    const tab = browserWork.panel.value.tabs.find((candidate) => candidate.kind === 'browser')
+    if (tab) {
+      browserWork.select(tab.id)
+    }
+  }
 }
 // A conversation its first send has not created: no page is bound beside it.
 const unstartedWork = useGalleryWork(null, { files, pages: [] })
@@ -2156,7 +2163,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" @click="stopCapture">Stop Capturing on the Host</Button>
-              <span>The page says the device couldn’t capture it; Retry brings the picture back.</span>
+              <span>The browser tab says the device couldn’t capture it; Retry brings the picture back.</span>
             </div>
           </GallerySpecimen>
           <GallerySpecimen
