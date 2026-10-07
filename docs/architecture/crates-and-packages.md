@@ -1526,6 +1526,17 @@ under `packages/`.
   generates into `src/generated/`.
 - **Must not:** import Node or `web`, or be imported by another package.
 
+#### `@demicodes/check`
+
+- **Private.**
+- **Owns:** `bun check`, the product-check tool over Playwright
+  ([Product checks](../delivery/product-checks.md)): the per-slot browser
+  daemon, the slot's servers, one file per command.
+- **Public boundary:** `bun check <command>`. It reads a conversation's state
+  through `web`'s generated schemas.
+- **Must not:** be imported by another package. It is a Bun program, so it may
+  import Node built-ins.
+
 #### `@demicodes/plugin-<name>`
 
 Each plugin page package is **private** and has the same boundary:
@@ -1655,6 +1666,7 @@ plugin-changes -> plugin-sdk
 plugin-file-browser -> plugin-sdk
 plugin-skills -> plugin-sdk
 web -> plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
+check -> web
 web-gallery -> plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
 ```
 
@@ -1829,7 +1841,7 @@ unless:
   through another package;
 - production `.ts` imports stay within the importing package's line; `.vue`
   files are covered at the manifest level;
-- no production source imports a Node built-in;
+- no production source imports a Node built-in, except `check`'s, a Bun program;
 - a package whose `exports` point at built files names each entry's source
   file under a `development` condition, the root `tsconfig.json` `paths`
   mirror every subpath entry, and the root `test` script names every package

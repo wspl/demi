@@ -10,14 +10,14 @@ once on a far backend:
 
 ```text
 $ bun check up web
-Backend   http://localhost:3320  ready in 71 s
-Web       http://localhost:3321  ready in 4 s, signed in as developer@example.test
+Backend   http://127.0.0.1:3320  ready in 71 s
+Web       http://127.0.0.1:3323  ready in 4 s, signed in as developer@example.test
 $ bun check net latency 400
 $ bun check open /chat/c-1
 $ bun check timeline 'click role=button[name="Reload"]' --at 0,100,1500
-.cache/check/shots/timeline-0ms.png
-.cache/check/shots/timeline-100ms.png
-.cache/check/shots/timeline-1500ms.png
+/…/demi-slots/2/.cache/check/shots/timeline-0ms.png     painted at -30 ms
+/…/demi-slots/2/.cache/check/shots/timeline-100ms.png   painted at 85 ms
+/…/demi-slots/2/.cache/check/shots/timeline-1500ms.png  painted at 1484 ms
 $ bun check down
 ```
 
@@ -37,13 +37,18 @@ time.
 lives between commands: Playwright's Chromium, headless unless `--headed`,
 with its own profile in the slot's `.cache/check/`, so cookies, storage and
 sign-ins never mix between slots or with the user's browser. Commands reach it
-through a socket in the same folder; it ends on `bun check stop` or after 30
-minutes without a command. The slot comes from the working directory: slot *n*
+through a socket in the same folder; it ends on `bun check stop`, on `bun
+check down` or after 30 minutes without a command. A command restarts it when
+it crashed, and it restarts itself when the tool's own code changed, opening
+its page again, so an agent changing the tool always runs its current code. The slot comes from the working directory: slot *n*
 for `../demi-slots/n`, slot 0 for the user's own checkout.
 
 **The slot's servers.** `bun check up [backend] [web] [gallery]` starts what
 it names on the slot's ports (slot *n*: backend 33*n*0, web 33*n*1, gallery
-33*n*2), waits until each answers, signs the browser in with the development
+33*n*2), waits until each answers, puts the tool's own forwarder on 33*n*3 in
+front of the web app, which the browser loads it through, since the browser's
+own network emulation can neither slow a WebSocket nor drop one without a
+close, signs the browser in with the development
 account once the web app is up, and records each process group. `bun check
 down` stops exactly those groups, never anything found by name, so the user's
 servers and other slots' are never touched. `up` copies the user's `.env`
@@ -51,9 +56,10 @@ into the slot for the backend and `down` deletes it.
 
 **Finding things.** Every command that acts takes a Playwright locator:
 `role=button[name="Reload"]`, `text=Allow for This Conversation`,
-`label=Email`, `testid=…`, or CSS. A locator that matches nothing or more than
-one element fails at once with what it looked for, what it found, and a
-screenshot. Gallery specimens open by address, `bun check open
+`label=Email`, `testid=…`, or CSS. A locator that matches more than one
+element fails at once, and one that matches nothing after two seconds, time
+for a menu or dialog still opening; either failure says what it looked for
+and what it found, with a screenshot. Gallery specimens open by address, `bun check open
 gallery:/session?view=blocks`.
 
 **Acting.** `click`, `fill`, `type`, `press`, `hover`, `select`, `upload`,
@@ -69,14 +75,17 @@ it waited for.
 into `.cache/check/shots/` and prints its path, which the agent lists in its
 report for the lead to send. `--element <locator>` clips to an element,
 `--region x,y,w,h` to an area, `--zoom 2` magnifies. `timeline '<action>' --at
-0,100,1500` runs one action and shoots at those milliseconds after it, for the
-moments between a click and its result. `pixel x y` reads a colour.
+0,100,1500` runs one action and keeps the browser's frames painted nearest to
+those milliseconds after it, for the moments between a click and its result;
+each line says when its frame was painted, since a full screenshot takes
+about 100 ms and could not show the 100th. `pixel x y` reads a colour.
 
 **Conditions.** `emulate` sets the viewport, pixel ratio, light or dark
 theme, a phone, locale and time zone. `net` makes the network offline or
-online, adds latency or limits bandwidth for every request and socket, or
-cuts the sockets matching a pattern without a close, as a lost connection
-does. `grant` gives a permission such as the clipboard or local network
+online, adds latency or limits bandwidth for the app's requests and sockets
+(the development server's own files stay fast, or a page of hundreds of
+modules would take half a minute to open), or cuts the sockets matching a
+pattern without a close, as a lost connection does. `grant` gives a permission such as the clipboard or local network
 access.
 
 **Watching.** `log console`, `log network` and `log sockets` print what the
@@ -84,8 +93,9 @@ page logged, requested and sent or received since the browser started or
 since a mark, `log mark`.
 
 **The real product's other parts.** `message <text>` sends a message in the
-open conversation and waits for its turn to end; `runner` starts a runner of
-the slot's build and pairs it to the slot's backend through Add Device.
+open conversation and waits for its turn to end; `runner` starts the slot's
+built runner with its own installation folder under `.cache/check/` and pairs
+it to the slot's backend through Add Device.
 
 **Anything else.** `eval <js>` runs JavaScript in the page and prints the
 result, `cdp <method> [params]` sends a DevTools protocol command, and
