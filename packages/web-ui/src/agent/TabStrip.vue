@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, type ComponentPublicInstance } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import {
   TAB_DRAG_PX,
   TAB_TRANSITION,
@@ -44,7 +44,11 @@ const FADE_PX = 24
  * strip along its axis, so a vertical wheel over the tabs moves them
  * sideways instead of the page.
  * The host passes its `TabItem`s as children and sizes the strip in its row.
- * The `trailing` slot (a New tab control) follows the last tab while the
+ * The `leading` slot holds tabs that stand ahead of them and never scroll,
+ * such as the work panel's pinned tabs: elements of `role="tab"` like the
+ * children, in the same tab list, which give way before the strip's own tabs,
+ * their titles truncating down to what their own minimum width keeps. The
+ * `trailing` slot (a New tab control) follows the last tab while the
  * tabs fit, and stays at the strip's right edge once they scroll.
  *
  * `surface` is what the row sits on. On the base surface the active tab is
@@ -52,7 +56,8 @@ const FADE_PX = 24
  * color, and hover uses the active color either way. The tabs and the edge
  * fades take their colors from the strip, so a host sets this once.
  *
- * The arrow keys, Home and End move the keyboard's focus between the tabs.
+ * The arrow keys, Home and End move the keyboard's focus between the tabs,
+ * the leading ones included.
  * A host that listens to `reorder` lets the user drag a tab along the strip,
  * as in a web browser: the others step aside as it passes their middle, and
  * on release `reorder` names where it was and its index among the others,
@@ -79,6 +84,8 @@ const colors = computed(() =>
       },
 )
 const root = ref<HTMLElement | null>(null)
+const list = ref<HTMLElement | null>(null)
+const leading = ref<HTMLElement | null>(null)
 const el = ref<HTMLElement | null>(null)
 const fades = ref<HTMLElement | null>(null)
 /** The selected tab the resize observer watches, so a title that widens it reveals it again. */
@@ -150,7 +157,24 @@ function updateEdges(): void {
   style?.setProperty('--fade-after-room', Number.isFinite(room.after) ? `${room.after}px` : '100%')
 }
 
-/** The width a tab may take: the strip's own, less what follows its tabs, such as the New tab control. */
+/**
+ * The least the leading tabs take once they have given way, with the gap
+ * after them. Their present width would not do: it is what the strip's tabs
+ * leave them, so a room measured from it would shrink the tabs in their place.
+ */
+function leadingMinimum(): number {
+  const lead = leading.value
+  if (!lead || !list.value) {
+    return 0
+  }
+  // Read in one layout and put back before anything paints or observes it.
+  lead.style.width = 'min-content'
+  const width = lead.offsetWidth
+  lead.style.width = ''
+  return width + stripGap(list.value)
+}
+
+/** The width a tab may take: the strip's own, less the leading tabs at their least and what follows the tabs, such as the New tab control. */
 function measureRoom(): void {
   const strip = root.value
   if (!strip) {
@@ -158,11 +182,11 @@ function measureRoom(): void {
   }
   let trailing = 0
   for (const child of strip.children) {
-    if (child !== fades.value && child instanceof HTMLElement) {
+    if (child !== list.value && child instanceof HTMLElement) {
       trailing += child.offsetWidth + Number.parseFloat(getComputedStyle(child).marginLeft || '0')
     }
   }
-  const room = `${Math.max(0, strip.clientWidth - trailing)}px`
+  const room = `${Math.max(0, strip.clientWidth - trailing - leadingMinimum())}px`
   // Unchanged, it is not written again: writing it resizes the tabs, which the observer reports.
   if (strip.style.getPropertyValue('--tab-room') !== room) {
     strip.style.setProperty('--tab-room', room)
@@ -226,7 +250,7 @@ function onAfterLeave(el: Element): void {
   revealActive()
 }
 
-/** The strip's tabs in order, without those on their way out. */
+/** The strip's own tabs in order, the ones a drag moves among, without those on their way out. */
 function tabElements(): HTMLElement[] {
   const strip = el.value
   if (!strip) {
@@ -235,9 +259,10 @@ function tabElements(): HTMLElement[] {
   return [...strip.querySelectorAll<HTMLElement>(':scope > [role="tab"]')].filter((tab) => !isLeavingTab(tab))
 }
 
-// The arrows move the focus along the tabs, wrapping at the ends; Enter or Space on a tab is the tab's own.
+// The arrows move the focus along the tabs, the leading ones first, wrapping
+// at the ends; Enter or Space on a tab is the tab's own.
 function onKeydown(event: KeyboardEvent): void {
-  const tabs = tabElements()
+  const tabs = [...leading.value?.querySelectorAll<HTMLElement>('[role="tab"]') ?? [], ...tabElements()]
   const at = tabs.findIndex((tab) => tab === event.target)
   if (at < 0) {
     return
@@ -377,8 +402,10 @@ onMounted(() => {
     return
   }
   resizeObserver = new ResizeObserver(resized)
-  if (root.value) {
-    resizeObserver.observe(root.value)
+  for (const watched of [root.value, leading.value]) {
+    if (watched) {
+      resizeObserver.observe(watched)
+    }
   }
   // A tab becoming active, or tabs coming and going, is what moves the view;
   // any other change, such as a title that widens a tab, moves the marks.
@@ -399,6 +426,16 @@ onMounted(() => {
   revealActive()
 })
 
+// The leading tabs' least width changes with their marks and badges, and they come and go with the host's.
+watch(leading, (now, before) => {
+  if (before) {
+    resizeObserver?.unobserve(before)
+  }
+  if (now) {
+    resizeObserver?.observe(now)
+  }
+}, { flush: 'post' })
+
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onDragKeydown)
   cancelDrag()
@@ -413,6 +450,13 @@ defineExpose({ el })
 
 <template>
   <div ref="root" class="flex min-w-0 items-center" :style="colors">
+    <!-- One tab list holds the leading tabs and the strip's own, so the keyboard and assistive
+         technology meet them as one row of tabs. -->
+    <div ref="list" role="tablist" class="flex min-w-0 shrink items-center gap-1" @keydown="onKeydown">
+    <!-- The leading tabs give way first: their shrink outweighs the strip's a hundredfold. -->
+    <div v-if="$slots.leading" ref="leading" class="flex shrink-[100] items-center gap-1">
+      <slot name="leading" />
+    </div>
     <!-- Its own stacking context, so the fades lie over the scrolled tabs and nothing else. -->
     <div ref="fades" class="relative isolate min-w-0 shrink [--fade-after:0px] [--fade-before:0px]">
     <TransitionGroup
@@ -420,10 +464,8 @@ defineExpose({ el })
       :name="TAB_TRANSITION"
       tag="div"
       class="flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
-      role="tablist"
       @scroll.passive="updateEdges"
       @wheel="onWheel"
-      @keydown="onKeydown"
       @pointerdown="onPointerdown"
       @pointermove="onPointermove"
       @pointerup="onPointerup"
@@ -449,6 +491,7 @@ defineExpose({ el })
       aria-hidden="true"
       class="pointer-events-none absolute inset-y-0 right-0 z-1 w-[min(calc(var(--fade-after)_+_--spacing(6)),var(--fade-after-room))] bg-[linear-gradient(to_left,var(--tab-row)_var(--fade-after),transparent)]"
     />
+    </div>
     </div>
     <slot name="trailing" />
   </div>
