@@ -319,6 +319,8 @@ impl Devices {
             platform: device.platform,
             claimed_at: device.claimed_at,
             last_seen_at: device.last_seen_at,
+            os: device.os,
+            runner_version: device.runner_version,
             start_command,
         }
     }
@@ -468,8 +470,9 @@ pub async fn send(socket: &mut WebSocket, message: &Inbound) -> Result<(), axum:
 
 /// Where a connection records what it learns of its device, which its
 /// owner's pages show: that its runner was connected just now, as the
-/// connection starts and as it ends, the operating system its hello names,
-/// and what the runner reports its artifact cache holds. Cloning it is cheap.
+/// connection starts and as it ends, the operating system and the runner
+/// release its hello names, and what the runner reports its artifact cache
+/// holds. Cloning it is cheap.
 #[derive(Clone)]
 pub struct DeviceRecorder {
     control: ControlService,
@@ -483,12 +486,13 @@ impl DeviceRecorder {
     }
 
     /// Records what `device`'s runner said in its hello: its operating
-    /// system, and that it was connected just now.
-    pub async fn hello(&self, device: DeviceId, os: OperatingSystem) {
-        if let Err(error) = self.control.set_device_os(device.clone(), os).await {
-            // The agent's context block names the Host without its system
-            // until the next hello records it.
-            tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "operating system not recorded");
+    /// system and its release, and that it was connected just now.
+    pub async fn hello(&self, device: DeviceId, os: OperatingSystem, version: String) {
+        if let Err(error) = self.control.set_device_runner(device.clone(), os, version).await {
+            // The agent's context block names the Host without its system,
+            // and Settings shows the device without them, until the next
+            // hello records them.
+            tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "operating system and runner release not recorded");
         }
         self.touch(device).await;
     }

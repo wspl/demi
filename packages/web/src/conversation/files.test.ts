@@ -30,6 +30,8 @@ function laptop(name: string) {
     home: '/home/ada',
     installed: [],
     startCommand: null,
+    os: null,
+    runnerVersion: null,
   }
 }
 

@@ -31,7 +31,7 @@ import { productWould } from '../product-would'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
-import { demoDeviceInstallation, demoDeviceStart } from '../fixtures/device-installation'
+import { demoDeviceInstallation, demoDeviceReport, demoDeviceStart } from '../fixtures/device-installation'
 import { ago } from '../fixtures/time'
 
 const { view } = useGalleryView()
@@ -45,9 +45,16 @@ const directPaths = [
   { value: 'blocked', label: 'Blocked by the Browser' },
 ] as const
 const directDevices = ref<SettingsDevice[]>([
-  { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0) },
-  { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * 24 * 60 * 60 * 1000), start: demoDeviceStart('linux') },
-  { id: 'lab', name: 'lab-01', state: 'updating', seen: ago(0) },
+  { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), ...demoDeviceReport('macos') },
+  {
+    id: 'build',
+    name: 'build-01',
+    state: 'offline',
+    seen: ago(3 * 24 * 60 * 60 * 1000),
+    start: demoDeviceStart('linux'),
+    ...demoDeviceReport('linux'),
+  },
+  { id: 'lab', name: 'lab-01', state: 'updating', seen: ago(0), ...demoDeviceReport('linux', '0.1.15') },
 ])
 /** Each device as the Devices page lists it: an online one directly connected, a blocked browser blocking every one. */
 const directListed = computed(() =>
@@ -64,8 +71,21 @@ const directListed = computed(() =>
 function revokeDirectDevice(id: string) {
   directDevices.value = directDevices.value.filter((device) => device.id !== id)
 }
+/** A renamed device's row takes its new name, as the product's state brings it. */
+function renameDirectDevice(id: string, name: string) {
+  const device = directDevices.value.find((candidate) => candidate.id === id)
+  if (device) {
+    device.name = name
+  }
+}
 async function claimDirectDevice(_code: string) {
-  const device = { id: `device-${Date.now()}`, name: `host-${directDevices.value.length + 1}`, state: 'online' as const, seen: ago(0) }
+  const device = {
+    id: `device-${Date.now()}`,
+    name: `host-${directDevices.value.length + 1}`,
+    state: 'online' as const,
+    seen: ago(0),
+    ...demoDeviceReport('macos'),
+  }
   directDevices.value.push(device)
   return { ok: true as const, device }
 }
@@ -73,7 +93,7 @@ async function claimDirectDevice(_code: string) {
 const anatomy: [string, string][] = [
   [
     'Shell',
-    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, Data & privacy. A plugin’s section is on the rail while its plugin is on. On a narrow screen, where the app’s side panes become overlays, the dialog fills the window: square corners, no scrim around it. Below a phone width it reads as iOS Settings: the rail is a list of the sections with rows a finger can hit, and a section opens as a page of its own with a back button to the list. The filter finds single settings by their label or what people call them (dark mode finds Theme), lists them under their section, and opens one with its row highlighted; Escape in the filter clears it before it closes the dialog.'
+    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Data & privacy. A plugin’s section is on the rail while its plugin is on. On a narrow screen, where the app’s side panes become overlays, the dialog fills the window: square corners, no scrim around it. Below a phone width it reads as iOS Settings: the rail is a list of the sections with rows a finger can hit, and a section opens as a page of its own with a back button to the list. The filter finds single settings by their label or what people call them (dark mode finds Theme), lists them under their section, and opens one with its row highlighted; Escape in the filter clears it before it closes the dialog.'
   ],
   [
     'Page',
@@ -123,6 +143,17 @@ const anatomy: [string, string][] = [
 
 const account = { name: 'Zan' }
 const full = createSettingsState()
+/** What the Notifications specimen's stand-in browser answers when asked. */
+const browserAnswers = [
+  { value: 'granted', label: 'Browser Allows' },
+  { value: 'denied', label: 'Browser Blocks' },
+] as const
+/** A new answer is a browser whose site settings were reset: it asks again. */
+function answerAs(answer: 'granted' | 'denied'): void {
+  full.notifications.answer = answer
+  full.notifications.permission = 'default'
+  full.notifications.enabled = false
+}
 /** The account specimen on a server without mail. */
 const noMail = ref({ name: 'Zan' })
 // The plugins' sections reach the fixture's skills plugin, and show while the
@@ -207,7 +238,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="An online paired device’s row says in a few words how this page reaches it, Connected directly or Through the server; switch the page’s path to see each. While the browser blocks local network access, its ? says how to allow it. A device whose runner updates itself reads Updating; an offline one says when it was last seen, and its ? opens the command that starts its runner, with Copy. Escape or a click outside closes the help."
+        note="Under a device’s name, the system, architecture and runner release its runner last reported, then, for an online one, in a few words how this page reaches it, Connected directly or Through the server; switch the page’s path to see each. While the browser blocks local network access, its ? says how to allow it. A device whose runner updates itself reads Updating; an offline one says when it was last seen, and its ? opens the command that starts its runner, with Copy. Escape or a click outside closes the help. Rename… asks for a new name and the row takes it; Revoke… asks first and the row goes."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented v-model="directPath" :options="directPaths" size="sm" />
@@ -218,7 +249,9 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
               :overlay-store="appOverlayStore"
               :installation="demoDeviceInstallation"
               :claim-device="claimDirectDevice"
+              :name-max-length="64"
               @revoke="revokeDirectDevice"
+              @rename="renameDirectDevice"
               @retry="productWould('Load the Devices Again')"
             />
           </div>
@@ -226,8 +259,25 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
       </GallerySection>
 
       <GallerySection
+        title="Notifications"
+        note="Browser notifications are off until turned on, and belong to this browser. Turning them on asks the browser; switch what the stand-in browser answers to see each. Blocked, the switch goes back off and the row says where to allow them again; a browser that already blocks the site answers without asking. The three switches under it choose what notifies, and wait for notifications to be on."
+      >
+        <div class="flex w-full max-w-2xl flex-col gap-4">
+          <Segmented
+            :model-value="full.notifications.answer"
+            :options="browserAnswers"
+            size="sm"
+            @update:model-value="answerAs"
+          />
+          <div class="rounded-xl border border-line bg-surface-dialog p-6">
+            <GallerySettingsFull tab="notifications" :state="full" />
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="Data & Privacy"
-        note="The page behind the rail’s disabled Data & Privacy entry, whose controls are all deferred: share links, export, diagnostics and delete-all."
+        note="The page behind the rail’s disabled Data & Privacy entry, whose controls are all deferred: diagnostics and delete-all. Exporting conversations and share links have no entry."
       >
         <GallerySpecimen variant="Page" wide>
           <div class="w-full max-w-2xl">

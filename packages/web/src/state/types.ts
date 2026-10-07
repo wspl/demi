@@ -2,6 +2,7 @@ import type { Block, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
 import type { DeviceState } from '@demicodes/web-ui/devices/state'
+import type { DeviceReport } from '@demicodes/web-ui/devices/report'
 import type {
   SidebarConversation,
   SidebarProject,
@@ -74,7 +75,7 @@ export interface Conversation extends SidebarConversation {
   contextUsage: ConversationState['contextUsage']
 }
 
-export interface Device {
+export interface Device extends DeviceReport {
   id: string
   kind: DeviceKind
   name: string

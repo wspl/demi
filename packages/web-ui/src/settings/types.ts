@@ -6,6 +6,7 @@ import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import type { DeviceStart } from '../devices/installation'
 import type { DeviceState } from '../devices/state'
+import type { DeviceReport } from '../devices/report'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -58,7 +59,8 @@ export interface SettingsAccountInfo {
   name: string
 }
 
-export interface SettingsDevice {
+/** A paired device as the Devices page lists it, with what its runner last reported. */
+export interface SettingsDevice extends DeviceReport {
   id: string
   name: string
   state: DeviceState

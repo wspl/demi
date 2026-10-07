@@ -129,6 +129,8 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
         { package: 'demi.file', name: 'program', version: '0.1.0' },
       ],
       startCommand: null,
+      os: null,
+      runnerVersion: null,
     }],
     conversations: [
       conversationSummary(CONVERSATION, 'Work', { target: { kind: 'device', deviceId: laptop, path: '/home/ada/work' } }),

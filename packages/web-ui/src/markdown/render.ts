@@ -154,8 +154,9 @@ const messageRenderer: RendererObject = {
   html({ text }) {
     return escapeHtml(text)
   },
+  // The block's frame, where the page puts its Copy (`CodeBlockCopy.vue`).
   code({ text, lang }) {
-    return codeToHtml(text, lang ?? '')
+    return `<div class="code-block">${codeToHtml(text, lang ?? '')}</div>`
   },
   link(token) {
     openLinks += 1
