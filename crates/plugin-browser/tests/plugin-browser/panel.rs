@@ -134,7 +134,7 @@ async fn a_tab_its_user_created_opens_on_the_address_the_user_asked_for_last() {
     // A tab that shows its browser tab opens nothing more.
     assert_eq!(
         call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
-        Ok(Value::Null)
+        Ok(json!({ "tab": "t1" }))
     );
     assert_eq!(calls(&demi).len(), 2);
 }
@@ -195,7 +195,7 @@ async fn a_tab_that_could_not_open_says_why_and_opens_when_its_user_retries() {
 
     assert_eq!(
         call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
-        Ok(Value::Null)
+        Ok(json!({ "tab": "t2" }))
     );
     assert_eq!(
         tab_data(&demi, "a"),
@@ -267,14 +267,66 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
     assert_eq!(ids(&demi), ["a", "browser-t3"]);
     assert_eq!(tab_data(&demi, "a")["closed"], json!(true));
     assert_eq!(tab_data(&demi, "browser-t3")["closed"], json!(true));
-    // Reload opens a new browser tab on the saved address.
+    // Shown, it opens a new browser tab on the saved address.
     assert_eq!(
         call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
-        Ok(Value::Null)
+        Ok(json!({ "tab": "t4" }))
     );
     assert_eq!(
         tab_data(&demi, "a"),
         json!({ "url": "https://user.test/", "tab": "t4" })
+    );
+}
+
+/// A tab closed on purpose leaves the panel, as a browser's closed tab does;
+/// a tab lost with the browser stays with its address and title, and opens
+/// again on its address when its content asks, once shown
+/// (`live-view.md` § A browser tab in the panel).
+#[tokio::test(flavor = "local")]
+async fn a_tab_closed_on_purpose_leaves_the_panel_and_one_lost_with_the_browser_opens_again() {
+    let listed: Rc<RefCell<Value>> = Rc::new(RefCell::new(json!({ "tabs": [], "closed": [] })));
+    let browser = listed.clone();
+    let (plugin, demi) = world(Box::new(move |_, operation, _| match operation {
+        "browser.tabs" => {
+            let listed = browser.borrow();
+            Ok(json!({ "list": 1, "tabs": listed["tabs"], "truncated": false, "closed": listed["closed"] }))
+        }
+        "browser.open" => Ok(json!({ "tab": "t9", "url": "https://lost.test/" })),
+        _ => Ok(json!({})),
+    }));
+    created(&demi, "closed", json!({ "url": "https://closed.test/", "tab": "t1" }));
+    created(
+        &demi,
+        "lost",
+        json!({ "url": "https://lost.test/", "tab": "t2", "title": "Lost" }),
+    );
+
+    // The agent closed t1; the browser that had t2 ended.
+    listed.replace(json!({ "tabs": [], "closed": ["t1"] }));
+    job_ended(&plugin, &demi).await;
+    let ids: Vec<String> = demi.panel().tabs.into_iter().map(|tab| tab.id).collect();
+    assert_eq!(ids, ["lost"]);
+    assert_eq!(
+        tab_data(&demi, "lost"),
+        json!({ "url": "https://lost.test/", "tab": "t2", "title": "Lost", "closed": true })
+    );
+    // Shown, it opens a new browser tab on its address, which wakes a
+    // stopped Cloud as any new tab does.
+    assert_eq!(
+        call(&plugin, &demi, "bind", json!({ "panelTab": "lost" })).await,
+        Ok(json!({ "tab": "t9" }))
+    );
+    assert_eq!(
+        calls(&demi),
+        [(
+            "browser.open".to_owned(),
+            CallKind::Starts,
+            json!("https://lost.test/")
+        )]
+    );
+    assert_eq!(
+        tab_data(&demi, "lost"),
+        json!({ "url": "https://lost.test/", "tab": "t9", "title": "Lost" })
     );
 }
 

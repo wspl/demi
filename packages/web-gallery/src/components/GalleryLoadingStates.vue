@@ -95,6 +95,7 @@ const selected = ref<string | null>('loading-provider')
           :save-model="async () => {}"
           @refresh="state = 'loading'"
           @retry-vendors="state = 'loading'"
+          @retry-models="state = 'loading'"
         />
       </div>
     </GallerySpecimen>

@@ -181,7 +181,8 @@ impl Plugin for Instance {
                 } => {
                     match change {
                         PanelTabChange::Created => {
-                            self.work.bind(&conversation, &port, &tab.id).await?;
+                            // The backend reads the tab's data, not this answer.
+                            let _bound = self.work.bind(&conversation, &port, &tab.id).await?;
                         }
                         PanelTabChange::Removed => {
                             self.work.removed(&conversation, &port, &tab).await?;

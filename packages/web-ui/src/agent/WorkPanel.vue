@@ -148,6 +148,7 @@ function closeScope(scope: TabCloseScope): void {
           :key="item.tab.id"
           :title="item.title"
           :is-active="item.tab.id === selection"
+          :busy="item.kind?.busy?.(item.data, item.tab.id) ?? false"
           tabindex="0"
           @pointerdown="emit('select', item.tab.id)"
           @keydown.enter="emit('select', item.tab.id)"
