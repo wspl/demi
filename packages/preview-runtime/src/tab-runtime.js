@@ -9,7 +9,7 @@ import { available, on, send } from './document-channel.js';
 const remoteWindows = new WeakSet();
 export const isRemoteWindow = object => remoteWindows.has(object);
 
-export function installTabRuntime({ currentBaseUrl, topLevel }) {
+export function installTabRuntime({ currentBaseUrl, currentLogicalUrl, topLevel, bootPath }) {
   if (!available()) return;
   const NativeURL = globalThis.URL;
   const nativeClose = window.close;
@@ -108,5 +108,65 @@ export function installTabRuntime({ currentBaseUrl, topLevel }) {
     if (!newWindow && !(target === '_top' && !topLevel)) return;
     event.preventDefault();
     window.open(link.href, newWindow ? '_blank' : '_top');
+  });
+
+  if (topLevel) installTabPage({ currentLogicalUrl, bootPath });
+}
+
+// What a tab's top document tells the Demi page of the page it shows, for the tab's address bar and
+// strip: its address, title and icon; each move of the tab's history, which the tab counts its pages
+// to go back and forward to by; that it leaves, as its tab starts loading; and the bar's Back,
+// Forward, Reload and Stop, which act in the page.
+function installTabPage({ currentLogicalUrl, bootPath }) {
+  // The browser's, before a page's polyfill replaces it.
+  const NativeURL = globalThis.URL;
+  const navigation = globalThis.navigation;
+  let reported = '';
+  const report = () => {
+    const icon = document.querySelector('link[rel~="icon"][href]');
+    const page = {
+      url: currentLogicalUrl(),
+      title: document.title,
+      icon: icon ? new NativeURL(icon.getAttribute('href'), document.baseURI).href : new NativeURL('/favicon.ico', currentLogicalUrl()).href,
+    };
+    const text = JSON.stringify(page);
+    if (text === reported) return;
+    reported = text;
+    send({ type: 'tab-page', page });
+  };
+  // A move of the tab's history: the entry it shows now, by its key, and how it got there. The
+  // Navigation API sees only this origin's entries, and a page's history spans origins: the tab
+  // keeps the whole list from these moves.
+  const moved = navigationType => send({ type: 'tab-entry', key: navigation.currentEntry?.key ?? '', navigationType });
+  if (navigation) {
+    const activation = navigation.activation;
+    // The boot page reached this document by replacing itself: the move was the boot page's own,
+    // a new page, as a link or the address bar opens one.
+    const fromBoot = activation?.from && new NativeURL(activation.from.url).pathname === bootPath;
+    moved(fromBoot || !activation ? 'push' : activation.navigationType);
+    navigation.addEventListener('currententrychange', event => {
+      if (event.navigationType) moved(event.navigationType);
+    });
+  }
+  // The title and the icon change with the head; the address with the history.
+  const watch = () => new MutationObserver(report).observe(document.head ?? document.documentElement, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['href', 'rel'] });
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', () => { watch(); report(); }, { once: true });
+  else watch();
+  report();
+  navigation?.addEventListener('currententrychange', report);
+  window.addEventListener('popstate', report);
+  window.addEventListener('hashchange', report);
+  window.addEventListener('load', report);
+  window.addEventListener('pagehide', () => send({ type: 'tab-leaving' }));
+  // A move with no page that way is no move: its promises' rejection says so, to nobody.
+  const quiet = result => { result?.committed?.catch(() => {}); result?.finished?.catch(() => {}); };
+  // Back and Forward move this frame's own history where the next page is of this origin; to another
+  // origin's, which the Navigation API cannot see, the tab's session history goes there, as a
+  // browser's Back does.
+  on('tab-command', ({ command }) => {
+    if (command === 'back') navigation?.canGoBack ? quiet(navigation.back()) : window.history.back();
+    else if (command === 'forward') navigation?.canGoForward ? quiet(navigation.forward()) : window.history.forward();
+    else if (command === 'reload') location.reload();
+    else if (command === 'stop') window.stop();
   });
 }
