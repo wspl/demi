@@ -385,6 +385,7 @@ mod tests {
                 demi_backend_blobs::local::LocalObjects::new(&fixture.home_dir().join("store"))
                     .unwrap(),
             ),
+            std::sync::Arc::new(demi_shared_types::SystemClock),
         );
         let blobs = stores.for_user(&demi_web_api_protocol::ids::UserId::try_from("u1").unwrap());
         let file = async |path: &str, text: &'static str, executable: bool| demi_plugin_interface::DirectoryFile {

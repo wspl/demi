@@ -249,10 +249,29 @@ impl dyn HostShard + '_ {
         &self,
         record: &ConversationRecord,
     ) -> Result<(), StorageError> {
-        let target = self.resolve_target(record).await?;
-        for host in self.reachable_hosts(record, &target).await? {
-            self.release_on(record.id.as_str(), &host.device).await;
-        }
+        let devices = self.release_devices(record).await?;
+        self.release_on_each(&record.id, &devices).await;
         Ok(())
+    }
+
+    /// The devices of every Host the conversation reaches, primary and
+    /// attached: where its release goes. A deletion reads them before its
+    /// records go, and releases them after (`storage.md` § Deleting a
+    /// conversation).
+    pub async fn release_devices(
+        &self,
+        record: &ConversationRecord,
+    ) -> Result<Vec<DeviceId>, StorageError> {
+        let target = self.resolve_target(record).await?;
+        let hosts = self.reachable_hosts(record, &target).await?;
+        Ok(hosts.into_iter().map(|host| host.device).collect())
+    }
+
+    /// The conversation release on each of `devices`, as an archive sends it
+    /// (`release_on`).
+    pub async fn release_on_each(&self, conversation: &ConversationId, devices: &[DeviceId]) {
+        for device in devices {
+            self.release_on(conversation.as_str(), device).await;
+        }
     }
 }

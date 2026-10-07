@@ -287,9 +287,12 @@ impl ControlService {
     ) -> Result<Creation, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
+            // A Fork's destination, and a conversation whose deletion is
+            // not finished, keep their ids.
             let reserved = transaction
                 .query_row(
-                    "SELECT 1 FROM conversation_fork_operations WHERE id = ?1",
+                    "SELECT 1 FROM conversation_fork_operations WHERE id = ?1
+                     UNION ALL SELECT 1 FROM conversation_deletions WHERE id = ?1",
                     [id.as_str()],
                     |_| Ok(()),
                 )

@@ -799,6 +799,12 @@ impl TestBackend {
             .await
     }
 
+    /// Waits until no collection of `session`'s user's blobs runs or is to
+    /// follow.
+    pub async fn until_collected(&self, session: &Session) {
+        self.backend.until_collected(&session.user.id).await;
+    }
+
     /// The `ws://` URL of `path`.
     pub fn ws_url(&self, path: &str) -> String {
         format!("ws://{}{path}", self.backend.local_addr())

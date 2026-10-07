@@ -379,6 +379,7 @@ mod tests {
                 .await
                 .unwrap()
                 .store,
+            std::sync::Arc::new(demi_shared_types::SystemClock),
         )
         .for_user(&master);
         commit_root(&stores, &blobs, &committed, created_at).await;

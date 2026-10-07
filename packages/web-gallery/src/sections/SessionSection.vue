@@ -1991,6 +1991,8 @@ onBeforeUnmount(() => {
                   :active-id="panelActiveConversationId"
                   :section-entries="sidebarEntries(PLUGIN_PAGES, () => true)"
                   @select="(id) => (panelActiveConversationId = id)"
+                  @archive="(ids) => (panelConversations = panelConversations.filter((conversation) => !ids.includes(conversation.id)))"
+                  @delete="(ids) => (panelConversations = panelConversations.filter((conversation) => !ids.includes(conversation.id)))"
                   @open-settings="(section) => productWould(section ? `Open ${section} Settings` : 'Open Settings')"
                 />
               </template>

@@ -70,7 +70,7 @@ impl Shard {
     }
 
     /// The part as the message that carries it, read now for `user`, this
-    /// shard's user; `None` for a conversation the user no longer has.
+    /// shard's user; a conversation the user no longer has was deleted.
     pub(crate) async fn read_part(
         &self,
         part: &Part,
@@ -81,7 +81,7 @@ impl Shard {
             Part::Conversation(id) => {
                 let record = control.conversation(id.clone()).await?;
                 let Some(record) = record.filter(|record| record.owner == *self.user()) else {
-                    return Ok(None);
+                    return Ok(Some(SyncEvent::ConversationDeleted { id: id.clone() }));
                 };
                 SyncEvent::Conversation {
                     conversation: Box::new(self.conversation_summary(record).await?),

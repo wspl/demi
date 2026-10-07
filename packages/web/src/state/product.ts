@@ -25,12 +25,14 @@ const BACKEND_CLOSING = 1001
 export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' }>
 
 /** A part of the product state, which a message or a write's answer replaces whole. */
-type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'plugin'>
+type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'conversation_deleted' | 'plugin'>
 
 function partOf(event: PartEvent): Part {
   switch (event.type) {
     case 'conversation':
       return `conversation:${event.conversation.id}`
+    case 'conversation_deleted':
+      return `conversation:${event.id}`
     case 'plugin':
       return `plugin:${event.plugin}`
     default:
@@ -78,6 +80,8 @@ function withPart(state: ProductState, event: PartEvent): ProductState {
   switch (event.type) {
     case 'conversation':
       return { ...state, conversations: withSummary(state.conversations, event.conversation) }
+    case 'conversation_deleted':
+      return { ...state, conversations: state.conversations.filter((conversation) => conversation.id !== event.id) }
     case 'conversation_order':
       return { ...state, conversations: inOrder(state.conversations, event.ids) }
     case 'preferences':

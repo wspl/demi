@@ -82,7 +82,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Selection',
-    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, move to a project and archive for any count; a conversation is archived, never deleted. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
+    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, move to a project, archive and delete for any count. Delete asks first in a dialog that names the one conversation or counts several, and its Delete button removes the rows for good. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
   ],
   [
     'Keys',
@@ -184,6 +184,19 @@ function dropMany(ids: string[]): void {
   })
 }
 
+/** Deletes the rows the dialog asked about, as the product does: they leave the list for good. */
+function deleteMany(ids: string[]): void {
+  const set = new Set(ids)
+  conversations.value = conversations.value.filter((conversation) => !set.has(conversation.id))
+  if (activeId.value && set.has(activeId.value))
+    activeId.value = conversations.value[0]?.id ?? null
+}
+
+/** The rows of `list` without `ids`, as an archive or a deletion leaves a specimen's list. */
+function without(list: SidebarConversation[], ids: string[]): SidebarConversation[] {
+  return list.filter((conversation) => !ids.includes(conversation.id))
+}
+
 /** Removing a project keeps its conversations as plain ones. */
 function removeProject(id: string): void {
   projects.value = projects.value.filter((project) => project.id !== id)
@@ -280,6 +293,7 @@ onBeforeUnmount(() => listRestore.stop())
             @pin="(ids, pinned) => patchMany(ids, (c) => ({ ...c, pinned }))"
             @move-to-project="(ids, projectId) => patchMany(ids, (c) => ({ ...c, projectId }))"
             @archive="dropMany"
+            @delete="deleteMany"
             @open-settings="openSettings"
             @sign-out="productWould('Sign Out')"
           />
@@ -384,6 +398,8 @@ onBeforeUnmount(() => listRestore.stop())
               :list-status="recoveredStatus"
               @retry-list="retrySidebar"
               @select="(id) => (recoveredActive = id)"
+              @archive="(ids) => (recoveredConversations = without(recoveredConversations, ids))"
+              @delete="(ids) => (recoveredConversations = without(recoveredConversations, ids))"
             />
           </div>
           </div>
@@ -399,6 +415,8 @@ onBeforeUnmount(() => listRestore.stop())
               :conversations="emptyList"
               :active-id="null"
               @create="(projectId) => (emptyList = [{ id: 'first', title: 'New conversation', updatedAt: new Date().toISOString(), status: 'idle', projectId, pinned: false, unread: false }])"
+              @archive="(ids) => (emptyList = without(emptyList, ids))"
+              @delete="(ids) => (emptyList = without(emptyList, ids))"
             />
           </div>
         </GallerySpecimen>
