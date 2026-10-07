@@ -14,7 +14,7 @@ import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import { commitOf } from './plugins'
 import { createSubagentState } from './subagent-profiles'
 import { ago, ahead } from './time'
-import { demoDeviceStart } from './device-installation'
+import { demoDeviceReport, demoDeviceStart } from './device-installation'
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
@@ -640,14 +640,30 @@ export function mockProviders(): MockProvider[] {
 /** The paired devices the devices page lists. */
 function galleryDevices(): SettingsDevice[] {
   return [
-    { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), direct: 'connected' },
-    { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * 24 * 60 * 60 * 1000), start: demoDeviceStart('linux') },
-    { id: 'studio', name: 'studio-pc', state: 'offline', seen: ago(24 * 60 * 60 * 1000), start: demoDeviceStart('windows') },
+    { id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), direct: 'connected', ...demoDeviceReport('macos') },
+    {
+      id: 'build',
+      name: 'build-01',
+      state: 'offline',
+      seen: ago(3 * 24 * 60 * 60 * 1000),
+      start: demoDeviceStart('linux'),
+      ...demoDeviceReport('linux'),
+    },
+    {
+      id: 'studio',
+      name: 'studio-pc',
+      state: 'offline',
+      seen: ago(24 * 60 * 60 * 1000),
+      start: demoDeviceStart('windows'),
+      ...demoDeviceReport('windows'),
+    },
+    // Its runner replaces itself with the server's release; until it says hello again, the row names the old one.
     {
       id: 'lab',
       name: 'lab-workstation-with-a-long-hostname',
       state: 'updating',
       seen: ago(2 * 60 * 1000),
+      ...demoDeviceReport('linux', '0.1.15'),
     },
   ]
 }
@@ -669,10 +685,14 @@ export function createSettingsState() {
       fontSize: 15,
     },
     notifications: {
-      webBrowser: true,
-      sound: false,
-      onFinish: true,
-      onError: true,
+      enabled: false,
+      turnFinishes: true,
+      turnFails: true,
+      needsPermission: true,
+      /** What the browser allows the site, as the product reads it. */
+      permission: 'default' as NotificationPermission,
+      /** What the stand-in browser answers when it is asked. */
+      answer: 'granted' as 'granted' | 'denied',
     },
     account: {
       name: 'Zan',
@@ -784,7 +804,6 @@ export function createSettingsState() {
     // The product's shortcuts with their own keys: the gallery changes them as the product does.
     keys: APP_SHORTCUTS.map((shortcut): SettingsKeyBinding => ({ ...shortcut })),
     data: {
-      shareLinks: false,
       telemetry: true,
     },
   })

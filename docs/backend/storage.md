@@ -459,8 +459,9 @@ fork of it also holds. Deletion goes in four steps:
 
 1. One transaction of the control database removes the conversation's
    record and every record that belongs to it, such as its draft, work
-   panel, attached hosts, permission requests and grants and plugins'
-   conversation values, and records the deletion as pending. From this
+   panel, attached hosts and permission requests and grants, and records the
+   deletion as pending. The usage ledger keeps its rows: they are the
+   user's record of what was used. From this
    commit on, no request finds the conversation.
 2. The conversation's Host resources are released as archive releases them,
    and its tabs in the conversation browser are closed.
@@ -475,11 +476,17 @@ Then the user's blob namespace is collected, in the background: a blob that
 no remaining record of the user references, and that was written more than a
 day ago, is removed, and so is an upload record whose blob goes. A record
 references a blob when it names it: a block, an attachment, a command's
-output record or an edit copy in one of the user's conversation databases, a
-draft, or a plugin value's list of blobs. The day keeps a blob whose reference
-is not written yet, since a blob is published before the row that names it:
-an upload the composer holds before its draft is saved, or a tool's image
-before its checkpoint commits. The screenshot stays, because the fork's
+output record, an edit copy or a message queued in a checkpoint's state in
+one of the user's conversation databases, a fork's database still being
+made, a draft, a plugin value's or a plugin Host directory's list of blobs,
+or an upload record written in the last day. The day keeps a blob whose
+reference is not written yet, since a blob is published before the row that
+names it: an upload the composer holds before its draft is saved, or a
+tool's image before its checkpoint commits. A put of a blob that exists
+writes nothing, so the blob's own age is its first write's; the user's shard
+therefore remembers, for a day, each blob put again, and the collection
+keeps those too. A restart forgets them, and with them only references
+that the stopped process had not written and never will. The screenshot stays, because the fork's
 database names it. A user's collections run one at a time; a deletion during
 one starts another after it.
 
@@ -497,7 +504,7 @@ Cloud's disks belong to the machine manager
 Each user has a search index, `search/<userId>.sqlite`, that
 [Search](../product/web-api.md#search) reads: an SQLite FTS5 table with one
 row per searchable text, a conversation's title or the text of one of its
-root's `user` blocks or answers, each with its conversation's and block's
+root's `user` or `steer` blocks or answers, each with its conversation's and block's
 ids. Its tokenizer is FTS5's `trigram`, which matches any piece of text of
 three characters or more in every language without splitting words, as
 Chinese needs; a query word of one or two characters is matched by a scan of
@@ -511,9 +518,10 @@ is never migrated, backed up or replicated, and it is the one stored copy of
 data that this document allows to be derived, for speed. Its version is the
 digest of its schema, as for the databases; an index of another version, or
 one that fails to open, is deleted and built again. For each conversation it
-records the transcript version it indexed, the transcript's epoch and
-revision ([Patches and versions](../agent/runtime.md#patches-and-versions)),
-and the title. The backend indexes a conversation again, in one transaction
+records what it indexed: the root's persisted output revision and its number
+of blocks, which a save that changes the transcript changes, and the title.
+The transcript's epoch would not do, since it lives only in a running
+session and a restart starts a new one. The backend indexes a conversation again, in one transaction
 that replaces its rows, so a search sees it either as it was or as it is:
 
 - after a checkpoint changes the root's transcript, at most once every two

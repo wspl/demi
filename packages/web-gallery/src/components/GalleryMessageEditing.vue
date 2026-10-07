@@ -7,7 +7,9 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import GalleryComposer from './GalleryComposer.vue'
 import {
   EditRejectedError,
+  regenerateMessage,
   submitMessageEdit,
+  type MessageEditHost,
   type MessageEditState,
 } from '@demicodes/web-ui/agent/message-editing'
 import type { Block, UserContentBlock } from '@demicodes/protocol'
@@ -39,7 +41,7 @@ const completion = shallowRef<Deferred<void> | null>(null)
 const uploads = galleryUploads()
 
 function reset(): void {
-  if (messageEdit.value?.phase === 'sending') {
+  if (messageEdit.value?.phase === 'sending' || messageEdit.value?.phase === 'regenerating') {
     return
   }
   messageEdit.value = null
@@ -73,50 +75,49 @@ function reset(): void {
 }
 reset()
 
-async function submit(): Promise<void> {
-  await submitMessageEdit({
-    get: () => messageEdit.value,
-    set: (state) => { messageEdit.value = state },
-    send: async (request) => {
-      if (accepted.has(request.operationId)) {
-        return
+/** The stand-in backend: it answers each edit, Save and resend or Regenerate, as the outcome buttons say. */
+const editHost: MessageEditHost = {
+  get: () => messageEdit.value,
+  set: (state) => { messageEdit.value = state },
+  send: async (request) => {
+    if (accepted.has(request.operationId)) {
+      return
+    }
+    if (outcome.value === 'hold') {
+      completion.value = deferred<void>()
+      try {
+        await completion.value.promise
+      } finally {
+        completion.value = null
       }
-      if (outcome.value === 'hold') {
-        completion.value = deferred<void>()
-        try {
-          await completion.value.promise
-        } finally {
-          completion.value = null
-        }
-      }
-      if (outcome.value === 'reject') {
-        throw new EditRejectedError('The conversation changed. Exit editing and reopen the message.')
-      }
-      const index = session.blocks.findIndex((block) => block.id === request.targetBlockId)
-      if (index < 0 || request.version.revision !== revision.value) {
-        throw new EditRejectedError('The conversation changed. Reopen the message to edit it.')
-      }
-      session.blocks = [
-        ...session.blocks.slice(0, index),
-        {
-          type: 'user', id: request.operationId, turnId: request.operationId,
-          createdAt: new Date().toISOString(), model: demoModel,
-          // As the backend would record it: each added file's upload becomes its attachment record.
-          content: uploads.received(request.content), preamble: null,
-        },
-        {
-          type: 'text', id: `reply-${request.operationId}`,
-          createdAt: new Date().toISOString(), model: demoModel,
-          text: 'This reply follows the edited message. The later messages have been replaced.',
-        },
-      ]
-      revision.value += 1
-      accepted.add(request.operationId)
-      if (outcome.value === 'disconnect') {
-        throw new Error('Connection closed before edit confirmation')
-      }
-    },
-  })
+    }
+    if (outcome.value === 'reject') {
+      throw new EditRejectedError('The conversation changed. Exit editing and reopen the message.')
+    }
+    const index = session.blocks.findIndex((block) => block.id === request.targetBlockId)
+    if (index < 0 || request.version.revision !== revision.value) {
+      throw new EditRejectedError('The conversation changed. Reopen the message to edit it.')
+    }
+    session.blocks = [
+      ...session.blocks.slice(0, index),
+      {
+        type: 'user', id: request.operationId, turnId: request.operationId,
+        createdAt: new Date().toISOString(), model: demoModel,
+        // As the backend would record it: each added file's upload becomes its attachment record.
+        content: uploads.received(request.content), preamble: null,
+      },
+      {
+        type: 'text', id: `reply-${request.operationId}`,
+        createdAt: new Date().toISOString(), model: demoModel,
+        text: 'This reply follows the edited message. The later messages have been replaced.',
+      },
+    ]
+    revision.value += 1
+    accepted.add(request.operationId)
+    if (outcome.value === 'disconnect') {
+      throw new Error('Connection closed before edit confirmation')
+    }
+  },
 }
 
 onBeforeUnmount(() => {
@@ -142,6 +143,7 @@ onBeforeUnmount(() => {
         :edit-version="{ epoch: 'gallery-editing', revision }"
         :message-edit="messageEdit"
         @update:message-edit="messageEdit = $event"
+        @regenerate="regenerateMessage(editHost, $event)"
         @save-scroll="(_id, state) => session.scroll = state"
       >
         <template #composer>
@@ -150,7 +152,7 @@ onBeforeUnmount(() => {
             draft="An unrelated composer draft"
             v-model:message-edit="messageEdit"
             :upload="uploads.upload"
-            @submit-edit="submit"
+            @submit-edit="submitMessageEdit(editHost)"
           />
         </template>
       </ChatSession>

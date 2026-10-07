@@ -8,6 +8,8 @@ withDefaults(defineProps<{
   createdAt: string
   fork?: () => Promise<void>
   forkState?: MessageForkState
+  /** Regenerate in the footer; absent where it is not offered. */
+  regenerate?: () => void
   isStreaming?: boolean
   showFooter?: boolean
 }>(), {
@@ -28,6 +30,7 @@ withDefaults(defineProps<{
       :created-at="createdAt"
       :fork="fork"
       :fork-state="forkState"
+      :regenerate="regenerate"
     />
   </div>
 </template>

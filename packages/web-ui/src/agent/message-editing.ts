@@ -1,4 +1,4 @@
-import { toRaw } from 'vue'
+import { inject, provide, toRaw, type InjectionKey } from 'vue'
 import { z } from 'zod'
 import { EditRejectedError } from '@demicodes/conversation-client'
 import {
@@ -7,6 +7,7 @@ import {
   type Block,
   type ClientContent,
   type EditRequest,
+  type SessionPhase,
   type TranscriptVersion,
 } from '@demicodes/protocol'
 import { reportError } from '../infra/errors'
@@ -46,34 +47,41 @@ export const messageEditRequestSchema = editRequestSchema.omit({ content: true }
 export type MessageEditRequest = z.infer<typeof messageEditRequestSchema>
 
 /**
- * An edit in progress. `uncertain` means the server's answer was lost: Retry
- * checks the outcome before resending. A failure is told by a toast at the
- * moment it happens; the state itself carries no message.
+ * An edit in progress. `sending` is an edit the user sent from the editor,
+ * `regenerating` one Regenerate sent without opening it. `uncertain` means
+ * the server's answer was lost: Retry checks the outcome before resending. A
+ * failure is told by a toast at the moment it happens; the state itself
+ * carries no message.
  */
 export const messageEditStateSchema = z.object({
-  phase: z.enum(['editing', 'sending', 'uncertain']),
+  phase: z.enum(['editing', 'sending', 'regenerating', 'uncertain']),
   request: messageEditRequestSchema,
 })
 export type MessageEditState = z.infer<typeof messageEditStateSchema>
 
-/** Only a `user` block is a message the user can edit (`message-editing.md` § Editable blocks). */
-export function beginMessageEdit(block: Block, version: TranscriptVersion): MessageEditState {
+/**
+ * The edit of a message with its content as it was sent. Only a `user` block
+ * is a message the user can edit (`message-editing.md` § Editable blocks).
+ */
+export function unchangedEditRequest(block: Block, version: TranscriptVersion): MessageEditRequest {
   if (block.type !== 'user') {
     throw new Error('This message cannot be edited')
   }
-  const content: MessageEditContent[] = structuredClone(toRaw(block.content))
-  if (!content.some((part) => part.type === 'text')) {
-    content.push({ type: 'text', text: '' })
-  }
   return {
-    phase: 'editing',
-    request: {
-      operationId: crypto.randomUUID(),
-      targetBlockId: block.id,
-      version: { ...version },
-      content,
-    },
+    operationId: crypto.randomUUID(),
+    targetBlockId: block.id,
+    version: { ...version },
+    content: structuredClone(toRaw(block.content)),
   }
+}
+
+/** Opens the editor on a message; one without text gets an empty line to type in. */
+export function beginMessageEdit(block: Block, version: TranscriptVersion): MessageEditState {
+  const request = unchangedEditRequest(block, version)
+  if (!request.content.some((part) => part.type === 'text')) {
+    request.content.push({ type: 'text', text: '' })
+  }
+  return { phase: 'editing', request }
 }
 
 export function editHasContent(state: MessageEditState): boolean {
@@ -83,6 +91,40 @@ export function editHasContent(state: MessageEditState): boolean {
 /** The web app exposes editing only for the latest explicit user submission. */
 export function lastEditableUserMessageId(blocks: readonly MessageListBlock[]): string | null {
   return blocks.findLast((block) => block.type === 'user')?.id ?? null
+}
+
+/**
+ * The message the page offers to edit, and to regenerate the answer of
+ * (`message-editing.md` § Regenerate and the Up Arrow key): the last `user`
+ * block, while the conversation is idle and nothing waits to be sent; null
+ * when none is offered.
+ */
+export function offeredEditId(conversation: {
+  blocks: readonly MessageListBlock[]
+  phase: SessionPhase
+  queue: readonly unknown[]
+  pendingSteers: readonly unknown[]
+}): string | null {
+  if (conversation.phase !== 'idle' || conversation.queue.length || conversation.pendingSteers.length) {
+    return null
+  }
+  return lastEditableUserMessageId(conversation.blocks)
+}
+
+const editLastMessageKey: InjectionKey<() => (() => void) | undefined> = Symbol('edit-last-message')
+
+/**
+ * What the main composer's Up Arrow does in an empty composer, read at each
+ * press: opens the editor on the last message while the page offers editing
+ * it, and is absent otherwise, when the key moves the caret as usual
+ * (`message-editing.md` § Regenerate and the Up Arrow key).
+ */
+export function provideEditLastMessage(handler: () => (() => void) | undefined): void {
+  provide(editLastMessageKey, handler)
+}
+
+export function useEditLastMessage(): () => (() => void) | undefined {
+  return inject(editLastMessageKey, () => undefined)
 }
 
 /**
@@ -142,18 +184,42 @@ export function changeMessageEditContent(
   return next
 }
 
-/** Only confirmation or explicit rejection permits changing a submitted request. */
-export async function submitMessageEdit(host: {
+/** Where an edit is kept while it is sent, and how the host sends it. */
+export interface MessageEditHost {
   get(): MessageEditState | null
   set(state: MessageEditState | null): void
   send(request: MessageEditRequest): Promise<void>
-}): Promise<void> {
+}
+
+/** Only confirmation or explicit rejection permits changing a submitted request. */
+export async function submitMessageEdit(host: MessageEditHost): Promise<void> {
   const draft = host.get()
-  if (!draft || draft.phase === 'sending' || !editHasContent(draft)) {
+  if (!draft || draft.phase === 'sending' || draft.phase === 'regenerating' || !editHasContent(draft)) {
     return
   }
-  const request = structuredClone(toRaw(draft.request))
-  host.set({ phase: 'sending', request })
+  await sendMessageEdit(host, structuredClone(toRaw(draft.request)), 'sending')
+}
+
+/**
+ * Regenerate: sends the edit of the last message with its content unchanged
+ * at once, without the editor (`message-editing.md` § Regenerate and the Up
+ * Arrow key). It is an edit like any other: a lost answer leaves it
+ * uncertain, for Retry in the editor, and a refusal opens the editor on it.
+ * Nothing is sent while another edit is in progress.
+ */
+export async function regenerateMessage(host: MessageEditHost, request: MessageEditRequest): Promise<void> {
+  if (host.get()) {
+    return
+  }
+  await sendMessageEdit(host, structuredClone(toRaw(request)), 'regenerating')
+}
+
+async function sendMessageEdit(
+  host: MessageEditHost,
+  request: MessageEditRequest,
+  phase: 'sending' | 'regenerating',
+): Promise<void> {
+  host.set({ phase, request })
   try {
     await host.send(request)
     if (host.get()?.request.operationId === request.operationId) {
@@ -174,5 +240,5 @@ export async function submitMessageEdit(host: {
 
 /** A page reload loses the in-flight response, not the submitted request. */
 export function restoreMessageEdit(state: MessageEditState | null): MessageEditState | null {
-  return state?.phase === 'sending' ? { ...state, phase: 'uncertain' } : state
+  return state?.phase === 'sending' || state?.phase === 'regenerating' ? { ...state, phase: 'uncertain' } : state
 }

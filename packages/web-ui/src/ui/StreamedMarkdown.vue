@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { holdUndecidedMedium } from '@demicodes/web-ui/markdown/render'
 import { fitMessageMedia, fitMessageMedium } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
+import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
@@ -13,6 +14,9 @@ import {
   holdIncompleteMarkdown,
   visibleFrontierLength
 } from '@demicodes/web-ui/ui/stream-reveal'
+
+// The root is the rendered message; each code block's Copy is teleported into it.
+defineOptions({ inheritAttrs: false })
 
 const props = withDefaults(defineProps<{
   content: string
@@ -54,7 +58,7 @@ function wrapFrontier(el: HTMLElement, charCount: number): void {
   if (charCount <= 0)
     return
   const last = el.lastElementChild
-  if (last && (last.tagName === 'PRE' || last.tagName === 'TABLE'))
+  if (last?.matches('.code-block, table'))
     return
 
   let remaining = charCount
@@ -88,11 +92,24 @@ function clearStreamMarks(): void {
   inkSpans = []
 }
 
+/**
+ * The code blocks of the current render, each of which gets its Copy. A
+ * render replaces them; the Copy of each place moves into the new one and
+ * keeps its Copied.
+ */
+const codeBlocks = shallowRef<HTMLElement[]>([])
+
+function findCodeBlocks(el: HTMLElement): void {
+  codeBlocks.value = [...el.querySelectorAll<HTMLElement>('.code-block')]
+}
+
 // A render replaces the images and videos, which take their box before they
 // paint; one still loading takes it again when its size arrives.
 onMounted(() => {
-  if (root.value)
+  if (root.value) {
     fitMessageMedia(root.value)
+    findCodeBlocks(root.value)
+  }
 })
 
 function onMediumLoad(event: Event): void {
@@ -108,6 +125,7 @@ watch(
     if (!el)
       return
     fitMessageMedia(el)
+    findCodeBlocks(el)
     if (!props.streaming) {
       clearStreamMarks()
       return
@@ -120,6 +138,7 @@ watch(
 
 <template>
   <div
+    v-bind="$attrs"
     ref="root"
     class="markdown-body select-text"
     :class="streaming ? 'is-streaming' : ''"
@@ -129,4 +148,7 @@ watch(
     @load.capture="onMediumLoad"
     @loadedmetadata.capture="onMediumLoad"
   />
+  <Teleport v-for="(block, index) in codeBlocks" :key="index" :to="block">
+    <CodeBlockCopy :block="block" />
+  </Teleport>
 </template>

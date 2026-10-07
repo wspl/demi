@@ -68,7 +68,7 @@ import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue
 import GalleryModelPreference from '../components/GalleryModelPreference.vue'
 import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
-import { submitMessageEdit, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
+import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import { callTerminal, firstRunningTerminalId } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import type { UserContentBlock } from '@demicodes/protocol'
@@ -649,32 +649,35 @@ const incomingThinking: HandoffBlock = {
   signature: null,
 }
 
-async function submitEdit(): Promise<void> {
-  await submitMessageEdit({
-    get: () => messageEdit.value,
-    set: (state) => { messageEdit.value = state },
-    send: async (request) => {
-      const blocks = session.blocks
-      const index = blocks.findIndex((block) => block.id === request.targetBlockId)
-      if (index < 0) {
-        throw new Error('Message not found')
-      }
-      session.blocks = [
-        ...blocks.slice(0, index),
-        {
-          type: 'user', id: request.operationId, turnId: request.operationId,
-          createdAt: new Date().toISOString(), model: demoModel,
-          content: request.content as UserContentBlock[], preamble: null,
-        },
-        {
-          type: 'text', id: `reply-${request.operationId}`,
-          createdAt: new Date().toISOString(), model: demoModel,
-          text: 'Continuing from the edited message.',
-        },
-      ]
-      editRevision.value += 1
-    },
-  })
+/** The stand-in session an edit is sent to: it replaces the message and what follows with the edit and a reply. */
+const editHost: MessageEditHost = {
+  get: () => messageEdit.value,
+  set: (state) => { messageEdit.value = state },
+  send: async (request) => {
+    const blocks = session.blocks
+    const index = blocks.findIndex((block) => block.id === request.targetBlockId)
+    if (index < 0) {
+      throw new Error('Message not found')
+    }
+    session.blocks = [
+      ...blocks.slice(0, index),
+      {
+        type: 'user', id: request.operationId, turnId: request.operationId,
+        createdAt: new Date().toISOString(), model: demoModel,
+        content: request.content as UserContentBlock[], preamble: null,
+      },
+      {
+        type: 'text', id: `reply-${request.operationId}`,
+        createdAt: new Date().toISOString(), model: demoModel,
+        text: 'Continuing from the edited message.',
+      },
+    ]
+    editRevision.value += 1
+  },
+}
+
+function submitEdit(): Promise<void> {
+  return submitMessageEdit(editHost)
 }
 
 
@@ -1792,7 +1795,7 @@ onBeforeUnmount(() => {
       <GallerySection title="Transcript Entrance" note="Restored history appears without motion. Only blocks appended after restoration enter; switching or scrolling back to existing blocks does not replay their entrance.">
         <GalleryTranscriptEntrance />
       </GallerySection>
-      <GallerySection title="Edit and Resend" note="Shared editor, durable confirmation and recovery states.">
+      <GallerySection title="Edit and Resend" note="Shared editor, durable confirmation and recovery states. Regenerate in the last answer’s footer sends the last message again unchanged, without opening the editor: its answer dims until the outcome, which the buttons choose as for a save; a lost confirmation opens the editor with Retry, a conflict opens it with the message. Up Arrow in the empty composer opens the editor on the last message.">
         <GalleryMessageEditing />
       </GallerySection>
       <GallerySection
@@ -2249,6 +2252,7 @@ onBeforeUnmount(() => {
         :permission-requests="sessionRequests"
         @decide-permission="(id, decision) => (sessionRequests = decidePermission(sessionRequests, id, decision))"
         v-model:message-edit="messageEdit"
+        @regenerate="regenerateMessage(editHost, $event)"
         :pending-submission="sessionFlow.pendingSubmission.value"
         @retry-submission="sessionFlow.retrySubmission"
         @retry="sessionFlow.resume()"

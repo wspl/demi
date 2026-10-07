@@ -50,10 +50,13 @@ pub struct DeviceRecord {
     /// The operating system its runner last reported; none before its
     /// runner first connected.
     pub os: Option<OperatingSystem>,
+    /// The runner release its runner last reported, such as `0.1.16`; none
+    /// before its runner first connected.
+    pub runner_version: Option<String>,
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version";
 
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
@@ -94,6 +97,7 @@ impl ControlService {
                 last_seen_at: None,
                 installed: Vec::new(),
                 os: None,
+                runner_version: None,
             })
         })
         .await
@@ -282,19 +286,38 @@ impl ControlService {
         .await
     }
 
-    /// Records the operating system `device`'s runner reported in its
-    /// hello.
-    pub async fn set_device_os(
+    /// Records the operating system and the runner release `device`'s
+    /// runner reported in its hello.
+    pub async fn set_device_runner(
         &self,
         device: DeviceId,
         os: OperatingSystem,
+        runner_version: String,
     ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
-                "UPDATE devices SET os = ?1 WHERE id = ?2",
-                params![to_json(&os), device.as_str()],
+                "UPDATE devices SET os = ?1, runner_version = ?2 WHERE id = ?3",
+                params![to_json(&os), runner_version, device.as_str()],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// Gives `device` a new name; none when there is no such device.
+    pub async fn rename_device(
+        &self,
+        device: DeviceId,
+        name: String,
+    ) -> Result<Option<DeviceRecord>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(&format!(
+                "UPDATE devices SET name = ?1 WHERE id = ?2 RETURNING {DEVICE_COLUMNS}"
+            ))?;
+            statement
+                .query_row(params![name, device.as_str()], |row| Ok(device_row(row)))
+                .optional()?
+                .transpose()
         })
         .await
     }
@@ -366,5 +389,6 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
             Some(text) => Some(json("devices", "os", &text)?),
             None => None,
         },
+        runner_version: row.get("runner_version")?,
     })
 }

@@ -6,7 +6,14 @@ import { computed, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { PanelRight, Play, Radar, TextCursorInput } from '@lucide/vue'
 import type { TranscriptVersion } from '@demicodes/protocol'
-import { beginMessageEdit, lastEditableUserMessageId, type MessageEditState } from './message-editing'
+import {
+  beginMessageEdit,
+  offeredEditId,
+  provideEditLastMessage,
+  unchangedEditRequest,
+  type MessageEditRequest,
+  type MessageEditState,
+} from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
@@ -81,6 +88,11 @@ const emit = defineEmits<{
   removePendingSteer: [id: string]
   interruptPendingSteer: [id: string]
   'update:messageEdit': [state: MessageEditState | null]
+  /**
+   * Regenerate: the edit of the last message with its content unchanged,
+   * which the host sends at once through `regenerateMessage`.
+   */
+  regenerate: [request: MessageEditRequest]
   saveScroll: [id: string, state: PersistedScrollState | null]
   decidePermission: [id: string, decision: PermissionDecision]
   /** The message `revealBlockId` names is in view. */
@@ -177,14 +189,36 @@ const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.conversation.archived
   && !props.conversation.subagents.some((agent) => agent.phase === 'running'))
 
-function editUser(id: string): void {
+/** The message the page offers to edit, and to regenerate the answer of; null for none. */
+const offeredId = computed(() => canEdit.value ? offeredEditId(props.conversation) : null)
+
+/** The offered message's block, with the version an edit of it is taken at. */
+function offered(id: string) {
   const block = props.conversation.blocks.find((item) => item.id === id)
-  if (!block || !props.editVersion || !canEdit.value
-    || id !== lastEditableUserMessageId(props.conversation.blocks)) {
-    return
-  }
-  emit('update:messageEdit', beginMessageEdit(block, props.editVersion))
+  return block && props.editVersion && id === offeredId.value
+    ? { block, version: props.editVersion }
+    : null
 }
+
+function editUser(id: string): void {
+  const target = offered(id)
+  if (target) {
+    emit('update:messageEdit', beginMessageEdit(target.block, target.version))
+  }
+}
+
+function regenerate(id: string): void {
+  const target = offered(id)
+  if (target) {
+    emit('regenerate', unchangedEditRequest(target.block, target.version))
+  }
+}
+
+// Up Arrow in an empty composer opens the editor on the offered message.
+provideEditLastMessage(() => {
+  const id = offeredId.value
+  return id === null ? undefined : () => editUser(id)
+})
 const list = ref<{
   isAtBottom: boolean
   scrollToBottom: () => void
@@ -313,6 +347,7 @@ watch(() => props.conversation.id, close)
             @delete-pending-steer="(id) => emit('removePendingSteer', id)"
             @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
             @edit-user="editUser"
+            @regenerate="regenerate"
             @retry-load="emit('retryLoad')"
           />
         </div>

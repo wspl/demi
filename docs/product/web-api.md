@@ -195,7 +195,7 @@ last reported, and `runnerVersion`, the runner release it last reported, such
 as `0.1.16`; both are null before its runner first connected. Settings shows
 them under the device's name, the Cloud's included. `PATCH /devices/:id
 { name }` renames a paired device: the name is trimmed and has 1 to 64
-characters, and the answer is the device, 200. The Cloud's device keeps its
+characters, and the answer is `{ device }`, 200, as for a claim. The Cloud's device keeps its
 name: renaming it answers 409 `device_managed`, and a device the caller does
 not have 404 `device_not_found`. A rename reaches every page of the user in
 the product state; the names a conversation gives its attached hosts are its
@@ -965,6 +965,13 @@ plugin's [conversation state](#conversation-state-of-plugins), as
 order, so turning a plugin on or off changes no summary. What changes in the
 conversation's files is not in the summary: the Host reports it on the
 [file watch](#file-watch).
+`lastTurn` is the root's latest ended turn, `{ id, outcome, answerStart }`,
+or null before the first: `outcome` is `finished`, `failed` or `stopped`, and
+`answerStart` is the first 400 characters of its last answer's Markdown, or
+null when it gave none. A page [notifies](product.md#notifications) when a
+conversation's `lastTurn` names a turn it has not seen end, so a turn that
+starts and ends between two summaries the page receives still notifies, and
+it needs no transcript to say how the answer starts.
 `permissionRequests` counts the conversation's undecided
 [permission requests](#conversation-permissions), which the sidebar shows as
 the needs-you mark, and `permissionsRevision` rises with each change of its
@@ -1006,8 +1013,10 @@ beyond current output are refused.
 `GET /api/search?q=<query>` answers `{ results }`: the caller's conversations
 that match the query, at most 50, in the order
 [Finding a conversation](product.md#finding-a-conversation) gives. A result is
-`{ conversationId, title, archived, lastActiveAt, match }`, where
-`lastActiveAt` is when the conversation's latest message was written. `match`
+`{ conversationId, title, titleRanges, archived, lastActiveAt, match }`, where
+`titleRanges` are the ranges of the query's words in the title, as `match`
+gives them below, empty when the title does not match, and `lastActiveAt` is
+when the conversation's latest message was written. `match`
 is null when only the title matches, and otherwise `{ blockId, text, ranges }`:
 the block of the matching message, newest first when several match, a line of
 its text of at most 160 characters around the first match, and the ranges of
@@ -1044,6 +1053,7 @@ later one is the current value of one part of it that changed:
 | --- | --- | --- |
 | `snapshot` | `state`, the product state below | First, on every connection |
 | `conversation` | `conversation`, the conversation's summary as the conversation lists carry it | Its record changes: a patch or a batch item, an archive, a restore or a target switch once it completes, a read acknowledgement, a draft saved, restored or dismissed, a message sent, a title requested or written. It is created or forked. Its tree saves a checkpoint, starts or stops working, or is disposed. A permission request is raised, decided, replaced or withdrawn |
+| `conversation_deleted` | `id`, the conversation's id | It is deleted ([Deleting a conversation](../backend/storage.md#deleting-a-conversation)) |
 | `conversation_order` | `ids`, the id of every conversation, in the product state's order | A conversation is created, forked, moved, pinned or unpinned, archived or restored |
 | `preferences` | `preferences` | A preferences patch |
 | `user` | `user` | The nickname or the email address changes |

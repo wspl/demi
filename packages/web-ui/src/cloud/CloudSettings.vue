@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { CloudState } from './types'
+import { deviceReportLine } from '../devices/report'
 import { formatBytes } from '../files/format'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
@@ -48,6 +49,7 @@ const storage = computed(() => {
     current === undefined ? `up to ${formatBytes(limit)}` : `${formatBytes(current)} of ${formatBytes(limit)}`
   return `System: ${size(volumes?.systemBytes, limits.systemBytes)} · Home: ${size(volumes?.homeBytes, limits.homeBytes)}`
 })
+const reportLine = computed(() => deviceReportLine(props.cloud.report))
 function begin() {
   submitted.value = false
   open.value = true
@@ -65,10 +67,11 @@ function reset() {
 
 <template>
   <SettingsGroup title="Cloud">
-    <SettingsRow
-      label="Your Cloud environment"
-      description="All your Cloud projects share this environment. Starts automatically when needed."
-    >
+    <SettingsRow label="Your Cloud environment">
+      <template #description>
+        <span class="block">All your Cloud projects share this environment. Starts automatically when needed.</span>
+        <span v-if="reportLine" class="block">{{ reportLine }}</span>
+      </template>
       <Button
         size="sm"
         :disabled="cloud.state === 'resetting'"

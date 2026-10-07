@@ -40,8 +40,8 @@ pub(crate) enum Migration {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema; 0.1.14 and 0.1.15
-/// shipped the last one in it.
+/// release before the one that ships the current schema; 0.1.16 shipped the
+/// last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -56,6 +56,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.15.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_15),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.16.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_16),
         },
     ],
 };
@@ -89,6 +93,13 @@ ALTER TABLE devices ADD COLUMN os TEXT;
 /// attached hosts, from 0.
 const CONTROL_FROM_0_1_15: &str = "
 ALTER TABLE conversations ADD COLUMN hosts_revision INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0);
+";
+
+/// From 0.1.16's control schema: a device keeps the runner release its
+/// runner reports, which a device migrated from 0.1.16 learns at its
+/// runner's next hello.
+const CONTROL_FROM_0_1_16: &str = "
+ALTER TABLE devices ADD COLUMN runner_version TEXT;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -321,9 +332,10 @@ CREATE TABLE devices (
   claimed_at   INTEGER NOT NULL,
   last_seen_at INTEGER,
   installed    TEXT NOT NULL DEFAULT '[]',
-  -- The operating system its runner last reported, JSON; none before its
-  -- runner first connected.
-  os           TEXT
+  -- The operating system its runner last reported, JSON, and the runner
+  -- release it reported with it; none before its runner first connected.
+  os           TEXT,
+  runner_version TEXT
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 

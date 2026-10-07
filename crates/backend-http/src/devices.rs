@@ -1,9 +1,9 @@
 //! `/api/devices` (`web-api.md` § Workspaces, devices, and attached hosts,
 //! § Device files and remote references, § Device log): the caller's
-//! devices, pairing, revocation, browsing a paired device's directories to
-//! choose a target, and a Host's log. Browsing and the log reach the device
-//! through device access, which wakes nothing: a device whose runner is not
-//! connected answers 409 `device_offline`.
+//! devices, pairing, renaming, revocation, browsing a paired device's
+//! directories to choose a target, and a Host's log. Browsing and the log
+//! reach the device through device access, which wakes nothing: a device
+//! whose runner is not connected answers 409 `device_offline`.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -14,8 +14,8 @@ use demi_backend_runners::codes::{ClaimCode, new_device_token};
 use demi_backend_runners::files::browse_directory;
 use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
 use demi_web_api_protocol::devices::{
-    Claim, ClaimedDevice, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery, Devices,
-    RevokedDevice,
+    Claim, DeviceAnswer, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery, Devices,
+    RenameDevice, RevokedDevice,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
@@ -52,7 +52,7 @@ pub(super) async fn claim(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     JsonBody(Claim { code }): JsonBody<Claim>,
-) -> Result<(StatusCode, Json<ClaimedDevice>), ApiError> {
+) -> Result<(StatusCode, Json<DeviceAnswer>), ApiError> {
     let services = &state.services;
     if !services.claims.attempt(&user.id) {
         return Err(ApiError::new(
@@ -76,7 +76,7 @@ pub(super) async fn claim(
         .await?;
     let id = device.id.clone();
     match pending.grant(device, token).await {
-        Ok(device) => Ok((StatusCode::CREATED, Json(ClaimedDevice { device }))),
+        Ok(device) => Ok((StatusCode::CREATED, Json(DeviceAnswer { device }))),
         Err(_) => {
             // The runner went away before it held its token: the device it
             // would have been goes too.
@@ -92,6 +92,32 @@ fn invalid_code() -> ApiError {
         ErrorCode::InvalidCode,
         "Unknown or expired pairing code",
     )
+}
+
+/// Renames a paired device; the Cloud keeps its name.
+pub(super) async fn rename(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    JsonBody(RenameDevice { name }): JsonBody<RenameDevice>,
+) -> Result<Json<DeviceAnswer>, ApiError> {
+    let device = owned_device(&state, &user.id, &id, None).await?;
+    if device.kind == DeviceKind::Managed {
+        return Err(ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::DeviceManaged,
+            "The Cloud keeps its name",
+        ));
+    }
+    let name = name.into_string();
+    let renamed = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.rename_device(device.id, name).await })
+        .await??;
+    // A revocation between the lookup and the rename took the device.
+    let device = renamed.ok_or_else(device_not_found)?;
+    Ok(Json(DeviceAnswer { device }))
 }
 
 /// Revokes a paired device, which nothing refuses; its workspaces go with
@@ -239,24 +265,25 @@ pub(super) async fn owned_device(
     id: &str,
     kind: Option<DeviceKind>,
 ) -> Result<DeviceRecord, ApiError> {
-    let not_found = || {
-        ApiError::new(
-            StatusCode::NOT_FOUND,
-            ErrorCode::DeviceNotFound,
-            "No such device",
-        )
-    };
-    let id = DeviceId::try_from(id).map_err(|_| not_found())?;
+    let id = DeviceId::try_from(id).map_err(|_| device_not_found())?;
     let device = state
         .services
         .control
         .device(id)
         .await?
-        .ok_or_else(not_found)?;
+        .ok_or_else(device_not_found)?;
     if device.user != *user || kind.is_some_and(|kind| kind != device.kind) {
-        return Err(not_found());
+        return Err(device_not_found());
     }
     Ok(device)
+}
+
+fn device_not_found() -> ApiError {
+    ApiError::new(
+        StatusCode::NOT_FOUND,
+        ErrorCode::DeviceNotFound,
+        "No such device",
+    )
 }
 
 /// A device route's filesystem failure: nothing at the path answers 404,

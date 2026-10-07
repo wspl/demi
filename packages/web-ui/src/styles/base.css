@@ -966,6 +966,49 @@ svg.lucide {
   line-height: 1.6;
 }
 
+/* A message's code block: its pre, and its Copy at the top-right corner, which
+   stays there as the code scrolls sideways. Copy keeps the distance to the
+   top and the right edge that centering puts it at in a one-line block,
+   (one line of code + its padding - the control) / 2, as CopyCode's does: a
+   longer block grows downward and leaves it where it was. */
+.markdown-body .code-block {
+  --code-block-pad-y: 0.75em;
+  /* The pre's code line: 1.6 lines of its 0.85em text. */
+  --code-block-line: calc(0.85em * 1.6);
+  position: relative;
+  margin: 0.75em 0;
+}
+
+.markdown-body .code-block > pre {
+  margin: 0;
+  padding-block: var(--code-block-pad-y);
+}
+
+.code-block-copy {
+  position: absolute;
+  top: calc((var(--code-block-line) + 2 * var(--code-block-pad-y) - var(--spacing-hit-sm)) / 2);
+  right: calc((var(--code-block-line) + 2 * var(--code-block-pad-y) - var(--spacing-hit-sm)) / 2);
+  display: flex;
+  line-height: 0;
+  border-radius: 6px;
+  /* Over the code it covers, on the page's own surface. */
+  background: var(--surface-current);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.code-block:hover .code-block-copy,
+.code-block-copy:focus-within {
+  opacity: 1;
+}
+
+/* A touch screen has no hover to show it. */
+@media (hover: none) {
+  .code-block-copy {
+    opacity: 1;
+  }
+}
+
 .markdown-body ul,
 .markdown-body ol {
   margin: var(--markdown-block-gap) 0;

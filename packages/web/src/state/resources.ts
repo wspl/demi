@@ -39,6 +39,8 @@ function productDevice(device: DeviceDto): Device {
     seen: device.lastSeenAt ?? undefined,
     platform,
     start: device.startCommand ? { command: device.startCommand, system: platform } : null,
+    os: device.os,
+    runnerVersion: device.runnerVersion,
   }
 }
 

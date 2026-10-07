@@ -23,7 +23,7 @@ test('a section found by its own name lists none of its settings', () => {
 test('Enter opens the first setting found, skipping a section still in development', () => {
   expect(firstMatch(filterSettings(SETTINGS_SECTIONS, 'password'))).toEqual({ section: 'account', setting: 'Password' })
   expect(firstMatch(filterSettings(SETTINGS_SECTIONS, 'keyboard'))).toEqual({ section: 'keyboard', setting: null })
-  // Notifications is in development: it is listed, but nothing opens.
-  expect(firstMatch(filterSettings(SETTINGS_SECTIONS, 'sound'))).toBeNull()
+  // Data & Privacy is in development: it is listed, but nothing opens.
+  expect(firstMatch(filterSettings(SETTINGS_SECTIONS, 'usage data'))).toBeNull()
   expect(found('nothing like this')).toEqual([])
 })
