@@ -57,7 +57,7 @@ async function resetCloud(operationId: string) {
   resetRequests += 1
   await new Promise(resolve => setTimeout(resolve, 600))
   if (resetRequests % 2 === 0) {
-    reset.value = { status: 'failed', message: 'HTTP 503: the cloud host is not accepting operations right now.' }
+    reset.value = { status: 'failed', message: 'The Cloud host is not taking resets right now. Try again in a minute.' }
     return
   }
   reset.value = { status: 'idle' }

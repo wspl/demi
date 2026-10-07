@@ -17,7 +17,7 @@ afterEach(() => {
   disposePinia(pinia)
 })
 
-test("a plugin page's sidebar entry shows while its plugin is on and opens the settings dialog on its section", () => {
+test("a plugin page's sidebar entry shows while its plugin is on and names its settings section", () => {
   const product = useProduct()
   const resources = useResources()
   const skills = { id: 'skills', name: 'Skills', description: 'Skills.', enabled: false, packages: [] }
@@ -26,10 +26,7 @@ test("a plugin page's sidebar entry shows while its plugin is on and opens the s
   expect(resources.sectionEntries).toEqual([])
 
   product.snapshot = productState({ plugins: [{ ...skills, enabled: true }] })
-  expect(resources.sectionEntries.map((entry) => entry.label)).toEqual(['Skills'])
-  resources.openSettings(resources.sectionEntries[0]!.section)
-  expect(resources.settingsOpen).toBe(true)
-  expect(resources.settingsTab).toBe('skills')
+  expect(resources.sectionEntries.map((entry) => [entry.label, entry.section])).toEqual([['Skills', 'skills']])
 })
 
 test("a device project's row follows its device online, updating, offline and gone; a Cloud project has no state", () => {

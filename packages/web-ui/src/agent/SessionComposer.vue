@@ -136,7 +136,8 @@ const edit = useMessageEditComposer({
   upload: (file, options) => props.upload(file, options),
 })
 /** Read once, as the composer shows: the focus it finds then decides. */
-const takesFocus = props.focusOnShow && !useTouchOnly().value && !isFocusedElementEditable()
+const touchOnly = useTouchOnly()
+const takesFocus = props.focusOnShow && !touchOnly.value && !isFocusedElementEditable()
 /** The editor shown: the edit's, or the draft's. */
 const editor = ref<InstanceType<typeof MessageEditor>>()
 const focused = ref(false)
@@ -323,6 +324,15 @@ defineExpose({
   /** Files are on their way: the next capsules land at the cursor. */
   placeNextFiles(event?: DragEvent): void {
     editor.value?.placeNextFiles(event)
+  },
+  /**
+   * The user asked for this draft again, as New does on the draft it
+   * shows: the message takes the focus, except on a touch phone.
+   */
+  focusDraft(): void {
+    if (!touchOnly.value) {
+      editor.value?.focus()
+    }
   },
 })
 

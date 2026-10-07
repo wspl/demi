@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Cloud } from '@lucide/vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -24,12 +24,14 @@ import { fileSource } from '../api/files'
 import { uploadAttachment } from '../api/uploads'
 import type { Conversation } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
+import { useSettingsAddress } from '../settings/address'
 
 const props = defineProps<{ conversation: Conversation }>()
 const store = useConversations()
 const resources = useResources()
 const preferences = usePreferences()
 const product = useProduct()
+const settings = useSettingsAddress()
 
 const modelState = computed(() =>
   composerModel(
@@ -43,6 +45,8 @@ const selectedModel = computed(() => modelState.value.selected?.model)
 const canSend = computed(() => modelState.value.kind === 'ready')
 
 const composer = ref<InstanceType<typeof SessionComposer>>()
+// New pressed on this very draft: the message takes the focus again.
+watch(() => store.composerFocusRequests, () => composer.value?.focusDraft())
 /**
  * The message that starts a turn is on its way: the turn is as good as
  * running, so Stop shows from the send on, never a disabled Send first.
@@ -70,7 +74,7 @@ const replaced = computed(() => {
 })
 
 function openProviders() {
-  resources.openSettings('models')
+  void settings.open('models')
 }
 function send() {
   if (canSend.value) {

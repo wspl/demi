@@ -11,6 +11,7 @@
 use std::{
     collections::HashMap,
     future::Future,
+    path::PathBuf,
     pin::Pin,
     sync::{
         Arc, Mutex,
@@ -110,6 +111,8 @@ pub struct Hub {
     /// Each watched tab's observer, with the tab's end. A std mutex, held
     /// only to find or add a tab's entry, never across an await.
     observers: Mutex<HashMap<TabId, (CancellationToken, Observer)>>,
+    /// Where the browser saves downloads, which the observers follow.
+    downloads: PathBuf,
 }
 
 impl Hub {
@@ -136,6 +139,7 @@ impl Hub {
             changes: environment.changes().clone(),
             tasks,
             observers: Mutex::default(),
+            downloads: environment.download_directory().to_owned(),
         }
     }
 
@@ -160,7 +164,7 @@ impl Hub {
                 .clone()
         };
         observer
-            .get_or_try_init(|| observers::start(tab, &self.tasks))
+            .get_or_try_init(|| observers::start(tab, &self.downloads, &self.tasks))
             .await
             .cloned()
     }

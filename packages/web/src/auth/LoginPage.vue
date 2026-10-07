@@ -5,6 +5,8 @@ import EmailLoginPage, {
   type EmailLoginPhase,
 } from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import { useSession } from './session'
+import { returnAddress } from './return'
+import { ApiError } from '../api/client'
 
 const session = useSession()
 const router = useRouter()
@@ -18,7 +20,8 @@ const devAccount = import.meta.env.DEV
 const email = ref(devAccount?.email ?? '')
 const password = ref(devAccount?.password ?? '')
 const initial = session.current
-const expired = useRoute().query.reason === 'expired'
+const route = useRoute()
+const expired = route.query.reason === 'expired'
 const phase = ref<EmailLoginPhase>(
   initial.status === 'signedOut'
     ? {
@@ -42,14 +45,16 @@ async function submit(address: string, secret: string): Promise<void> {
   try {
     await session.signIn(address, secret, controller.signal)
     password.value = ''
-    await router.replace('/chat')
+    await router.replace(returnAddress(route.query))
   } catch (error) {
     if (controller.signal.aborted) {
       return
     }
+    const wait = error instanceof ApiError && error.code === 'too_many_attempts' ? error.retryAfterSeconds : null
     phase.value = {
       reason: phase.value.reason,
       error: error instanceof Error ? error.message : 'Sign-in failed.',
+      ...(wait === null ? {} : { lockedUntil: Date.now() + wait * 1000 }),
     }
   } finally {
     if (request === controller) {

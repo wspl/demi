@@ -290,8 +290,8 @@ source whose skill that is on has its name, which the page shows as the
 reason it cannot be turned on.
 
 A source shows its state as one status label right after its name, so it
-never covers the origin under it at any width: **Updating** while a fetch
-runs, when its update button also turns; **Failed**, with the failure's
+never covers the origin under it at any width: **Adding** while a new
+source's first fetch runs, **Updating** while a later fetch runs, when its update button also turns; **Failed**, with the failure's
 message, until a fetch succeeds; or **Update available**. A source whose
 first fetch failed has no commit and no skills, and shows Failed alone.
 

@@ -61,12 +61,13 @@ pub(super) async fn login(
     JsonBody(credentials): JsonBody<Credentials>,
 ) -> Result<Response, ApiError> {
     let email = credentials.email;
-    if services.limiter.locked(&email) {
+    if let Some(wait) = services.limiter.locked_for(&email) {
         return Err(ApiError::new(
             StatusCode::TOO_MANY_REQUESTS,
             ErrorCode::TooManyAttempts,
-            "Too many failed logins; try again in a minute",
-        ));
+            "Too many failed sign-ins. Try again in a minute.",
+        )
+        .with_retry_after(wait));
     }
     let account = services.control.account_by_email(email.clone()).await?;
     let stored = account

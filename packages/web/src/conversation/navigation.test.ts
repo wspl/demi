@@ -99,3 +99,25 @@ test('creating a project opens a new conversation draft in it, which only the fi
     },
   ])
 })
+
+test('New on the empty draft already shown gives it back with the focus asked for its composer', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/chat/:id?', component: defineComponent({ render: () => null }) }],
+  })
+  const app = createApp({})
+  app.use(pinia)
+  app.use(router)
+  const navigation = app.runWithContext(() => useConversationNavigation())
+  const conversations = useConversations()
+
+  navigation.create(null)
+  await waitFor(() => router.currentRoute.value.path.startsWith('/chat/'), () => router.currentRoute.value.fullPath)
+  const draft = router.currentRoute.value.params.id
+  // A new draft shows its composer anew, which takes the focus as it shows.
+  expect(conversations.composerFocusRequests).toBe(0)
+  navigation.create(null)
+  await nextTick()
+  expect(router.currentRoute.value.params.id).toBe(draft)
+  expect(conversations.composerFocusRequests).toBe(1)
+})

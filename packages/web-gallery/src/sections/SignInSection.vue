@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import EmailLoginPage, { type EmailLoginPhase } from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import SetupPage, { type SetupPhase } from '@demicodes/web-ui/auth/SetupPage.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -17,7 +17,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Sign in',
-    'Email and password. The host reports busy, a wrong-credentials or lockout error, and whether the session ended. No registration or password recovery.'
+    'Email and password. The host reports busy, a wrong-credentials error, a lockout and whether the session ended. A wrong password gives the focus back to the password, its text selected, and the line under the fields keeps its height, so nothing moves. A lockout counts down to its end with Sign In off. No registration; a forgotten password goes to the administrator, as the line under Sign In says.'
   ],
   [
     'Setup',
@@ -40,8 +40,9 @@ const states: {
   {
     value: 'locked',
     label: 'Locked',
+    // The lock's end is set when the state is shown, a minute on.
     phase: {
-      error: 'Too many failed logins; try again in a minute'
+      error: 'Too many failed sign-ins. Try again in a minute.'
     }
   },
   { value: 'expired', label: 'Session Ended', phase: { reason: 'expired' } },
@@ -50,7 +51,17 @@ const states: {
 const state = ref('form')
 const email = ref('zan@example.com')
 const password = ref('password')
-const phase = computed(() => states.find((entry) => entry.value === state.value)!.phase)
+/** When the lock shown ends, a minute after the state was chosen, as the backend's Retry-After says. */
+const lockedUntil = ref(0)
+watch(state, (value) => {
+  if (value === 'locked') {
+    lockedUntil.value = Date.now() + 60_000
+  }
+})
+const phase = computed(() => {
+  const chosen = states.find((entry) => entry.value === state.value)!.phase
+  return state.value === 'locked' ? { ...chosen, lockedUntil: lockedUntil.value } : chosen
+})
 let failures = 0
 
 // The prototype accepts any password but `wrong`; five failures lock it.

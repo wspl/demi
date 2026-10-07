@@ -47,12 +47,12 @@ pub(crate) fn parse(directory: &str, text: &[u8]) -> Result<Parsed, String> {
         Some(name) => {
             if !valid_name(&name) {
                 warnings.push(format!(
-                    "the name \"{name}\" is not 1 to 64 lowercase letters, digits and single hyphens"
+                    "The name \"{name}\" is not 1 to 64 lowercase letters, digits and single hyphens"
                 ));
             }
             if name != directory {
                 warnings.push(format!(
-                    "the name \"{name}\" differs from its directory \"{directory}\""
+                    "The name \"{name}\" differs from its directory \"{directory}\""
                 ));
             }
             name
@@ -60,7 +60,7 @@ pub(crate) fn parse(directory: &str, text: &[u8]) -> Result<Parsed, String> {
         None => directory.to_owned(),
     };
     if description.chars().count() > DESCRIPTION_MAX_CHARS {
-        warnings.push("the description is longer than 1,024 characters".into());
+        warnings.push("The description is longer than 1,024 characters".into());
     }
     Ok(Parsed {
         name,

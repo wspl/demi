@@ -159,7 +159,7 @@ function detach(id: string): void {
               @switch-primary="switchPrimary"
               @attach="attach"
               @detach="detach"
-              @connect="productWould('Connect New Device')"
+              @connect="productWould('Add Device')"
             />
           </WorkspaceDirectoryMenu>
         </template>

@@ -4,7 +4,7 @@
  * `live-view.md` § A browser tab in the panel): the gallery's panels change
  * the way the product's do, a beat late, over the gallery's own browser.
  */
-import { BrowserTabsError, browserTabDataSchema, type BrowserTabData } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, addedPanelTab, browserTabDataSchema, type BrowserTabData } from '@demicodes/plugin-browser/live/tabs'
 import { applyPanelChange, type PanelAnswer, type PanelBackend, type PanelChange, type PanelRead } from '@demicodes/web-ui/agent/panel-changes'
 import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { GalleryBrowser } from './live-browser'
@@ -175,7 +175,7 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
       for (const tab of listed) {
         if (tab.createdBy.kind !== 'user' && !shown.has(tab.id)) {
           const data = { url: tab.url, tab: tab.id, title: tab.title, ...(tab.shows > 0 ? { shows: tab.shows } : {}) }
-          panel.apply({ type: 'create', tab: { id: `browser-${tab.id}`, kind: 'browser', data } })
+          panel.apply({ type: 'create', tab: { id: addedPanelTab(tab.id), kind: 'browser', data } })
         }
       }
       for (const { id, data } of bound) {

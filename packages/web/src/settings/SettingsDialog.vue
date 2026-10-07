@@ -33,6 +33,7 @@ import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useConversations } from '../conversation/store'
 import DevicesPanel from './DevicesPanel.vue'
+import { useSettingsAddress } from './address'
 import ProvidersPanel from './ProvidersPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
 
@@ -54,22 +55,27 @@ const sections = computed(() =>
     ),
   })),
 )
+const address = useSettingsAddress()
+/** Settings are open while the address is theirs (`address.ts`). */
+const open = computed(() => address.section.value !== undefined)
+/** The section the address names; null for none chosen. */
 const tab = computed({
-  get: () => resources.settingsTab,
-  set: (value) => {
-    resources.settingsTab = value
-  },
+  get: () => address.section.value ?? null,
+  set: (section) => void address.show(section),
 })
-/** The page whose section `tab` names, if a plugin fills it. */
-const pluginPage = computed(() => settingsPage(PLUGIN_PAGES, tab.value))
+// An address naming a section the rail does not offer, once the product
+// state says which it offers, shows settings with no section chosen.
 watch(
-  [tab, sections],
-  () => {
+  [tab, sections, () => product.snapshot !== null],
+  ([section, , known]) => {
+    if (section === null || !known) {
+      return
+    }
     const item = sections.value
       .flatMap((group) => group.items)
-      .find((item) => item.id === tab.value)
+      .find((entry) => entry.id === section)
     if (!item || item.disabled) {
-      tab.value = 'general'
+      tab.value = null
     }
   },
   { immediate: true },
@@ -113,6 +119,9 @@ async function rename(nickname: string): Promise<void> {
     report('Could Not Change Your Name', error)
   }
 }
+
+/** Why the email cannot be changed on a server without mail (`web-api.md` § Account API). */
+const EMAIL_UNAVAILABLE = 'This server cannot send email, which a change needs for its code. Ask your administrator.'
 
 const emailDraft = ref({ email: '', password: '', code: '' })
 const passwordDraft = ref({ current: '', next: '', confirm: '' })
@@ -303,9 +312,9 @@ async function submitPassword(current: string, next: string): Promise<void> {
 }
 
 watch(
-  () => resources.settingsOpen,
-  (open) => {
-    if (!open) {
+  open,
+  (isOpen) => {
+    if (!isOpen) {
       emailOpen.value = false
       passwordOpen.value = false
     }
@@ -368,9 +377,8 @@ async function restore(id: string): Promise<void> {
     await openConversation(id)
   }
 }
-/** An archived conversation opens read-only, with the bar that offers Restore. */
+/** An archived conversation opens read-only, with the bar that offers Restore; leaving settings' address closes them. */
 async function openConversation(id: string): Promise<void> {
-  resources.settingsOpen = false
   await router.push(`/chat/${id}`)
 }
 
@@ -388,15 +396,16 @@ function resetShortcuts(): void {
 
 <template>
   <SettingsDialog
+    v-slot="{ section }"
     v-model:tab="tab"
-    :is-open="resources.settingsOpen"
+    :is-open="open"
     :overlay-store="appOverlayStore"
     :account="{ name: resources.username, email: resources.email }"
     :sections="sections"
-    @close="resources.settingsOpen = false"
+    @close="address.close"
   >
     <SettingsGeneral
-      v-if="tab === 'general'"
+      v-if="section === 'general'"
       language="English"
       :theme="resources.appearance.theme"
       :tone="resources.appearance.tone"
@@ -412,7 +421,7 @@ function resetShortcuts(): void {
       "
     />
     <SettingsAccount
-      v-else-if="tab === 'account'"
+      v-else-if="section === 'account'"
       :name="nameDraft ?? resources.username"
       :name-saving="nameSaving"
       v-model:email-draft="emailDraft"
@@ -421,6 +430,7 @@ function resetShortcuts(): void {
       v-model:password-open="passwordOpen"
       :overlay-store="appOverlayStore"
       :email="resources.email"
+      :email-unavailable="product.snapshot?.mail === false ? EMAIL_UNAVAILABLE : undefined"
       :email-phase="emailPhase"
       :password-phase="passwordPhase"
       @update:name="rename"
@@ -432,22 +442,22 @@ function resetShortcuts(): void {
       @submit-password="submitPassword"
       @sign-out="emit('signOut')"
     />
-    <ProvidersPanel v-else-if="tab === 'models' && resources.canConfigure" />
-    <DevicesPanel v-else-if="tab === 'devices'" />
-    <SubagentsPanel v-else-if="tab === 'subagents'" />
+    <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
+    <DevicesPanel v-else-if="section === 'devices'" />
+    <SubagentsPanel v-else-if="section === 'subagents'" />
     <SettingsPlugins
-      v-else-if="tab === 'plugins'"
+      v-else-if="section === 'plugins'"
       :plugins="plugins"
       :pending="[...wantedPlugins.keys()]"
       @switch="switchPlugin"
     />
     <PageScope
-      v-else-if="pluginPage?.settings"
-      :page="pluginPage"
-      :component="pluginPage.settings.component"
+      v-else-if="section !== null && settingsPage(PLUGIN_PAGES, section)?.settings"
+      :page="settingsPage(PLUGIN_PAGES, section)!"
+      :component="settingsPage(PLUGIN_PAGES, section)!.settings!.component"
     />
     <SettingsArchived
-      v-else-if="tab === 'archived'"
+      v-else-if="section === 'archived'"
       :conversations="archived"
       :load="conversations.listStatus"
       :pending-ids="conversations.pendingChanges"
@@ -456,7 +466,7 @@ function resetShortcuts(): void {
       @restore="restore"
     />
     <SettingsKeyboard
-      v-else-if="tab === 'keyboard'"
+      v-else-if="section === 'keyboard'"
       :bindings="resources.keys"
       @rebind="rebind"
       @reset="resetShortcuts"

@@ -1,10 +1,10 @@
 // `bun check shot [name]`: saves a PNG of the page at its real size and
 // pixel ratio and prints its path, for the report to list. `--element`
 // clips to an element, `--region` to an area, `--pad` widens either, and
-// `--zoom` renders the area magnified rather than enlarging its pixels. It
-// waits first for the page's transitions and finite animations to end, up to
-// two seconds, so a dialog that just opened is shot open rather than half
-// faded in; `--now` shoots at once, and `timeline` keeps the moments between.
+// `--zoom` renders the area magnified rather than enlarging its pixels.
+// It waits first for the page's transitions and finite animations to end,
+// such as a dialog that is still fading in, so the picture shows where the
+// page settles; `--now` takes it at once, as `timeline` does its frames.
 import { writeFileSync } from 'node:fs'
 import { CheckFailure, numeric, parse, type Context } from '../command'
 import { launchOptions } from '../browser'
@@ -22,8 +22,8 @@ const OPTIONS = {
   now: { type: 'boolean' },
 } as const
 
-/** How long a shot waits for the page's movements to end. */
-const SETTLE_MS = 2_000
+/** The longest a picture waits for the page to settle; a page that never does is taken as it is. */
+const SETTLE_MS = 2000
 
 export async function run(context: Context, argv: string[]): Promise<void> {
   const { positionals, values } = parse(argv, OPTIONS, USAGE)
@@ -32,15 +32,14 @@ export async function run(context: Context, argv: string[]): Promise<void> {
   }
   const page = await context.browser.page()
   if (!values.now) {
-    // Spinners and other endless animations never end; only what finishes is waited for.
-    await page.waitForFunction(
-      () => document.getAnimations().every((animation) =>
-        animation.playState !== 'running' || animation.effect?.getComputedTiming().endTime === Infinity),
-      undefined,
-      { timeout: SETTLE_MS },
-    ).catch(() => {
-      // Still moving after the wait: the shot shows the page as it is then.
-    })
+    // Spinners and other endless animations never end, so only finite ones are waited for.
+    await page.evaluate(async (limit) => {
+      const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
+      await Promise.race([
+        Promise.allSettled(finite.map((animation) => animation.finished)),
+        new Promise((resolve) => setTimeout(resolve, limit)),
+      ])
+    }, SETTLE_MS)
   }
   const path = shotPath(context.slot, positionals[0])
   const pad = values.pad === undefined ? 0 : numeric(values.pad, '--pad')
