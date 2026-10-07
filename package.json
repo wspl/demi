@@ -15,7 +15,8 @@
     "packages/preview-runtime",
     "packages/web-gallery",
     "packages/web",
-    "packages/browse"
+    "packages/browse",
+    "services/preview-domain"
   ],
   "scripts": {
     "dev": "bun scripts/xtask.ts dev",
@@ -23,13 +24,13 @@
     "xtask": "bun scripts/xtask.ts",
     "check:registry": "bun run scripts/check-public-registry.ts",
     "contracts": "bun scripts/xtask.ts contracts",
-    "typecheck": "bun run contracts && tsgo --noEmit && tsgo --noEmit -p packages/browse",
+    "typecheck": "bun run contracts && tsgo --noEmit && tsgo --noEmit -p packages/browse && bun run --cwd services/preview-domain typecheck",
     "typecheck:web": "bun run contracts && bun run --cwd packages/protocol typecheck && bun run --cwd packages/conversation-client typecheck && bun run --cwd packages/web-ui typecheck && bun run --cwd packages/plugin-sdk typecheck && bun run --cwd packages/plugin-browser typecheck && bun run --cwd packages/plugin-changes typecheck && bun run --cwd packages/plugin-file-browser typecheck && bun run --cwd packages/plugin-skills typecheck && bun run --cwd packages/web-gallery typecheck && bun run --cwd packages/web typecheck",
     "build": "bun --filter '!@demicodes/web' build && bun run web:build",
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-changes/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./packages/browse/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture ./crates/command-package-browser-chrome/src/page",
+    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-changes/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./packages/browse/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture ./crates/command-package-browser-chrome/src/page ./services/preview-domain/src",
     "web:gallery": "bun scripts/web-gallery.ts",
     "web:dev": "bun scripts/web-dev.ts",
     "web:build": "bun run contracts && bun --filter @demicodes/web build"
