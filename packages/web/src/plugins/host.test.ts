@@ -134,15 +134,16 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
   expect(browser.conversation('unknown').installed.value).toEqual([])
 })
 
-test('a tab a page adds after another stands right after it, as a link opened from a tab does, and after the others once that one is gone', () => {
+test('tabs a page adds after another stand right after it in the order they came, as links opened from a tab do, and after the others once that one is gone', () => {
   const panel = productPageHost().panel
   const urls = () => useWorkPanel().stateFor(CONVERSATION).panel.tabs.map((tab) => z.object({ url: z.string() }).parse(tab.data).url)
   panel.add(CONVERSATION, 'browser', { url: 'https://a.test/' })
   panel.add(CONVERSATION, 'browser', { url: 'https://b.test/' })
   const opener = useWorkPanel().stateFor(CONVERSATION).panel.tabs[0]!.id
-  // Open Link in New Tab on the first tab.
+  // Open Link in New Tab on the first tab, twice in a row.
   panel.add(CONVERSATION, 'browser', { url: 'https://link.test/' }, { select: false, after: opener })
-  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://b.test/'])
+  panel.add(CONVERSATION, 'browser', { url: 'https://next.test/' }, { select: false, after: opener })
+  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://next.test/', 'https://b.test/'])
   panel.add(CONVERSATION, 'browser', { url: 'https://late.test/' }, { select: false, after: 'closed-meanwhile' })
-  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://b.test/', 'https://late.test/'])
+  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://next.test/', 'https://b.test/', 'https://late.test/'])
 })

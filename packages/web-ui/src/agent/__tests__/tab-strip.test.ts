@@ -19,9 +19,14 @@ test('the selected tab is revealed whole and clear of the fades, and where they 
   const middle = { left: 323, right: 411 }
   expect(revealScroll(narrow, middle, 24)).toBe(323)
   expect(revealScroll({ ...narrow, scrollLeft: 290 }, middle, 24)).toBeNull()
-  expect(fadeRoom(129, { left: middle.left - 290, right: middle.right - 290 })).toEqual({ before: 33, after: 8 })
-  // A tab running off an edge leaves that fade no room.
-  expect(fadeRoom(129, { left: -4, right: 84 })).toEqual({ before: 0, after: 45 })
+  expect(fadeRoom(129, { left: middle.left - 290, right: middle.right - 290 }, false)).toEqual({ before: 33, after: 8 })
+  // A tab the strip scrolls in from an edge leaves that fade no room on its way.
+  expect(fadeRoom(129, { left: -4, right: 84 }, true)).toEqual({ before: 0, after: 45 })
+  // The user scrolled the selected tab under an edge, or out of view either way: both edges fade as for any tab.
+  const free = { before: Number.POSITIVE_INFINITY, after: Number.POSITIVE_INFINITY }
+  expect(fadeRoom(129, { left: -4, right: 84 }, false)).toEqual(free)
+  expect(fadeRoom(129, { left: -120, right: -20 }, false)).toEqual(free)
+  expect(fadeRoom(129, { left: 100, right: 188 }, false)).toEqual(free)
 })
 
 test('a scrolled edge covers a tab mark it cuts, and only that one', () => {
