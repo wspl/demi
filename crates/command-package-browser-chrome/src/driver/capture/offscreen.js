@@ -103,13 +103,10 @@ async function open(message) {
     },
   }).catch(error => {
     // Chrome can retain a pending tabCapture request after getUserMedia aborts.
-    // There is no track or API to cancel that grant; unloading this extension
-    // clears Chrome's registry without replacing the user's tabs or documents.
-    if (error.name === 'AbortError') {
-      // Reload also closes the response port; the Host observes socket loss.
-      void ask({ type: 'reset' }).catch(error => console.warn(error));
-      socket.close();
-    }
+    // There is no track or API to cancel that grant; the Host recreates this
+    // extension, which clears Chrome's registry without replacing the user's
+    // tabs or documents.
+    if (error.name === 'AbortError') send({ type: 'recreate' });
     throw error;
   });
   const track = stream.getVideoTracks()[0];

@@ -75,7 +75,7 @@ patches = [
     "ClientSecurityState uses the Chrome 153 local network access policy field and type",
     "The pinned protocol (pdl/protocol.json) and its generator (tools/generate) are kept beside the generated src/cdp.rs",
     "Input.dispatchTouchEvent sends its required touchPoints empty for TouchEnd and TouchCancel, which the generator would leave out (applied by tools/generate)",
-    "The bindings hold only the domains Demi and chromiumoxide use and those their types refer to (18 of 53, about two thirds of the code), while the validation catalog keeps every domain; an event of another domain decodes as CdpEvent::Other",
+    "The bindings hold only the domains Demi and chromiumoxide use and those their types refer to (19 of 53, about two thirds of the code), while the validation catalog keeps every domain; an event of another domain decodes as CdpEvent::Other",
     "Network.Cookie.expires, which Chrome writes as null for an expiry JSON cannot hold (±Inf) as its description says, is optional in the bindings and nullable in the validation catalog (applied by tools/generate)",
     "License files have Unix line endings",
 ]
