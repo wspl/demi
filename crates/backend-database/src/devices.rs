@@ -14,14 +14,16 @@ use super::StorageError;
 use super::accounts::TokenHash;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
+use super::conversation_index::raise_hosts_revision;
 
 /// What a device's deletion removed with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceRemoval {
     /// The workspaces whose device it was.
     pub workspaces: Vec<RemovedWorkspace>,
-    /// The conversations that targeted those workspaces, which now target
-    /// their directories on the device directly.
+    /// The conversations the device's removal changed: those that targeted
+    /// those workspaces, which now target their directories on the device
+    /// directly, and those it was attached to, each once.
     pub conversations: Vec<ConversationId>,
 }
 
@@ -195,7 +197,7 @@ impl ControlService {
     pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            let conversations = {
+            let mut conversations = {
                 let mut statement = transaction.prepare_cached(
                     "UPDATE conversations SET target_kind = 'device', target_device_id = w.device_id,
                        target_path = w.path, target_workspace_id = NULL
@@ -233,10 +235,27 @@ impl ControlService {
                 }
                 workspaces
             };
-            transaction.execute(
-                "DELETE FROM conversation_hosts WHERE device_id = ?1",
-                [device.as_str()],
-            )?;
+            let detached = {
+                let mut statement = transaction.prepare_cached(
+                    "DELETE FROM conversation_hosts WHERE device_id = ?1 RETURNING conversation_id",
+                )?;
+                let mut rows = statement.query([device.as_str()])?;
+                let mut detached = Vec::new();
+                while let Some(row) = rows.next()? {
+                    detached.push(decode(
+                        "conversation_hosts",
+                        "conversation_id",
+                        ConversationId::try_from(row.get::<_, String>("conversation_id")?),
+                    )?);
+                }
+                detached
+            };
+            for conversation in detached {
+                raise_hosts_revision(&transaction, &conversation)?;
+                if !conversations.contains(&conversation) {
+                    conversations.push(conversation);
+                }
+            }
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;
             Ok(DeviceRemoval {

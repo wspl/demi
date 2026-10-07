@@ -49,6 +49,10 @@ pub struct ConversationRecord {
     /// The revision of the conversation's work panel, 0 before its first
     /// change.
     pub panel_revision: u64,
+    /// The revision of the conversation's attached hosts, raised by each
+    /// change of them and of the directory a host's shell recorded; 0
+    /// before the first.
+    pub hosts_revision: u64,
     /// How many of the conversation's permission requests are undecided.
     pub permission_requests: u64,
 }
@@ -231,7 +235,7 @@ const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
      target_path, target_workspace_id, context_version, model, user_messages, titled_messages,
-     created_at, updated_at,
+     created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests";
@@ -500,6 +504,7 @@ impl ControlService {
                         params![id.as_str(), device.as_str(), name],
                     )?;
                     advance_context(&transaction, &id)?;
+                    raise_hosts_revision(&transaction, &id)?;
                     1
                 }
                 RecordChange::Detach(device) => {
@@ -509,6 +514,7 @@ impl ControlService {
                     )?;
                     if removed > 0 {
                         advance_context(&transaction, &id)?;
+                        raise_hosts_revision(&transaction, &id)?;
                     }
                     removed
                 }
@@ -775,6 +781,11 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             "revision",
             u64::try_from(row.get::<_, i64>("panel_revision")?),
         )?,
+        hosts_revision: decode(
+            TABLE,
+            "hosts_revision",
+            u64::try_from(row.get::<_, i64>("hosts_revision")?),
+        )?,
         permission_requests: decode(
             "permission_requests",
             "id",
@@ -917,10 +928,13 @@ impl ControlService {
                 return Ok(false);
             }
             if let Some(arriving) = &ends.arriving {
-                transaction.execute(
+                let removed = transaction.execute(
                     "DELETE FROM conversation_hosts WHERE conversation_id = ?1 AND device_id = ?2",
                     params![id.as_str(), arriving.as_str()],
                 )?;
+                if removed > 0 {
+                    raise_hosts_revision(&transaction, &id)?;
+                }
             }
             if let Some((departed, cwd)) = &ends.departed
                 && Some(departed) != ends.arriving.as_ref()
@@ -942,19 +956,28 @@ impl ControlService {
     }
 
     /// Records where the last `demi host shell --host` on the attached
-    /// `device` ended, which is where the next one there starts.
+    /// `device` ended, which is where the next one there starts; answers
+    /// whether that changed the directory recorded, which raises the
+    /// hosts' revision.
     pub async fn set_attached_cwd(
         &self,
         id: ConversationId,
         device: DeviceId,
         cwd: String,
-    ) -> Result<(), StorageError> {
+    ) -> Result<bool, StorageError> {
         self.call(move |connection, _| {
-            connection.execute(
-                "UPDATE conversation_hosts SET cwd = ?3 WHERE conversation_id = ?1 AND device_id = ?2",
+            let transaction = connection.transaction()?;
+            // `IS NOT` treats a directory not recorded yet as different.
+            let changed = transaction.execute(
+                "UPDATE conversation_hosts SET cwd = ?3
+                 WHERE conversation_id = ?1 AND device_id = ?2 AND cwd IS NOT ?3",
                 params![id.as_str(), device.as_str(), cwd],
-            )?;
-            Ok(())
+            )? > 0;
+            if changed {
+                raise_hosts_revision(&transaction, &id)?;
+            }
+            transaction.commit()?;
+            Ok(changed)
         })
         .await
     }
@@ -1024,8 +1047,25 @@ pub fn insert_attached_host(
             host.cwd,
             now.as_millisecond()
         ],
+    )? == 1;
+    if inserted {
+        raise_hosts_revision(connection, conversation)?;
+    }
+    Ok(inserted)
+}
+
+/// Raises the revision of the conversation's attached hosts, which its
+/// summary carries, so a page that shows them reads them again
+/// (`web-api.md` § Sidebar mutations and read state).
+pub fn raise_hosts_revision(
+    connection: &Connection,
+    conversation: &ConversationId,
+) -> Result<(), StorageError> {
+    connection.execute(
+        "UPDATE conversations SET hosts_revision = hosts_revision + 1 WHERE id = ?1",
+        [conversation.as_str()],
     )?;
-    Ok(inserted == 1)
+    Ok(())
 }
 
 /// Advances the conversation's execution-context revision, which every node

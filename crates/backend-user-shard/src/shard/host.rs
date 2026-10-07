@@ -18,6 +18,7 @@ use demi_backend_runners::devices::Devices;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
+use demi_backend_page_sync::Part;
 use demi_plugin_interface::Topic;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
@@ -102,6 +103,10 @@ impl HostShard for Shard {
 
     fn job_ended(&self, conversation: &ConversationId) {
         self.plugins.fire(Topic::Jobs, Some(conversation));
+    }
+
+    fn hosts_changed(&self, conversation: &ConversationId) {
+        self.mark(Part::Conversation(conversation.clone()));
     }
 }
 

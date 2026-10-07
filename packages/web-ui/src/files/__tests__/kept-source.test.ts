@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { HostFiles, LISTING_REREAD_MS } from '../file-cache'
-import { keptSource } from '../kept-source'
+import { keptChangeSet, keptSource } from '../kept-source'
 import type { FileBrowserEntry } from '../types'
 
 // The page's own writes (`web-application.md` § Requests for one action):
 // an upload's entry shows in its folder as the answer says, with no listing
 // after it; the Host's watch reports the folder, which is listed once then.
+// A working directory outside a repository has no changes to list again
+// (`file-previews.md` § Changes) until a `.git` appears in it.
 // Cost: no I/O, fake timers; a few milliseconds.
 
 beforeEach(() => {
@@ -71,4 +73,39 @@ test('an upload adds its entry to the folder shown, without listing it, until th
   jest.advanceTimersByTime(LISTING_REREAD_MS)
   await settle()
   expect(lists).toEqual(['/w', '/w/src', '/w/src'])
+})
+
+test('a changes list outside a repository is not listed again for any change there, until a .git appears', async () => {
+  const files = new HostFiles()
+  files.cover({ covers: () => true })
+  let repository = false
+  let lists = 0
+  const changes = keptChangeSet({
+    async list() {
+      lists += 1
+      return { files: [], truncated: false, repository }
+    },
+    async sides() {
+      return { original: '', modified: '' }
+    },
+  }, '/w', { files })
+  changes.show()
+  await settle()
+  expect([lists, changes.unavailable]).toEqual([1, 'no-repository'])
+
+  // A process appends to a log there many times a second.
+  for (let step = 0; step < 10; step++) {
+    files.changed(['/w/app.log'])
+    await settle()
+  }
+  expect(lists).toBe(1)
+
+  // `git init` there: the list is read again, and follows the files from then on.
+  repository = true
+  files.changed(['/w/.git', '/w/.git/HEAD'])
+  await settle()
+  expect([lists, changes.unavailable]).toEqual([2, null])
+  files.changed(['/w/app.log'])
+  await settle()
+  expect(lists).toBe(3)
 })
