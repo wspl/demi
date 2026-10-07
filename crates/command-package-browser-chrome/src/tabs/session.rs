@@ -50,6 +50,11 @@ impl TabGate {
         })
     }
 
+    /// Whether a command holds the tab now.
+    pub fn held(&self) -> bool {
+        self.slot().is_none()
+    }
+
     fn slot(&self) -> std::sync::MutexGuard<'_, Option<Box<TabSession>>> {
         // Nothing can panic between taking the lock and releasing it.
         self.session.lock().expect("the tab gate is intact")

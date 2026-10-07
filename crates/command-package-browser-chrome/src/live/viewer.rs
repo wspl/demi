@@ -14,8 +14,8 @@ use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result as BrowserResult};
 use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 use demi_command_package_browser_protocol::live::{
-    CursorRegion, EndReason, LiveControl, LiveDialog, LiveModuleMessage, LiveTab,
-    LiveViewerMessage, Platform, PointerAction, STALL_MS, ViewerMode,
+    CursorRegion, EndReason, LiveControl, LiveDialog, LiveDownload, LiveMenu, LiveModuleMessage,
+    LiveTab, LiveViewerMessage, Platform, PointerAction, STALL_MS, ViewerMode,
 };
 use demi_command_protocol::{CommandError, Completion};
 use demi_command_sdk::{Input as ServiceInput, InvocationContext, ServiceError};
@@ -383,6 +383,8 @@ struct Observing {
     cursor: watch::Receiver<(String, bool)>,
     regions: watch::Receiver<Vec<CursorRegion>>,
     copies: broadcast::Receiver<String>,
+    menus: broadcast::Receiver<LiveMenu>,
+    downloads: watch::Receiver<Vec<LiveDownload>>,
     documents: watch::Receiver<u64>,
 }
 
@@ -393,6 +395,8 @@ impl Observing {
             cursor: observed.cursor.subscribe(),
             regions: observed.regions.subscribe(),
             copies: observed.copies.subscribe(),
+            menus: observed.menus.subscribe(),
+            downloads: observed.downloads.subscribe(),
             documents: observed.documents.subscribe(),
             observed,
         }
@@ -407,6 +411,8 @@ enum Update {
     Cursor,
     Regions,
     Copied(String),
+    Menu(LiveMenu),
+    Downloads,
     Document,
 }
 
@@ -431,6 +437,14 @@ impl Watched {
                     Ok(()) = observed.cursor.changed() => return Update::Cursor,
                     Ok(()) = observed.regions.changed() => return Update::Regions,
                     Ok(()) = observed.documents.changed() => return Update::Document,
+                    Ok(()) = observed.downloads.changed() => return Update::Downloads,
+                    menu = observed.menus.recv() => match menu {
+                        Ok(menu) => return Update::Menu(menu),
+                        Err(broadcast::error::RecvError::Lagged(_)) => {}
+                        Err(broadcast::error::RecvError::Closed) => {
+                            return std::future::pending().await;
+                        }
+                    },
                     copied = observed.copies.recv() => match copied {
                         Ok(text) => return Update::Copied(text),
                         Err(broadcast::error::RecvError::Lagged(_)) => {}
@@ -617,7 +631,13 @@ impl Session<'_> {
             }
         };
         if self.watched.is_some() {
-            for update in [Update::Dialog, Update::Controls, Update::Regions, Update::Cursor] {
+            for update in [
+                Update::Dialog,
+                Update::Controls,
+                Update::Regions,
+                Update::Cursor,
+                Update::Downloads,
+            ] {
                 self.update(update).await;
             }
         }
@@ -851,6 +871,28 @@ impl Session<'_> {
                         .control(&LiveModuleMessage::Clipboard { text })
                         .await;
                 }
+            }
+            // A right click is this viewer's when it operated just now, as
+            // the copies it hears are; the agent's own right clicks open no
+            // menu on the viewer's page.
+            Update::Menu(menu) => {
+                if self
+                    .operated
+                    .is_some_and(|operated| operated.elapsed() <= COPY_WINDOW)
+                {
+                    self.writer
+                        .control(&LiveModuleMessage::Menu { tab, menu })
+                        .await;
+                }
+            }
+            Update::Downloads => {
+                let Some(observed) = &mut watched.observed else {
+                    return;
+                };
+                let downloads = observed.downloads.borrow_and_update().clone();
+                self.writer
+                    .control(&LiveModuleMessage::Downloads { tab, downloads })
+                    .await;
             }
             // Input held in the old document is gone with it.
             Update::Document => self.input.control(Item::Release).await,

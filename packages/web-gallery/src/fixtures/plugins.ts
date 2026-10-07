@@ -94,6 +94,7 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
     panel: shell.panel ?? {
       tabs: () => [],
       add: (_conversation, kind) => productWould(`Open a ${kind} Tab in the Work Panel`),
+      select: (_conversation, kind) => productWould(`Select the ${kind} Tab in the Work Panel`),
     },
     openSettings: (section) => productWould(`Open ${section} Settings`),
     overlays: appOverlayStore,

@@ -7,7 +7,7 @@
  * opens again after the page's reconnect waits (`web-application.md`
  * § Liveness and reconnection).
  */
-import { liveViewerMessageSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
+import { liveViewerMessageSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
 import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
 import { reactive } from 'vue'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
@@ -60,6 +60,8 @@ export interface LiveState {
   tabs: LiveTab[]
   watched: string | null
   dialog: { tab: string; dialog: LiveDialog } | null
+  /** The browser's menu the viewer's right click asked for, until it is chosen from or dismissed. */
+  menu: { tab: string; menu: LiveMenu } | null
   controls: LiveControl[]
   /** Where on the watched tab each cursor applies, in tab CSS pixels; a later region over an earlier one wins. */
   regions: CursorRegion[]
@@ -105,6 +107,8 @@ export interface LiveSessionOptions {
   onEnded?: (reason: string) => void
   /** The page showed a picture of the browser tab `tab`. */
   onPicture?: (tab: string) => void
+  /** The downloads the user started in the browser tab `tab`, the newest last, each time they change. */
+  onDownloads?: (tab: string, downloads: LiveDownload[]) => void
   /** Reports a defect of the page, such as a message the protocol refuses. */
   defect: (message: string, error: unknown) => void
   now?: () => number
@@ -124,6 +128,7 @@ export class LiveSession {
     tabs: [],
     watched: null,
     dialog: null,
+    menu: null,
     controls: [],
     regions: [],
     cursor: { cursor: 'default', editable: false },
@@ -144,6 +149,8 @@ export class LiveSession {
   /** Views that ended in a row since one last worked. */
   private failures = 0
   private reopening: ReconnectWait | null = null
+  /** The viewer's last press, a button or a key, in the tab it watched, and when. */
+  private pressed: { tab: string; at: number } | null = null
 
   constructor(private readonly options: LiveSessionOptions) {
     this.received = this.time()
@@ -236,6 +243,7 @@ export class LiveSession {
     this.dropStream()
     this.state.ended = reason
     this.state.dialog = null
+    this.state.menu = null
     this.state.pictureless = null
     this.state.controls = []
     this.state.regions = []
@@ -346,6 +354,12 @@ export class LiveSession {
         case 'dialog':
           this.state.dialog = message.dialog ? { tab: message.tab, dialog: message.dialog } : null
           break
+        case 'menu':
+          this.state.menu = message.tab === this.state.watched ? { tab: message.tab, menu: message.menu } : null
+          break
+        case 'downloads':
+          this.options.onDownloads?.(message.tab, message.downloads)
+          break
         case 'choice':
           break
         case 'notice':
@@ -424,6 +438,7 @@ export class LiveSession {
     this.state.controls = []
     this.state.regions = []
     this.state.dialog = null
+    this.state.menu = null
     // The module says again whether it can capture the tab now watched.
     this.state.pictureless = null
     this.pictures?.stop()
@@ -443,7 +458,12 @@ export class LiveSession {
     this.send({ type: 'dialog', tab: dialog.tab, accept, ...(text === undefined ? {} : { text }) })
   }
 
-  /** Pointer movement is not an operation; everything else is. */
+  /** The browser's menu was chosen from or dismissed. */
+  closeMenu(): void {
+    this.state.menu = null
+  }
+
+  /** Pointer movement is not an operation; everything else is. A press is the viewer's own click or key. */
   input(message: LiveViewerMessage): void {
     const moving = message.type === 'pointer' && message.action === 'move'
     if (moving) {
@@ -452,7 +472,15 @@ export class LiveSession {
       }
       return
     }
+    if (this.state.connection === 'live' && (message.type === 'pointer' || message.type === 'key') && message.action === 'down') {
+      this.pressed = { tab: message.tab, at: this.time() }
+    }
     this.operate(message)
+  }
+
+  /** Whether the viewer pressed a button or a key in `tab` within the last `within` milliseconds. */
+  pressedLately(tab: string, within: number): boolean {
+    return this.pressed !== null && this.pressed.tab === tab && this.time() - this.pressed.at <= within
   }
 
   /** The viewer's choice in a native control, for the revision it saw. */
