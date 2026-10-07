@@ -2,11 +2,14 @@
 //! methods): Chrome's frame events of the tab's main frame, followed for the
 //! tab's lifetime. Each change counts as a change of what the browser shows,
 //! so the live view sends its viewers the tab list again and the work panel
-//! shows the page loading only while it does.
+//! shows the page loading only while it does. The address a navigation the
+//! user started loads is kept until its document commits or it ends, as
+//! Chrome's address bar shows it meanwhile.
 
 use chromiumoxide::Page;
 use chromiumoxide::cdp::browser_protocol::page::{
-    EventFrameNavigated, EventFrameStartedLoading, EventFrameStoppedLoading, GetFrameTreeParams,
+    EventFrameNavigated, EventFrameStartedLoading, EventFrameStoppedLoading,
+    EventNavigatedWithinDocument, GetFrameTreeParams,
 };
 use futures_util::StreamExt;
 use tokio::sync::watch;
@@ -30,15 +33,19 @@ pub enum PageLoad {
 }
 
 /// Follows the main frame's loading of `page` until `ended`, counting each
-/// start and end of a load in `changes`.
+/// start and end of a load in `changes`. The address in `requested`, which
+/// a navigation the user started set, is cleared once that navigation's
+/// document commits or it ends.
 pub(crate) async fn observe(
     page: &Page,
     ended: CancellationToken,
     tasks: &TaskTracker,
     changes: watch::Sender<u64>,
+    requested: watch::Sender<Option<String>>,
 ) -> Result<watch::Sender<PageLoad>> {
     let mut started = page.event_listener::<EventFrameStartedLoading>().await?;
     let mut committed = page.event_listener::<EventFrameNavigated>().await?;
+    let mut moved = page.event_listener::<EventNavigatedWithinDocument>().await?;
     let mut stopped = page.event_listener::<EventFrameStoppedLoading>().await?;
     let main = page
         .execute(GetFrameTreeParams {})
@@ -71,6 +78,19 @@ pub(crate) async fn observe(
                     Some(_) => continue,
                     None => break,
                 },
+                // A navigation within the document, such as to one of its
+                // fragments, commits without a load and leaves the page where
+                // it is; the page's own during a load leaves the load's
+                // address.
+                event = moved.next() => match event {
+                    Some(Ok(event))
+                        if event.frame_id == main && *follows.borrow() != PageLoad::Navigating =>
+                    {
+                        *follows.borrow()
+                    }
+                    Some(_) => continue,
+                    None => break,
+                },
                 event = stopped.next() => match event {
                     Some(Ok(event)) if event.frame_id == main => PageLoad::Idle,
                     Some(_) => continue,
@@ -80,7 +100,10 @@ pub(crate) async fn observe(
             // What the browser shows is whether the page loads, not whether
             // its document committed yet.
             let was = follows.send_replace(now);
-            if (was == PageLoad::Idle) != (now == PageLoad::Idle) {
+            // Once the load's document committed, or the load ended without
+            // one, the address bar shows the page's own address again.
+            let settled = now != PageLoad::Navigating && requested.send_replace(None).is_some();
+            if settled || (was == PageLoad::Idle) != (now == PageLoad::Idle) {
                 changes.send_modify(|revision| *revision += 1);
             }
         }
