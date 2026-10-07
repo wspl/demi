@@ -17,7 +17,7 @@ backend and the machine manager, copies the databases that 0.2.0 will
 migrate, points the server at 0.2.0 and starts both services again. The
 interruption lasts as long as a restart, plus the copy. Afterwards:
 
-- Open pages show "Demi Is Restarting" while the backend is away, then load
+- Open pages show the banner "Demi is restarting" over what they show while the backend is away, then load
   the new web app by themselves
   ([A page of another build](../product/web-application.md#a-page-of-another-build)).
 - A turn that was running ends with the shutdown's error record, and its
@@ -117,7 +117,7 @@ which the configuration names.
 
 | Part | How it reaches the new release | When |
 | --- | --- | --- |
-| Backend and web app | The backend restarts from `current`; an open page shows the restart screen meanwhile and then loads the new build ([A page of another build](../product/web-application.md#a-page-of-another-build)) | During the upgrade |
+| Backend and web app | The backend restarts from `current`; an open page shows the connection banner meanwhile and then loads the new build ([A page of another build](../product/web-application.md#a-page-of-another-build)) | During the upgrade |
 | Machine manager and `runsc` | The manager restarts from `current`, with the `runsc` version it pins, which the preparation fetched ([Prepare](#prepare)) | During the upgrade |
 | Cloud image | The manager imports the release's `image/` before the services stop ([Prepare](#prepare)) | During the upgrade |
 | A Cloud's runner and command programs | The manager mounts the configured image's `/opt/demi` into every Cloud at boot ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)) | The Cloud's next wake |
@@ -327,7 +327,7 @@ new release, and one whose download does not match stays on its release; the
 backend answers the release check; `demi-server`, with its services
 simulated, returns to the old release when a service does not start and
 finishes or undoes an upgrade interrupted after any step; a page shows the
-restart screen and loads a new build once.
+connection banner and loads a new build once.
 
 One real upgrade accepts the whole: a Linux server with a paired device and
 a Cloud with a package its user installed moves from one release to the
