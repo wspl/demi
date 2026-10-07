@@ -25,7 +25,7 @@ use crate::driver::{
 use demi_command_protocol::CommandLocale;
 
 use crate::tabs::{
-    protocol::{BrowserCreatedBy, Load, TabId},
+    protocol::{BrowserCreatedBy, BrowserViewport, Load, TabId},
     registry::{self, Hold, Snapshot, Tabs},
     tab::BrowserTab,
 };
@@ -345,6 +345,10 @@ pub struct BrowserEnvironment {
     /// and URLs, and their viewports; counted on from the conversation's
     /// browsers before it ([`TabNumbers::browser_changes`]).
     pub(crate) changes: watch::Sender<u64>,
+    /// The viewport a tab the user opens takes: the one the live view would
+    /// give a tab its viewers watch, once one of them has a panel; none
+    /// before (`live-view.md` § Delivery).
+    pub(crate) opening: watch::Sender<Option<BrowserViewport>>,
 }
 
 /// Own Chrome, its event task and its directories until the conversation work ends;
@@ -477,6 +481,7 @@ where
             // Subscribed before any caller can create a target: Chrome may
             // leave a popup's opener out of later target information once
             // the opener closed.
+            let (opening, opened) = watch::channel(None);
             let tabs = registry::start(
                 handle.clone(),
                 numbers,
@@ -484,6 +489,7 @@ where
                 &observers,
                 failure.clone(),
                 changes.clone(),
+                opened,
             )
             .await?;
             let environment = BrowserEnvironment {
@@ -496,6 +502,7 @@ where
                 upload_directory,
                 captures,
                 changes,
+                opening,
             };
             work(environment).await
         } => result,

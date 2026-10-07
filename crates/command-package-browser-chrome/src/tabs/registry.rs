@@ -46,7 +46,7 @@ use crate::driver::{
 
 use crate::tabs::{
     environment::BrowserHandle,
-    protocol::{BrowserCreatedBy, TabId},
+    protocol::{BrowserCreatedBy, BrowserViewport, TabId},
     tab::{BrowserTab, TabState},
 };
 
@@ -689,6 +689,9 @@ struct Context {
     failure: watch::Sender<Option<String>>,
     /// Counts the changes to what the browser shows.
     changes: watch::Sender<u64>,
+    /// The viewport a tab the user opens takes, once the live view's viewers
+    /// know it.
+    opening: watch::Receiver<Option<BrowserViewport>>,
 }
 
 impl Context {
@@ -699,6 +702,14 @@ impl Context {
         created_by: BrowserCreatedBy,
     ) -> Result<BrowserTab> {
         let ended = self.ended.child_token();
+        // A tab the user opens in the panel starts at the size the panel
+        // gives it, so it needs no other once its page commits; any other
+        // starts at the unwatched viewport.
+        let viewport = match created_by {
+            BrowserCreatedBy::User {} => *self.opening.borrow(),
+            _ => None,
+        }
+        .unwrap_or(crate::tabs::viewport::UNWATCHED);
         let tab = async {
             let state = TabState::observe(
                 &page,
@@ -717,8 +728,8 @@ impl Context {
                 id,
                 created_by,
             );
-            // Every page starts at the unwatched viewport; its window must hold it.
-            tab.set_viewport(crate::tabs::viewport::UNWATCHED).await?;
+            // Its window must hold the viewport it starts at.
+            tab.set_viewport(viewport).await?;
             Ok(tab)
         }
         .await;
@@ -753,6 +764,7 @@ pub(crate) async fn start(
     tasks: &TaskTracker,
     failure: watch::Sender<Option<String>>,
     changes: watch::Sender<u64>,
+    opening: watch::Receiver<Option<BrowserViewport>>,
 ) -> Result<Tabs> {
     let events = {
         let call = browser.call()?;
@@ -781,6 +793,7 @@ pub(crate) async fn start(
             tasks: tasks.clone(),
             failure,
             changes,
+            opening,
         },
         book: Book::new(),
         numbers,
