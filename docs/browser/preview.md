@@ -383,6 +383,15 @@ a CORS request without credentials. What this costs is in
   runtime's `WebSocket` asks the Demi page through the same bound channel, and
   the engine connects upstream from the Host.
 
+**The tab and its top document.** The runtime of a preview tab's top document
+tells the relay the page's address, title, icon and history state as they
+change (`tab-page`), and that the page is leaving (`tab-leaving`), and takes
+the address bar's Back, Forward, Reload and Stop as `tab-command`, so the strip
+and the address bar show the page as a browser's do. The relay reaches the
+page's host through `PageHost.preview`, the `PreviewPlace` the shell gives the
+plugin: the deployment's scheme, domain and namespace, and the runtime's
+address in the web app's build.
+
 **The runtime's delivery.** The runtime, with the rewriter's WebAssembly, is
 about 2.4 MB, and every preview document loads it; fetched by each preview
 origin, every new site would cost 2.4 MB more. A rewritten document loads it
@@ -411,15 +420,16 @@ the relay chooses.
 
 | Kind | Sender | Payload |
 | --- | --- | --- |
-| `hello` | Relay | `{ domain, namespace, host }`: the first message, which labels need, since a user stream takes no arguments |
-| `request` | Relay | `{ id, environment, initiator, user, request, client, body }`: the receiving environment the relay bound, the initiator the relay resolved (an environment, or null when unknown), whether the user started it, the forwarder's request with real addresses, the client description ([Upstream requests](#upstream-requests), [Mobile](#mobile)), and whether body frames follow |
+| `hello` | Relay | `{ scheme, domain, namespace, host }`: the first message, which labels need, since a user stream takes no arguments; the scheme is the one the product state carries |
+| `request` | Relay | `{ id, environment, request, client }`: the receiving environment the relay bound; the forwarder's request with real addresses, which also holds the initiator the relay resolved (an environment, or null when unknown), whether the user started it, and whether body frames follow; and the client description ([Upstream requests](#upstream-requests), [Mobile](#mobile)) |
+| `labels` | Relay | `{ id, environments }`: environments the runtime mapped itself, for the engine to compute their labels; the engine answers `labels` with `{ id, labels }`, and the relay keeps only what the engine computed, so labels have one implementation |
 | `request_body` | Relay | `id`, then up to 256 KiB of the request's body, on the engine's `pull`; an empty one ends it |
 | `response` | Engine | `{ id, status, headers, labels }`: the head of the answer, and the labels its rewriting computed, each with its environment |
 | `pull` | Either | `{ id }`: send the next chunk of that body |
 | `chunk` | Engine | `id`, then up to 256 KiB of the body; an empty one ends it |
 | `cancel` | Relay | `{ id }`: the browser gave up on the request |
 | `failed` | Engine | `{ id, reason }`: the request failed before or during its answer, or the engine gave it up; the forwarder answers a network error |
-| `socket_open` | Relay | `{ id, environment, initiator, url, protocols, client }` |
+| `socket_open` | Relay | `{ id, environment, url, protocols, client }`; the receiving environment is the socket's initiator |
 | `socket_opened` | Engine | `{ id, protocol, extensions }` |
 | `socket_message` | Either | `id`, a text or binary flag, then the message |
 | `socket_close` | Either | `{ id, code, reason }`; a socket that could not open closes with 1006 |
@@ -439,7 +449,10 @@ stream, as on the live view's, and the relay answers every open request with a
 network error and opens the stream again.
 
 The tab methods of the browser plugin carry what is not a request: the
-top-level label of an address the user opens, the state moved between the two
+top-level label of an address the user opens, the `preview_open` method,
+which runs the `browser.preview_open` operation and answers `{ label,
+environment, origin }`, or `invalid_input` for an address that is not a web
+address, the state moved between the two
 browsers ([Page state](#page-state)), and opening a page in the agent's
 browser. They wake a stopped Cloud as a tab method that opens a tab does; the
 stream never wakes it ([User streams](../product/web-api.md#user-streams)).
