@@ -85,7 +85,7 @@ panel's tabs ([Work panel state](../product/web-api.md#work-panel-state)), and
 | --- | --- | --- |
 | `url` | The page, and the plugin | The address the tab shows, or the one the user last asked for while the tab has no browser tab yet |
 | `tab` | The plugin | The id of the conversation browser's tab it shows, once it has one |
-| `closed` | The plugin | The browser no longer has that tab |
+| `closed` | The plugin | The browser lost that tab with the browser itself; the tab opens again on its address when shown |
 | `failure` | The plugin | `{ code, message }`: why the plugin could not open a browser tab for it |
 | `title` | The page, and the plugin | The page's title as the address bar last showed it, so the strip names the tab while no view shows it |
 | `shows` | The plugin | How many times the agent showed the browser tab, as the tab list counts it; absent while it never did ([Showing a tab](#showing-a-tab)) |
@@ -157,13 +157,21 @@ page                         backend (panel, plugin-browser)            Host
   others. A tab id is used once per conversation, so a tab the user closed
   never comes back, and a tab is added once however often the list is read.
   Adding a tab does not select it; only [showing](#showing-a-tab) does.
-- **A tab gone from the Host.** The agent closed it, the browser ended, the
-  Cloud stopped, or the Host restarted. When the plugin reads the list and a
-  panel tab's browser tab is missing, it sets `closed`. The panel tab stays:
-  its content says that the page was closed on the device and offers Close
-  tab, and Reload, which asks the plugin to open a new browser tab on the
-  saved URL. A view that finds its watched tab gone asks the plugin to read
-  the list. A reopened page shares storage only while the same browser
+- **A tab gone from the Host.** Two cases, as in a browser:
+  - **Closed on purpose.** The agent closed it with `demi browser close`, or
+    the page closed itself. The plugin removes its panel tab, as a browser
+    removes a closed tab; the browser's tab list names the tabs closed so,
+    which tells them from tabs lost with the browser.
+  - **Lost with the browser.** The browser ended (the conversation's
+    release, a crash), the Cloud stopped, or the Host restarted. The panel
+    tab stays with its title and address, as a browser keeps a tab it
+    discarded to save memory, and sets `closed`. When it is shown, the plugin
+    opens a new browser tab on its address at once, waking a stopped Cloud as
+    opening any tab does, and the content shows it loading, exactly as Chrome
+    reloads a discarded tab when the user returns to it; a tab not shown waits
+    until it is. The content never says the page was closed and offers no
+    Close or Reload for it. A reopening that fails is a failure as below.
+  A view that finds its watched tab gone asks the plugin to read the list. A reopened page shares storage only while the same browser
   environment remains alive. Retirement removes its temporary profile; a new
   environment starts with fresh storage ([Lifetime](browser.md#lifetime)).
 - **One conversation's work in order.** The plugin opens, closes and reads
