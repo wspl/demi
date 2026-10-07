@@ -83,7 +83,13 @@ async function startBackend(tool: Tool): Promise<void> {
   }
   borrowEnv(tool)
   const began = Date.now()
-  const command = [process.execPath, 'scripts/xtask.ts', 'dev', '--port', String(port), '--data', slotPaths(tool.slot).backendData]
+  // The preview namespace admits the web app's origin and the slot's
+  // network's, which the browser loads it through.
+  const command = [
+    process.execPath, 'scripts/xtask.ts', 'dev', '--port', String(port), '--data', slotPaths(tool.slot).backendData,
+    '--preview-port', String(tool.slot.ports.preview),
+    '--web-origin', local(tool.slot.ports.web), '--web-origin', webBase(tool.slot),
+  ]
   const started = await start(tool, 'backend', port, command, {})
   const account = await untilReady('The backend', started, async () => {
     if (!lineOf(started.group.log, BACKEND_READY)) {

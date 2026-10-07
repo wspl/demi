@@ -40,7 +40,7 @@ pub(crate) enum Migration {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema; 0.1.17 shipped the
+/// release before the one that ships the current schema; 0.1.18 shipped the
 /// last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
@@ -64,6 +64,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.17.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_17),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.18.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_18),
         },
     ],
 };
@@ -117,6 +121,19 @@ CREATE TABLE conversation_deletions (
 /// did.
 const CONTROL_FROM_0_1_17: &str = "
 ALTER TABLE devices ADD COLUMN ended_by_shutdown INTEGER NOT NULL DEFAULT 0 CHECK (ended_by_shutdown IN (0, 1));
+";
+
+/// From 0.1.18's control schema: the deployment keeps its namespace at the
+/// preview domain, which a deployment migrated from 0.1.18 registers at its
+/// next start.
+const CONTROL_FROM_0_1_18: &str = "
+CREATE TABLE preview_namespace (
+  id         INTEGER PRIMARY KEY CHECK (id = 1),
+  namespace  TEXT NOT NULL,
+  secret     BLOB NOT NULL,
+  expires_at INTEGER NOT NULL,
+  origins    TEXT NOT NULL
+) STRICT;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -610,6 +627,17 @@ CREATE TABLE attachments (
   sha256     TEXT NOT NULL,
   snippet    TEXT,
   created_at INTEGER NOT NULL
+) STRICT;
+
+-- The deployment's namespace at the preview domain: one row, its secret
+-- sealed as a credential is, its expiry, and the origins it was last
+-- registered with as a JSON list.
+CREATE TABLE preview_namespace (
+  id         INTEGER PRIMARY KEY CHECK (id = 1),
+  namespace  TEXT NOT NULL,
+  secret     BLOB NOT NULL,
+  expires_at INTEGER NOT NULL,
+  origins    TEXT NOT NULL
 ) STRICT;
 ";
 
