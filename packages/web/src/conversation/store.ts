@@ -34,7 +34,8 @@ import {
   isComposerFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
-import { ApiError, apiRequest, apiUrl, jsonBody, readResponse, unreachable } from '../api/client'
+import { loadDraft } from '../api/drafts'
+import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
   batchAnswerSchema,
@@ -766,24 +767,12 @@ export const useConversations = defineStore('conversations', () => {
   /** Conversations whose record this page just created, which their opening does not read back. */
   const madeHere = new Set<string>()
 
-  /**
-   * Starts the opening's reads. Each one that cannot reach the backend
-   * waits for it, so the conversation shows it loading under the connection
-   * banner, and fails only for the backend's own answer (`web-application.md`
-   * § A page of another build).
-   */
   function openingReads(id: string, signal: AbortSignal): OpeningReads {
     const path = `/conversations/${encodeURIComponent(id)}`
     const reads = {
-      transcript: product.untilReached(
-        async () => readResponse(await apiRequest(`${path}/transcript`, { signal }), transcriptSchema),
-        signal,
-      ),
-      hosts: product.untilReached(
-        async () => readResponse(await apiRequest(`${path}/hosts`, { signal }), attachedHostsSchema),
-        signal,
-      ),
-      draft: draftSync.fetch(id, signal),
+      transcript: apiRequest(`${path}/transcript`, { signal }).then((response) => readResponse(response, transcriptSchema)),
+      hosts: apiRequest(`${path}/hosts`, { signal }).then((response) => readResponse(response, attachedHostsSchema)),
+      draft: loadDraft(id, signal),
     }
     // The opening that takes them reports their failures; one never taken has nobody to tell.
     for (const read of Object.values(reads)) {
@@ -923,11 +912,10 @@ export const useConversations = defineStore('conversations', () => {
    */
   async function readHosts(conversation: Conversation): Promise<void> {
     const revision = conversation.hostsRevision
-    const { signal } = lifetime
-    const answer = await product.untilReached(async () => {
-      const response = await apiRequest(`/conversations/${encodeURIComponent(conversation.id)}/hosts`, { signal })
-      return readResponse(response, attachedHostsSchema)
-    }, signal)
+    const response = await apiRequest(`/conversations/${encodeURIComponent(conversation.id)}/hosts`, {
+      signal: lifetime.signal,
+    })
+    const answer = await readResponse(response, attachedHostsSchema)
     if (conversation.hostsRevision === revision) {
       conversation.attachedHosts = answer.hosts
     }
@@ -1628,28 +1616,26 @@ export const useConversations = defineStore('conversations', () => {
       conversation.files.filter((file) => file.id === id),
     )
     saveDrafts()
-    // A backend out of reach fails nothing: the message waits, and goes with
-    // its id once the backend answers again (`web-application.md` § A page of
-    // another build). Only a refusal is a failed delivery; any failure while
-    // the banner shows, as of a conversation socket the restart closed, waits
-    // too. A message the user replaced meanwhile waits no more.
+    // A backend out of reach fails nothing: the record's request waits in the
+    // HTTP client, and the message waits in the runtime for the conversation
+    // to open, and goes with its id once the backend answers again
+    // (`web-application.md` § A page of another build). Only a refusal is a
+    // failed delivery.
     const current = () => conversation.pendingSend?.id === pending.id
     try {
-      await product.untilReached(async () => {
-        await persistConversation(conversation)
-        const references = files.map((file): ClientContent => {
-          if (!isComposerFile(file)) {
-            return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
-          }
-          if (!file.upload) {
-            throw new Error(`${file.name} has not finished uploading.`)
-          }
-          return { type: 'upload', ref: file.upload.id, fileName: file.name }
-        })
-        // Each file where its capsule stands in the text.
-        const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
-        await (await runtimeFor(conversation)).submit(content, pending.id)
-      }, signal, (error) => current() && (unreachable(error) || product.connection !== null))
+      await persistConversation(conversation)
+      const references = files.map((file): ClientContent => {
+        if (!isComposerFile(file)) {
+          return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
+        }
+        if (!file.upload) {
+          throw new Error(`${file.name} has not finished uploading.`)
+        }
+        return { type: 'upload', ref: file.upload.id, fileName: file.name }
+      })
+      // Each file where its capsule stands in the text.
+      const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
+      await (await runtimeFor(conversation)).submit(content, pending.id)
       clearSubmission(conversation, pending.id)
     } catch (error) {
       // The page let the conversations go, as a sign-out does, or the message is no longer the one to send.

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
-import AsyncRegion from '@demicodes/web-ui/ui/AsyncRegion.vue'
+import StartingScreen from '@demicodes/web-ui/ui/StartingScreen.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { reloadFor } from '@demicodes/web-ui/infra/build-reload'
@@ -209,12 +209,11 @@ useAppShortcuts(
 </script>
 
 <template>
-  <div
+  <StartingScreen
     v-if="session.current.status === 'checking' || !route.matched.length"
-    class="flex h-dvh items-center justify-center"
-  >
-    <AsyncRegion state="loading" label="Loading Demi…" />
-  </div>
+    class="h-dvh"
+    :connecting="product.connecting"
+  />
   <div v-else-if="session.signedIn" class="flex h-full flex-col">
     <ConnectionBanner v-if="product.connection" :problem="product.connection" />
     <SidebarLayout
