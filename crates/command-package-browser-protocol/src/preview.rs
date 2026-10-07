@@ -68,7 +68,8 @@ fn web_address(value: &str, _: &()) -> garde::Result {
 }
 
 /// `browser.handover`: a tab of the agent's browser on `url`, with the page
-/// state the stream's `state_keep` kept under `state`.
+/// state the stream's `state_keep` keeps under `state`, which the operation
+/// waits a moment for when it has not arrived.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct HandoverInput {
@@ -418,13 +419,18 @@ pub enum PreviewRelayMessage {
         #[garde(length(chars, min = 1, max = 64))]
         tab: String,
     },
-    /// Keep a page state of the user's browser for a tab of the agent's
-    /// browser that `browser.handover` opens: the jar's cookies of `sites`,
-    /// the origins of the tab's documents, and `storage`, its top-level
-    /// origin's, none when it was too large. The answer is `state_kept`.
+    /// Keep a page state of the user's browser under `token`, for the tab of
+    /// the agent's browser that `browser.handover` opens with it, which may
+    /// already wait for it: the jar's cookies of `sites`, the origins of the
+    /// tab's documents, and `storage`, its top-level origin's, none when it
+    /// was too large. No sites and no storage open the address alone. The
+    /// answer is `state_kept`.
     StateKeep {
         #[garde(skip)]
         id: u32,
+        /// The page's own, unguessable: the panel tab carries it at once.
+        #[garde(length(chars, min = 1, max = 64))]
+        token: String,
         #[garde(length(max = MAX_LABELS), inner(length(chars, min = 1, max = 2048)))]
         sites: Vec<String>,
         #[garde(skip)]
@@ -493,12 +499,10 @@ pub enum PreviewEngineMessage {
         #[garde(skip)]
         too_large: bool,
     },
-    /// `state_keep`'s page state is kept under `token`, for `browser.handover`.
+    /// `state_keep`'s page state is kept, for `browser.handover`.
     StateKept {
         #[garde(skip)]
         id: u32,
-        #[garde(skip)]
-        token: String,
     },
     /// The request, label or state question failed before or during its
     /// answer; a request's forwarder answers a network error.

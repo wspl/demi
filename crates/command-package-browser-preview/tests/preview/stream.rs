@@ -202,7 +202,7 @@ async fn a_body_for_a_request_without_one_ends_the_stream() {
 /// keeps what the user's browser hands it.
 struct SignedIn {
     storage: PageStorage,
-    kept: std::sync::Mutex<Vec<(Vec<String>, Option<PageStorage>)>>,
+    kept: std::sync::Mutex<Vec<(String, Vec<String>, Option<PageStorage>)>>,
 }
 
 impl PageStates for SignedIn {
@@ -216,9 +216,8 @@ impl PageStates for SignedIn {
         })
     }
 
-    fn keep(&self, sites: Vec<String>, storage: Option<PageStorage>) -> String {
-        self.kept.lock().unwrap().push((sites, storage));
-        "kept-1".into()
+    fn keep(&self, token: String, sites: Vec<String>, storage: Option<PageStorage>) {
+        self.kept.lock().unwrap().push((token, sites, storage));
     }
 }
 
@@ -256,10 +255,18 @@ async fn page_states_move_over_the_stream() {
     relay.send(&PreviewRelayMessage::StateTake { id: 2, tab: "t9".into() });
     let Frame::Control(gone) = relay.next().await else { panic!("the failure") };
     assert_eq!(gone, PreviewEngineMessage::Failed { id: 2, reason: "The tab is gone.".into() });
-    relay.send(&PreviewRelayMessage::StateKeep { id: 3, sites: vec!["http://localhost:3000".into()], storage: Some(storage("mine")) });
-    let Frame::Control(kept) = relay.next().await else { panic!("the token") };
-    assert_eq!(kept, PreviewEngineMessage::StateKept { id: 3, token: "kept-1".into() });
-    assert_eq!(*browser.kept.lock().unwrap(), vec![(vec!["http://localhost:3000".to_owned()], Some(storage("mine")))]);
+    relay.send(&PreviewRelayMessage::StateKeep {
+        id: 3,
+        token: "kept-1".into(),
+        sites: vec!["http://localhost:3000".into()],
+        storage: Some(storage("mine")),
+    });
+    let Frame::Control(kept) = relay.next().await else { panic!("the acknowledgement") };
+    assert_eq!(kept, PreviewEngineMessage::StateKept { id: 3 });
+    assert_eq!(
+        *browser.kept.lock().unwrap(),
+        vec![("kept-1".to_owned(), vec!["http://localhost:3000".to_owned()], Some(storage("mine")))]
+    );
 
     // A page whose storage is larger than a frame moves its cookies only.
     let large = Arc::new(SignedIn { storage: storage(&"x".repeat(MAX_STORAGE_BYTES)), kept: Default::default() });

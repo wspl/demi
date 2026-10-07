@@ -31,6 +31,10 @@ const JAR_FILE: &str = "preview-cookies.json";
 /// How long a page state the user's browser handed over waits for its tab
 /// of the agent's browser.
 const KEPT_FOR: Duration = Duration::from_secs(120);
+/// How long `browser.handover` waits for its page state, which the user's
+/// browser reads while the tab already shows it opening; after that the tab
+/// opens its address alone.
+const KEEP_WAIT: Duration = Duration::from_secs(10);
 
 /// A page state of the user's browser, until `browser.handover` takes it.
 struct Kept {
@@ -39,8 +43,46 @@ struct Kept {
     at: Instant,
 }
 
-/// The page states kept, by token.
-type KeptStates = Arc<Mutex<HashMap<String, Kept>>>;
+/// The page states kept, by token, and the tabs of the agent's browser that
+/// wait for theirs.
+#[derive(Default)]
+struct KeptStates {
+    states: Mutex<HashMap<String, Kept>>,
+    arrived: tokio::sync::Notify,
+}
+
+impl KeptStates {
+    fn keep(&self, token: String, kept: Kept) {
+        let mut states = self.states.lock().expect("the kept page states");
+        states.retain(|_, state| state.at.elapsed() < KEPT_FOR);
+        states.insert(token, kept);
+        drop(states);
+        self.arrived.notify_waiters();
+    }
+
+    /// The page state kept under `token`, waiting up to [`KEEP_WAIT`] for it
+    /// to arrive; none after.
+    async fn take(&self, token: &str) -> Option<Kept> {
+        let deadline = tokio::time::Instant::now() + KEEP_WAIT;
+        loop {
+            // Listening before looking, so a state kept in between wakes the wait.
+            let arrived = self.arrived.notified();
+            tokio::pin!(arrived);
+            arrived.as_mut().enable();
+            let kept = {
+                let mut states = self.states.lock().expect("the kept page states");
+                states.retain(|_, state| state.at.elapsed() < KEPT_FOR);
+                states.remove(token)
+            };
+            if kept.is_some() {
+                return kept;
+            }
+            if tokio::time::timeout_at(deadline, arrived).await.is_err() {
+                return None;
+            }
+        }
+    }
+}
 
 /// The preview engine of the program and its open streams.
 pub(crate) struct Previews {
@@ -48,7 +90,7 @@ pub(crate) struct Previews {
     /// directory.
     directory: Option<PathBuf>,
     engine: OnceCell<Arc<Engine>>,
-    kept: KeptStates,
+    kept: Arc<KeptStates>,
     streams: TaskTracker,
     stopping: CancellationToken,
 }
@@ -58,7 +100,7 @@ impl Previews {
         Self {
             directory,
             engine: OnceCell::new(),
-            kept: KeptStates::default(),
+            kept: Arc::default(),
             streams: TaskTracker::new(),
             stopping: CancellationToken::new(),
         }
@@ -136,8 +178,10 @@ impl Previews {
 
     /// `browser.handover`: a tab of the conversation's browser on the
     /// address, with the page state kept under the input's token: the jar's
-    /// cookies of its sites and its storage. A token that is unknown, or
-    /// waited too long, opens the address alone.
+    /// cookies of its sites and its storage. The user's browser keeps it
+    /// while the tab already shows it opening, so it may arrive after this
+    /// asks; one that does not arrive in [`KEEP_WAIT`], or waited too long
+    /// before, opens the address alone.
     pub async fn handover(
         &self,
         context: InvocationContext,
@@ -145,11 +189,7 @@ impl Previews {
         browsers: Arc<Conversations>,
     ) -> Result<Completion, ServiceError> {
         let engine = self.engine().await?;
-        let kept = {
-            let mut kept = self.kept.lock().expect("the kept page states");
-            kept.retain(|_, state| state.at.elapsed() < KEPT_FOR);
-            kept.remove(&input.state)
-        };
+        let kept = self.kept.take(&input.state).await;
         let (cookies, storage) = match kept {
             Some(Kept { sites, storage, .. }) => {
                 let addresses: Vec<Url> = sites.iter().filter_map(|site| Url::parse(site).ok()).collect();
@@ -203,7 +243,7 @@ struct BrowserStates {
     conversation: String,
     browsers: Arc<Conversations>,
     engine: Arc<Engine>,
-    kept: KeptStates,
+    kept: Arc<KeptStates>,
 }
 
 impl PageStates for BrowserStates {
@@ -222,12 +262,8 @@ impl PageStates for BrowserStates {
         })
     }
 
-    fn keep(&self, sites: Vec<String>, storage: Option<PageStorage>) -> String {
-        let token = uuid::Uuid::new_v4().to_string();
-        let mut kept = self.kept.lock().expect("the kept page states");
-        kept.retain(|_, state| state.at.elapsed() < KEPT_FOR);
-        kept.insert(token.clone(), Kept { sites, storage, at: Instant::now() });
-        token
+    fn keep(&self, token: String, sites: Vec<String>, storage: Option<PageStorage>) {
+        self.kept.keep(token, Kept { sites, storage, at: Instant::now() });
     }
 }
 

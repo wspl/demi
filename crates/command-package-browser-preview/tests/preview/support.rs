@@ -181,7 +181,7 @@ impl PageStates for NoBrowser {
         Box::pin(async { Err("No browser runs.".to_owned()) })
     }
 
-    fn keep(&self, _sites: Vec<String>, _storage: Option<PageStorage>) -> String {
+    fn keep(&self, _token: String, _sites: Vec<String>, _storage: Option<PageStorage>) {
         unreachable!("no test keeps a page state without a browser")
     }
 }

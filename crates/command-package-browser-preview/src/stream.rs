@@ -64,9 +64,9 @@ pub trait PageStates: Send + Sync {
     /// Moves the cookies of the agent's tab `tab` into the jar, and answers
     /// its page; why not, as a sentence, when it cannot.
     fn take(&self, tab: String) -> BoxFuture<'static, Result<TakenState, String>>;
-    /// Keeps the jar's cookies of `sites` and `storage` for the tab of the
-    /// agent's browser `browser.handover` opens; answers its token.
-    fn keep(&self, sites: Vec<String>, storage: Option<PageStorage>) -> String;
+    /// Keeps the jar's cookies of `sites` and `storage` under `token`, for the
+    /// tab of the agent's browser `browser.handover` opens with it.
+    fn keep(&self, token: String, sites: Vec<String>, storage: Option<PageStorage>);
 }
 
 /// Serves one `preview` stream: the relay's frames from `input`, the
@@ -463,11 +463,11 @@ impl Served {
                     Ended::Answered
                 });
             }
-            Inbound::Control(PreviewRelayMessage::StateKeep { id, sites, storage }) => {
+            Inbound::Control(PreviewRelayMessage::StateKeep { id, token, sites, storage }) => {
                 self.place()?;
-                let token = self.states.keep(sites, storage);
+                self.states.keep(token, sites, storage);
                 // It fails only once the writer ended, which the serving loop notices.
-                let _closed = self.output.send(control(&PreviewEngineMessage::StateKept { id, token })).await;
+                let _closed = self.output.send(control(&PreviewEngineMessage::StateKept { id })).await;
             }
             Inbound::Control(PreviewRelayMessage::SocketClose { id, code, reason }) => {
                 self.place()?;

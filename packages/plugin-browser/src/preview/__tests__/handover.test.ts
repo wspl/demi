@@ -55,9 +55,8 @@ function world(script: Partial<PreviewDriver> = {}) {
     },
     readState: async () => storage(),
     origins: () => ['http://localhost:5173', 'http://api.localhost:5173'],
-    async keepState(_tab, _place, origins, kept) {
-      steps.push(`keep ${origins.join(' ')} ${kept === null ? 'cookies only' : 'with storage'}`)
-      return 'token-1'
+    async keepState(_tab, _place, token, origins, kept) {
+      steps.push(`keep ${token === agentTabs.at(-1)?.handover ? 'the tab’s token' : token} ${origins.join(' ')} ${kept === null ? 'cookies only' : 'with storage'}`)
     },
     ...script,
   }
@@ -134,24 +133,36 @@ test('what of the page’s state did not move is a toast, and the page opens eit
   expect(gone.steps).toEqual(['boot http://localhost:5173/'])
 })
 
-test('Open in Agent’s Browser keeps the page’s state for the agent’s tab it opens beside the tab', async () => {
-  const { tabs, steps, agentTabs, attach } = world()
+test('Open in Agent’s Browser opens the agent’s tab at once, and keeps the page’s state for it meanwhile', async () => {
+  let reading: () => void = () => {}
+  const read = new Promise<void>((resolve) => {
+    reading = resolve
+  })
+  const { tabs, steps, agentTabs, attach } = world({
+    readState: async () => {
+      await read
+      return storage()
+    },
+  })
   const { tab } = attach('p1', { url: 'http://localhost:5173/app' })
   await settled()
   tab.report({ type: 'page', page: { url: 'http://localhost:5173/app#done', title: 'App', icon: '' } })
-  await tabs.toAgent('p1')
-  expect(steps.at(-1)).toBe('keep http://localhost:5173 http://api.localhost:5173 with storage')
-  expect(agentTabs).toEqual([{ url: 'http://localhost:5173/app#done', openedBy: 'p1', handover: 'token-1' }])
+  const handing = tabs.toAgent('p1')
+  // The tab is there before the page's storage is read.
+  expect(agentTabs).toEqual([{ url: 'http://localhost:5173/app#done', openedBy: 'p1', handover: expect.any(String) }])
+  reading()
+  await handing
+  expect(steps.at(-1)).toBe('keep the tab’s token http://localhost:5173 http://api.localhost:5173 with storage')
 })
 
-test('Open in Agent’s Browser moves cookies only past the size a page state moves, and the address alone when keeping fails', async () => {
+test('Open in Agent’s Browser moves cookies only past the size a page state moves, and the address alone when its state fails', async () => {
   const huge = { ...storage(), local: [{ key: 'blob', value: 'x'.repeat(PREVIEW_MAX_STORAGE_BYTES) }] }
   const large = world({ readState: async () => huge })
   const shown = large.attach('p1', { url: 'http://localhost:5173/' })
   await settled()
   shown.tab.report({ type: 'page', page: { url: 'http://localhost:5173/', title: 'App', icon: '' } })
   await large.tabs.toAgent('p1')
-  expect(large.steps.at(-1)).toBe('keep http://localhost:5173 http://api.localhost:5173 cookies only')
+  expect(large.steps.at(-1)).toBe('keep the tab’s token http://localhost:5173 http://api.localhost:5173 cookies only')
   expect(large.notices).toEqual([['Only the Page’s Cookies Moved', 'Its storage is larger than the 16 MB a page state moves.']])
 
   const failing = world({ keepState: () => Promise.reject(new Error('the preview stream ended')) })
@@ -159,6 +170,15 @@ test('Open in Agent’s Browser moves cookies only past the size a page state mo
   await settled()
   page.tab.report({ type: 'page', page: { url: 'http://localhost:5173/', title: 'App', icon: '' } })
   await failing.tabs.toAgent('p1')
-  expect(failing.agentTabs).toEqual([{ url: 'http://localhost:5173/', openedBy: 'p1' }])
+  expect(failing.agentTabs).toEqual([{ url: 'http://localhost:5173/', openedBy: 'p1', handover: expect.any(String) }])
   expect(failing.notices).toEqual([['The Page Opened Without Its State', 'The preview stream ended.']])
+
+  // A page whose storage cannot be read moves nothing: the tab opens its address alone.
+  const unread = world({ readState: () => Promise.reject(new Error('The preview took too long to read or write the page’s storage.')) })
+  const shownPage = unread.attach('p1', { url: 'http://localhost:5173/' })
+  await settled()
+  shownPage.tab.report({ type: 'page', page: { url: 'http://localhost:5173/', title: 'App', icon: '' } })
+  await unread.tabs.toAgent('p1')
+  expect(unread.steps.at(-1)).toBe('keep the tab’s token  cookies only')
+  expect(unread.notices).toEqual([['The Page Opened Without Its State', 'The preview took too long to read or write the page’s storage.']])
 })

@@ -333,16 +333,15 @@ export class PreviewConnection {
   }
 
   /**
-   * Keeps a page state of the user's browser for the tab of the agent's
-   * browser that opens with it: the jar's cookies of `sites`, and `storage`.
-   * Answers its token.
+   * Keeps a page state of the user's browser under `token`, for the tab of
+   * the agent's browser that opens with it: the jar's cookies of `sites`,
+   * and `storage`.
    */
-  async keepState(place: PreviewPlace, sites: string[], storage: PageStorage | null): Promise<string> {
-    const answer = await this.ask(place, (id) => ({ type: 'state_keep', id, sites, storage }))
+  async keepState(place: PreviewPlace, token: string, sites: string[], storage: PageStorage | null): Promise<void> {
+    const answer = await this.ask(place, (id) => ({ type: 'state_keep', id, token, sites, storage }))
     if (answer.type !== 'state_kept') {
       throw unexpected(answer)
     }
-    return answer.token
   }
 
   /** Asks the engine `message`; rejects when the stream ends first or the engine fails it. */

@@ -3,7 +3,8 @@
 # deployment) when a push changes it. A deployment only adds: the files of a
 # version already published under static/__demi/v<N>/ never change and are
 # never removed, since Demi pages built against them may still be open, so
-# the deployment stops if the push changed one.
+# the deployment stops if the push changed or removed one; a new file in a
+# published version breaks nothing.
 name: Preview domain
 
 on:
@@ -31,20 +32,11 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
         run: |
-          versions=services/preview-domain/static/__demi
           # A new branch has no previous commit; its first parent stands in.
           if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
             BEFORE=$(git rev-parse HEAD^)
           fi
-          changed=0
-          for version in $(git ls-tree --name-only "$BEFORE" "$versions/"); do
-            if ! git diff --quiet "$BEFORE" HEAD -- "$version"; then
-              echo "::error::$version was published and must not change; publish the change as a new version" >&2
-              git diff --stat "$BEFORE" HEAD -- "$version" >&2
-              changed=1
-            fi
-          done
-          exit "$changed"
+          services/preview-domain/scripts/check-published.sh "$BEFORE"
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile --filter @demicodes/preview-domain
       - name: Deploy

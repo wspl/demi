@@ -55,6 +55,7 @@ type Answer = { status: number; headers?: [string, string][]; labels?: Record<st
 function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>) {
   const received: Received[] = []
   const said: PreviewRelayMessage[] = []
+  const kept: string[] = []
   let handlers: UserStreamHandlers | null = null
   const bodies = new Map<number, Uint8Array[]>()
   const answers = new Map<number, Uint8Array>()
@@ -137,7 +138,8 @@ function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>
         ? { type: 'state', id: message.id, url: 'http://localhost:5173/', title: 'App', storage: null, too_large: true }
         : { type: 'failed', id: message.id, reason: 'The agent’s tab is gone.' })
     } else if (message.type === 'state_keep') {
-      send({ type: 'state_kept', id: message.id, token: `kept-${message.sites.length}` })
+      kept.push(message.token)
+      send({ type: 'state_kept', id: message.id })
     } else if (message.type === 'labels') {
       const labels = Object.fromEntries(message.environments.map((environment) => [ENGINE_LABELS.get(environment.origin)!, environment]))
       send({ type: 'labels', id: message.id, labels })
@@ -148,7 +150,7 @@ function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>
       handlers?.data(encodeChunk(message.id, chunk))
     }
   }
-  return { open, received, said }
+  return { open, received, said, kept }
 }
 
 function encodeEngine(message: PreviewEngineMessage): Uint8Array {
@@ -494,10 +496,11 @@ test('page states are questions on the stream: the engine’s answer, or why it 
   const connection = new PreviewConnection(engine.open)
   await expect(connection.takeState(PLACE, 't1')).resolves.toEqual({ url: 'http://localhost:5173/', title: 'App', storage: null, tooLarge: true })
   await expect(connection.takeState(PLACE, 't9')).rejects.toThrow('The agent’s tab is gone.')
-  await expect(connection.keepState(PLACE, ['http://localhost:5173'], null)).resolves.toBe('kept-1')
+  await connection.keepState(PLACE, 'kept-1', ['http://localhost:5173'], null)
+  expect(engine.kept).toEqual(['kept-1'])
   // A question the stream's end leaves unanswered fails.
   const silent = new PreviewConnection(() => ({ send() {}, close() {} }))
-  const waiting = silent.keepState(PLACE, [], null)
+  const waiting = silent.keepState(PLACE, 'kept-2', [], null)
   silent.close()
   await expect(waiting).rejects.toThrow('the panel closed')
 })

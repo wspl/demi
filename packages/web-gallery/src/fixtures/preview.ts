@@ -132,7 +132,6 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
   let waiting: (() => void)[] = []
   let failure: string | null = null
   let labels = 0
-  let handovers = 0
 
   const wait = async () => {
     await new Promise((resolve) => setTimeout(resolve, BEAT_MS))
@@ -259,7 +258,7 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
       const url = history?.entries[history.index]
       return url ? [new URL(url).origin] : []
     },
-    keepState: async () => `gallery-state-${handovers++}`,
+    keepState: async () => {},
   }
 
   return {

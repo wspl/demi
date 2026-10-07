@@ -283,9 +283,9 @@ async fn the_agents_page_moves_into_the_users_browser_with_its_state() {
 }
 
 /// Open in Agent's Browser: the jar's cookies of the page's sites and the
-/// storage the user's browser handed over are in place before the page's
-/// first script, an `HttpOnly` cookie reaching the server but not
-/// `document.cookie`.
+/// storage the user's browser handed over, which arrive after the tab began
+/// to open, are in place before the page's first script, an `HttpOnly`
+/// cookie reaching the server but not `document.cookie`.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_users_page_opens_in_the_agents_browser_with_its_state_before_its_first_script() {
@@ -309,19 +309,25 @@ async fn the_users_page_opens_in_the_agents_browser_with_its_state_before_its_fi
             })],
             skipped: Vec::new(),
         };
-        preview.send(&PreviewRelayMessage::StateKeep { id: 2, sites: vec![site.origin.clone()], storage: Some(storage) });
-        let PreviewEngineMessage::StateKept { id: 2, token } = preview.message().await else {
-            panic!("the kept state's token");
+        // The tab opens at once, and its page state arrives while it waits for it.
+        let opening = fixture.result_for(
+            CommandCaller::User {},
+            "browser.handover",
+            json!({"url": format!("{}/", site.origin), "state": "kept-1"}),
+            CancellationToken::new(),
+            Vec::new(),
+        );
+        let keeping = async {
+            tokio::time::sleep(Duration::from_millis(300)).await;
+            preview.send(&PreviewRelayMessage::StateKeep {
+                id: 2,
+                token: "kept-1".into(),
+                sites: vec![site.origin.clone()],
+                storage: Some(storage),
+            });
+            assert_eq!(preview.message().await, PreviewEngineMessage::StateKept { id: 2 });
         };
-        let (code, opened) = fixture
-            .result_for(
-                CommandCaller::User {},
-                "browser.handover",
-                json!({"url": format!("{}/", site.origin), "state": token}),
-                CancellationToken::new(),
-                Vec::new(),
-            )
-            .await;
+        let ((code, opened), ()) = tokio::join!(opening, keeping);
         assert_eq!(code, 0, "{opened}");
         let tab = opened["tab"].as_str().unwrap().to_owned();
         let at_load = settled(&fixture, &tab, "window.stateAtLoad").await;
