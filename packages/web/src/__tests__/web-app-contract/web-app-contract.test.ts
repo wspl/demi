@@ -654,6 +654,22 @@ test('a draft saved on one page reaches another, a save over a version the page 
   }
 })
 
+test('a conversation deleted on one page leaves the state of another', async () => {
+  const model = await scriptedModel()
+  const other = openPage()
+  other.start()
+  try {
+    await other.until(() => true, AbortSignal.timeout(SETTLE_MS))
+    const id = await createConversation(model)
+    await other.until((state) => state.conversations.some((conversation) => conversation.id === id), AbortSignal.timeout(SETTLE_MS))
+    const deleted = await apiRequest(`/conversations/${id}`, { method: 'DELETE' })
+    expect(deleted.status).toBe(204)
+    await other.until((state) => !state.conversations.some((conversation) => conversation.id === id), AbortSignal.timeout(SETTLE_MS))
+  } finally {
+    other.stop()
+  }
+})
+
 test('another page follows a conversation it does not show: its creation, its turn running and ending unread, and the read acknowledgement', async () => {
   const model = await scriptedModel()
   const other = openPage()

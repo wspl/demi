@@ -85,6 +85,18 @@ pub fn read(
         .transpose()
 }
 
+/// Every row of the conversation.
+pub fn all(connection: &Connection) -> Result<Vec<CommandOutput>, StorageError> {
+    let mut statement =
+        connection.prepare_cached(&format!("SELECT {COLUMNS} FROM command_outputs"))?;
+    let mut rows = statement.query([])?;
+    let mut outputs = Vec::new();
+    while let Some(row) = rows.next()? {
+        outputs.push(decode_row(row)?);
+    }
+    Ok(outputs)
+}
+
 /// The rows of `commands`, which a Fork copies into its destination.
 pub fn rows(
     connection: &Connection,

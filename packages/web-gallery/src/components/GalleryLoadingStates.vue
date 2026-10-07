@@ -10,12 +10,15 @@ import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersP
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { provider, mockVendors } from '../fixtures/settings'
+import { productWould } from '../product-would'
 import GallerySpecimen from './GallerySpecimen.vue'
 
 type LoadState = 'loading' | 'ready' | 'failed'
 
 const state = ref<LoadState>('loading')
 const saving = ref(true)
+/** The archived row, which Delete removes until the page reloads. */
+const archivedRows = ref([{ id: 'archived', title: 'Example conversation' }])
 const options: readonly SegmentedOption<LoadState>[] = [
   { value: 'loading', label: 'First Load' },
   { value: 'ready', label: 'Cached Content' },
@@ -102,9 +105,12 @@ const selected = ref<string | null>('loading-provider')
     <GallerySpecimen variant="Archive list load and row operation">
       <SettingsArchived
         :load="state"
-        :conversations="[{ id: 'archived', title: 'Example conversation' }]"
+        :conversations="archivedRows"
         :pending-ids="saving ? ['archived'] : []"
+        :overlay-store="appOverlayStore"
+        @open="productWould('Open the Conversation Read-Only')"
         @restore="saving = true"
+        @delete="archivedRows = []"
         @retry="state = 'loading'"
       />
     </GallerySpecimen>

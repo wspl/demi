@@ -461,9 +461,11 @@ function resetShortcuts(): void {
       :conversations="archived"
       :load="conversations.listStatus"
       :pending-ids="conversations.pendingChanges"
+      :overlay-store="appOverlayStore"
       @retry="conversations.reloadList"
       @open="openConversation"
       @restore="restore"
+      @delete="(id) => void conversations.remove([id])"
     />
     <SettingsKeyboard
       v-else-if="section === 'keyboard'"

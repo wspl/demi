@@ -79,6 +79,11 @@ pub enum SyncEvent {
     Conversation {
         conversation: Box<ConversationSummary>,
     },
+    /// The conversation was deleted: the page drops its summary, and a page
+    /// that shows it goes to a new conversation.
+    ConversationDeleted {
+        id: ConversationId,
+    },
     /// The id of every conversation, in the product state's order.
     ConversationOrder {
         ids: Vec<ConversationId>,

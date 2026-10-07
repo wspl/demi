@@ -41,7 +41,7 @@ pub(crate) enum Migration {
 
 /// The control database's. Its history holds the schema of each published
 /// release before the one that ships the current schema; 0.1.14 and 0.1.15
-/// shipped the last one in it.
+/// shipped the one of 0.1.15, and 0.1.16 the last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -56,6 +56,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.15.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_15),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.16.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_16),
         },
     ],
 };
@@ -89,6 +93,16 @@ ALTER TABLE devices ADD COLUMN os TEXT;
 /// attached hosts, from 0.
 const CONTROL_FROM_0_1_15: &str = "
 ALTER TABLE conversations ADD COLUMN hosts_revision INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0);
+";
+
+/// From 0.1.16's control schema: a conversation's deletion is recorded as
+/// pending until its last step (`storage.md` § Deleting a conversation).
+const CONTROL_FROM_0_1_16: &str = "
+CREATE TABLE conversation_deletions (
+  id         TEXT PRIMARY KEY COLLATE NOCASE,
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  deleted_at INTEGER NOT NULL
+) STRICT;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -481,6 +495,15 @@ CREATE TABLE permission_grants (
   category        TEXT NOT NULL,
   granted_at      INTEGER NOT NULL,
   PRIMARY KEY (conversation_id, category)
+) STRICT;
+
+-- A conversation's deletion that has not reached its last step: its record
+-- is gone, and a start finishes what is left (`storage.md` § Deleting a
+-- conversation). The id is compared as the index compares it.
+CREATE TABLE conversation_deletions (
+  id         TEXT PRIMARY KEY COLLATE NOCASE,
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  deleted_at INTEGER NOT NULL
 ) STRICT;
 
 -- Records that make interrupted multi-step work discoverable. A Fork

@@ -1,4 +1,4 @@
-import { computed, ref, toRaw, watch } from 'vue'
+import { computed, reactive, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
@@ -28,7 +28,7 @@ import {
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
-import { apiRequest, apiUrl, jsonBody, readResponse, unreachable } from '../api/client'
+import { ApiError, apiRequest, apiUrl, jsonBody, readResponse, unreachable } from '../api/client'
 import {
   attachedHostsSchema,
   batchAnswerSchema,
@@ -76,6 +76,11 @@ export const useConversations = defineStore('conversations', () => {
   const resources = useResources()
   const session = useSession()
   const items = ref<Conversation[]>([])
+  /**
+   * The conversations this page had a record of that were deleted since, by
+   * this page or another; a page that shows one goes to a new conversation.
+   */
+  const deleted = reactive(new Set<string>())
   const pendingChanges = ref<string[]>([])
   const listStatus = computed(() => product.load)
   const writes = new SerialQueue()
@@ -257,6 +262,14 @@ export const useConversations = defineStore('conversations', () => {
         return
       }
       const previous = items.value
+      for (const item of previous) {
+        if (item.persistence === 'synced' && !snapshot.conversations.some((record) => record.id === item.id)) {
+          deleted.add(item.id)
+        }
+      }
+      for (const record of snapshot.conversations) {
+        deleted.delete(record.id)
+      }
       const local = previous.filter(
         (item) =>
           item.persistence !== 'synced' &&
@@ -1070,6 +1083,68 @@ export const useConversations = defineStore('conversations', () => {
     return done
   }
 
+  /**
+   * Deletes the conversations for good, once the user confirmed it
+   * (`product.md` § Conversations and projects): one the backend has no
+   * record of leaves this page, and each other one leaves the backend and
+   * every page. What this browser keeps of their drafts goes too. A refusal
+   * is a toast. Answers whether every one was deleted.
+   */
+  function remove(ids: string[]): Promise<boolean> {
+    return changeConversations(ids, () => applyRemove(ids), false)
+  }
+
+  async function applyRemove(ids: string[]): Promise<boolean> {
+    const userId = session.user?.id ?? product.snapshot?.user.id
+    const forget = (id: string) => {
+      restored.delete(id)
+      savedDrafts.delete(id)
+      if (userId) {
+        void deleteDraft(userId, id).catch(storageError)
+      }
+    }
+    const synced = ids.filter((id) => items.value.find((item) => item.id === id)?.persistence === 'synced')
+    const local = ids.filter((id) => !synced.includes(id))
+    items.value = items.value.filter((item) => !local.includes(item.id))
+    local.forEach(forget)
+    const signal = lifetime.signal
+    try {
+      return await writes.run(async () => {
+        const failures: string[] = []
+        for (const id of synced) {
+          signal.throwIfAborted()
+          const title = items.value.find((item) => item.id === id)?.title ?? id
+          const sentAt = product.sent()
+          try {
+            await apiRequest(`/conversations/${encodeURIComponent(id)}`, { method: 'DELETE', signal })
+          } catch (error) {
+            if (signal.aborted) {
+              throw error
+            }
+            failures.push(`${title}: ${error instanceof Error ? error.message : String(error)}`)
+            continue
+          }
+          // The deletion shows at once; the channel brings it to every other page.
+          product.answered(sentAt, { type: 'conversation_deleted', id })
+          forget(id)
+        }
+        if (failures.length) {
+          reportError(
+            failures.length === 1 && synced.length === 1
+              ? 'Could Not Delete the Conversation'
+              : 'Some conversations were not deleted.',
+            failures.join('\n'),
+            { userVisible: true, expected: true },
+          )
+        }
+        return failures.length === 0
+      })
+    } catch (error) {
+      report('Could Not Delete Conversations', error)
+      return false
+    }
+  }
+
   /** Brings archived conversations back; answers whether every one came back. */
   function restore(ids: string[]): Promise<boolean> {
     return batch(ids, { archived: false })
@@ -1286,6 +1361,11 @@ export const useConversations = defineStore('conversations', () => {
       conversation.readRevision = Math.max(conversation.readRevision, revision)
       conversation.unread = conversation.revision > conversation.readRevision
     } catch (error) {
+      // A conversation deleted meanwhile, by this page or another, has
+      // nothing left to acknowledge.
+      if (error instanceof ApiError && error.code === 'conversation_not_found') {
+        return
+      }
       report('Could Not Update Read Status', error)
     }
   }
@@ -1619,6 +1699,7 @@ export const useConversations = defineStore('conversations', () => {
     lifetime = new AbortController()
     uploads.dispose(items.value)
     items.value = []
+    deleted.clear()
     restored.clear()
     savedDrafts.clear()
     storageErrorReported = false
@@ -1626,6 +1707,7 @@ export const useConversations = defineStore('conversations', () => {
 
   return {
     items,
+    deleted,
     listStatus,
     composerFocusRequests,
     activate,
@@ -1640,6 +1722,7 @@ export const useConversations = defineStore('conversations', () => {
     pin: (ids: string[], pinned: boolean) => batch(ids, { pinned }),
     archive,
     restore,
+    remove,
     move: (ids: string[], projectId: string | null) =>
       batch(ids, {
         target: projectId
