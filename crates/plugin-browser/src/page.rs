@@ -16,8 +16,8 @@ use demi_command_package_browser_protocol::PACKAGE;
 use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_command_package_browser_protocol::browser::{
     BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab, CloseInput,
-    FailureDocument, ForwardInput, GotoInput, OpenInput, OpenResult, PREFIX, ReloadInput, TabId,
-    TabsInput, TabsResult,
+    FailureDocument, ForwardInput, GotoInput, NavigationResult, OpenInput, OpenResult, PREFIX,
+    ReloadInput, TabId, TabMoved, TabsInput, TabsResult,
 };
 use demi_plugin_interface::{
     CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope, State, Topic,
@@ -118,11 +118,11 @@ pub(crate) fn page() -> Page {
         )
         .method(Method::new::<SyncTabs, ()>("sync", Scope::Conversation).calls(operation("tabs")))
         .method(
-            Method::new::<NavigateTab, ()>("navigate", Scope::Conversation)
+            Method::new::<NavigateTab, TabMoved>("navigate", Scope::Conversation)
                 .calls(operation("goto")),
         )
         .method(
-            Method::new::<TabHistory, ()>("history", Scope::Conversation)
+            Method::new::<TabHistory, TabMoved>("history", Scope::Conversation)
                 .calls(operation("back"))
                 .calls(operation("forward"))
                 .calls(operation("reload")),
@@ -175,6 +175,8 @@ pub(crate) async fn open(port: &PluginPort, url: &str) -> Result<BrowserTab, Plu
         url: opened.url,
         created_by: BrowserCreatedBy::User {},
         loading: false,
+        can_go_back: false,
+        can_go_forward: false,
         shows: 0,
     })
 }
@@ -194,15 +196,18 @@ pub(crate) async fn close(port: &PluginPort, tab: &str) -> Result<(), PluginErro
 }
 
 /// Starts loading `url` in the browser's tab `tab`.
-pub(crate) async fn navigate(port: &PluginPort, tab: &str, url: String) -> Result<(), PluginError> {
+pub(crate) async fn navigate(
+    port: &PluginPort,
+    tab: &str,
+    url: String,
+) -> Result<TabMoved, PluginError> {
     let input = GotoInput {
         tab: tab_id(tab.to_owned())?,
         url,
         load: None,
         timeout: None,
     };
-    on_tab(run::<Value, _>(port, BrowserOperation::Goto, input, CallKind::Operates).await)?;
-    Ok(())
+    moved(run(port, BrowserOperation::Goto, input, CallKind::Operates).await)
 }
 
 /// Answers the page call `method` with `params`, which its schema checked,
@@ -241,20 +246,19 @@ async fn run_method(
         }
         "navigate" => {
             let NavigateTab { tab, url } = decode(params)?;
-            navigate(port, &tab, url).await?;
-            Ok(Value::Null)
+            to_value(navigate(port, &tab, url).await?)
         }
         "history" => {
             let TabHistory { tab, action } = decode(params)?;
             let tab = tab_id(tab)?;
-            let moved = match action {
+            let navigated = match action {
                 HistoryAction::Back => {
                     let input = BackInput {
                         tab,
                         load: None,
                         timeout: None,
                     };
-                    run::<Value, _>(port, BrowserOperation::Back, input, CallKind::Operates).await
+                    run(port, BrowserOperation::Back, input, CallKind::Operates).await
                 }
                 HistoryAction::Forward => {
                     let input = ForwardInput {
@@ -262,8 +266,7 @@ async fn run_method(
                         load: None,
                         timeout: None,
                     };
-                    run::<Value, _>(port, BrowserOperation::Forward, input, CallKind::Operates)
-                        .await
+                    run(port, BrowserOperation::Forward, input, CallKind::Operates).await
                 }
                 HistoryAction::Reload => {
                     let input = ReloadInput {
@@ -271,10 +274,10 @@ async fn run_method(
                         load: None,
                         timeout: None,
                     };
-                    run::<Value, _>(port, BrowserOperation::Reload, input, CallKind::Operates).await
+                    run(port, BrowserOperation::Reload, input, CallKind::Operates).await
                 }
             };
-            on_tab(moved)
+            to_value(moved(navigated)?)
         }
         method => Err(PluginError::failed(format!(
             "the browser has no method {method}"
@@ -302,11 +305,15 @@ async fn run<T: DeserializeOwned, I: Serialize>(
     })
 }
 
-/// What an operation on one tab answers: nothing, or its refusal; a
-/// stopped Cloud is refused as `host_stopped`, never woken.
-fn on_tab(moved: Result<Value, PortFailure>) -> Result<Value, PluginError> {
-    moved.map_err(refused)?;
-    Ok(Value::Null)
+/// What a user's navigation of one tab answers: the number of the last tab
+/// list before it started, or its refusal; a stopped Cloud is refused as
+/// `host_stopped`, never woken.
+fn moved(navigated: Result<NavigationResult, PortFailure>) -> Result<TabMoved, PluginError> {
+    let navigated = navigated.map_err(refused)?;
+    let list = navigated.list.ok_or_else(|| {
+        PluginError::failed("the browser answered a user's navigation without its tab list")
+    })?;
+    Ok(TabMoved { list })
 }
 
 /// The tab a call names; one that is no tab's id is a tab the browser does

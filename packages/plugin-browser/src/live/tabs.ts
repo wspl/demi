@@ -57,6 +57,26 @@ export class BrowserTabsError extends Error {
   }
 }
 
+/** What a refusal's code means to the user, in the Writing page's words rather than the Host's error text. */
+const REFUSALS: Readonly<Record<string, SentenceText>> = {
+  history_boundary: 'The tab has no page to go to in that direction.',
+  invalid_input: 'The browser opens only web, file and blank pages.',
+  tab_not_found: 'This page is no longer open on the device.',
+  host_stopped: 'The Cloud is stopped.',
+  device_offline: 'The device is offline.',
+  conversation_busy: 'The conversation is busy. Try again in a moment.',
+  conversation_archived: 'This conversation is archived.',
+  navigation_failed: 'The browser couldn’t load the page.',
+  timeout: 'The browser didn’t answer in time.',
+  browser_unavailable: 'The browser on the device isn’t running.',
+  browser_lost: 'The browser on the device isn’t running.',
+}
+
+/** A refusal's code as a sentence the page shows (`live-view.md` § A browser tab in the panel). */
+export function refusalSentence(code: string | null): SentenceText {
+  return (code === null ? undefined : REFUSALS[code]) ?? 'The browser couldn’t do that.'
+}
+
 /**
  * The conversation browser's tab list and tab methods (`live-view.md` § The
  * tab methods) and its user stream, as the plugin's page context supplies
@@ -74,8 +94,10 @@ export interface BrowserTabsApi {
   bind(panelTab: string): Promise<void>
   /** Asks the plugin to read the browser's tabs and bring the panel's up to date. */
   sync(): Promise<void>
-  navigate(tab: string, url: string): Promise<void>
-  history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void>
+  /** Starts loading `url`; answers the number of the last tab list before the request started. */
+  navigate(tab: string, url: string): Promise<number>
+  /** Moves or reloads the tab; answers as `navigate` does. */
+  history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<number>
   stream: OpenUserStream
   /** What the Host holds of the browser's package, read reactively. */
   installed(): readonly HostArtifact[]
@@ -96,14 +118,13 @@ export interface BrowserTabsOptions {
 
 /**
  * The user's latest request on a browser tab (`live-view.md` § A browser tab
- * in the panel): sent and not answered yet; answered when the views had
- * reported `reports` tab lists, which still describe the page as it was
- * before the request; or refused, with why.
+ * in the panel): sent and not answered yet, or answered with the number of
+ * the last tab list before it started, which only a list numbered higher
+ * outdates. A refused request leaves none.
  */
 type TabRequest =
   | { status: 'asked' }
-  | { status: 'answered'; reports: number }
-  | { status: 'refused'; error: BrowserTabsError }
+  | { status: 'answered'; list: number }
 
 /** Reports a defect of the page itself, as the page context's `errors.defect` does. */
 export type ReportDefect = (message: string, error: unknown) => void
@@ -146,8 +167,8 @@ export class BrowserTabsController {
    * A tab leaves once a view reports the browser without it.
    */
   private readonly known = shallowReactive(new Map<string, LiveTab>())
-  /** How many tab lists the views reported, so an answer knows which lists came after it. */
-  private readonly reports = shallowRef(0)
+  /** The number of the last tab list a view reported, in the Host's sequence; null before the first. */
+  private readonly listed = shallowRef<number | null>(null)
   /** The user's latest request on each browser tab. */
   private readonly requests = shallowReactive(new Map<string, TabRequest>())
   /** The panel the shown tab's content measured, which a view sizes the tab by. */
@@ -205,56 +226,58 @@ export class BrowserTabsController {
   /**
    * Whether the panel tab bound to `tab`, asking for `url`, shows its page
    * loading (`live-view.md` § A browser tab in the panel). A request of the
-   * user's loads from the moment it is made until a tab list read after its
-   * answer says otherwise: on a far backend the browser may start loading
-   * well after the answer, and a list read before it describes the page as
-   * it was. Otherwise the page loads while the browser last said it does, or,
-   * before the browser ever reported the tab, as for one whose browser tab is
-   * still opening, while the tab asks for an address. A tab shown again keeps
-   * what the browser last said, so a page that had loaded shows no loading.
+   * user's loads from the moment it is made until a tab list numbered higher
+   * than the one its answer names says otherwise, whichever reaches the page
+   * first: on a far backend the browser may start loading well after the
+   * answer, and a list numbered no higher describes the page as it was.
+   * Otherwise the page loads while the browser last said it does, or, before
+   * the browser ever reported the tab, as for one whose browser tab is still
+   * opening, while the tab asks for an address. A tab shown again keeps what
+   * the browser last said, so a page that had loaded shows no loading.
    */
   loading(tab: string | undefined, url: string): boolean {
     const request = tab === undefined ? undefined : this.requests.get(tab)
     if (request?.status === 'asked') {
       return true
     }
-    if (request?.status === 'answered' && request.reports === this.reports.value) {
+    const listed = this.listed.value
+    if (request?.status === 'answered' && (listed === null || listed <= request.list)) {
       return true
     }
     const live = this.tab(tab)
     return live ? live.loading : url !== NEW_TAB_URL
   }
 
-  /** What the user's latest request on `tab` could not do, until the next one. */
-  refusal(tab: string | undefined): BrowserTabsError | null {
-    const request = tab === undefined ? undefined : this.requests.get(tab)
-    return request?.status === 'refused' ? request.error : null
-  }
-
-  /** The user's address, loaded in `tab`. */
+  /** The user's address, loaded in `tab`; rejects with what refused it. */
   navigate(tab: string, url: string): Promise<void> {
     return this.request(tab, () => this.api.navigate(tab, url))
   }
 
-  /** The user's Back, Forward or Reload on `tab`. */
+  /** The user's Back, Forward or Reload on `tab`; rejects with what refused it. */
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void> {
     return this.request(tab, () => this.api.history(tab, action))
   }
 
-  /** Runs a request of the user's on `tab`; the latest one on the tab is the one its content shows. */
-  private async request(tab: string, run: () => Promise<unknown>): Promise<void> {
+  /**
+   * Runs a request of the user's on `tab`. The latest one on the tab is the
+   * one its loading follows; a refusal ends it at once, and the caller
+   * reports it.
+   */
+  private async request(tab: string, run: () => Promise<number>): Promise<void> {
     const asked: TabRequest = { status: 'asked' }
     this.requests.set(tab, asked)
-    let settled: TabRequest
+    let list: number
     try {
-      await run()
-      settled = { status: 'answered', reports: this.reports.value }
+      list = await run()
     } catch (error) {
-      settled = { status: 'refused', error: asTabsError(error) }
+      if (this.requests.get(tab) === asked) {
+        this.requests.delete(tab)
+      }
+      throw asTabsError(error)
     }
     // A later request on the tab replaced this one.
     if (this.requests.get(tab) === asked) {
-      this.requests.set(tab, settled)
+      this.requests.set(tab, { status: 'answered', list })
     }
   }
 
@@ -350,8 +373,8 @@ export class BrowserTabsController {
    * for that tab, to read the browser's tabs: the plugin marks the panel tab
    * closed if the browser lost it.
    */
-  private viewTabs(tabs: readonly LiveTab[]): void {
-    this.reports.value += 1
+  private viewTabs(tabs: readonly LiveTab[], list: number): void {
+    this.listed.value = list
     for (const id of [...this.known.keys()]) {
       if (!tabs.some((tab) => tab.id === id)) {
         this.known.delete(id)
@@ -379,7 +402,7 @@ export class BrowserTabsController {
       panel: () => this.panel,
       platform: clientPlatform(navigator),
       onClipboard: (text) => viewerClipboard.receive(text),
-      onTabs: (tabs) => this.viewTabs(tabs),
+      onTabs: (tabs, list) => this.viewTabs(tabs, list),
       defect: this.defect,
     })
     this.session.value = session

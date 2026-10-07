@@ -86,25 +86,40 @@ async fn each_method_runs_its_operation_as_a_package_call_that_never_wakes_the_h
     let (plugin, demi) = world(Box::new(|operation, _| {
         Ok(match operation {
             "browser.tabs" => json!({
-                "tabs": [{ "id": "t1", "title": "", "url": "about:blank", "createdBy": { "kind": "user" }, "loading": false, "shows": 0 }],
+                "list": 6,
+                "tabs": [{ "id": "t1", "title": "", "url": "about:blank", "createdBy": { "kind": "user" }, "loading": false, "canGoBack": true, "canGoForward": false, "shows": 0 }],
                 "truncated": false,
             }),
+            "browser.goto" | "browser.back" | "browser.reload" => {
+                json!({ "tab": "t1", "url": "https://example.test/", "list": 7 })
+            }
             _ => json!({}),
         })
     }));
 
     let listed = tabs(&plugin, &demi).await.unwrap();
     assert_eq!(listed["tabs"][0]["id"], json!("t1"));
-    for (method, params) in [
+    assert_eq!(listed["tabs"][0]["canGoBack"], json!(true));
+    // A navigation answers the number of the last tab list before it started.
+    for (method, params, answer) in [
         (
             "navigate",
             json!({ "tab": "t1", "url": "https://example.test/" }),
+            json!({ "list": 7 }),
         ),
-        ("history", json!({ "tab": "t1", "action": "back" })),
-        ("history", json!({ "tab": "t1", "action": "reload" })),
-        ("sync", json!({})),
+        (
+            "history",
+            json!({ "tab": "t1", "action": "back" }),
+            json!({ "list": 7 }),
+        ),
+        (
+            "history",
+            json!({ "tab": "t1", "action": "reload" }),
+            json!({ "list": 7 }),
+        ),
+        ("sync", json!({}), Value::Null),
     ] {
-        assert_eq!(call(&plugin, &demi, method, params).await, Ok(Value::Null));
+        assert_eq!(call(&plugin, &demi, method, params).await, Ok(answer));
     }
     // Every method changed the tab list the pages show.
     assert_eq!(demi.changes(), 4);

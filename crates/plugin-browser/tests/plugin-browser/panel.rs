@@ -110,6 +110,7 @@ async fn a_tab_its_user_created_opens_on_the_address_the_user_asked_for_last() {
             });
             Ok(json!({ "tab": "t1", "url": "about:blank" }))
         }
+        "browser.goto" => Ok(json!({ "tab": "t1", "url": "https://example.test/", "list": 3 })),
         _ => Ok(json!({})),
     }));
     let tab = created(&demi, "a", json!({ "url": "about:blank" }));
@@ -223,7 +224,7 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
     let listed: Rc<RefCell<Value>> = Rc::new(RefCell::new(json!([])));
     let browser = listed.clone();
     let (plugin, demi) = world(Box::new(move |_, operation, _| match operation {
-        "browser.tabs" => Ok(json!({ "tabs": browser.borrow().clone(), "truncated": false })),
+        "browser.tabs" => Ok(json!({ "list": 1, "tabs": browser.borrow().clone(), "truncated": false })),
         "browser.open" => Ok(json!({ "tab": "t4", "url": "https://user.test/" })),
         _ => Ok(json!({})),
     }));
@@ -232,7 +233,7 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
         "a",
         json!({ "url": "https://user.test/", "tab": "t1" }),
     );
-    let tab = |id: &str, by: Value| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "shows": 0 });
+    let tab = |id: &str, by: Value| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "canGoBack": false, "canGoForward": false, "shows": 0 });
     listed.replace(json!([
         tab("t1", json!({ "kind": "user" })),
         tab("t2", json!({ "kind": "agent", "number": 1 })),
@@ -282,11 +283,11 @@ async fn a_tab_the_agent_showed_carries_the_count_into_its_panel_tab() {
     let listed: Rc<RefCell<Value>> = Rc::new(RefCell::new(json!([])));
     let browser = listed.clone();
     let (plugin, demi) = world(Box::new(move |_, operation, _| match operation {
-        "browser.tabs" => Ok(json!({ "tabs": browser.borrow().clone(), "truncated": false })),
+        "browser.tabs" => Ok(json!({ "list": 1, "tabs": browser.borrow().clone(), "truncated": false })),
         _ => Ok(json!({})),
     }));
     created(&demi, "a", json!({ "url": "https://t1.test/", "tab": "t1" }));
-    let tab = |id: &str, by: Value, shows: u64| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "shows": shows });
+    let tab = |id: &str, by: Value, shows: u64| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "canGoBack": false, "canGoForward": false, "shows": shows });
     listed.replace(json!([
         // A tab the user created is shown as the agent's are.
         tab("t1", json!({ "kind": "user" }), 2),

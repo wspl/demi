@@ -84,6 +84,17 @@ const activeId = computed(() =>
 )
 // The panel opens per conversation; the frame shows the open conversation's.
 const work = useWorkPanel()
+// The open conversation's tabs are read with its panel closed too, since the frame then mounts no
+// panel: a tab a kind asks to show opens it (`live-view.md` § Showing a tab).
+watch(
+  [activeId, () => activeId.value !== null && work.recorded(activeId.value)],
+  ([conversationId]) => {
+    if (conversationId !== null) {
+      work.load(conversationId)
+    }
+  },
+  { immediate: true },
+)
 const asideOpen = computed({
   get: () => activeId.value !== null && work.stateFor(activeId.value).open,
   set: (open: boolean) => {

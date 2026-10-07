@@ -983,6 +983,8 @@ impl Conversations {
         let Some(environment) = environment else {
             if matches!(command, BrowserOperation::Tabs(_)) {
                 return Ok(CommandOutput::Json(output::value(TabsResult {
+                    // No browser runs: no list of its sequence.
+                    list: 0,
                     tabs: Vec::new(),
                     truncated: false,
                 })?));
@@ -1064,7 +1066,7 @@ impl Conversations {
             .map(CommandOutput::Json);
         }
         if let BrowserOperation::Tabs(input) = command {
-            let listing = environment.listed(cancellation, command.timeout()).await?;
+            let (list, listing) = environment.numbered(cancellation, command.timeout()).await?;
             let offset = input.offset.unwrap_or(0);
             let limit = input.limit.unwrap_or(DEFAULT_NODES);
             // Each tab's record as the list shows it, not the tab itself.
@@ -1079,10 +1081,13 @@ impl Conversations {
                     url: listed.url.clone(),
                     created_by: listed.tab.created_by().clone(),
                     loading: listed.tab.loading(),
+                    can_go_back: listed.tab.history().back,
+                    can_go_forward: listed.tab.history().forward,
                     shows: listed.tab.shows(),
                 })
                 .collect();
             return Ok(CommandOutput::Json(output::value(TabsResult {
+                list,
                 tabs: rows,
                 truncated: listing.tabs.len() > offset.saturating_add(limit),
             })?));

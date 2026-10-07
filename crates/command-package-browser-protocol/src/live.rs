@@ -555,6 +555,12 @@ pub struct LiveTab {
     /// Whether the browser loads the tab's top-level page.
     #[garde(skip)]
     pub loading: bool,
+    /// Whether the tab's history has a page before the current one.
+    #[garde(skip)]
+    pub can_go_back: bool,
+    /// Whether the tab's history has a page after the current one.
+    #[garde(skip)]
+    pub can_go_forward: bool,
 }
 
 /// The watched tab's JavaScript dialog.
@@ -577,6 +583,11 @@ pub enum LiveModuleMessage {
     State {
         #[garde(skip)]
         running: bool,
+        /// The list's number in the Host's sequence: a list numbered higher
+        /// than a request's answer names describes the browser after the
+        /// request started (`live-view.md` § The tab methods).
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        list: u64,
         #[garde(dive)]
         tabs: Vec<LiveTab>,
         #[serde(deserialize_with = "Option::deserialize")]

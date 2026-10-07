@@ -110,6 +110,8 @@ function galleryTabs(): LiveTab[] {
       createdBy: { kind: 'agent', number: 0 },
       viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
       loading: false,
+      canGoBack: false,
+      canGoForward: false,
     },
     {
       id: 't2',
@@ -118,6 +120,8 @@ function galleryTabs(): LiveTab[] {
       createdBy: { kind: 'user' },
       viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
       loading: false,
+      canGoBack: false,
+      canGoForward: false,
     },
   ]
 }
@@ -142,6 +146,8 @@ class GalleryBrowserView {
     private readonly handlers: UserStreamHandlers,
     /** The browser's tabs, shared with its tab requests. */
     private readonly tabs: LiveTab[],
+    /** The number of the browser's latest tab list, as the Host numbers them. */
+    private readonly list: () => number,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
@@ -157,7 +163,7 @@ class GalleryBrowserView {
       this.watched = null
       this.restart()
     }
-    this.send({ type: 'state', running: true, tabs: this.tabs, watched: this.watched })
+    this.send({ type: 'state', running: true, list: this.list(), tabs: this.tabs, watched: this.watched })
   }
 
   private tab(): LiveTab | null {
@@ -404,8 +410,9 @@ export interface GalleryBrowser {
   open(url: string): Promise<BrowserTab>
   /** Closes the tab; a tab the browser does not have is closed already. */
   close(tab: string): Promise<void>
-  navigate(tab: string, url: string): Promise<void>
-  history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void>
+  /** Answers the number of the last tab list before the request started, as a user's navigation on the Host does. */
+  navigate(tab: string, url: string): Promise<number>
+  history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<number>
   /** The tab closes on the device, as the agent's close or a browser that ended would close it. */
   closeOnDevice(tab: string): void
   /** The agent shows the tab to the user, as `demi browser show` does: its count of showings rises. */
@@ -442,7 +449,16 @@ export function galleryBrowser(
   const shows = new Map<string, number>()
 
   function info(tab: LiveTab): BrowserTab {
-    return { id: tab.id, title: tab.title, url: tab.url, createdBy: tab.createdBy, loading: tab.loading, shows: shows.get(tab.id) ?? 0 }
+    return {
+      id: tab.id,
+      title: tab.title,
+      url: tab.url,
+      createdBy: tab.createdBy,
+      loading: tab.loading,
+      canGoBack: tab.canGoBack,
+      canGoForward: tab.canGoForward,
+      shows: shows.get(tab.id) ?? 0,
+    }
   }
 
   /** The browser a tab needs, which the pinned Chrome for Testing is. */
@@ -453,7 +469,11 @@ export function galleryBrowser(
   ]
   const listed = shallowRef<BrowserTabList>({ tabs: tabs.map(info), browser: needed })
 
+  /** Each change of the tabs is a new tab list, numbered as the Host numbers them. */
+  let lists = 0
+
   function changed(): void {
+    lists += 1
     listed.value = { tabs: tabs.map(info), browser: needed }
     for (const view of views) {
       view.state()
@@ -480,9 +500,17 @@ export function galleryBrowser(
     return history
   }
 
-  /** `tab` starts loading `url` a moment after the request's answer. The timer ends by itself. */
-  function loadLater(tab: LiveTab, url: string): void {
-    setTimeout(() => load(tab, url), LOAD_START_MS)
+  /**
+   * `tab` starts loading `url` a moment after the request's answer, where
+   * `commit` moves its history. Answers the number of the last tab list
+   * before then. The timer ends by itself.
+   */
+  function loadLater(tab: LiveTab, url: string, commit: () => void = () => {}): number {
+    setTimeout(() => {
+      commit()
+      load(tab, url)
+    }, LOAD_START_MS)
+    return lists
   }
 
   /** `tab` loads `url`: it says so until the page is there. The timer ends by itself. */
@@ -493,6 +521,9 @@ export function galleryBrowser(
     }
     tab.url = url
     tab.loading = url !== 'about:blank'
+    const history = historyOf(tab)
+    tab.canGoBack = history.index > 0
+    tab.canGoForward = history.index < history.entries.length - 1
     changed()
     if (tab.loading) {
       setTimeout(() => {
@@ -503,7 +534,7 @@ export function galleryBrowser(
   }
 
   const stream: OpenUserStream = (handlers) => {
-    const browser = new GalleryBrowserView(handlers, tabs)
+    const browser = new GalleryBrowserView(handlers, tabs, () => lists)
     views.add(browser)
     return {
       send: (bytes) => browser.receive(bytes),
@@ -532,6 +563,8 @@ export function galleryBrowser(
         createdBy: { kind: 'user' },
         viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
         loading: false,
+        canGoBack: false,
+        canGoForward: false,
       }
       tabs.push(tab)
       load(tab, url)
@@ -540,16 +573,20 @@ export function galleryBrowser(
     close: (id) => later(() => remove(id)),
     navigate: (id, url) => later(() => {
       const tab = found(id)
+      // The Host's own refusal of an address no browser tab opens for the agent or the user.
+      if (!['http:', 'https:', 'file:'].includes(URL.parse(url)?.protocol ?? '') && url !== 'about:blank') {
+        throw new BrowserTabsError('invalid_input', 'navigation accepts http:, https:, file:, or about:blank')
+      }
       const history = historyOf(tab)
-      history.entries.splice(history.index + 1, Infinity, url)
-      history.index = history.entries.length - 1
-      loadLater(tab, url)
+      return loadLater(tab, url, () => {
+        history.entries.splice(history.index + 1, Infinity, url)
+        history.index = history.entries.length - 1
+      })
     }),
     history: (id, action) => later(() => {
       const tab = found(id)
       if (action === 'reload') {
-        loadLater(tab, tab.url)
-        return
+        return loadLater(tab, tab.url)
       }
       const history = historyOf(tab)
       const index = history.index + (action === 'back' ? -1 : 1)
@@ -558,8 +595,9 @@ export function galleryBrowser(
       if (url === undefined) {
         throw new BrowserTabsError('history_boundary', 'no navigation entry in that direction')
       }
-      history.index = index
-      loadLater(tab, url)
+      return loadLater(tab, url, () => {
+        history.index = index
+      })
     }),
     closeOnDevice: remove,
     show: (id) => {
@@ -574,6 +612,8 @@ export function galleryBrowser(
         createdBy: { kind: 'agent', number: 0 },
         viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
         loading: false,
+        canGoBack: false,
+        canGoForward: false,
       }
       tabs.push(tab)
       if (options.show) {

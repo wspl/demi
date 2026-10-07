@@ -834,6 +834,19 @@ impl BrowserEnvironment {
             .collect())
     }
 
+    /// The tabs as [`Self::listed`] lists them, with the list's number in
+    /// the Host's sequence: the count of changes read before the listing, so
+    /// a list never claims to be newer than it is (`live-view.md` § The tab
+    /// methods).
+    pub async fn numbered(
+        &self,
+        cancellation: &CancellationToken,
+        timeout: Duration,
+    ) -> Result<(u64, Arc<Snapshot>)> {
+        let number = *self.changes.borrow();
+        Ok((number, self.listed(cancellation, timeout).await?))
+    }
+
     /// The tabs in the order the browser created them, with their titles and
     /// URLs, as the registry lists them.
     pub async fn listed(

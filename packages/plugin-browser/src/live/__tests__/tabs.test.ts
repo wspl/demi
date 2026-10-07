@@ -24,8 +24,8 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {})
       tabs: { value: list, error },
       bind: async () => {},
       sync: async () => void (syncs += 1),
-      navigate: async () => {},
-      history: async () => {},
+      navigate: async () => 0,
+      history: async () => 0,
       stream: () => ({ send: () => {}, close: () => {} }),
       installed: () => [],
       ...api,
@@ -163,7 +163,8 @@ test('a view that finds its watched tab gone asks the plugin to look, once for t
   const state = (tabs: string[]): LiveModuleMessage => ({
     type: 'state',
     running: true,
-    tabs: tabs.map((id) => ({ id, title: id, url: 'about:blank', createdBy: { kind: 'user' }, viewport: VIEWPORT, loading: false })),
+    list: 1,
+    tabs: tabs.map((id) => ({ id, title: id, url: 'about:blank', createdBy: { kind: 'user' }, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false })),
     watched: null,
   })
   opened[0]!.data(framed(state(['t1'])))
@@ -246,15 +247,15 @@ test('a tab shown again shows what the browser last said of it, though no view i
   await until(controller.pictures).toBe('supported')
   controller.resize(PANEL)
   controller.show('t1')
-  const tab = { id: 't1', title: 'Orders', url: 'https://example.test/orders', createdBy: { kind: 'user' } as const, viewport: VIEWPORT, loading: false }
-  views[0]!.handlers.data(framed({ type: 'state', running: true, tabs: [tab], watched: 't1' }))
+  const tab = { id: 't1', title: 'Orders', url: 'https://example.test/orders', createdBy: { kind: 'user' } as const, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false }
+  views[0]!.handlers.data(framed({ type: 'state', running: true, list: 1, tabs: [tab], watched: 't1' }))
   // The user's browser hides the page: the view closes, and the tab keeps its address and that it loaded.
   visibility.value = 'hidden'
   expect(controller.session.value).toBeNull()
   expect(controller.tab('t1')).toEqual(tab)
   // A view that reports the browser without it lets it go.
   visibility.value = 'visible'
-  views[1]!.handlers.data(framed({ type: 'state', running: true, tabs: [], watched: null }))
+  views[1]!.handlers.data(framed({ type: 'state', running: true, list: 1, tabs: [], watched: null }))
   expect(controller.tab('t1')).toBeNull()
   end()
 })
@@ -262,8 +263,8 @@ test('a tab shown again shows what the browser last said of it, though no view i
 /** A view open on `t1`, whose module the test speaks for, and the answers to the user's requests, which the test gives. */
 async function requestHarness() {
   const opened: UserStreamHandlers[] = []
-  const answers: Array<{ resolve: () => void; reject: (error: unknown) => void }> = []
-  const answer = () => new Promise<void>((resolve, reject) => void answers.push({ resolve, reject }))
+  const answers: Array<{ resolve: (list: number) => void; reject: (error: unknown) => void }> = []
+  const answer = () => new Promise<number>((resolve, reject) => void answers.push({ resolve, reject }))
   const { controller, end } = harness(
     {
       stream: (handlers) => {
@@ -278,67 +279,66 @@ async function requestHarness() {
   await until(controller.pictures).toBe('supported')
   controller.resize(PANEL)
   controller.show('t1')
-  const report = (loading: boolean, url = 'https://example.test/orders') =>
+  /** The module's tab list numbered `list`, with `t1` loading or not. */
+  const report = (list: number, loading: boolean, url = 'https://example.test/orders') =>
     opened[0]!.data(framed({
       type: 'state',
       running: true,
-      tabs: [{ id: 't1', title: 'Orders', url, createdBy: { kind: 'user' }, viewport: VIEWPORT, loading }],
+      list,
+      tabs: [{ id: 't1', title: 'Orders', url, createdBy: { kind: 'user' }, viewport: VIEWPORT, loading, canGoBack: true, canGoForward: false }],
       watched: 't1',
     }))
-  report(false)
+  report(4, false)
   return { controller, answers, report, end }
 }
 
-test('a Reload shows the page loading from the click until a tab list read after its answer says it stopped', async () => {
+test('a Reload shows the page loading from the click until a list numbered after its answer says it stopped', async () => {
   const { controller, answers, report, end } = await requestHarness()
   const url = 'https://example.test/orders'
   expect(controller.loading('t1', url)).toBe(false)
   const reloaded = controller.history('t1', 'reload')
   // Before anything left the page.
   expect(controller.loading('t1', url)).toBe(true)
-  // A list read before the answer still describes the page as it was.
-  report(false)
+  // A list the Host read before the request started still describes the page as it was.
+  report(5, false)
   expect(controller.loading('t1', url)).toBe(true)
-  answers[0]!.resolve()
+  answers[0]!.resolve(5)
   await reloaded
   expect(controller.loading('t1', url)).toBe(true)
   // A far browser starts loading after its answer, and says so.
-  report(true)
+  report(6, true)
   expect(controller.loading('t1', url)).toBe(true)
-  report(false)
+  report(7, false)
   expect(controller.loading('t1', url)).toBe(false)
   end()
 })
 
-test('a list read after the answer that says the page loaded ends the loading at once', async () => {
+test('a fast page whose lists reach the page before the answer ends the loading with the answer', async () => {
   const { controller, answers, report, end } = await requestHarness()
   const url = 'https://example.test/docs'
   const navigated = controller.navigate('t1', url)
-  answers[0]!.resolve()
-  await navigated
+  // The stream outran the call: the page loaded, and both lists came first.
+  report(5, true, url)
+  report(6, false, url)
   expect(controller.loading('t1', url)).toBe(true)
-  // A page that loaded before the browser's next list.
-  report(false, url)
+  answers[0]!.resolve(4)
+  await navigated
   expect(controller.loading('t1', url)).toBe(false)
   end()
 })
 
-test('a refused Back ends the loading at once and says why, until the next request', async () => {
+test('a refused Back ends the loading at once and rejects with why, and a replaced request refused late changes nothing', async () => {
   const { controller, answers, end } = await requestHarness()
   const url = 'https://example.test/orders'
   const back = controller.history('t1', 'back')
   expect(controller.loading('t1', url)).toBe(true)
-  answers[0]!.reject(new BrowserTabsError('history_boundary', 'no navigation entry in that direction'))
-  await back
+  answers[0]!.reject(new BrowserTabsError('history_boundary', 'The tab has no page to go to in that direction.'))
+  expect(await back.catch((error: BrowserTabsError) => error.code)).toBe('history_boundary')
   expect(controller.loading('t1', url)).toBe(false)
-  expect(controller.refusal('t1')?.code).toBe('history_boundary')
-  // The next request starts afresh, and one the user replaced, refused late, changes nothing.
   const forward = controller.history('t1', 'forward')
-  expect(controller.refusal('t1')).toBeNull()
   void controller.history('t1', 'reload')
-  answers[1]!.reject(new BrowserTabsError('history_boundary', 'no navigation entry in that direction'))
-  await forward
-  expect(controller.refusal('t1')).toBeNull()
+  answers[1]!.reject(new BrowserTabsError('history_boundary', 'The tab has no page to go to in that direction.'))
+  await forward.catch(() => {})
   expect(controller.loading('t1', url)).toBe(true)
   end()
 })

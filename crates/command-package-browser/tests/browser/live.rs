@@ -362,6 +362,35 @@ async fn eventually(fixture: &BrowserFixture, tab: &str, expression: &str) {
     panic!("never true: {expression}; events: {events}");
 }
 
+/// Polls the tab list until it lists `tab` as `wanted` says, given the
+/// list's number and the tab's row.
+async fn listed_until(fixture: &BrowserFixture, tab: &str, wanted: impl Fn(u64, &Value) -> bool) {
+    let mut last = Value::Null;
+    for _ in 0..200 {
+        let (_, tabs) = fixture
+            .result_for(user(), "browser.tabs", json!({}), CancellationToken::new(), Vec::new())
+            .await;
+        let row = tabs["tabs"]
+            .as_array()
+            .and_then(|rows| rows.iter().find(|row| row["id"] == json!(tab)));
+        if let (Some(list), Some(row)) = (tabs["list"].as_u64(), row)
+            && wanted(list, row)
+        {
+            return;
+        }
+        last = tabs;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    panic!("never listed as wanted: {last}");
+}
+
+/// A user's navigation of `tab` to `url` answered at once, with the number
+/// of the last tab list before it started.
+fn moved(answer: &Value, tab: &str, url: &str) -> u64 {
+    assert_eq!((&answer["tab"], &answer["url"]), (&json!(tab), &json!(url)), "{answer}");
+    answer["list"].as_u64().expect("a user's navigation names its tab list")
+}
+
 /// The caller of the page's view and requests.
 fn user() -> CommandCaller {
     serde_json::from_value(json!({"kind": "user"})).unwrap()
@@ -780,7 +809,7 @@ async fn a_view_waits_for_a_browser_and_ends_with_its_last_tab() {
         let state = view.message("state").await;
         assert_eq!(
             state,
-            json!({"type": "state", "running": false, "tabs": [], "watched": null})
+            json!({"type": "state", "running": false, "list": 0, "tabs": [], "watched": null})
         );
         // The page opens a tab with a request; the waiting view hears of the
         // browser that request started, and watches nothing until it asks.
@@ -939,23 +968,37 @@ async fn the_users_requests_answer_without_waiting_for_a_page() {
                 json!(url)
             )
         };
+        // Each answer names the last list before the request; a later list,
+        // numbered higher, tells where the tab's history then stands.
+        let after = |list: u64, back: bool, forward: bool| {
+            move |number: u64, row: &Value| {
+                number > list
+                    && row["loading"] == json!(false)
+                    && row["canGoBack"] == json!(back)
+                    && row["canGoForward"] == json!(forward)
+            }
+        };
         let went = request(
             &fixture,
             "browser.goto",
             json!({"tab": tab, "url": site.base}),
         )
         .await;
-        assert_eq!(went, json!({"tab": tab, "url": site.base}));
+        let list = moved(&went, &tab, &site.base);
         eventually(&fixture, &tab, &at(&site.base)).await;
+        listed_until(&fixture, &tab, after(list, true, false)).await;
         let went = request(&fixture, "browser.goto", json!({"tab": tab, "url": second})).await;
-        assert_eq!(went, json!({"tab": tab, "url": second}));
+        let list = moved(&went, &tab, &second);
         eventually(&fixture, &tab, &at(&second)).await;
+        listed_until(&fixture, &tab, after(list, true, false)).await;
         let back = request(&fixture, "browser.back", json!({"tab": tab})).await;
-        assert_eq!(back, json!({"tab": tab, "url": site.base}));
+        let list = moved(&back, &tab, &site.base);
         eventually(&fixture, &tab, &at(&site.base)).await;
+        listed_until(&fixture, &tab, after(list, true, true)).await;
         let forward = request(&fixture, "browser.forward", json!({"tab": tab})).await;
-        assert_eq!(forward, json!({"tab": tab, "url": second}));
+        let list = moved(&forward, &tab, &second);
         eventually(&fixture, &tab, &at(&second)).await;
+        listed_until(&fixture, &tab, after(list, true, false)).await;
         let (code, refused) = user_result(&fixture, "browser.forward", json!({"tab": tab})).await;
         assert_eq!(
             (code, &refused["error"]["code"]),
@@ -963,16 +1006,17 @@ async fn the_users_requests_answer_without_waiting_for_a_page() {
         );
         let origin = evaluate(&fixture, &tab, "performance.timeOrigin").await;
         let reloaded = request(&fixture, "browser.reload", json!({"tab": tab})).await;
-        assert_eq!(reloaded, json!({"tab": tab, "url": second}));
+        let list = moved(&reloaded, &tab, &second);
         // A new document starts its own clock.
         let renewed =
             format!("performance.timeOrigin > {origin} && document.readyState === 'complete'");
         eventually(&fixture, &tab, &renewed).await;
+        listed_until(&fixture, &tab, after(list, true, false)).await;
 
         let started = Instant::now();
         let went = request(&fixture, "browser.goto", json!({"tab": tab, "url": slow})).await;
         assert!(started.elapsed() < prompt, "goto waited for its page");
-        assert_eq!(went, json!({"tab": tab, "url": slow}));
+        moved(&went, &tab, &slow);
 
         let missing = "t999";
         let (code, refused) = user_result(&fixture, "browser.close", json!({"tab": missing})).await;

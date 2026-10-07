@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { ArrowLeft, ArrowRight, RotateCw } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import TextInput from '../ui/TextInput.vue'
+import type { SentenceText } from '../ui/ui-text'
 
 /**
  * The address bar both kinds of web page tab share
@@ -13,13 +14,15 @@ import TextInput from '../ui/TextInput.vue'
 withDefaults(
   defineProps<{
     address: string
-    /** Why Back and Forward are unavailable, when they are. */
-    historyReason?: string | null
+    /** Why Back is unavailable, when it is, such as a history with no page before this one. */
+    backReason?: SentenceText | null
+    /** Why Forward is unavailable, when it is. */
+    forwardReason?: SentenceText | null
     canReload?: boolean
     /** Take focus on mount, the address selected: a new tab waits for where to go. */
     focused?: boolean
   }>(),
-  { historyReason: null, canReload: true, focused: false },
+  { backReason: null, forwardReason: null, canReload: true, focused: false },
 )
 
 const emit = defineEmits<{
@@ -63,16 +66,16 @@ function submit(): void {
         :icon="ArrowLeft"
         variant="ghost"
         aria-label="Back"
-        :disabled="historyReason !== null"
-        :disabled-reason="historyReason ?? undefined"
+        :disabled="backReason !== null"
+        :disabled-reason="backReason ?? undefined"
         @click="emit('back')"
       />
       <IconButton
         :icon="ArrowRight"
         variant="ghost"
         aria-label="Forward"
-        :disabled="historyReason !== null"
-        :disabled-reason="historyReason ?? undefined"
+        :disabled="forwardReason !== null"
+        :disabled-reason="forwardReason ?? undefined"
         @click="emit('forward')"
       />
       <IconButton
