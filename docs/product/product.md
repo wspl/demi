@@ -113,8 +113,14 @@ conversation, so a project the user only wanted to set up leaves no empty
 conversation behind.
 
 Conversations can be archived and restored, but not deleted. Archiving is refused
-while root or child work or conflicting operations are active. Archived history
-remains readable; sending and metadata changes require restore. Persistent ordering
+while root or child work or conflicting operations are active. Archiving says
+so in a toast with Undo, as Gmail and Linear do. Archived history remains
+readable: a conversation in the Archived list opens read-only with a bar that
+offers Restore, and sending and metadata changes require restore.
+
+Removing something the user set up, such as a provider, a subagent profile or
+a skill source, asks first in a dialog that names what goes with it, as
+revoking a device does; nothing the user set up disappears on one click. Persistent ordering
 is independent of activity; its storage rules belong to
 [Storage](../backend/storage.md#control-records).
 
@@ -432,7 +438,10 @@ What follows from that split:
   the composer is left.
 - While a file uploads its capsule shows how far along it is, and a failed
   upload offers Retry. Pointed at, a capsule shows the picture larger or a
-  text file's opening lines. In the conversation, a click on a capsule opens
+  text file's opening lines. In a sent message, an image or a video shows as
+  its thumbnail where its capsule stands, at the size of the agent's
+  thumbnails ([File previews](file-previews.md)), as a chat app shows a
+  picture the user sent. In the conversation, a click on a capsule opens
   its file in the File view.
 - The message's content is read off the document: for the example in
   [Writing a message](#writing-a-message), `Compare `, then `before.png`,
