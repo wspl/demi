@@ -34,6 +34,10 @@ import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
+import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
+import type { SearchRow } from '@demicodes/web-ui/search/search'
+import { fixtureSearch, searchableMessages } from '../fixtures/search'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
@@ -210,6 +214,31 @@ const panelAsideShare = ref<number>(ASIDE_SHARE.default)
 const panelProjects = ref(demoProjects())
 const panelConversations = ref(demoConversations())
 const panelActiveConversationId = ref<string | null>('c-login')
+/** The frame's search window, over the sidebar's conversations and the session's messages, which belong to c-login. */
+const frameSearchOpen = ref(false)
+/** The message a search result opened the session at, until the session has shown it. */
+const frameReveal = ref<string | null>(null)
+const frameSearchable = computed(() =>
+  panelConversations.value.map((conversation) => ({
+    conversationId: conversation.id,
+    title: conversation.title,
+    archived: false,
+    lastActiveAt: conversation.updatedAt,
+    messages: conversation.id === 'c-login' ? searchableMessages(session.blocks) : [],
+  })),
+)
+const frameRecent = computed<SearchRow[]>(() =>
+  frameSearchable.value
+    .map(({ messages: _messages, ...row }) => ({ ...row, match: null }))
+    .toSorted((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)),
+)
+const frameSearch = fixtureSearch(() => frameSearchable.value)
+/** Opens what the search found, as the product does: the conversation, at the message that matched. */
+function openFrameResult(row: SearchRow): void {
+  frameSearchOpen.value = false
+  panelActiveConversationId.value = row.conversationId
+  frameReveal.value = row.match?.blockId ?? null
+}
 /**
  * One specimen's work panel over the gallery workspace, as the product's work
  * store holds one: the plugins' kinds, with the `browser` kind over the
@@ -1951,6 +1980,8 @@ onBeforeUnmount(() => {
               <template #sidebar>
                 <AppSidebar
                   :new-shortcut="APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys"
+                  :search-shortcut="APP_SHORTCUTS.find((shortcut) => shortcut.id === 'search')?.keys"
+                  @search="frameSearchOpen = true"
                   :account="demoAccount"
                   :projects="panelProjects"
                   :conversations="panelConversations"
@@ -1963,6 +1994,8 @@ onBeforeUnmount(() => {
               <ChatSession
                 :conversation="session"
                 has-provider
+                :reveal-block-id="frameReveal"
+                @revealed="frameReveal = null"
                 :aside-open="panelAsideOpen"
                 :select-edit="(selection) => { panelWork.selectEdit(selection); panelAsideOpen = true }"
                 :files="sessionFiles"
@@ -1994,6 +2027,16 @@ onBeforeUnmount(() => {
               </ChatSession>
               <template #aside>
                 <GalleryWorkPanel :work="panelWork" @close="panelAsideOpen = false" />
+              </template>
+              <template #dialogs>
+                <SearchDialog
+                  :is-open="frameSearchOpen"
+                  :overlay-store="appOverlayStore"
+                  :recent="frameRecent"
+                  :search="frameSearch"
+                  @close="frameSearchOpen = false"
+                  @open="openFrameResult"
+                />
               </template>
             </SidebarLayout>
           </div>

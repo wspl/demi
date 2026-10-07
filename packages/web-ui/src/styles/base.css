@@ -862,6 +862,18 @@ svg.lucide {
   }
 }
 
+/* What a find opened, a settings row or a message a search found, flashed once (`ui/found-highlight.ts`). */
+.found-highlight {
+  animation: found-highlight 1.6s ease-out;
+}
+
+@keyframes found-highlight {
+  0%,
+  45% {
+    background-color: color-mix(in srgb, var(--surface-current), var(--tint-accent-mix));
+  }
+}
+
 /* A chrome row that just arrived: it settles from the left as it fades in. The duration is the component's CHROME_ENTER_MS. */
 .chrome-enter {
   animation: chrome-enter var(--chrome-enter-ms) ease-out both;
