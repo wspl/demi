@@ -84,6 +84,11 @@ fn scheme_site(scheme: &str) -> &str {
 /// to a new site use it in the page, and those are mapped again by the engine before they load.
 #[cfg(feature = "public-suffix")]
 fn registrable_domain(host: &str) -> String {
+    // An address is its own site; the list would take its last two numbers
+    // for a domain, and the engine's labels would differ from the runtime's.
+    if host.parse::<std::net::IpAddr>().is_ok() {
+        return host.to_owned();
+    }
     psl::domain_str(host).unwrap_or(host).to_owned()
 }
 

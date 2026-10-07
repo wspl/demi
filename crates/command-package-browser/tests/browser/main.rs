@@ -28,6 +28,7 @@ mod fetch;
 mod fidelity;
 mod launch;
 mod live;
+mod preview;
 mod repairs;
 mod retirement;
 mod screenshots;
