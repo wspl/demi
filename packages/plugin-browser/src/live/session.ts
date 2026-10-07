@@ -103,6 +103,8 @@ export interface LiveSessionOptions {
    * page through a new view.
    */
   onEnded?: (reason: string) => void
+  /** The page showed a picture of the browser tab `tab`. */
+  onPicture?: (tab: string) => void
   /** Reports a defect of the page, such as a message the protocol refuses. */
   defect: (message: string, error: unknown) => void
   now?: () => number
@@ -373,6 +375,7 @@ export class LiveSession {
   showed(generation: number, sequence: number, decodeQueue: number): void {
     if (generation === this.video?.generation) {
       this.send({ type: 'ack', generation, sequence, decodeQueue })
+      this.options.onPicture?.(this.video.tab)
     }
   }
 
