@@ -149,6 +149,15 @@ calls.
 | `overlays` | The overlay store a dialog or menu opens in | The shell |
 | `files(conversation)` | The conversation's [files service](#the-conversation-files-service) | The file routes |
 
+A call the page cannot send because the backend cannot be reached, as while
+the server restarts, waits until the page reaches the backend again and is
+sent then, as every control does under the
+[connection banner](../product/web-application.md#a-page-of-another-build):
+a page never shows a failure about the connection, and a call fails only for
+the backend's own answer. For example, the user presses Reload in a browser
+tab while Demi restarts; the tab shows it loading, and the reload reaches
+the browser once Demi is back.
+
 The gallery supplies the same context over each specimen's fixture state, so
 every control of a specimen acts on that state.
 
