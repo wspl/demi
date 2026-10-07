@@ -187,7 +187,9 @@ page                         backend (panel, plugin-browser)            Host
   it within the module's state delay, and the page asks the plugin to
   `sync`, which adds it right after the tab that opened it, behind the tabs
   that tab opened before, as Chrome places them; the agent's tabs still go
-  at the end. A tab opened by the
+  at the end. Open Link in New Tab places its tab by the same rule. Which tab
+  opened which is the plugin's, kept in each panel tab's data (`openedBy`),
+  so both ways agree and a reload keeps the order. A tab opened by the
   user's own click or key in the tab they watch is selected, as a browser
   selects the tab a click opens; one a page opened by itself is added without
   being selected.
