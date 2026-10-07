@@ -20,7 +20,7 @@ export async function run(context: Context, argv: string[]): Promise<void> {
   if (!known || name !== undefined) {
     throw new CommandFailure(`Usage: bun browse ${USAGE}`)
   }
-  if (!context.browser.running) {
+  if (!await context.browser.attachRunning()) {
     throw new CommandFailure('The tool is attached to no browser in this slot, so it logged nothing')
   }
   const all = values.all ?? false

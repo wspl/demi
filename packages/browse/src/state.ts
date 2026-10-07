@@ -1,8 +1,8 @@
 // What the tool remembers of a slot between commands and across a restart
 // of its daemon: the process groups it started, the browser's, the paired
-// runner, the development account, whether it copied the user's `.env`, and
-// the browser's emulation. One JSON file in the slot's folder, decoded
-// against its schema when read.
+// runner, the development account, whether it copied the user's `.env`, the
+// browser's emulation and the conditions `net` set. One JSON file in the
+// slot's folder, decoded against its schema when read.
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { z } from 'zod'
@@ -26,6 +26,20 @@ export const emulationSchema = z.object({
   timezone: z.string().optional(),
 })
 export type Emulation = z.infer<typeof emulationSchema>
+
+/**
+ * The conditions `net` sets on the page's network, which the browser keeps
+ * until it stops. `unreachable` holds the page's traffic while the browser
+ * still reports a network; `offline` also tells the page it is offline.
+ */
+export const conditionsSchema = z.object({
+  /** The round trip it adds, in milliseconds: half on each way. */
+  latencyMs: z.number().nonnegative(),
+  /** The limit on each way, in kilobits per second; null for none. */
+  kbps: z.number().positive().nullable(),
+  reach: z.enum(['online', 'unreachable', 'offline']),
+})
+export type Conditions = z.infer<typeof conditionsSchema>
 
 /** The slot's browser: its process group, where its DevTools endpoint listens, and whether it shows a window. */
 const browserSchema = groupSchema.extend({
@@ -59,6 +73,7 @@ const stateSchema = z.object({
   /** Whether `up` copied the user's `.env` into the slot, which `down` then deletes. */
   envCopied: z.boolean().optional(),
   emulation: emulationSchema.optional(),
+  net: conditionsSchema.optional(),
   browser: browserSchema.optional(),
   runner: runnerSchema.optional(),
 })
