@@ -69,15 +69,20 @@ async fn release_cancels_a_browser_command_blocked_on_output() {
     service.close().await.unwrap();
 }
 
-/// The JSON `browser.tabs` prints for `caller` while no browser runs.
-async fn listed_for(caller: CommandCaller) -> serde_json::Value {
+/// The exit code and the JSON that `operation` with `args` prints, on
+/// standard output or on standard error, for `caller` while no browser runs.
+async fn invoked_for(
+    caller: CommandCaller,
+    operation: &str,
+    args: serde_json::Value,
+) -> (u8, serde_json::Value) {
     let service = DemiBrowser::new();
     let cancel = CancellationToken::new();
     let (output, mut records) = Output::channel(cancel.clone());
     let completion = service
         .invoke(InvocationContext {
             request: Invocation {
-                operation: "browser.tabs".into(),
+                operation: operation.into(),
                 invocation_id: "listed".into(),
                 context: CommandContext {
                     conversation: "conversation".into(),
@@ -87,7 +92,7 @@ async fn listed_for(caller: CommandCaller) -> serde_json::Value {
                         languages: vec!["en-US".into()],
                     },
                 },
-                args: json!({}),
+                args,
                 cwd: "/".into(),
                 env: Default::default(),
                 edits: None,
@@ -100,20 +105,27 @@ async fn listed_for(caller: CommandCaller) -> serde_json::Value {
         })
         .await
         .unwrap();
-    assert_eq!(completion.exit_code, 0);
     // The output closes with the invocation.
-    let mut stdout = Vec::new();
+    let mut printed = Vec::new();
     while let Some(record) = records.recv().await {
-        if let Record::Stdout(bytes) = record {
-            stdout.extend_from_slice(&bytes);
+        if let Record::Stdout(bytes) | Record::Stderr(bytes) = record {
+            printed.extend_from_slice(&bytes);
         }
     }
     service.close().await.unwrap();
-    serde_json::from_slice(&stdout).unwrap()
+    (completion.exit_code, serde_json::from_slice(&printed).unwrap())
 }
 
-/// The tab list's number is the page's: the agent's `demi browser tabs --json`
-/// never carries it (`runtime.md`, "Only what the model uses").
+/// The JSON `browser.tabs` prints for `caller` while no browser runs.
+async fn listed_for(caller: CommandCaller) -> serde_json::Value {
+    let (code, listed) = invoked_for(caller, "browser.tabs", json!({})).await;
+    assert_eq!(code, 0, "{listed}");
+    listed
+}
+
+/// The tab list's number and its tabs closed on purpose are the page's: the
+/// agent's `demi browser tabs --json` never carries them (`runtime.md`,
+/// "Only what the model uses").
 #[tokio::test]
 async fn only_the_users_tab_list_names_its_number() {
     assert_eq!(
@@ -122,6 +134,18 @@ async fn only_the_users_tab_list_names_its_number() {
     );
     assert_eq!(
         listed_for(CommandCaller::User {}).await,
-        json!({"list": 0, "tabs": [], "truncated": false})
+        json!({"list": 0, "tabs": [], "truncated": false, "closed": []})
     );
+}
+
+/// Stop is the user's alone (`live-view.md` § The tab methods): an agent's
+/// call is refused before it reaches any browser, while the user's reaches
+/// the browser, which has no such tab here.
+#[tokio::test]
+async fn only_the_user_stops_a_load() {
+    let tab = json!({"tab": "t1"});
+    let (code, refused) = invoked_for(CommandCaller::agent(1), "browser.stop", tab.clone()).await;
+    assert_eq!((code, &refused["error"]["code"]), (2, &json!("invalid_input")));
+    let (code, missing) = invoked_for(CommandCaller::User {}, "browser.stop", tab).await;
+    assert_eq!((code, &missing["error"]["code"]), (1, &json!("tab_not_found")));
 }

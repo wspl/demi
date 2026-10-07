@@ -466,11 +466,16 @@ export const useProduct = defineStore('product', () => {
 
   /** The user's Retry: connects at once when the channel is not open. */
   function reconnect(): void {
-    if (!controller || socket) {
+    if (!controller) {
       return
     }
+    // The regions waiting for the first snapshot show it loading at once, a
+    // channel already on its way included (`RegionStatus`).
     if (!snapshot.value) {
       load.value = 'loading'
+    }
+    if (socket) {
+      return
     }
     connect()
   }

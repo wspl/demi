@@ -157,6 +157,11 @@ export class HostFiles {
     const stamp = entry.stamp
     const coverage = this.coverageOf(entry.spec.path)
     entry.state.reading = true
+    // A view with nothing to show but the failure shows the read instead, as
+    // a region's Retry returns it to loading (`RegionStatus`).
+    if (entry.state.value === undefined) {
+      entry.state.failure = null
+    }
     const reading = (async () => {
       try {
         const value = await entry.spec.read(entry.state.value)

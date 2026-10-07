@@ -4,7 +4,7 @@
  * `live-view.md` § A browser tab in the panel): the gallery's panels change
  * the way the product's do, a beat late, over the gallery's own browser.
  */
-import { browserTabDataSchema, type BrowserTabData } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, browserTabDataSchema, type BrowserTabData } from '@demicodes/plugin-browser/live/tabs'
 import { applyPanelChange, type PanelAnswer, type PanelBackend, type PanelChange, type PanelRead } from '@demicodes/web-ui/agent/panel-changes'
 import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { GalleryBrowser } from './live-browser'
@@ -109,45 +109,55 @@ function live(data: BrowserTabData): string | undefined {
 
 /** The browser plugin's part in the panel's `browser` tabs, as the backend's plugin does it. */
 export interface GalleryBrowserPlugin {
-  /** Opens a browser tab for the panel tab, unless it shows one. */
-  bind(panelTab: string): Promise<void>
+  /** Opens a browser tab for the panel tab, unless it shows one; answers the tab it shows then, as the plugin does. */
+  bind(panelTab: string): Promise<string | null>
   /** Closes the browser tab of a panel tab its user removed. */
   removed(tab: PanelTab): Promise<void>
-  /** Adds the agent's tabs and marks the ones the browser lost. */
+  /** Adds the agent's tabs, removes the ones closed on purpose and marks the ones the browser lost. */
   sync(): Promise<void>
 }
 
 export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPanel): GalleryBrowserPlugin {
   // One piece of the conversation's work at a time, as the plugin does it.
   let turn: Promise<void> = Promise.resolve()
-  function inTurn(work: () => Promise<void>): Promise<void> {
+  function inTurn<T>(work: () => Promise<T>): Promise<T> {
     const run = turn.then(work)
-    turn = run.catch(() => {})
+    // The next piece waits for this one however it ends; its caller hears how.
+    turn = run.then(() => {}, () => {})
     return run
   }
 
   return {
     bind: (panelTab) => inTurn(async () => {
       const data = browserData(panel.tab(panelTab))
-      if (!data || (live(data) !== undefined && !data.failure)) {
-        return
+      if (!data) {
+        return null
+      }
+      const shown = live(data)
+      if (shown !== undefined && !data.failure) {
+        return shown
       }
       const asked = data.url
       let opened
       try {
         opened = await browser.open(asked)
       } catch (error) {
+        // The browser's or the Host's own code, as the backend's plugin keeps it.
+        const code = error instanceof BrowserTabsError ? (error.code ?? 'failed') : 'failed'
         const message = error instanceof Error ? error.message : String(error)
-        panel.apply({ type: 'update', id: panelTab, data: { failure: { code: 'failed', message } } })
-        return
+        panel.apply({ type: 'update', id: panelTab, data: { failure: { code, message } } })
+        return null
       }
       panel.apply({ type: 'update', id: panelTab, data: { tab: opened.id, closed: null, failure: null } })
       const now = browserData(panel.tab(panelTab))
       if (!now) {
         await browser.close(opened.id)
-      } else if (now.url !== asked) {
+        return null
+      }
+      if (now.url !== asked) {
         await browser.navigate(opened.id, now.url)
       }
+      return opened.id
     }),
     removed: (tab) => inTurn(async () => {
       const data = browserData(tab)
@@ -174,7 +184,9 @@ export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPane
           continue
         }
         const present = listed.find((candidate) => candidate.id === tab)
-        if (!present) {
+        if (!present && browser.closedOnPurpose.has(tab)) {
+          panel.apply({ type: 'remove', id })
+        } else if (!present) {
           panel.apply({ type: 'update', id, data: { closed: true } })
         } else if (present.shows > (data?.shows ?? 0)) {
           // The agent showed it: each page selects it once (`live-view.md` § Showing a tab).

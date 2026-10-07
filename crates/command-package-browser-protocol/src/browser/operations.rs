@@ -241,6 +241,17 @@ pub struct TabsResult {
     pub list: Option<u64>,
     pub tabs: Vec<BrowserTab>,
     pub truncated: bool,
+    /// The latest tabs closed on purpose, by a command or by their own page,
+    /// for a `user` caller only: the work panel removes their tabs, and keeps
+    /// the tabs lost with the browser (`live-view.md` § A browser tab in the
+    /// panel). The model has no use for it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(skip)]
+    pub closed: Option<Vec<TabId>>,
 }
 
 input! {
@@ -309,6 +320,15 @@ input! {
         #[garde(skip)]
         pub load: Option<Load>,
     }
+}
+
+input! {
+    tab
+    /// `stop`: stops loading a tab's page, as a browser's Stop does. Only the
+    /// user's page asks for it: the agent waits for its commands rather than
+    /// stopping a load, so it answers the page's [`TabMoved`] and is no
+    /// command of `demi browser` (`live-view.md` § The tab methods).
+    pub struct StopInput {}
 }
 
 /// What a navigation answers: the URL it observed, with the title when the
@@ -1516,6 +1536,7 @@ operations! {
     "back" => Back(BackInput),
     "forward" => Forward(ForwardInput),
     "reload" => Reload(ReloadInput),
+    "stop" => Stop(StopInput),
     "history" => History(HistoryInput),
     "close" => Close(CloseInput),
     "inspect" => Inspect(InspectInput),

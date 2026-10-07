@@ -93,6 +93,7 @@ async fn each_method_runs_its_operation_as_a_package_call_that_never_wakes_the_h
             "browser.goto" | "browser.back" | "browser.reload" => {
                 json!({ "tab": "t1", "url": "https://example.test/", "list": 7 })
             }
+            "browser.stop" => json!({ "list": 7 }),
             _ => json!({}),
         })
     }));
@@ -100,7 +101,8 @@ async fn each_method_runs_its_operation_as_a_package_call_that_never_wakes_the_h
     let listed = tabs(&plugin, &demi).await.unwrap();
     assert_eq!(listed["tabs"][0]["id"], json!("t1"));
     assert_eq!(listed["tabs"][0]["canGoBack"], json!(true));
-    // A navigation answers the number of the last tab list before it started.
+    // A navigation, and a Stop, answers the number of the last tab list
+    // before it started.
     for (method, params, answer) in [
         (
             "navigate",
@@ -117,12 +119,13 @@ async fn each_method_runs_its_operation_as_a_package_call_that_never_wakes_the_h
             json!({ "tab": "t1", "action": "reload" }),
             json!({ "list": 7 }),
         ),
+        ("stop", json!({ "tab": "t1" }), json!({ "list": 7 })),
         ("sync", json!({}), Value::Null),
     ] {
         assert_eq!(call(&plugin, &demi, method, params).await, Ok(answer));
     }
     // Every method changed the tab list the pages show.
-    assert_eq!(demi.changes(), 4);
+    assert_eq!(demi.changes(), 5);
 
     let calls: Vec<(String, CallKind)> = demi
         .called
@@ -137,6 +140,7 @@ async fn each_method_runs_its_operation_as_a_package_call_that_never_wakes_the_h
             ("browser.goto".to_owned(), CallKind::Operates),
             ("browser.back".to_owned(), CallKind::Operates),
             ("browser.reload".to_owned(), CallKind::Operates),
+            ("browser.stop".to_owned(), CallKind::Operates),
             ("browser.tabs".to_owned(), CallKind::Looks),
         ]
     );

@@ -196,6 +196,11 @@ export interface PanelKind<Data, Session = undefined> {
   /** The strip's mark. Props: `data`. */
   mark: Component
   /**
+   * Whether the tab `id` is at work, such as a page that loads, read
+   * reactively: the strip shows a spinner in place of its mark meanwhile.
+   */
+  busy?(data: Data, tab: KindTab<Session>, id: string): boolean
+  /**
    * The tab's content. Props: `conversation`, `session`, `tabId`, `data`, and
    * `shown`, whether the tab is the panel's selection. Emits `update` with
    * the tab's next `data`, and `close` to have the panel close the tab as its
@@ -520,12 +525,13 @@ function bindKind(
         })
     },
   })
-  const { badge, picked } = kind
+  const { badge, picked, busy } = kind
   return {
     kind: kind.kind,
     schema: kind.schema,
     title: (data) => kind.title(data, tab),
     mark: kind.mark,
+    busy: busy && ((data, id) => busy(data, tab, id)),
     content,
     create: kind.create && bindCreate(kind.create, tab),
     pinned: kind.pinned,
