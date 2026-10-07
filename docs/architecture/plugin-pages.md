@@ -356,7 +356,9 @@ happened to use, and the SDK's entry exports them by these groups:
 | --- | --- |
 | Settings | `SettingsPage`, `SettingsGroup`, `SettingsRow` |
 | Controls | `Button`, `IconButton`, `Switch`, `TextInput`, `Dropdown`, `Menu`, `MenuItem`, `MenuGroup`, `MenuDivider`, `Popover`, `Tooltip`, `Dialog`, `Fold`, `FoldChevron`, `ExternalLink` |
-| Progress | `IndeterminateSpinner` |
+| Progress | `IndeterminateSpinner`, `ProgressLine` |
+| Status | `RegionStatus`, what a region shows in place of content it cannot show ([Errors](../../packages/web-gallery/src/sections/ErrorsSection.vue)) |
+| Layout | `ScrollArea` |
 | Navigation | `AddressBar` |
 | Files | `FileIcon`, `FileView`, `ChangeView`, and the shapes and paths the conversation files service gives |
 | Icons | `ICON_PX`, the icon sizes, and Demi's own icons, such as `GlobePlus` |

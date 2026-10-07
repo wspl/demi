@@ -268,10 +268,12 @@ viewer, such as reading the tab list or giving the watched tab the screen and
 viewport that the viewer's panel asks for, it tells that viewer in a `notice`
 and writes to the [Host's log](../execution/runner.md#host-log). A notice
 carries a code, and the page shows it as the gallery's Errors page says: one
-the picture still shows through is a failed request, a toast in the Writing
-page's words for its code, once per notice; one that leaves no picture, such
-as a Host that cannot capture, replaces the picture with a region status that
-says why. Neither draws text in the tab's content.
+the picture still shows through, such as `input_failed`, is a failed request,
+a toast in the Writing page's words for its code, once per notice; the two
+that leave no picture, `capture_unavailable` (this Host cannot capture) and
+`capture_failed` (the watched tab's capture failed, until the next picture),
+lay a region status that says why over the picture, which stays in place for
+the next frame and keeps dialogs and native controls above it. Neither draws text in the tab's content.
 
 A view ends once. The module's `ended` message and the socket's close are one
 end, and the page opens at most one view after it, once the page's
@@ -692,7 +694,7 @@ and `reload` names the number of the last list before the request started.
 
 | State or method | Parameters | Does | A stopped Cloud |
 | --- | --- | --- | --- |
-| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading, shows }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
+| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading, canGoBack, canGoForward, shows }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
 | `bind` | `panelTab` | Opens a browser tab for a panel tab that has none, or whose browser tab is closed or failed to open, as for a new tab | Is woken: opening a tab is ordinary demand |
 | `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a job | Is not woken: every bound tab is closed |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |
