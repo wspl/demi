@@ -50,8 +50,13 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         id: 'notifications',
         label: 'Notifications',
         icon: Bell,
-        keywords: ['browser', 'sound'],
-        ...deferred
+        keywords: ['browser', 'alert'],
+        settings: [
+          { label: 'Browser notifications', keywords: ['notify'] },
+          { label: 'A turn finishes', keywords: ['done', 'complete'] },
+          { label: 'A turn fails', keywords: ['error'] },
+          { label: 'Demi needs permission', keywords: ['permission request'] },
+        ],
       },
     ],
   },
@@ -135,8 +140,6 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         icon: Database,
         keywords: [
           'transcripts',
-          'share links',
-          'export',
           'usage data',
           'delete'
         ],

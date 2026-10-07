@@ -16,6 +16,7 @@ import { useResources } from './state/resources'
 import { useProduct } from './state/product'
 import { startRawBridge } from './direct/raw-bridge'
 import { usePreferences } from './state/preferences'
+import { useNotifications } from './state/notifications'
 import { onSessionExpired } from './api/client'
 import { useSession } from './auth/session'
 import ChatPage from './conversation/ChatPage.vue'
@@ -83,16 +84,20 @@ const restored = session.restore(startup.signal).then(() => {
   }
 })
 const preferences = usePreferences(pinia)
+const notifications = useNotifications(pinia)
 const stopIdentity = watch(
   () => session.user?.id,
   (id, previous) => {
     if (previous && previous !== id) {
+      notifications.stop()
       conversations.stopAll()
       preferences.stop()
       product.stop()
     }
     if (id) {
       void conversations.initialize()
+      // A click on a notification opens its conversation.
+      notifications.start((conversationId) => void router.push(`/chat/${conversationId}`))
     }
   },
   { immediate: true },
@@ -183,6 +188,7 @@ if (import.meta.hot) {
     stopAppearance()
     stopTheme()
     stopLocale()
+    notifications.stop()
     window.removeEventListener('languagechange', reportLocale)
     conversations.stopAll()
     closeDraftStorage()

@@ -24,6 +24,8 @@ const props = defineProps<{
   showAssistantFooter?: boolean
   thinkingEndedAt?: string | null
   editable?: boolean
+  /** Regenerate in an answer's footer; absent where it is not offered. */
+  regenerate?: () => void
   fork?: () => Promise<void>
   forkState?: MessageForkState
   /** What the provider read out of this error block's failure record. */
@@ -114,6 +116,7 @@ const entersAsChrome = computed(() =>
       :created-at="block.createdAt"
       :fork="block.forkable ? fork : undefined"
       :fork-state="forkState"
+      :regenerate="regenerate"
     />
     <div
       v-else-if="block.type === 'tool_call'"
