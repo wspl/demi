@@ -19,6 +19,8 @@ use tokio_util::task::AbortOnDropHandle;
 pub struct Echo {
     /// The base URL an entry names: the provider appends `/messages`.
     pub url: String,
+    /// The port it listens on.
+    pub port: u16,
     _server: AbortOnDropHandle<()>,
 }
 
@@ -34,10 +36,12 @@ pub fn enabled(var: impl Fn(&str) -> Option<String>) -> Result<bool, String> {
     }
 }
 
-/// Starts the endpoint on a free port of the loopback interface.
-pub async fn start() -> std::io::Result<Echo> {
-    let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await?;
-    let url = format!("http://{}/v1", listener.local_addr()?);
+/// Starts the endpoint on `port` of the loopback interface, or on a free
+/// one for 0.
+pub async fn start(port: u16) -> std::io::Result<Echo> {
+    let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, port)).await?;
+    let address = listener.local_addr()?;
+    let url = format!("http://{address}/v1");
     let app = Router::new().route("/v1/messages", post(messages));
     let server = tokio::spawn(async move {
         if let Err(error) = axum::serve(listener, app).await {
@@ -46,6 +50,7 @@ pub async fn start() -> std::io::Result<Echo> {
     });
     Ok(Echo {
         url,
+        port: address.port(),
         _server: AbortOnDropHandle::new(server),
     })
 }

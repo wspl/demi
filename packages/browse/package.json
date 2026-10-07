@@ -1,0 +1,12 @@
+{
+  "name": "@demicodes/browse",
+  "description": "bun browse: the product-check tool over Playwright (docs/delivery/browse.md).",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@demicodes/web": "workspace:^",
+    "playwright": "1.63.0",
+    "zod": "^4.0.0"
+  }
+}

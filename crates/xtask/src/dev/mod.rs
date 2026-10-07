@@ -1,5 +1,6 @@
 //! `xtask dev` (`backend.md` § One-command development backend): the
-//! backend executable on a temporary data directory, with the backend
+//! backend executable on a temporary data directory, or on one `--data`
+//! names and keeps, with the backend
 //! scenarios' scripted machine manager, whose runners run on this machine as
 //! the Cloud, set up as the web app contract suite starts the backend
 //! (`scenarios.md` § Web app contract suite), with a master account and the
@@ -17,6 +18,7 @@ use std::time::Duration;
 
 use demi_command_protocol::testing::built_program;
 use demi_runner_protocol::release::ServerRelease;
+use demi_web_api_protocol::auth::SetupStatus;
 use demi_web_api_protocol::providers::ProviderAnswer;
 use process_wrap::tokio::{ChildWrapper, CommandWrap, KillOnDrop, ProcessGroup};
 use reqwest::header::{CONTENT_TYPE, COOKIE, SET_COOKIE};
@@ -56,6 +58,11 @@ pub struct Options {
     /// Keep the data directory when the command ends.
     #[arg(long)]
     keep: bool,
+    /// Run on this data directory, created when missing and kept when the
+    /// command ends; a later run on it finds the account, the entries and
+    /// the conversations of the earlier ones and seeds nothing.
+    #[arg(long, conflicts_with = "keep")]
+    data: Option<PathBuf>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -97,13 +104,19 @@ pub fn run(options: Options) -> Result<(), Error> {
     crate::interruptible(|cancel| develop(options, seed, cancel))?
 }
 
-/// Runs the development backend until `cancel`, then removes its data
-/// directory unless `--keep` keeps it, however the run ended.
+/// Runs the development backend until `cancel` on the data directory
+/// `--data` names, or on a temporary one it then removes unless `--keep`
+/// keeps it, however the run ended.
 async fn develop(
     options: Options,
     seed: Seed,
     cancel: CancellationToken,
 ) -> Result<(), Error> {
+    if let Some(data) = &options.data {
+        tokio::fs::create_dir_all(data).await?;
+        let data = std::path::absolute(data)?;
+        return serve(&options, &seed, &data, &cancel).await;
+    }
     let root = tempfile::Builder::new().prefix("demi-dev-").tempdir()?;
     let served = serve(&options, &seed, root.path(), &cancel).await;
     let removed = if options.keep {
@@ -143,7 +156,7 @@ async fn serve(
     cancel: &CancellationToken,
 ) -> Result<(), Error> {
     let echo = match seed.echo {
-        true => Some(echo::start().await?),
+        true => Some(start_echo(options, root).await?),
         false => None,
     };
     let echo_url = echo.as_ref().map(|echo| echo.url.as_str());
@@ -159,6 +172,27 @@ async fn serve(
         stop_manager(manager).await;
     }
     result
+}
+
+/// The echo model's endpoint. On a data directory `--data` names, it
+/// listens on the port of the earlier runs, which the directory records,
+/// since the entry seeded at the first run names that port.
+async fn start_echo(options: &Options, root: &Path) -> Result<echo::Echo, Error> {
+    if options.data.is_none() {
+        return Ok(echo::start(0).await?);
+    }
+    let record = root.join("echo-port");
+    let port = match tokio::fs::read_to_string(&record).await {
+        Ok(text) => text
+            .trim()
+            .parse()
+            .map_err(|error| Error::Seed(format!("{}: {error}", record.display())))?,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => 0,
+        Err(error) => return Err(error.into()),
+    };
+    let echo = echo::start(port).await?;
+    tokio::fs::write(&record, echo.port.to_string()).await?;
+    Ok(echo)
 }
 
 /// Everything between the first start and the end: it ends only with an
@@ -185,10 +219,63 @@ async fn session(
 
     let http = reqwest::Client::builder().no_proxy().build()?;
     answering(&http, &origin, backend.as_mut()).await?;
-    let cookies = setup(&http, &origin, &seed.account).await?;
+    let models = match setup_needed(&http, &origin).await? {
+        true => seed_data(&http, &origin, seed, echo).await?,
+        // A data directory of an earlier run holds the account and the
+        // entries it seeded.
+        false => "\x20 Model:   the entries the data directory's first run seeded\n".to_owned(),
+    };
+    let kept = if options.data.is_some() || options.keep {
+        " (kept)"
+    } else {
+        " (removed when the command ends)"
+    };
+    println!(
+        "\nThe development backend serves at {origin}\n\
+         \x20 Account: {}, password {}\n\
+         {models}\
+         \x20 Data:    {}{kept}\n\
+         Start the page in another terminal:\n\
+         \x20 DEMI_BACKEND_URL={origin} {}bun run web:dev\n\
+         Ctrl-C stops the backend.\n",
+        seed.account.email,
+        if seed.account.from_env {
+            "from DEMI_DEV_PASSWORD"
+        } else {
+            seed.account.password.as_str()
+        },
+        root.display(),
+        page_account(&seed.account),
+    );
+
+    tokio::select! {
+        status = backend.wait() => Err(Error::Backend(format!("exited: {}", status?))),
+        status = manager.process.wait() => Err(Error::Manager(format!("exited: {}", status?))),
+    }
+}
+
+/// Whether the backend still needs its master account: true on a new data
+/// directory.
+async fn setup_needed(http: &reqwest::Client, origin: &str) -> Result<bool, Error> {
+    let answer = http.get(format!("{origin}/api/setup")).send().await?;
+    let body = success(answer, "the setup status").await?.bytes().await?;
+    let status: SetupStatus = serde_json::from_slice(&body)
+        .map_err(|error| Error::Seed(format!("the setup status: {error}")))?;
+    Ok(status.needed)
+}
+
+/// Seeds the master account and an entry for each development model;
+/// answers the lines that name the models.
+async fn seed_data(
+    http: &reqwest::Client,
+    origin: &str,
+    seed: &Seed,
+    echo: Option<&str>,
+) -> Result<String, Error> {
+    let cookies = setup(http, origin, &seed.account).await?;
     let mut models = String::new();
     if let Some(provider) = &seed.provider {
-        let entry = create_entry(&http, &origin, &cookies, &provider.entry()).await?;
+        let entry = create_entry(http, origin, &cookies, &provider.entry()).await?;
         let reads = match provider.accepted_extensions() {
             Some(types) => {
                 let names: Vec<String> = types.iter().map(ToString::to_string).collect();
@@ -203,7 +290,7 @@ async fn session(
         ));
     }
     if let Some(echo) = echo {
-        let entry = create_entry(&http, &origin, &cookies, &echo_entry(echo)).await?;
+        let entry = create_entry(http, origin, &cookies, &echo_entry(echo)).await?;
         models.push_str(&format!(
             "\x20 Model:   {MODEL} of the provider entry {entry}, which answers \"Echo: <your message>\"\n"
         ));
@@ -213,33 +300,7 @@ async fn session(
             "\x20 Model:   none; set DEMI_DEV_PROVIDER_* or DEMI_DEV_ECHO=1 in .env to add one\n",
         );
     }
-    println!(
-        "\nThe development backend serves at {origin}\n\
-         \x20 Account: {}, password {}\n\
-         {models}\
-         \x20 Data:    {}{}\n\
-         Start the page in another terminal:\n\
-         \x20 DEMI_BACKEND_URL={origin} {}bun run web:dev\n\
-         Ctrl-C stops the backend.\n",
-        seed.account.email,
-        if seed.account.from_env {
-            "from DEMI_DEV_PASSWORD"
-        } else {
-            seed.account.password.as_str()
-        },
-        root.display(),
-        if options.keep {
-            " (kept)"
-        } else {
-            " (removed when the command ends)"
-        },
-        page_account(&seed.account),
-    );
-
-    tokio::select! {
-        status = backend.wait() => Err(Error::Backend(format!("exited: {}", status?))),
-        status = manager.process.wait() => Err(Error::Manager(format!("exited: {}", status?))),
-    }
+    Ok(models)
 }
 
 /// Assembles under `root` the server release the backend publishes and

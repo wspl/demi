@@ -157,10 +157,10 @@ test('production imports stay within the importing package\'s line', () => {
 
 /**
  * The packages that are command-line tools run by Bun rather than code a
- * page loads: `check`, the product-check tool (`product-checks.md`), drives
+ * page loads: `browse`, the product-check tool (`browse.md`), drives
  * a browser and the slot's servers through Node's built-ins.
  */
-const TOOLS = new Set(['check'])
+const TOOLS = new Set(['browse'])
 
 test('no production source of a package a page loads imports a Node built-in', () => {
   const builtins = new Set(builtinModules)
