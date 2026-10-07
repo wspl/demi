@@ -306,7 +306,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/cloud/reset", post(cloud::reset))
         .route("/devices", get(devices::list))
         .route("/devices/claim", post(devices::claim))
-        .route("/devices/{id}", delete(devices::revoke))
+        .route("/devices/{id}", delete(devices::revoke).patch(devices::rename))
         .route(
             "/devices/{id}/fs",
             get(devices::browse).post(devices::make_directory),
