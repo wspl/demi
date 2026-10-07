@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -62,6 +63,46 @@ function directServiceWorker(): Plugin {
 }
 
 /**
+ * The web preview's page runtime (`builds-and-releases.md` § Preview
+ * runtime), which `bun xtask preview-runtime` builds into
+ * `@demicodes/preview-runtime`'s `dist/runtime/<release>.js`: the page
+ * carries its release as `import.meta.env.DEMI_PREVIEW_RUNTIME`, and the
+ * relay delivers it from `/runtime/<release>.js`, which the development
+ * server serves from there and the build emits. Without a runtime built,
+ * the page carries none and offers no preview.
+ */
+function previewRuntime(): Plugin {
+  const directory = resolve(import.meta.dirname, '../preview-runtime/dist/runtime')
+  let file: string | undefined
+  try {
+    file = readdirSync(directory).find((name) => name.endsWith('.js'))
+  } catch {
+    // No runtime was built: the page offers no preview.
+  }
+  const release = file?.slice(0, -'.js'.length) ?? ''
+  return {
+    name: 'demi-preview-runtime',
+    config: () => ({ define: { 'import.meta.env.DEMI_PREVIEW_RUNTIME': JSON.stringify(release) } }),
+    configureServer(server) {
+      if (!file) {
+        return
+      }
+      const path = resolve(directory, file)
+      server.middlewares.use(`/runtime/${file}`, (_request, response) => {
+        response.setHeader('content-type', 'text/javascript')
+        response.setHeader('cache-control', 'no-cache')
+        response.end(readFileSync(path))
+      })
+    },
+    generateBundle() {
+      if (file) {
+        this.emitFile({ type: 'asset', fileName: `runtime/${file}`, source: readFileSync(resolve(directory, file)) })
+      }
+    },
+  }
+}
+
+/**
  * Keeps the page's hot-update socket on the development server itself,
  * even for a page loaded through a forwarder in front of it, as `bun browse`
  * loads it (`browse.md` § The slot's servers): Vite reloads a page whose
@@ -78,7 +119,7 @@ function directHotUpdates(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), webBuild(), directServiceWorker(), directHotUpdates()],
+  plugins: [vue(), tailwindcss(), webBuild(), directServiceWorker(), directHotUpdates(), previewRuntime()],
   // The repository's `.env` carries the local development account
   // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
   // during development only.

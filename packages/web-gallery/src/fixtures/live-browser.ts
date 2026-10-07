@@ -135,7 +135,7 @@ const siteIcons = new Map<string, string>()
  * its host on a color of its own. `plain.test` has none, so its tabs show
  * the generic mark, as a site without an icon does.
  */
-function siteIcon(url: string): string | undefined {
+export function siteIcon(url: string): string | undefined {
   const parsed = URL.parse(url)
   if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.host === 'plain.test') {
     return undefined

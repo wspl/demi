@@ -156,3 +156,57 @@ async fn the_program_serves_the_preview_stream_and_keeps_its_jar() {
     let jar = std::fs::read_to_string(data.path().join("preview-cookies.json")).unwrap();
     assert!(jar.contains("signed=in"), "{jar}");
 }
+
+/// `browser.preview_open`: the label of the address's top-level environment,
+/// the one the rewriter pins (`preview-rewrite`'s address tests), with its
+/// preview origin.
+#[tokio::test]
+async fn the_program_names_the_label_an_address_opens_under() {
+    let service = DemiBrowser::new();
+    let (output, mut records) = Output::channel(CancellationToken::new());
+    let completion = service
+        .invoke(InvocationContext {
+            request: Invocation {
+                operation: "browser.preview_open".into(),
+                invocation_id: "opening".into(),
+                context: CommandContext {
+                    conversation: "conversation".into(),
+                    caller: CommandCaller::User {},
+                    locale: CommandLocale {
+                        time_zone: "UTC".into(),
+                        languages: vec!["en-US".into()],
+                    },
+                },
+                args: serde_json::json!({
+                    "url": "http://localhost:5173/editor?x=1",
+                    "scheme": "http",
+                    "domain": "demi-preview.localhost:8787",
+                    "namespace": "k3f9x2ab",
+                    "host": "host-1",
+                }),
+                cwd: "/".into(),
+                env: BTreeMap::new(),
+                edits: None,
+                json: Some(true),
+                stdout: None,
+            },
+            input: Input::from_stream(futures_util::stream::empty()),
+            output,
+            cancellation: CancellationToken::new(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(completion.exit_code, 0);
+    let Some(Record::Stdout(bytes)) = records.recv().await else {
+        panic!("an answer on standard output");
+    };
+    let opened: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    assert_eq!(
+        opened,
+        serde_json::json!({
+            "label": "selbnt2qp6d94in3",
+            "environment": { "origin": "http://localhost:5173", "top": "http://localhost", "cross": false },
+            "origin": "http://k3f9x2ab--selbnt2qp6d94in3.demi-preview.localhost:8787",
+        })
+    );
+}
