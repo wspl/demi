@@ -18,4 +18,11 @@ pub enum ObjectError {
     /// panicked or the runtime is shutting down.
     #[error("blocking object store work did not finish: {0}")]
     Interrupted(#[from] tokio::task::JoinError),
+    /// What the store says of an object is outside its type.
+    #[error("the object store's {field} of {location} is invalid: {reason}")]
+    Corrupt {
+        location: String,
+        field: &'static str,
+        reason: String,
+    },
 }

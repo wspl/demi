@@ -13,6 +13,7 @@ import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.v
 import DeviceRenameDialog from '@demicodes/web-ui/devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '@demicodes/web-ui/devices/DeviceRevokeDialog.vue'
 import ConfirmDialog from '@demicodes/web-ui/ui/ConfirmDialog.vue'
+import ConversationDeleteDialog from '@demicodes/web-ui/sidebar/ConversationDeleteDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import type { DeviceInstallation } from '@demicodes/web-ui/devices/installation'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
@@ -454,6 +455,32 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'workspace'">
+      <GallerySection
+        title="Delete Conversations"
+        note="Delete in a conversation’s sidebar menu, a selection’s menu or an archived row asks first: the title names the one conversation or counts several, the body says that their messages and files go and that this cannot be undone, and that the files they changed in their projects stay. Delete is the destructive button, and Cancel the safe answer."
+      >
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen
+            v-for="item in [
+              { variant: 'one conversation', titles: ['Fix the login test'] },
+              { variant: 'a selection of three', titles: ['Fix the login test', 'Release notes', 'Upgrade Vite'] },
+            ]"
+            :key="item.variant"
+            wide
+            :variant="item.variant"
+          >
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <ConversationDeleteDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                :titles="item.titles"
+                @close="close"
+                @delete="finish(close, item.titles.length === 1 ? 'Delete the Conversation' : `Delete ${item.titles.length} Conversations`)"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
       <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product’s preference does. Switching between existing projects is the sidebar’s “Move To” and the header’s workspace control, not a dialog. The directory completes from the device’s folders as it is typed: the folder before the caret lists under the field, filtered fuzzily by what follows its last slash; ↓ and ↑ highlight a row, Tab or Enter completes it and the menu goes on into it, Escape puts the menu away.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(form, index) in projectForms" :key="form.variant" wide :variant="form.variant">

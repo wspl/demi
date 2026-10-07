@@ -423,8 +423,11 @@ impl<H: HostResolver> AgentServer<H> {
         self.evictions.wait().await;
     }
 
-    /// Disposes the conversation's live tree, under its opening order.
-    async fn close_tree(&self, root: &NodeId) {
+    /// Disposes the conversation's live tree, under its opening order,
+    /// whatever it does: its attached connections receive `closed`. A
+    /// conversation that is deleted closes its tree once its work is
+    /// stopped (`Tree::interrupt`); with no live tree there is nothing to do.
+    pub async fn close_tree(&self, root: &NodeId) {
         let _turn = self.opening.acquire(root.clone()).await;
         let Some(tree) = self.tree(root) else {
             return;
