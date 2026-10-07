@@ -33,6 +33,7 @@ use demi_shared_types::{
 use demi_web_api_protocol::conversations::{
     BatchAnswer, BatchResult, ConversationStatus, ConversationSummary, CreatedConversation,
     ConversationUpdate, Conversations, FieldResult, ModelSettings, PatchField, Transcript,
+    TurnOutcome,
 };
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
@@ -1526,6 +1527,98 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
     assert_eq!(usage(&backend, &master).await.totals[0].requests, 3);
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     assert_eq!(kinds(&blocks).last().map(String::as_str), Some("error"));
+    backend.close().await;
+}
+
+/// The summary's latest ended turn and status after each way a turn ends,
+/// each named by the block that ended it, so a page can tell a turn it has
+/// not seen end (`web-api.md` § Sidebar mutations and read state). One
+/// backend and four turns against the mock vendor, about a second.
+#[tokio::test]
+async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_ended() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let ended = |summary: &ConversationSummary| {
+        let turn = summary.last_turn.as_ref();
+        (
+            summary.status,
+            turn.map(|turn| turn.id.to_string()),
+            turn.map(|turn| turn.outcome),
+            turn.and_then(|turn| turn.answer_start.clone()),
+        )
+    };
+    let last_id = |blocks: &[Block]| Some(blocks.last().unwrap().id().to_string());
+    let before = summary(&backend, &master, FIRST).await;
+    assert_eq!(ended(&before), (ConversationStatus::Idle, None, None, None));
+
+    // The answer's start is cut at 400 characters, never inside one: each
+    // emoji is four bytes and each Han character three.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let emoji = "😀".repeat(300);
+    let han = "語".repeat(200);
+    vendor.respond(answer(&[emoji.as_str(), han.as_str()], 1, 1));
+    socket.chat("m1", "Say a lot").await;
+    let finished = transcript(&backend, &master, FIRST).await.blocks;
+    let start = format!("{emoji}{}", "語".repeat(100));
+    assert_eq!(
+        ended(&summary(&backend, &master, FIRST).await),
+        (
+            ConversationStatus::Completed,
+            last_id(&finished),
+            Some(TurnOutcome::Finished),
+            Some(start.clone())
+        )
+    );
+
+    // While a turn runs, the response of its first request ended no turn.
+    vendor.respond(tool_use("toolu_1", "no_such_tool", &json!({})));
+    vendor.respond(MockResponse::event_stream(": thinking\n\n").stay_open());
+    let requests = vendor.requests().len();
+    socket.send(&send("m2", "Look first")).await;
+    vendor.received(requests + 2).await;
+    assert_eq!(
+        ended(&summary(&backend, &master, FIRST).await),
+        (
+            ConversationStatus::Running,
+            last_id(&finished),
+            Some(TurnOutcome::Finished),
+            Some(start)
+        )
+    );
+    // A stopped turn that gave no text has no answer, not the last turn's.
+    socket.stop().await;
+    let stopped = transcript(&backend, &master, FIRST).await.blocks;
+    assert_eq!(kinds(&stopped).last().map(String::as_str), Some("abort"));
+    assert_eq!(
+        ended(&summary(&backend, &master, FIRST).await),
+        (
+            ConversationStatus::Stopped,
+            last_id(&stopped),
+            Some(TurnOutcome::Stopped),
+            None
+        )
+    );
+
+    vendor.respond(
+        MockResponse::status(401)
+            .chunk(r#"{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"#),
+    );
+    socket.chat("m3", "Again").await;
+    let failed = transcript(&backend, &master, FIRST).await.blocks;
+    assert_eq!(
+        ended(&summary(&backend, &master, FIRST).await),
+        (
+            ConversationStatus::Error,
+            last_id(&failed),
+            Some(TurnOutcome::Failed),
+            None
+        )
+    );
     backend.close().await;
 }
 
