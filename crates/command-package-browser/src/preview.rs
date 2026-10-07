@@ -112,3 +112,28 @@ impl Previews {
         }
     }
 }
+
+/// `browser.preview_open`: the top-level label of the address the user
+/// opens, as JSON on standard output.
+pub(crate) async fn open(
+    context: InvocationContext,
+    input: &demi_command_package_browser_protocol::preview::PreviewOpenInput,
+) -> Result<Completion, ServiceError> {
+    match demi_command_package_browser_preview::opening(input) {
+        Ok(opened) => {
+            let json = serde_json::to_vec(&opened).map_err(ServiceError::failed)?;
+            context.output.stdout(Bytes::from(json)).await?;
+            Ok(Completion {
+                exit_code: 0,
+                error: None,
+            })
+        }
+        Err(message) => Ok(Completion {
+            exit_code: 2,
+            error: Some(CommandError {
+                code: "invalid_input".into(),
+                message,
+            }),
+        }),
+    }
+}

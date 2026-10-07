@@ -21,6 +21,8 @@ use crate::page;
 
 /// The kind whose tabs the plugin takes part in.
 pub const KIND: &str = "browser";
+/// The kind of the tabs of the user's browser, the web previews.
+pub const PREVIEW_KIND: &str = "preview";
 
 /// What a `browser` tab keeps.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -111,6 +111,7 @@ impl Handler for DemiBrowser {
                 let previews = self.previews.clone();
                 Box::pin(async move { previews.serve(context).await })
             }
+            Ok(Operation::PreviewOpen(input)) => Box::pin(async move { preview::open(context, &input).await }),
             Err(OperationError::Unknown(operation)) => {
                 Box::pin(async move { Err(ServiceError::UnknownOperation(operation)) })
             }

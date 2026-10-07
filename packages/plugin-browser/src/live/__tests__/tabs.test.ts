@@ -13,7 +13,7 @@ import {
   type BrowserTabsOptions,
   type PictureSupport,
 } from '../tabs'
-import { browserTabKind } from '../kind'
+import { browserTabTitle } from '../kind'
 import { browserTabsApi } from '../../tabs'
 
 /** A controller in a panel session's effect scope, over a tab list the test sets; what it reports to the user lands in `reported`. */
@@ -432,7 +432,7 @@ test('a Reload shows the page loading from the click until a list numbered after
 
 test('a tab opened in the background takes its page’s title once the browser names it, and one its user sends elsewhere never the old page’s', async () => {
   const { controller, answers, opened, end } = await requestHarness()
-  const title = (data: { url: string; tab?: string; title?: string }) => browserTabKind.title(data, { conversation: 'c1', session: controller })
+  const title = (data: { url: string; tab?: string; title?: string }) => browserTabTitle(data, controller)
   const tabs = (list: number, invoice: string, ordersLoading = false) => opened[0]!.data(framed({
     type: 'state',
     running: true,
@@ -798,7 +798,7 @@ test('a tab not shown that was lost with the browser keeps its title and waits, 
   views[0]!.handlers.data(framed({ type: 'state', running: false, list: 2, tabs: [], watched: null }))
   list.value = { tabs: [], browser }
   expect(controller.busy('p-t1', orders)).toBe(false)
-  expect(browserTabKind.title(orders, { conversation: 'c1', session: controller })).toBe('Orders')
+  expect(browserTabTitle(orders, controller)).toBe('Orders')
   end()
 })
 
@@ -808,6 +808,7 @@ test('a call still waiting for the backend when the panel session ends is droppe
   const waiting: AbortSignal[] = []
   const plugin: ConversationPlugin = {
     state: () => ({ value: computed(() => null), error: computed(() => null), read: () => {} }),
+    preview: computed(() => null),
     // The shell holds the call while it cannot reach the backend, until its signal aborts.
     call: (_method, _params, _result, options) =>
       new Promise((_resolve, reject) => {

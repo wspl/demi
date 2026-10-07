@@ -49,6 +49,9 @@ pub enum Operation {
     Live,
     /// `browser.preview`: the web preview's stream of a user's page.
     Preview,
+    /// `browser.preview_open`: the top-level label of an address the user
+    /// opens in a tab of their browser.
+    PreviewOpen(Box<preview::PreviewOpenInput>),
 }
 
 /// Why an invocation could not be decoded.
@@ -79,6 +82,11 @@ impl Operation {
                 .map(|_| Self::Preview)
                 .map_err(OperationError::Invalid);
         }
+        if name == preview::OPEN_OPERATION {
+            return demi_shared_types::decode_value::<preview::PreviewOpenInput>(args)
+                .map(|input| Self::PreviewOpen(Box::new(input)))
+                .map_err(OperationError::Invalid);
+        }
         match name.strip_prefix(browser::PREFIX) {
             Some(browser) => browser::BrowserOperation::parse(browser, args)
                 .map(|operation| Self::Browser(Box::new(operation))),
@@ -87,11 +95,12 @@ impl Operation {
     }
 
     /// Every operation the package serves, as its descriptor lists them: the
-    /// browser operations, the live view and the web preview.
+    /// browser operations, the live view and the web preview's stream and
+    /// opening.
     pub fn names() -> impl Iterator<Item = &'static str> {
         browser::OPERATIONS
             .iter()
-            .chain([&live::OPERATION, &preview::OPERATION])
+            .chain([&live::OPERATION, &preview::OPERATION, &preview::OPEN_OPERATION])
             .copied()
     }
 }

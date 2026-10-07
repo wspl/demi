@@ -14,7 +14,8 @@ import { clientPlatform } from '@demicodes/utils'
 import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
 import { browserShortcut } from './input'
-import { NEW_TAB_URL, STARTING_LABELS, refusalSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
+import type { BrowserPanel } from '../panel'
+import { NEW_TAB_URL, STARTING_LABELS, refusalSentence, type BrowserTabData } from './tabs'
 import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
@@ -35,13 +36,15 @@ import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportCh
  */
 const props = defineProps<{
   conversation: string
-  /** The page's panel session of the conversation: its browser. */
-  session: BrowserTabsController
+  /** The page's panel session of the conversation, whose agent's browser this tab shows. */
+  session: BrowserPanel
   tabId: string
   data: BrowserTabData
   shown: boolean
 }>()
 const emit = defineEmits<{ update: [data: BrowserTabData] }>()
+/** The conversation's browser. */
+const browser = props.session.browser
 
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
 const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
@@ -54,20 +57,20 @@ const address = computed(() => (props.data.url === NEW_TAB_URL ? '' : props.data
 const { overlays, errors, files, intents, panel } = usePage()
 const platform = clientPlatform(navigator)
 /** The plugin opens a browser tab for this panel tab again. */
-const opening = computed(() => props.session.opening(props.tabId, props.data))
-const view = computed(() => props.session.session.value)
+const opening = computed(() => browser.opening(props.tabId, props.data))
+const view = computed(() => browser.session.value)
 /** The browser tab the panel tab's data names, unless the browser lost it; the browser may not list it yet. */
 const bound = computed(() => (props.data.closed ? undefined : props.data.tab))
 /** The bound tab as a view last reported it, kept while no view is open or the view reconnects. */
-const live = computed(() => props.session.tab(bound.value))
+const live = computed(() => browser.tab(bound.value))
 const viewport = computed(() => live.value?.viewport ?? null)
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
 /** What Demi does before the browser has the tab, if it does not have it yet. */
-const phase = computed(() => props.session.startingPhase(props.tabId, props.data))
+const phase = computed(() => browser.startingPhase(props.tabId, props.data))
 /** The tab loads: Stop, the strip's spinner and the progress line show it. */
-const busy = computed(() => props.session.busy(props.tabId, props.data))
+const busy = computed(() => browser.busy(props.tabId, props.data))
 /** Back and Forward are unavailable while the browser says the tab has no page that way, or has said nothing yet. */
 const backReason = computed(() => (live.value?.canGoBack ? null : 'No page to go back to'))
 const forwardReason = computed(() => (live.value?.canGoForward ? null : 'No page to go forward to'))
@@ -78,10 +81,10 @@ watch(
   [() => props.shown, bound],
   ([shown, tab], previous) => {
     if (previous?.[0] && (previous[1] !== tab || !shown)) {
-      props.session.hide(props.tabId)
+      browser.hide(props.tabId)
     }
     if (shown) {
-      props.session.show(props.tabId, tab ?? null)
+      browser.show(props.tabId, tab ?? null)
     }
   },
   { immediate: true, flush: 'post' },
@@ -105,7 +108,7 @@ function measure(): void {
   measured.value = panelSize(bounds.width, bounds.height)
   snap.value = { x: deviceSnap(bounds.left, devicePixelRatio), y: deviceSnap(bounds.top, devicePixelRatio) }
   if (props.shown) {
-    props.session.resize({
+    browser.resize({
       panel: measured.value,
       devicePixelRatio,
       screen: panelSize(screen.width, screen.height),
@@ -139,7 +142,7 @@ watch(() => props.shown, (shown) => {
 onBeforeUnmount(() => {
   observer?.disconnect()
   density?.removeEventListener('change', watchDensity)
-  props.session.hide(props.tabId)
+  browser.hide(props.tabId)
 })
 
 // The tab saves where the page went, with the page's title for the strip. A blank page the browser first
@@ -174,7 +177,7 @@ function submit(url: string): void {
   const { title: _left, ...data } = props.data
   emit('update', { ...data, url })
   if (bound.value !== undefined) {
-    props.session.navigate(bound.value, url).catch((error: unknown) => {
+    browser.navigate(bound.value, url).catch((error: unknown) => {
       errors.report('Could Not Open the Address', error)
       restore()
     })
@@ -202,7 +205,7 @@ const COULD_NOT = {
 /** Back, Forward and Reload, on the bound tab; a refusal is reported as any failed request is. */
 function history(action: 'back' | 'forward' | 'reload'): void {
   if (bound.value !== undefined) {
-    props.session.history(bound.value, action).catch((error: unknown) => errors.report(COULD_NOT[action], error))
+    browser.history(bound.value, action).catch((error: unknown) => errors.report(COULD_NOT[action], error))
   }
 }
 
@@ -239,7 +242,7 @@ function openLink(url: string): void {
 }
 
 /** The downloads the user started in this tab, the newest first, as a browser's bubble lists them. */
-const downloads = computed(() => [...props.session.downloadsOf(bound.value)].reverse())
+const downloads = computed(() => [...browser.downloadsOf(bound.value)].reverse())
 const bubble = ref(false)
 const bubbleAnchor = ref<HTMLElement | null>(null)
 // A download that starts opens the bubble, as a browser shows a download it starts.
@@ -296,7 +299,7 @@ function stop(): void {
     return
   }
   if (bound.value !== undefined) {
-    props.session.stop(bound.value).catch((error: unknown) => errors.report(COULD_NOT_STOP, error))
+    browser.stop(bound.value).catch((error: unknown) => errors.report(COULD_NOT_STOP, error))
   }
 }
 
@@ -306,7 +309,7 @@ function stop(): void {
  * own state; a refused request is a toast.
  */
 function reopen(): Promise<void> {
-  return props.session.bind(props.tabId).catch((error: unknown) => errors.report('Could Not Open the Page', error))
+  return browser.bind(props.tabId).catch((error: unknown) => errors.report('Could Not Open the Page', error))
 }
 
 // A tab whose browser tab the browser lost opens again once shown, as a web browser reloads a tab it
@@ -381,7 +384,7 @@ watch(
         :on-retry="reopen"
       />
       <div
-        v-else-if="bound !== undefined && props.session.pictures.value === 'unsupported'"
+        v-else-if="bound !== undefined && browser.pictures.value === 'unsupported'"
         class="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-fg-faint"
       >
         This browser cannot show the live view: it cannot decode H.264 video.

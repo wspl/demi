@@ -396,22 +396,6 @@ export class BrowserTabsController {
   }
 
   /**
-   * The icon of the page the panel tab with `data` shows, as a web
-   * browser's tab shows it: as a view last reported it, else as the plugin
-   * last listed it; null without a browser tab, or for a page without one.
-   */
-  favicon(data: BrowserTabData): string | null {
-    if (data.tab === undefined || data.closed || data.failure) {
-      return null
-    }
-    const live = this.tab(data.tab)
-    if (live) {
-      return live.favicon ?? null
-    }
-    return this.list.value?.tabs.find((candidate) => candidate.id === data.tab)?.favicon ?? null
-  }
-
-  /**
    * Whether the panel tab `panelTab`, with `data`, shows its page loading:
    * the one state its strip's spinner, its Stop and its progress line show
    * (`live-view.md` § A browser tab in the panel). It loads while its browser

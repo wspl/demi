@@ -710,7 +710,7 @@ if (!globalThis.__proxyRuntimeInstalled) {
         };
       }
     }
-    installTabRuntime({ currentBaseUrl, topLevel });
+    installTabRuntime({ currentBaseUrl, currentLogicalUrl, topLevel });
     // A POST to another preview origin cannot go through that origin's bootstrap as a
     // navigation: the Demi page keeps the request, and the bootstrap announces its token
     // (`docs/browser/preview.md` § Opening and navigating).

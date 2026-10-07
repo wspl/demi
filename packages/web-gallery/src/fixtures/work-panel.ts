@@ -25,6 +25,7 @@ import { productWould } from '../product-would'
 import { readGalleryEdit } from './blobs'
 import { galleryBrowser, type GalleryBrowser } from './live-browser'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
+import { galleryPreview, type GalleryPreview } from './preview'
 import type { createGalleryWorkspace } from './workspace'
 import { browserPlugin, galleryPageHost } from './plugins'
 
@@ -54,17 +55,27 @@ const CONVERSATION = 'gallery'
  */
 export function useGalleryWork(
   selection: string | null,
-  { files, browser = galleryBrowser(), pictures, pages }: {
+  { files, browser = galleryBrowser(), preview = galleryPreview(), pictures, pages }: {
     files: ConversationFileService
     browser?: GalleryBrowser
+    /** The pages the tabs of the user's browser show. */
+    preview?: GalleryPreview
     /** Whether the web browser decodes the pictures; by default it asks the web browser, as the product does. */
     pictures?: () => Promise<boolean>
     /** The plugin pages whose kinds the panel shows; every one the product shows by default. */
     pages?: readonly AnyPluginPage[]
   },
 ) {
-  // The gallery's pages, with the browser's own made for a specimen that says how the pictures decode.
-  const shown = pages ?? PLUGIN_PAGES.map((page) => (page.plugin === 'browser' && pictures ? browserPage({ pictures }) : page))
+  // The gallery's pages, with the browser's own over the gallery's previews, and the pictures as the specimen
+  // says they decode.
+  const shown = pages ?? PLUGIN_PAGES.map((page) =>
+    page.plugin === 'browser'
+      ? browserPage({
+          ...(pictures ? { pictures } : {}),
+          previewDriver: () => preview.driver(),
+          previewUnsupported: () => preview.unsupported.value,
+        })
+      : page)
   const enabled = () => true
   const backend = new GalleryPanel()
   const plugin = galleryBrowserPlugin(browser, backend, shown)
@@ -154,9 +165,10 @@ export function useGalleryWork(
     select(opened.selection)
   }
 
-  const host = galleryPageHost({ browser: browserPlugin(browser, plugin) }, {
+  const host = galleryPageHost({ browser: browserPlugin(browser, plugin, preview) }, {
     files,
     hostStarting: () => browser.hostStarting.value,
+    preview: () => preview.place(),
     intents: {
       open: (_conversation, request) => openIn(request),
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,
@@ -209,6 +221,7 @@ export function useGalleryWork(
     kinds,
     selected,
     browser,
+    preview,
     agentShows,
     agentOpens,
     host,
