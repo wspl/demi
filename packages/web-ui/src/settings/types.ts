@@ -43,6 +43,8 @@ export interface SettingsNavItem {
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
+  /** It sets up a keyboard, so a touch phone, which has none, does not list it. */
+  keyboard?: boolean
 }
 
 /** Sections grouped under a small caption, the way a long rail is read. */
@@ -93,7 +95,7 @@ export interface SettingsArchivedConversation {
 export interface SettingsKeyBinding {
   id: string
   action: string
-  /** In the recorder's notation, e.g. `⌘⇧O`. */
+  /** In the recorder's notation, e.g. `⇧⌘O`. */
   keys: string
 }
 

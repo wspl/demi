@@ -146,7 +146,10 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   return { heldId, slot }
 }
 
-/** The id of a message on its way; a failed delivery is not on its way. */
+/**
+ * The id of a message on its way; a failed delivery is not on its way, nor
+ * one that waits for the backend to be reachable again.
+ */
 function deliveringId(submission: PendingSubmissionState | null): string | null {
-  return submission && submission.error === null ? submission.id : null
+  return submission && submission.error === null && !submission.waiting ? submission.id : null
 }
