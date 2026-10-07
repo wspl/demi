@@ -680,7 +680,7 @@ changes it, using the repository secrets `CLOUDFLARE_API_TOKEN` and
 `CLOUDFLARE_ACCOUNT_ID`. A deployment only adds: the files under
 `/__demi/v<N>/` of a published version never change and are never removed,
 since pages built against them may still be open, so a change to them
-publishes `v<N+1>` and the web app's build names the version it uses. Its entry in the public suffix list is requested once the service
+publishes `v<N+1>`, while a new file may join a published version and the web app's build names the version it uses. Its entry in the public suffix list is requested once the service
 runs. Development and tests run the same Worker locally with Wrangler's
 development server under `demi-preview.localhost`, whose subdomains Chrome
 resolves to the loopback address and treats as secure contexts over plain
