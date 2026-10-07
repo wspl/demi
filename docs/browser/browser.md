@@ -1904,7 +1904,7 @@ field with a different meaning or type. A `viewport` value carries `width`,
 | --- | --- |
 | open, info | `tab, url, title, viewport`; info can include `dialog` |
 | show | `tab` |
-| tabs | `tabs: [{id, title, url, createdBy, shows}], truncated`, where `shows` counts the times the tab was shown, 0 for one never shown |
+| tabs | `tabs: [{id, title, url, createdBy, loading, canGoBack, canGoForward, shows}], truncated`, where `loading` says the tab's page is loading, `canGoBack` and `canGoForward` whether `back` and `forward` have somewhere to go, and `shows` counts the times the tab was shown, 0 for one never shown |
 | goto, back, forward, reload | `tab, url, title` |
 | history | `entries: [{index, url, title, current}], truncated` |
 | close | `closed` |
