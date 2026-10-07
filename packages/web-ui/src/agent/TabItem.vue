@@ -13,9 +13,10 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
  * then does the strip scroll. A faint line sits in the
  * gap after the tab and fades out while the tab or its neighbour is active or
  * hovered. The close control has a slot of its own at the tab's end, kept on
- * every tab so a tab never changes width when the pointer reaches it: the title
- * is cut short before the slot, never under the control. The control shows on
- * the active tab and on the tab under the pointer. The root stays a single element with no top-level comment: a
+ * every tab so a tab never changes width when the pointer reaches it. The
+ * control shows on the active tab and on the tab under the pointer, and the
+ * title is cut short before it, never under it; on any other tab the title
+ * runs on over the empty slot, so a narrow tab shows no gap before the next. The root stays a single element with no top-level comment: a
  * fragment root would keep the strip's enter and leave transitions off it.
  *
  * It acts as a web browser's tab does: the primary button selects it as it
@@ -101,7 +102,14 @@ function onAuxclick(event: MouseEvent): void {
       </slot>
       <ConversationStatusDot v-if="status" :status="status" />
     </span>
-    <span class="min-w-0 flex-1 truncate whitespace-nowrap pl-1.5 pr-1">{{ title }}</span>
+    <!-- While the close control hides, the title runs on over its slot, as a browser's tab's does;
+         the slot stays, so the tab keeps its width when the control shows. -->
+    <span class="min-w-0 flex-1 pl-1.5 pr-1">
+      <span
+        class="block w-max truncate whitespace-nowrap"
+        :class="isActive ? 'max-w-full' : 'max-w-[calc(100%_+_var(--spacing-hit-xs))] group-hover:max-w-full'"
+      >{{ title }}</span>
+    </span>
     <!-- The close control's own slot: the title ends before it, and it sits as far from the
          tab's right edge as centering puts it from the top and bottom. -->
     <span class="flex shrink-0 items-center mr-[calc((var(--tab-h)_-_var(--spacing-hit-xs))/2)]">
