@@ -217,6 +217,7 @@ export function keptChangeSet(
     path: root,
     read: () => reads.list(),
     size: (list) => list.files.reduce((sum, file) => sum + file.path.length, 0),
+    outsideRepository: (list) => !list.repository,
   }
   const sidesSpec = (path: string): KeptSpec<ChangeSides> => ({
     kind: 'sides',

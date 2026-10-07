@@ -2,17 +2,23 @@
 //! (`sessions-and-targets.md` § Switch the primary target, § Attached hosts;
 //! `web-api.md` § Workspaces, devices, and attached hosts): a target switch
 //! moves the work and attaches the device it leaves, a switch ends the
-//! conversation's open transfers instead of waiting for them, and attached
-//! hosts are attached, renamed and detached. The devices are real runners.
+//! conversation's open transfers instead of waiting for them, attached
+//! hosts are attached, renamed and detached, and each change of them, the
+//! directory a host's shell recorded included, raises the revision a page
+//! reads them by. The devices are real runners.
 
 use std::path::PathBuf;
 
+use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::state::SyncEvent;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 
-use crate::support::{Answer, Harness, Paired, Session, TestBackend, pattern};
+use crate::conversations::anthropic_at;
+use crate::support::{Answer, Harness, Paired, Session, SyncChannel, TestBackend, pattern};
+use crate::work::{Driven, say, shell};
 
 const CONVERSATION: &str = "3c2b1a0f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 
@@ -391,5 +397,74 @@ async fn an_attached_host_is_attached_once_named_uniquely_and_detached() {
         gone.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::HostNotAttached)
     );
+    backend.close().await;
+}
+
+/// Waits until the page receives the conversation's summary at the hosts
+/// revision `revision`.
+async fn until_hosts_revision(page: &mut SyncChannel, revision: u64) {
+    page.until(|event| {
+        matches!(
+            event,
+            SyncEvent::Conversation { conversation }
+                if conversation.id.as_str() == CONVERSATION && conversation.hosts_revision == revision
+        )
+    })
+    .await;
+}
+
+// About a second: two real devices install the builtin package, and a turn
+// runs `demi host shell` from one on the other.
+#[tokio::test]
+async fn each_change_of_the_attached_hosts_reaches_a_page_as_a_higher_hosts_revision() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_file_package();
+    let (backend, master) = conversation(&harness).await;
+    let laptop = backend.pair(&master, "laptop").await;
+    let ci = backend.pair(&master, "ci").await;
+    let work = directory(&laptop, "work");
+    assert_eq!(
+        switch(&backend, &master, target(&laptop, &work)).await.status,
+        StatusCode::OK
+    );
+    let mut page = backend.sync(&master).await;
+    let state = page.snapshot().await;
+    assert_eq!(state.conversations[0].hosts_revision, 0);
+    let route = format!("/api/conversations/{CONVERSATION}/hosts");
+
+    let attached = backend
+        .post(&route, Some(&master), json!({ "deviceId": ci.id() }))
+        .await;
+    assert_eq!(attached.status, StatusCode::CREATED);
+    until_hosts_revision(&mut page, 1).await;
+    let renamed = backend
+        .patch(&format!("{route}/{}", ci.id()), &master, json!({ "name": "builder" }))
+        .await;
+    assert_eq!(renamed.status, StatusCode::OK);
+    until_hosts_revision(&mut page, 2).await;
+
+    // The first shell ends in another directory, which the hosts list
+    // records; the second ends where it started, which changes nothing.
+    let provider = anthropic_at(&backend, &master, &vendor, "/laptop").await;
+    let mut driven = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/laptop").await;
+    let moved = "demi host shell --host builder 'mkdir -p sub && cd sub' && demi host shell --host builder pwd";
+    let ran = driven
+        .turn(vec![shell("t1", moved, 20_000), say("moved")])
+        .await;
+    let sub = ci.runner.home_dir().join("sub");
+    assert!(
+        ran.received[0].contains(sub.to_str().unwrap()),
+        "{}",
+        ran.received[0]
+    );
+    until_hosts_revision(&mut page, 3).await;
+    assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(3));
+    // The shell reports where it ended with links resolved.
+    let resolved = std::fs::canonicalize(&sub).unwrap();
+    assert_eq!(hosts(&backend, &master).await[0]["cwd"], json!(resolved.to_str().unwrap()));
+
+    let detached = backend.delete(&format!("{route}/{}", ci.id()), &master).await;
+    assert_eq!(detached.status, StatusCode::NO_CONTENT);
+    until_hosts_revision(&mut page, 4).await;
     backend.close().await;
 }

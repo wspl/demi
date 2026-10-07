@@ -27,7 +27,8 @@ export const LISTING_REREAD_MS = 1000
 /**
  * What an entry is, which decides which reports concern it: a listing is
  * its folder's, and a file's entries are the file's; the changes list and
- * the committed sides follow the repository's `.git` too.
+ * the committed sides follow the repository's `.git` too, and a changes
+ * list outside any repository follows only a `.git` that appears in it.
  */
 export type KeptKind = 'listing' | 'text' | 'description' | 'changes' | 'sides' | 'committed'
 
@@ -70,6 +71,12 @@ export interface KeptSpec<T> {
   read(held: T | undefined): Promise<T>
   /** The characters of text it holds. */
   size(value: T): number
+  /**
+   * Whether `value` is a changes list that found its path outside any git
+   * repository: it changes only once a `.git` appears there, so no other
+   * report concerns it, however often the files there change.
+   */
+  outsideRepository?(value: T): boolean
 }
 
 /** Whether `path` lies in a repository's `.git`, whose changes concern the changes list and the committed sides. */
@@ -118,8 +125,12 @@ class Entry<T> {
         return within(own, path)
       case 'sides':
         return within(own, path) || inGitDirectory(path)
-      case 'changes':
+      case 'changes': {
+        const value = this.state.value
+        if (value !== undefined && this.spec.outsideRepository?.(value))
+          return within(path, `${own.replace(/\/$/, '')}/.git`)
         return (within(path, own) && !ignored) || inGitDirectory(path)
+      }
       case 'committed':
         return inGitDirectory(path)
     }
