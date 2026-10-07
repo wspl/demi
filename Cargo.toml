@@ -32,6 +32,8 @@ members = [
   "crates/plugin-file",
   "crates/plugin-skills",
   "crates/plugin-browser",
+  "crates/preview-rewrite",
+  "crates/preview-rewrite-wasm",
   "crates/backend-plugins",
   "crates/command-protocol",
   "crates/command-sdk",
@@ -95,6 +97,11 @@ tokio = { version = "1", features = ["fs", "io-util", "macros", "net", "process"
 tokio-util = { version = "0.7", features = ["io", "rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "registry", "std"] }
+# The preview rewriter's WebAssembly glue: `wasm-bindgen-cli-support`, which
+# `xtask preview-runtime` generates the glue with, must be of the same
+# version as the crate (`builds-and-releases.md` § Preview runtime).
+wasm-bindgen = "=0.2.129"
+wasm-bindgen-cli-support = "=0.2.129"
 
 [profile.dev]
 # Line tables are enough for test backtraces. Full debug info made every test
