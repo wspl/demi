@@ -147,13 +147,15 @@ export type PictureSupport = 'checking' | 'supported' | 'unsupported'
 
 /**
  * What Demi does for a panel tab before the browser has its tab
- * (`live-view.md` § A browser tab in the panel): starts the Cloud, starts
- * the browser on the Host, or has the browser open the tab.
+ * (`live-view.md` § A browser tab in the panel): reads what the Host is
+ * doing, starts the Cloud, starts the browser on the Host, or has the
+ * browser open the tab.
  */
-export type StartingPhase = 'cloud' | 'browser' | 'page'
+export type StartingPhase = 'connecting' | 'cloud' | 'browser' | 'page'
 
-/** What the content says in each phase, once the wait passed half a second. */
+/** What the content says in each phase, from the frame the phase begins. */
 export const STARTING_LABELS: Record<StartingPhase, SentenceText> = {
+  connecting: 'Connecting…',
   cloud: 'Starting Cloud…',
   browser: 'Starting the browser…',
   page: 'Opening the page…',
@@ -433,10 +435,12 @@ export class BrowserTabsController {
    * What Demi does for the panel tab `panelTab`, with `data`, before the
    * browser has its tab: while it opens, the first time or again, and while
    * it waits to (`live-view.md` § A browser tab in the panel). The Cloud
-   * starting comes first; then the browser starting, while the
-   * conversation's browser has no tabs, as the view, or else the plugin's
-   * list, last said; then the browser opening the tab. Null once the browser
-   * has the tab, and for a tab that could not open and was not retried.
+   * starting comes first, which the product state says; then connecting,
+   * while neither a view nor the plugin's list has said what the
+   * conversation's browser holds; then the browser starting, while it has
+   * no tabs, as the view, or else the plugin's list, last said; then the
+   * browser opening the tab. Null once the browser has the tab, and for a
+   * tab that could not open and was not retried.
    */
   startingPhase(panelTab: string, data: BrowserTabData): StartingPhase | null {
     const before = this.opening(panelTab, data)
@@ -448,10 +452,14 @@ export class BrowserTabsController {
       return 'cloud'
     }
     const view = this.session.value
-    const running = view?.state.connection === 'live'
-      ? view.state.running && view.state.tabs.length > 0
-      : (this.list.value?.tabs.length ?? 0) > 0
-    return running ? 'page' : 'browser'
+    if (view?.state.connection === 'live') {
+      return view.state.running && view.state.tabs.length > 0 ? 'page' : 'browser'
+    }
+    const list = this.list.value
+    if (list === null) {
+      return 'connecting'
+    }
+    return list.tabs.length > 0 ? 'page' : 'browser'
   }
 
   /**
