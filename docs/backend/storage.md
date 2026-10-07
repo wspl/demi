@@ -483,9 +483,11 @@ or an upload record written in the last day. The day keeps a blob whose
 reference is not written yet, since a blob is published before the row that
 names it: an upload the composer holds before its draft is saved, or a
 tool's image before its checkpoint commits. A put of a blob that exists
-writes nothing, so the blob's own age is its first write's; the user's shard
+writes nothing, so the blob's own age is its first write's; the blob store
 therefore remembers, for a day, each blob put again, and the collection
-keeps those too. A restart forgets them, and with them only references
+keeps those too. A put's check that the blob exists and the collection's last
+check before it removes that blob exclude each other, so a blob is either
+kept or written again. A restart forgets them, and with them only references
 that the stopped process had not written and never will. The screenshot stays, because the fork's
 database names it. A user's collections run one at a time; a deletion during
 one starts another after it.
