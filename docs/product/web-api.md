@@ -1051,6 +1051,7 @@ later one is the current value of one part of it that changed:
 | --- | --- | --- |
 | `snapshot` | `state`, the product state below | First, on every connection |
 | `conversation` | `conversation`, the conversation's summary as the conversation lists carry it | Its record changes: a patch or a batch item, an archive, a restore or a target switch once it completes, a read acknowledgement, a draft saved, restored or dismissed, a message sent, a title requested or written. It is created or forked. Its tree saves a checkpoint, starts or stops working, or is disposed. A permission request is raised, decided, replaced or withdrawn |
+| `conversation_deleted` | `id`, the conversation's id | It is deleted ([Deleting a conversation](../backend/storage.md#deleting-a-conversation)) |
 | `conversation_order` | `ids`, the id of every conversation, in the product state's order | A conversation is created, forked, moved, pinned or unpinned, archived or restored |
 | `preferences` | `preferences` | A preferences patch |
 | `user` | `user` | The nickname or the email address changes |
