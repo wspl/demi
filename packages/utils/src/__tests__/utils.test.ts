@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { clientPlatform, delay, sliceHead, truncate } from '../index'
+import { clientPlatform, delay, keepComposition, sliceHead, truncate } from '../index'
 
 test('an aborted delay ends at once instead of after its time', async () => {
   const stop = new AbortController()
@@ -22,4 +22,23 @@ test('surrogate-safe slicing', () => {
   expect(sliceHead('abc', 0)).toBe('')
   expect(truncate('🙂🙂🙂', 4)).toBe('🙂…')
   expect(truncate('🙂🙂🙂', 2, '')).toBe('🙂')
+})
+
+test("an input method's keys stay with the field and a plain Enter reaches its handlers", () => {
+  const cases = [
+    // Chrome: the Enter that commits a candidate, while still composing.
+    { key: 'Process', keyCode: 229, isComposing: true, kept: true },
+    // Safari: the composition ended before the committing Enter's keydown.
+    { key: 'Enter', keyCode: 229, isComposing: false, kept: true },
+    // Escape drops a candidate.
+    { key: 'Escape', keyCode: 27, isComposing: true, kept: true },
+    { key: 'Dead', keyCode: 192, isComposing: false, kept: true },
+    { key: 'Enter', keyCode: 13, isComposing: false, kept: false },
+    { key: 'Escape', keyCode: 27, isComposing: false, kept: false },
+  ]
+  for (const { kept, ...key } of cases) {
+    let stopped = false
+    keepComposition({ ...key, stopPropagation: () => { stopped = true } })
+    expect({ ...key, stopped }).toEqual({ ...key, stopped: kept })
+  }
 })
