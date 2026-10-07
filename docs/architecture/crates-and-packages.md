@@ -1115,7 +1115,8 @@ demi-backend (executable: configuration, composition)
 #### `backend-user-shard`
 
 - **Owns:** the user shard ([The user shard](concurrency.md#the-user-shard)):
-  shard threads, `Shard`, `Shards` and the shard pool, the shared services a
+  shard threads, `Shard`, `Shards` and the shard pool, the registration of
+  the deployment's [preview namespace](../browser/preview.md#the-preview-domain-service), the shared services a
   shard is given (`Services`) over the storage they open, the times and
   bounds the shard and the edge run with, calls into a shard with the routing
   of the machine manager's death events, socket adoption and the page
