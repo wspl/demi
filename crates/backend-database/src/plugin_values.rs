@@ -8,10 +8,10 @@
 
 use std::collections::BTreeMap;
 
-use demi_plugin_interface::HostDirectory;
+use demi_plugin_interface::{DirectoryFile, HostDirectory};
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::ids::UserId;
-use rusqlite::{OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::Value;
 
 use super::StorageError;
@@ -273,6 +273,31 @@ pub enum Written {
     Revision(u64),
     /// Another write came first.
     Conflict,
+}
+
+/// The blobs `user`'s plugins name: each value's list, and the files of each
+/// Host directory.
+pub(crate) fn plugin_blobs(
+    connection: &Connection,
+    user: &UserId,
+) -> Result<Vec<BlobRef>, StorageError> {
+    let mut blobs = Vec::new();
+    let mut values = connection.prepare_cached("SELECT blobs FROM plugin_values WHERE user_id = ?1")?;
+    let mut rows = values.query([user.as_str()])?;
+    while let Some(row) = rows.next()? {
+        let named: Vec<BlobRef> =
+            decode(TABLE, "blobs", serde_json::from_str(&row.get::<_, String>(0)?))?;
+        blobs.extend(named);
+    }
+    let mut directories =
+        connection.prepare_cached("SELECT files FROM plugin_directories WHERE user_id = ?1")?;
+    let mut rows = directories.query([user.as_str()])?;
+    while let Some(row) = rows.next()? {
+        let files: Vec<DirectoryFile> =
+            decode(DIRECTORIES, "files", serde_json::from_str(&row.get::<_, String>(0)?))?;
+        blobs.extend(files.into_iter().map(|file| file.blob));
+    }
+    Ok(blobs)
 }
 
 /// `blobs` as their column holds them.

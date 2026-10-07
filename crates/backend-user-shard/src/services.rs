@@ -185,7 +185,7 @@ impl Storage {
             )
             .await?;
             let search = SearchIndexes::open(data_dir.join(SEARCH_INDEXES)).await?;
-            let blobs = BlobStores::new(objects);
+            let blobs = BlobStores::new(objects, clock.clone());
             Ok::<_, StorageError>((conversations, search, blobs))
         }
         .await;

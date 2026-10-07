@@ -249,6 +249,7 @@ useAppShortcuts(
           @pin="conversations.pin"
           @move-to-project="conversations.move"
           @archive="conversations.archive"
+          @delete="conversations.remove"
           @open-settings="settingsAddress.open"
           @sign-out="signOut"
         />
