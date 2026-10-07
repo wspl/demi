@@ -226,9 +226,13 @@ function shortcut(event: KeyboardEvent): void {
   }
 }
 
-/** A link the browser's menu opens in a new tab, right after this one and not selected, as a browser opens it. */
+/**
+ * A link the browser's menu opens in a new tab, not selected, opened by this
+ * one, which places it beside this one as a browser does.
+ */
 function openLink(url: string): void {
-  panel.add(props.conversation, 'browser', { url }, { select: false, after: props.tabId })
+  const data: BrowserTabData = { url, openedBy: props.tabId }
+  panel.add(props.conversation, 'browser', data, { select: false })
 }
 
 /** The downloads the user started in this tab, the newest first, as a browser's bubble lists them. */

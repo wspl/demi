@@ -1,9 +1,10 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { addedPanelTab } from '@demicodes/plugin-browser/live/tabs'
-import { PanelTabs, TabOpeners, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
+import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
 import {
   openIntent,
+  openedTabIndex,
   pendingShows,
   shownSelection,
   type AppliedShows,
@@ -66,7 +67,7 @@ export function useGalleryWork(
   const shown = pages ?? PLUGIN_PAGES.map((page) => (page.plugin === 'browser' && pictures ? browserPage({ pictures }) : page))
   const enabled = () => true
   const backend = new GalleryPanel()
-  const plugin = galleryBrowserPlugin(browser, backend)
+  const plugin = galleryBrowserPlugin(browser, backend, shown)
   // The browser's tabs stand in the panel in its order, as the product's would: the user's with the tab the
   // user made for each, the agent's with the id the plugin gives them. A panel without the browser's page has none.
   if (shown.some((page) => page.plugin === 'browser')) {
@@ -88,7 +89,6 @@ export function useGalleryWork(
   tabs.start()
 
   const history = ref<readonly string[]>(selection === null ? [] : [selection])
-  const openers = new TabOpeners()
   const pinned = ref<PinnedTabs>({})
   const panel = computed<PanelState>(() => ({ history: history.value, tabs: tabs.tabs.value }))
 
@@ -163,7 +163,7 @@ export function useGalleryWork(
     panel: {
       tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       add: (_conversation, kind, data, options = { select: false }) => {
-        openers.add(tabs.tabs.value, options.after, (index) => add(kind, data, { select: options.select, index }))
+        add(kind, data, { select: options.select, index: openedTabIndex(tabs.tabs.value, shown, kind, data) })
       },
       select: (_conversation, _kind, id) => {
         select(id)

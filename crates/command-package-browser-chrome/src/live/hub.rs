@@ -131,6 +131,7 @@ impl Hub {
             streams: HashMap::new(),
             screen: None,
             due: false,
+            held: Vec::new(),
         };
         tasks.spawn(owner.run(received, environment.ended().clone()));
         Self {
@@ -285,6 +286,10 @@ struct Owner {
     screen: Option<Screen>,
     /// A layout is due once the requests at hand are handled.
     due: bool,
+    /// The watched tabs the last layout left at their size because a
+    /// navigation of theirs was under way; each one's commit makes a layout
+    /// due again.
+    held: Vec<BrowserTab>,
 }
 
 impl Owner {
@@ -294,11 +299,13 @@ impl Owner {
         let mut departures = FuturesUnordered::<Departure>::new();
         let operations = self.operations.clone();
         loop {
+            let held = self.held.clone();
             tokio::select! {
                 biased;
                 _ = ended.cancelled() => break,
                 Some(viewer) = departures.next() => self.leave(viewer),
                 () = operations.woken.notified() => self.operated(),
+                () = any_committed(&held), if !held.is_empty() => self.due = true,
                 request = requests.recv() => match request {
                     Some(request) => self.request(request, &mut departures).await,
                     None => break,
@@ -496,6 +503,14 @@ impl Owner {
                 tabs.push((tab.clone(), panel));
             }
         }
+        // A tab whose navigation is under way keeps its size until its
+        // document commits: Chrome holds its page's commands meanwhile, and the
+        // hub, which waits for them, would hold every viewer's request with
+        // them (`PageLoad::Navigating`). Its picture stays as it was.
+        let (held, tabs): (Vec<_>, Vec<_>) = tabs
+            .into_iter()
+            .partition(|(tab, _)| tab.navigating() && !tab.ended().is_cancelled());
+        self.held = held.into_iter().map(|(tab, _)| tab).collect();
         if let Some(desired) = desired
             && self.screen != Some(desired)
             && let Some((tab, _)) = tabs.first()
@@ -564,6 +579,12 @@ impl Owner {
             }
         }
     }
+}
+
+/// Ends once one of `tabs` takes its page's commands again, its navigation
+/// committed or ended.
+async fn any_committed(tabs: &[BrowserTab]) {
+    futures_util::future::select_all(tabs.iter().map(|tab| Box::pin(tab.committed()))).await;
 }
 
 /// Gives a Web or Mobile tab the viewport `panel` decides.

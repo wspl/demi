@@ -45,6 +45,8 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   title: (data, tab) => browserTabTitle(data, tab.session),
   // The agent's showings, which the plugin carries from the tab list (`live-view.md` § Showing a tab).
   shows: (data) => data.shows ?? 0,
+  // Which tab opened it, so the panel places the next tab its opener opens behind it.
+  openedBy: (data) => data.openedBy,
   mark: BrowserTabMark,
   // The page's own icon, as a web browser's tab shows it; the mark only for a page without one.
   icon: (data, tab) => tab.session.favicon(data),

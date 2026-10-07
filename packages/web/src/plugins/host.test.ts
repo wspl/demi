@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { z } from 'zod'
+import { waitFor } from '@demicodes/utils'
 import { skillsStateSchema, type SkillsState } from '@demicodes/plugin-skills'
 import { PluginCallError, definePage, pageContext } from '@demicodes/web-ui/plugins/page'
 import { conversationSummary, productState } from '../__tests__/product-state'
@@ -17,6 +18,8 @@ let channels: ReturnType<typeof playChannels>
 let skills: SkillsState
 /** Each call the backend received: its path and body. */
 let calls: [string, unknown][]
+/** The tabs the backend's work panel holds, as a read of it answers them. */
+let panelTabs: unknown[]
 
 beforeEach(() => {
   pinia = createPinia()
@@ -36,10 +39,17 @@ beforeEach(() => {
     ],
   }
   calls = []
+  panelTabs = []
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
+    }
+    if (path === `/api/conversations/${CONVERSATION}/panel`) {
+      return Response.json({ revision: 1, tabs: panelTabs })
+    }
+    if (path === `/api/conversations/${CONVERSATION}/panel/changes`) {
+      return Response.json({ revision: 2, changed: true })
     }
     calls.push([path, JSON.parse(String(init?.body))])
     if (path === '/api/plugins/skills/calls/set_enabled') {
@@ -134,16 +144,26 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
   expect(browser.conversation('unknown').installed.value).toEqual([])
 })
 
-test('tabs a page adds after another stand right after it in the order they came, as links opened from a tab do, and after the others once that one is gone', () => {
+test("a link's tab stands after the tabs its opener opened before, as the backend's panel names them after a reload, and after the others once its opener is gone", async () => {
+  // The panel as a reloaded page reads it: `link` was opened from `a` before the reload, by this page or another.
+  panelTabs = [
+    { id: 'a', kind: 'browser', data: { url: 'https://a.test/' } },
+    { id: 'link', kind: 'browser', data: { url: 'https://link.test/', openedBy: 'a' } },
+    { id: 'b', kind: 'browser', data: { url: 'https://b.test/' } },
+  ]
+  const work = useWorkPanel()
+  channels.last().connect(productState({
+    conversations: [conversationSummary(CONVERSATION, 'Work', { panelRevision: 1 })],
+    pluginStates: { skills },
+  }))
+  work.load(CONVERSATION)
+  const urls = () => work.stateFor(CONVERSATION).panel.tabs.map((tab) => z.object({ url: z.string() }).parse(tab.data).url)
+  await waitFor(() => urls().length === 3)
   const panel = productPageHost().panel
-  const urls = () => useWorkPanel().stateFor(CONVERSATION).panel.tabs.map((tab) => z.object({ url: z.string() }).parse(tab.data).url)
-  panel.add(CONVERSATION, 'browser', { url: 'https://a.test/' })
-  panel.add(CONVERSATION, 'browser', { url: 'https://b.test/' })
-  const opener = useWorkPanel().stateFor(CONVERSATION).panel.tabs[0]!.id
-  // Open Link in New Tab on the first tab, twice in a row.
-  panel.add(CONVERSATION, 'browser', { url: 'https://link.test/' }, { select: false, after: opener })
-  panel.add(CONVERSATION, 'browser', { url: 'https://next.test/' }, { select: false, after: opener })
-  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://next.test/', 'https://b.test/'])
-  panel.add(CONVERSATION, 'browser', { url: 'https://late.test/' }, { select: false, after: 'closed-meanwhile' })
-  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://next.test/', 'https://b.test/', 'https://late.test/'])
+  // Open Link in New Tab on `a` again, then once more.
+  panel.add(CONVERSATION, 'browser', { url: 'https://next.test/', openedBy: 'a' }, { select: false })
+  panel.add(CONVERSATION, 'browser', { url: 'https://last.test/', openedBy: 'a' }, { select: false })
+  expect(urls()).toEqual(['https://a.test/', 'https://link.test/', 'https://next.test/', 'https://last.test/', 'https://b.test/'])
+  panel.add(CONVERSATION, 'browser', { url: 'https://late.test/', openedBy: 'closed-meanwhile' }, { select: false })
+  expect(urls().at(-1)).toBe('https://late.test/')
 })
