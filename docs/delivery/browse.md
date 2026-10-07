@@ -119,7 +119,8 @@ conversation's turn to end.
   page of the slot's gallery.
 - **The product's other parts.** `demi.message(text)` replaces any draft,
   sends the text in the open conversation and waits for its turn to end, not
-  for background jobs. `demi.runner()` starts the slot's built runner with its
+  for background jobs; it fails at once, with the page's words, when the
+  page marks the message not delivered or the turn ends with an error. `demi.runner()` starts the slot's built runner with its
   own installation folder under `.cache/browse/` and pairs it through Add
   Device, or reuses the one it paired; `demi.runner.stop()` and `.start()`
   stop and start that same runner, as a device that goes away and comes back,
