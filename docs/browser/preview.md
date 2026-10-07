@@ -799,7 +799,7 @@ Not covered yet: `getHighEntropyValues()`, `navigator` in workers, the
 | The preview domain sees user data | It receives only requests for its versioned static files; the Demi page keeps POST bodies; requests that reach it before the forwarder is installed are not logged |
 | The preview domain is used for phishing | Content enters only through a registered Demi page; opened as a top-level page, it shows nothing |
 | The preview domain's code is changed | The forwarder sees every preview's content, which is the price of trusting the domain: only this repository's CI publishes it, and a deployment can run its own domain |
-| The domain expires and is registered by someone else | Automatic renewal and a registrar lock |
+| The domain expires and is registered by someone else, or the Cloudflare account is taken over | The operator's to prevent: whoever holds the domain or the account controls the forwarder, and Demi adds no protection of its own |
 
 ## Known differences
 
