@@ -73,11 +73,14 @@ product.start()
 // channels for its lifetime (`direct-channel.md` § Bytes the browser
 // fetches itself).
 startRawBridge()
-const restored = session.restore(startup.signal).then(() => {
-  if (!session.signedIn) {
+/** A page signed out, or of a Demi without accounts, follows no state; one whose check failed keeps the channel for its Retry. */
+function stopUnlessSignedIn(): void {
+  const { status } = session.current
+  if (status === 'signedOut' || status === 'setupNeeded') {
     product.stop()
   }
-}).catch((error) => {
+}
+const restored = session.restore(startup.signal).then(stopUnlessSignedIn).catch((error) => {
   // Hot replacement can dispose this composition root before startup finishes.
   if (!startup.signal.aborted) {
     throw error
@@ -113,6 +116,19 @@ const stopExpiry = onSessionExpired(() => {
   }
   void router.replace(signInAddress(router.currentRoute.value.fullPath, 'expired'))
 })
+// A first check the backend failed shows its failure, whose Retry checks
+// again: what the retry finds decides the page's pages as the first check would.
+const stopRetry = watch(
+  () => session.current.status,
+  (status, previous) => {
+    if (previous !== 'failed' || status === 'failed') {
+      return
+    }
+    stopUnlessSignedIn()
+    const { path, query, hash } = router.currentRoute.value
+    void router.replace({ path, query, hash, force: true })
+  },
+)
 router.beforeEach(async (to) => {
   await restored
   if (startup.signal.aborted) {
@@ -121,6 +137,10 @@ router.beforeEach(async (to) => {
   // Each session state has its pages: setup while no account exists, sign-in
   // without a session, and the product with one.
   const status = session.current.status
+  if (status === 'failed') {
+    // The address stays for the retry; the page shows the failure over it.
+    return true
+  }
   if (status === 'setupNeeded') {
     return to.path === '/setup' ? true : '/setup'
   }
@@ -184,6 +204,7 @@ if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     startup.abort()
     stopIdentity()
+    stopRetry()
     stopExpiry()
     stopAppearance()
     stopTheme()

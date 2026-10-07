@@ -27,7 +27,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Starting',
-    'What a page shows where the app will be until it knows who is signed in. While the page cannot reach Demi, as when it is loaded during a restart, it says it connects and waits; it shows the sign-in page only when Demi answers that nobody is signed in.'
+    'What a page shows where the app will be until it knows who is signed in. While the page cannot reach Demi, as when it is loaded during a restart, it says it connects and waits; it shows the sign-in page only when Demi answers that nobody is signed in, and any other failure Demi answers with Retry.'
   ],
 ]
 
@@ -80,6 +80,11 @@ function signIn(_: string, secret: string) {
   }
   failures += 1
   state.value = failures >= 5 ? 'locked' : 'error'
+}
+
+/** A session check the gallery simulates: it fails again after a moment, as a backend that still fails it would. */
+function checkAgain(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 1500))
 }
 
 const setupStates: {
@@ -192,7 +197,7 @@ function createAccount(name: string, address: string) {
     <GallerySection
       v-else
       title="Starting"
-      note="The product’s StartingScreen, pinned in each state. Nothing to click: the page goes on by itself once Demi answers."
+      note="The product’s StartingScreen, pinned in each state. Loading and Connecting go on by themselves once Demi answers; Failed offers Retry, which here fails again after a moment."
     >
       <div class="grid gap-6 xl:grid-cols-2">
         <GallerySpecimen wide variant="Loading · checking who is signed in">
@@ -203,6 +208,17 @@ function createAccount(name: string, address: string) {
         <GallerySpecimen wide variant="Connecting · Demi cannot be reached yet">
           <div class="h-[20rem] overflow-hidden rounded-xl border border-line bg-surface-base">
             <StartingScreen class="h-full" connecting />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen wide variant="Failed · Demi answered the check with its own error">
+          <div class="h-[20rem] overflow-hidden rounded-xl border border-line bg-surface-base">
+            <!-- Retry checks again and, as the gallery has no backend, fails the same way after a moment. -->
+            <StartingScreen
+              class="h-full"
+              :connecting="false"
+              failure="The session store could not be read: database is locked"
+              :on-retry="checkAgain"
+            />
           </div>
         </GallerySpecimen>
       </div>

@@ -210,9 +210,11 @@ useAppShortcuts(
 
 <template>
   <StartingScreen
-    v-if="session.current.status === 'checking' || !route.matched.length"
+    v-if="session.current.status === 'checking' || session.current.status === 'failed' || !route.matched.length"
     class="h-dvh"
     :connecting="product.connecting"
+    :failure="session.current.status === 'failed' ? session.current.error : null"
+    :on-retry="() => session.restore()"
   />
   <div v-else-if="session.signedIn" class="flex h-full flex-col">
     <ConnectionBanner v-if="product.connection" :problem="product.connection" />
