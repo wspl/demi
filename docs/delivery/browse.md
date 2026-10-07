@@ -55,10 +55,13 @@ account once the web app is up, and records each process group. `bun browse
 down` stops exactly those groups, never anything found by name, so the user's
 servers and other slots' are never touched; `down <server>…` stops only those.
 `up` copies the user's `.env` into the slot for the backend and `down` deletes
-it. The backend's data lives in the slot's `.cache/browse/` and survives `down
-backend` and `up backend`, so a check can restart the backend as an upgrade
-does and see a page come back to the same account and conversations; `down
---wipe` removes it.
+it. The backend's data lives in the slot's `.cache/browse/`, through `bun xtask
+dev --data`, and survives `down` and `up`, so a check can restart the backend
+as an upgrade does and see a page come back to the same account and
+conversations; the paired runner stays too. `down --wipe` removes both. The
+web app's development server keeps its live-update connection on its own
+port rather than through the forwarder, so a restart of the tool never
+reloads the page.
 
 **Finding things.** Every command that acts takes a Playwright locator:
 `role=button[name="Reload"]`, `text=Allow for This Conversation`,
