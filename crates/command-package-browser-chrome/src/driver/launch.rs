@@ -11,13 +11,18 @@ use demi_command_package_browser_protocol::live::VIDEO_CODEC;
 use demi_command_package_browser_protocol::release::{
     RUNTIME_FONTS_ENTRY, RUNTIME_LIBRARIES_ENTRY,
 };
-use demi_command_protocol::CommandLocale;
+use demi_command_protocol::{ColorScheme, CommandLocale};
 
 use crate::driver::operation::Result;
 
 /// The capture extension's ID, fixed by the public key in its manifest so that
 /// tab capture can allowlist it (`live-view.md` § Capture).
 pub const CAPTURE_EXTENSION_ID: &str = "ekadkclcinpnbbdeloemlmaimcklplko";
+
+/// Where the capture extension of the browser with `profile` lies.
+pub fn capture_extension(profile: &Path) -> PathBuf {
+    profile.join("demi-capture")
+}
 
 const CAPTURE_EXTENSION: &[(&str, &str)] = &[
     ("manifest.json", include_str!("capture/manifest.json")),
@@ -84,11 +89,15 @@ impl Runtime {
 
 /// Chrome's switches beside the ones the driver owns (profile, debugging
 /// port, extension, sandbox): chromiumoxide's defaults without
-/// `enable-automation` and `lang`, headless without hidden scrollbars. With
-/// the runtime, a desktop Host's audio plugins would load beside its older
-/// libraries, and the live view carries no sound: Chrome has no audio
-/// output.
-fn switches(version: &str, runtime: Option<&Runtime>) -> Vec<(String, Option<String>)> {
+/// `enable-automation` and `lang`, headless without hidden scrollbars, in
+/// the user's color scheme. With the runtime, a desktop Host's audio
+/// plugins would load beside its older libraries, and the live view
+/// carries no sound: Chrome has no audio output.
+fn switches(
+    version: &str,
+    color_scheme: ColorScheme,
+    runtime: Option<&Runtime>,
+) -> Vec<(String, Option<String>)> {
     let mut switches: Vec<(String, Option<String>)> = [
         "disable-background-networking",
         "disable-background-timer-throttling",
@@ -135,17 +144,7 @@ fn switches(version: &str, runtime: Option<&Runtime>) -> Vec<(String, Option<Str
         switches.push((name.to_owned(), Some(value.to_owned())));
     }
     switches.push(("user-agent".into(), Some(desktop_user_agent(version))));
-    // A headless Linux browser reports no hover and a coarse pointer; pages
-    // would take their touch styles.
-    if cfg!(target_os = "linux") {
-        switches.push((
-            "blink-settings".into(),
-            Some(
-                "primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2"
-                    .into(),
-            ),
-        ));
-    }
+    switches.push(("blink-settings".into(), Some(blink_settings(color_scheme))));
     switches.push((
         "allowlisted-extension-id".into(),
         Some(CAPTURE_EXTENSION_ID.into()),
@@ -154,6 +153,28 @@ fn switches(version: &str, runtime: Option<&Runtime>) -> Vec<(String, Option<Str
         switches.push(("disable-audio-output".into(), None));
     }
     switches
+}
+
+/// Blink's settings for every page and worker, which Chrome takes from its
+/// last `blink-settings` switch only. The preferred color scheme is the
+/// user's, whatever the Host's appearance: `prefers-color-scheme` follows
+/// it, and Chrome paints an empty page in it, `#121212` in the dark one
+/// (measured with the pinned Chrome on a dark Mac told to be light, and the
+/// other way round). A headless Linux browser also reports no hover and a
+/// coarse pointer, and pages would take their touch styles.
+fn blink_settings(color_scheme: ColorScheme) -> String {
+    // Blink's `PreferredColorScheme`: 0 is dark, 1 light.
+    let scheme = match color_scheme {
+        ColorScheme::Dark => 0,
+        ColorScheme::Light => 1,
+    };
+    let mut settings = format!("preferredColorScheme={scheme}");
+    if cfg!(target_os = "linux") {
+        settings.push_str(
+            ",primaryPointerType=4,availablePointerTypes=4,primaryHoverType=2,availableHoverTypes=2",
+        );
+    }
+    settings
 }
 
 /// The Chrome major version pages see, from a release version such as
@@ -178,7 +199,8 @@ fn desktop_user_agent(version: &str) -> String {
     )
 }
 
-/// Configures Chrome's switches, the user's locale and the capture extension
+/// Configures Chrome's switches, the user's locale and color scheme, and the
+/// capture extension
 /// on a profile about to be launched; the extension dials `capture` and
 /// encodes with the live protocol's codec. With `runtime`, which a Linux
 /// Host starts Chrome with, Chrome finds the runtime through its own
@@ -190,10 +212,11 @@ pub async fn configure(
     profile: &Path,
     version: &str,
     locale: &CommandLocale,
+    color_scheme: ColorScheme,
     runtime: Option<&Runtime>,
     capture: &str,
 ) -> Result<BrowserConfigBuilder> {
-    let extension = profile.join("demi-capture");
+    let extension = capture_extension(profile);
     tokio::fs::create_dir(&extension).await?;
     for (name, contents) in CAPTURE_EXTENSION {
         tokio::fs::write(extension.join(name), contents).await?;
@@ -229,7 +252,7 @@ pub async fn configure(
     if runtime.is_some() {
         builder = builder.no_sandbox();
     }
-    for (name, value) in switches(version, runtime) {
+    for (name, value) in switches(version, color_scheme, runtime) {
         builder = match value {
             Some(value) => builder.arg((name.as_str(), value.as_str())),
             None => builder.arg(name),

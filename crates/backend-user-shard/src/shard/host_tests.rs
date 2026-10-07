@@ -35,6 +35,7 @@ mod host_commands {
             cwd: "/work".into(),
             env: BTreeMap::new(),
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: ID.into(),
                 caller: CommandCaller::agent(1),
                 locale: default_locale(),
