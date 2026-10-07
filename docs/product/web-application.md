@@ -430,7 +430,10 @@ the page shows the banner "Demi is restarting" and connects again
   the channel closed with 1001 `backend_closing` (the backend shut down on
   purpose and will be back; it does not know whether for an upgrade or a
   restart), and "Reconnecting to Demi" once a lost channel's first new
-  attempt failed. It goes when the channel's snapshot arrives. A message sent
+  attempt failed. It goes when the channel's snapshot arrives. The banner is
+the one place that says so: while it shows, a conversation whose socket waits
+for the same backend shows no Connecting row of its own, which it shows only
+when its socket is lost while the page still reaches the backend. A message sent
   meanwhile shows in the transcript as waiting to be sent and goes when the
   conversation opens again, with its id, so it is sent once; it never shows
   as failed for the lost connection. A control that needs the backend, such
