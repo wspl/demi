@@ -614,6 +614,15 @@ publishing the viewport to capture. Chrome acknowledging the metrics does not
 mean its compositor has applied them; starting a new capture earlier can scale
 and letterbox the old surface into the new dimensions.
 
+A resize ends the tab's capture before it changes the window or the page's
+metrics, and the next capture starts once the new viewport is published.
+Chrome scales a captured page up until it fills the capture's size, so a
+capture still running at the old, larger size while the page shrinks would
+paint the page at a higher ratio than its metrics, and the new capture's first
+picture would show it too large. A captured frame names no device scale
+factor, so no picture can be recognized and dropped afterwards; the capture
+must not overlap the change.
+
 - The screen is shared by the environment's windows. Each page's ratio
   follows the viewer that operated most recently. The screen's ratio only
   rises: it is the highest ratio a viewer of the environment used. When the
