@@ -45,14 +45,15 @@ function rowsTree(): MemoryDirectory {
   })
 }
 
-export const TREE_ROOT = '/w'
+// A workspace named as a project is, since its name heads every tree.
+export const TREE_ROOT = '/demi'
 export const TREE_SELECTED = `${TREE_ROOT}/src/auth/providers/oauth/github/client.ts`
 
 function wrap(root: MemoryDirectory, latencyMs = 0, uploadRate?: number): FileBrowserSource {
   return createMemoryFileSource({
     platform: 'macos',
-    home: '/w',
-    root: dir({ w: root }),
+    home: TREE_ROOT,
+    root: dir({ demi: root }),
     latencyMs,
     uploadRate,
   })
@@ -82,7 +83,7 @@ export function screenshotsSource(): FileBrowserSource {
 
 /** The rows workspace, where listing `slowPath` never finishes. */
 export function stuckSource(slowPath: string): FileBrowserSource {
-  const reads = memoryFileReads({ platform: 'macos', home: '/w', root: dir({ w: rowsTree() }) })
+  const reads = memoryFileReads({ platform: 'macos', home: TREE_ROOT, root: dir({ demi: rowsTree() }) })
   return keptSource({
     ...reads,
     list: (path) => path === slowPath ? new Promise(() => {}) : reads.list(path),
