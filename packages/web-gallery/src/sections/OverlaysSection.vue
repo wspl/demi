@@ -699,7 +699,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             </Dropdown>
           </GallerySpecimen>
         </div>
-        <GalleryOverlayWell>
+        <GalleryOverlayWell size="lg">
           <GallerySpecimen variant="pinned open">
             <Dropdown
               variant="ghost"
@@ -925,7 +925,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
         note="Over the whole app once a page that loaded itself for the build the backend serves still got another one, as when a cache in front of Demi keeps an earlier page. It says so and offers Reload."
       >
         <div class="specimen-row specimen-row-wide items-start">
-          <GalleryOverlayWell>
+          <GalleryOverlayWell size="wide">
             <GallerySpecimen variant="could not be updated">
               <UpdateFailedScreen @reload="productWould('Reload the Page')" />
             </GallerySpecimen>

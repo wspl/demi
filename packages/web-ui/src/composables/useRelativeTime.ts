@@ -18,3 +18,13 @@ export function formatRelativeTime(timestamp: string): string {
   return dayjs(timestamp).fromNow()
 }
 
+/**
+ * A timestamp as a moment to the minute, in the interface's English whatever
+ * the browser's locale: "Thursday, October 9 at 2:00 PM", with its year when
+ * that is not this year's.
+ */
+export function formatMoment(timestamp: string): string {
+  const moment = dayjs(timestamp)
+  const thisYear = moment.year() === dayjs().year()
+  return moment.format(thisYear ? 'dddd, MMMM D [at] h:mm A' : 'dddd, MMMM D, YYYY [at] h:mm A')
+}
