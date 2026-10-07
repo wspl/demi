@@ -156,7 +156,7 @@ function checkName(value: string): string | null {
     <SettingsGroup title="Session">
       <SettingsRow
         label="Sign out"
-        description="Ends this browser's session. Conversations stay on the server."
+        description="Ends this browser’s session. Conversations stay on the server."
       >
         <Button size="sm" @click="emit('signOut')">Sign Out</Button>
       </SettingsRow>

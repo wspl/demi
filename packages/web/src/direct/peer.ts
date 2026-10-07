@@ -266,6 +266,6 @@ function parseAnswer<T>(text: string, schema: z.ZodType<T>): T {
   }
   const answer = schema.safeParse(value)
   if (!answer.success)
-    throw new ChannelFailed(`The runner's answer does not read: ${answer.error.issues[0]?.message ?? 'unknown shape'}`)
+    throw new ChannelFailed(`The runner’s answer does not read: ${answer.error.issues[0]?.message ?? 'unknown shape'}`)
   return answer.data
 }

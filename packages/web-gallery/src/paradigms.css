@@ -52,7 +52,7 @@ html[data-theme="dark"][data-shadow="soft"] {
   --th-shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
   --th-shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
   --th-shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-  --shadow-float: 0 -8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-float: 0 -4px 12px rgba(0, 0, 0, 0.12);
   --shadow-overlay:
     0 0 0 0.5px var(--line-overlay),
     0 10px 15px -3px rgba(0, 0, 0, 0.4),
@@ -66,7 +66,7 @@ html[data-theme="light"][data-shadow="soft"] {
   --th-shadow-md: 0 3px 10px rgba(0, 0, 0, 0.06), 0 1px 4px rgba(0, 0, 0, 0.04);
   --th-shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.06), 0 2px 8px rgba(0, 0, 0, 0.03);
   --th-shadow-2xl: 0 20px 48px rgba(0, 0, 0, 0.08), 0 8px 20px rgba(0, 0, 0, 0.04);
-  --shadow-float: 0 -4px 16px rgba(0, 0, 0, 0.03);
+  --shadow-float: 0 -4px 12px rgba(0, 0, 0, 0.03);
   --shadow-overlay:
     0 0 0 0.5px var(--line-overlay),
     0 6px 20px rgba(0, 0, 0, 0.06),

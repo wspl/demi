@@ -117,7 +117,7 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
 <template>
   <GallerySection
     title="User Message Length"
-    note="A message longer than five lines shows its first five, and the fifth fades out. A line of text across the cut shows whole; an image or a code block across it is cut there. A file is a capsule on its line and counts as text. Drag a frame's right edge: the cut follows the wrapping."
+    note="A message longer than five lines shows its first five, and the fifth fades out. A line of text across the cut shows whole; an image or a code block across it is cut there. A file is a capsule on its line and counts as text. Drag a frame’s right edge: the cut follows the wrapping."
   >
     <div class="specimen-stack specimen-stack-loose">
       <GallerySpecimen

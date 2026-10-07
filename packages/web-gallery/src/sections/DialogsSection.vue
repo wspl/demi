@@ -217,7 +217,7 @@ const resetPhases: {
   <div class="space-y-8">
     <p class="max-w-3xl text-[13px] leading-5 text-fg-muted">
       Every dialog the product opens, pinned on each phase it has. Each answers
-      as the product's does: Cancel, Close and Done close it and Open brings it
+      as the product’s does: Cancel, Close and Done close it and Open brings it
       back, and a step the product takes with a Host or another page says so in
       a toast. The Settings page shows where each one opens from, and the
       Errors page shows their failed phases.
@@ -414,7 +414,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'workspace'">
-      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product's preference does. Switching between existing projects is the sidebar's “Move To” and the header's workspace control, not a dialog. The directory completes from the device's folders as it is typed: the folder before the caret lists under the field, filtered fuzzily by what follows its last slash; ↓ and ↑ highlight a row, Tab or Enter completes it and the menu goes on into it, Escape puts the menu away.">
+      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product’s preference does. Switching between existing projects is the sidebar’s “Move To” and the header’s workspace control, not a dialog. The directory completes from the device’s folders as it is typed: the folder before the caret lists under the field, filtered fuzzily by what follows its last slash; ↓ and ↑ highlight a row, Tab or Enter completes it and the menu goes on into it, Escape puts the menu away.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(form, index) in projectForms" :key="form.variant" wide :variant="form.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -437,7 +437,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="File Browser" note="Choosing a folder or a file on a device, from the composer's remote attachment and the new-project form's Browse.">
+      <GallerySection title="File Browser" note="Choosing a folder or a file on a device, from the composer’s remote attachment and the new-project form’s Browse.">
         <div class="grid items-start gap-6 xl:grid-cols-2">
           <GallerySpecimen wide variant="select folder">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -450,7 +450,7 @@ const resetPhases: {
                 :places="placesFor(folderHostId)"
                 :hosts="hosts"
                 @close="close"
-                @select="(path) => finish(close, `Use ${path} as the Project's Folder`)"
+                @select="(path) => finish(close, `Use ${path} as the Project’s Folder`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>

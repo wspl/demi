@@ -237,7 +237,7 @@ const sendBlockReason = computed(() => {
 // refused edit is the product's toast.
 watch(edit.attachmentError, (message) => {
   if (message) {
-    showToast({ title: "Couldn't Attach", message, tone: 'danger' })
+    showToast({ title: 'Couldn’t Attach', message, tone: 'danger' })
   }
 })
 /** The replaced version as the offer shows it; none while there is none, or while a message is edited. */

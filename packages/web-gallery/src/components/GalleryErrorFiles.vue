@@ -81,7 +81,7 @@ const readOnlySource: FileBrowserSource = keptSource({
   <div class="space-y-8">
     <GallerySection
       title="Directory Read Failures · Region"
-      note="The list is replaced by a pane with an icon per kind, the sentence for that kind and the source's own message under it."
+      note="The list is replaced by a pane with an icon per kind, the sentence for that kind and the source’s own message under it."
     >
       <GallerySpecimen
         v-for="failure in failures"
@@ -95,7 +95,7 @@ const readOnlySource: FileBrowserSource = keptSource({
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
-      title="Folder Creation Failure · the Form's Own Line"
+      title="Folder Creation Failure · the Form’s Own Line"
       note="Choose New folder and confirm a name. The source always rejects it, so the list stays and the line takes the status bar."
     >
       <div class="flex h-[22rem] flex-col overflow-hidden rounded-xl border border-line">

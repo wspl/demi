@@ -63,11 +63,11 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
         </h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           <template v-if="phase.kind === 'device'"
-            >Enter this code on the vendor's page. Demi keeps waiting
+            >Enter this code on the vendor’s page. Demi keeps waiting
             here.</template
           >
           <template v-else-if="phase.kind === 'token'"
-            >Sign in with the vendor's own tool, then paste the token it
+            >Sign in with the vendor’s own tool, then paste the token it
             prints.</template
           >
           <template v-else-if="phase.kind === 'done' && phase.active"

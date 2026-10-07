@@ -2,6 +2,7 @@
 import { WifiOff } from '@lucide/vue'
 import { CONNECTION_WORDS, type ConnectionProblem } from '../transport/connection'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
+import { CONNECTION_BANNER_PX } from './app-bar'
 
 /**
  * The strip across the top of the app while the backend cannot be reached
@@ -16,7 +17,8 @@ defineProps<{
 
 <template>
   <div
-    class="flex h-7 shrink-0 select-none items-center justify-center gap-1.5 bg-tint-warning px-4 text-chrome text-on-warning"
+    class="flex shrink-0 select-none items-center justify-center gap-1.5 bg-tint-warning px-4 text-chrome text-on-warning"
+    :style="{ height: `${CONNECTION_BANNER_PX}px` }"
     role="status"
     aria-live="polite"
   >

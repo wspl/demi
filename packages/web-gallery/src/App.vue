@@ -38,14 +38,17 @@ const navOpen = ref(false)
 const navWidth = ref(224)
 
 // A preview fills the frame and scrolls inside itself; a page scrolls here.
+// A page pads its sides and foot by the reach of the deepest floating layer's
+// shadow (a dialog's: 36px to the side, 60px below), so a pinned dialog, menu
+// or toast at the page's edge keeps its whole shadow inside the scroller.
 const mainClass = computed(() => {
   if (route.meta.layout === 'preview' ||
     (route.path === '/session' && view.value === 'session')) {
     return 'flex flex-col'
   }
   if (route.meta.layout === 'session')
-    return 'px-5 py-4'
-  return 'px-6 py-6'
+    return 'px-10 pt-4 pb-16'
+  return 'px-10 pt-6 pb-16'
 })
 </script>
 

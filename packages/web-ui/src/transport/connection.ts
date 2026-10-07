@@ -37,7 +37,7 @@ export function connectionProblem(facts: ConnectionFacts): ConnectionProblem | n
 
 /** The banner's words for each problem. */
 export const CONNECTION_WORDS: Record<ConnectionProblem, SentenceText> = {
-  offline: 'You\'re offline',
+  offline: 'You’re offline',
   restarting: 'Demi is restarting',
   reconnecting: 'Reconnecting to Demi',
 }

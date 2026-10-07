@@ -59,7 +59,7 @@ const labelText = computed(() => {
   if (props.load === 'loading')
     return 'Loading models…'
   if (props.load === 'failed')
-    return "Couldn't load models."
+    return 'Couldn’t load models.'
   return reasoningLabel.value ? `${state.value.label} · ${reasoningLabel.value}` : state.value.label
 })
 const label = ref<HTMLElement | null>(null)

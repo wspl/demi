@@ -10,6 +10,7 @@ import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
+import { APP_BAR_PX, CONNECTION_BANNER_PX } from '@demicodes/web-ui/ui/app-bar'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
 import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
@@ -253,7 +254,7 @@ useAppShortcuts(
   <div v-else class="h-full">
     <RouterView />
   </div>
-  <ToastHost />
+  <ToastHost :below="APP_BAR_PX + (session.signedIn && product.connection ? CONNECTION_BANNER_PX : 0)" />
   <UpdateFailedScreen v-if="updateFailed" @reload="reload" />
   <MediaViewer :viewer="mediaViewer" />
 </template>

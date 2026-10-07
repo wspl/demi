@@ -61,7 +61,7 @@ onBeforeUnmount(() => {
     <button
       v-else
       type="button"
-      class="relative max-w-full rounded-md outline-none focus-visible:ring-2 focus-visible:ring-line-focus"
+      class="relative max-w-full rounded-md outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-line-focus"
       :class="kind === 'image' ? 'cursor-zoom-in' : 'cursor-pointer'"
       :aria-label="kind === 'image' ? `Open ${name} large` : `Play ${name}`"
       @click="viewer.show({ kind, src, name })"
@@ -71,7 +71,7 @@ onBeforeUnmount(() => {
         ref="element"
         :src="src"
         :alt="name"
-        class="block max-w-full rounded-md object-cover object-top ring-1 ring-line"
+        class="block max-w-full rounded-md object-cover object-top outline outline-1 -outline-offset-1 outline-line"
         :class="{ checkerboard: loaded }"
         :style="{ width: `${box.width}px`, height: `${box.height}px` }"
         @load="onLoaded"
@@ -85,7 +85,7 @@ onBeforeUnmount(() => {
           muted
           playsinline
           preload="metadata"
-          class="block max-w-full rounded-md bg-black object-cover object-top ring-1 ring-line"
+          class="block max-w-full rounded-md bg-black object-cover object-top outline outline-1 -outline-offset-1 outline-line"
           :style="{ width: `${box.width}px`, height: `${box.height}px` }"
           @loadedmetadata="onLoaded"
           @error="failed = true"

@@ -77,7 +77,7 @@ const exploratoryMarks: {
   <div class="space-y-8">
     <GallerySection
       title="ActivityMark"
-      note="The product's wait mark: a hairline sweep."
+      note="The product’s wait mark: a hairline sweep."
     >
       <div class="specimen-row">
         <GallerySpecimen variant="sweep">
@@ -123,7 +123,7 @@ const exploratoryMarks: {
 
     <GallerySection
       title="ProgressLine"
-      note="A thin line along the top of what loads, over what it still shows, such as a browser tab's page while the next one loads. It appears in the frame the user acts in and leaves at once when the load ends. Reduced motion shows it still."
+      note="A thin line along the top of what loads, over what it still shows, such as a browser tab’s page while the next one loads. It appears in the frame the user acts in and leaves at once when the load ends. Reduced motion shows it still."
     >
       <div class="specimen-row">
         <GallerySpecimen variant="over a page that still shows">

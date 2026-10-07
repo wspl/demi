@@ -73,7 +73,7 @@ async function claimDirectDevice(_code: string) {
 const anatomy: [string, string][] = [
   [
     'Shell',
-    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, Data & privacy. A plugin\'s section is on the rail while its plugin is on. On a narrow screen, where the app\'s side panes become overlays, the dialog fills the window: square corners, no scrim around it. Below a phone width it reads as iOS Settings: the rail is a list of the sections with rows a finger can hit, and a section opens as a page of its own with a back button to the list. The filter finds single settings by their label or what people call them (dark mode finds Theme), lists them under their section, and opens one with its row highlighted; Escape in the filter clears it before it closes the dialog.'
+    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, Data & privacy. A plugin’s section is on the rail while its plugin is on. On a narrow screen, where the app’s side panes become overlays, the dialog fills the window: square corners, no scrim around it. Below a phone width it reads as iOS Settings: the rail is a list of the sections with rows a finger can hit, and a section opens as a page of its own with a back button to the list. The filter finds single settings by their label or what people call them (dark mode finds Theme), lists them under their section, and opens one with its row highlighted; Escape in the filter clears it before it closes the dialog.'
   ],
   [
     'Page',
@@ -93,7 +93,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Cloud',
-    'Cloud shows its shared-environment description and its storage: each filesystem\'s current size and the most it may grow to, or only the most before its first start. There is no connection or lifecycle status. Reset progress and errors belong to the reset dialog.'
+    'Cloud shows its shared-environment description and its storage: each filesystem’s current size and the most it may grow to, or only the most before its first start. There is no connection or lifecycle status. Reset progress and errors belong to the reset dialog.'
   ],
   [
     'Providers',
@@ -105,11 +105,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Subagent',
-    'A switch that turns subagents on or off for the user, then the user\'s profiles, each with its own switch. A row names the profile\'s model, its prompt and whether its children spawn; a profile whose provider entry, model, effort or tier is gone carries Unavailable, with the missing part as its tooltip. The editor chooses the parent\'s model or any provider\'s with its effort and tier, and the parent\'s prompt or text that replaces it.'
+    'A switch that turns subagents on or off for the user, then the user’s profiles, each with its own switch. A row names the profile’s model, its prompt and whether its children spawn; a profile whose provider entry, model, effort or tier is gone carries Unavailable, with the missing part as its tooltip. The editor chooses the parent’s model or any provider’s with its effort and tier, and the parent’s prompt or text that replaces it.'
   ],
   [
     'Skills',
-    'A plugin\'s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. Git sources are packs of SKILL.md files; a source\'s state is one status label after its name, and a skill\'s labels say why it is off or never offered. The showcase below pins every state at once.'
+    'A plugin’s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. Git sources are packs of SKILL.md files; a source’s state is one status label after its name, and a skill’s labels say why it is off or never offered. The showcase below pins every state at once.'
   ],
   [
     'Data',
@@ -207,7 +207,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Devices · Direct Channel"
-        note="An online paired device's row says in a few words how this page reaches it, Connected directly or Through the server; switch the page's path to see each. While the browser blocks local network access, its ? says how to allow it. A device whose runner updates itself reads Updating; an offline one says when it was last seen, and its ? opens the command that starts its runner, with Copy. Escape or a click outside closes the help."
+        note="An online paired device’s row says in a few words how this page reaches it, Connected directly or Through the server; switch the page’s path to see each. While the browser blocks local network access, its ? says how to allow it. A device whose runner updates itself reads Updating; an offline one says when it was last seen, and its ? opens the command that starts its runner, with Copy. Escape or a click outside closes the help."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented v-model="directPath" :options="directPaths" size="sm" />
@@ -227,7 +227,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Data & Privacy"
-        note="The page behind the rail's disabled Data & Privacy entry, whose controls are all deferred: share links, export, diagnostics and delete-all."
+        note="The page behind the rail’s disabled Data & Privacy entry, whose controls are all deferred: share links, export, diagnostics and delete-all."
       >
         <GallerySpecimen variant="Page" wide>
           <div class="w-full max-w-2xl">
@@ -281,7 +281,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Subagent · Off"
-        note="Subagents turned off: no agent spawns, the profiles stay and can still be edited. The disabled archivist's model is gone too, and the scout's effort is no longer offered."
+        note="Subagents turned off: no agent spawns, the profiles stay and can still be edited. The disabled archivist’s model is gone too, and the scout’s effort is no longer offered."
       >
         <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
           <GallerySubagents :state="subagentsOff" />
@@ -290,7 +290,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Profile Editor · Inherits"
-        note="A new profile: the parent's model and prompt, its children may spawn. Create Profile stays off until the name and the description are filled."
+        note="A new profile: the parent’s model and prompt, its children may spawn. Create Profile stays off until the name and the description are filled."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!inheritEditor.open.value" size="md" @click="inheritEditor.open.value = true">Open</Button>
@@ -309,7 +309,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Profile Editor · Own Prompt, Another Provider’s Model"
-        note="The explore profile: GPT-5 of OpenAI with Fast, while the conversations run on Anthropic, a prompt that replaces the parent's, and no spawning."
+        note="The explore profile: GPT-5 of OpenAI with Fast, while the conversations run on Anthropic, a prompt that replaces the parent’s, and no spawning."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!ownEditor.open.value" size="md" @click="ownEditor.open.value = true">Open</Button>
@@ -349,7 +349,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Skills · Every State"
-        note="Every source state and every skill state, pinned. Sources: all on, some on, all off, updating, update available, failed after a good fetch (keeps its skills), first fetch failed (no commit, no skills), skipped files. Skills, in web-kit: on, off, a warning, a taken name, never offered to the agent. Every control acts on the showcase's own state."
+        note="Every source state and every skill state, pinned. Sources: all on, some on, all off, updating, update available, failed after a good fetch (keeps its skills), first fetch failed (no commit, no skills), skipped files. Skills, in web-kit: on, off, a warning, a taken name, never offered to the agent. Every control acts on the showcase’s own state."
       >
         <GallerySpecimen variant="Wide" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
@@ -365,7 +365,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Skills · Calls and Unreadable States"
-        note="A control waits for its call's answer, success or failure, and then shows the plugin's state again. Turning on web-kit's review is refused, since review-kit's review is on: a toast says why and the switch stays off. Backend of an Earlier Build sends the plugin's state without updateAvailable, as a backend from before that field would: a toast says once, in plain words, that the page cannot read the plugin's data, the browser console names the missing field, the page keeps the last state it read, and every control still waits only for its own answer."
+        note="A control waits for its call’s answer, success or failure, and then shows the plugin’s state again. Turning on web-kit’s review is refused, since review-kit’s review is on: a toast says why and the switch stays off. Backend of an Earlier Build sends the plugin’s state without updateAvailable, as a backend from before that field would: a toast says once, in plain words, that the page cannot read the plugin’s data, the browser console names the missing field, the page keeps the last state it read, and every control still waits only for its own answer."
       >
         <GallerySpecimen variant="Wide" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">

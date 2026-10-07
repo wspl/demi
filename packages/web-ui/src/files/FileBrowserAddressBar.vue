@@ -202,7 +202,7 @@ watch(() => props.path, () => {
   <div
     v-else
     ref="bar"
-    class="relative flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-line"
+    class="relative flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-inset ring-line"
     role="navigation"
     aria-label="Current path"
     @click="startEdit"
