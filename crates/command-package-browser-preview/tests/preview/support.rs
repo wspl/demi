@@ -13,9 +13,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{any, get};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_command_package_browser_preview::testing::{Network, Space};
-use demi_command_package_browser_preview::{Engine, StreamError};
+use demi_command_package_browser_preview::{Engine, PageStates, StreamError, TakenState};
 use demi_command_package_browser_protocol::preview::{
-    BodyHeader, CHUNK_FRAME, CONTROL_FRAME, PreviewClient, PreviewCredentials, PreviewEngineMessage,
+    BodyHeader, CHUNK_FRAME, CONTROL_FRAME, PageStorage, PreviewClient, PreviewCredentials, PreviewEngineMessage,
     PreviewEnvironment, PreviewHeader, PreviewMode, PreviewRelayMessage, PreviewRequest, PreviewScheme, REQUEST_BODY_FRAME,
     SOCKET_MESSAGE_FRAME, SocketHeader,
 };
@@ -173,6 +173,19 @@ pub fn echoed_header<'v>(echoed: &'v Value, name: &str) -> Option<&'v str> {
         .map(|pair| pair[1].as_str().unwrap())
 }
 
+/// A conversation that runs no browser: no page state moves.
+struct NoBrowser;
+
+impl PageStates for NoBrowser {
+    fn take(&self, _tab: String) -> futures_util::future::BoxFuture<'static, Result<TakenState, String>> {
+        Box::pin(async { Err("No browser runs.".to_owned()) })
+    }
+
+    fn keep(&self, _sites: Vec<String>, _storage: Option<PageStorage>) -> String {
+        unreachable!("no test keeps a page state without a browser")
+    }
+}
+
 /// The page's relay: it frames its messages onto the engine's stream and
 /// splits the engine's.
 pub struct Relay {
@@ -191,20 +204,36 @@ impl Relay {
         Self::open_on(engine, PreviewScheme::Https, DOMAIN)
     }
 
+    /// A stream of `engine` whose conversation's browser is `states`, after its hello.
+    pub fn open_with(engine: Arc<Engine>, states: Arc<dyn PageStates>) -> Self {
+        let relay = Self::serving(engine, states);
+        relay.hello(PreviewScheme::Https, DOMAIN);
+        relay
+    }
+
     /// A stream of `engine` whose previews live under `scheme` and `domain`.
     pub fn open_on(engine: Arc<Engine>, scheme: PreviewScheme, domain: &str) -> Self {
         let relay = Self::unopened(engine);
-        relay.send(&PreviewRelayMessage::Hello {
+        relay.hello(scheme, domain);
+        relay
+    }
+
+    fn hello(&self, scheme: PreviewScheme, domain: &str) {
+        self.send(&PreviewRelayMessage::Hello {
             scheme,
             domain: domain.into(),
             namespace: NAMESPACE.into(),
             host: HOST.into(),
         });
-        relay
     }
 
-    /// A stream of `engine` that has heard nothing yet.
+    /// A stream of `engine` that has heard nothing yet, whose conversation
+    /// runs no browser.
     pub fn unopened(engine: Arc<Engine>) -> Self {
+        Self::serving(engine, Arc::new(NoBrowser))
+    }
+
+    fn serving(engine: Arc<Engine>, states: Arc<dyn PageStates>) -> Self {
         let (input, received) = mpsc::unbounded_channel();
         let (sent, output) = mpsc::unbounded_channel::<Bytes>();
         let stream = futures_util::stream::unfold(received, |mut received| async move {
@@ -216,6 +245,7 @@ impl Relay {
         });
         let served = tokio::spawn(demi_command_package_browser_preview::serve(
             engine,
+            states,
             Box::pin(stream),
             Box::pin(sink),
             CancellationToken::new(),

@@ -52,6 +52,9 @@ pub enum Operation {
     /// `browser.preview_open`: the top-level label of an address the user
     /// opens in a tab of their browser.
     PreviewOpen(Box<preview::PreviewOpenInput>),
+    /// `browser.handover`: a tab of the agent's browser with a page state
+    /// of the user's browser.
+    Handover(Box<preview::HandoverInput>),
 }
 
 /// Why an invocation could not be decoded.
@@ -87,6 +90,11 @@ impl Operation {
                 .map(|input| Self::PreviewOpen(Box::new(input)))
                 .map_err(OperationError::Invalid);
         }
+        if name == preview::HANDOVER_OPERATION {
+            return demi_shared_types::decode_value::<preview::HandoverInput>(args)
+                .map(|input| Self::Handover(Box::new(input)))
+                .map_err(OperationError::Invalid);
+        }
         match name.strip_prefix(browser::PREFIX) {
             Some(browser) => browser::BrowserOperation::parse(browser, args)
                 .map(|operation| Self::Browser(Box::new(operation))),
@@ -100,7 +108,12 @@ impl Operation {
     pub fn names() -> impl Iterator<Item = &'static str> {
         browser::OPERATIONS
             .iter()
-            .chain([&live::OPERATION, &preview::OPERATION, &preview::OPEN_OPERATION])
+            .chain([
+                &live::OPERATION,
+                &preview::OPERATION,
+                &preview::OPEN_OPERATION,
+                &preview::HANDOVER_OPERATION,
+            ])
             .copied()
     }
 }

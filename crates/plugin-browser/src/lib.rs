@@ -186,6 +186,11 @@ fn preview_stream() -> Stream {
         count(preview::BODY_CHUNK_BYTES),
     )
     .constant(
+        "PREVIEW_MAX_STORAGE_BYTES",
+        "The most bytes of one origin's storage a page state moves; a larger one moves cookies only.",
+        count(preview::MAX_STORAGE_BYTES),
+    )
+    .constant(
         "PREVIEW_MAX_LABELS",
         "The most environments one labels message names.",
         count(preview::MAX_LABELS),

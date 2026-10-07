@@ -270,6 +270,22 @@ export const editingShellTool = toolCall({
   }),
 })
 
+/** The agent hands a finished page to the user (`preview.md` § Presenting a page): its card offers Open. */
+export const presentingShellTool = toolCall({
+  id: 'tool-shell-present',
+  toolName: 'shell_exec',
+  status: 'completed',
+  input: JSON.stringify({
+    script: 'demi browser present t1',
+    description: 'Hand the orders page to the user',
+  }),
+  view: shellView({
+    commandId: 'cmd-present',
+    chunks: [{ stream: 'stdout', text: 'Presented t1 to the user · Orders — Example\nURL: https://example.test/orders\n' }],
+    presented: [{ tab: 't1', title: 'Orders — Example', url: 'https://example.test/orders' }],
+  }),
+})
+
 /** The line a command's output shows for its binary stdout (`runtime.md` § What a result attaches). */
 function binaryLine(bytes: number): string {
   return `<binary stdout: ${bytes} bytes>\n`

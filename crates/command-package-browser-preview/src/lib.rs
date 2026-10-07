@@ -19,4 +19,4 @@ pub mod testing;
 
 pub use cookies::{CookieSameSite, JarCookie};
 pub use engine::{Engine, EngineError, opening};
-pub use stream::{StreamError, serve};
+pub use stream::{PageStates, StreamError, TakenState, serve};

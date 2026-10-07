@@ -7,7 +7,7 @@
  * it, and on to another site.
  */
 import { shallowRef, type ShallowRef } from 'vue'
-import type { PreviewOpened } from '@demicodes/plugin-browser/generated/plugin'
+import type { PageStorage, PreviewOpened } from '@demicodes/plugin-browser/generated/plugin'
 import type { NavigationType, RelayBinding, TabPage } from '@demicodes/plugin-browser/preview/relay'
 import type { PreviewDriver, PreviewTab } from '@demicodes/plugin-browser/preview/tabs'
 import type { PreviewPlace } from '@demicodes/web-ui/plugins/page'
@@ -103,19 +103,36 @@ export interface GalleryPreview {
   open(url: string): Promise<PreviewOpened>
   /** The next opening fails, as a Host that cannot reach the address answers. */
   failNext(reason: string): void
+  /** The agent's browser whose tabs' pages a page state takes, by tab. */
+  takeFrom(pages: (tab: string) => { url: string; title: string } | null): void
   /** Openings wait here until `release`, as a far Host takes its time. */
   hold(): void
   release(): void
   readonly held: ShallowRef<boolean>
 }
 
+/** A site's state as the gallery's pages keep it once signed in: what a page state moves. */
+function signedIn(origin: string): PageStorage {
+  return {
+    origin,
+    local: [{ key: 'session', value: 'signed-in' }],
+    session: [],
+    databases: [],
+    skipped: [],
+  }
+}
+
+/** The gallery's previews, whose pages are its own. */
 export function galleryPreview(options: { unsupported?: string } = {}): GalleryPreview {
+  // The pages of the agent's tabs, which Open in Your Browser and a presented page's Open take.
+  let agentPages: (tab: string) => { url: string; title: string } | null = () => null
   const histories = new Map<string, History>()
   const unsupported = shallowRef<string | null>(options.unsupported ?? null)
   const held = shallowRef(false)
   let waiting: (() => void)[] = []
   let failure: string | null = null
   let labels = 0
+  let handovers = 0
 
   const wait = async () => {
     await new Promise((resolve) => setTimeout(resolve, BEAT_MS))
@@ -149,6 +166,7 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
     const origin = new URL(url).origin
     return {
       port: new MessageChannel().port1,
+      origin: 'https://gallery0--gallery.demi-preview.dev',
       label: 'gallery',
       environment: { origin, top: origin, cross: false },
       tab,
@@ -220,6 +238,28 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
       return true
     },
     icon: async (_tab, _place, page) => page.icon || null,
+    // The agent's tab signed in to the gallery's site: its state moves as a
+    // page state does, a beat later, and the page opens with it.
+    async takeState(_tab, _place, from) {
+      await wait()
+      const page = agentPages(from)
+      if (!page) {
+        throw new Error('The agent’s tab is gone.')
+      }
+      return { ...page, storage: signedIn(new URL(page.url).origin), tooLarge: false }
+    },
+    writeState: async () => [],
+    async readState(tab) {
+      const history = histories.get(tab.id)
+      const url = history?.entries[history.index]
+      return url ? signedIn(new URL(url).origin) : null
+    },
+    origins(tab) {
+      const history = histories.get(tab.id)
+      const url = history?.entries[history.index]
+      return url ? [new URL(url).origin] : []
+    },
+    keepState: async () => `gallery-state-${handovers++}`,
   }
 
   return {
@@ -249,6 +289,9 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
     },
     failNext(reason) {
       failure = reason
+    },
+    takeFrom(pages) {
+      agentPages = pages
     },
     hold() {
       held.value = true

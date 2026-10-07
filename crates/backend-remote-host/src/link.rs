@@ -432,6 +432,8 @@ pub struct JobEnd {
     pub output: Option<wire::OutputLengths>,
     pub files: Vec<wire::JobFileChange>,
     pub files_truncated: bool,
+    /// The pages its commands presented.
+    pub presented: Vec<demi_command_protocol::PresentedPage>,
 }
 
 impl JobEnd {
@@ -442,6 +444,7 @@ impl JobEnd {
             output: None,
             files: Vec::new(),
             files_truncated: false,
+            presented: Vec::new(),
         }
     }
 }
@@ -942,6 +945,7 @@ impl Link {
                 output,
                 files,
                 files_truncated,
+                presented,
             } => {
                 let calls: Vec<_> = self
                     .0
@@ -966,6 +970,7 @@ impl Link {
                         output,
                         files,
                         files_truncated,
+                        presented,
                     });
                 }
             }

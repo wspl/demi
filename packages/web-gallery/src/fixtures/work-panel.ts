@@ -13,7 +13,7 @@ import {
 } from '@demicodes/web-ui/agent/panel-tabs'
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
 import type { CallEditSelection } from '@demicodes/web-ui/files/changes'
-import type { IntentRequest } from '@demicodes/web-ui/plugins/intents'
+import type { IntentRequest, PresentedPage } from '@demicodes/web-ui/plugins/intents'
 import {
   bindPages,
   intentKind,
@@ -165,6 +165,8 @@ export function useGalleryWork(
     select(opened.selection)
   }
 
+  // A page state takes the page of the agent's tab from the gallery's browser.
+  preview.takeFrom((tab) => browser.listed.value.tabs.find((listed) => listed.id === tab) ?? null)
   const host = galleryPageHost({ browser: browserPlugin(browser, plugin, preview) }, {
     files,
     hostStarting: () => browser.hostStarting.value,
@@ -193,6 +195,10 @@ export function useGalleryWork(
   /** A tool call's file pill, through the `edit` intent. */
   function selectEdit(edit: CallEditSelection) {
     openIn({ intent: 'edit', payload: edit })
+  }
+  /** A presented page's card, through the `page` intent. */
+  function openPage(page: PresentedPage) {
+    openIn({ intent: 'page', payload: page })
   }
   /** The panel as it started: every tab closed, the first selection again. */
   function reset() {
@@ -233,6 +239,7 @@ export function useGalleryWork(
     closeTabs,
     openIn,
     selectEdit,
+    openPage,
     reset,
   }
 }

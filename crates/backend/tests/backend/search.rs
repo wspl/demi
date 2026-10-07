@@ -149,11 +149,13 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     })
     .await;
     // A word inside a longer one; a two-character Chinese word; every word
-    // in one message; thinking is not searched.
-    assert_eq!(
-        search(&backend, &master, "LOGIN").await,
-        vec![(THIRD.to_owned(), true, marks(&["login"]), found("relogin is broken", &["login"]))]
-    );
+    // in one message; thinking is not searched. The user's message may reach
+    // the index after the answer the wait above saw, under load.
+    let relogin = vec![(THIRD.to_owned(), true, marks(&["login"]), found("relogin is broken", &["login"]))];
+    eventually("the index holds the user's message", || async {
+        search(&backend, &master, "LOGIN").await == relogin
+    })
+    .await;
     assert_eq!(
         search(&backend, &master, "路径").await,
         vec![(FIRST.to_owned(), false, marks(&[]), found("Missing 路径 mapping for TS2307", &["路径"]))]

@@ -2,17 +2,20 @@
 //! WebSockets in, the engine's answers out, over one byte stream with the
 //! live view's framing. Several requests share the stream, each with the id
 //! the relay chose. A body moves one chunk per pull, both ways, so a slow
-//! page holds the Host back rather than filling memory.
+//! page holds the Host back rather than filling memory. Page states move
+//! over it too, between the user's browser and the conversation's
+//! ([`PageStates`]).
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use demi_command_package_browser_protocol::preview::{
-    BODY_CHUNK_BYTES, BodyHeader, CHUNK_FRAME, CONTROL_FRAME, MAX_FRAME_BYTES, PreviewClient,
-    PreviewEngineMessage, PreviewEnvironment, PreviewHeader, PreviewRelayMessage, PreviewRequest,
-    REQUEST_BODY_FRAME, SOCKET_MESSAGE_FRAME, SocketHeader,
+    BODY_CHUNK_BYTES, BodyHeader, CHUNK_FRAME, CONTROL_FRAME, MAX_FRAME_BYTES, MAX_STORAGE_BYTES,
+    PageStorage, PreviewClient, PreviewEngineMessage, PreviewEnvironment, PreviewHeader,
+    PreviewRelayMessage, PreviewRequest, REQUEST_BODY_FRAME, SOCKET_MESSAGE_FRAME, SocketHeader,
 };
+use futures_util::future::BoxFuture;
 use futures_util::{Sink, SinkExt, Stream, StreamExt};
 use tokio::sync::{Semaphore, mpsc};
 use tokio::task::{AbortHandle, JoinSet};
@@ -45,10 +48,37 @@ pub enum StreamError {
     Output(std::io::Error),
 }
 
+/// A page of the agent's browser, as `state_take` moves it: its address,
+/// title, and top-level origin's storage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct TakenState {
+    pub url: String,
+    pub title: String,
+    pub storage: PageStorage,
+}
+
+/// The conversation's browser, as the stream moves page states between it
+/// and the user's browser (`preview.md` § Page state); the program that
+/// composes the engine provides it for the stream's conversation.
+pub trait PageStates: Send + Sync {
+    /// Moves the cookies of the agent's tab `tab` into the jar, and answers
+    /// its page; why not, as a sentence, when it cannot.
+    fn take(&self, tab: String) -> BoxFuture<'static, Result<TakenState, String>>;
+    /// Keeps the jar's cookies of `sites` and `storage` for the tab of the
+    /// agent's browser `browser.handover` opens; answers its token.
+    fn keep(&self, sites: Vec<String>, storage: Option<PageStorage>) -> String;
+}
+
 /// Serves one `preview` stream: the relay's frames from `input`, the
 /// engine's to `output`, until the relay ends its side or `cancel` is
 /// cancelled. Every request and socket of the stream ends with it.
-pub async fn serve<I, O>(engine: Arc<Engine>, input: I, output: O, cancel: CancellationToken) -> Result<(), StreamError>
+pub async fn serve<I, O>(
+    engine: Arc<Engine>,
+    states: Arc<dyn PageStates>,
+    input: I,
+    output: O,
+    cancel: CancellationToken,
+) -> Result<(), StreamError>
 where
     I: Stream<Item = std::io::Result<Bytes>> + Send + Unpin,
     O: Sink<Bytes, Error = std::io::Error> + Send + Unpin + 'static,
@@ -57,6 +87,7 @@ where
     let mut writing = tokio::spawn(write(queued, output));
     let mut stream = Served {
         engine,
+        states,
         place: None,
         output: frames,
         work: JoinSet::new(),
@@ -232,16 +263,19 @@ enum FromPage {
     Close { code: u16, reason: String },
 }
 
-/// What a request's or a socket's task answers when it ends.
+/// What a request's or a socket's task answers when it ends; a page
+/// state's question leaves nothing to forget.
 enum Ended {
     Request { id: u32, generation: u64 },
     Socket { id: u32, generation: u64 },
+    Answered,
 }
 
 /// One stream's state: where its previews live, and its open requests and
 /// sockets. Dropping it ends them.
 struct Served {
     engine: Arc<Engine>,
+    states: Arc<dyn PageStates>,
     place: Option<Arc<Place>>,
     output: mpsc::Sender<Bytes>,
     work: JoinSet<Ended>,
@@ -267,6 +301,7 @@ impl Served {
                     self.sockets.remove(&id);
                 }
             }
+            Ended::Answered => {}
         }
     }
 
@@ -414,6 +449,26 @@ impl Served {
                 // It fails only once the writer ended, which the serving loop notices.
                 let _closed = self.output.send(control(&PreviewEngineMessage::Labels { id, labels })).await;
             }
+            Inbound::Control(PreviewRelayMessage::StateTake { id, tab }) => {
+                self.place()?;
+                let taking = self.states.take(tab);
+                let output = self.output.clone();
+                self.work.spawn(async move {
+                    let message = match taking.await {
+                        Ok(taken) => taken_state(id, taken),
+                        Err(reason) => PreviewEngineMessage::Failed { id, reason },
+                    };
+                    // It fails only once the writer ended, which the serving loop notices.
+                    let _closed = output.send(control(&message)).await;
+                    Ended::Answered
+                });
+            }
+            Inbound::Control(PreviewRelayMessage::StateKeep { id, sites, storage }) => {
+                self.place()?;
+                let token = self.states.keep(sites, storage);
+                // It fails only once the writer ended, which the serving loop notices.
+                let _closed = self.output.send(control(&PreviewEngineMessage::StateKept { id, token })).await;
+            }
             Inbound::Control(PreviewRelayMessage::SocketClose { id, code, reason }) => {
                 self.place()?;
                 if let Some(socket) = self.sockets.get(&id) {
@@ -422,6 +477,20 @@ impl Served {
             }
         }
         Ok(())
+    }
+}
+
+/// `state` of a taken page, its storage left out when it is larger than a
+/// page state moves.
+fn taken_state(id: u32, taken: TakenState) -> PreviewEngineMessage {
+    let size = serde_json::to_vec(&taken.storage).map_or(usize::MAX, |bytes| bytes.len());
+    let too_large = size > MAX_STORAGE_BYTES;
+    PreviewEngineMessage::State {
+        id,
+        url: taken.url,
+        title: taken.title,
+        storage: (!too_large).then_some(taken.storage),
+        too_large,
     }
 }
 

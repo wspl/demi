@@ -4,6 +4,7 @@ import { useResizeObserver } from '@vueuse/core'
 import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AnsiText from './AnsiText.vue'
+import PresentedPages from './PresentedPages.vue'
 import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import ToolMedia from './ToolMedia.vue'
@@ -131,4 +132,5 @@ function toggleCommand(): void {
   </FunctionalBlock>
   <ToolMedia :output="block.output" :title="title" />
   <ShellEditPills :block="block" />
+  <PresentedPages :block="block" />
 </template>

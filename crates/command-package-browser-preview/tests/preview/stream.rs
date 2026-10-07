@@ -1,15 +1,16 @@
 //! The stream itself (`preview.md` § The stream): bodies move one chunk per
 //! pull both ways, the browser's cancellation reaches upstream, the engine
-//! names the labels a runtime registers, and a frame the protocol refuses
-//! ends the stream.
+//! names the labels a runtime registers, page states move, and a frame the
+//! protocol refuses ends the stream.
 
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::{BufMut, BytesMut};
-use demi_command_package_browser_preview::StreamError;
+use demi_command_package_browser_preview::{PageStates, StreamError, TakenState};
 use demi_command_package_browser_protocol::preview::{
-    BODY_CHUNK_BYTES, CHUNK_FRAME, CONTROL_FRAME, PreviewEngineMessage, PreviewMode, PreviewOpenInput, PreviewRelayMessage,
-    PreviewRequest, PreviewScheme, SOCKET_MESSAGE_FRAME,
+    BODY_CHUNK_BYTES, CHUNK_FRAME, CONTROL_FRAME, MAX_STORAGE_BYTES, PageStorage, PreviewEngineMessage, StorageItem, PreviewMode,
+    PreviewOpenInput, PreviewRelayMessage, PreviewRequest, PreviewScheme, SOCKET_MESSAGE_FRAME,
 };
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
@@ -195,4 +196,77 @@ async fn a_body_for_a_request_without_one_ends_the_stream() {
     });
     relay.request_body(1, b"unasked");
     assert!(matches!(relay.ended().await, Err(StreamError::Protocol(_))));
+}
+
+/// A conversation's browser whose tab `t1` shows a signed-in page, and which
+/// keeps what the user's browser hands it.
+struct SignedIn {
+    storage: PageStorage,
+    kept: std::sync::Mutex<Vec<(Vec<String>, Option<PageStorage>)>>,
+}
+
+impl PageStates for SignedIn {
+    fn take(&self, tab: String) -> futures_util::future::BoxFuture<'static, Result<TakenState, String>> {
+        let storage = self.storage.clone();
+        Box::pin(async move {
+            match tab.as_str() {
+                "t1" => Ok(TakenState { url: "http://localhost:3000/app".into(), title: "App".into(), storage }),
+                _ => Err("The tab is gone.".into()),
+            }
+        })
+    }
+
+    fn keep(&self, sites: Vec<String>, storage: Option<PageStorage>) -> String {
+        self.kept.lock().unwrap().push((sites, storage));
+        "kept-1".into()
+    }
+}
+
+fn storage(value: &str) -> PageStorage {
+    PageStorage {
+        origin: "http://localhost:3000".into(),
+        local: vec![StorageItem { key: "session".into(), value: value.into() }],
+        session: Vec::new(),
+        databases: Vec::new(),
+        skipped: Vec::new(),
+    }
+}
+
+/// Page states move over the stream: the agent's tab's state comes back as
+/// `state`, without its storage past the size a page state moves, a tab
+/// that is gone fails, and the user's browser's is kept under a token. Well
+/// under a second.
+#[tokio::test]
+async fn page_states_move_over_the_stream() {
+    let directory = tempfile::tempdir().unwrap();
+    let browser = Arc::new(SignedIn { storage: storage("signed-in"), kept: Default::default() });
+    let mut relay = Relay::open_with(engine(&directory), browser.clone());
+    relay.send(&PreviewRelayMessage::StateTake { id: 1, tab: "t1".into() });
+    let Frame::Control(taken) = relay.next().await else { panic!("the page state") };
+    assert_eq!(
+        taken,
+        PreviewEngineMessage::State {
+            id: 1,
+            url: "http://localhost:3000/app".into(),
+            title: "App".into(),
+            storage: Some(storage("signed-in")),
+            too_large: false,
+        }
+    );
+    relay.send(&PreviewRelayMessage::StateTake { id: 2, tab: "t9".into() });
+    let Frame::Control(gone) = relay.next().await else { panic!("the failure") };
+    assert_eq!(gone, PreviewEngineMessage::Failed { id: 2, reason: "The tab is gone.".into() });
+    relay.send(&PreviewRelayMessage::StateKeep { id: 3, sites: vec!["http://localhost:3000".into()], storage: Some(storage("mine")) });
+    let Frame::Control(kept) = relay.next().await else { panic!("the token") };
+    assert_eq!(kept, PreviewEngineMessage::StateKept { id: 3, token: "kept-1".into() });
+    assert_eq!(*browser.kept.lock().unwrap(), vec![(vec!["http://localhost:3000".to_owned()], Some(storage("mine")))]);
+
+    // A page whose storage is larger than a frame moves its cookies only.
+    let large = Arc::new(SignedIn { storage: storage(&"x".repeat(MAX_STORAGE_BYTES)), kept: Default::default() });
+    let mut relay = Relay::open_with(engine(&directory), large);
+    relay.send(&PreviewRelayMessage::StateTake { id: 1, tab: "t1".into() });
+    let Frame::Control(PreviewEngineMessage::State { storage, too_large, .. }) = relay.next().await else {
+        panic!("the page state")
+    };
+    assert_eq!((storage, too_large), (None, true));
 }
