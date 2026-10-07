@@ -1,6 +1,6 @@
 import type { UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
-import { ApiError, apiError, apiRequest, apiUrl, invalidResponse } from './client'
+import { ApiError, apiError, apiRequest, apiUrl, invalidResponse, untilReached } from './client'
 import { attachmentAnswerSchema } from './generated/web-api'
 
 /**
@@ -22,13 +22,31 @@ function sentMediaType(file: File): string {
 const UPLOAD_STALL_MS = 60_000
 
 /**
- * Sends a file's raw bytes, reporting how many have gone as they go. An
- * upload fails once nothing has moved for a minute, however long it takes
- * in all; the wait for the answer after the last byte counts too. Every
- * exit releases the XHR listeners and the timer. Resolves with the answer's
- * JSON, or null for an answer without a body.
+ * Sends a file's raw bytes, reporting how many have gone as they go. A try
+ * that cannot reach the backend waits for it and sends the bytes again from
+ * the start, as every request of the page does (`untilReached`); only the
+ * backend's own answer fails the upload. Resolves with the answer's JSON,
+ * or null for an answer without a body.
  */
 export function uploadBytes(
+  path: string,
+  file: File,
+  options: {
+    method?: 'POST' | 'PUT'
+    mediaType?: string
+    signal: AbortSignal
+    progress: (sent: number) => void
+  },
+): Promise<unknown> {
+  return untilReached(() => sendBytes(path, file, options), options.signal)
+}
+
+/**
+ * One try of an upload. It ends once nothing has moved for a minute, however
+ * long it takes in all; the wait for the answer after the last byte counts
+ * too. Every exit releases the XHR listeners and the timer.
+ */
+function sendBytes(
   path: string,
   file: File,
   options: {
@@ -63,7 +81,8 @@ export function uploadBytes(
     const abort = () => stop(signal.reason)
     const moved = () => {
       clearTimeout(stall)
-      stall = setTimeout(() => stop(new Error('Upload stalled.')), UPLOAD_STALL_MS)
+      // A deadline, as a request's own timeout is: the backend did not answer in time.
+      stall = setTimeout(() => stop(new DOMException('Upload stalled.', 'TimeoutError')), UPLOAD_STALL_MS)
     }
     xhr.open(options.method ?? 'POST', apiUrl(path))
     xhr.withCredentials = true
@@ -72,7 +91,8 @@ export function uploadBytes(
       moved()
       options.progress(event.loaded)
     }
-    xhr.onerror = () => fail(new Error('Upload connection failed.'))
+    // No answer came, which fetch reports as a TypeError: the backend could not be reached.
+    xhr.onerror = () => fail(new TypeError('Upload connection failed.'))
     xhr.onabort = () => fail(new Error('Upload cancelled.'))
     xhr.onload = () => {
       if (xhr.status < 200 || xhr.status >= 300) {

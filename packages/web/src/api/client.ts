@@ -142,33 +142,42 @@ interface ApiRequestOptions extends RequestInit {
 }
 
 /**
+ * Sends with `send` until the backend answers (`web-application.md` § A page
+ * of another build): a try that cannot reach the backend, as `unreachable`
+ * judges it, waits until the page reaches the backend again and goes then,
+ * so no caller sees a failure about the connection. Only the backend's own
+ * answer rejects. Once `signal` aborts, it rejects with the abort's reason
+ * and sends nothing more. Every request of the page goes through it: the
+ * HTTP client's, and an upload's bytes.
+ */
+export async function untilReached<T>(send: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await send()
+    } catch (error) {
+      if (signal?.aborted) {
+        throw signal.reason
+      }
+      const wait = backendWait
+      if (!wait || !unreachable(error)) {
+        throw error
+      }
+      await wait(attempt, signal ?? NEVER)
+    }
+  }
+}
+
+/**
  * Sends a request to the backend; same-origin requests use the backend's
- * HttpOnly session cookie. A try that cannot reach the backend, as
- * `unreachable` judges it, a read or a write alike, waits until the page
- * reaches the backend again and goes then (`web-application.md` § A page of
- * another build), so no caller sees a failure about the connection. Only
- * the backend's own answer rejects. A request whose `signal` aborts while
- * it waits rejects with the abort's reason and is never sent again.
+ * HttpOnly session cookie. A read or a write alike waits while it cannot
+ * reach the backend (`untilReached`), unless `waits` is false.
  */
 export async function apiRequest(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<Response> {
   const { waits = true, ...request } = options
-  for (let attempt = 1; ; attempt += 1) {
-    try {
-      return await send(path, request)
-    } catch (error) {
-      if (options.signal?.aborted) {
-        throw options.signal.reason
-      }
-      const wait = backendWait
-      if (!waits || !wait || !unreachable(error)) {
-        throw error
-      }
-      await wait(attempt, options.signal ?? NEVER)
-    }
-  }
+  return waits ? untilReached(() => send(path, request), request.signal ?? undefined) : send(path, request)
 }
 
 /** One try of a request, with its own deadline. */
