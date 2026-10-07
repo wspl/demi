@@ -39,7 +39,8 @@ async fn canceled_launch_reaps_helpers_before_removing_profile() {
                 demi_command_protocol::CommandLocale {
                     time_zone: "UTC".into(),
                     languages: vec!["en-US".into()]
-                }
+                },
+                demi_command_protocol::ColorScheme::Light,
             )
             .unwrap(),
             TabNumbers::new(counting_numbers(), "conversation".into()),
@@ -289,6 +290,7 @@ async fn service_program(
 fn service_context() -> demi_command_protocol::CommandContext {
     use demi_command_protocol::{CommandCaller, CommandContext, CommandLocale};
     CommandContext {
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         conversation: "service-program".into(),
         caller: CommandCaller::agent(1),
         locale: CommandLocale {

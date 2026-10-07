@@ -8,6 +8,13 @@ import type { TitleText } from '@demicodes/plugin-sdk'
 import type { BrowserViewport, CursorRegion } from '../generated/plugin'
 import type { LiveStream } from './session'
 
+/**
+ * A blank page, as Chrome paints an empty one in the color scheme the
+ * browser runs in, which is the user's (`browser.md` § Native driver):
+ * white, or #121212 in the dark scheme, so the first picture does not flash.
+ */
+export const BLANK_PAGE = 'bg-white [[data-theme=dark]_&]:bg-[#121212]'
+
 export interface PanelSize {
   width: number
   height: number

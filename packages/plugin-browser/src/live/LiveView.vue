@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import type { LiveTab } from '../generated/plugin'
+import { LIVE_CAPTURE_STOPPED, type LiveTab } from '../generated/plugin'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
 import { Menu, MenuDivider, MenuItem, Popover, RegionStatus, usePage } from '@demicodes/plugin-sdk'
@@ -10,7 +10,7 @@ import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
 import { clientPlatform, composingKey } from '@demicodes/utils'
 import { ClickCount, keyMessage, localKey, pointerMessage, shortcutKeys, wheelMessage } from './input'
-import { cursorAt, panelRect, placePicture, tabPoint, type PanelSize } from './view'
+import { BLANK_PAGE, cursorAt, panelRect, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
  * A tab of the conversation's browser, live (`live-view.md`): its
@@ -367,11 +367,11 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- The page's cursor shows on the frame, and every element over the picture inherits it. -->
-  <!-- A Web picture's uncovered part is white, as a local window's while it resizes; a phone's sides are the panel's. -->
+  <!-- A Web picture's uncovered part is a blank page, as a local window's while it resizes; a phone's sides are the panel's. -->
   <div
     ref="frame"
     class="relative min-h-0 flex-1 overflow-hidden"
-    :class="generation.viewport.mode === 'web' ? 'bg-white' : 'bg-surface-base'"
+    :class="generation.viewport.mode === 'web' ? BLANK_PAGE : 'bg-surface-base'"
     :style="{ cursor }"
   >
     <canvas
@@ -392,7 +392,7 @@ onBeforeUnmount(() => {
       @wheel.prevent="wheel"
       @contextmenu.prevent
     />
-    <div v-if="!painted" class="pointer-events-none absolute inset-0 bg-white" />
+    <div v-if="!painted" class="pointer-events-none absolute inset-0" :class="BLANK_PAGE" />
     <!-- A notice that leaves no picture takes the picture's place; the page's controls and dialogs stay over it. -->
     <RegionStatus
       v-if="state?.pictureless"
@@ -400,6 +400,7 @@ onBeforeUnmount(() => {
       status="failed"
       label="Couldn’t show this page."
       :detail="refusalSentence(state.pictureless)"
+      :on-retry="state.pictureless === LIVE_CAPTURE_STOPPED ? () => session?.recapture() : undefined"
     />
     <input
       ref="bridge"

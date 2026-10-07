@@ -409,6 +409,7 @@ pub async fn agent_call(
             "conversation": conversation(),
             "caller": { "kind": "agent", "number": live.record().number },
             "locale": { "timeZone": "UTC", "languages": ["en"] },
+            "colorScheme": "light",
         },
         "stdin": true,
     }))

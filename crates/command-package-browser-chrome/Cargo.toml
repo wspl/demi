@@ -55,3 +55,4 @@ sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
 [dev-dependencies]
 sha2 = "0.10"
+tokio = { workspace = true, features = ["test-util"] }

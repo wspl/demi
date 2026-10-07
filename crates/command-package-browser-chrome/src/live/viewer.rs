@@ -709,6 +709,7 @@ impl Session<'_> {
                 }
             }
             LiveViewerMessage::Release {} => self.input.control(Item::Release).await,
+            LiveViewerMessage::Recapture {} => self.environment.captures().retry().await,
             message @ (LiveViewerMessage::Pointer { .. }
             | LiveViewerMessage::Wheel { .. }
             | LiveViewerMessage::Key { .. }
@@ -835,6 +836,14 @@ impl Session<'_> {
                 self.writer
                     .notice(
                         demi_command_package_browser_protocol::live::CAPTURE_FAILED,
+                        &reason,
+                    )
+                    .await;
+            }
+            Update::Picture(Event::Stopped(reason)) => {
+                self.writer
+                    .notice(
+                        demi_command_package_browser_protocol::live::CAPTURE_STOPPED,
                         &reason,
                     )
                     .await;

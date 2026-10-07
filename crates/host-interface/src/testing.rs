@@ -105,6 +105,7 @@ impl Numbers for CountingNumbers {
 /// that reports it shows where it came from.
 pub fn test_command_context() -> CommandContext {
     CommandContext {
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         conversation: "test-conversation".into(),
         caller: CommandCaller::agent(1),
         locale: CommandLocale {

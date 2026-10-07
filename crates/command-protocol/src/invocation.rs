@@ -60,6 +60,18 @@ pub struct CommandLocale {
     pub languages: Vec<String>,
 }
 
+/// The light or dark color scheme the user's page shows. The web app reports
+/// it as a user preference (web-api), so its schema is part of the web app's
+/// contract too.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum ColorScheme {
+    Light,
+    Dark,
+}
+
 /// What a declared command knows beyond its arguments. The backend is its
 /// only source; nothing reads it from the environment.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -71,6 +83,9 @@ pub struct CommandContext {
     pub caller: CommandCaller,
     #[garde(dive)]
     pub locale: CommandLocale,
+    /// The color scheme of the user's page, as it last reported it.
+    #[garde(skip)]
+    pub color_scheme: ColorScheme,
 }
 
 /// The metadata that opens a native command invocation.
