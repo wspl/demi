@@ -40,9 +40,11 @@ const DIRECT_MARK = '[browse direct]'
 /**
  * A network entry of a request that failed or was answered with an error:
  * `GET 404 …` or `GET FAILED …` over HTTP, and on a direct channel any
- * answer but `ok` or `answered`, such as `direct list forbidden …`.
+ * answer but `ok` or `answered`, such as `direct list forbidden …`. A
+ * request the page itself abandoned (`net::ERR_ABORTED`), as a navigation or
+ * a cancelled fetch does, did not go wrong.
  */
-const FAILED_REQUEST = /^(?:\S+ (?:FAILED|[45]\d\d) |direct \S+ (?!ok |answered )\S+)/
+const FAILED_REQUEST = /^(?:\S+ FAILED \S+ (?!net::ERR_ABORTED$)|\S+ [45]\d\d |direct \S+ (?!ok |answered )\S+)/
 
 /** How many entries each kind keeps; older ones go. */
 const LIMIT = 20_000

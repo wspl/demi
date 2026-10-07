@@ -2,6 +2,7 @@ import { onBeforeUnmount, onMounted, watch, type Ref } from 'vue'
 import { ChangeSet, EditorState, type Extension, type StateEffect, type Text } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 import { getOriginalDoc, originalDocChangeEffect } from '@codemirror/merge'
+import { baseName } from '../files/paths'
 import { loadFileLanguage } from './language'
 import { editorTheme, trackEditorView, untrackEditorView } from './theme/cmTheme'
 
@@ -68,6 +69,8 @@ export function useCodeView(
         extensions: [
           EditorState.readOnly.of(true),
           EditorState.tabSize.of(2),
+          // CodeMirror makes the text a read-only, multi-line textbox; the file's name names it.
+          EditorView.contentAttributes.of({ 'aria-label': baseName(file.path) }),
           editorTheme(),
           language,
           extensions,

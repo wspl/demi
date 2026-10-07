@@ -123,7 +123,7 @@ onKeyStroke('Escape', (event) => {
             size === 'full' ? 'h-[calc(100%-2rem)]' : size === 'xl' ? 'max-w-5xl' : size === 'lg' ? 'max-w-3xl' : size === 'wide' ? 'max-w-xl' : 'max-w-md',
           ]"
           role="dialog"
-          aria-modal="true"
+          :aria-modal="container ? undefined : 'true'"
           :aria-label="label"
         >
           <div v-if="!hideClose" class="dialog-close absolute right-3 top-3 z-10">
