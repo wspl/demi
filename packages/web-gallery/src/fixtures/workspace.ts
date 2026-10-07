@@ -1,4 +1,4 @@
-import { delay } from '@demicodes/utils'
+import { baseName, delay } from '@demicodes/utils'
 import type { ChangeFile, ChangeSetSource, ChangeSides, WorkingTreeChange } from '@demicodes/web-ui/files/changes'
 import { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { keptChangeSet, type ContentReads } from '@demicodes/web-ui/files/kept-source'
@@ -174,7 +174,7 @@ defineProps<{ files: ChangeFile[] }>()
 
 /** A source file with a short body naming itself, so every tab shows something. */
 function stub(path: string, body = ''): ReturnType<typeof textFile> {
-  const name = path.slice(path.lastIndexOf('/') + 1)
+  const name = baseName(path)
   const ext = name.slice(name.lastIndexOf('.') + 1)
   const header = ext === 'md'
     ? `# ${name.replace(/\.md$/, '')}\n`
@@ -323,7 +323,7 @@ function lineCounts(original: string, modified: string): { added: number; remove
 
 /** A generated file of about `lines` lines in the language its extension names, so a diff has room for several hunks. */
 function generated(path: string, lines: number, seed = 1): string {
-  const name = path.slice(path.lastIndexOf('/') + 1)
+  const name = baseName(path)
   const ext = name.slice(name.lastIndexOf('.') + 1)
   const ident = name.replace(/\.[^.]+$/, '').replace(/[^a-zA-Z0-9]/g, '_')
   const script = (): string[] => {
