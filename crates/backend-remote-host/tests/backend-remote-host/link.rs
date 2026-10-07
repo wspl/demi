@@ -137,6 +137,7 @@ fn job_exit(job_id: &str, exit_code: Option<i32>, signal: Option<&str>) -> Outbo
         output: None,
         files: Vec::new(),
         files_truncated: false,
+        presented: Vec::new(),
     }
 }
 
@@ -981,6 +982,7 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
         }),
         files: Vec::new(),
         files_truncated: false,
+        presented: Vec::new(),
     })
     .await;
     let record = KeptRecord::Output(OutputStream::Stdout, WireBytes(stream.clone()));
@@ -1185,6 +1187,7 @@ async fn a_job_the_runner_could_not_run_ends_127_with_the_runners_reason() {
         output: None,
         files: Vec::new(),
         files_truncated: false,
+        presented: Vec::new(),
     })
     .await;
     let mut status = shell.status(&started.command_id).unwrap();
@@ -1289,7 +1292,7 @@ impl CommandKeeper for Publisher {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
+async fn a_command_ends_once_its_edits_are_published_and_keeps_them_with_the_pages_it_presented() {
     let device = device();
     let mut link = device.connect(None);
     let host = device.host("/work", Admission::Free);
@@ -1344,6 +1347,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
             removed: 1,
         }],
         files_truncated: true,
+        presented: vec![presented()],
     })
     .await;
     drain(&mut link).await;
@@ -1364,6 +1368,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
         status.state,
         CommandState::Exited { exit_code: 7, .. }
     ));
+    assert_eq!(status.presented, vec![presented()]);
     let files = status.files.unwrap();
     assert_eq!((files.files, files.truncated), (vec![file.clone()], true));
     assert_eq!(
@@ -1375,6 +1380,15 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
             .files,
         vec![file]
     );
+}
+
+/// A page the job's command presented with `demi browser present`.
+fn presented() -> demi_command_protocol::PresentedPage {
+    demi_command_protocol::PresentedPage {
+        tab: "t3".into(),
+        title: "Dashboard".into(),
+        url: "http://localhost:3000/".into(),
+    }
 }
 
 /// A handler that follows the call's live input to its end, then its stop.
@@ -1825,6 +1839,7 @@ async fn an_unread_output_ends_with_the_newest_bytes_the_runner_sent() {
         }),
         files: Vec::new(),
         files_truncated: false,
+        presented: Vec::new(),
     })
     .await;
     let id = loop {

@@ -47,7 +47,11 @@ export function browserPage(options: BrowserPageOptions = {}) {
       const preview = new PreviewTabs(
         previewApi(
           plugin,
-          (data, select) => page.panel.add(conversation, previewTabKind.kind, data, { select }),
+          {
+            add: (data, select) => page.panel.add(conversation, previewTabKind.kind, data, { select }),
+            addAgentTab: (data, select) => page.panel.add(conversation, browserTabKind.kind, data, { select }),
+            notify: (title, message) => page.notices.show(title, message),
+          },
           session.signal,
         ),
         options.previewDriver?.() ?? relayDriver(relay()),

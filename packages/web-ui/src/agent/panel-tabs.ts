@@ -82,6 +82,8 @@ function opened(kind: PanelKind<unknown, PanelSession | undefined>, request: Int
       return kind.intents?.file?.(request.payload, current)
     case 'edit':
       return kind.intents?.edit?.(request.payload, current)
+    case 'page':
+      return kind.intents?.page?.(request.payload, current)
   }
 }
 

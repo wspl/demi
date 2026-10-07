@@ -1,7 +1,8 @@
 /**
  * The product's side of the tabs of the user's browser: the plugin's
  * `preview_open` method and `preview` stream for a conversation, and the
- * relay, which serves every tab's frame.
+ * relay, which serves every tab's frame and moves page states through the
+ * preview's state frames.
  */
 import { PluginCallError, type ConversationPlugin, type PreviewPlace } from '@demicodes/plugin-sdk'
 import { previewOpenedSchema, type PreviewOpenInput } from '../generated/plugin'
@@ -9,7 +10,8 @@ import { refusalSentence } from '../live/tabs'
 import { previewClient } from './client'
 import { PreviewConnection } from './connection'
 import type { PreviewRelay } from './relay'
-import type { PreviewApi, PreviewDriver, PreviewTabData } from './tabs'
+import { readState, writeState } from './state-frame'
+import type { PreviewApi, PreviewDriver } from './tabs'
 
 /**
  * Opening may wake a stopped Cloud: the call waits as long as opening a tab
@@ -17,13 +19,14 @@ import type { PreviewApi, PreviewDriver, PreviewTabData } from './tabs'
  */
 const OPEN_TIMEOUT_MS = 310_000
 
-/** The conversation's previews over its plugin, until the session's `signal` aborts. */
+/** The conversation's previews over its plugin, until the session's `signal` aborts; `panel` adds its tabs and says what did not move. */
 export function previewApi(
   plugin: ConversationPlugin,
-  add: (data: PreviewTabData, select: boolean) => void,
+  panel: Pick<PreviewApi, 'add' | 'addAgentTab' | 'notify'>,
   signal: AbortSignal,
 ): PreviewApi {
   return {
+    ...panel,
     place: plugin.preview,
     connection: new PreviewConnection(plugin.stream('preview')),
     hostStarting: () => plugin.hostStarting.value,
@@ -42,7 +45,6 @@ export function previewApi(
         throw error instanceof PluginCallError ? new Error(refusalSentence(error.reason)) : error
       }
     },
-    add,
   }
 }
 
@@ -68,8 +70,16 @@ export function relayDriver(relay: PreviewRelay): PreviewDriver {
       return relay.bootAddress(opened, navigation)
     },
     command: (tab, command) => relay.command(tab, command),
+    takeState: (tab, place, from) => tab.connection.takeState(place, from),
+    writeState: (_tab, opened, storage) => writeState(opened.origin, storage),
+    async readState(tab) {
+      const top = relay.top(tab)
+      return top ? readState(top.origin, top.environment.origin) : null
+    },
+    origins: (tab) => relay.origins(tab),
+    keepState: (tab, place, origins, storage) => tab.connection.keepState(place, origins, storage),
     async icon(tab, place, page) {
-      const environment = relay.topEnvironment(tab)
+      const environment = relay.top(tab)?.environment
       if (!environment) {
         return null
       }

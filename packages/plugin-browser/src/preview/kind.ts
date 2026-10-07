@@ -1,6 +1,6 @@
 import { defineComponent, h } from 'vue'
-import { Globe, RotateCw } from '@lucide/vue'
-import { GlobePlus, ICON_PX, type PanelKind } from '@demicodes/plugin-sdk'
+import { Bot, Globe, RotateCw } from '@lucide/vue'
+import { GlobePlus, ICON_PX, type PanelKind, type TabCommand } from '@demicodes/plugin-sdk'
 import type { BrowserPanel } from '../panel'
 import PreviewTabContent from './PreviewTabContent.vue'
 import { previewTabDataSchema, type PreviewTabData } from './tabs'
@@ -23,6 +23,19 @@ function previewTabTitle(data: PreviewTabData): string {
   }
   const url = URL.parse(data.url)
   return url ? url.host || url.href : data.url
+}
+
+/** Open in Agent's Browser, unavailable with why while the tab has no page or the Host no browser. */
+function agentsBrowserCommand(session: BrowserPanel, id: string): TabCommand {
+  const shown = session.preview.tab(id)?.view.page
+  const reason = shown ? session.browser.unavailable.value : 'The tab has no page to open yet.'
+  return {
+    label: 'Open in Agent’s Browser',
+    icon: Bot,
+    disabled: reason !== null,
+    ...(reason ? { disabledReason: reason } : {}),
+    run: () => void session.preview.toAgent(id),
+  }
 }
 
 /**
@@ -48,7 +61,13 @@ export const previewTabKind: PanelKind<PreviewTabData, BrowserPanel> = {
       disabled: data.url === '',
       run: () => tab.session.preview.tab(id)?.history('reload'),
     },
+    // The page in the agent's browser, beside this tab, with its state (`preview.md` § What the user sees).
+    agentsBrowserCommand(tab.session, id),
   ],
+  // A page the agent presented opens with its state (`preview.md` § Presenting a page).
+  intents: {
+    page: (payload) => ({ url: payload.url, ...(payload.title ? { title: payload.title } : {}), from: payload.tab }),
+  },
   duplicate: (data) => (data.title ? { url: data.url, title: data.title } : { url: data.url }),
   create: {
     label: 'New Tab',

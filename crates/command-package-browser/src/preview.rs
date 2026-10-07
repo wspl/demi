@@ -2,14 +2,25 @@
 //! one engine for every conversation of the Host, opened with the first
 //! stream, whose cookie jar this program keeps in the data directory its
 //! runner instance names (`native-runtime.md` § Invoke and retire a
-//! service).
+//! service). Page states move over the stream between the jar and the
+//! stream's conversation's browser (`preview.md` § Page state), and
+//! `browser.handover` opens the tab of the agent's browser one of them was
+//! kept for.
 
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use bytes::Bytes;
-use demi_command_package_browser_preview::{Engine, StreamError};
+use demi_command_package_browser_chrome::page::state::PageCookie;
+use demi_command_package_browser_preview::{CookieSameSite, Engine, JarCookie, PageStates, StreamError, TakenState};
+use demi_command_package_browser_protocol::preview::{HandoverInput, PageStorage};
 use demi_command_protocol::{CommandError, Completion};
+use futures_util::future::BoxFuture;
+use url::Url;
+
+use crate::conversations::Conversations;
 use demi_command_sdk::{InvocationContext, ServiceError};
 use tokio::sync::OnceCell;
 use tokio_util::sync::CancellationToken;
@@ -17,6 +28,19 @@ use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 /// The jar's file in the data directory.
 const JAR_FILE: &str = "preview-cookies.json";
+/// How long a page state the user's browser handed over waits for its tab
+/// of the agent's browser.
+const KEPT_FOR: Duration = Duration::from_secs(120);
+
+/// A page state of the user's browser, until `browser.handover` takes it.
+struct Kept {
+    sites: Vec<String>,
+    storage: Option<PageStorage>,
+    at: Instant,
+}
+
+/// The page states kept, by token.
+type KeptStates = Arc<Mutex<HashMap<String, Kept>>>;
 
 /// The preview engine of the program and its open streams.
 pub(crate) struct Previews {
@@ -24,6 +48,7 @@ pub(crate) struct Previews {
     /// directory.
     directory: Option<PathBuf>,
     engine: OnceCell<Arc<Engine>>,
+    kept: KeptStates,
     streams: TaskTracker,
     stopping: CancellationToken,
 }
@@ -33,6 +58,7 @@ impl Previews {
         Self {
             directory,
             engine: OnceCell::new(),
+            kept: KeptStates::default(),
             streams: TaskTracker::new(),
             stopping: CancellationToken::new(),
         }
@@ -52,9 +78,16 @@ impl Previews {
     }
 
     /// Serves one stream until the page ends it, the invocation is
-    /// cancelled, or the program stops.
-    pub async fn serve(&self, context: InvocationContext) -> Result<Completion, ServiceError> {
+    /// cancelled, or the program stops; its page states are the
+    /// conversation's browser's in `browsers`.
+    pub async fn serve(&self, context: InvocationContext, browsers: Arc<Conversations>) -> Result<Completion, ServiceError> {
         let engine = self.engine().await?;
+        let states = Arc::new(BrowserStates {
+            conversation: context.request.context.conversation.clone(),
+            browsers,
+            engine: engine.clone(),
+            kept: self.kept.clone(),
+        });
         let _open = self.streams.token();
         let InvocationContext {
             input,
@@ -81,7 +114,7 @@ impl Previews {
             output.stdout(bytes).await.map_err(std::io::Error::other)?;
             Ok::<_, std::io::Error>(output)
         }));
-        let result = demi_command_package_browser_preview::serve(engine, input, output, stop).await;
+        let result = demi_command_package_browser_preview::serve(engine, states, input, output, stop).await;
         if cancellation.is_cancelled() {
             return Err(ServiceError::Cancelled);
         }
@@ -99,6 +132,33 @@ impl Previews {
             }),
             Err(error) => Err(ServiceError::failed(error)),
         }
+    }
+
+    /// `browser.handover`: a tab of the conversation's browser on the
+    /// address, with the page state kept under the input's token: the jar's
+    /// cookies of its sites and its storage. A token that is unknown, or
+    /// waited too long, opens the address alone.
+    pub async fn handover(
+        &self,
+        context: InvocationContext,
+        input: &HandoverInput,
+        browsers: Arc<Conversations>,
+    ) -> Result<Completion, ServiceError> {
+        let engine = self.engine().await?;
+        let kept = {
+            let mut kept = self.kept.lock().expect("the kept page states");
+            kept.retain(|_, state| state.at.elapsed() < KEPT_FOR);
+            kept.remove(&input.state)
+        };
+        let (cookies, storage) = match kept {
+            Some(Kept { sites, storage, .. }) => {
+                let addresses: Vec<Url> = sites.iter().filter_map(|site| Url::parse(site).ok()).collect();
+                let cookies = engine.cookies(&addresses).into_iter().map(page_cookie).collect();
+                (cookies, storage)
+            }
+            None => (Vec::new(), None),
+        };
+        browsers.handover(context, &input.url, cookies, storage.as_ref()).await
     }
 
     /// Ends every stream, then writes the jar's latest changes.
@@ -135,5 +195,83 @@ pub(crate) async fn open(
                 message,
             }),
         }),
+    }
+}
+
+/// The stream's conversation's browser, as page states move.
+struct BrowserStates {
+    conversation: String,
+    browsers: Arc<Conversations>,
+    engine: Arc<Engine>,
+    kept: KeptStates,
+}
+
+impl PageStates for BrowserStates {
+    fn take(&self, tab: String) -> BoxFuture<'static, Result<TakenState, String>> {
+        let (conversation, browsers, engine) = (self.conversation.clone(), self.browsers.clone(), self.engine.clone());
+        Box::pin(async move {
+            let state = browsers.page_state(&conversation, &tab).await?;
+            let storage = state.storage.ok_or("The page has no web address to open.")?;
+            let cookies: Vec<(Url, String)> = state.cookies.iter().filter_map(set_cookie).collect();
+            engine.take_cookies(cookies.iter().map(|(url, line)| (url, line.as_str())));
+            Ok(TakenState {
+                url: state.url,
+                title: state.title,
+                storage,
+            })
+        })
+    }
+
+    fn keep(&self, sites: Vec<String>, storage: Option<PageStorage>) -> String {
+        let token = uuid::Uuid::new_v4().to_string();
+        let mut kept = self.kept.lock().expect("the kept page states");
+        kept.retain(|_, state| state.at.elapsed() < KEPT_FOR);
+        kept.insert(token.clone(), Kept { sites, storage, at: Instant::now() });
+        token
+    }
+}
+
+/// A cookie of the agent's browser as a `Set-Cookie` value, with the address
+/// its site would set it from, `HttpOnly` included; none for a domain no
+/// address can name.
+fn set_cookie(cookie: &PageCookie) -> Option<(Url, String)> {
+    let scheme = if cookie.secure { "https" } else { "http" };
+    let url = Url::parse(&format!("{scheme}://{}{}", cookie.domain, cookie.path)).ok()?;
+    let mut line = format!("{}={}; Path={}", cookie.name, cookie.value, cookie.path);
+    if !cookie.host_only {
+        line.push_str(&format!("; Domain={}", cookie.domain));
+    }
+    if let Some(expires) = cookie.expires {
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64();
+        line.push_str(&format!("; Max-Age={}", (expires - now).max(0.0).floor()));
+    }
+    if cookie.http_only {
+        line.push_str("; HttpOnly");
+    }
+    if cookie.secure {
+        line.push_str("; Secure");
+    }
+    if let Some(same_site) = cookie.same_site {
+        line.push_str(&format!("; SameSite={same_site}"));
+    }
+    Some((url, line))
+}
+
+/// A cookie of the jar as the agent's browser takes it.
+fn page_cookie(cookie: JarCookie) -> PageCookie {
+    PageCookie {
+        name: cookie.name,
+        value: cookie.value,
+        domain: cookie.domain,
+        host_only: cookie.host_only,
+        path: cookie.path,
+        secure: cookie.secure,
+        http_only: cookie.http_only,
+        same_site: cookie.same_site.map(|same_site| match same_site {
+            CookieSameSite::Strict => "Strict",
+            CookieSameSite::Lax => "Lax",
+            CookieSameSite::None => "None",
+        }),
+        expires: cookie.expires.map(|expires| expires as f64),
     }
 }

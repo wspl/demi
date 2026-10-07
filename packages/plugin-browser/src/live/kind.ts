@@ -1,6 +1,6 @@
 import { defineComponent, h } from 'vue'
-import { Bot, RotateCw } from '@lucide/vue'
-import { ICON_PX, type PanelKind } from '@demicodes/plugin-sdk'
+import { Bot, Globe, RotateCw } from '@lucide/vue'
+import { ICON_PX, type PanelKind, type TabCommand } from '@demicodes/plugin-sdk'
 import type { BrowserPanel } from '../panel'
 import BrowserTabContent from './BrowserTabContent.vue'
 import {
@@ -40,6 +40,23 @@ export function browserTabTitle(data: BrowserTabData, session: BrowserTabsContro
   return url ? url.host || url.href : data.url
 }
 
+/** Open in Your Browser, unavailable with why where previews cannot run or the tab has no web page. */
+function yourBrowserCommand(session: BrowserPanel, data: BrowserTabData, id: string): TabCommand {
+  const address = session.browser.address(data)
+  const page = data.tab !== undefined && data.closed !== true && /^https?:/.test(address)
+  const reason = session.preview.unavailable.value ?? (page ? null : 'The tab has no web page to open yet.')
+  return {
+    label: 'Open in Your Browser',
+    icon: Globe,
+    disabled: reason !== null,
+    ...(reason ? { disabledReason: reason } : {}),
+    run: () => {
+      const title = session.browser.title(data) ?? data.title
+      session.preview.fromAgent(id, { ...data, url: address, ...(title ? { title } : {}) })
+    },
+  }
+}
+
 /**
  * The `browser` tab kind (`live-view.md` § A browser tab in the panel). Its
  * content reaches the conversation's browser through the page's panel
@@ -58,13 +75,15 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserPanel> = {
   busy: (data, tab, id) => tab.session.browser.busy(id, data),
   content: BrowserTabContent,
   // A web browser's tab menu: Reload the page, or open the address again in a tab of its own.
-  commands: (data, tab) => [
+  commands: (data, tab, id) => [
     {
       label: 'Reload',
       icon: RotateCw,
       disabled: data.tab === undefined || data.closed === true,
       run: () => tab.session.browser.reload(data),
     },
+    // The page in the user's own browser, beside this tab, with its state (`preview.md` § What the user sees).
+    yourBrowserCommand(tab.session, data, id),
   ],
   duplicate: (data) => (data.title ? { url: data.url, title: data.title } : { url: data.url }),
 }

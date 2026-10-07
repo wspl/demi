@@ -38,6 +38,8 @@ pub struct CommandRecord {
     model: Positions,
     page: PageText,
     files: Option<EditedFiles>,
+    /// The pages the command presented, once it ended.
+    presented: Vec<demi_command_protocol::PresentedPage>,
     /// The whole output, once the command ended.
     whole: Option<Arc<WholeOutput>>,
 }
@@ -149,6 +151,7 @@ impl CommandRecord {
             model: Positions::default(),
             page: PageText::default(),
             files: None,
+            presented: Vec::new(),
             whole: None,
         }
     }
@@ -217,6 +220,11 @@ impl CommandRecord {
 
     pub fn set_files(&mut self, files: EditedFiles) {
         self.files = Some(files);
+    }
+
+    /// The pages the ended command presented (`preview.md` § Presenting a page).
+    pub fn set_presented(&mut self, presented: Vec<demi_command_protocol::PresentedPage>) {
+        self.presented = presented;
     }
 
     /// Ends the command with its whole output, its binary stdout and the
@@ -348,6 +356,7 @@ impl CommandRecord {
             idle_ms: millis(now - self.last_output),
             state,
             files: self.files.clone(),
+            presented: self.presented.clone(),
         }
     }
 

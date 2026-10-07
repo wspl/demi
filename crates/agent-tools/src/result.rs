@@ -12,7 +12,7 @@ use demi_host_interface::{
 };
 use demi_provider_common::{MediaBytes, RequestLimits, ResultPart};
 use demi_shared_types::{
-    B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, ShellToolView, ShellViewStatus,
+    B64Bytes, CommandId, Model, ModelMediaKind, OutputChunk, PresentedPage, ShellToolView, ShellViewStatus,
     ToolView, model_accepts_media_type, model_media_type_for,
 };
 
@@ -624,6 +624,17 @@ fn shell_view(status: &CommandStatus, text: &OutputText) -> ShellToolView {
         view_truncated: cut,
         files: status.files.as_ref().map(|files| files.files.clone()),
         files_truncated: status.files.as_ref().map(|files| files.truncated),
+        presented: (!status.presented.is_empty()).then(|| {
+            status
+                .presented
+                .iter()
+                .map(|page| PresentedPage {
+                    tab: page.tab.clone(),
+                    title: page.title.clone(),
+                    url: page.url.clone(),
+                })
+                .collect()
+        }),
     }
 }
 
@@ -723,6 +734,7 @@ mod tests {
                 media: Vec::new(),
             },
             files: None,
+            presented: Vec::new(),
         }
     }
 
@@ -741,6 +753,35 @@ mod tests {
     async fn result(status: &CommandStatus) -> String {
         let outcome = shell_outcome(status, &test_model().model, RequestLimits::default()).await;
         text_of(&outcome)[0].to_owned()
+    }
+
+    /// The pages a command presented reach its view, for the cards its
+    /// block shows; the model's result says nothing of them.
+    #[tokio::test]
+    async fn the_pages_a_command_presented_reach_its_view_only() {
+        let mut status = exited("Presented t3 to the user\n");
+        status.presented = vec![demi_command_protocol::PresentedPage {
+            tab: "t3".into(),
+            title: "Dashboard".into(),
+            url: "http://localhost:3000/".into(),
+        }];
+        let outcome = shell_outcome(&status, &test_model().model, RequestLimits::default()).await;
+        let Some(ToolView::Shell(view)) = &outcome.view else {
+            panic!("a shell view")
+        };
+        assert_eq!(
+            view.presented,
+            Some(vec![PresentedPage {
+                tab: "t3".into(),
+                title: "Dashboard".into(),
+                url: "http://localhost:3000/".into(),
+            }])
+        );
+        assert!(!text_of(&outcome)[0].contains("Dashboard"));
+        let Some(ToolView::Shell(none)) = shell_outcome(&exited(""), &test_model().model, RequestLimits::default()).await.view else {
+            panic!("a shell view")
+        };
+        assert_eq!(none.presented, None);
     }
 
     #[tokio::test]

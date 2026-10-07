@@ -8,10 +8,11 @@
  */
 import { computed, reactive, shallowReactive, type ComputedRef } from 'vue'
 import { z } from 'zod'
-import type { PanelSession, PreviewPlace } from '@demicodes/plugin-sdk'
-import type { PreviewOpened } from '../generated/plugin'
+import type { HeadlineText, PanelSession, PreviewPlace, SentenceText } from '@demicodes/plugin-sdk'
+import { PREVIEW_MAX_STORAGE_BYTES, type PageStorage, type PreviewOpened } from '../generated/plugin'
+import type { BrowserTabData } from '../live/tabs'
 import { previewUnsupported } from './client'
-import type { PreviewConnection } from './connection'
+import type { PreviewConnection, TakenState } from './connection'
 import type { Navigation, NavigationType, RelayBinding, RelayTab, TabEvent, TabPage } from './relay'
 
 /** A tab of the user's browser as its panel tab keeps it. */
@@ -24,6 +25,12 @@ export const previewTabDataSchema = z.object({
   openedBy: z.string().optional(),
   /** Which window of its opener's page this tab is, while that page lives. */
   window: z.string().optional(),
+  /**
+   * The tab of the agent's browser whose page this tab opens, with its page
+   * state (`preview.md` § Page state); dropped once the tab took it, so a
+   * reload opens the address alone.
+   */
+  from: z.string().optional(),
 })
 export type PreviewTabData = z.infer<typeof previewTabDataSchema>
 
@@ -39,6 +46,10 @@ export interface PreviewApi {
   open(url: string, place: PreviewPlace): Promise<PreviewOpened>
   /** Adds a tab of the user's browser to the panel. */
   add(data: PreviewTabData, select: boolean): void
+  /** Adds a tab of the agent's browser to the panel. */
+  addAgentTab(data: BrowserTabData, select: boolean): void
+  /** Tells the user a fact about what they asked for, as a neutral toast. */
+  notify(title: HeadlineText, message: SentenceText): void
 }
 
 /**
@@ -58,6 +69,44 @@ export interface PreviewDriver {
   readonly boots: boolean
   /** The tab's frame finished loading a document. */
   loaded?(tab: PreviewTab): void
+  /**
+   * The page state of the agent's tab `from`: its cookies moved into the
+   * jar, and its address, title and top-level origin's storage. Rejects with
+   * why, in a sentence the user reads.
+   */
+  takeState(tab: PreviewTab, place: PreviewPlace, from: string): Promise<TakenState>
+  /** Writes `storage` into the top-level origin `opened` names, before the page loads; answers what another page kept. */
+  writeState(tab: PreviewTab, opened: PreviewOpened, storage: PageStorage): Promise<string[]>
+  /** The storage of the tab's top-level origin; null while the tab shows no page of the preview. */
+  readState(tab: PreviewTab): Promise<PageStorage | null>
+  /** The real origins of the tab's documents, whose sites' cookies a page state moves with it. */
+  origins(tab: PreviewTab): string[]
+  /** Keeps a page state of the tab for the agent's browser; answers its token. */
+  keepState(tab: PreviewTab, place: PreviewPlace, origins: string[], storage: PageStorage | null): Promise<string>
+}
+
+/** What a toast says when a page's storage moved only in part (`preview.md` § Page state). */
+const PART_MOVED: HeadlineText = 'Some of the Page’s Storage Didn’t Move'
+/** What a toast says when a page moved without its state. */
+const NOT_MOVED: HeadlineText = 'The Page Opened Without Its State'
+/** What a toast says when a page's storage was too large to move. */
+const COOKIES_ONLY: HeadlineText = 'Only the Page’s Cookies Moved'
+const TOO_LARGE: SentenceText = 'Its storage is larger than the 16 MB a page state moves.'
+
+/** The sentence that names what of `origin`'s storage was left out: stores with values that cannot be copied, and databases another page held. */
+function leftOut(origin: string, skipped: readonly string[], kept: readonly string[]): SentenceText | null {
+  const parts = [
+    ...skipped.map((store) => `${store} has a value that can’t be copied`),
+    ...kept.map((database) => `${database} is open in another tab`),
+  ]
+  return parts.length === 0 ? null : `On ${URL.parse(origin)?.host ?? origin}, ${parts.join('; ')}.`
+}
+
+/** The sentence a failure of a page state says: its reason, as a sentence. */
+function failedSentence(error: unknown): SentenceText {
+  const text = error instanceof Error ? error.message : String(error)
+  const sentence = text.charAt(0).toUpperCase() + text.slice(1)
+  return /[.!?]$/.test(sentence) ? sentence : `${sentence}.`
 }
 
 /** What a tab shows: its frame's address, the page it reports, and whether it loads or failed. */
@@ -203,8 +252,12 @@ export class PreviewTab implements RelayTab {
     this.opener?.binding.port.postMessage({ type: 'tab-closed', id: this.opener.popup })
   }
 
-  /** Loads `navigation`: the user's own when it has no initiator. */
-  async load(navigation: Navigation): Promise<void> {
+  /**
+   * Loads `navigation`: the user's own when it has no initiator. With
+   * `from`, a tab of the agent's browser, its page state is in place before
+   * the page loads (`preview.md` § Page state).
+   */
+  async load(navigation: Navigation, from?: string): Promise<void> {
     const generation = ++this.generation
     const place = this.place()
     this.current = navigation
@@ -221,6 +274,12 @@ export class PreviewTab implements RelayTab {
       if (generation !== this.generation) {
         return
       }
+      if (from !== undefined) {
+        await this.receiveState(place, opened, from)
+        if (generation !== this.generation) {
+          return
+        }
+      }
       const src = await this.tabs.driver.boot(this, place, opened, navigation)
       if (generation !== this.generation) {
         return
@@ -236,6 +295,31 @@ export class PreviewTab implements RelayTab {
       if (generation === this.generation) {
         this.view.starting = false
       }
+    }
+  }
+
+  /**
+   * Takes the page state of the agent's tab `from` into the top-level origin
+   * `opened` names. It moves once: the tab's data drops `from` at once. What
+   * did not move is a toast; the page loads either way.
+   */
+  private async receiveState(place: PreviewPlace, opened: PreviewOpened, from: string): Promise<void> {
+    const { from: _taken, ...data } = this.host.data()
+    this.host.update(data)
+    try {
+      const taken = await this.tabs.driver.takeState(this, place, from)
+      if (taken.tooLarge) {
+        this.tabs.api.notify(COOKIES_ONLY, TOO_LARGE)
+      }
+      if (taken.storage) {
+        const kept = await this.tabs.driver.writeState(this, opened, taken.storage)
+        const sentence = leftOut(taken.storage.origin, taken.storage.skipped, kept)
+        if (sentence) {
+          this.tabs.api.notify(PART_MOVED, sentence)
+        }
+      }
+    } catch (error) {
+      this.tabs.api.notify(NOT_MOVED, failedSentence(error))
     }
   }
 
@@ -371,6 +455,10 @@ export class PreviewTab implements RelayTab {
   /** Starts the tab where its data says: the window its opener asked for, or its address. */
   begin(): void {
     const data = this.host.data()
+    if (data.from !== undefined && data.url) {
+      void this.load({ url: data.url, initiator: null }, data.from)
+      return
+    }
     const opened = data.window ? this.tabs.takeWindow(data.window) : undefined
     if (opened) {
       this.opener = { binding: opened.opener, popup: opened.popup }
@@ -428,6 +516,49 @@ export class PreviewTabs implements PanelSession {
     const id = crypto.randomUUID()
     this.windows.set(id, window)
     this.api.add({ url: window.navigation?.url ?? '', openedBy: opener, window: id }, true)
+  }
+
+  /**
+   * Open in Your Browser on the agent's tab `agentTab`, a panel tab of the
+   * agent's browser: a tab of the user's browser beside it, selected, which
+   * takes the page with its state (`preview.md` § What the user sees).
+   */
+  fromAgent(agentTab: string, data: BrowserTabData): void {
+    if (data.tab === undefined) {
+      return
+    }
+    this.api.add({ url: data.url, ...(data.title ? { title: data.title } : {}), openedBy: agentTab, from: data.tab }, true)
+  }
+
+  /**
+   * Open in Agent's Browser on the tab `id`: a tab of the agent's browser
+   * beside it, selected, with the page's address and its state, kept on the
+   * Host for the tab that opens. What did not move is a toast; the tab
+   * opens on the address either way.
+   */
+  async toAgent(id: string): Promise<void> {
+    const tab = this.tabs.get(id)
+    const place = this.api.place.value
+    const url = tab?.view.page?.url
+    if (!tab || !place || !url) {
+      return
+    }
+    let handover: string | undefined
+    try {
+      let storage = await this.driver.readState(tab)
+      if (storage && new TextEncoder().encode(JSON.stringify(storage)).length > PREVIEW_MAX_STORAGE_BYTES) {
+        storage = null
+        this.api.notify(COOKIES_ONLY, TOO_LARGE)
+      }
+      const skipped = storage && leftOut(storage.origin, storage.skipped, [])
+      if (skipped) {
+        this.api.notify(PART_MOVED, skipped)
+      }
+      handover = await this.driver.keepState(tab, place, this.driver.origins(tab), storage)
+    } catch (error) {
+      this.api.notify(NOT_MOVED, failedSentence(error))
+    }
+    this.api.addAgentTab({ url, openedBy: id, ...(handover ? { handover } : {}) }, true)
   }
 
   takeWindow(id: string): OpenedWindow | undefined {

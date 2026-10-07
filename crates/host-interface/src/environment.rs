@@ -194,6 +194,8 @@ pub struct CommandStatus {
     pub state: CommandState,
     /// The files the command changed, once it ended having changed some.
     pub files: Option<EditedFiles>,
+    /// The pages it presented, once it ended.
+    pub presented: Vec<demi_command_protocol::PresentedPage>,
 }
 
 /// A stream's newest bytes beyond its start, which the runner sends while

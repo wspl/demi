@@ -218,6 +218,9 @@ describe('preview origins', () => {
       'boot.js': 'text/javascript; charset=utf-8',
       'client.js': 'text/javascript; charset=utf-8',
       'sw.js': 'text/javascript; charset=utf-8',
+      'state.html': 'text/html; charset=utf-8',
+      'state.js': 'text/javascript; charset=utf-8',
+      'state-frame.js': 'text/javascript; charset=utf-8',
     }
     for (const [file, type] of Object.entries(expected)) {
       const response = await handle(previewRequest(namespace, `/__demi/v1/${file}`, 'same-origin'))

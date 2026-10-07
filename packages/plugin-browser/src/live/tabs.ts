@@ -55,6 +55,12 @@ export const browserTabDataSchema = z.object({
    * (`live-view.md` § A browser tab in the panel).
    */
   openedBy: z.string().optional(),
+  /**
+   * The page state of the user's browser it opens with, as the `preview`
+   * stream kept it: Open in Agent's Browser writes it, and the plugin drops it
+   * once the tab opened (`preview.md` § Page state).
+   */
+  handover: z.string().optional(),
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 
@@ -372,6 +378,18 @@ export class BrowserTabsController {
     }
     const listed = this.listed.value
     return request?.status === 'answered' && (listed === null || listed <= request.list)
+  }
+
+  /**
+   * The address of the page the panel tab with `data` shows, as the browser
+   * last reported it; the one its data keeps while nothing reports it.
+   */
+  address(data: BrowserTabData): string {
+    if (data.tab === undefined || data.closed) {
+      return data.url
+    }
+    const reported = this.tab(data.tab) ?? this.list.value?.tabs.find((candidate) => candidate.id === data.tab)
+    return reported?.url || data.url
   }
 
   /**

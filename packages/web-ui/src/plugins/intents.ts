@@ -10,6 +10,18 @@ export interface IntentPayloads {
   file: { path: string }
   /** One call's edit of one file, as the transcript's tool block names it. */
   edit: CallEditSelection
+  /**
+   * A page the agent presented, a tab of its browser, as the command's card
+   * names it (`preview.md` § Presenting a page).
+   */
+  page: PresentedPage
+}
+
+/** A page a command presented: the agent's tab, its title and its address. */
+export interface PresentedPage {
+  tab: string
+  title: string
+  url: string
 }
 
 export type IntentName = keyof IntentPayloads

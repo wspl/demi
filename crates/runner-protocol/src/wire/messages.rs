@@ -884,6 +884,10 @@ pub enum Outbound {
         #[garde(length(max = demi_command_protocol::EDIT_JOB_FILES), dive)]
         files: Vec<JobFileChange>,
         files_truncated: bool,
+        /// The pages the job's commands presented to the user
+        /// (`preview.md` § Presenting a page).
+        #[garde(length(max = demi_command_protocol::PRESENTED_JOB_PAGES), dive)]
+        presented: Vec<demi_command_protocol::PresentedPage>,
     },
     /// A medium a command whose stdout is the job's output returned, once
     /// the job keeps it (`runner.md` § Pipes and output). Every one of a

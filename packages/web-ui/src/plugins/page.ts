@@ -19,6 +19,7 @@ import type { HostArtifact } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
 import type { FileBrowserSource } from '../files/types'
 import { reportError } from '../infra/errors'
+import { showToast } from '../infra/toast'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { SettingsNavGroup, SettingsNavItem } from '../settings/types'
 import type { SidebarEntry } from '../sidebar/types'
@@ -217,6 +218,8 @@ export interface PageContext {
     /** A defect of the page itself, which only the console shows; a call its caller dropped is none. */
     defect(message: string, error: unknown): void
   }
+  /** A fact about what the user asked for, which neither worked nor failed, as a neutral toast. */
+  readonly notices: { show(title: HeadlineText, message: SentenceText): void }
   readonly overlays: OverlayStore
   files(conversation: string): ConversationFileService
 }
@@ -307,6 +310,7 @@ export interface PanelKind<Data, Session = undefined> {
   intents?: {
     file?(payload: IntentPayloads['file'], current: Data | null): Data
     edit?(payload: IntentPayloads['edit'], current: Data | null): Data
+    page?(payload: IntentPayloads['page'], current: Data | null): Data
   }
 }
 
@@ -536,6 +540,7 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
     },
     settings: { open: (section) => host.openSettings(section) },
     errors,
+    notices: { show: (title, message) => void showToast({ title, message, tone: 'neutral' }) },
     overlays: host.overlays,
     files: (conversation) => host.files(conversation),
   }

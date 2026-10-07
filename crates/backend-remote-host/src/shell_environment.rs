@@ -556,6 +556,7 @@ impl RemoteShellEnvironment {
             shell.cwd = cwd;
         }
         let mut received = running.received.take();
+        record.borrow_mut().set_presented(end.presented.clone());
         let set_files = |files: Option<EditedFiles>| {
             if let Some(files) = files {
                 record.borrow_mut().set_files(files);

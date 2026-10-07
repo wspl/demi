@@ -791,6 +791,26 @@ impl BrowserEnvironment {
         Ok(tab)
     }
 
+    /// The user's new tab on `url`, with `cookies` and `storage` written
+    /// into the browser before its page loads (`preview.md` § Page state).
+    /// A state that could not be written leaves the tab on the address
+    /// alone, and answers why beside it.
+    pub async fn open_user_seeded(
+        &self,
+        url: &str,
+        cookies: Vec<crate::page::state::PageCookie>,
+        storage: Option<&demi_command_package_browser_protocol::preview::PageStorage>,
+        cancellation: &CancellationToken,
+        deadline: tokio::time::Instant,
+    ) -> Result<(BrowserTab, std::result::Result<crate::page::state::Seeded, BrowserError>)> {
+        crate::tabs::navigation::validate_url(url)?;
+        let operation = Operation::until(&self.ended, cancellation, deadline);
+        let tab = self.create(BrowserCreatedBy::User {}, &operation).await?;
+        let seeded = operation.run(crate::page::state::seed(&tab, cookies, storage)).await;
+        crate::tabs::navigation::visit(&tab, url);
+        Ok((tab, seeded))
+    }
+
     /// Creates `count` temporary tabs, and keeps the environment from
     /// retiring until the batch is closed.
     pub async fn temporary_tabs(

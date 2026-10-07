@@ -132,6 +132,12 @@ function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>
       } else {
         respond(message.id)
       }
+    } else if (message.type === 'state_take') {
+      send(message.tab === 't1'
+        ? { type: 'state', id: message.id, url: 'http://localhost:5173/', title: 'App', storage: null, too_large: true }
+        : { type: 'failed', id: message.id, reason: 'The agent’s tab is gone.' })
+    } else if (message.type === 'state_keep') {
+      send({ type: 'state_kept', id: message.id, token: `kept-${message.sites.length}` })
     } else if (message.type === 'labels') {
       const labels = Object.fromEntries(message.environments.map((environment) => [ENGINE_LABELS.get(environment.origin)!, environment]))
       send({ type: 'labels', id: message.id, labels })
@@ -481,6 +487,19 @@ test('a stream that ends fails what it carried, and the next request opens a new
   await expect(again.head).resolves.toEqual(expect.objectContaining({ status: 200 }))
   expect(opens).toBe(2)
   expect(engine.said.filter((message) => message.type === 'hello')).toHaveLength(2)
+})
+
+test('page states are questions on the stream: the engine’s answer, or why it failed', async () => {
+  const engine = scriptedEngine(() => ({ status: 200 }))
+  const connection = new PreviewConnection(engine.open)
+  await expect(connection.takeState(PLACE, 't1')).resolves.toEqual({ url: 'http://localhost:5173/', title: 'App', storage: null, tooLarge: true })
+  await expect(connection.takeState(PLACE, 't9')).rejects.toThrow('The agent’s tab is gone.')
+  await expect(connection.keepState(PLACE, ['http://localhost:5173'], null)).resolves.toBe('kept-1')
+  // A question the stream's end leaves unanswered fails.
+  const silent = new PreviewConnection(() => ({ send() {}, close() {} }))
+  const waiting = silent.keepState(PLACE, [], null)
+  silent.close()
+  await expect(waiting).rejects.toThrow('the panel closed')
 })
 
 test('pulls made before their chunks arrive get the body in order, as a stream’s reads do', async () => {
