@@ -20,6 +20,7 @@ test = false
 [dependencies]
 bytes.workspace = true
 demi-command-package-browser-chrome = { path = "../command-package-browser-chrome" }
+demi-command-package-browser-preview = { path = "../command-package-browser-preview" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
