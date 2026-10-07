@@ -195,7 +195,7 @@ last reported, and `runnerVersion`, the runner release it last reported, such
 as `0.1.16`; both are null before its runner first connected. Settings shows
 them under the device's name, the Cloud's included. `PATCH /devices/:id
 { name }` renames a paired device: the name is trimmed and has 1 to 64
-characters, and the answer is the device, 200. The Cloud's device keeps its
+characters, and the answer is `{ device }`, 200, as for a claim. The Cloud's device keeps its
 name: renaming it answers 409 `device_managed`, and a device the caller does
 not have 404 `device_not_found`. A rename reaches every page of the user in
 the product state; the names a conversation gives its attached hosts are its
