@@ -324,12 +324,14 @@ A socket that closes, is taken as broken, or cannot be made connects again
 after a second, then after twice as long each time, up to 30 seconds, each
 wait shortened by a random part so that the pages of all users do not return
 at once after a restart. A channel that the backend closed because it shuts
-down is the exception: the page shows the restart screen and connects again
-every one to two seconds instead
+down is the exception: the page connects again every one to two seconds
+instead
 ([A page of another build](#a-page-of-another-build)). The waits start over at a second once the socket
 works again: the channel when its snapshot arrives, a conversation when it
 opens, a live view when its first `state` arrives. Meanwhile the page keeps
-the channel's copy as it was, and a conversation shows that it is connecting.
+the channel's copy as it was and shows the connection banner
+([A page of another build](#a-page-of-another-build)), and a conversation
+shows that it is connecting.
 A conversation socket that is lost before the session answered `open`, as
 when the backend restarts while the conversation opens, follows the same
 rule; a session that refuses to open, answering `open` with an `error` or a
@@ -408,35 +410,41 @@ a user has Demi open while its server is upgraded:
 the channel closes with 1001 backend_closing
         |
         v
-the page shows "Demi Is Restarting" over the whole app and connects again
+the page shows the banner "Demi is restarting" and connects again
         |
         v  the channel's snapshot arrives
    +----+-------------------------------+
    another build than the page's        the page's own build
-   -> the page loads itself again       -> the restart screen goes, and the
-      from the backend                     page goes on where it was
+   -> the page loads itself again       -> the banner goes, and the page
+      from the backend                     goes on where it was
 ```
 
-- **The restart screen.** When the synchronization channel closes with
-  1001 `backend_closing` ([Page synchronization](web-api.md#page-synchronization)),
-  the backend shut down on purpose and will be back, so the page covers the
-  whole app with the restart screen of `web-ui`: "Demi Is Restarting", "This
-  page goes on when Demi is back." Nothing under it can be used, since
-  nothing works without the backend. The backend does not know whether it
-  stops for an upgrade or a restart, so the screen does not say which. While
-  it shows, the channel connects again every one to two seconds, at a random
-  point of that interval, so that the pages of all users do not return at
-  once; the doubling waits of [Liveness and reconnection](#liveness-and-reconnection)
-  are for a backend that went away unexpectedly, which a lost connection
-  without that close means, and which shows no screen.
+- **The connection banner.** When the backend cannot be reached, the page
+  says so in a banner across the top of the app, as Slack and Linear do, and
+  everything under it stays readable: the conversation, its panel, the
+  sidebar. The banner says what is happening in the user's words: "You're
+  offline" while the browser reports no network, "Demi is restarting" after
+  the channel closed with 1001 `backend_closing` (the backend shut down on
+  purpose and will be back; it does not know whether for an upgrade or a
+  restart), and "Reconnecting to Demi" once a lost channel's first new
+  attempt failed. It goes when the channel's snapshot arrives. A message sent
+  meanwhile shows in the transcript as waiting to be sent and goes when the
+  conversation opens again, with its id, so it is sent once; it never shows
+  as failed for the lost connection. A control that needs the backend, such
+  as a setting or a Retry, stays as it is and does what it does once the page
+  is back, never a failure about the connection. While the backend shuts
+  down on purpose, the channel connects again every one to two seconds, at a
+  random point of that interval, so that the pages of all users do not return
+  at once; the doubling waits of [Liveness and reconnection](#liveness-and-reconnection)
+  are for a backend that went away unexpectedly.
 - **Another build.** Whenever a snapshot names another build than the page
-  runs, whether after the restart screen or after a laptop slept through a
+  runs, whether after the banner or after a laptop slept through a
   restart, the page loads itself again at once, without asking. Nothing the
   user typed is lost: a draft is in IndexedDB and on the backend from the
   moment it is typed ([Drafts](#drafts)). A page that loaded itself for a
   build and still gets another one, as when a cache in front of the backend
-  serves an old `index.html`, does not load again: it shows the restart
-  screen's error state, "This Page Could Not Be Updated", with the reason,
+  serves an old `index.html`, does not load again: it shows the error
+  "This Page Could Not Be Updated" over the app, with the reason,
   and keeps the build it tried in `sessionStorage` so that it tries once per
   build.
 - **Where the build comes from.** Each `vite build` of `web` names its build
@@ -453,7 +461,7 @@ the page shows "Demi Is Restarting" over the whole app and connects again
   null and nothing is compared. A page and a backend of different revisions
   there show their disagreement as any page shows a state or an answer it
   cannot read ([Calls and states](../architecture/plugin-pages.md#calls-and-states)).
-  The restart screen shows there too, when the development backend stops.
+  The connection banner shows there too, when the development backend stops.
 
 ## Authentication
 

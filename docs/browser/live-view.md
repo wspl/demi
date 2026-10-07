@@ -161,6 +161,14 @@ page                         backend (panel, plugin-browser)            Host
   others. A tab id is used once per conversation, so a tab the user closed
   never comes back, and a tab is added once however often the list is read.
   Adding a tab does not select it; only [showing](#showing-a-tab) does.
+- **Tabs a page opens.** A link with `target=_blank`, a `window.open`, a
+  sign-in or payment pop-up: the new tab appears in the strip at once, as in
+  any browser, not when the agent's next job ends. The view's tab list names
+  it within the module's state delay, and the page asks the plugin to
+  `sync`, which adds it as it adds the agent's tabs. A tab opened by the
+  user's own click or key in the tab they watch is selected, as a browser
+  selects the tab a click opens; one a page opened by itself is added without
+  being selected.
 - **A tab gone from the Host.** Two cases, as in a browser:
   - **Closed on purpose.** The agent closed it with `demi browser close`, or
     the page closed itself. The plugin removes its panel tab, as a browser

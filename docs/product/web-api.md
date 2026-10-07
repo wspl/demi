@@ -1072,7 +1072,7 @@ The backend closes the channel with a code and a reason:
 
 | Code and reason | When |
 | --- | --- |
-| 1001 `backend_closing` | The backend shuts down; the page shows the restart screen until it is back ([A page of another build](web-application.md#a-page-of-another-build)) |
+| 1001 `backend_closing` | The backend shuts down; the page shows the banner "Demi is restarting" until it is back ([A page of another build](web-application.md#a-page-of-another-build)) |
 | 1008 `unexpected_message` | The page sent a message |
 | 1011 `internal_error` | A part could not be read |
 | 4002 `session_ended` | The session the channel opened with ended: it was signed out, or it expired |
