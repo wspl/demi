@@ -10,7 +10,7 @@ import {
   autoUpdate
 } from '@floating-ui/vue'
 import type { Placement } from '@floating-ui/vue'
-import { onClickOutside } from '@vueuse/core'
+import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlayTarget } from '../overlay/overlayContainer'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
@@ -197,9 +197,28 @@ onClickOutside(floatingRef, () => {
   ],
 })
 
-useOverlay(props.overlayStore, () => (
+const overlayId = useOverlay(props.overlayStore, () => (
   nested || container ? false : props.isOpen
 ), () => emit('close'))
+
+/**
+ * Escape closes the panel, as it closes a menu or popover on macOS: the
+ * innermost one the keys are in, and, with the keys elsewhere on the page,
+ * the one on top. An Escape something inside used first, such as a filter
+ * it cleared or a type-select it ended (it called preventDefault), closes
+ * nothing, and one this panel takes reaches no dialog behind it.
+ */
+function closeOnEscape(event: KeyboardEvent): void {
+  if (!props.isOpen || event.key !== 'Escape' || event.defaultPrevented)
+    return
+  event.preventDefault()
+  emit('close')
+}
+
+onKeyStroke('Escape', (event) => {
+  if (!nested && !container && props.overlayStore.isTop(overlayId))
+    closeOnEscape(event)
+})
 
 const overlayMotion = {
   enterActiveClass: 'transition-[opacity,scale] duration-150 ease-out',
@@ -218,6 +237,7 @@ const overlayMotion = {
         data-overlay-panel
         class="popover-floating z-50 w-max"
         :style="{ ...floatingStyles, transformOrigin: transformOrigin }"
+        @keydown="closeOnEscape"
       >
         <slot />
       </div>
