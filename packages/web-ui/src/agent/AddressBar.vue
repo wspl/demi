@@ -4,6 +4,7 @@ import { ArrowLeft, ArrowRight, RotateCw, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import TextInput from '../ui/TextInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import { provideTooltipPlacement } from '../ui/tooltip-placement'
 import type { SentenceText } from '../ui/ui-text'
 import { addressUrl } from './address'
 
@@ -17,7 +18,9 @@ import { addressUrl } from './address'
  * reads what the user typed as a browser's address bar does (`addressUrl`).
  * While the page
  * loads, Reload is Stop, in the same place, as in a web browser; Stop is
- * never unavailable while the page loads.
+ * never unavailable while the page loads. It stands right under a tab
+ * strip, so the tips of its buttons, and of those its caller adds, open
+ * below them, never over the strip.
  */
 const props = withDefaults(
   defineProps<{
@@ -44,6 +47,8 @@ const emit = defineEmits<{
   reload: []
   stop: []
 }>()
+
+provideTooltipPlacement('bottom')
 
 const field = ref<InstanceType<typeof TextInput> | null>(null)
 /** What the field holds while the user has it; null while it shows the page's address. */
