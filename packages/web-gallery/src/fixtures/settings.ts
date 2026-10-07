@@ -685,10 +685,14 @@ export function createSettingsState() {
       fontSize: 15,
     },
     notifications: {
-      webBrowser: true,
-      sound: false,
-      onFinish: true,
-      onError: true,
+      enabled: false,
+      turnFinishes: true,
+      turnFails: true,
+      needsPermission: true,
+      /** What the browser allows the site, as the product reads it. */
+      permission: 'default' as NotificationPermission,
+      /** What the stand-in browser answers when it is asked. */
+      answer: 'granted' as 'granted' | 'denied',
     },
     account: {
       name: 'Zan',
@@ -800,7 +804,6 @@ export function createSettingsState() {
     // The product's shortcuts with their own keys: the gallery changes them as the product does.
     keys: APP_SHORTCUTS.map((shortcut): SettingsKeyBinding => ({ ...shortcut })),
     data: {
-      shareLinks: false,
       telemetry: true,
     },
   })
