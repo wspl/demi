@@ -1,7 +1,7 @@
 //! The `demi.browser` package's contract (`crates-and-packages.md`
 //! § command-package-browser-protocol): the arguments and results of its `browser.*`
-//! operations, the live view's protocol, the capture extension's messages,
-//! and the pinned Chrome release records. It holds types and their checks
+//! operations, the live view's protocol, the web preview's stream, the
+//! capture extension's messages, and the pinned Chrome release records. It holds types and their checks
 //! only; the operations, transport and IO live in `demi-browser` and the
 //! browser libraries.
 
@@ -35,6 +35,7 @@ macro_rules! closed_set {
 pub mod browser;
 pub mod capture;
 pub mod live;
+pub mod preview;
 pub mod release;
 
 use demi_shared_types::DecodeError;
@@ -46,6 +47,8 @@ pub enum Operation {
     Browser(Box<browser::BrowserOperation>),
     /// `browser.live`: a viewer of the conversation's browser.
     Live,
+    /// `browser.preview`: the web preview's stream of a user's page.
+    Preview,
 }
 
 /// Why an invocation could not be decoded.
@@ -71,6 +74,11 @@ impl Operation {
                 .map(|_| Self::Live)
                 .map_err(OperationError::Invalid);
         }
+        if name == preview::OPERATION {
+            return demi_shared_types::decode_value::<preview::PreviewInput>(args)
+                .map(|_| Self::Preview)
+                .map_err(OperationError::Invalid);
+        }
         match name.strip_prefix(browser::PREFIX) {
             Some(browser) => browser::BrowserOperation::parse(browser, args)
                 .map(|operation| Self::Browser(Box::new(operation))),
@@ -79,11 +87,11 @@ impl Operation {
     }
 
     /// Every operation the package serves, as its descriptor lists them: the
-    /// browser operations and the live view.
+    /// browser operations, the live view and the web preview.
     pub fn names() -> impl Iterator<Item = &'static str> {
         browser::OPERATIONS
             .iter()
-            .chain([&live::OPERATION])
+            .chain([&live::OPERATION, &preview::OPERATION])
             .copied()
     }
 }

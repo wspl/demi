@@ -94,7 +94,7 @@ fn digest(descriptor: &PackageDescriptor) -> String {
 }
 
 async fn registry(root: &Path) -> ServiceRegistry {
-    ServiceRegistry::new(root.join("cache"), None, root.into(), BTreeMap::new())
+    ServiceRegistry::new(root.join("cache"), None, root.join("data"), root.into(), BTreeMap::new())
         .await
         .unwrap()
 }
@@ -180,6 +180,32 @@ async fn a_service_without_leases_stays_while_it_holds_a_conversation() {
         // Releasing again starts nothing and is harmless.
         services.release_conversation("two").await.unwrap();
         registry.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// Each runner instance names its own data directory to a package's
+/// program, so two instances on one account, each paired with its own
+/// backend, keep apart what their packages keep on the Host.
+#[tokio::test]
+async fn each_instance_gives_a_package_its_own_data_directory() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let root = tempfile::tempdir().unwrap();
+        let (descriptor, path) = fixture(root.path(), 0).await;
+        let mut named = Vec::new();
+        for instance in ["first", "second"] {
+            let instance = root.path().join(instance);
+            let registry = registry(&instance).await;
+            let resident = acquire(&registry.handle(), &descriptor, local(path.clone())).await;
+            let (exit, stdout) = invoke(&resident, "data", "one", "data", serde_json::json!({})).await;
+            assert_eq!(exit, 0);
+            let data = serde_json::from_str::<serde_json::Value>(&stdout).unwrap()["data"].clone();
+            assert_eq!(data, serde_json::json!(instance.join("data").join(&descriptor.id)));
+            named.push(data);
+            registry.close().await;
+        }
+        assert_ne!(named[0], named[1]);
     })
     .await
     .unwrap();
@@ -547,6 +573,7 @@ async fn a_service_starts_from_the_image_copy_without_a_download() {
         let registry = ServiceRegistry::new(
             cache.clone(),
             Some(image),
+            root.path().join("data"),
             root.path().into(),
             BTreeMap::new(),
         )
@@ -583,6 +610,7 @@ async fn without_a_matching_image_copy_a_service_starts_from_a_download() {
         let registry = ServiceRegistry::new(
             root.path().join("cache"),
             Some(image.clone()),
+            root.path().join("data"),
             root.path().into(),
             BTreeMap::new(),
         )
