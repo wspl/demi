@@ -465,7 +465,15 @@ touches it: someone may be watching the agent work.
 ### Capture
 
 Chrome captures tabs through a Chrome extension that the environment always
-loads ([Native driver](browser.md#native-driver)). The extension works in an
+loads ([Native driver](browser.md#native-driver)). Chrome can abort the
+extension's start, or close its document later, and then never starts it
+again by itself, so the Host recreates the extension in the running Chrome,
+which keeps every page and its state, whenever a capture waited 10 seconds
+for the extension in vain, the extension's connection ended, the Host
+dropped a connection that did not keep up, or the extension asked; after a
+recreation the extension has another 10 seconds to connect. When even the
+recreation fails, the view stops trying and says that the device could not
+capture the page, with Retry, which recreates it again. The extension works in an
 offscreen document, which Chrome lists as a background page, not as a tab, so
 it never enters the tab registry. It captures a tab with `chrome.tabCapture`,
 encodes H.264 High 4:2:0 with WebCodecs in software, and sends each encoded
