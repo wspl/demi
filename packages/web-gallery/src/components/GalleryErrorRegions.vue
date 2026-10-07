@@ -14,7 +14,7 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * each one sits; this page is the reference for what each one looks like.
  */
 
-/** A restore the gallery simulates: it fails again after a moment, as a backend still down would. */
+/** A restore the gallery simulates: it fails again after a moment, as a backend that still fails the read would. */
 function retryRestore(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 1500))
 }
@@ -68,7 +68,7 @@ const usageLimitPayload = JSON.stringify({
     </GallerySection>
     <GallerySection
       title="RegionStatus · Content Cannot Be Shown"
-      note="One pane for every region: the session, a settings list, the sidebar, a dialog body. A glyph for the kind, one sentence, the reason, and Retry, which returns the region to loading in the same frame, before the retried work answers; only a new failure brings the reason back. This specimen’s Retry fails again after a moment, as a backend still down would."
+      note="One pane for every region: the session, a settings list, the sidebar, a dialog body. A glyph for the kind, one sentence, the reason, and Retry, which returns the region to loading in the same frame, before the retried work answers; only a new failure brings the reason back. This specimen’s Retry fails again after a moment, as a backend that still fails the read would."
     >
       <div class="grid gap-6 lg:grid-cols-3">
         <GallerySpecimen wide variant="Failed">
@@ -78,7 +78,7 @@ const usageLimitPayload = JSON.stringify({
               status="failed"
               label="Couldn’t load this conversation."
               loading-label="Loading conversation…"
-              detail="Could not load the transcript: HTTP 502 Bad Gateway"
+              detail="The transcript could not be read: database disk image is malformed"
               :on-retry="retryRestore"
             />
           </div>

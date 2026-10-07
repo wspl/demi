@@ -498,10 +498,12 @@ export const useProduct = defineStore('product', () => {
     modelError.value = null
     const request = (async () => {
       try {
-        const response = await apiRequest(force ? '/models?refresh=true' : '/models', {
-          signal,
-        })
-        const next = await readResponse(response, modelCatalogSchema)
+        // A catalog that cannot reach the backend waits for it, so the
+        // composer's model picker shows it loading under the banner.
+        const next = await untilReached(async () => {
+          const response = await apiRequest(force ? '/models?refresh=true' : '/models', { signal })
+          return readResponse(response, modelCatalogSchema)
+        }, signal)
         signal.throwIfAborted()
         if (key === catalogKey.value)
           modelSnapshot.value = { key, providers: next.providers, checkedAt: Date.now() }
