@@ -63,21 +63,39 @@ export function settledTabBounds(strip: HTMLElement, tab: HTMLElement): { left: 
 }
 
 /**
- * Where the strip scrolls to so `tab` shows clear of the edge fades, or null
- * when it already does. A tab wider than the view between the fades cannot
- * show whole: its start wins, so the two edges never pull against each other.
+ * Where the strip scrolls to so the selected `tab` shows whole and clear of
+ * the edge fades, or null when it already does. A view too narrow for the
+ * tab and a fade on each side shows the tab whole without that room, and the
+ * fades give way beside it (`fadeRoom`): the selected tab is never under a
+ * fade. The tab is never wider than the view (`--tab-room`).
  */
 export function revealScroll(
   view: { scrollLeft: number; clientWidth: number; scrollWidth: number },
   tab: { left: number; right: number },
   fade: number,
 ): number | null {
-  const latest = Math.max(0, tab.left - fade)
-  const earliest = tab.right + fade - view.clientWidth
-  const wanted = earliest > latest ? latest : clamp(view.scrollLeft, earliest, latest)
+  const margin = tab.right - tab.left + 2 * fade <= view.clientWidth ? fade : 0
+  const latest = Math.max(0, tab.left - margin)
+  const earliest = tab.right + margin - view.clientWidth
+  const wanted = clamp(view.scrollLeft, earliest, latest)
   // The last tab's fade reaches past the strip's end: the end is as far as it goes.
   const target = Math.min(wanted, Math.max(0, view.scrollWidth - view.clientWidth))
   return Math.abs(target - view.scrollLeft) < 1 ? null : target
+}
+
+/**
+ * How wide each edge fade may be so it never lies over the selected tab:
+ * the room between the view's edge and the tab, in the view's coordinates.
+ * Without a selected tab in the strip the fades keep their own width.
+ */
+export function fadeRoom(
+  clientWidth: number,
+  selected: { left: number; right: number } | null,
+): { before: number; after: number } {
+  if (!selected) {
+    return { before: Number.POSITIVE_INFINITY, after: Number.POSITIVE_INFINITY }
+  }
+  return { before: Math.max(0, selected.left), after: Math.max(0, clientWidth - selected.right) }
 }
 
 /** A mutation record of a strip, as `tabsChanged` reads it. */

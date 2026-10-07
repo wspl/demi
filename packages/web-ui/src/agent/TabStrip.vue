@@ -9,6 +9,7 @@ import {
   beforeLeaveTab,
   cutMarkCover,
   enterTab,
+  fadeRoom,
   leaveTab,
   revealScroll,
   settledTabBounds,
@@ -23,8 +24,14 @@ const FADE_PX = 24
  * row the strip scrolls with no scrollbar and fades out at whichever edge
  * has more behind it. A tab mark that edge cuts stays under the fade's solid
  * start, so a mark at an edge shows whole or not at all, never sliced.
- * Whenever the active tab changes, or a tab enters, the strip scrolls until
- * that tab shows whole and clear of the fades. The
+ * The selected tab always shows whole, its close control included, and no
+ * fade lies over it: whenever the selected tab changes, a tab enters, the
+ * strip resizes or the selected tab does (as when its title arrives), the
+ * strip scrolls until that tab shows whole with a fade's width beside it,
+ * and where the view has no room for that, the fades give way beside the
+ * tab. No tab is wider than the strip has room for (`--tab-room`), so a
+ * narrow strip truncates its title instead of cutting it. Unselected tabs
+ * may lie under the fades. The
  * scroll is the strip's own, timed and eased like the tab motion, and aimed
  * at the settled layout: a tab on its way out takes no room and a tab on its
  * way in its full width, so one motion lands the tab where it ends up. Close
@@ -56,8 +63,11 @@ const colors = computed(() =>
         '--tab-hover': 'var(--surface-base)',
       },
 )
+const root = ref<HTMLElement | null>(null)
 const el = ref<HTMLElement | null>(null)
 const fades = ref<HTMLElement | null>(null)
+/** The selected tab the resize observer watches, so a title that widens it reveals it again. */
+let watchedTab: HTMLElement | null = null
 const moreBefore = ref(false)
 const moreAfter = ref(false)
 let resizeObserver: ResizeObserver | null = null
@@ -110,16 +120,58 @@ function updateEdges(): void {
     const rect = mark.getBoundingClientRect()
     return { left: rect.left - view.left, right: rect.right - view.left }
   })
+  const selected = strip.querySelector<HTMLElement>('[aria-selected="true"]')?.getBoundingClientRect()
+  const room = fadeRoom(
+    strip.clientWidth,
+    selected ? { left: selected.left - view.left, right: selected.right - view.left } : null,
+  )
   // Written to the style, not kept as state: they change on every frame of
   // a scroll, and a render of the strip then would disturb its tabs' motion.
-  fades.value?.style.setProperty('--fade-before', `${cutMarkCover(0, 'start', marks)}px`)
-  fades.value?.style.setProperty('--fade-after', `${cutMarkCover(strip.clientWidth, 'end', marks)}px`)
+  const style = fades.value?.style
+  style?.setProperty('--fade-before', `${cutMarkCover(0, 'start', marks)}px`)
+  style?.setProperty('--fade-after', `${cutMarkCover(strip.clientWidth, 'end', marks)}px`)
+  style?.setProperty('--fade-before-room', Number.isFinite(room.before) ? `${room.before}px` : '100%')
+  style?.setProperty('--fade-after-room', Number.isFinite(room.after) ? `${room.after}px` : '100%')
+}
+
+/** The width a tab may take: the strip's own, less what follows its tabs, such as the New tab control. */
+function measureRoom(): void {
+  const strip = root.value
+  if (!strip) {
+    return
+  }
+  let trailing = 0
+  for (const child of strip.children) {
+    if (child !== fades.value && child instanceof HTMLElement) {
+      trailing += child.offsetWidth + Number.parseFloat(getComputedStyle(child).marginLeft || '0')
+    }
+  }
+  const room = `${Math.max(0, strip.clientWidth - trailing)}px`
+  // Unchanged, it is not written again: writing it resizes the tabs, which the observer reports.
+  if (strip.style.getPropertyValue('--tab-room') !== room) {
+    strip.style.setProperty('--tab-room', room)
+  }
+}
+
+/** The strip or its selected tab changed size: the selected tab is revealed again. */
+function resized(): void {
+  measureRoom()
+  revealActive()
 }
 
 // Only the strip scrolls, never the page: scrollIntoView would move both.
 function revealActive(): void {
   const strip = el.value
-  const active = strip?.querySelector<HTMLElement>('[aria-selected="true"]')
+  const active = strip?.querySelector<HTMLElement>('[aria-selected="true"]') ?? null
+  if (active !== watchedTab) {
+    if (watchedTab) {
+      resizeObserver?.unobserve(watchedTab)
+    }
+    if (active) {
+      resizeObserver?.observe(active)
+    }
+    watchedTab = active
+  }
   if (strip && active) {
     const target = revealScroll(strip, settledTabBounds(strip, active), FADE_PX)
     if (target !== null) {
@@ -163,8 +215,10 @@ onMounted(() => {
   if (!strip) {
     return
   }
-  resizeObserver = new ResizeObserver(updateEdges)
-  resizeObserver.observe(strip)
+  resizeObserver = new ResizeObserver(resized)
+  if (root.value) {
+    resizeObserver.observe(root.value)
+  }
   // A tab becoming active, or tabs coming and going, is what moves the view;
   // any other change, such as a title that widens a tab, moves the marks.
   mutationObserver = new MutationObserver((records) => {
@@ -180,11 +234,13 @@ onMounted(() => {
     attributes: true,
     attributeFilter: ['aria-selected'],
   })
+  measureRoom()
   revealActive()
 })
 
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
+  watchedTab = null
   mutationObserver?.disconnect()
   cancelScroll()
 })
@@ -193,7 +249,7 @@ defineExpose({ el })
 </script>
 
 <template>
-  <div class="flex min-w-0 items-center" :style="colors">
+  <div ref="root" class="flex min-w-0 items-center" :style="colors">
     <!-- Its own stacking context, so the fades lie over the scrolled tabs and nothing else. -->
     <div ref="fades" class="relative isolate min-w-0 shrink [--fade-after:0px] [--fade-before:0px]">
     <TransitionGroup
@@ -218,12 +274,12 @@ defineExpose({ el })
     <div
       v-if="moreBefore"
       aria-hidden="true"
-      class="pointer-events-none absolute inset-y-0 left-0 z-1 w-[calc(var(--fade-before)_+_--spacing(6))] bg-[linear-gradient(to_right,var(--tab-row)_var(--fade-before),transparent)]"
+      class="pointer-events-none absolute inset-y-0 left-0 z-1 w-[min(calc(var(--fade-before)_+_--spacing(6)),var(--fade-before-room))] bg-[linear-gradient(to_right,var(--tab-row)_var(--fade-before),transparent)]"
     />
     <div
       v-if="moreAfter"
       aria-hidden="true"
-      class="pointer-events-none absolute inset-y-0 right-0 z-1 w-[calc(var(--fade-after)_+_--spacing(6))] bg-[linear-gradient(to_left,var(--tab-row)_var(--fade-after),transparent)]"
+      class="pointer-events-none absolute inset-y-0 right-0 z-1 w-[min(calc(var(--fade-after)_+_--spacing(6)),var(--fade-after-room))] bg-[linear-gradient(to_left,var(--tab-row)_var(--fade-after),transparent)]"
     />
     </div>
     <slot name="trailing" />

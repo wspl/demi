@@ -7,7 +7,7 @@ import ConversationStatusDot from './ConversationStatusDot.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
- * One tab of a `TabStrip`. Content-sized up to 160px; a faint line sits in the
+ * One tab of a `TabStrip`. Content-sized up to 160px, or the strip's room when it has less; a faint line sits in the
  * gap after the tab and fades out while the tab or its neighbour is active or
  * hovered. The close control has a slot of its own at the tab's end, kept on
  * every tab so a tab never changes width when the pointer reaches it: the title
@@ -35,7 +35,7 @@ const emit = defineEmits<{
   <span
     role="tab"
     :aria-selected="isActive"
-    class="group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:--spacing(7)] max-w-40 shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
+    class="group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:--spacing(7)] max-w-[min(--spacing(40),var(--tab-room,--spacing(40)))] shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
     :class="isActive
       ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0 [--fill-color:var(--tab-active)]'
       : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body hover:[--fill-color:var(--tab-hover)]'"

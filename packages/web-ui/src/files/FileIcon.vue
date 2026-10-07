@@ -52,7 +52,7 @@ watch(
     :src="src"
     :width="size"
     :height="size"
-    class="shrink-0"
+    class="max-w-none shrink-0"
     alt=""
     draggable="false"
   />
