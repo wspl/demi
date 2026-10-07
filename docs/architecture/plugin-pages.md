@@ -141,7 +141,7 @@ calls.
 
 | Part | Gives | Supplied by `web` over |
 | --- | --- | --- |
-| `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls and its user streams ([Data a page shows](#data-a-page-shows)) | The sync channel, the conversation state route, the plugin call routes, the user stream route |
+| `plugin` | The plugin's user state and its user calls; `plugin.conversation(id)` its conversation state, its conversation calls, its user streams, and `hostStarting`, whether the conversation's Host is starting, as a waking Cloud is ([Data a page shows](#data-a-page-shows)) | The sync channel, the conversation state route, the plugin call routes, the user stream route |
 | `intents` | Opening an [intent](#intents) for a conversation, as `{ intent, payload }`, and whether any page the user has on opens it | The shell |
 | `panel` | The tabs of the page's own kinds in a conversation's panel, and adding one, selected with the panel opened or not | The shell |
 | `settings` | Opening a section of the settings dialog, such as Devices | The shell |
