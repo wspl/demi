@@ -5,9 +5,11 @@
  * each sends a heartbeat on a socket that has sent nothing else for a while,
  * 30 seconds at most, so a socket that brings nothing for much longer died
  * without a close, as when a laptop slept and its network dropped. A socket
- * that closes, breaks or cannot be made is tried again after waits that
- * double. Timers stop while a laptop sleeps, so when the page becomes visible
- * again or comes back online, this module checks every socket at once.
+ * whose opening handshake does not complete within 10 seconds cannot be made.
+ * A socket that closes, breaks or cannot be made is tried again after waits
+ * that double. Timers stop while a laptop sleeps, so when the page becomes
+ * visible again or comes back online, this module checks every socket at
+ * once.
  */
 import { defaultDocument, defaultWindow, useEventListener, useOnline } from '@vueuse/core'
 
@@ -18,6 +20,12 @@ const FIRST_WAIT_MS = 1_000
 const LONGEST_WAIT_MS = 30_000
 /** The shortest wait while the backend restarts; each is up to twice as long. */
 const RESTART_WAIT_MS = 1_000
+
+/**
+ * How long an opening handshake may take: a web browser waits minutes for
+ * one that a proxy in front of a restarting backend holds.
+ */
+const HANDSHAKE_MS = 10_000
 
 /** The page's open sockets, each by the check of its silence that the page's return makes. */
 const watched = new Set<() => void>()
@@ -34,6 +42,31 @@ const waiting = new Set<() => void>()
 function reconnectWait(failures: number): number {
   const longest = Math.min(FIRST_WAIT_MS * 2 ** (failures - 1), LONGEST_WAIT_MS)
   return longest * (1 - Math.random() / 2)
+}
+
+/**
+ * Opens a WebSocket to `url`, as every socket of the page opens: one whose
+ * opening handshake has not completed within `HANDSHAKE_MS` cannot be made,
+ * and is closed, which the web browser reports to its owner as it reports a
+ * refused one, with its `close` event.
+ */
+export function openSocket(url: string | URL): WebSocket {
+  const socket = new WebSocket(url)
+  const settled = () => {
+    clearTimeout(timer)
+    socket.removeEventListener('open', settled)
+    socket.removeEventListener('close', settled)
+  }
+  const timer = setTimeout(() => {
+    settled()
+    // Its owner may have closed it meanwhile without its close coming yet.
+    if (socket.readyState === WebSocket.CONNECTING) {
+      socket.close()
+    }
+  }, HANDSHAKE_MS)
+  socket.addEventListener('open', settled)
+  socket.addEventListener('close', settled)
+  return socket
 }
 
 /** A watch over one socket's silence. */
