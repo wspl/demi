@@ -19,7 +19,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::{
     CallKind, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile, HostRead, Plugin,
-    PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortMessage, PortRefusal,
+    PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
+    PortRefusal,
     Reply, Request, StoredValue,
 };
 
@@ -71,9 +72,10 @@ impl PluginTransport for JsonMessages {
     }
 }
 
-/// How a test answers a package call.
+/// How a test answers a package call: its result, a refusal, or a failure of
+/// the way to the Host, such as a pipe that broke.
 pub type PackageCalls =
-    Box<dyn Fn(&NativeOperation, &Map<String, Value>, CallKind) -> Result<Value, PortRefusal>>;
+    Box<dyn Fn(&NativeOperation, &Map<String, Value>, CallKind) -> Result<Value, PortFailure>>;
 
 /// A package call a plugin made.
 #[derive(Debug, Clone, PartialEq)]
@@ -306,20 +308,8 @@ impl TestDemi {
                 self.changed.set(self.changed.get() + 1);
                 PortAnswer::Done
             }
-            PortMessage::PackageCall {
-                operation,
-                args,
-                kind,
-            } => {
-                let calls = self.package_calls.borrow();
-                let answer = calls.as_ref().expect("the test answers package calls");
-                let result = answer(&operation, &args, kind);
-                self.called.borrow_mut().push(PackageCall {
-                    operation,
-                    args,
-                    kind,
-                });
-                PortAnswer::Called { result: result? }
+            PortMessage::PackageCall { .. } => {
+                unreachable!("package calls go to the test's answer")
             }
             PortMessage::PanelTabs => PortAnswer::Panel {
                 panel: self.panel(),
@@ -334,6 +324,30 @@ impl TestDemi {
     }
 }
 
+impl TestDemi {
+    /// Answers a package call as the test says, and records it.
+    fn package_call(
+        &self,
+        operation: NativeOperation,
+        args: Map<String, Value>,
+        kind: CallKind,
+    ) -> Result<PortAnswer, PortError> {
+        let calls = self.package_calls.borrow();
+        let answer = calls.as_ref().expect("the test answers package calls");
+        let result = answer(&operation, &args, kind);
+        self.called.borrow_mut().push(PackageCall {
+            operation,
+            args,
+            kind,
+        });
+        match result {
+            Ok(result) => Ok(PortAnswer::Called { result }),
+            Err(PortFailure::Refused(refusal)) => Ok(PortAnswer::Refused { refusal }),
+            Err(PortFailure::Port(error)) => Err(error),
+        }
+    }
+}
+
 impl PluginTransport for TestDemi {
     fn request(&self, message: PortMessage) -> LocalBoxFuture<'_, Result<PortAnswer, PortError>> {
         Box::pin(async move {
@@ -343,11 +357,18 @@ impl PluginTransport for TestDemi {
                 let response = rpc.request(request).await?;
                 return Ok(PortAnswer::Rpc { response });
             }
-            let answer = self
-                .answer(message)
-                .unwrap_or_else(|refusal| PortAnswer::Refused { refusal });
+            let answer = match message {
+                PortMessage::PackageCall {
+                    operation,
+                    args,
+                    kind,
+                } => self.package_call(operation, args, kind),
+                message => self
+                    .answer(message)
+                    .or_else(|refusal| Ok(PortAnswer::Refused { refusal })),
+            };
             self.answered.notify_waiters();
-            Ok(answer)
+            answer
         })
     }
 }
