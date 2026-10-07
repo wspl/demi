@@ -118,10 +118,12 @@ function closeScope(scope: TabCloseScope): void {
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
-      <!-- The pinned tabs give way with the strip: in a narrow panel their titles truncate, down to their
-           marks and badges, while the strip keeps a share of the row, so a tab the user just made shows.
-           A pinned tab is a grid so that its smallest width is its mark and badge, never a cut badge. -->
-      <div v-if="pinnedTabs.length" class="flex items-center gap-1" role="group" aria-label="Pinned tabs">
+      <!-- The pinned tabs give way before the strip: in a narrow panel their titles truncate, down to their
+           marks and badges, so the strip keeps room for its selected tab whole, up to a tab's full 160px
+           and the New tab control beside it. A pinned tab is a grid so that its smallest width is its mark
+           and badge, never a cut badge; only then does the strip give way, its selected tab's title
+           truncating. -->
+      <div v-if="pinnedTabs.length" class="flex shrink-[100] items-center gap-1" role="group" aria-label="Pinned tabs">
         <button
           v-for="item in pinnedTabs"
           :key="item.kind.kind"
@@ -140,7 +142,7 @@ function closeScope(scope: TabCloseScope): void {
           <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
         </button>
       </div>
-      <TabStrip class="min-w-0 grow" :class="tabs.length > 0 ? 'basis-32' : 'basis-0'" surface="raised">
+      <TabStrip class="min-w-0 grow" :class="tabs.length > 0 ? 'basis-48' : 'basis-0'" surface="raised">
         <TabItem
           v-for="item in tabs"
           :key="item.tab.id"
