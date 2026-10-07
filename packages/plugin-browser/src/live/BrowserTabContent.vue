@@ -54,7 +54,7 @@ const platform = clientPlatform(navigator)
 /** The plugin opens a browser tab for this panel tab again. */
 const opening = computed(() => props.session.opening(props.tabId, props.data))
 const view = computed(() => props.session.session.value)
-/** The browser tab the panel tab shows, while the browser has it. */
+/** The browser tab the panel tab's data names, unless the browser lost it; the browser may not list it yet. */
 const bound = computed(() => (props.data.closed ? undefined : props.data.tab))
 /** The bound tab as a view last reported it, kept while no view is open or the view reconnects. */
 const live = computed(() => props.session.tab(bound.value))

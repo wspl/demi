@@ -654,8 +654,9 @@ test('before the browser has a tab, the content says what Demi does: connecting,
   const tab = (id: string) => ({ id, title: id, url: 'about:blank', createdBy: { kind: 'user' as const }, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false })
   views[0]!.handlers.data(framed({ type: 'state', running: true, list: 1, tabs: [tab('t1')], watched: null }))
   expect(controller.startingPhase('p1', opening)).toBe('page')
-  // The browser has the tab: the same view watches it, and the content shows the page.
+  // The browser has the tab once its list names it: the same view watches it, and the content shows the page.
   const bound = { url: 'https://example.test/', tab: 't2' }
+  views[0]!.handlers.data(framed({ type: 'state', running: true, list: 2, tabs: [tab('t1'), tab('t2')], watched: null }))
   expect(controller.startingPhase('p1', bound)).toBeNull()
   controller.show('p1', 't2')
   expect(views).toHaveLength(1)
@@ -663,6 +664,29 @@ test('before the browser has a tab, the content says what Demi does: connecting,
   // A tab lost with the browser waits for it again; one that could not open does not, until its Retry.
   expect(controller.startingPhase('p1', { ...bound, closed: true })).toBe('page')
   expect(controller.startingPhase('p1', { ...opening, failure: { code: 'device_offline', message: 'Offline' } })).toBeNull()
+  end()
+})
+
+test('a tab shown again shows no page until the browser’s list names its tab, which a restart may have lost', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const { controller, list, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true })
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  const signIn = { url: 'https://github.com/login', tab: 't1', title: 'Sign in to GitHub' }
+  controller.show('p1', 't1')
+  // The data names a browser tab, but nothing has said yet what the Host holds.
+  expect(controller.startingPhase('p1', signIn)).toBe('connecting')
+  // The plugin's list lacks it: the browser lost it, and it opens again as any tab does.
+  const browser = { name: 'Chrome for Testing', version: '153.0.8010.36' }
+  list.value = { tabs: [], browser }
+  expect(controller.startingPhase('p1', signIn)).toBe('browser')
+  // The list names it: the content shows the page.
+  const row = { id: 't1', title: 'Sign in to GitHub', url: signIn.url, createdBy: { kind: 'user' } as const, loading: false, canGoBack: false, canGoForward: false, shows: 0 }
+  list.value = { tabs: [row], browser }
+  expect(controller.startingPhase('p1', signIn)).toBeNull()
+  // A view that reports the browser without it outweighs a plugin's list that still names it.
+  views[0]!.handlers.data(framed({ type: 'state', running: true, list: 1, tabs: [], watched: null }))
+  expect(controller.startingPhase('p1', signIn)).toBe('browser')
   end()
 })
 
