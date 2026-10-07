@@ -10,8 +10,10 @@
 //! the runner is connected, and machine access under the Cloud's admission.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::StorageError;
@@ -37,10 +39,56 @@ use crate::install::start_command;
 /// Why a revoked device's connection ended.
 const REVOKED: &str = "device revoked";
 
+/// Why the backend's shutdown ended a connection.
+const SHUTTING_DOWN: &str = "backend shutting down";
+
+/// How long after the backend starts an operation waits for the runner of a
+/// device the last shutdown disconnected (`sessions-and-targets.md`
+/// § Recovery and persistence).
+pub const RETURN_GRACE: Duration = Duration::from_secs(30);
+
+/// The devices whose connections the backend's last shutdown ended, whose
+/// runners connect again by themselves soon after the start, and until when
+/// an operation waits for them.
+#[derive(Debug, Default)]
+pub struct Returning {
+    devices: HashSet<DeviceId>,
+    /// When the grace after the start ends.
+    until: jiff::Timestamp,
+}
+
+impl Returning {
+    /// Takes what the last shutdown recorded, for the start at `started`.
+    pub async fn take(control: &ControlService, started: jiff::Timestamp) -> Result<Self, StorageError> {
+        let devices: HashSet<DeviceId> = control
+            .take_devices_ended_by_shutdown()
+            .await?
+            .into_iter()
+            .collect();
+        let until = started
+            .checked_add(RETURN_GRACE)
+            .map_err(StorageError::Time)?;
+        Ok(Self { devices, until })
+    }
+
+    /// The rest of the grace at `now` for `device`, when the last shutdown
+    /// ended its connection.
+    fn rest(&self, device: &DeviceId, now: jiff::Timestamp) -> Option<Duration> {
+        if !self.devices.contains(device) {
+            return None;
+        }
+        Duration::try_from(self.until.duration_since(now))
+            .ok()
+            .filter(|rest| !rest.is_zero())
+    }
+}
+
 /// The user's devices, each with its connection slot.
 #[derive(Default)]
 pub struct Devices {
     slots: RefCell<HashMap<DeviceId, Rc<DeviceSlot>>>,
+    /// The devices the backend's last shutdown disconnected.
+    returning: Arc<Returning>,
 }
 
 /// One device's connection, which its Hosts watch.
@@ -129,6 +177,15 @@ impl DeviceSlot {
 }
 
 impl Devices {
+    /// The devices of a user, of whom `returning` names those the backend's
+    /// last shutdown disconnected.
+    pub fn new(returning: Arc<Returning>) -> Self {
+        Self {
+            slots: RefCell::default(),
+            returning,
+        }
+    }
+
     fn slot(&self, device: &DeviceId) -> Rc<DeviceSlot> {
         self.slots
             .borrow_mut()
@@ -198,6 +255,25 @@ impl Devices {
         let _ = link
             .wait_for(|link| matches!(link, DeviceLink::Online(link) if !link.is_closed()))
             .await;
+    }
+
+    /// How long an operation that starts at `now` waits for `device`'s
+    /// runner (`sessions-and-targets.md` § Recovery and persistence): the
+    /// rest of the grace after the start, for a device the backend's last
+    /// shutdown disconnected whose runner is not back yet; none otherwise.
+    pub fn returning(&self, device: &DeviceId, now: jiff::Timestamp) -> Option<Duration> {
+        if self.online(device) {
+            return None;
+        }
+        self.returning.rest(device, now)
+    }
+
+    /// Resolves once `device`'s runner is connected, or after `rest`, the
+    /// rest of the grace `returning` answered, whichever comes first.
+    pub async fn returned(&self, device: &DeviceId, rest: Duration) {
+        // A runner still not back after the grace: the operation answers as
+        // it does for any device that is away.
+        let _ = tokio::time::timeout(rest, self.until_online(device)).await;
     }
 
     /// Waits until no connection of the device is closing: a closing one
@@ -358,16 +434,25 @@ impl Devices {
         self.disconnect(device, REVOKED);
     }
 
-    /// Ends every connection, for `reason`.
-    pub fn disconnect_all(&self, reason: &str) {
-        let links: Vec<Link> = self
+    /// Ends every connection as the backend shuts down, and records the
+    /// devices whose connections it ended: their runners connect again by
+    /// themselves, and the next start waits for them (`sessions-and-targets.md`
+    /// § Recovery and persistence).
+    pub async fn shut_down(&self, control: &ControlService) {
+        let links: Vec<(DeviceId, Link)> = self
             .slots
             .borrow()
-            .values()
-            .filter_map(|slot| slot.live())
+            .iter()
+            .filter_map(|(device, slot)| slot.live().map(|link| (device.clone(), link)))
             .collect();
-        for link in links {
-            link.disconnect(reason);
+        for (_, link) in &links {
+            link.disconnect(SHUTTING_DOWN);
+        }
+        let ended = links.into_iter().map(|(device, _)| device).collect();
+        if let Err(error) = control.set_devices_ended_by_shutdown(ended).await {
+            // The next start then answers for these devices at once, as for
+            // any device that is away, instead of waiting for their runners.
+            tracing::warn!(error = &error as &dyn std::error::Error, "the devices the shutdown disconnected were not recorded");
         }
     }
 }

@@ -29,6 +29,7 @@ use demi_backend_providers::vault::operations::ProviderOperations;
 use demi_backend_providers::vault::quotas::AccountQuotas;
 use demi_backend_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
+use demi_backend_runners::devices::Returning;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_plugin_interface::PluginFactory;
@@ -96,6 +97,10 @@ pub struct Services {
     /// Each user's open synchronization channels, which every change a
     /// page shows marks.
     pub sync: SyncRegistry,
+    /// The devices the backend's last shutdown disconnected, which Host
+    /// operations wait for in the grace after the start
+    /// (`sessions-and-targets.md` § Recovery and persistence).
+    pub returning: Arc<Returning>,
     /// The step a test holds runners' hellos at (`Backend::hold_hellos`).
     #[cfg(feature = "testing")]
     pub hellos: crate::holds::StepHolds<crate::holds::HelloStep>,
@@ -150,6 +155,8 @@ pub enum ServicesError {
     Http(reqwest::Error),
     #[error("the plugins cannot start: {0}")]
     Plugins(#[from] RegistryError),
+    #[error("the devices the last shutdown disconnected cannot be read: {0}")]
+    Storage(#[from] StorageError),
 }
 
 /// The databases and the object store the services run on.
@@ -248,6 +255,7 @@ impl Services {
         })?;
         let hasher = PasswordHasher::new().await?;
         let clock = providers.clock.clone();
+        let returning = Arc::new(Returning::take(&control, clock.now().to_jiff()).await?);
         let edge = tokio::runtime::Handle::current();
         // The shared services' own client; each shard thread builds its own.
         let http = reqwest::Client::builder()
@@ -318,6 +326,7 @@ impl Services {
             run: uuid::Uuid::new_v4().to_string(),
             lifecycle: settings.lifecycle,
             sync,
+            returning,
             #[cfg(feature = "testing")]
             hellos: crate::holds::StepHolds::default(),
             #[cfg(feature = "testing")]

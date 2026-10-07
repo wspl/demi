@@ -21,7 +21,8 @@ import { conversationStates } from './states'
  * The plugin pages' host in the product (`plugins.md` § The page): each
  * plugin's user state from the product state the sync channel keeps, which
  * drops a plugin the user turned off; its conversation states by revision;
- * its calls over the plugin call routes (`web-api.md` § Plugin calls); its
+ * its calls over the plugin call routes (`web-api.md` § Plugin calls), these
+ * calls and the states' reads waiting while the backend cannot be reached; its
  * user streams; what a conversation's primary Host holds of its packages,
  * from that device's in the product state, and whether that Host is a Cloud
  * that does not run, from the Cloud's state there;
@@ -33,7 +34,7 @@ export function productPageHost(): PageHost {
   const work = useWorkPanel()
   const resources = useResources()
   const settings = useSettingsAddress()
-  const states = conversationStates(() => product.snapshot)
+  const states = conversationStates(() => product.snapshot, (send) => product.untilReached(send))
   /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
   function primaryHost(plugin: string, conversation: string) {
     const state = product.snapshot
@@ -49,14 +50,18 @@ export function productPageHost(): PageHost {
     followState: states.follow,
     async call(plugin, method, params, conversation, options) {
       const scope = conversation === null ? '' : `/conversations/${encodeURIComponent(conversation)}`
+      const path = `${scope}/plugins/${encodeURIComponent(plugin)}/calls/${encodeURIComponent(method)}`
       try {
-        const response = await apiRequest(`${scope}/plugins/${encodeURIComponent(plugin)}/calls/${encodeURIComponent(method)}`, {
-          method: 'POST',
-          signal: options?.signal,
-          timeoutMs: options?.timeoutMs,
-          ...jsonBody(params),
-        })
-        return await readResponse(response, z.unknown())
+        // A call that cannot reach the backend waits for it and goes then (`plugin-pages.md` § The page context).
+        return await product.untilReached(async () => {
+          const response = await apiRequest(path, {
+            method: 'POST',
+            signal: options?.signal,
+            timeoutMs: options?.timeoutMs,
+            ...jsonBody(params),
+          })
+          return await readResponse(response, z.unknown())
+        }, options?.signal)
       } catch (error) {
         throw callFailure(error)
       }
