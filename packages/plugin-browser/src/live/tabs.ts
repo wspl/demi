@@ -69,11 +69,13 @@ export const NO_BROWSER: SentenceText = 'No browser on this Host. Ask the agent 
 
 /**
  * A request the backend or the conversation browser refused, with the
- * answer's own code and message, or one no answer reached the page for.
+ * answer's own code and message, or one that failed otherwise, as an aborted
+ * one does. A request never fails for the page's connection: the shell's
+ * call waits for the backend (`plugin-pages.md` § The page context).
  */
 export class BrowserTabsError extends Error {
   constructor(
-    /** The backend's code; null when no answer of the backend's reached the page: it could not reach the backend. */
+    /** The backend's code; null for a failure that is no answer of the backend's. */
     readonly code: string | null,
     message: string,
   ) {
@@ -143,13 +145,12 @@ export interface BrowserTabsApi {
 const UNREACHED = new Set(['device_offline', 'host_stopped'])
 
 /**
- * Whether a request failed because the page could not reach the backend, as
- * while it restarts, or the backend could not reach the Host: neither
- * changes a tab, since the browser may still run there, and neither is a
- * defect of the page (`live-view.md` § A browser tab in the panel).
+ * Whether a request failed because the backend could not reach the Host: it
+ * changes no tab, since the browser may still run there, and is no defect of
+ * the page (`live-view.md` § A browser tab in the panel).
  */
 function unreached(error: unknown): boolean {
-  return error instanceof BrowserTabsError && (error.code === null || UNREACHED.has(error.code))
+  return error instanceof BrowserTabsError && error.code !== null && UNREACHED.has(error.code)
 }
 
 /** Answers that will not change by asking again. */
@@ -692,8 +693,8 @@ export class BrowserTabsController {
    * asked to read the browser's tabs. One that the page the user watches
    * opened right after the user's click or key there is the user's, and is
    * selected, as a browser selects the tab a click opens; one a page opened
-   * by itself is only added. A read that cannot reach the backend or the Host
-   * is asked for again with the next list.
+   * by itself is only added. A read that cannot reach the Host is asked for
+   * again with the next list.
    */
   private pageOpened(tabs: readonly LiveTab[]): void {
     const heard = this.heard
@@ -730,8 +731,8 @@ export class BrowserTabsController {
    * lost, which opens it again at once while it is shown. A view that ends
    * asks too, since a browser that ended or a Cloud that stopped took the
    * tab with it, and the view may wait long before it reads a list again.
-   * A read that cannot reach the backend or the Host changes no tab, and the
-   * next list or end asks again.
+   * A read that cannot reach the Host changes no tab, and the next list or
+   * end asks again.
    */
   private lookForShown(): void {
     const shown = this.shownTab.value

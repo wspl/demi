@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { z } from 'zod'
 import { waitFor } from '@demicodes/utils'
+import { pageReturned } from '@demicodes/web-ui/transport/liveness'
 import { skillsStateSchema, type SkillsState } from '@demicodes/plugin-skills'
 import { PluginCallError, definePage, pageContext } from '@demicodes/web-ui/plugins/page'
 import { conversationSummary, productState } from '../__tests__/product-state'
@@ -20,6 +21,10 @@ let skills: SkillsState
 let calls: [string, unknown][]
 /** The tabs the backend's work panel holds, as a read of it answers them. */
 let panelTabs: unknown[]
+/** Whether the page cannot reach the backend, as while it restarts: every call fails without an answer. */
+let away: boolean
+/** The calls the page tried while it could not reach the backend. */
+let unanswered: number
 
 beforeEach(() => {
   pinia = createPinia()
@@ -40,6 +45,8 @@ beforeEach(() => {
   }
   calls = []
   panelTabs = []
+  away = false
+  unanswered = 0
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) {
@@ -51,12 +58,21 @@ beforeEach(() => {
     if (path === `/api/conversations/${CONVERSATION}/panel/changes`) {
       return Response.json({ revision: 2, changed: true })
     }
+    if (away) {
+      unanswered += 1
+      // What fetch rejects with when no connection could be made.
+      throw new TypeError('Failed to fetch')
+    }
     calls.push([path, JSON.parse(String(init?.body))])
     if (path === '/api/plugins/skills/calls/set_enabled') {
       return Response.json(null)
     }
     if (path === `/api/conversations/${CONVERSATION}/plugins/browser/calls/open`) {
       return Response.json({ tab: { id: 't1', title: '', url: 'about:blank', createdBy: { kind: 'user' } } })
+    }
+    if (path === '/api/plugins/skills/calls/fetch_source') {
+      // The backend's own answer, though its status is one a proxy also gives.
+      return Response.json({ code: 'catalog_unavailable', message: 'The source could not be fetched' }, { status: 503 })
     }
     if (path === '/api/plugins/skills/calls/remove_source') {
       return Response.json(
@@ -109,6 +125,53 @@ test("a refusal rejects with the plugin's own reason", async () => {
   const refused = page('skills').plugin.call('remove_source', { source: 'src_2' }, z.null())
   await expect(refused).rejects.toBeInstanceOf(PluginCallError)
   await expect(refused).rejects.toMatchObject({ reason: 'source_not_found', message: 'No skill source "src_2"' })
+})
+
+/** The backend goes away, as while it restarts: its channel closes, and no call reaches it. */
+function backendLeaves(): void {
+  away = true
+  channels.last().end(1001, 'backend_closing')
+}
+
+/** The backend is back: the page connects again at once, and the channel's snapshot ends the banner. */
+function backendReturns(): void {
+  away = false
+  pageReturned()
+  channels.last().connect(productState({ pluginStates: { skills } }))
+}
+
+// `plugin-pages.md` § The page context: a call waits for the backend rather
+// than failing for the connection, as the browser panel's Reload does while
+// Demi restarts.
+test('a call the page cannot send while the backend restarts goes once it is back and answers its result', async () => {
+  backendLeaves()
+  const review = { source: 'src_1', skill: 'review', enabled: true }
+  const call = page('skills').plugin.call('set_enabled', review, z.null())
+  await waitFor(() => unanswered === 1, () => 'the call was not tried')
+  backendReturns()
+  expect(await call).toBeNull()
+  expect(calls).toEqual([['/api/plugins/skills/calls/set_enabled', review]])
+})
+
+test("an answer of the backend's own rejects at once, even while the banner shows", async () => {
+  channels.last().end(1001, 'backend_closing')
+  const fetched = page('skills').plugin.call('fetch_source', { source: 'src_1' }, z.null())
+  await expect(fetched).rejects.toMatchObject({ reason: 'catalog_unavailable', message: 'The source could not be fetched' })
+})
+
+test('a waiting call whose caller leaves rejects with the abort and is never sent', async () => {
+  backendLeaves()
+  const leave = new AbortController()
+  const left = page('skills').plugin.call('set_enabled', { source: 'src_1', skill: 'review', enabled: true }, z.null(), { signal: leave.signal })
+  const kept = { source: 'src_1', skill: 'review', enabled: false }
+  const staying = page('skills').plugin.call('set_enabled', kept, z.null())
+  await waitFor(() => unanswered === 2, () => 'the calls were not tried')
+  leave.abort()
+  await expect(left).rejects.toMatchObject({ name: 'AbortError' })
+  // The call that stayed goes when the backend is back, and the one that left would have gone with it.
+  backendReturns()
+  expect(await staying).toBeNull()
+  expect(calls).toEqual([['/api/plugins/skills/calls/set_enabled', kept]])
 })
 
 test("what a conversation holds is its primary Host's, of the plugin's packages", () => {
