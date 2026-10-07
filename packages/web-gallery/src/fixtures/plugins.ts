@@ -50,6 +50,8 @@ export interface GalleryShell {
   files?: ConversationFileService
   panel?: PageHost['panel']
   intents?: IntentService
+  /** Whether the specimen's Host is a Cloud that is starting; never, unless the specimen says. */
+  hostStarting?(): boolean
 }
 
 /** A page host over `plugins` and the specimen's `shell`; a plugin it lacks refuses as the backend would. */
@@ -81,6 +83,7 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
       throw new PluginCallError('unknown_stream', `No user stream "${name}"`)
     },
     installed: (plugin) => plugins[plugin]?.installed?.() ?? [],
+    hostStarting: () => shell.hostStarting?.() ?? false,
     files: () => {
       if (!shell.files) {
         throw new Error('The specimen shows no conversation files')

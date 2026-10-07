@@ -403,21 +403,11 @@ async fn run(
                     }
                 }
                 // A page that stopped painting before capture began sends no
-                // picture; a screenshot from its surface paints one.
-                Some(CaptureEvent::Stalled) => {
-                    let page = tab.page().clone();
-                    let ended = tab.ended().clone();
-                    tasks.spawn(async move {
-                        tokio::select! {
-                            _ = ended.cancelled() => {}
-                            _painted = tokio::time::timeout(
-                                Duration::from_secs(5),
-                                crate::tabs::viewport::paint(&page),
-                            ) => {}
-                        }
-                    });
-                }
-                Some(CaptureEvent::Started) => {}
+                // picture; a screenshot from its surface paints one. A capture
+                // that starts asks for it at once, rather than after the
+                // silence that tells the extension a page is still; one still
+                // silent then asks again.
+                Some(CaptureEvent::Started | CaptureEvent::Stalled) => repaint(&tab, &tasks),
                 Some(CaptureEvent::Failed(message)) => {
                     tracing::warn!("live view capture of {}: {message}", tab.id());
                     report(&viewers, &mut failure, message);
@@ -433,6 +423,23 @@ async fn run(
             },
         }
     }
+}
+
+/// Paints the tab's page once, beside the stream: a still page sends a new
+/// capture no picture until it paints. The paint ends with the tab, and
+/// waits for a page that does not paint at most five seconds.
+fn repaint(tab: &BrowserTab, tasks: &TaskTracker) {
+    let page = tab.page().clone();
+    let ended = tab.ended().clone();
+    tasks.spawn(async move {
+        tokio::select! {
+            _ = ended.cancelled() => {}
+            _painted = tokio::time::timeout(
+                Duration::from_secs(5),
+                crate::tabs::viewport::paint(&page),
+            ) => {}
+        }
+    });
 }
 
 /// Takes in what the viewers told the stream since it last looked: the latest

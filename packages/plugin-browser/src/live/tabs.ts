@@ -132,13 +132,32 @@ export interface BrowserTabsApi {
   stream: OpenUserStream
   /** What the Host holds of the browser's package, read reactively. */
   installed(): readonly HostArtifact[]
+  /** Whether the Host is a Cloud that does not run yet, read reactively. */
+  hostStarting(): boolean
 }
+
+/** Refusals of a Host that cannot be reached for the moment: an offline device, a stopped Cloud. */
+const UNREACHED = new Set(['device_offline', 'host_stopped'])
 
 /** Answers that will not change by asking again. */
 const FINAL_CODES = new Set(['conversation_not_found', 'conversation_archived'])
 
 /** Whether this web browser can show the view's pictures, once it has answered. */
 export type PictureSupport = 'checking' | 'supported' | 'unsupported'
+
+/**
+ * What Demi does for a panel tab before the browser has its tab
+ * (`live-view.md` § A browser tab in the panel): starts the Cloud, starts
+ * the browser on the Host, or has the browser open the tab.
+ */
+export type StartingPhase = 'cloud' | 'browser' | 'page'
+
+/** What the content says in each phase, once the wait passed half a second. */
+export const STARTING_LABELS: Record<StartingPhase, SentenceText> = {
+  cloud: 'Starting Cloud…',
+  browser: 'Starting the browser…',
+  page: 'Opening the page…',
+}
 
 export interface BrowserTabsOptions {
   /** The page's visibility; the document's own unless a test supplies one. */
@@ -217,16 +236,21 @@ export class BrowserTabsController {
   private readonly binding = shallowReactive(new Map<string, Binding>())
   /** The browser tabs the page showed a picture of, while the browser has them. */
   private readonly pictured = shallowReactive(new Set<string>())
-  /** The panel tabs whose user pressed Stop before they had a browser tab to stop. */
-  private readonly stopping = new Set<string>()
   /** The downloads the user started in each browser tab, as a view last reported them, the newest last. */
   private readonly downloads = shallowReactive(new Map<string, readonly LiveDownload[]>())
   /** Every browser tab a view listed; null before the first list, whose tabs are not new to the page. */
   private heard: Set<string> | null = null
   /** The panel the shown tab's content measured, which a view sizes the tab by. */
   private panel: PanelReport | null = null
-  /** The browser tab whose content is shown, which the view watches while the page is visible. */
-  private readonly shownTab = shallowRef<string | null>(null)
+  /**
+   * The panel tab whose content is shown, with its browser tab, which the
+   * view watches while the page is visible; a content shown before the
+   * browser has its tab keeps the view open watching nothing, so the Host
+   * knows the panel's size for the tab it opens.
+   */
+  private readonly shownContent = shallowRef<{ panelTab: string; tab: string | null } | null>(null)
+  /** The browser tab whose content is shown. */
+  private readonly shownTab = computed(() => this.shownContent.value?.tab ?? null)
   /** The shown tab the plugin was asked to look for, until a view lists it again. */
   private missed: string | null = null
   private closing: ReturnType<typeof setTimeout> | null = null
@@ -399,36 +423,28 @@ export class BrowserTabsController {
   }
 
   /**
-   * The user's Stop on the panel tab `panelTab`, with `data`. A tab whose
-   * browser tab is still opening stops once it has one (`settle`); rejects
-   * with what refused it.
+   * What Demi does for the panel tab `panelTab`, with `data`, before the
+   * browser has its tab: while it opens, the first time or again, and while
+   * it waits to (`live-view.md` § A browser tab in the panel). The Cloud
+   * starting comes first; then the browser starting, while the
+   * conversation's browser has no tabs, as the view, or else the plugin's
+   * list, last said; then the browser opening the tab. Null once the browser
+   * has the tab, and for a tab that could not open and was not retried.
    */
-  async stopPage(panelTab: string, data: BrowserTabData): Promise<void> {
-    const tab = data.closed ? undefined : data.tab
-    if (tab === undefined || this.opening(panelTab, data)) {
-      this.stopping.add(panelTab)
-      return
+  startingPhase(panelTab: string, data: BrowserTabData): StartingPhase | null {
+    const before = this.opening(panelTab, data)
+      || (!data.failure && (data.tab === undefined || data.closed === true))
+    if (!before) {
+      return null
     }
-    await this.stop(tab)
-  }
-
-  /**
-   * The panel tab `panelTab` has `data` now: a Stop its user pressed while it
-   * opened stops its browser tab, once it has one. A tab that could not open
-   * has nothing to stop. Rejects with what refused the Stop.
-   */
-  async settle(panelTab: string, data: BrowserTabData): Promise<void> {
-    if (!this.stopping.has(panelTab) || this.opening(panelTab, data)) {
-      return
+    if (this.api.hostStarting()) {
+      return 'cloud'
     }
-    const tab = data.closed || data.failure ? undefined : data.tab
-    if (tab === undefined && !data.failure) {
-      return
-    }
-    this.stopping.delete(panelTab)
-    if (tab !== undefined) {
-      await this.stop(tab)
-    }
+    const view = this.session.value
+    const running = view?.state.connection === 'live'
+      ? view.state.running && view.state.tabs.length > 0
+      : (this.list.value?.tabs.length ?? 0) > 0
+    return running ? 'page' : 'browser'
   }
 
   /**
@@ -542,41 +558,43 @@ export class BrowserTabsController {
 
   /**
    * A shown content watches its tab on the page's one view, opening the view
-   * when there is none. A view waiting to reconnect connects at once for a
-   * tab it did not show, as a tab that just got its browser tab: the view's
-   * end may have been only that there was no browser yet. A hidden page
+   * when there is none; one shown before the browser has its tab watches
+   * nothing, and the view tells the Host the panel's size meanwhile. A view
+   * waiting to reconnect connects at once for a tab it did not show, as a tab
+   * that just got its browser tab: the view's end may have been only that
+   * there was no browser yet. A hidden page
    * opens none until it is shown, and a web browser that cannot show the
    * pictures none at all.
    */
-  show(tab: string): void {
+  show(panelTab: string, tab: string | null): void {
     const another = this.shownTab.value !== tab
-    this.shownTab.value = tab
+    this.shownContent.value = { panelTab, tab }
     if (this.closing !== null) {
       clearTimeout(this.closing)
       this.closing = null
     }
-    if (another) {
+    if (another && tab !== null) {
       this.session.value?.reconnect()
     }
     this.watchShown()
   }
 
   /**
-   * A content that stops showing. Selecting another `browser` tab shows it in
-   * the same flush, before or after this, so the view closes only when none
-   * followed.
+   * The content of `panelTab` stops showing. Selecting another `browser` tab
+   * shows it in the same flush, before or after this, so the view closes
+   * only when none followed.
    */
-  hide(tab: string): void {
-    if (this.shownTab.value !== tab) {
+  hide(panelTab: string): void {
+    if (this.shownContent.value?.panelTab !== panelTab) {
       return
     }
-    this.shownTab.value = null
+    this.shownContent.value = null
     if (this.closing !== null) {
       return
     }
     this.closing = setTimeout(() => {
       this.closing = null
-      if (this.shownTab.value === null) {
+      if (this.shownContent.value === null) {
         this.closeView()
       }
     }, 0)
@@ -601,7 +619,7 @@ export class BrowserTabsController {
    */
   private watchShown(): void {
     if (
-      this.shownTab.value === null
+      this.shownContent.value === null
       || this.panel === null
       || this.visibility.value !== 'visible'
       || this.pictures.value !== 'supported'
@@ -683,7 +701,14 @@ export class BrowserTabsController {
       return
     }
     this.missed = shown
-    this.api.sync().catch((error: unknown) => this.errors.defect('The panel could not look for a closed tab', error))
+    this.api.sync().catch((error: unknown) => {
+      // A Host that cannot be reached changes no tab: its browser may still
+      // run there (`live-view.md` § A browser tab in the panel).
+      if (error instanceof BrowserTabsError && error.code !== null && UNREACHED.has(error.code)) {
+        return
+      }
+      this.errors.defect('The panel could not look for a closed tab', error)
+    })
   }
 
   /** The page's one view, opened when there is none. */
@@ -725,12 +750,11 @@ export class BrowserTabsController {
       clearTimeout(this.closing)
       this.closing = null
     }
-    this.shownTab.value = null
+    this.shownContent.value = null
     this.known.clear()
     this.requests.clear()
     this.binding.clear()
     this.pictured.clear()
-    this.stopping.clear()
     this.downloads.clear()
     this.closeView()
   }
