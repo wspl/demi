@@ -119,8 +119,10 @@ export interface PageHost {
     tabs(conversation: string, kind: string): unknown[]
     /**
      * Adds a tab of `kind`; `select` selects it and opens the panel. It goes
-     * right after the tab `after`, as a link opened from that tab goes, or
-     * after the others without one or once the panel no longer has that tab.
+     * right after the tab `after`, behind the tabs added after that tab
+     * before that still stand right after it, as a web browser places the
+     * links opened from one tab; after the others without one or once the
+     * panel no longer has that tab.
      */
     add(conversation: string, kind: string, data: unknown, options?: { select: boolean; after?: string }): void
     /**

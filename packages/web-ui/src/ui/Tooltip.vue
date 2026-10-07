@@ -44,6 +44,7 @@ import {
   getOverflowAncestors
 } from '@floating-ui/vue'
 import type { Placement } from '@floating-ui/vue'
+import { injectTooltipPlacement } from './tooltip-placement'
 import { onClickOutside } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -98,7 +99,6 @@ const props = withDefaults(defineProps<{
   picture?: boolean
   overlayStore?: OverlayStore
 }>(), {
-  placement: 'top',
   offset: 8,
   disabled: false,
   openDelayMs: 120,
@@ -144,8 +144,10 @@ onBeforeUnmount(() => {
   }
 })
 
+/** The side the tip opens on when it names none, as the component around it says. */
+const surroundingPlacement = injectTooltipPlacement()
 const { floatingStyles } = useFloating(triggerRef, floatingRef, {
-  placement: computed(() => props.placement),
+  placement: computed(() => props.placement ?? surroundingPlacement),
   strategy: 'fixed',
   middleware: computed(() => [
     offsetMiddleware(props.offset),

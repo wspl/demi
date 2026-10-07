@@ -14,18 +14,21 @@ const BrowserTabMark = defineComponent({
 })
 
 /**
- * A tab is named by its page's title as the address bar last showed it,
- * which the tab keeps, so the strip names it while no view shows it; until
- * it has one, by its address: a new tab is New Tab, as in any browser, and
- * a tab its user sent elsewhere is named after where it goes at once, never
- * after the page it leaves.
+ * A tab is named by its page's title: as the browser reports it, so a tab
+ * opened in the background takes its title as soon as its page has one, as
+ * in any browser; else as the address bar last showed it, which the tab
+ * keeps, so the strip names it while nothing reports it; until it has one,
+ * by its address. A new tab is New Tab, as in any browser, and a tab its
+ * user sent elsewhere is named after where it goes at once, never after the
+ * page it leaves.
  */
-function browserTabTitle(data: BrowserTabData): string {
+function browserTabTitle(data: BrowserTabData, session: BrowserTabsController): string {
   if (data.url === NEW_TAB_URL) {
     return 'New Tab'
   }
-  if (data.title) {
-    return data.title
+  const title = session.title(data) ?? data.title
+  if (title) {
+    return title
   }
   const url = URL.parse(data.url)
   return url ? url.host || url.href : data.url
@@ -39,7 +42,7 @@ function browserTabTitle(data: BrowserTabData): string {
 export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = {
   kind: 'browser',
   schema: browserTabDataSchema,
-  title: (data) => browserTabTitle(data),
+  title: (data, tab) => browserTabTitle(data, tab.session),
   // The agent's showings, which the plugin carries from the tab list (`live-view.md` § Showing a tab).
   shows: (data) => data.shows ?? 0,
   mark: BrowserTabMark,

@@ -18,6 +18,14 @@ export class TestChannel {
     opened.push(this)
   }
 
+  /**
+   * A socket that listens rather than taking handlers, such as a
+   * conversation's file watch, hears nothing: it stays connecting.
+   */
+  addEventListener(): void {}
+
+  removeEventListener(): void {}
+
   /** The page closes it. */
   close(): void {
     this.closed = true

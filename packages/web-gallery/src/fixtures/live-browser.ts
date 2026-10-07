@@ -76,6 +76,9 @@ const SELECT: LiveControl = {
 
 /** The drawn page's link that opens the invoice in a new tab, as a `target=_blank` link does. */
 const INVOICE = { x: 184, y: 98, width: 200, height: 18, url: 'https://example.test/invoices/4711' }
+
+/** The titles the drawn pages give themselves once loaded, as a page's `<title>` does; another keeps its host. */
+const PAGE_TITLES: ReadonlyMap<string, string> = new Map([[INVOICE.url, 'Invoice 4711 — Example']])
 /** The drawn page's link that downloads a file, which the gallery's workspace holds where the Host would save it. */
 const DOWNLOAD = { x: 184, y: 118, width: 140, height: 18, url: 'https://example.test/guide.pdf' }
 const DOWNLOADED: Pick<LiveDownload, 'name' | 'total' | 'path'> = {
@@ -684,6 +687,7 @@ export function galleryBrowser(
       loads.set(tab.id, setTimeout(() => {
         loads.delete(tab.id)
         tab.loading = false
+        tab.title = PAGE_TITLES.get(url) ?? tab.title
         tab.favicon = siteIcon(url)
         changed()
       }, LOAD_MS))
