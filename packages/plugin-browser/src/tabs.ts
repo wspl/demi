@@ -35,7 +35,7 @@ function tabsError(error: PluginCallError): BrowserTabsError {
  * user stream over the plugin (`live-view.md` § The tab methods), for a
  * panel session, whose effect scope the tab list is followed in.
  */
-export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
+export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: string) => void): BrowserTabsApi {
   const tabs = plugin.state(browserTabsSchema)
   async function call<T>(method: string, params: object, answer: z.ZodType<T>, timeoutMs?: number): Promise<T> {
     try {
@@ -64,6 +64,7 @@ export function browserTabsApi(plugin: ConversationPlugin): BrowserTabsApi {
     sync: async () => {
       await call('sync', {} satisfies SyncTabs, z.null())
     },
+    select,
     navigate: (tab, url) => move('navigate', { tab, url } satisfies NavigateTab),
     history: (tab, action) => move('history', { tab, action } satisfies TabHistory),
     stop: (tab) => move('stop', { tab } satisfies StopTab),
