@@ -136,7 +136,7 @@
     rgba(119, 119, 113, 0.4) 0 0 0 0.5px,
     rgba(0, 0, 0, 0.16) 0 0 0 1px,
     rgba(0, 0, 0, 0.08) 0 1.5px 0,
-    rgba(0, 0, 0, 0.12) 0 12px 24px -8px;
+    rgba(0, 0, 0, 0.12) 0 4px 12px -4px;
   --shadow-overlay:
     0 0 0 0.5px var(--line-overlay),
     rgba(0, 0, 0, 0.2) 0 2px 4px -1px,
@@ -214,7 +214,7 @@
   --shadow-float:
     inset 0 0.5px 0 rgba(255, 255, 255, 0.9),
     0 0 0 0.5px rgba(0, 0, 0, 0.08),
-    0 8px 20px rgba(0, 0, 0, 0.04);
+    0 2px 10px rgba(0, 0, 0, 0.04);
   --shadow-overlay:
     0 0 0 0.5px var(--line-overlay),
     rgba(0, 0, 0, 0.06) 0 2px 4px -1px,
@@ -605,6 +605,9 @@ svg.lucide {
   margin-right: calc((var(--menu-row-h) - var(--spacing-hit-xs)) / 2 - var(--menu-row-px));
 }
 
+/* The composer's lift reaches no further than the 12px its dock keeps around
+   it (SessionSurface), so the surface's edge never cuts it: every
+   --shadow-float stays within 12px to the sides and below. */
 .input-float {
   box-shadow: var(--shadow-float);
 }

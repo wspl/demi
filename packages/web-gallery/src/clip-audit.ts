@@ -1,7 +1,7 @@
 /**
  * Finds outlined elements that a scroll region would clip. A region with
- * `overflow-y: auto` clips the x axis too, so a ring, focus ring or corner badge on
- * a child flush with the region's edge is cut off.
+ * `overflow-y: auto` clips the x axis too, so a ring, focus ring, corner badge or
+ * a floating layer's shadow on a child too near the region's edge is cut off.
  */
 export interface ClipFinding {
   region: Element
@@ -11,18 +11,35 @@ export interface ClipFinding {
   side: 'left' | 'right' | 'top' | 'bottom'
 }
 
-/** The largest distance a box-shadow list reaches outside the box. */
-function shadowExtent(boxShadow: string): number {
+type Side = ClipFinding['side']
+
+/** How far something painted around a box reaches past each of its edges. */
+type Extent = Record<Side, number>
+
+const NO_EXTENT: Extent = { left: 0, right: 0, top: 0, bottom: 0 }
+
+/**
+ * How far a box-shadow list reaches past each edge of the box: a shadow's
+ * offset moves it toward one side and away from the other, so a shadow that
+ * drops below a dialog reaches further down than to the left. A shadow
+ * painted in a transparent colour reaches nowhere.
+ */
+function shadowExtent(boxShadow: string): Extent {
   if (!boxShadow || boxShadow === 'none')
-    return 0
-  let extent = 0
-  // Colors may contain commas inside rgb(); split on commas that follow a length.
+    return NO_EXTENT
+  const extent = { ...NO_EXTENT }
+  // Colors may contain commas inside rgb(); split on commas outside parentheses.
   for (const shadow of boxShadow.split(/,(?![^(]*\))/)) {
-    if (/\binset\b/.test(shadow))
+    if (/\binset\b/.test(shadow) || /rgba\([^)]*,\s*0\)/.test(shadow))
       continue
-    const lengths = shadow.match(/-?\d*\.?\d+px/g)?.map((v) => parseFloat(v)) ?? []
+    // The colour's own numbers are not lengths: read the lengths after it.
+    const lengths = shadow.replace(/rgba?\([^)]*\)/, '').match(/-?\d*\.?\d+px/g)?.map((v) => parseFloat(v)) ?? []
     const [x = 0, y = 0, blur = 0, spread = 0] = lengths
-    extent = Math.max(extent, Math.max(Math.abs(x), Math.abs(y)) + blur + spread)
+    const reach = blur + spread
+    extent.left = Math.max(extent.left, reach - x)
+    extent.right = Math.max(extent.right, reach + x)
+    extent.top = Math.max(extent.top, reach - y)
+    extent.bottom = Math.max(extent.bottom, reach + y)
   }
   return extent
 }
@@ -33,14 +50,46 @@ function outlineExtent(style: CSSStyleDeclaration): number {
   return parseFloat(style.outlineWidth || '0') + parseFloat(style.outlineOffset || '0')
 }
 
+/** How far an element's shadows and outline reach past each of its edges. */
+function paintedExtent(style: CSSStyleDeclaration): Extent {
+  const shadow = shadowExtent(style.boxShadow)
+  const outline = outlineExtent(style)
+  return {
+    left: Math.max(shadow.left, outline),
+    right: Math.max(shadow.right, outline),
+    top: Math.max(shadow.top, outline),
+    bottom: Math.max(shadow.bottom, outline),
+  }
+}
+
+/**
+ * The edges of `region` that the content around `el` has reached: those that
+ * neither the region nor any scroller between it and `el` has scrolled past.
+ */
+function reachedEdges(el: Element, region: Element): Record<Side, boolean> {
+  const reached = { left: true, right: true, top: true, bottom: true }
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    if (!clips(node))
+      continue
+    reached.left &&= node.scrollLeft <= 0.5
+    reached.right &&= node.scrollLeft + node.clientWidth >= node.scrollWidth - 0.5
+    reached.top &&= node.scrollTop <= 0.5
+    reached.bottom &&= node.scrollTop + node.clientHeight >= node.scrollHeight - 0.5
+    if (node === region)
+      break
+  }
+  return reached
+}
+
+/** Whether `el` clips what overflows it, as a scroller or an overflow-hidden box does. */
+function clips(el: Element): boolean {
+  const s = getComputedStyle(el)
+  return s.overflowX !== 'visible' || s.overflowY !== 'visible'
+}
+
 export function auditClipping(root: ParentNode = document.body): ClipFinding[] {
   const findings: ClipFinding[] = []
-  const regions = [...root.querySelectorAll('*')].filter((el) => {
-    const s = getComputedStyle(el)
-    return (s.overflowX !== 'visible' || s.overflowY !== 'visible') &&
-      el.clientWidth > 0 &&
-      el.clientHeight > 0
-  })
+  const regions = [...root.querySelectorAll('*')].filter((el) => clips(el) && el.clientWidth > 0 && el.clientHeight > 0)
   for (const region of regions) {
     const rs = getComputedStyle(region)
     const r = region.getBoundingClientRect()
@@ -52,8 +101,8 @@ export function auditClipping(root: ParentNode = document.body): ClipFinding[] {
     }
     for (const el of region.querySelectorAll('*')) {
       const s = getComputedStyle(el)
-      const extent = Math.max(shadowExtent(s.boxShadow), outlineExtent(s))
-      if (extent <= 0 || s.visibility === 'hidden')
+      const extent = paintedExtent(s)
+      if (Math.max(extent.left, extent.right, extent.top, extent.bottom) <= 0 || s.visibility === 'hidden')
         continue
       const e = el.getBoundingClientRect()
       if (e.width === 0 || e.height === 0)
@@ -63,29 +112,15 @@ export function auditClipping(root: ParentNode = document.body): ClipFinding[] {
         continue
       // A box that itself leaves the region is a layout matter, not an outline one:
       // only flag an edge whose box is inside while its outline is not.
-      // An edge the region has scrolled past clips everything by design; judge only the
-      // edges the content has actually reached.
-      const atLeft = region.scrollLeft <= 0.5
-      const atRight = region.scrollLeft + region.clientWidth >= region.scrollWidth - 0.5
-      const atTop = region.scrollTop <= 0.5
-      const atBottom = region.scrollTop + region.clientHeight >= region.scrollHeight - 0.5
-      const sides: [ClipFinding['side'], boolean, number][] = [
-        [
-          'left',
-          atLeft && e.left >= box.left - 0.5,
-          box.left - (e.left - extent)
-        ],
-        [
-          'right',
-          atRight && e.right <= box.right + 0.5,
-          e.right + extent - box.right
-        ],
-        ['top', atTop && e.top >= box.top - 0.5, box.top - (e.top - extent)],
-        [
-          'bottom',
-          atBottom && e.bottom <= box.bottom + 0.5,
-          e.bottom + extent - box.bottom
-        ],
+      // An edge the region, or a scroller between it and the element, has scrolled
+      // past clips everything by design; judge only the edges the content has
+      // actually reached.
+      const reached = reachedEdges(el, region)
+      const sides: [Side, boolean, number][] = [
+        ['left', reached.left && e.left >= box.left - 0.5, box.left - (e.left - extent.left)],
+        ['right', reached.right && e.right <= box.right + 0.5, e.right + extent.right - box.right],
+        ['top', reached.top && e.top >= box.top - 0.5, box.top - (e.top - extent.top)],
+        ['bottom', reached.bottom && e.bottom <= box.bottom + 0.5, e.bottom + extent.bottom - box.bottom],
       ]
       for (const [side, boxInside, overshoot] of sides) {
         // Sub-pixel rendering makes tiny overshoots meaningless; ring-1 at the edge is 1px.

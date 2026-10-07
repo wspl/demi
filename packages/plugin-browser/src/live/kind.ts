@@ -59,7 +59,7 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   ],
   duplicate: (data) => (data.title ? { url: data.url, title: data.title } : { url: data.url }),
   create: {
-    label: "New Tab in the Conversation's Browser",
+    label: 'New Tab in the Conversation’s Browser',
     icon: GlobePlus,
     data: () => ({ url: NEW_TAB_URL }),
     unavailable: (tab) => tab.session.unavailable.value,

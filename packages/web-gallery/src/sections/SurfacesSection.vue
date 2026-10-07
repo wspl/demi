@@ -64,7 +64,7 @@ const lines = [
 
     <GallerySection
       title="Control Fills"
-      note="Control fills are opaque: each is the surface the control sits on mixed with the fill's tint, so nothing under a control shows through it, and a control on a selected row takes the row's fill as its surface. Translucency is for scrims, shadows and edges only."
+      note="Control fills are opaque: each is the surface the control sits on mixed with the fill’s tint, so nothing under a control shows through it, and a control on a selected row takes the row’s fill as its surface. Translucency is for scrims, shadows and edges only."
     >
       <div class="grid gap-3 md:grid-cols-5">
         <div

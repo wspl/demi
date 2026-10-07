@@ -147,7 +147,7 @@ const cases: SessionCase[] = [
   <div class="space-y-8">
     <GallerySection
       title="Session Failures"
-      note="The product's ChatSession over fixed states. A failure is named exactly once, in flow: in the status pane when there is nothing to keep, at the transcript's tail when history stays on screen, or in the transcript record when the turn itself failed."
+      note="The product’s ChatSession over fixed states. A failure is named exactly once, in flow: in the status pane when there is nothing to keep, at the transcript’s tail when history stays on screen, or in the transcript record when the turn itself failed."
     >
       <div class="grid gap-6 xl:grid-cols-2">
         <GallerySpecimen

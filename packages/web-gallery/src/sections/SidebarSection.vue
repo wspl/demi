@@ -73,11 +73,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Projects',
-    'Every checkout the agent works in, in manual order, each with the host it lives on: the Cloud icon, or the device\'s name and a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. The host takes at most 30% of the row, so a long device name is cut before the project\'s name; on hover New conversation takes the host\'s place. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+    'Every checkout the agent works in, in manual order, each with the host it lives on: the Cloud icon, or the device’s name and a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. The host takes at most 30% of the row, so a long device name is cut before the project’s name; on hover New conversation takes the host’s place. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
   ],
   [
     'Row',
-    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; breathing while running, blue for a result waiting to be read, orange when the conversation failed or was stopped, a faint ring when settled. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list\'s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; breathing while running, blue for a result waiting to be read, orange when the conversation failed or was stopped, a faint ring when settled. A cut title fades at the edge and plays as a marquee on hover. Pin and archive appear on hover; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
@@ -308,7 +308,7 @@ onBeforeUnmount(() => listRestore.stop())
 
     <GallerySection
       title="Plugin Entries"
-      note="A plugin's entry shows while the user has the plugin on: Skills on, then off. Each entry, like Archived and Settings, says what the product would open."
+      note="A plugin’s entry shows while the user has the plugin on: Skills on, then off. Each entry, like Archived and Settings, says what the product would open."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen
@@ -396,7 +396,7 @@ onBeforeUnmount(() => listRestore.stop())
 
     <GallerySection
       title="Account"
-      note="The foot of the sidebar at its narrowest and at its default width. The email that stands in for a missing name fits at 256px but not at 200px, where it ends in an ellipsis beside the avatar, with Settings still at the row's end; a longer email, as a new master account has, ends in one at 256px too. The account menu and Settings say what the product would open."
+      note="The foot of the sidebar at its narrowest and at its default width. The email that stands in for a missing name fits at 256px but not at 200px, where it ends in an ellipsis beside the avatar, with Settings still at the row’s end; a longer email, as a new master account has, ends in one at 256px too. The account menu and Settings say what the product would open."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen

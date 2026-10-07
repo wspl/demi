@@ -94,7 +94,7 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
   }
   if (kind === 'failed') {
     return {
-      label: "Couldn't load this conversation.",
+      label: 'Couldn’t load this conversation.',
       action: 'retry',
     }
   }

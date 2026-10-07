@@ -84,7 +84,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
     </GallerySection>
     <GallerySection
       title="Dialogs"
-      note="A rejected submission keeps the dialog open with its input. The line sits above the buttons, in the form's width."
+      note="A rejected submission keeps the dialog open with its input. The line sits above the buttons, in the form’s width."
     >
       <div class="grid items-start gap-6 lg:grid-cols-2">
         <GallerySpecimen wide variant="Email change · rejected address">
@@ -186,7 +186,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
                 extensions: ['.png'],
                 fastTier: null,
               }"
-              error="The provider rejected this model ID. Check the ID against the provider's catalog."
+              error="The provider rejected this model ID. Check the ID against the provider’s catalog."
               @close="close"
               @save="(saved) => productWould(`Save ${saved.name || saved.id}`)"
             />
