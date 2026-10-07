@@ -399,8 +399,13 @@ The new `snapshot` replaces the whole copy, and each state follows it as it
 follows any change. The user's browser does not say why an upgrade failed, so a
 page whose channel does not open asks `GET /api/auth/me`, whose 401 ends the
 session as any 401 does ([Authentication](#authentication)). Until the first
-snapshot the page shows its loading state; a first connection that fails shows
-the failure with a retry, which connects at once.
+snapshot the page shows its loading state. A page loaded while the backend
+cannot be reached, as during a restart, has nothing to show yet: it says
+"Connecting to Demi…" where the app will be and waits, connecting again as
+any channel does, and never sends the user to sign in for it; only the
+backend's own answer, a 401, does. A first connection the backend answers
+with its own failure shows that failure with a retry, which connects at
+once.
 
 ### A page of another build
 
@@ -436,7 +441,10 @@ for the same backend shows no Connecting row of its own, which it shows only
 when its socket is lost while the page still reaches the backend. A message sent
   meanwhile shows in the transcript as waiting to be sent and goes when the
   conversation opens again, with its id, so it is sent once; it never shows
-  as failed for the lost connection. A control that needs the backend, such
+  as failed for the lost connection. Every request of the page waits so: the
+page's one HTTP client holds a request that does not reach the backend, a
+read or a write alike, and sends it once the page reaches the backend again,
+so no control and no region shows a failure about the connection. A control that needs the backend, such
   as a setting or a Retry, stays as it is and does what it does once the page
   is back, never a failure about the connection. While the backend shuts
   down on purpose, the channel connects again every one to two seconds, at a
