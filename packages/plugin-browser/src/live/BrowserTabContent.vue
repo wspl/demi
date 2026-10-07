@@ -20,7 +20,9 @@ import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportCh
 /**
  * A `browser` tab's content (`live-view.md` § A browser tab in the panel).
  * It shows at once what the tab's data says, and what the Host sends
- * replaces it when it arrives: before the browser has the tab, the panel's
+ * replaces it when it arrives: a new tab nobody sent anywhere is a blank
+ * page at once, as a browser's new tab is, while the browser opens its tab
+ * unseen; before the browser has a tab the user sent somewhere, the panel's
  * own background, which says at once what Demi is doing; then a blank page
  * until the browser tab's first picture; an
  * address the user submits shows at once, with the page loading over the
@@ -402,7 +404,8 @@ watch(
         @history="history"
         @open-link="openLink"
       />
-      <!-- What a tab shows before its picture: a blank page, as the browser's new tab is. -->
+      <!-- What a tab shows before its picture, and a new tab nobody sent anywhere while the browser opens its tab
+           unseen: a blank page, as the browser's new tab is. -->
       <div
         v-else
         class="min-h-0 flex-1 bg-white"

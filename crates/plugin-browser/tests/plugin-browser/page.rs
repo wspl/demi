@@ -9,7 +9,7 @@ use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_plugin_browser::Browser;
 use demi_plugin_interface::{
-    CallKind, Plugin, PluginError, PluginFactory, PortRefusal, Reply, Request,
+    CallKind, Plugin, PluginError, PluginFactory, PortFailure, PortRefusal, Reply, Request,
     testing::{TestDemi, loopback},
 };
 use demi_web_api_protocol::error::ErrorCode;
@@ -24,7 +24,7 @@ pub(crate) fn world(answer: Answer) -> (Rc<dyn Plugin>, Rc<TestDemi>) {
     demi.package_calls.replace(Some(Box::new(
         move |operation: &NativeOperation, args, _| {
             assert_eq!(operation.package, "demi.browser");
-            answer(&operation.operation, args)
+            answer(&operation.operation, args).map_err(PortFailure::Refused)
         },
     )));
     (loopback(Browser::new().instance()), demi)
