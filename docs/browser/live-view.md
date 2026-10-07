@@ -266,7 +266,12 @@ content can show, and each works while no view is open.
 The module never fails silently toward the page. What it cannot do for a
 viewer, such as reading the tab list or giving the watched tab the screen and
 viewport that the viewer's panel asks for, it tells that viewer in a `notice`
-and writes to the [Host's log](../execution/runner.md#host-log).
+and writes to the [Host's log](../execution/runner.md#host-log). A notice
+carries a code, and the page shows it as the gallery's Errors page says: one
+the picture still shows through is a failed request, a toast in the Writing
+page's words for its code, once per notice; one that leaves no picture, such
+as a Host that cannot capture, replaces the picture with a region status that
+says why. Neither draws text in the tab's content.
 
 A view ends once. The module's `ended` message and the socket's close are one
 end, and the page opens at most one view after it, once the page's
