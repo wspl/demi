@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import FileCard from './FileCard.vue'
-import { baseName } from './paths'
+import { baseName } from '@demicodes/utils'
 import { TOO_LARGE_NOTE } from './preview'
 import { useShowing } from './showing'
 import type { FileContents } from './types'

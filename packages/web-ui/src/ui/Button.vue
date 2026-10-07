@@ -59,6 +59,15 @@ const { rotating, onClick } = useButtonIconSpin(
   () => emit('spinEnd'),
 )
 
+/** Return and Space press the button that has the focus, as they press a native one. */
+function onKeydown(event: KeyboardEvent): void {
+  if (event.target !== event.currentTarget || (event.key !== 'Enter' && event.key !== ' ')) {
+    return
+  }
+  event.preventDefault()
+  root.value?.click()
+}
+
 const sizeClass = computed(() => {
   if (props.size === 'lg') {
     return 'h-9 px-3.5 text-chrome'
@@ -75,7 +84,9 @@ const sizeClass = computed(() => {
 
 <template>
   <!-- The tip sits on a wrapper so a disabled face can still be hovered. The face itself
-       ignores pointer events, so a parent's click does not fire. -->
+       ignores pointer events, so a parent's click does not fire. It takes the focus when
+       clicked or given it, as a native button does, but is no Tab stop, as on macOS; a
+       primary button is the default action a dialog without a field opens on. -->
   <Tooltip
     :content="tooltipContent"
     :disabled="!tooltipContent"
@@ -93,7 +104,10 @@ const sizeClass = computed(() => {
       @keydown.capture="
         blockUnavailableButtonEvent($event, disabled || loading)
       "
+      @keydown="onKeydown"
       role="button"
+      :tabindex="disabled ? undefined : -1"
+      :data-default-action="variant === 'primary' || undefined"
       class="relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow,filter] duration-200 ease-out select-none"
       :aria-disabled="disabled || loading || undefined"
       :aria-busy="loading || undefined"

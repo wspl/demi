@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { clientPlatform, delay, keepComposition, sliceHead, truncate } from '../index'
+import { baseName, clientPlatform, delay, keepComposition, sliceHead, truncate } from '../index'
 
 test('an aborted delay ends at once instead of after its time', async () => {
   const stop = new AbortController()
@@ -41,4 +41,14 @@ test("an input method's keys stay with the field and a plain Enter reaches its h
     keepComposition({ ...key, stopPropagation: () => { stopped = true } })
     expect({ ...key, stopped }).toEqual({ ...key, stopped: kept })
   }
+})
+
+test("a Host path's name, on a Mac, Linux or Windows Host", () => {
+  expect(baseName('/Users/zan/Projects/demi')).toBe('demi')
+  expect(baseName('/Users/zan/Projects/demi/')).toBe('demi')
+  expect(baseName('C:\\Users\\zan\\report.pdf')).toBe('report.pdf')
+  expect(baseName('C:\\Users\\zan\\Projects\\')).toBe('Projects')
+  expect(baseName('C:/Users/zan/notes.md')).toBe('notes.md')
+  expect(baseName('report.pdf')).toBe('report.pdf')
+  expect(baseName('/')).toBe('')
 })

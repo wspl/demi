@@ -6,6 +6,7 @@
  * name their version and say how long they may be kept.
  */
 import { IMAGE_CONTENT_POLICY, previewMediaType, showsInPlace } from '@demicodes/protocol'
+import { baseName } from '@demicodes/utils'
 
 /** The part of a file of `size` bytes an answer sends (RFC 9110 § 14), as the relay's `RangeAnswer`. */
 export type RangeAnswer =
@@ -87,8 +88,7 @@ export function notModified(ifNoneMatch: string | null, etag: string): boolean {
 
 /** The file's name, which a download is saved under: the last part of `path`, whichever separator ends a directory. */
 export function fileName(path: string): string | null {
-  const name = path.slice(Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1)
-  return name === '' ? null : name
+  return baseName(path) || null
 }
 
 /**
