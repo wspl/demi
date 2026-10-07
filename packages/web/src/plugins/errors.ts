@@ -6,7 +6,11 @@ function refusal(error: ApiError): PluginCallError {
   return new PluginCallError(error.reason ?? error.code ?? `status_${error.status}`, error.message)
 }
 
-/** A failed call as a page sees it: a refusal with its reason, anything else, such as an abort, as it was. */
+/**
+ * A failed call as a page sees it: a refusal with its reason, anything else,
+ * such as an abort, as it was. A call never fails for the connection: it
+ * waits for the backend instead.
+ */
 export function callFailure(error: unknown): unknown {
   return error instanceof ApiError ? refusal(error) : error
 }

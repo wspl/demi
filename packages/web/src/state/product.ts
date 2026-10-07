@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { browserOnline, openSocket, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
-import { apiRequest, apiUrl, notifySessionEnded, readResponse } from '../api/client'
+import { apiRequest, apiUrl, notifySessionEnded, readResponse, unreachable } from '../api/client'
 import {
   modelCatalogSchema,
   productStateSchema,
@@ -442,6 +442,38 @@ export const useProduct = defineStore('product', () => {
     })
   }
 
+  /**
+   * Sends with `send` until the backend answers it (`web-application.md`
+   * § A page of another build): a try that could not reach the backend, as
+   * `waits` judges (by default `unreachable`), is tried again once the
+   * backend is worth asking again, so the connection banner says what
+   * happens and the caller never sees a failure about the connection. Any
+   * other failure rejects as it was, and so does every failure while the
+   * page follows no state, as before sign-in. Rejects with the abort's
+   * reason, without trying again, once `signal` aborts or the page stops
+   * following the state, as a sign-out does.
+   */
+  async function untilReached<T>(
+    send: () => Promise<T>,
+    signal?: AbortSignal,
+    waits: (error: unknown) => boolean = unreachable,
+  ): Promise<T> {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        return await send()
+      } catch (error) {
+        if (signal?.aborted) {
+          throw signal.reason
+        }
+        const lifetime = controller?.signal
+        if (!lifetime || !waits(error)) {
+          throw error
+        }
+        await reachable(attempt, signal ? AbortSignal.any([signal, lifetime]) : lifetime)
+      }
+    }
+  }
+
   function clearModels(): void {
     modelRequest?.controller.abort()
     modelRequest = null
@@ -595,7 +627,7 @@ export const useProduct = defineStore('product', () => {
     sent,
     answered,
     until,
-    reachable,
+    untilReached,
     loadModels,
     reloadModels,
     loadVendors,
