@@ -64,6 +64,7 @@ impl Shard {
             plugins,
             plugin_states,
             web_build: services.web_build.clone(),
+            preview: services.preview.get(),
             mail: services.email.delivers(),
             run: services.run.clone(),
         })
@@ -131,6 +132,12 @@ impl Shard {
             Part::Cloud => SyncEvent::Cloud {
                 cloud: self.cloud_shard().cloud_status().await?,
             },
+            Part::Preview => {
+                let Some(preview) = self.services().preview.get() else {
+                    return Ok(None);
+                };
+                SyncEvent::Preview { preview }
+            }
         };
         Ok(Some(event))
     }

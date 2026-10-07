@@ -23,9 +23,10 @@ use demi_backend_runners::native::NativeCatalog;
 use demi_plugin_interface::PluginFactory;
 use demi_provider_common::models_dev::ModelsDevClient;
 
+use demi_backend_user_shard::preview::{PageOrigin, PreviewDomainName, PreviewSettings};
 use demi_backend_user_shard::shard::ShardPlacement;
 use demi_backend_user_shard::tuning::{
-    ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning,
+    ConversationTuning, LifecycleTuning, PageTuning, PreviewTuning, RunnerTuning,
 };
 
 use self::secret::InstanceSecret;
@@ -113,6 +114,25 @@ pub struct Config {
         default_value = DEFAULT_RELEASES_URL
     )]
     pub claude_releases_url: Url,
+    /// The preview domain the backend registers its namespace with and the
+    /// page embeds previews from; one under .localhost may carry a port
+    #[arg(
+        long,
+        env = "DEMI_PREVIEW_DOMAIN",
+        value_name = "DEMI_PREVIEW_DOMAIN",
+        default_value = "demi-preview.dev"
+    )]
+    pub preview_domain: PreviewDomainName,
+    /// Origins besides the public URL's that serve the web app, such as a
+    /// development server's, comma-separated: the preview namespace admits
+    /// them too
+    #[arg(
+        long,
+        env = "DEMI_PREVIEW_ORIGINS",
+        value_name = "DEMI_PREVIEW_ORIGINS",
+        value_delimiter = ','
+    )]
+    pub preview_origins: Vec<PageOrigin>,
     /// What the backend logs: a level, and a level per target, comma-separated,
     /// such as `info,demi::provider::claude_code::wire=trace`
     #[arg(
@@ -247,6 +267,11 @@ impl Config {
             .map_err(|_| ConfigError::PublicUrl)?;
         config.public_url = Some(public_url);
         config.claude_releases = self.claude_releases_url.clone();
+        config.preview = Some(PreviewSettings {
+            domain: self.preview_domain.clone(),
+            origins: self.preview_origins.clone(),
+            tuning: PreviewTuning::default(),
+        });
         Ok(config)
     }
 }
@@ -305,6 +330,10 @@ pub struct BackendConfig {
     pub lifecycle: LifecycleTuning,
     /// How the Cloud is run.
     pub cloud: CloudTuning,
+    /// The preview domain the backend keeps its namespace at; without it,
+    /// none is registered and the pages are told none, as in a test that
+    /// serves no preview domain.
+    pub preview: Option<PreviewSettings>,
     /// Counts what reaches the object store, for the scenarios that prove
     /// what the backend reads and writes there.
     #[cfg(feature = "testing")]
@@ -352,6 +381,7 @@ impl BackendConfig {
             native: NativeCatalog::unpublished(),
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
+            preview: None,
             #[cfg(feature = "testing")]
             object_counts: None,
         }

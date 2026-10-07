@@ -5,7 +5,10 @@
 //! the Cloud, set up as the web app contract suite starts the backend
 //! (`scenarios.md` § Web app contract suite), with a master account and the
 //! development models `.env` turns on (a real one, the echo model) seeded
-//! through the web API.
+//! through the web API, and the preview domain service run locally under
+//! `demi-preview.localhost` (`builds-and-releases.md` § Preview domain
+//! deployment), where the backend registers its namespace with the web
+//! development server's origins.
 
 mod account;
 mod echo;
@@ -45,6 +48,11 @@ const START: Duration = Duration::from_secs(30);
 const BACKEND_STOP: Duration = Duration::from_secs(10);
 /// How long the manager may take to stop its runners.
 const MANAGER_STOP: Duration = Duration::from_secs(5);
+/// How long the preview domain service may take to answer: Wrangler starts
+/// its local runtime first.
+const PREVIEW_START: Duration = Duration::from_secs(60);
+/// How long the preview domain service may take to stop.
+const PREVIEW_STOP: Duration = Duration::from_secs(5);
 /// How often the backend is asked whether it answers yet.
 const POLL: Duration = Duration::from_millis(50);
 /// How long one such question may wait for its answer.
@@ -63,12 +71,22 @@ pub struct Options {
     /// the conversations of the earlier ones and seeds nothing.
     #[arg(long, conflicts_with = "keep")]
     data: Option<PathBuf>,
+    /// The port the local preview domain service listens on, the preview
+    /// domain being `demi-preview.localhost:<port>`.
+    #[arg(long, default_value_t = 8787)]
+    preview_port: u16,
+    /// An origin the web app is served on, which the backend's preview
+    /// namespace admits; repeat it for each.
+    #[arg(long = "web-origin", default_value = "http://127.0.0.1:18934")]
+    web_origins: Vec<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("the machine manager {0}")]
     Manager(String),
+    #[error("the preview domain service {0}")]
+    Preview(String),
     #[error("the backend {0}")]
     Backend(String),
     #[error("{0}")]
@@ -135,6 +153,7 @@ async fn develop(
 struct Processes {
     backend: Option<Box<dyn ChildWrapper>>,
     manager: Option<Manager>,
+    preview: Option<Box<dyn ChildWrapper>>,
 }
 
 /// The scripted manager and its input, which this program holds apart from
@@ -166,10 +185,13 @@ async fn serve(
         () = cancel.cancelled() => Ok(()),
     };
     if let Some(backend) = processes.backend.take() {
-        stop_backend(backend).await;
+        stop(backend, BACKEND_STOP, "the backend").await;
     }
     if let Some(manager) = processes.manager.take() {
         stop_manager(manager).await;
+    }
+    if let Some(preview) = processes.preview.take() {
+        stop(preview, PREVIEW_STOP, "the preview domain service").await;
     }
     result
 }
@@ -204,20 +226,28 @@ async fn session(
     echo: Option<&str>,
     processes: &mut Processes,
 ) -> Result<(), Error> {
+    let preview = processes
+        .preview
+        .insert(spawn_preview(options.preview_port)?);
     let manager = processes.manager.insert(spawn_manager()?);
     let socket = manager_socket(manager.process.as_mut()).await?;
 
     let release = release_root(root).await?;
+    let http = reqwest::Client::builder().no_proxy().build()?;
+    // The backend registers its namespace as it starts.
+    preview_answering(&http, options.preview_port, preview.as_mut()).await?;
     let origin = format!("http://127.0.0.1:{}", options.port);
+    let preview_domain = format!("demi-preview.localhost:{}", options.preview_port);
     let backend = processes.backend.insert(spawn_backend(
         &root.join("backend"),
         options.port,
         &origin,
         &socket,
         &release,
+        &preview_domain,
+        &options.web_origins,
     )?);
 
-    let http = reqwest::Client::builder().no_proxy().build()?;
     answering(&http, &origin, backend.as_mut()).await?;
     let models = match setup_needed(&http, &origin).await? {
         true => seed_data(&http, &origin, seed, echo).await?,
@@ -235,6 +265,7 @@ async fn session(
          \x20 Account: {}, password {}\n\
          {models}\
          \x20 Data:    {}{kept}\n\
+         \x20 Preview: {preview_domain}, for the pages at {}\n\
          Start the page in another terminal:\n\
          \x20 DEMI_BACKEND_URL={origin} {}bun run web:dev\n\
          Ctrl-C stops the backend.\n",
@@ -245,12 +276,14 @@ async fn session(
             seed.account.password.as_str()
         },
         root.display(),
+        options.web_origins.join(", "),
         page_account(&seed.account),
     );
 
     tokio::select! {
         status = backend.wait() => Err(Error::Backend(format!("exited: {}", status?))),
         status = manager.process.wait() => Err(Error::Manager(format!("exited: {}", status?))),
+        status = preview.wait() => Err(Error::Preview(format!("exited: {}", status?))),
     }
 }
 
@@ -335,13 +368,17 @@ async fn release_root(root: &Path) -> Result<PathBuf, Error> {
     Ok(release)
 }
 
-/// A command for the program `name` the workspace built beside this one,
-/// in a process group of its own, so that an interrupt at the terminal
-/// reaches only this program, which stops the others in order; dropping it
-/// kills the group.
+/// A command for the program `name` the workspace built beside this one.
 fn program(name: &str) -> CommandWrap {
     let mut command = tokio::process::Command::new(built_program(name));
     command.current_dir(crate::repository());
+    grouped(command)
+}
+
+/// `command` without this program's settings, in a process group of its
+/// own, so that an interrupt at the terminal reaches only this program,
+/// which stops the others in order; dropping it kills the group.
+fn grouped(mut command: tokio::process::Command) -> CommandWrap {
     for (variable, _) in std::env::vars_os() {
         if variable.as_bytes().starts_with(SETTINGS) {
             command.env_remove(variable);
@@ -350,6 +387,71 @@ fn program(name: &str) -> CommandWrap {
     let mut command = CommandWrap::from(command);
     command.wrap(ProcessGroup::leader()).wrap(KillOnDrop);
     command
+}
+
+/// Starts the preview domain service with Wrangler's development server on
+/// `port`, under the domain `demi-preview.localhost:<port>`. Its namespaces
+/// outlive the run in the package's `.wrangler/`, as the backend's record
+/// does in a data directory `--data` names. Wrangler runs under Node, the
+/// one runtime it supports: under Bun (1.4.2) its messages to its own local
+/// proxy are dropped at random, and the service then never answers.
+fn spawn_preview(port: u16) -> Result<Box<dyn ChildWrapper>, Error> {
+    let node = system_node().ok_or_else(|| {
+        Error::Preview("needs Node, and no Node that is not Bun is on PATH".to_owned())
+    })?;
+    let service = crate::repository().join("services/preview-domain");
+    let mut command = tokio::process::Command::new(node);
+    command
+        .arg(service.join("node_modules/wrangler/bin/wrangler.js"))
+        .args(["dev", "--port", &port.to_string(), "--var"])
+        .arg(format!("PREVIEW_DOMAIN:demi-preview.localhost:{port}"))
+        .current_dir(service);
+    let mut command = grouped(command);
+    command
+        .command_mut()
+        .env("WRANGLER_SEND_METRICS", "false")
+        .stdin(Stdio::null());
+    Ok(command.spawn()?)
+}
+
+/// The first `node` on PATH that is not Bun standing in for one, as Bun
+/// puts its own first on the PATH of the scripts it runs.
+fn system_node() -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|directory| directory.join("node"))
+        .find(|candidate| {
+            // A directory without a `node` offers none.
+            std::fs::canonicalize(candidate)
+                .is_ok_and(|real| real.file_name().is_some_and(|name| name != "bun"))
+        })
+}
+
+/// Waits until the preview domain service answers on `port`, failing when
+/// it exits first or does not answer within `PREVIEW_START`.
+async fn preview_answering(
+    http: &reqwest::Client,
+    port: u16,
+    preview: &mut dyn ChildWrapper,
+) -> Result<(), Error> {
+    // Any answer will do: the service answers its bare address with 404.
+    let address = format!("http://127.0.0.1:{port}/");
+    let probing = async {
+        while http.get(&address).timeout(PROBE).send().await.is_err() {
+            tokio::time::sleep(POLL).await;
+        }
+    };
+    tokio::select! {
+        () = probing => Ok(()),
+        status = preview.wait() => Err(Error::Preview(format!(
+            "exited before it answered: {}",
+            status?
+        ))),
+        () = tokio::time::sleep(PREVIEW_START) => Err(Error::Preview(format!(
+            "did not answer on port {port} within {} s",
+            PREVIEW_START.as_secs()
+        ))),
+    }
 }
 
 /// Starts the scripted manager, the backend crate's example program
@@ -414,6 +516,8 @@ fn spawn_backend(
     origin: &str,
     socket: &str,
     release: &Path,
+    preview_domain: &str,
+    web_origins: &[String],
 ) -> Result<Box<dyn ChildWrapper>, Error> {
     let mut command = program("demi-backend");
     command
@@ -424,6 +528,8 @@ fn spawn_backend(
         .env("DEMI_INSTANCE_MODE", "isolated")
         .env("DEMI_BACKEND_PUBLIC_URL", origin)
         .env("DEMI_MACHINE_MANAGER_SOCKET", socket)
+        .env("DEMI_PREVIEW_DOMAIN", preview_domain)
+        .env("DEMI_PREVIEW_ORIGINS", web_origins.join(","))
         .stdin(Stdio::null());
     Ok(command.spawn()?)
 }
@@ -556,15 +662,15 @@ fn session_cookies(answer: &reqwest::Response) -> String {
     String::from_utf8_lossy(&pairs.join(&b"; "[..])).into_owned()
 }
 
-/// Asks the backend to stop and waits for it to shut down.
-async fn stop_backend(mut backend: Box<dyn ChildWrapper>) {
-    if !matches!(backend.try_wait(), Ok(None)) {
+/// Asks `child` to stop and waits `patience` for it to end.
+async fn stop(mut child: Box<dyn ChildWrapper>, patience: Duration, name: &str) {
+    if !matches!(child.try_wait(), Ok(None)) {
         return;
     }
-    if let Err(error) = backend.signal(SignalKind::terminate().as_raw_value()) {
-        eprintln!("xtask dev: the backend could not be asked to stop: {error}");
+    if let Err(error) = child.signal(SignalKind::terminate().as_raw_value()) {
+        eprintln!("xtask dev: {name} could not be asked to stop: {error}");
     }
-    reap(backend, BACKEND_STOP, "the backend").await;
+    reap(child, patience, name).await;
 }
 
 /// Closes the manager's input, which ends it and the runners it started.

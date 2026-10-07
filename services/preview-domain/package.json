@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "wrangler dev --port ${DEMI_PREVIEW_PORT:-8787} --var PREVIEW_DOMAIN:demi-preview.localhost:${DEMI_PREVIEW_PORT:-8787}",
     "typecheck": "tsgo --noEmit -p tsconfig.json && tsgo --noEmit -p tsconfig.test.json"
   },
   "dependencies": {

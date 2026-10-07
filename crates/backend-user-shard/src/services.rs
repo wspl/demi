@@ -39,6 +39,7 @@ use demi_web_api_protocol::settings::InstanceMode;
 use object_store::ObjectStore;
 
 use crate::conversation::claude_cli::CliInstalls;
+use crate::preview::CurrentPreview;
 use crate::tuning::{ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
@@ -88,6 +89,8 @@ pub struct Services {
     pub public_url: PublicUrl,
     /// The build of the web app the backend serves, if it serves one.
     pub web_build: Option<String>,
+    /// The deployment's namespace at the preview domain, once registered.
+    pub preview: CurrentPreview,
     /// This run of the backend, chosen when the services start: the
     /// revisions counted in memory compare only within one run
     /// (`web-api.md` § Revisions counted in memory).
@@ -323,6 +326,7 @@ impl Services {
             cloud: settings.cloud,
             public_url: PublicUrl::default(),
             web_build: settings.web_build,
+            preview: CurrentPreview::default(),
             run: uuid::Uuid::new_v4().to_string(),
             lifecycle: settings.lifecycle,
             sync,

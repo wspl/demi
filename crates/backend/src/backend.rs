@@ -21,6 +21,7 @@ use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, web_build};
 use demi_backend_user_shard::conversation::search::index_at_start;
 use demi_backend_user_shard::conversation::{finish_deletions, rearm_wakeups, recover_forks};
+use demi_backend_user_shard::preview::keep_registered;
 use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::services::{
     CloseError, ProviderSetup, ServiceKeys, ServiceSettings, Services, ServicesError, Storage,
@@ -44,6 +45,9 @@ pub struct Backend {
     /// Sources the runner executables of the paired devices' systems
     /// (`native-runtime.md` § Runner releases); a close ends it.
     runners: Option<AbortOnDropHandle<()>>,
+    /// Keeps the deployment's namespace at the preview domain registered
+    /// (`preview.md` § The preview domain service); a close ends it.
+    preview: Option<AbortOnDropHandle<()>>,
 }
 
 /// Why the backend did not start.
@@ -288,6 +292,11 @@ impl Backend {
                 });
             }
         };
+        // Once the backend listens, which sets the public URL the namespace
+        // admits; the backend serves meanwhile.
+        let preview = config.preview.map(|settings| {
+            AbortOnDropHandle::new(tokio::spawn(keep_registered(services.clone(), settings)))
+        });
         Ok(Self {
             local_addr: edge.local_addr(),
             storage,
@@ -296,6 +305,7 @@ impl Backend {
             edge,
             deaths,
             runners,
+            preview,
         })
     }
 
@@ -375,6 +385,9 @@ impl Backend {
     pub async fn close(self) -> Result<(), ShutdownErrors> {
         let mut failures = Vec::new();
         self.edge.stop_accepting();
+        // A registration step in flight is dropped; the next start takes it
+        // again from the record.
+        drop(self.preview);
         self.services.logins.close().await;
         failures.extend(
             self.shards

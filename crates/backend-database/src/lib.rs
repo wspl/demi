@@ -22,6 +22,7 @@ pub mod managed;
 pub mod panels;
 pub mod permissions;
 pub mod plugin_values;
+pub mod preview;
 pub mod providers;
 pub mod references;
 mod schema;
