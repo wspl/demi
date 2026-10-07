@@ -527,6 +527,7 @@ export const useConversations = defineStore('conversations', () => {
           permissionRequests: 0,
           permissionsRevision: 0,
           status: 'idle',
+          lastTurn: null,
           contextVersion: 0,
           revision: 0,
           readRevision: 0,
@@ -1213,6 +1214,7 @@ export const useConversations = defineStore('conversations', () => {
       updatedAt: now,
       model: null,
       status: 'idle',
+      lastTurn: null,
     })
     conversation.persistence = 'draft'
     conversation.model = initialModelSettings(preferences.lastModel)

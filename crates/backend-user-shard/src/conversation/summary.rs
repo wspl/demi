@@ -1,17 +1,19 @@
 //! Conversations as the web app lists them (`web-api.md` § Sidebar
 //! mutations, read state and page synchronization): each record with the
 //! directory its work runs in, its status from the live tree or else from its
-//! last checkpoint, and its output revision. The persisted facts come from a
-//! read-only connection, so listing hundreds of conversations takes no
-//! writer from a running one.
+//! last checkpoint, its root's latest ended turn from that same checkpoint,
+//! and its output revision. The persisted facts come from a read-only
+//! connection, so listing hundreds of conversations takes no writer from a
+//! running one.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::columns::decode;
 use demi_backend_database::conversation_index::ConversationRecord;
-use demi_backend_database::tree::{self, SummaryFacts, Terminal};
+use demi_backend_database::tree::{self, EndedTurn, SummaryFacts, Terminal};
 use demi_shared_types::{ModelSelection, SessionPhase};
 use demi_web_api_protocol::conversations::{
-    ConversationStatus, ConversationSummary, ModelSettings,
+    ANSWER_START_CHARS, ConversationStatus, ConversationSummary, LastTurn, ModelSettings,
+    TurnOutcome,
 };
 use demi_web_api_protocol::ids::ProviderId;
 use futures_util::future::try_join_all;
@@ -90,6 +92,7 @@ impl Shard {
             cwd,
             status,
             revision: facts.revision,
+            last_turn: facts.last_turn.map(last_turn),
             draft_revision: record.draft_revision,
             panel_revision: record.panel_revision,
             hosts_revision: record.hosts_revision,
@@ -113,6 +116,22 @@ fn settings(selection: &ModelSelection) -> Result<ModelSettings, StorageError> {
         thinking_effort: selection.thinking_effort().map(str::to_owned),
         service_tier_id: selection.service_tier_id.clone(),
     })
+}
+
+/// The root's latest ended turn as the summary carries it, its answer cut to
+/// its start.
+fn last_turn(turn: EndedTurn) -> LastTurn {
+    LastTurn {
+        id: turn.id,
+        outcome: match turn.outcome {
+            Terminal::Response => TurnOutcome::Finished,
+            Terminal::Error => TurnOutcome::Failed,
+            Terminal::Abort => TurnOutcome::Stopped,
+        },
+        answer_start: turn
+            .answer
+            .map(|answer| answer.chars().take(ANSWER_START_CHARS).collect()),
+    }
 }
 
 /// A conversation's status: running or compacting while its live tree will

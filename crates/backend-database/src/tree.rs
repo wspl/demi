@@ -27,7 +27,8 @@ use demi_agent_store::{
 use demi_agent_transcript::is_interruption;
 use demi_backend_remote_host::decode_output;
 use demi_shared_types::{
-    Block, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp,
+    Block, BlockId, CommandId, CompletionId, NodeId, QueuedMessage, Sequence, SessionPhase,
+    Timestamp, is_blank,
 };
 use futures_util::future::LocalBoxFuture;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
@@ -716,13 +717,15 @@ fn integer(value: u64) -> i64 {
 }
 
 /// What a conversation's summary is built from (`storage.md` § Conversation
-/// state and transactions): the root's phase and output revision and the
-/// kind of its latest terminal block, read without loading the transcript.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// state and transactions): the root's phase and output revision, the kind
+/// of its latest terminal block and its latest ended turn, read without
+/// loading the transcript.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryFacts {
     pub phase: SessionPhase,
     pub revision: u64,
     pub last: Option<Terminal>,
+    pub last_turn: Option<EndedTurn>,
 }
 
 impl SummaryFacts {
@@ -731,6 +734,7 @@ impl SummaryFacts {
         phase: SessionPhase::Idle,
         revision: 0,
         last: None,
+        last_turn: None,
     };
 }
 
@@ -740,6 +744,87 @@ pub enum Terminal {
     Response,
     Error,
     Abort,
+}
+
+/// The root's latest ended turn (`web-api.md` § Sidebar mutations and read
+/// state).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EndedTurn {
+    /// The terminal block that ended it: a turn that a Resume continues
+    /// ends anew, with another block.
+    pub id: BlockId,
+    pub outcome: Terminal,
+    /// The Markdown of its last text that is not blank; none when it gave
+    /// none.
+    pub answer: Option<String>,
+}
+
+/// One block row as the summary walks the transcript back: its kind, its
+/// turn when it is a block of a turn's input, whether it is a terminal block
+/// that ends a turn, and its text when it is a text block.
+struct WalkRow {
+    index: i64,
+    kind: String,
+    turn: Option<String>,
+    ends_turn: bool,
+    text: Option<String>,
+}
+
+/// What the walk found: the kind of the latest terminal block, and the row
+/// of the block that ended the latest ended turn with that turn's last text
+/// that is not blank.
+struct Walk {
+    last: Option<Terminal>,
+    end: Option<i64>,
+    answer: Option<String>,
+}
+
+/// How far the walk has read the ended turn back from its end.
+#[derive(Default)]
+struct EndSearch {
+    end: Option<i64>,
+    /// The ended turn, once the walk reached one of its input blocks.
+    turn: Option<String>,
+    /// The last text before the input block the walk reached last: the
+    /// ended turn's when another of its input blocks comes before it.
+    candidate: Option<String>,
+    answer: Option<String>,
+}
+
+impl EndSearch {
+    /// Reads the next row back; true once it knows the end and the answer.
+    fn step(&mut self, row: WalkRow) -> bool {
+        if self.end.is_none() {
+            if row.ends_turn {
+                self.end = Some(row.index);
+            }
+            return false;
+        }
+        match (row.turn, row.text) {
+            (Some(input), _) => {
+                if self.turn.as_ref().is_some_and(|turn| *turn != input) {
+                    // The input of an earlier turn: the ended one gave no text.
+                    return true;
+                }
+                if self.candidate.is_some() {
+                    self.answer = self.candidate.take();
+                    return true;
+                }
+                self.turn = Some(input);
+                false
+            }
+            (None, Some(text)) if !is_blank(&text) => {
+                if self.turn.is_none() {
+                    // After the turn's last input block, so the turn's.
+                    self.answer = Some(text);
+                    return true;
+                }
+                self.candidate.get_or_insert(text);
+                false
+            }
+            (None, _) => false,
+        }
+    }
 }
 
 /// The summary facts of the tree `connection` holds; the empty facts when it
@@ -756,28 +841,114 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
         return Ok(SummaryFacts::EMPTY);
     };
     let state: CheckpointState = json("nodes", "state", &state)?;
-    let terminal: Option<String> = connection
-        .query_row(
-            "SELECT block FROM blocks WHERE node_id = ?1 AND idx < ?2
-               AND json_extract(block, '$.type') IN ('response', 'error', 'abort')
-             ORDER BY idx DESC LIMIT 1",
-            params![id, block_count],
-            |row| row.get(0),
-        )
-        .optional()?;
-    let last = match terminal {
+    // A failed `compact` ends no turn, and a stop that a Resume continued
+    // ended the turn only until the Resume.
+    let mut rows = connection.prepare_cached(
+        "SELECT idx, json_extract(block, '$.type'), json_extract(block, '$.turnId'),
+                json_extract(block, '$.type') IN ('response', 'error', 'abort')
+                  AND coalesce(json_extract(block, '$.outsideTurn'), 0) = 0
+                  AND coalesce(json_extract(block, '$.isResumed'), 0) = 0,
+                CASE json_extract(block, '$.type') WHEN 'text' THEN json_extract(block, '$.text') END
+           FROM blocks WHERE node_id = ?1 AND idx < ?2 ORDER BY idx DESC",
+    )?;
+    let rows = rows.query_map(params![id, block_count], |row| {
+        Ok(WalkRow {
+            index: row.get(0)?,
+            kind: row.get(1)?,
+            turn: row.get(2)?,
+            ends_turn: row.get(3)?,
+            text: row.get(4)?,
+        })
+    })?;
+    let walk = walk(rows.map(|row| row.map_err(StorageError::from)), state.phase)?;
+    let last_turn = match walk.end {
+        Some(end) => Some(ended_turn(connection, &id, end, walk.answer)?),
         None => None,
-        Some(text) => match json::<Block>("blocks", "block", &text)? {
-            Block::Response(_) => Some(Terminal::Response),
-            Block::Error(_) => Some(Terminal::Error),
-            Block::Abort(_) => Some(Terminal::Abort),
-            _ => unreachable!("the query selects only terminal blocks"),
-        },
     };
     Ok(SummaryFacts {
         phase: state.phase,
         revision: decode("nodes", "output_revision", u64::try_from(revision))?,
+        last: walk.last,
+        last_turn,
+    })
+}
+
+/// Walks the root's block rows back from its last one, until it knows the
+/// latest terminal block and the latest ended turn with its last text. A
+/// turn's input blocks carry its id, and the turn lasts until a block of
+/// another turn's input, so a text belongs to the ended turn when it comes
+/// after one of that turn's input blocks. While the root is in a turn
+/// (`phase` is not idle) that turn has not ended, so what the walk read of
+/// it, such as the responses of its earlier requests, counts for nothing.
+/// An action that has written no block of its own yet, such as a `compact`
+/// or a send before its message is written, cannot be told from the turn
+/// before it, which is then passed over too until the action writes one.
+fn walk(
+    rows: impl Iterator<Item = Result<WalkRow, StorageError>>,
+    phase: SessionPhase,
+) -> Result<Walk, StorageError> {
+    let mut last = None;
+    // The running turn, while the walk is still inside it.
+    let mut running: Option<Option<String>> = (phase != SessionPhase::Idle).then_some(None);
+    let mut search = EndSearch::default();
+    let mut found = false;
+    for row in rows {
+        let row = row?;
+        if last.is_none() {
+            last = match row.kind.as_str() {
+                "response" => Some(Terminal::Response),
+                "error" => Some(Terminal::Error),
+                "abort" => Some(Terminal::Abort),
+                _ => None,
+            };
+        }
+        if let Some(turn) = &running
+            && let Some(input) = &row.turn
+        {
+            if turn.as_ref().is_none_or(|turn| turn == input) {
+                running = Some(Some(input.clone()));
+                search = EndSearch::default();
+                found = false;
+                continue;
+            }
+            running = None;
+        }
+        if !found {
+            found = search.step(row);
+        }
+        if found && running.is_none() {
+            break;
+        }
+    }
+    Ok(Walk {
         last,
+        end: search.end,
+        answer: search.answer,
+    })
+}
+
+/// The turn the terminal block at `end` ended, whose last text is `answer`.
+fn ended_turn(
+    connection: &Connection,
+    node: &str,
+    end: i64,
+    answer: Option<String>,
+) -> Result<EndedTurn, StorageError> {
+    let block: String = connection.query_row(
+        "SELECT block FROM blocks WHERE node_id = ?1 AND idx = ?2",
+        params![node, end],
+        |row| row.get(0),
+    )?;
+    let (id, outcome) = match json::<Block>("blocks", "block", &block)? {
+        Block::Response(block) => (block.id, Terminal::Response),
+        Block::Error(block) => (block.id, Terminal::Error),
+        Block::Abort(block) => (block.id, Terminal::Abort),
+        _ => unreachable!("the walk ends a turn only at a terminal block"),
+    };
+    Ok(EndedTurn {
+        id,
+        outcome,
+        answer,
     })
 }
 
