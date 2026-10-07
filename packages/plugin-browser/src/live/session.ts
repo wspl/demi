@@ -8,7 +8,7 @@
  * § Liveness and reconnection).
  */
 import { liveViewerMessageSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveTab, type LiveViewerMessage } from '../generated/plugin'
-import { LIVE_CAPTURE_FAILED, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
+import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
 import { reactive } from 'vue'
 import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
 import type { OpenUserStream, StreamBytes, UserStream } from '@demicodes/plugin-sdk'
@@ -46,6 +46,13 @@ export const SILENT_STREAM = 'silent'
 
 export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
 
+/**
+ * The notices that leave the watched tab without a picture, which the view
+ * shows in place of the picture; every other notice the picture still shows
+ * through (`live-view.md` § Opening a view).
+ */
+const PICTURELESS: ReadonlySet<string> = new Set([LIVE_CAPTURE_UNAVAILABLE, LIVE_CAPTURE_FAILED])
+
 export interface LiveState {
   connection: LiveConnection
   /** Whether the conversation's browser runs; a view can offer to start one. */
@@ -58,8 +65,12 @@ export interface LiveState {
   regions: CursorRegion[]
   /** The cursor the watched tab's observer resolved at the pointer, where no region decides. */
   cursor: { cursor: string; editable: boolean }
-  /** The latest thing that failed, for the view to show. */
-  notice: { code: string; message: string } | null
+  /**
+   * Why the watched tab shows no picture: the code of a notice that leaves
+   * none, until a picture of the tab or another watched tab ends it
+   * (`live-view.md` § Opening a view).
+   */
+  pictureless: string | null
   /** Why the view ended, once it did. */
   ended: string | null
 }
@@ -78,6 +89,12 @@ export interface LiveSessionOptions {
   platform: 'mac' | 'windows' | 'linux' | 'other'
   /** Text the watched tab copied, for the viewer's own clipboard. */
   onClipboard?: (text: string) => void
+  /**
+   * The code of a notice the picture still shows through, once per notice:
+   * something the module could not do for the viewer. Its message is the
+   * Host's, which the Host's log keeps.
+   */
+  onNotice?: (code: string) => void
   /** The conversation browser's tabs, each time the view reports them, with the list's number in the Host's sequence. */
   onTabs?: (tabs: LiveTab[], list: number) => void
   /**
@@ -108,7 +125,7 @@ export class LiveSession {
     controls: [],
     regions: [],
     cursor: { cursor: 'default', editable: false },
-    notice: null,
+    pictureless: null,
     ended: null,
   })
 
@@ -217,6 +234,7 @@ export class LiveSession {
     this.dropStream()
     this.state.ended = reason
     this.state.dialog = null
+    this.state.pictureless = null
     this.state.controls = []
     this.state.regions = []
     this.options.onEnded?.(reason)
@@ -329,7 +347,11 @@ export class LiveSession {
         case 'choice':
           break
         case 'notice':
-          this.state.notice = { code: message.code, message: message.message }
+          if (PICTURELESS.has(message.code)) {
+            this.state.pictureless = message.code
+          } else {
+            this.options.onNotice?.(message.code)
+          }
           break
         case 'ended':
           this.end(message.reason)
@@ -343,10 +365,8 @@ export class LiveSession {
       return
     }
     this.pictures?.show(frame)
-    // A picture of the watched tab is the view working again: what it could not do before no longer holds.
-    if (this.state.notice?.code === LIVE_CAPTURE_FAILED) {
-      this.state.notice = null
-    }
+    // A picture of the watched tab is the capture working again.
+    this.state.pictureless = null
   }
 
   /** The page showed a frame; the module paces itself by these. */
@@ -401,6 +421,8 @@ export class LiveSession {
     this.state.controls = []
     this.state.regions = []
     this.state.dialog = null
+    // The module says again whether it can capture the tab now watched.
+    this.state.pictureless = null
     this.pictures?.stop()
     this.send({ type: 'watch', tab })
   }
