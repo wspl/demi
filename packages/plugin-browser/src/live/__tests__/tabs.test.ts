@@ -2,7 +2,7 @@ import { expect, jest, test } from 'bun:test'
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveTab, type LiveViewerMessage } from '../../generated/plugin'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
-import { effectScope, ref, shallowRef } from 'vue'
+import { effectScope, nextTick, ref, shallowRef } from 'vue'
 import {
   NO_BROWSER,
   BrowserTabsController,
@@ -659,5 +659,30 @@ test('a view that finds its tab gone while the device is offline reports nothing
   opened.at(-1)!.closed('browser_lost')
   await Promise.resolve()
   expect(defects.map(([what]) => what)).toEqual(['The panel could not look for a closed tab'])
+  end()
+})
+
+test('a view the stopped Cloud refused connects at once once the Cloud runs', async () => {
+  const starting = ref(true)
+  const opened: UserStreamHandlers[] = []
+  const { controller, end } = harness(
+    {
+      hostStarting: () => starting.value,
+      stream: (handlers) => {
+        opened.push(handlers)
+        return { send: () => {}, close: () => {} }
+      },
+    },
+    { pictures: async () => true },
+  )
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('p1', null)
+  opened[0]!.closed('host_stopped')
+  expect(opened).toHaveLength(1)
+  // The Cloud runs: the view does not wait out its reconnect wait.
+  starting.value = false
+  await nextTick()
+  expect(opened).toHaveLength(2)
   end()
 })
