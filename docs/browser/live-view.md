@@ -473,7 +473,8 @@ for the extension in vain, the extension's connection ended, the Host
 dropped a connection that did not keep up, or the extension asked; after a
 recreation the extension has another 10 seconds to connect. When even the
 recreation fails, the view stops trying and says that the device could not
-capture the page, with Retry, which recreates it again. The extension works in an
+capture the page, with Retry, which recreates it again: the module sends the
+`capture_stopped` notice, and Retry sends `recapture`. The extension works in an
 offscreen document, which Chrome lists as a background page, not as a tab, so
 it never enters the tab registry. It captures a tab with `chrome.tabCapture`,
 encodes H.264 High 4:2:0 with WebCodecs in software, and sends each encoded
