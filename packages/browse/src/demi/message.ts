@@ -21,8 +21,7 @@ export async function message(tool: Tool, text: string, options: MessageOptions 
   const page = await tool.browser.page()
   const known = conversationId(page)
   const before = known === null ? 0 : (await summary(tool, page, known))?.revision ?? 0
-  // The composer's editor, an editable element with no role of its own, which its label names.
-  const composer = page.getByLabel('Message', { exact: true })
+  const composer = page.getByRole('textbox', { name: 'Message', exact: true })
   // The message replaces a draft the composer holds, as the message sent is the one given.
   await composer.fill(text)
   await composer.press('Enter')

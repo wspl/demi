@@ -1,6 +1,7 @@
-// The footer a call ends with, composed from what the call saw; no browser.
+// The footer a call ends with, composed from what the call saw; no browser, a few milliseconds.
 import { expect, test } from 'bun:test'
 import { composeFooter } from './footer'
+import { Logs } from './logs'
 
 test('a call ends with its screenshots, then where the page stands and what went wrong since it began', () => {
   const errors = Array.from({ length: 12 }, (_, index) => `error: failure ${index + 1}`)
@@ -33,4 +34,14 @@ test('a call that left no browser, as down does, reports no page', () => {
     page: { url: 'about:blank', title: '', layer: null, focus: null },
     problems: { console: [], network: [] },
   })).toEqual(['Page      about:blank', 'Focus     nothing (the page)'])
+})
+
+test('a request the page abandoned, as a navigation abandons the last page\'s, is not a failed one', () => {
+  const logs = new Logs()
+  logs.add('network', 'GET FAILED http://127.0.0.1:3323/api/conversations/c-1/stream net::ERR_ABORTED')
+  logs.add('network', 'GET FAILED http://127.0.0.1:3323/api/sync net::ERR_CONNECTION_REFUSED')
+  logs.add('network', 'GET 200 http://127.0.0.1:3323/api/me 3 ms')
+  expect(composeFooter({ shots: [], page: null, problems: logs.problems(0) })).toEqual([
+    'Requests  GET FAILED http://127.0.0.1:3323/api/sync net::ERR_CONNECTION_REFUSED',
+  ])
 })

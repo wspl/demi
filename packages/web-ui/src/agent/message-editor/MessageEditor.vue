@@ -105,10 +105,11 @@ const editor = new Editor({
   enableInputRules: false,
   enablePasteRules: false,
   editorProps: {
-    attributes: {
+    // Read again on every update, so a composer that stops taking typing says so.
+    attributes: () => ({
       class: 'markdown-body message-editor-text',
-      ...(props.label ? { 'aria-label': props.label } : {}),
-    },
+      ...(props.composer ? fieldAttributes() : {}),
+    }),
     handlePaste: (view, event) => props.composer && paste(view, event),
     handleDrop: (view, event, _slice, moved) => props.composer && drop(view, event, moved),
     transformPasted: (slice, view) => new Slice(keepCapsules(slice.content, view), slice.openStart, slice.openEnd),
@@ -160,6 +161,26 @@ watch(
     }
   },
 )
+
+/**
+ * The composer is a text field to assistive technology, as a textarea is
+ * (WAI-ARIA's textbox role): an editable element has no role of its own. A
+ * sent message is content, not a field.
+ */
+function fieldAttributes(): Record<string, string> {
+  const attributes: Record<string, string> = { 'role': 'textbox', 'aria-multiline': 'true' }
+  if (props.label) {
+    attributes['aria-label'] = props.label
+  }
+  // The placeholder is drawn by CSS, which assistive technology does not read.
+  if (props.placeholder) {
+    attributes['aria-placeholder'] = props.placeholder
+  }
+  if (props.disabled) {
+    attributes['aria-disabled'] = 'true'
+  }
+  return attributes
+}
 
 function holdsLines(doc: ProseMirrorNode): boolean {
   let lines = doc.childCount > 1

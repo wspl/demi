@@ -1,20 +1,25 @@
 // What a call prints after its script's output (browse.md § A call): the
 // screenshots it wrote, then where the page stands, so the agent rarely
-// needs another call only to see it: the page's address and title, a dialog
-// or menu that covers it, the focused element, and the console errors and
-// failed requests since the call began. Playwright names the layer as its
-// accessibility snapshot does, by role and name. The focused element is
-// named as the browser's own accessibility tree has it, which also knows an
-// editable element with no role of its own, such as the composer's.
+// needs another call only to see it: the page's address and title, a modal
+// dialog, menu or popover that covers it, the focused element, and the
+// console errors and failed requests since the call began. Playwright names
+// the layer as its accessibility snapshot does, by role and name. The
+// focused element is named as the browser's own accessibility tree has it,
+// which also knows an editable element with no role of its own.
 import type { CDPSession, Locator, Page } from 'playwright'
 import type { Shot } from './tool'
 
 export interface PageState {
   url: string
   title: string
-  /** The topmost dialog or menu, such as `dialog "Add Device"`, or null. */
+  /**
+   * The topmost layer over the page, such as `dialog "Add Device"` or
+   * `menu`: a modal dialog, or a menu or popover open over it. A dialog in
+   * the page's flow, such as a permission card, covers nothing; null when
+   * nothing covers the page.
+   */
   layer: string | null
-  /** The focused element, such as `button "Stop"` or `generic "Message", editable`, or null when the page itself has the focus. */
+  /** The focused element, such as `button "Stop"` or `textbox "Message", editable`, or null when the page itself has the focus. */
   focus: string | null
 }
 
@@ -67,7 +72,10 @@ function listed(label: string, entries: string[]): string[] {
 
 /** Where `page` stands now; `cdp` is a session with it. */
 export async function readPageState(page: Page, cdp: CDPSession): Promise<PageState> {
-  const layers = page.getByRole('dialog').or(page.getByRole('alertdialog')).or(page.getByRole('menu'))
+  // A modal dialog says so. Every menu and popover opens in web-ui's floating
+  // panel, which floats over the page from the body's top level; one the
+  // gallery pins open stays inside its specimen.
+  const layers = page.locator('[aria-modal="true"], body > [data-overlay-panel]')
   return {
     url: page.url(),
     title: await page.title(),
