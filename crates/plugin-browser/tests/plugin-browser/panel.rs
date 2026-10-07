@@ -367,3 +367,49 @@ async fn a_tab_the_agent_showed_carries_the_count_into_its_panel_tab() {
     job_ended(&plugin, &demi).await;
     assert_eq!(tab_data(&demi, "browser-t3")["shows"], json!(1));
 }
+
+/// A tab a page opened stands right after its opener's, after the ones the
+/// same opener opened before it, as Chrome places the tabs a link opens; the
+/// agent's tabs, and one whose opener the panel does not show, go after the
+/// others (`live-view.md` § A browser tab in the panel).
+#[tokio::test(flavor = "local")]
+async fn a_tab_a_page_opened_stands_beside_its_opener() {
+    let listed: Rc<RefCell<Value>> = Rc::new(RefCell::new(json!([])));
+    let browser = listed.clone();
+    let (plugin, demi) = world(Box::new(move |_, operation, _| match operation {
+        "browser.tabs" => Ok(json!({ "list": 1, "tabs": browser.borrow().clone(), "truncated": false })),
+        _ => Ok(json!({})),
+    }));
+    created(&demi, "a", json!({ "url": "https://a.test/", "tab": "t1" }));
+    created(&demi, "b", json!({ "url": "https://b.test/", "tab": "t2" }));
+    let tab = |id: &str, by: Value| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "canGoBack": false, "canGoForward": false, "shows": 0 });
+    let by_page = |opener: &str| json!({ "kind": "page", "opener": opener });
+    let ids = |demi: &TestDemi| -> Vec<String> {
+        demi.panel().tabs.into_iter().map(|tab| tab.id).collect()
+    };
+    let mut tabs = vec![
+        tab("t1", json!({ "kind": "user" })),
+        tab("t2", json!({ "kind": "user" })),
+        tab("t3", by_page("t1")),
+        tab("t4", by_page("t1")),
+        tab("t5", by_page("t2")),
+        tab("t6", json!({ "kind": "agent", "number": 1 })),
+        // Its opener is gone from the browser, so the panel shows no tab for it.
+        tab("t7", by_page("t9")),
+    ];
+    listed.replace(Value::Array(tabs.clone()));
+
+    job_ended(&plugin, &demi).await;
+    assert_eq!(
+        ids(&demi),
+        ["a", "browser-t3", "browser-t4", "b", "browser-t5", "browser-t6", "browser-t7"]
+    );
+    // The opener's next tab joins the ones it opened, after them.
+    tabs.push(tab("t8", by_page("t1")));
+    listed.replace(Value::Array(tabs));
+    job_ended(&plugin, &demi).await;
+    assert_eq!(
+        ids(&demi),
+        ["a", "browser-t3", "browser-t4", "browser-t8", "b", "browser-t5", "browser-t6", "browser-t7"]
+    );
+}
