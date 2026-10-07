@@ -6,6 +6,7 @@ import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ApiError } from '../api/client'
 import { changeReplacedDraft, loadDraft, saveDraft } from '../api/drafts'
 import type { ConversationDraft, DraftFile, ReplacedAction } from '../api/generated/web-api'
+import { useProduct } from '../state/product'
 import type { Conversation, ProductAttachment } from '../state/types'
 
 // A conversation's draft kept by the backend and followed by every page
@@ -105,6 +106,7 @@ export function createDraftSync(options: {
   apply: (conversation: Conversation, draft: ConversationDraft) => void
   report: (title: HeadlineText, error: unknown) => void
 }) {
+  const product = useProduct()
   let lifetime = new AbortController()
   const timers = new Map<string, ReturnType<typeof setTimeout>>()
   const queues = new Map<string, SerialQueue>()
@@ -189,6 +191,11 @@ export function createDraftSync(options: {
     }
   }
 
+  /** Reads the backend's draft, waiting for the backend while it cannot be reached (`web-application.md` § A page of another build). */
+  function fetchDraft(conversationId: string, signal: AbortSignal): Promise<ConversationDraft> {
+    return product.untilReached(() => loadDraft(conversationId, signal), signal)
+  }
+
   /**
    * Takes a draft read from the backend when it is newer than the one the
    * page holds: the composer shows it unless its user has an unsaved change,
@@ -223,7 +230,7 @@ export function createDraftSync(options: {
   function read(conversation: Conversation, loaded?: Promise<ConversationDraft>): Promise<void> {
     const signal = lifetime.signal
     return queue(conversation.id).run(async () => {
-      const draft = await (loaded ?? loadDraft(conversation.id, signal))
+      const draft = await (loaded ?? fetchDraft(conversation.id, signal))
       signal.throwIfAborted()
       receive(conversation, draft)
       schedule(conversation, DRAFT_SAVE_DELAY_MS)
@@ -257,7 +264,7 @@ export function createDraftSync(options: {
         if (!(error instanceof ApiError && error.code === 'draft_changed')) {
           throw error
         }
-        const draft = await loadDraft(conversation.id, signal)
+        const draft = await fetchDraft(conversation.id, signal)
         signal.throwIfAborted()
         receive(conversation, draft)
         schedule(conversation, DRAFT_SAVE_DELAY_MS)
@@ -297,5 +304,5 @@ export function createDraftSync(options: {
     refused.clear()
   }
 
-  return { changed, save, read, act, flush, stop }
+  return { changed, save, fetch: fetchDraft, read, act, flush, stop }
 }
