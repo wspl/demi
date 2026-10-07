@@ -603,8 +603,9 @@ last chose in it ([Conversations and projects](product.md#conversations-and-proj
 A patch replaces it whole; a `deviceId` the user no longer has is kept and
 the dialog chooses no device for it. `locale` stores the time
 zone and languages the user's browser last reported, as
-`{ timeZone, languages }` with an IANA zone name and BCP 47 tags in preference
-order; the product sends it whenever either changes. A time zone the backend
+`{ timeZone, languages, colorScheme? }` with an IANA zone name, BCP 47 tags in
+preference order and the page's `light` or `dark` scheme; the product sends
+it whenever any of them changes, a theme change included. A time zone the backend
 does not know, a malformed language tag, or more than 16 languages is
 rejected. The backend keeps the time zone in its IANA spelling, each tag in
 its canonical form and each language once, in the reported order: the report
