@@ -4,6 +4,7 @@
 //! replaced. Every change reads the row and writes it in one transaction, so
 //! two saves never build on the same revision.
 
+use demi_shared_types::BlobRef;
 use demi_web_api_protocol::drafts::{
     ConversationDraft, DRAFT_BYTES_MAX, DraftFile, ReplacedAction, ReplacedDraft,
 };
@@ -226,6 +227,32 @@ impl ControlService {
         })
         .await
     }
+}
+
+/// The blobs the drafts of `owner`'s conversations name, in their current
+/// and their replaced versions: each upload's bytes.
+pub(crate) fn draft_blobs(
+    connection: &Connection,
+    owner: &UserId,
+) -> Result<Vec<BlobRef>, StorageError> {
+    let mut statement = connection.prepare(
+        "SELECT d.revision, d.document, d.written, d.replaced_revision, d.replaced
+         FROM conversation_drafts d JOIN conversations c ON c.id = d.conversation_id
+         WHERE c.user_id = ?1",
+    )?;
+    let mut rows = statement.query([owner.as_str()])?;
+    let mut blobs = Vec::new();
+    while let Some(row) = rows.next()? {
+        let draft = stored_row(row)?;
+        let versions = std::iter::once(draft.version).chain(draft.replaced.map(|(_, version)| version));
+        for version in versions {
+            blobs.extend(version.files.into_iter().filter_map(|file| match file {
+                DraftFile::Upload { sha256, .. } => Some(sha256),
+                DraftFile::RemoteFile { .. } => None,
+            }));
+        }
+    }
+    Ok(blobs)
 }
 
 /// Whether the conversation is archived.

@@ -97,9 +97,15 @@ ALTER TABLE conversations ADD COLUMN hosts_revision INTEGER NOT NULL DEFAULT 0 C
 
 /// From 0.1.16's control schema: a device keeps the runner release its
 /// runner reports, which a device migrated from 0.1.16 learns at its
-/// runner's next hello.
+/// runner's next hello; and a conversation's deletion is recorded as
+/// pending until its last step (`storage.md` § Deleting a conversation).
 const CONTROL_FROM_0_1_16: &str = "
 ALTER TABLE devices ADD COLUMN runner_version TEXT;
+CREATE TABLE conversation_deletions (
+  id         TEXT PRIMARY KEY COLLATE NOCASE,
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  deleted_at INTEGER NOT NULL
+) STRICT;
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -493,6 +499,15 @@ CREATE TABLE permission_grants (
   category        TEXT NOT NULL,
   granted_at      INTEGER NOT NULL,
   PRIMARY KEY (conversation_id, category)
+) STRICT;
+
+-- A conversation's deletion that has not reached its last step: its record
+-- is gone, and a start finishes what is left (`storage.md` § Deleting a
+-- conversation). The id is compared as the index compares it.
+CREATE TABLE conversation_deletions (
+  id         TEXT PRIMARY KEY COLLATE NOCASE,
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  deleted_at INTEGER NOT NULL
 ) STRICT;
 
 -- Records that make interrupted multi-step work discoverable. A Fork

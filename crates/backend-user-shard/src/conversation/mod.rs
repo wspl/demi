@@ -4,13 +4,14 @@
 //! runtimes the sessions infer with, the Claude Code CLI's work on the
 //! user's Cloud and the provider test, the conversations' summaries, and the
 //! failure facts of their history, the saved wakeups that a restart
-//! carries over, and the search index that follows them.
+//! carries over, their deletion, and the search index that follows them.
 
 mod announcement;
 pub mod claude_cli;
 mod cloud_workspace;
 mod connection_test;
 mod creation;
+mod deletion;
 mod failure_facts;
 mod fork;
 pub(crate) mod product;
@@ -40,6 +41,7 @@ use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_shared_types::NodeId;
 use demi_web_api_protocol::ids::UserId;
 
+pub use self::deletion::finish_deletions;
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub(crate) use self::product::ShardHosts;
