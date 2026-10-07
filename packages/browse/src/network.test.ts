@@ -1,8 +1,16 @@
-// A local TCP echo server behind the network; about 0.5 s, most of it the
-// latency the second test proves.
+// A local TCP echo server behind the network; about 0.7 s, most of it the
+// latency the second and last tests prove.
 import { afterEach, expect, test } from 'bun:test'
+import { mkdtempSync, rmSync } from 'node:fs'
 import net from 'node:net'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { Browser } from './browser'
+import type { Context } from './command'
+import { run as runNet } from './commands/net'
 import { Network } from './network'
+import { slotPorts, type Slot } from './slot'
+import { readState } from './state'
 
 const closers: (() => Promise<void>)[] = []
 
@@ -12,20 +20,29 @@ afterEach(async () => {
   }
 })
 
-/** An echo server on a free port, and the network in front of it. */
-async function setUp(): Promise<Network> {
+/** An echo server on a free port. */
+async function echoServer(): Promise<number> {
   const echo = net.createServer((socket) => socket.pipe(socket))
   await new Promise<void>((resolve) => echo.listen(0, '127.0.0.1', resolve))
+  closers.push(() => new Promise<void>((resolve) => echo.close(() => resolve())))
   const address = echo.address()
   if (address === null || typeof address === 'string') {
     throw new Error('no port')
   }
-  const network = await Network.listen(0, address.port)
-  closers.push(async () => {
-    await network.shutdown()
-    await new Promise<void>((resolve) => echo.close(() => resolve()))
-  })
+  return address.port
+}
+
+/** A network in front of the server on `target`, as a daemon opens it from the slot's state. */
+async function listen(target: number, slot?: Slot): Promise<Network> {
+  const network = await Network.listen(0, target, slot === undefined ? undefined : readState(slot).net)
+  // Closed before the echo server, which waits for its connections to end.
+  closers.unshift(() => network.shutdown())
   return network
+}
+
+/** An echo server and the network in front of it. */
+async function setUp(): Promise<Network> {
+  return listen(await echoServer())
 }
 
 /** A connection through the network that has sent `request` and had it echoed. */
@@ -77,6 +94,32 @@ test('latency delays the app\'s traffic with its backend by its round trip, and 
   await roundTrip(module, 'GET /src/App.vue HTTP/1.1\r\nHost: x\r\n\r\n')
   expect(performance.now() - began).toBeLessThan(100)
   began = performance.now()
+  await roundTrip(api, 'frame')
+  expect(performance.now() - began).toBeGreaterThanOrEqual(195)
+})
+
+test('the conditions net sets outlive the daemon, for the next one to listen with', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'browse-net-'))
+  closers.push(async () => rmSync(root, { recursive: true, force: true }))
+  const slot: Slot = { root, number: 3, ports: slotPorts(3), folder: join(root, '.cache/browse') }
+  const target = await echoServer()
+  const printed: string[] = []
+  const contextWith = (network: Network): Context => ({
+    slot,
+    browser: new Browser(slot, () => undefined),
+    network: () => Promise.resolve(network),
+    print: (line) => printed.push(line),
+    env: {},
+    run: () => Promise.reject(new Error('net runs no other command')),
+    endDaemon: () => undefined,
+  })
+  await runNet(contextWith(await listen(target, slot)), ['latency', '200'])
+  // A daemon that started again for changed code opens the network from the slot's state.
+  const again = await listen(target, slot)
+  await runNet(contextWith(again), ['bandwidth', '64'])
+  expect(printed.at(-1)).toBe('online, latency 200 ms, 64 kbit/s')
+  const api = await connect(again, SYNC)
+  const began = performance.now()
   await roundTrip(api, 'frame')
   expect(performance.now() - began).toBeGreaterThanOrEqual(195)
 })
