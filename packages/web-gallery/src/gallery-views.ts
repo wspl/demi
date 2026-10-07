@@ -141,6 +141,7 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
     { value: 'workspace', label: 'Workspace' },
     { value: 'cloud', label: 'Cloud' },
     { value: 'skills', label: 'Skills' },
+    { value: 'search', label: 'Search' },
   ],
   '/markdown': [
     {
