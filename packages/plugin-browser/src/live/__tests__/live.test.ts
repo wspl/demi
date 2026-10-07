@@ -1,7 +1,7 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
 import { LiveFrameReader, encodeFile, encodeMessage, encodeVideo, type LiveFrame } from '../frames'
-import { ClickCount, keyMessage, localKey, modifiers, pointerMessage, wheelMessage } from '../input'
+import { ClickCount, browserShortcut, keyMessage, localKey, modifiers, pointerMessage, shortcutKeys, wheelMessage } from '../input'
 import { pageReturned } from '@demicodes/plugin-sdk'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStream, type PanelReport, type PictureSink } from '../session'
@@ -576,4 +576,39 @@ test('text the watched tab copies reaches the viewer', () => {
   const view = session({ onClipboard: (text) => copied.push(text) })
   view.receive(moduleFrame({ type: 'clipboard', text: 'copy me' }))
   expect(copied).toEqual(['copy me'])
+})
+
+/** A key as the viewer's browser reports it, with only the modifiers named. */
+function pressed(code: string, held: Partial<Record<'metaKey' | 'ctrlKey' | 'altKey' | 'shiftKey', boolean>> = {}) {
+  return {
+    key: '', code, keyCode: 0, repeat: false, location: 0,
+    metaKey: false, ctrlKey: false, altKey: false, shiftKey: false, ...held,
+    getModifierState: () => false,
+  }
+}
+
+test('the browser’s own shortcuts act in the panel, as Chrome has them on each platform', () => {
+  expect(browserShortcut(pressed('KeyL', { metaKey: true }), 'mac')).toBe('address')
+  expect(browserShortcut(pressed('BracketLeft', { metaKey: true }), 'mac')).toBe('back')
+  expect(browserShortcut(pressed('BracketRight', { metaKey: true }), 'mac')).toBe('forward')
+  expect(browserShortcut(pressed('KeyR', { metaKey: true }), 'mac')).toBe('reload')
+  expect(browserShortcut(pressed('KeyL', { ctrlKey: true }), 'linux')).toBe('address')
+  expect(browserShortcut(pressed('ArrowLeft', { altKey: true }), 'windows')).toBe('back')
+  expect(browserShortcut(pressed('ArrowRight', { altKey: true }), 'linux')).toBe('forward')
+  expect(browserShortcut(pressed('F5'), 'windows')).toBe('reload')
+  // The page's own keys: Control+L on a Mac, ⌘⇧R, a plain letter, ⌥← moving by words.
+  expect(browserShortcut(pressed('KeyL', { ctrlKey: true }), 'mac')).toBeNull()
+  expect(browserShortcut(pressed('KeyR', { metaKey: true, shiftKey: true }), 'mac')).toBeNull()
+  expect(browserShortcut(pressed('KeyL'), 'mac')).toBeNull()
+  expect(browserShortcut(pressed('ArrowLeft', { altKey: true }), 'mac')).toBeNull()
+})
+
+test('the browser’s menu copies in the page with the platform’s own copy keys', () => {
+  expect(shortcutKeys('t1', 'c', 'mac').map((key) => key.type === 'key' && [key.action, key.key, key.modifiers])).toEqual([
+    ['down', 'c', 4],
+    ['up', 'c', 4],
+  ])
+  const [cut] = shortcutKeys('t1', 'x', 'linux')
+  expect(cut).toMatchObject({ type: 'key', key: 'x', code: 'KeyX', modifiers: 2 })
+  expect(cut).not.toHaveProperty('text')
 })
