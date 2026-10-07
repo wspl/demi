@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import { z } from 'zod'
-import { BrowserTabsError, refusalSentence, type BrowserTabsApi } from './live/tabs'
+import { BrowserTabsError, asTabsError, refusalSentence, type BrowserTabsApi } from './live/tabs'
 import { PluginCallError, type ConversationPlugin } from '@demicodes/plugin-sdk'
 import {
   browserTabsSchema,
@@ -41,7 +41,8 @@ export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: st
     try {
       return await plugin.call(method, params, answer, { timeoutMs })
     } catch (error) {
-      throw error instanceof PluginCallError ? tabsError(error) : error
+      // Anything but a refusal is a call no answer reached the page for.
+      throw error instanceof PluginCallError ? tabsError(error) : asTabsError(error)
     }
   }
   /** A navigation's answer: the number of the last tab list before it started. */
