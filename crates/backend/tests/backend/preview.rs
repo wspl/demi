@@ -11,7 +11,7 @@ use demi_backend_user_shard::preview::PreviewSettings;
 use demi_backend_user_shard::tuning::PreviewTuning;
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::Timestamp;
-use demi_web_api_protocol::state::{PreviewDomain, SyncEvent};
+use demi_web_api_protocol::state::{PreviewDomain, PreviewScheme, SyncEvent};
 use jiff::SignedDuration;
 use reqwest::Method;
 use serde_json::{Value, json};
@@ -122,9 +122,10 @@ async fn the_first_start_registers_a_namespace_the_page_is_told_and_later_starts
     let mut channel = backend.sync(&master).await;
     let preview = preview_of(&mut channel).await;
     let port = url::Url::parse(&service.url("/")).unwrap().port().unwrap();
+    // A domain under `.localhost` is served over HTTP.
     assert_eq!(
-        (preview.domain, preview.namespace.as_str()),
-        (format!("demi-preview.localhost:{port}"), FIRST)
+        (preview.scheme, preview.domain, preview.namespace.as_str()),
+        (PreviewScheme::Http, format!("demi-preview.localhost:{port}"), FIRST)
     );
     let requests = service.requests();
     assert_eq!(requests.len(), 1);

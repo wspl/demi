@@ -19,7 +19,7 @@ use demi_backend_providers::vault::seal::Row;
 use demi_provider_common::Secret;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::ids::PreviewNamespace;
-use demi_web_api_protocol::state::PreviewDomain;
+use demi_web_api_protocol::state::{PreviewDomain, PreviewScheme};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
 use reqwest::{Method, StatusCode};
 use serde::{Deserialize, Serialize};
@@ -96,10 +96,18 @@ impl PreviewDomainName {
         self.host == "localhost" || self.host.ends_with(".localhost")
     }
 
+    /// The scheme the domain is served over, which the pages are told.
+    fn scheme(&self) -> PreviewScheme {
+        if self.local() {
+            PreviewScheme::Http
+        } else {
+            PreviewScheme::Https
+        }
+    }
+
     /// The address of `path` at the domain's root.
     fn url(&self, path: &str) -> String {
-        let scheme = if self.local() { "http" } else { "https" };
-        format!("{scheme}://{}{path}", self.authority)
+        format!("{}://{}{path}", self.scheme().as_str(), self.authority)
     }
 
     /// The client the service is asked with. A `.localhost` name is the
@@ -493,6 +501,7 @@ impl Registration {
     /// Tells every page the namespace to embed previews from.
     fn publish(&self, namespace: &PreviewNamespace) {
         self.services.preview.set(PreviewDomain {
+            scheme: self.domain.scheme(),
             domain: self.domain.to_string(),
             namespace: namespace.clone(),
         });
