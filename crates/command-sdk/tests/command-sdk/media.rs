@@ -113,6 +113,7 @@ async fn shot(stdout: Option<StdoutTarget>) -> Vec<Received> {
         operation: "shot".into(),
         invocation_id: "shot".into(),
         context: CommandContext {
+            color_scheme: demi_command_protocol::ColorScheme::Light,
             conversation: "conversation".into(),
             caller: CommandCaller::agent(1),
             locale: CommandLocale {

@@ -14,7 +14,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use demi_backend_remote_host::DirectAnswer;
-use demi_backend_runners::command_context::user_locale;
+use demi_backend_runners::command_context::{Reported, reported};
 use demi_backend_user_shard::shard::page_socket::PageSocket;
 use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduction, OfferRefusal};
 use demi_web_api_protocol::devices::{DeviceKind, DirectMessage, DirectRequest, Unanswered};
@@ -208,15 +208,18 @@ impl Signaling {
     }
 
     /// Relays an offer to the runner, as the peer of this socket, with what
-    /// the runner needs of the user: the streams of the plugins they have on
-    /// and their locale. Answers what to tell the page, and what is
+    /// the runner needs of the user: the streams of the plugins they have on,
+    /// their locale and their color scheme. Answers what to tell the page, and what is
     /// cancelled once the introduction is out of date; none when the
     /// runner's connection ended.
     async fn offer(&self, sdp: String) -> Option<(DirectMessage, CancellationToken)> {
         let device = self.device.clone();
         let peer = self.peer.clone();
         let streams = self.state.services.user_streams.clone();
-        let locale = user_locale(&self.state.services.control, &self.user)
+        let Reported {
+            locale,
+            color_scheme,
+        } = reported(&self.state.services.control, &self.user)
             .await
             .ok()?;
         let answered = self
@@ -237,6 +240,7 @@ impl Signaling {
                 let introduction = Introduction {
                     streams: bound,
                     locale,
+                    color_scheme,
                 };
                 let link = shard.devices().link(&device)?;
                 let offer = link.direct_offer(&peer, sdp, introduction);

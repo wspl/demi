@@ -134,7 +134,7 @@ fn refuses_disguised_binary_unknown_fields_trailing_data_and_optional_nulls() {
 fn nested_values_are_validated_where_the_message_enters() {
     let mut context = json!({
         "conversation": "", "caller": {"kind": "agent", "number": 1},
-        "locale": {"timeZone": "UTC", "languages": ["en"]},
+        "locale": {"timeZone": "UTC", "languages": ["en"]}, "colorScheme": "light",
     });
     let job = |context: &Value| {
         json!({"type": "job_start", "jobId": "job", "context": context, "script": "true",
@@ -147,7 +147,7 @@ fn nested_values_are_validated_where_the_message_enters() {
     assert!(wire::decode::<Inbound>(&msgpack(&job(&context))).is_err());
     let mut hashed = job(&json!({
         "conversation": "c", "caller": {"kind": "user"},
-        "locale": {"timeZone": "UTC", "languages": ["en"]},
+        "locale": {"timeZone": "UTC", "languages": ["en"]}, "colorScheme": "light",
     }));
     hashed["manifestHash"] = json!("not a digest");
     assert!(wire::decode::<Inbound>(&msgpack(&hashed)).is_err());
@@ -173,7 +173,7 @@ fn a_conversation_name_is_letters_digits_dashes_and_underscores() {
     for (name, valid) in names {
         let context = json!({
             "conversation": name, "caller": {"kind": "user"},
-            "locale": {"timeZone": "UTC", "languages": ["en"]},
+            "locale": {"timeZone": "UTC", "languages": ["en"]}, "colorScheme": "light",
         });
         let job = json!({"type": "job_start", "jobId": "job", "context": context, "script": "true",
             "cwd": "/", "workspace": "/", "env": {}});

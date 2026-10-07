@@ -39,6 +39,7 @@ fn introduction() -> Introduction {
         )]),
     };
     Introduction {
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         streams: BTreeMap::from([(
             "browser".into(),
             ServiceBinding {

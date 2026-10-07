@@ -22,7 +22,7 @@ use crate::driver::{
     operation::{BrowserError, CONTROL_TIMEOUT, Operation, Result, after_cleanup},
     process::ChromeProcess,
 };
-use demi_command_protocol::CommandLocale;
+use demi_command_protocol::{ColorScheme, CommandLocale};
 
 use crate::tabs::{
     protocol::{BrowserCreatedBy, BrowserViewport, Load, TabId},
@@ -315,15 +315,24 @@ pub struct LaunchOptions {
     /// The user's time zone and languages; they do not change while the
     /// environment lives (`browser.md` § Native driver).
     pub locale: CommandLocale,
+    /// The user's color scheme, which every page renders in; it does not
+    /// change while the environment lives.
+    pub color_scheme: ColorScheme,
 }
 
 impl LaunchOptions {
-    /// The pinned release installed as `installation`, started in `locale`.
-    pub fn pinned(installation: Installation, locale: CommandLocale) -> Result<Self> {
+    /// The pinned release installed as `installation`, started in `locale`
+    /// and `color_scheme`.
+    pub fn pinned(
+        installation: Installation,
+        locale: CommandLocale,
+        color_scheme: ColorScheme,
+    ) -> Result<Self> {
         Ok(Self {
             installation,
             version: crate::driver::installation::pinned_version()?,
             locale,
+            color_scheme,
         })
     }
 }
@@ -399,6 +408,7 @@ where
         directories.profile(),
         &options.version,
         &options.locale,
+        options.color_scheme,
         runtime.as_ref(),
         &capture.address()?,
     )

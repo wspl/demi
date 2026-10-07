@@ -75,6 +75,7 @@ async fn the_program_serves_the_preview_stream_and_keeps_its_jar() {
             operation: "browser.preview".into(),
             invocation_id: "preview".into(),
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: "conversation".into(),
                 caller: CommandCaller::User {},
                 locale: CommandLocale {

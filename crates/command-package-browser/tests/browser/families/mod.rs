@@ -28,6 +28,9 @@ pub struct BrowserFixture {
     pub caller: u64,
     /// The locale the invocations carry; the browser starts in the first one's.
     pub locale: CommandLocale,
+    /// The color scheme the invocations carry; the browser starts in the
+    /// first one's.
+    pub color_scheme: demi_command_protocol::ColorScheme,
     /// Whether invocations ask for JSON, as `--json` does; text arrives as
     /// the answer's `diagnostic`.
     pub json: bool,
@@ -72,6 +75,7 @@ impl BrowserFixture {
                 operation: operation.into(),
                 invocation_id: uuid::Uuid::new_v4().to_string(),
                 context: CommandContext {
+                    color_scheme: self.color_scheme,
                     conversation: self.conversation.clone(),
                     caller,
                     locale: self.locale.clone(),
@@ -322,6 +326,7 @@ where
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],
         },
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         json: true,
         stdout: None,
     };

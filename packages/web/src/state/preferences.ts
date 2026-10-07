@@ -11,6 +11,7 @@ import {
 } from '../api/generated/web-api'
 import { useProduct } from './product'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { appThemeStore } from '@demicodes/web-ui/theme/appTheme'
 
 export const usePreferences = defineStore('preferences', () => {
   const product = useProduct()
@@ -157,30 +158,37 @@ export const usePreferences = defineStore('preferences', () => {
     })
   }
 
-  /** The locale a report in flight sends, so a second trigger does not repeat it. */
+  /** The report in flight, so a second trigger does not repeat it. */
   let reporting: string | null = null
   /**
-   * Sends the web browser's time zone and languages whenever they differ from
-   * the stored ones; commands receive them (`web-api.md` § User preferences).
+   * Sends the web browser's time zone and languages, and the color scheme the
+   * page shows, whichever differ from the stored ones; commands receive them,
+   * and the conversation browser starts with them (`web-api.md` § User
+   * preferences).
    */
-  async function reportLocale(): Promise<void> {
+  async function reportBrowser(): Promise<void> {
     const stored = product.snapshot?.preferences
-    const locale = webBrowserLocale()
-    if (!stored || !locale) {
+    if (!stored) {
       return
     }
-    const key = JSON.stringify(locale)
-    if (key === JSON.stringify(stored.locale ?? null) || key === reporting) {
+    const locale = webBrowserLocale()
+    const colorScheme = appThemeStore.state.mode
+    const patch: PreferencesPatch = {
+      ...(locale && JSON.stringify(locale) !== JSON.stringify(stored.locale ?? null) ? { locale } : {}),
+      ...(colorScheme !== stored.colorScheme ? { colorScheme } : {}),
+    }
+    const key = JSON.stringify(patch)
+    if (Object.keys(patch).length === 0 || key === reporting) {
       return
     }
     reporting = key
     const current = controller
     await writes.run(async () => {
       try {
-        await save({ locale }, current.signal)
+        await save(patch, current.signal)
       } catch (error) {
         if (!current.signal.aborted) {
-          reportError('Could Not Report the Time Zone and Languages', error)
+          reportError('Could Not Report the Time Zone, Languages and Color Scheme', error)
         }
       } finally {
         if (reporting === key) {
@@ -231,7 +239,7 @@ export const usePreferences = defineStore('preferences', () => {
     keys,
     update,
     flush,
-    reportLocale,
+    reportBrowser,
     stop,
   }
 })

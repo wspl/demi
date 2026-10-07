@@ -282,6 +282,8 @@ enum ChannelRequest {
     Command(CaptureCommand),
     /// A capture waited for the extension in vain.
     Recreate,
+    /// The viewer asks to capture again after a recreation failed.
+    Retry,
 }
 
 /// What an extension connection's reader hands the owner.
@@ -299,6 +301,9 @@ enum Inbound {
 pub struct CaptureChannel {
     requests: mpsc::Sender<ChannelRequest>,
     connected: watch::Receiver<bool>,
+    /// Why captures wait for the viewer to ask again, once even recreating
+    /// the extension failed.
+    stopped: watch::Receiver<Option<String>>,
 }
 
 impl CaptureChannel {
@@ -308,6 +313,7 @@ impl CaptureChannel {
         let (requests, received) = mpsc::channel(REQUESTS);
         let (inbound, routed) = mpsc::channel(INBOUND);
         let (connected, watched) = watch::channel(false);
+        let (stopped, halted) = watch::channel(None);
         let owner = Owner {
             tasks: tasks.clone(),
             ended: ended.clone(),
@@ -321,18 +327,34 @@ impl CaptureChannel {
             closings: FuturesUnordered::new(),
             recreate,
             recreated: None,
+            stopped,
         };
         tasks.spawn(owner.run(received, routed));
         Self {
             requests,
             connected: watched,
+            stopped: halted,
         }
+    }
+
+    /// Why captures stop until [`CaptureChannel::retry`], while they do.
+    pub fn stopped(&self) -> watch::Receiver<Option<String>> {
+        self.stopped.clone()
+    }
+
+    /// Recreates the extension once more after a recreation failed, and
+    /// lets captures start again.
+    pub async fn retry(&self) {
+        // The owner ended with the environment, which has no captures left.
+        let _ended = self.requests.send(ChannelRequest::Retry).await;
     }
 
     /// Captures the tab of CDP `target` at `width` × `height` pixels, once
     /// the extension has connected, which it does as Chrome starts; an
     /// extension that does not connect in time is recreated for the next
-    /// attempt. `hold` lasts until Chrome released the capture.
+    /// attempt, and none starts once even a recreation failed, until
+    /// [`CaptureChannel::retry`]. `hold` lasts until Chrome released the
+    /// capture.
     pub async fn start(
         &self,
         target: &str,
@@ -347,12 +369,19 @@ impl CaptureChannel {
             return Err(BrowserError::UnsupportedCapability(reason.into()));
         }
         let mut connected = self.connected.clone();
+        let mut stopped = self.stopped.clone();
         let connection = async {
             tokio::select! {
                 _ = cancel.cancelled() => Err(BrowserError::Cancelled),
                 connected = connected.wait_for(|connected| *connected) => {
                     connected.map(|_| ()).map_err(|_| BrowserError::Closed)
                 }
+                stopped = stopped.wait_for(Option::is_some) => match stopped {
+                    Ok(reason) => Err(BrowserError::CaptureStopped(
+                        reason.clone().expect("the wait ends on a reason"),
+                    )),
+                    Err(_) => Err(BrowserError::Closed),
+                },
             }
         };
         let Ok(connection) = tokio::time::timeout(CONNECT_TIMEOUT, connection).await else {
@@ -448,6 +477,7 @@ struct Owner {
     recreate: Recreate,
     /// When the extension was last recreated, until it connects again.
     recreated: Option<Instant>,
+    stopped: watch::Sender<Option<String>>,
 }
 
 impl Owner {
@@ -501,6 +531,11 @@ impl Owner {
                 }
             }
             ChannelRequest::Recreate => self.recreate("it did not connect"),
+            ChannelRequest::Retry => {
+                self.stopped.send_replace(None);
+                self.recreated = None;
+                self.recreate("the viewer asked again");
+            }
         }
     }
 
@@ -509,6 +544,7 @@ impl Owner {
     fn connected(&mut self, socket: WebSocketStream<TcpStream>) {
         self.disconnect();
         self.recreated = None;
+        self.stopped.send_replace(None);
         self.generation += 1;
         let (commands, outgoing) = mpsc::channel(EXTENSION_COMMANDS);
         let stop = self.ended.child_token();
@@ -618,7 +654,8 @@ impl Owner {
     /// Ends the connection and loads the extension again, since the
     /// extension does not dial again by itself; its captures fail, and their
     /// streams restart them once the extension connects. A recreated
-    /// extension has the time to connect before it is recreated again.
+    /// extension has the time to connect before it is recreated again. A
+    /// recreation that fails stops captures until the viewer asks again.
     fn recreate(&mut self, why: &str) {
         self.disconnect();
         if self
@@ -631,12 +668,16 @@ impl Owner {
         tracing::warn!("recreating the capture extension: {why}");
         let recreation = (self.recreate)();
         let ended = self.ended.clone();
+        let stopped = self.stopped.clone();
         self.tasks.spawn(async move {
             tokio::select! {
                 // The extension ends with the browser.
                 _ = ended.cancelled() => {}
                 recreated = recreation => if let Err(error) = recreated {
                     tracing::warn!("the capture extension could not be recreated: {error}");
+                    stopped.send_replace(Some(format!(
+                        "the capture extension could not be recreated: {error}"
+                    )));
                 }
             }
         });

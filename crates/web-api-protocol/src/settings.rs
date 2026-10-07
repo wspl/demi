@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use demi_command_protocol::CommandLocale;
+use demi_command_protocol::{ColorScheme, CommandLocale};
 use demi_shared_types::{Nullable, is_context_limit};
 use garde::Validate;
 use schemars::JsonSchema;
@@ -252,6 +252,16 @@ pub struct Preferences {
     #[schemars(with = "CommandLocale")]
     #[garde(dive)]
     pub locale: Option<CommandLocale>,
+    /// The color scheme the user's page last reported showing, which the
+    /// conversation browser starts with.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ColorScheme")]
+    #[garde(skip)]
+    pub color_scheme: Option<ColorScheme>,
     /// The limit the user set on the context window of each model, in
     /// tokens, by provider entry id and then model id (`models.md` § Context
     /// limit); a model it does not name uses its full window.
@@ -350,6 +360,15 @@ pub struct PreferencesPatch {
     #[schemars(with = "CommandLocale")]
     #[garde(dive)]
     pub locale: Option<CommandLocale>,
+    /// The color scheme the user's page shows.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ColorScheme")]
+    #[garde(skip)]
+    pub color_scheme: Option<ColorScheme>,
     /// One model's context limit; the other models keep theirs.
     #[serde(
         default,

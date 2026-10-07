@@ -99,6 +99,7 @@ const REFUSALS: Readonly<Record<string, SentenceText>> = {
   input_failed: 'The page didn’t receive your input.',
   capture_unavailable: 'This device can’t capture the browser’s pages.',
   capture_failed: 'The device couldn’t capture the page. It’s trying again.',
+  capture_stopped: 'The device couldn’t capture the page.',
 }
 
 /** A refusal's code as a sentence the page shows (`live-view.md` § A browser tab in the panel). */

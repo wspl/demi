@@ -45,7 +45,7 @@ async fn start(runtime: Option<Runtime>) -> Started {
         runtime,
     };
     let launched = with_browser(
-        LaunchOptions::pinned(installation, locale).unwrap(),
+        LaunchOptions::pinned(installation, locale, demi_command_protocol::ColorScheme::Light).unwrap(),
         TabNumbers::new(counting_numbers(), "conversation".into()),
         CancellationToken::new(),
         |_| async { Ok(()) },

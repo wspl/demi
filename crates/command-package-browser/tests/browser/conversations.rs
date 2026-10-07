@@ -25,6 +25,7 @@ async fn release_cancels_a_browser_command_blocked_on_output() {
             operation: "browser.tabs".into(),
             invocation_id: "blocked-output".into(),
             context: CommandContext {
+                color_scheme: demi_command_protocol::ColorScheme::Light,
                 conversation: "conversation".into(),
                 caller: CommandCaller::agent(1),
                 locale: CommandLocale {
@@ -85,6 +86,7 @@ async fn invoked_for(
                 operation: operation.into(),
                 invocation_id: "listed".into(),
                 context: CommandContext {
+                    color_scheme: demi_command_protocol::ColorScheme::Light,
                     conversation: "conversation".into(),
                     caller,
                     locale: CommandLocale {

@@ -192,6 +192,7 @@ async fn abandoning_a_burst_of_calls_keeps_the_connection() {
 
 fn context() -> CommandContext {
     CommandContext {
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         conversation: "conversation".into(),
         caller: CommandCaller::agent(1),
         locale: CommandLocale {

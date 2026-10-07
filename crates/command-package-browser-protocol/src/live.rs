@@ -56,6 +56,9 @@ pub const STALL_MS: u64 = 1000;
 pub const CAPTURE_UNAVAILABLE: &str = "capture_unavailable";
 /// A notice's code when the watched tab's capture failed; the next picture ends it.
 pub const CAPTURE_FAILED: &str = "capture_failed";
+/// A notice's code when even recreating the capture extension failed: the
+/// module stops trying until the viewer asks again (`Recapture`).
+pub const CAPTURE_STOPPED: &str = "capture_stopped";
 
 const TEXT_BYTES: usize = 1_000_000;
 const HTML_BYTES: usize = 4_000_000;
@@ -447,6 +450,9 @@ pub enum LiveViewerMessage {
     },
     /// Release every key and button this viewer holds.
     Release {},
+    /// Try capturing again after [`CAPTURE_STOPPED`]: the module recreates
+    /// the capture extension.
+    Recapture {},
 }
 
 impl LiveViewerMessage {
@@ -743,7 +749,8 @@ pub enum LiveModuleMessage {
     },
     /// Something the viewer asked for failed; the stream goes on.
     Notice {
-        /// A browser failure's code, [`CAPTURE_UNAVAILABLE`] or [`CAPTURE_FAILED`].
+        /// A browser failure's code, [`CAPTURE_UNAVAILABLE`],
+        /// [`CAPTURE_FAILED`] or [`CAPTURE_STOPPED`].
         #[garde(skip)]
         code: String,
         #[garde(skip)]

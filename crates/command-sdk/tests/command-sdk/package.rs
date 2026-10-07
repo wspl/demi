@@ -87,6 +87,7 @@ fn invocation_decoding_checks_nested_values_and_optional_nulls() {
         "conversation": "conversation",
         "caller": {"kind": "agent", "number": 1},
         "locale": {"timeZone": "UTC", "languages": ["en-US"]},
+        "colorScheme": "light",
     });
     let valid = serde_json::json!({"operation":"read", "invocationId":"call", "context":context, "args":{}, "cwd":"/work", "env":{}});
     assert!(decode_invocation(valid.clone()).is_ok());
@@ -98,39 +99,43 @@ fn invocation_decoding_checks_nested_values_and_optional_nulls() {
         ("invocationId", serde_json::json!("")),
         (
             "context",
-            serde_json::json!({"conversation": "", "caller": context["caller"], "locale": context["locale"]}),
+            serde_json::json!({"conversation": "", "caller": context["caller"], "colorScheme": "light", "locale": context["locale"]}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": {"kind": "agent"}, "locale": context["locale"]}),
+            serde_json::json!({"conversation": "c", "caller": {"kind": "agent"}, "colorScheme": "light", "locale": context["locale"]}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": {"kind": "agent", "number": -1}, "locale": context["locale"]}),
+            serde_json::json!({"conversation": "c", "caller": {"kind": "agent", "number": -1}, "colorScheme": "light", "locale": context["locale"]}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": {"kind": "user", "number": 1}, "locale": context["locale"]}),
+            serde_json::json!({"conversation": "c", "caller": {"kind": "user", "number": 1}, "colorScheme": "light", "locale": context["locale"]}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": {"kind": "system"}, "locale": context["locale"]}),
+            serde_json::json!({"conversation": "c", "caller": {"kind": "system"}, "colorScheme": "light", "locale": context["locale"]}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": context["caller"], "locale": {"timeZone": "UTC", "languages": []}}),
+            serde_json::json!({"conversation": "c", "caller": context["caller"], "colorScheme": "light", "locale": {"timeZone": "UTC", "languages": []}}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": context["caller"], "locale": {"timeZone": "", "languages": ["en"]}}),
+            serde_json::json!({"conversation": "c", "caller": context["caller"], "colorScheme": "light", "locale": {"timeZone": "", "languages": ["en"]}}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": context["caller"], "locale": {"timeZone": "UTC", "languages": vec!["en"; 17]}}),
+            serde_json::json!({"conversation": "c", "caller": context["caller"], "colorScheme": "light", "locale": {"timeZone": "UTC", "languages": vec!["en"; 17]}}),
         ),
         (
             "context",
-            serde_json::json!({"conversation": "c", "caller": context["caller"]}),
+            serde_json::json!({"conversation": "c", "caller": context["caller"], "colorScheme": "light"}),
+        ),
+        (
+            "context",
+            serde_json::json!({"conversation": "c", "caller": context["caller"], "locale": context["locale"], "colorScheme": "sepia"}),
         ),
         ("args", serde_json::json!([])),
         ("cwd", serde_json::json!("bad\0path")),
