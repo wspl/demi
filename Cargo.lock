@@ -1353,6 +1353,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "cookie_store"
+version = "0.22.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "15b2c103cf610ec6cae3da84a766285b42fd16aad564758459e6ecf128c75206"
+dependencies = [
+ "cookie",
+ "document-features",
+ "idna",
+ "log",
+ "serde",
+ "serde_derive",
+ "time",
+ "url",
+]
+
+[[package]]
 name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2302,6 +2318,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "demi-command-package-browser-chrome",
+ "demi-command-package-browser-preview",
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
@@ -2390,10 +2407,30 @@ dependencies = [
 name = "demi-command-package-browser-preview"
 version = "0.1.18"
 dependencies = [
+ "axum",
+ "base64 0.22.1",
+ "bytes",
+ "cookie",
+ "cookie_store",
+ "demi-command-package-browser-preview",
+ "demi-command-package-browser-protocol",
+ "demi-preview-rewrite",
+ "encoding_rs",
+ "futures-util",
  "http",
+ "hyper",
+ "hyper-util",
+ "mime",
+ "oxc_sourcemap",
+ "percent-encoding",
+ "psl",
  "serde_json",
+ "sha2",
+ "tempfile",
  "thiserror",
  "tokio",
+ "tokio-rustls",
+ "tokio-util",
  "tracing",
  "url",
  "webpki-root-certs",
@@ -3392,6 +3429,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "442039f5147480ba31067cb00ada1adae6892028e40e45fc5de7b7df6dcc1b5f"
 dependencies = [
  "const-random",
+]
+
+[[package]]
+name = "document-features"
+version = "0.2.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
+dependencies = [
+ "litrs",
 ]
 
 [[package]]
@@ -6362,6 +6408,12 @@ name = "litemap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
+
+[[package]]
+name = "litrs"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "11d3d7f243d5c5a8b9bb5d6dd2b1602c0cb0b9db1621bafc7ed66e35ff9fe092"
 
 [[package]]
 name = "lock_api"

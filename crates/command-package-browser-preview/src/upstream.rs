@@ -17,12 +17,15 @@ use wreq::tls::trust::CertStore;
 use wreq_util::{Emulation, Platform, Profile};
 
 /// The upstream client of every preview on the Host.
-pub struct Upstream {
+pub(crate) struct Upstream {
     /// Clients by fingerprint (profile, platform, whether Chrome's newer
     /// handshake applies) and by the most private network their requests
     /// may reach.
     clients: Mutex<HashMap<(String, String, bool, Space), wreq::Client>>,
     certificates: CertStore,
+    /// Names the tests' fixtures answer on, each standing for a network.
+    #[cfg(feature = "testing")]
+    hosts: std::sync::Arc<crate::testing::Network>,
 }
 
 /// The network an address belongs to, from the most public to the most
@@ -104,11 +107,22 @@ struct LocalNetworkRefused;
 struct LimitedResolver {
     limit: Space,
     system: GaiResolver,
+    #[cfg(feature = "testing")]
+    hosts: std::sync::Arc<crate::testing::Network>,
 }
 
 impl Resolve for LimitedResolver {
     fn resolve(&self, name: Name) -> Resolving {
         let limit = self.limit;
+        #[cfg(feature = "testing")]
+        if let Some(space) = self.hosts.space(name.as_str()) {
+            let result: Result<Addrs, Box<dyn std::error::Error + Send + Sync>> = if space <= limit {
+                Ok(Box::new(std::iter::once(SocketAddr::from((Ipv4Addr::LOCALHOST, 0)))))
+            } else {
+                Err(Box::new(LocalNetworkRefused))
+            };
+            return Box::pin(std::future::ready(result));
+        }
         let resolving = self.system.resolve(name);
         Box::pin(async move {
             let allowed: Vec<SocketAddr> = resolving
@@ -241,7 +255,7 @@ fn order(headers: &HeaderMap) -> OrigHeaderMap {
 }
 
 impl Upstream {
-    pub fn new() -> Result<Self, wreq::Error> {
+    pub(crate) fn new() -> Result<Self, wreq::Error> {
         let certificates = CertStore::builder()
             .add_der_certs(
                 webpki_root_certs::TLS_SERVER_ROOT_CERTS
@@ -252,14 +266,54 @@ impl Upstream {
         Ok(Upstream {
             clients: Mutex::default(),
             certificates,
+            #[cfg(feature = "testing")]
+            hosts: std::sync::Arc::default(),
         })
+    }
+
+    /// The upstream client of the tests: their fixtures' names and the
+    /// authority their certificates come from.
+    #[cfg(feature = "testing")]
+    pub(crate) fn for_tests(network: crate::testing::Network) -> Result<Self, wreq::Error> {
+        let certificates = CertStore::builder()
+            .add_der_certs(
+                webpki_root_certs::TLS_SERVER_ROOT_CERTS
+                    .iter()
+                    .map(|certificate| certificate.as_ref()),
+            )
+            .add_pem_cert(network.authority())
+            .build()?;
+        Ok(Upstream {
+            clients: Mutex::default(),
+            certificates,
+            hosts: std::sync::Arc::new(network),
+        })
+    }
+
+    /// The network of the address a response came from, which the page it
+    /// becomes is judged by (§ Local network).
+    pub(crate) fn space_of(&self, url: &Url, address: Option<SocketAddr>) -> Space {
+        #[cfg(feature = "testing")]
+        if let Some(space) = url.host_str().and_then(|host| self.hosts.space(host)) {
+            return space;
+        }
+        match address {
+            Some(address) => Space::of(address.ip()),
+            // A response without an address on record came over no socket
+            // the engine knows; its name's own network is the best guess.
+            None => Space::named_by(url).unwrap_or(Space::Public),
+        }
     }
 
     /// The network a page's address names now, for a page the engine has no
     /// connection on record for (it restarted while the page stayed open):
     /// the most public of the addresses its name resolves to, public when it
     /// resolves to none.
-    pub async fn space_named_now(&self, url: &Url) -> Space {
+    pub(crate) async fn space_named_now(&self, url: &Url) -> Space {
+        #[cfg(feature = "testing")]
+        if let Some(space) = url.host_str().and_then(|host| self.hosts.space(host)) {
+            return space;
+        }
         if let Some(space) = Space::named_by(url) {
             return space;
         }
@@ -297,6 +351,8 @@ impl Upstream {
         let resolver = LimitedResolver {
             limit,
             system: GaiResolver::new(),
+            #[cfg(feature = "testing")]
+            hosts: self.hosts.clone(),
         };
         let client = wreq::Client::builder()
             .emulation(emulation)
@@ -315,7 +371,12 @@ impl Upstream {
     /// A client whose connections reach no network more private than
     /// `limit`. A host that names its network (an IP address, `localhost`)
     /// is checked here; a name, when it is resolved.
-    fn client_for(&self, user_agent: &str, url: &Url, limit: Space) -> Result<wreq::Client, UpstreamError> {
+    pub(crate) fn client_for(
+        &self,
+        user_agent: &str,
+        url: &Url,
+        limit: Space,
+    ) -> Result<wreq::Client, UpstreamError> {
         if Space::named_by(url).is_some_and(|space| space > limit) {
             return Err(UpstreamError::LocalNetwork);
         }
@@ -327,7 +388,7 @@ impl Upstream {
     /// connection when its connection failed or closed before the response.
     /// `limit`: the most private network the request may reach, the network
     /// of the page that made it.
-    pub async fn send(
+    pub(crate) async fn send(
         &self,
         method: Method,
         url: &Url,
@@ -351,7 +412,7 @@ impl Upstream {
             request = request.body(body);
         }
         match request.send().await {
-            Err(error) if caused_by::<LocalNetworkRefused>(&error, |_| true) => Err(UpstreamError::LocalNetwork),
+            Err(error) if refused_by_local_network(&error) => Err(UpstreamError::LocalNetwork),
             // A connection that failed, or closed before any response: a
             // server ends an idle connection the client reuses at that
             // moment, and Chrome sends again.
@@ -374,7 +435,7 @@ impl Upstream {
 }
 
 /// Only http(s) and ws(s) targets without credentials in the URL.
-fn check(url: &Url) -> Result<(), UpstreamError> {
+pub(crate) fn check(url: &Url) -> Result<(), UpstreamError> {
     if !matches!(url.scheme(), "http" | "https" | "ws" | "wss") || !url.username().is_empty() || url.password().is_some() {
         return Err(UpstreamError::Target(url.to_string()));
     }
@@ -382,7 +443,7 @@ fn check(url: &Url) -> Result<(), UpstreamError> {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum UpstreamError {
+pub(crate) enum UpstreamError {
     #[error("not a previewed target: {0}")]
     Target(String),
     /// The address is in a more private network than the page that made
@@ -408,6 +469,11 @@ fn causes(error: &wreq::Error) -> String {
     text
 }
 
+/// Whether the local network rule refused the error's connection.
+pub(crate) fn refused_by_local_network(error: &wreq::Error) -> bool {
+    caused_by::<LocalNetworkRefused>(error, |_| true)
+}
+
 /// Whether one of the error's causes is a `T` that passes `test`.
 fn caused_by<T: std::error::Error + 'static>(error: &wreq::Error, test: impl Fn(&T) -> bool) -> bool {
     let mut source = std::error::Error::source(error);
@@ -418,123 +484,4 @@ fn caused_by<T: std::error::Error + 'static>(error: &wreq::Error, test: impl Fn(
         source = cause.source();
     }
     false
-}
-
-#[cfg(test)]
-mod tests {
-    //! The ClientHello the client sends, read off a loopback socket: the
-    //! fingerprint a site's edge judges before any page loads. Each test
-    //! takes well under a second.
-
-    use super::*;
-    use tokio::io::AsyncReadExt;
-
-    const CHROME_154: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Safari/537.36";
-    const CHROME_149: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36";
-    const TRUST_ANCHORS: u16 = 0xca34;
-    const SIGNATURE_ALGORITHMS: u16 = 0x000d;
-
-    /// The extensions of the first ClientHello a request with `user_agent`
-    /// sends to a loopback listener, by type, in order.
-    async fn client_hello(user_agent: &str) -> Vec<(u16, Vec<u8>)> {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = Url::parse(&format!("https://{}/", listener.local_addr().unwrap())).unwrap();
-        let upstream = Upstream::new().unwrap();
-        let mut headers = HeaderMap::new();
-        headers.insert(http::header::USER_AGENT, user_agent.parse().unwrap());
-        let request = tokio::spawn(async move {
-            // The listener reads the hello and closes: the request fails,
-            // which is not what the test is about.
-            let _ = upstream
-                .send(Method::GET, &url, headers, None, Space::Loopback)
-                .await;
-        });
-        let (mut socket, _) = listener.accept().await.unwrap();
-        let mut header = [0; 5];
-        socket.read_exact(&mut header).await.unwrap();
-        assert_eq!(header[0], 22, "a TLS handshake record");
-        let mut record = vec![0; usize::from(u16::from_be_bytes([header[3], header[4]]))];
-        socket.read_exact(&mut record).await.unwrap();
-        drop(socket);
-        drop(listener);
-        request.await.unwrap();
-        extensions(&record)
-    }
-
-    /// The extensions of a ClientHello handshake message.
-    fn extensions(message: &[u8]) -> Vec<(u16, Vec<u8>)> {
-        assert_eq!(message[0], 1, "a ClientHello");
-        // Type, length, version and random.
-        let mut at = 4 + 2 + 32;
-        let session = usize::from(message[at]);
-        at += 1 + session;
-        let ciphers = usize::from(u16::from_be_bytes([message[at], message[at + 1]]));
-        at += 2 + ciphers;
-        let compression = usize::from(message[at]);
-        at += 1 + compression;
-        let end = at + 2 + usize::from(u16::from_be_bytes([message[at], message[at + 1]]));
-        at += 2;
-        let mut extensions = Vec::new();
-        while at < end {
-            let kind = u16::from_be_bytes([message[at], message[at + 1]]);
-            let length = usize::from(u16::from_be_bytes([message[at + 2], message[at + 3]]));
-            extensions.push((kind, message[at + 4..at + 4 + length].to_vec()));
-            at += 4 + length;
-        }
-        extensions
-    }
-
-    fn extension(extensions: &[(u16, Vec<u8>)], kind: u16) -> Option<&[u8]> {
-        extensions
-            .iter()
-            .find(|(found, _)| *found == kind)
-            .map(|(_, data)| data.as_slice())
-    }
-
-    /// The signature algorithms the hello lists, in order.
-    fn signature_algorithms(extensions: &[(u16, Vec<u8>)]) -> Vec<u16> {
-        let data = extension(extensions, SIGNATURE_ALGORITHMS).expect("signature_algorithms");
-        data[2..]
-            .chunks(2)
-            .map(|pair| u16::from_be_bytes([pair[0], pair[1]]))
-            .collect()
-    }
-
-    /// A GREASE code point (RFC 8701): 0x?A?A with both bytes equal.
-    fn is_grease(value: u16) -> bool {
-        let [high, low] = value.to_be_bytes();
-        high == low && high & 0x0f == 0x0a
-    }
-
-    #[tokio::test]
-    async fn a_chrome_154_user_agent_sends_chromes_trust_anchors_and_signature_algorithms() {
-        let hello = client_hello(CHROME_154).await;
-        let anchors = extension(&hello, TRUST_ANCHORS).expect("the trust anchors extension");
-        // The extension carries the IDs behind a two-byte length.
-        assert_eq!(&anchors[2..], CHROME_TRUST_ANCHORS);
-        let algorithms = signature_algorithms(&hello);
-        assert!(is_grease(algorithms[0]), "{algorithms:04x?}");
-        assert_eq!(&algorithms[1..4], CHROME_ADVERTISED_SIGALGS, "{algorithms:04x?}");
-        // ECDSA P-256 SHA-256, the first of Chrome's verification preferences.
-        assert_eq!(algorithms[4], 0x0403, "{algorithms:04x?}");
-    }
-
-    #[tokio::test]
-    async fn an_older_chrome_user_agent_sends_its_profiles_hello_unchanged() {
-        let hello = client_hello(CHROME_149).await;
-        assert!(extension(&hello, TRUST_ANCHORS).is_none());
-        let algorithms = signature_algorithms(&hello);
-        assert_eq!(algorithms[0], 0x0403, "{algorithms:04x?}");
-        assert!(!algorithms.iter().copied().any(is_grease), "{algorithms:04x?}");
-    }
-
-    #[tokio::test]
-    async fn a_page_cannot_reach_a_more_private_network_than_its_own() {
-        let upstream = Upstream::new().unwrap();
-        let url = Url::parse("http://127.0.0.1:9/").unwrap();
-        let refused = upstream
-            .send(Method::GET, &url, HeaderMap::new(), None, Space::Public)
-            .await;
-        assert!(matches!(refused, Err(UpstreamError::LocalNetwork)), "{refused:?}");
-    }
 }
