@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { browserOnline, openSocket, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
-import { apiRequest, apiUrl, notifySessionEnded, readResponse, unreachable } from '../api/client'
+import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
 import {
   modelCatalogSchema,
   productStateSchema,
@@ -21,6 +21,8 @@ import {
 const SESSION_ENDED = 4002
 /** The close of a channel whose backend shuts down, and will be back (`web-api.md` § Page synchronization). */
 const BACKEND_CLOSING = 1001
+/** The close the web browser reports for a socket that ended without a close frame, as one that could not connect. */
+const ABNORMAL_CLOSURE = 1006
 
 /** A message that carries one part of the product state, as a write's answer can. */
 export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' }>
@@ -167,6 +169,12 @@ export const useProduct = defineStore('product', () => {
     failedAttempts: failures.value,
     hasSnapshot: snapshot.value !== null,
   }))
+  /**
+   * The page has no state yet and could not reach the backend so far, as a
+   * page loaded while Demi restarts: it says it connects where the app will
+   * be (`web-application.md` § Page synchronization).
+   */
+  const connecting = computed(() => snapshot.value === null && (failures.value > 0 || !browserOnline.value))
   /** The build of the web app the backend serves, as the last snapshot named it. */
   const servedBuild = ref<string | null>(null)
   /**
@@ -189,6 +197,8 @@ export const useProduct = defineStore('product', () => {
   let vendorRequest: Promise<void> | null = null
   /** Set while the page is signed in and follows the state. */
   let controller: AbortController | null = null
+  /** Undoes the requests' wait for the backend, which `start` sets. */
+  let stopWaiting: (() => void) | null = null
   let socket: WebSocket | null = null
   /** The wait before the channel connects again, while it is closed. */
   let retry: ReconnectWait | null = null
@@ -296,13 +306,19 @@ export const useProduct = defineStore('product', () => {
       if (close.code === BACKEND_CLOSING) {
         restarting.value = true
       }
-      if (!snapshot.value) {
+      // Before the first snapshot, only the backend's own failure, a close
+      // it sent, fails the regions; a channel that could not reach it, or
+      // that the backend closed to restart, keeps them loading while it
+      // connects again (`web-application.md` § Page synchronization).
+      if (!snapshot.value && close.code !== ABNORMAL_CLOSURE && close.code !== BACKEND_CLOSING) {
         load.value = 'failed'
       }
       // The web browser does not say why an upgrade failed: an ended session
       // answers this with 401, which ends it on the page as any 401 does.
+      // It does not wait for the backend: the channel is how the page learns
+      // that it reaches the backend, and a failure only means it does not yet.
       if (!opened && controller) {
-        void apiRequest('/auth/me', { signal: controller.signal }).catch(() => {})
+        void apiRequest('/auth/me', { signal: controller.signal, waits: false }).catch(() => {})
       }
       failures.value += 1
       scheduleRetry()
@@ -442,38 +458,6 @@ export const useProduct = defineStore('product', () => {
     })
   }
 
-  /**
-   * Sends with `send` until the backend answers it (`web-application.md`
-   * § A page of another build): a try that could not reach the backend, as
-   * `waits` judges (by default `unreachable`), is tried again once the
-   * backend is worth asking again, so the connection banner says what
-   * happens and the caller never sees a failure about the connection. Any
-   * other failure rejects as it was, and so does every failure while the
-   * page follows no state, as before sign-in. Rejects with the abort's
-   * reason, without trying again, once `signal` aborts or the page stops
-   * following the state, as a sign-out does.
-   */
-  async function untilReached<T>(
-    send: () => Promise<T>,
-    signal?: AbortSignal,
-    waits: (error: unknown) => boolean = unreachable,
-  ): Promise<T> {
-    for (let attempt = 1; ; attempt += 1) {
-      try {
-        return await send()
-      } catch (error) {
-        if (signal?.aborted) {
-          throw signal.reason
-        }
-        const lifetime = controller?.signal
-        if (!lifetime || !waits(error)) {
-          throw error
-        }
-        await reachable(attempt, signal ? AbortSignal.any([signal, lifetime]) : lifetime)
-      }
-    }
-  }
-
   function clearModels(): void {
     modelRequest?.controller.abort()
     modelRequest = null
@@ -498,12 +482,10 @@ export const useProduct = defineStore('product', () => {
     modelError.value = null
     const request = (async () => {
       try {
-        // A catalog that cannot reach the backend waits for it, so the
-        // composer's model picker shows it loading under the banner.
-        const next = await untilReached(async () => {
-          const response = await apiRequest(force ? '/models?refresh=true' : '/models', { signal })
-          return readResponse(response, modelCatalogSchema)
-        }, signal)
+        const response = await apiRequest(force ? '/models?refresh=true' : '/models', {
+          signal,
+        })
+        const next = await readResponse(response, modelCatalogSchema)
         signal.throwIfAborted()
         if (key === catalogKey.value)
           modelSnapshot.value = { key, providers: next.providers, checkedAt: Date.now() }
@@ -576,7 +558,11 @@ export const useProduct = defineStore('product', () => {
     if (controller) {
       return
     }
-    controller = new AbortController()
+    const lifetime = new AbortController()
+    controller = lifetime
+    // Every request of the page waits for the backend while the channel
+    // cannot reach it, until the page stops following the state.
+    stopWaiting = waitForBackendWith((attempt, signal) => reachable(attempt, AbortSignal.any([signal, lifetime.signal])))
     connect()
   }
 
@@ -599,6 +585,8 @@ export const useProduct = defineStore('product', () => {
   function stop(): void {
     controller?.abort()
     controller = null
+    stopWaiting?.()
+    stopWaiting = null
     clearRetry()
     dropChannel()?.close()
     failures.value = 0
@@ -629,7 +617,7 @@ export const useProduct = defineStore('product', () => {
     sent,
     answered,
     until,
-    untilReached,
+    connecting,
     loadModels,
     reloadModels,
     loadVendors,

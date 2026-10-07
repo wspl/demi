@@ -3,8 +3,10 @@ import { computed, ref, watch } from 'vue'
 import EmailLoginPage, { type EmailLoginPhase } from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import SetupPage, { type SetupPhase } from '@demicodes/web-ui/auth/SetupPage.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import StartingScreen from '@demicodes/web-ui/ui/StartingScreen.vue'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 import GallerySection from '../components/GallerySection.vue'
+import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 import { productWould } from '../product-would'
 
@@ -22,6 +24,10 @@ const anatomy: [string, string][] = [
   [
     'Setup',
     'What the first visitor of a Demi without accounts sees instead of signing in: a name, an email, a password and its confirmation create the master account, which signs in. Once it exists, the page is gone and every visitor signs in.'
+  ],
+  [
+    'Starting',
+    'What a page shows where the app will be until it knows who is signed in. While the page cannot reach Demi, as when it is loaded during a restart, it says it connects and waits; it shows the sign-in page only when Demi answers that nobody is signed in.'
   ],
 ]
 
@@ -130,7 +136,7 @@ function createAccount(name: string, address: string) {
   <div class="flex flex-col gap-10">
     <GallerySection
       title="Sign In & Setup"
-      note="The product’s entry pages. A form on the left; a large empty intro on the right."
+      note="The product’s entry pages: sign-in and setup, a form on the left and a large empty intro on the right, and what shows before the app starts."
     >
       <dl
         class="grid max-w-3xl grid-cols-[7rem_minmax(0,1fr)] gap-x-4 gap-y-2 text-[13px] leading-5"
@@ -159,7 +165,7 @@ function createAccount(name: string, address: string) {
     </GallerySection>
 
     <GallerySection
-      v-else
+      v-else-if="view === 'setup'"
       title="Setup"
       note="Switch the state. Too short and differing passwords come from what is typed; the others the host reports. Set Up Already is what a visitor sees when another created the master account first."
     >
@@ -180,6 +186,25 @@ function createAccount(name: string, address: string) {
           @submit="createAccount"
           @sign-in="view = 'signin'"
         />
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      v-else
+      title="Starting"
+      note="The product’s StartingScreen, pinned in each state. Nothing to click: the page goes on by itself once Demi answers."
+    >
+      <div class="grid gap-6 xl:grid-cols-2">
+        <GallerySpecimen wide variant="Loading · checking who is signed in">
+          <div class="h-[20rem] overflow-hidden rounded-xl border border-line bg-surface-base">
+            <StartingScreen class="h-full" :connecting="false" />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen wide variant="Connecting · Demi cannot be reached yet">
+          <div class="h-[20rem] overflow-hidden rounded-xl border border-line bg-surface-base">
+            <StartingScreen class="h-full" connecting />
+          </div>
+        </GallerySpecimen>
       </div>
     </GallerySection>
   </div>

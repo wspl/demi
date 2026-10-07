@@ -79,7 +79,7 @@ const AWAY_STATUSES = new Set([502, 503, 504])
  * `{ code, message }` body, so an error with another code is the backend's
  * answer, whatever its status.
  */
-export function unreachable(error: unknown): boolean {
+function unreachable(error: unknown): boolean {
   if (error instanceof TypeError) {
     // What fetch rejects with when no connection could be made.
     return true
@@ -101,17 +101,78 @@ export function apiUrl(path: string): string {
 /** How long a request may take unless it says otherwise. */
 const REQUEST_TIMEOUT_MS = 60_000
 
+/**
+ * Resolves once the backend is worth asking again after `attempt` tries that
+ * could not reach it; rejects when `signal` aborts first, or when the page
+ * stops following its state.
+ */
+export type BackendWait = (attempt: number, signal: AbortSignal) => Promise<void>
+
+/** How a request waits for the backend; none while the page follows no state, as before sign-in. */
+let backendWait: BackendWait | null = null
+
+/**
+ * Makes every request wait with `wait` while it cannot reach the backend, as
+ * the product state does while it follows the backend's synchronization
+ * channel, which decides when the backend is reached again. Returns the
+ * undo.
+ */
+export function waitForBackendWith(wait: BackendWait): () => void {
+  backendWait = wait
+  return () => {
+    if (backendWait === wait) {
+      backendWait = null
+    }
+  }
+}
+
+/** A signal that never aborts, for a request whose caller gives none. */
+const NEVER = new AbortController().signal
+
 interface ApiRequestOptions extends RequestInit {
   allowNotModified?: boolean
   /** For a request whose work is known to take longer than most, such as starting the conversation browser on a Cloud. */
   timeoutMs?: number
+  /**
+   * False for a request that must not wait for the backend: one by which the
+   * page learns whether it still reaches the backend, as the
+   * synchronization channel's own question after it could not connect.
+   */
+  waits?: boolean
 }
 
-/** Same-origin requests use the backend's HttpOnly session cookie. */
+/**
+ * Sends a request to the backend; same-origin requests use the backend's
+ * HttpOnly session cookie. A try that cannot reach the backend, as
+ * `unreachable` judges it, a read or a write alike, waits until the page
+ * reaches the backend again and goes then (`web-application.md` § A page of
+ * another build), so no caller sees a failure about the connection. Only
+ * the backend's own answer rejects. A request whose `signal` aborts while
+ * it waits rejects with the abort's reason and is never sent again.
+ */
 export async function apiRequest(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<Response> {
+  const { waits = true, ...request } = options
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await send(path, request)
+    } catch (error) {
+      if (options.signal?.aborted) {
+        throw options.signal.reason
+      }
+      const wait = backendWait
+      if (!waits || !wait || !unreachable(error)) {
+        throw error
+      }
+      await wait(attempt, options.signal ?? NEVER)
+    }
+  }
+}
+
+/** One try of a request, with its own deadline. */
+async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Promise<Response> {
   const { allowNotModified, timeoutMs, ...request } = options
   const timeout = AbortSignal.timeout(timeoutMs ?? REQUEST_TIMEOUT_MS)
   const signal = options.signal

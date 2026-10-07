@@ -5,15 +5,13 @@ import { until } from '@vueuse/core'
 import type { StateFeed } from '@demicodes/web-ui/plugins/page'
 import type { ProductState } from '../api/generated/web-api'
 import { conversationSummary, productState } from '../__tests__/product-state'
-import { conversationStates, type Reach } from './states'
+import { conversationStates } from './states'
 
 // Cost: a stubbed fetch and a reactive snapshot; milliseconds.
 
 const CONVERSATION = '0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b'
 const PATH = `/api/conversations/${CONVERSATION}/plugins/browser/state`
 const realFetch = globalThis.fetch
-/** Sends at once: these tests reach the backend; the product host's waiting is its own test's. */
-const direct: Reach = (send) => send()
 /** The answers the backend gives, in order; each read takes the next. */
 let answers: Array<() => Promise<Response>>
 /** How many reads reached the backend, read reactively. */
@@ -58,7 +56,7 @@ function at(revision: number, run = 'run-1'): ProductState {
 
 test("a followed state is read when the summary's revision rises", async () => {
   const snapshot = shallowRef(at(2))
-  const states = conversationStates(() => snapshot.value, direct)
+  const states = conversationStates(() => snapshot.value)
   answers.push(answer(2, ['t1']))
   const feed = states.follow('browser', CONVERSATION)
   await shows(feed, { tabs: ['t1'] })
@@ -72,7 +70,7 @@ test("a followed state is read when the summary's revision rises", async () => {
 
 test('a failed read keeps the last state and says why, until a read succeeds', async () => {
   const snapshot = shallowRef(at(1))
-  const states = conversationStates(() => snapshot.value, direct)
+  const states = conversationStates(() => snapshot.value)
   answers.push(answer(1, ['t1']))
   const feed = states.follow('browser', CONVERSATION)
   await shows(feed, { tabs: ['t1'] })
@@ -92,7 +90,7 @@ test('a failed read keeps the last state and says why, until a read succeeds', a
 
 test('after the backend started again, its count is read whatever the revision held', async () => {
   const snapshot = shallowRef(at(5))
-  const states = conversationStates(() => snapshot.value, direct)
+  const states = conversationStates(() => snapshot.value)
   answers.push(answer(5, ['t1']))
   const feed = states.follow('browser', CONVERSATION)
   await shows(feed, { tabs: ['t1'] })
@@ -107,7 +105,7 @@ test('after the backend started again, its count is read whatever the revision h
 
 test('nothing is read once nothing follows the state, and following again shows what was read at once', async () => {
   const snapshot = shallowRef(at(1))
-  const states = conversationStates(() => snapshot.value, direct)
+  const states = conversationStates(() => snapshot.value)
   answers.push(answer(1, ['t1']))
   const first = states.follow('browser', CONVERSATION)
   await shows(first, { tabs: ['t1'] })
