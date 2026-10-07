@@ -938,7 +938,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   compact
                   interactive
                   isolate-controls
-                  :class="m.enabled ? '' : 'opacity-60'"
+                  :muted="!m.enabled"
                   @click="emit('toggleModel', selected, m, !m.enabled)"
                 >
                   <template #tags>

@@ -186,6 +186,14 @@ function galleryTabs(): LiveTab[] {
   ]
 }
 
+/** The downloads the user started in each tab, as the Host follows them: a view that ends leaves them. */
+interface GalleryDownloads {
+  /** The downloads in `tab`, the newest last. */
+  of(tab: string): LiveDownload[]
+  /** The user's download in `tab`: it comes in for a moment, then the Host holds it under its name. */
+  start(tab: string): void
+}
+
 /** One view of the gallery's conversation browser: a page it draws, and its controls. */
 class GalleryBrowserView {
   private watched: string | null = null
@@ -201,9 +209,6 @@ class GalleryBrowserView {
   private pressed = false
   private overText = false
   private status = 'open'
-  /** The downloads the user started in each tab, as the Host follows them. */
-  private readonly downloads = new Map<string, LiveDownload[]>()
-  private readonly downloading = new Set<ReturnType<typeof setTimeout>>()
 
   constructor(
     private readonly handlers: UserStreamHandlers,
@@ -215,6 +220,8 @@ class GalleryBrowserView {
     private readonly capture: boolean,
     /** The watched page opens a tab, as a `target=_blank` link does. */
     private readonly pageOpens: (opener: string, url: string) => void,
+    /** The browser's downloads, which outlive any view, as the Host follows them. */
+    private readonly downloads: GalleryDownloads,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
@@ -309,7 +316,7 @@ class GalleryBrowserView {
           break
         }
         if (value.action === 'up' && value.button === 'left' && tab && within(DOWNLOAD, value.x, value.y)) {
-          this.download(tab.id)
+          this.downloads.start(tab.id)
           break
         }
         if (value.action === 'down' && tab) {
@@ -372,22 +379,11 @@ class GalleryBrowserView {
     }
   }
 
-  /** The user's download in `tab`: it comes in for a moment, then the Host holds it under its name. */
-  private download(tab: string): void {
-    const id = crypto.randomUUID()
-    const list = this.downloads.get(tab) ?? []
-    list.push({ id, ...DOWNLOADED, state: 'inProgress', received: 0, path: '' })
-    this.downloads.set(tab, list)
-    this.send({ type: 'downloads', tab, downloads: [...list] })
-    const timer = setTimeout(() => {
-      this.downloading.delete(timer)
-      const entry = list.find((download) => download.id === id)
-      if (entry) {
-        Object.assign(entry, { state: 'complete', received: DOWNLOADED.total, path: DOWNLOADED.path })
-        this.send({ type: 'downloads', tab, downloads: [...list] })
-      }
-    }, DOWNLOAD_MS)
-    this.downloading.add(timer)
+  /** The downloads in `tab` changed: a view watching it hears the list, as the module tells its viewer. */
+  downloadsChanged(tab: string): void {
+    if (this.watched === tab) {
+      this.send({ type: 'downloads', tab, downloads: this.downloads.of(tab) })
+    }
   }
 
   private restart(): void {
@@ -407,7 +403,7 @@ class GalleryBrowserView {
     this.canvas.height = size.height
     this.send({ type: 'controls', tab: tab.id, controls: [{ ...SELECT, value: this.status }] })
     this.send({ type: 'cursors', tab: tab.id, regions: pageCursors(tab.viewport) })
-    this.send({ type: 'downloads', tab: tab.id, downloads: [...(this.downloads.get(tab.id) ?? [])] })
+    this.send({ type: 'downloads', tab: tab.id, downloads: this.downloads.of(tab.id) })
     if (!this.capture) {
       this.notice(LIVE_CAPTURE_UNAVAILABLE, 'this CPU reports SME without SVE, and Chrome cannot capture on it')
       return
@@ -525,10 +521,6 @@ class GalleryBrowserView {
 
   stop(): void {
     this.stopPictures()
-    for (const timer of this.downloading) {
-      clearTimeout(timer)
-    }
-    this.downloading.clear()
     if (this.heartbeat !== null) {
       clearInterval(this.heartbeat)
       this.heartbeat = null
@@ -701,8 +693,28 @@ export function galleryBrowser(
   /** The tabs closed on purpose, as the Host's tab list names them. */
   const closedOnPurpose = new Set<string>()
 
+  /** The downloads the user started in each tab, kept while views come and go, as the Host keeps them. */
+  const downloaded = new Map<string, LiveDownload[]>()
+  const downloads: GalleryDownloads = {
+    of: (tab) => [...(downloaded.get(tab) ?? [])],
+    start: (tab) => {
+      const download: LiveDownload = { id: crypto.randomUUID(), ...DOWNLOADED, state: 'inProgress', received: 0, path: '' }
+      downloaded.set(tab, [...(downloaded.get(tab) ?? []), download])
+      for (const view of views) {
+        view.downloadsChanged(tab)
+      }
+      // The timer ends by itself once the file is in.
+      setTimeout(() => {
+        Object.assign(download, { state: 'complete', received: DOWNLOADED.total, path: DOWNLOADED.path })
+        for (const view of views) {
+          view.downloadsChanged(tab)
+        }
+      }, DOWNLOAD_MS)
+    },
+  }
+
   const stream: OpenUserStream = (handlers) => {
-    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture, pageOpens)
+    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture, pageOpens, downloads)
     views.add(browser)
     return {
       send: (bytes) => browser.receive(bytes),

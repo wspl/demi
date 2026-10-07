@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { indexAfter } from '@demicodes/web-ui/agent/panel-changes'
 import type { PageHost } from '@demicodes/web-ui/plugins/page'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { userStreamAt } from '@demicodes/web-ui/transport/user-stream'
@@ -77,7 +78,11 @@ export function productPageHost(): PageHost {
     panel: {
       tabs: (conversation, kind) =>
         work.stateFor(conversation).panel.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
-      add: (conversation, kind, data, options = { select: false }) => void work.add(conversation, kind, data, options),
+      add: (conversation, kind, data, options = { select: false }) => {
+        const tabs = work.stateFor(conversation).panel.tabs
+        const index = options.after === undefined ? undefined : indexAfter(tabs, options.after)
+        work.add(conversation, kind, data, { select: options.select, index })
+      },
       select: (conversation, _kind, id) => {
         work.select(conversation, id)
         work.setOpen(work.stateFor(conversation), true)

@@ -142,8 +142,9 @@ impl Work {
     }
 
     /// Reads the browser's tabs and updates the panel from them: a tab for
-    /// each tab the agent or a page opened, each bound tab's count of the
-    /// times the agent showed its browser tab when the count rose
+    /// each tab the agent or a page opened, a page's beside its opener's
+    /// (`beside_opener`) and the agent's after the others, each bound tab's
+    /// count of the times the agent showed its browser tab when the count rose
     /// (`live-view.md` § Showing a tab), every bound tab whose browser tab
     /// was closed on purpose removed, and every one whose browser tab was
     /// lost with the browser marked closed, to open again when shown
@@ -170,17 +171,28 @@ impl Work {
             .iter()
             .filter_map(|(_, data)| data.tab.as_deref())
             .collect();
+        // The browser tab each panel tab shows, in the panel's order, as this sync leaves it.
+        let mut order: Vec<Option<String>> = panel
+            .tabs
+            .iter()
+            .map(|tab| {
+                let data = (tab.kind == KIND).then(|| TabData::of(tab)).flatten()?;
+                data.live().map(str::to_owned)
+            })
+            .collect();
         for tab in &listed {
             if tab.created_by == (BrowserCreatedBy::User {}) || shown.contains(tab.id.as_str()) {
                 continue;
             }
+            let index = beside_opener(&order, &listed, tab);
             let create = CreatePanelTab {
                 id: added_id(tab.id.as_str()),
                 kind: KIND.into(),
                 data: added(tab),
-                index: None,
+                index,
             };
             port.create_panel_tab(create).await?;
+            order.insert(index.unwrap_or(order.len()), Some(tab.id.to_string()));
         }
         let present: HashMap<&str, &BrowserTab> =
             listed.iter().map(|tab| (tab.id.as_str(), tab)).collect();
@@ -205,6 +217,34 @@ impl Work {
         }
         Ok(())
     }
+}
+
+/// Where the panel tab for `tab` goes, among the panel tabs that show
+/// `order`'s browser tabs: a tab a page opened goes right after its
+/// opener's, after the tabs the same opener opened before it there, as
+/// Chrome places the tabs a link opens. Any other tab, or one whose opener
+/// the panel does not show, goes after the others (none).
+fn beside_opener(order: &[Option<String>], listed: &[BrowserTab], tab: &BrowserTab) -> Option<usize> {
+    let BrowserCreatedBy::Page { opener } = &tab.created_by else {
+        return None;
+    };
+    let at = order
+        .iter()
+        .position(|shown| shown.as_deref() == Some(opener.as_str()))?;
+    let opened_by_opener = |shown: &Option<String>| {
+        let Some(shown) = shown.as_deref() else {
+            return false;
+        };
+        listed.iter().any(|other| {
+            other.id.as_str() == shown
+                && matches!(&other.created_by, BrowserCreatedBy::Page { opener: theirs } if theirs == opener)
+        })
+    };
+    let run = order[at + 1..]
+        .iter()
+        .take_while(|shown| opened_by_opener(shown))
+        .count();
+    Some(at + 1 + run)
 }
 
 /// Why a browser tab could not be opened, as the tab's content shows it:
