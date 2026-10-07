@@ -154,6 +154,7 @@ impl Shard {
             http.clone(),
             rate_limit,
         );
+        let devices = Devices::new(services.returning.clone());
         Self {
             search: SearchIndexer::new(&services, &user),
             user,
@@ -161,7 +162,7 @@ impl Shard {
             services,
             http,
             conversations: Conversations::default(),
-            devices: Devices::default(),
+            devices,
             pipes: Pipes::new(ARRIVAL),
             commands: CommandRouter::default(),
             tasks: TaskTracker::new(),
@@ -303,7 +304,7 @@ impl Shard {
         let _transfers_closed = self.conversations.end_transfers().await;
         self.agent.shutdown().await;
         let saved = self.cloud_shard().close_cloud().await;
-        self.devices.disconnect_all("backend shutting down");
+        self.devices.shut_down(&self.services.control).await;
         self.tasks.close();
         self.tasks.wait().await;
         self.pipes.close().await;

@@ -69,9 +69,9 @@ export const NO_BROWSER: SentenceText = 'No browser on this Host. Ask the agent 
 
 /**
  * A request the backend or the conversation browser refused, with the
- * answer's own code and message, or one that failed otherwise, as an aborted
- * one does. A request never fails for the page's connection: the shell's
- * call waits for the backend (`plugin-pages.md` § The page context).
+ * answer's own code and message, or one that failed otherwise. A request
+ * never fails for the page's connection: the shell's call waits for the
+ * backend (`plugin-pages.md` § The page context).
  */
 export class BrowserTabsError extends Error {
   constructor(
@@ -109,7 +109,8 @@ export function refusalSentence(code: string | null): SentenceText {
 /**
  * The conversation browser's tab list and tab methods (`live-view.md` § The
  * tab methods) and its user stream, as the plugin's page context supplies
- * them. Every request rejects with a `BrowserTabsError`.
+ * them. Every request rejects with a `BrowserTabsError`, except one the
+ * panel session dropped as it ended, which rejects with the abort.
  */
 export interface BrowserTabsApi {
   /** The tab list, as the plugin's conversation state follows it. */
@@ -549,7 +550,11 @@ export class BrowserTabsController {
   /**
    * Runs a request of the user's on `tab`. The latest one on the tab is the
    * one its loading follows; a refusal ends it at once, and the caller
-   * reports it.
+   * reports it. A tab the browser no longer has was lost with the browser,
+   * as when Demi restarted: nothing says so, and the plugin is asked to read
+   * the list, which marks the panel tab lost, so it opens again on its
+   * address, at once while it is shown, as a browser reloads a discarded tab
+   * (`live-view.md` § A browser tab in the panel).
    */
   private async request(tab: string, run: () => Promise<number>): Promise<void> {
     const asked: TabRequest = { status: 'asked' }
@@ -560,6 +565,10 @@ export class BrowserTabsController {
     } catch (error) {
       if (this.requests.get(tab) === asked) {
         this.requests.delete(tab)
+      }
+      if (error instanceof BrowserTabsError && error.code === 'tab_not_found') {
+        this.lookFor(tab)
+        return
       }
       throw error
     }
@@ -723,6 +732,22 @@ export class BrowserTabsController {
         this.api.select(addedPanelTab(tab.id))
       }
     }
+  }
+
+  /** Asks the plugin to read the browser's tabs for `tab`, which the browser no longer has. */
+  private lookFor(tab: string): void {
+    if (tab === this.shownTab.value) {
+      // Asked again even when a look for it is under way: that one may have
+      // read the list before the browser lost the tab.
+      this.missed = null
+      this.lookForShown()
+      return
+    }
+    this.api.sync().catch((error: unknown) => {
+      if (!unreached(error)) {
+        this.errors.defect('The panel could not look for a lost tab', error)
+      }
+    })
   }
 
   /**

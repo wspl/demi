@@ -565,6 +565,9 @@ async fn a_decision_whose_message_a_restart_cut_off_reaches_the_agent_once_at_th
     socket.chat("m1", "Install").await;
     let request = the_request(&backend, &master, FIRST).await;
     drop(socket);
+    // The backend comes back at its address, where the device's runner
+    // reconnects: the woken root's work waits for it after a restart.
+    let address = backend.address();
     backend.close().await;
 
     // The backend stopped after the decision was stored and before its
@@ -584,7 +587,7 @@ async fn a_decision_whose_message_a_restart_cut_off_reaches_the_agent_once_at_th
         .unwrap();
 
     scripts.root(FIRST, vec![say("resumed")]);
-    let backend = harness.start().await;
+    let backend = harness.start_at(address).await;
     eventually("the message woke the root", || async {
         scripts
             .asked(|session| session == FIRST)
