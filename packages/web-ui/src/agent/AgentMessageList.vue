@@ -45,6 +45,8 @@ const props = defineProps<{
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
+  /** The host's connection banner says the backend is away; a reconnecting socket adds no Connecting row. */
+  backendAway?: boolean
   /** A recovery the server has not acknowledged: the tail row says Requesting. */
   pendingAction?: PendingAction
   /** What the providers read out of the error blocks' failure records, by block id. */
@@ -118,6 +120,7 @@ const tailBlocks = computed(() => listTailBlocks({
 const summaryTokens = computed(() => compactionSummaryTokens(props.blocks))
 const slotInput = computed(() => ({
   load: props.load ?? 'ready',
+  backendAway: props.backendAway,
   phase: props.phase,
   pendingAction: props.pendingAction ?? null,
   transcriptBlocks: visibleBlocks.value,
