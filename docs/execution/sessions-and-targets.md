@@ -147,7 +147,10 @@ host API supports alias changes, promotion through target exchange, and detach.
 `demi host shell --host <name|id> <script>` verifies ownership and the conversation
 binding before starting a job. A sleeping Cloud device wakes for work; attachment
 alone does not keep it running. The product picker offers paired devices, while
-Cloud can become attached when it is a departed primary target.
+Cloud can become attached when it is a departed primary target. A new
+conversation's draft, which has no record before its first send, keeps the
+same rule: a device it makes its primary leaves its attached hosts. The
+target it leaves is not attached, since nothing has run there.
 
 Attached cwd is a starting directory, not a permission boundary. It is updated
 from completed cross-host jobs. Files can be transferred explicitly with ordinary
