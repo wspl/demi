@@ -6,9 +6,9 @@ import { effectScope, ref, shallowRef } from 'vue'
 import {
   NO_BROWSER,
   BrowserTabsController,
+  BrowserTabsError,
   type BrowserTabList,
   type BrowserTabsApi,
-  type BrowserTabsError,
   type BrowserTabsOptions,
   type PictureSupport,
 } from '../tabs'
@@ -256,5 +256,89 @@ test('a tab shown again shows what the browser last said of it, though no view i
   visibility.value = 'visible'
   views[1]!.handlers.data(framed({ type: 'state', running: true, tabs: [], watched: null }))
   expect(controller.tab('t1')).toBeNull()
+  end()
+})
+
+/** A view open on `t1`, whose module the test speaks for, and the answers to the user's requests, which the test gives. */
+async function requestHarness() {
+  const opened: UserStreamHandlers[] = []
+  const answers: Array<{ resolve: () => void; reject: (error: unknown) => void }> = []
+  const answer = () => new Promise<void>((resolve, reject) => void answers.push({ resolve, reject }))
+  const { controller, end } = harness(
+    {
+      stream: (handlers) => {
+        opened.push(handlers)
+        return { send: () => {}, close: () => {} }
+      },
+      navigate: answer,
+      history: answer,
+    },
+    { pictures: async () => true },
+  )
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('t1')
+  const report = (loading: boolean, url = 'https://example.test/orders') =>
+    opened[0]!.data(framed({
+      type: 'state',
+      running: true,
+      tabs: [{ id: 't1', title: 'Orders', url, createdBy: { kind: 'user' }, viewport: VIEWPORT, loading }],
+      watched: 't1',
+    }))
+  report(false)
+  return { controller, answers, report, end }
+}
+
+test('a Reload shows the page loading from the click until a tab list read after its answer says it stopped', async () => {
+  const { controller, answers, report, end } = await requestHarness()
+  const url = 'https://example.test/orders'
+  expect(controller.loading('t1', url)).toBe(false)
+  const reloaded = controller.history('t1', 'reload')
+  // Before anything left the page.
+  expect(controller.loading('t1', url)).toBe(true)
+  // A list read before the answer still describes the page as it was.
+  report(false)
+  expect(controller.loading('t1', url)).toBe(true)
+  answers[0]!.resolve()
+  await reloaded
+  expect(controller.loading('t1', url)).toBe(true)
+  // A far browser starts loading after its answer, and says so.
+  report(true)
+  expect(controller.loading('t1', url)).toBe(true)
+  report(false)
+  expect(controller.loading('t1', url)).toBe(false)
+  end()
+})
+
+test('a list read after the answer that says the page loaded ends the loading at once', async () => {
+  const { controller, answers, report, end } = await requestHarness()
+  const url = 'https://example.test/docs'
+  const navigated = controller.navigate('t1', url)
+  answers[0]!.resolve()
+  await navigated
+  expect(controller.loading('t1', url)).toBe(true)
+  // A page that loaded before the browser's next list.
+  report(false, url)
+  expect(controller.loading('t1', url)).toBe(false)
+  end()
+})
+
+test('a refused Back ends the loading at once and says why, until the next request', async () => {
+  const { controller, answers, end } = await requestHarness()
+  const url = 'https://example.test/orders'
+  const back = controller.history('t1', 'back')
+  expect(controller.loading('t1', url)).toBe(true)
+  answers[0]!.reject(new BrowserTabsError('history_boundary', 'no navigation entry in that direction'))
+  await back
+  expect(controller.loading('t1', url)).toBe(false)
+  expect(controller.refusal('t1')?.code).toBe('history_boundary')
+  // The next request starts afresh, and one the user replaced, refused late, changes nothing.
+  const forward = controller.history('t1', 'forward')
+  expect(controller.refusal('t1')).toBeNull()
+  void controller.history('t1', 'reload')
+  answers[1]!.reject(new BrowserTabsError('history_boundary', 'no navigation entry in that direction'))
+  await forward
+  expect(controller.refusal('t1')).toBeNull()
+  expect(controller.loading('t1', url)).toBe(true)
   end()
 })

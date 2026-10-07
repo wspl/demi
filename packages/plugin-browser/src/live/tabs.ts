@@ -1,11 +1,12 @@
 /**
  * The `browser` page's panel session (`live-view.md` § A browser tab in the
  * panel): what a tab keeps, the conversation browser's tab list, which the
- * plugin's conversation state brings, the requests that move a bound tab,
- * the panel's size, each browser tab as a view last reported it, and the one view a page keeps while a `browser` tab is
- * shown and the page is visible. Which browser tab a panel tab shows is the
- * plugin's work on the backend; the session never opens, closes or adds a
- * tab.
+ * plugin's conversation state brings, the requests that move a bound tab
+ * and the user's latest one on each, the panel's size, each browser tab as a
+ * view last reported it, and the one view a page keeps while a `browser` tab
+ * is shown and the page is visible. Which browser tab a panel tab shows is
+ * the plugin's work on the backend; the session never opens, closes or adds
+ * a tab.
  */
 import { clientPlatform } from '@demicodes/utils'
 import { useDocumentVisibility, useDebounceFn } from '@vueuse/core'
@@ -93,6 +94,17 @@ export interface BrowserTabsOptions {
   pictures?: () => Promise<boolean>
 }
 
+/**
+ * The user's latest request on a browser tab (`live-view.md` § A browser tab
+ * in the panel): sent and not answered yet; answered when the views had
+ * reported `reports` tab lists, which still describe the page as it was
+ * before the request; or refused, with why.
+ */
+type TabRequest =
+  | { status: 'asked' }
+  | { status: 'answered'; reports: number }
+  | { status: 'refused'; error: BrowserTabsError }
+
 /** Reports a defect of the page itself, as the page context's `errors.defect` does. */
 export type ReportDefect = (message: string, error: unknown) => void
 
@@ -134,6 +146,10 @@ export class BrowserTabsController {
    * A tab leaves once a view reports the browser without it.
    */
   private readonly known = shallowReactive(new Map<string, LiveTab>())
+  /** How many tab lists the views reported, so an answer knows which lists came after it. */
+  private readonly reports = shallowRef(0)
+  /** The user's latest request on each browser tab. */
+  private readonly requests = shallowReactive(new Map<string, TabRequest>())
   /** The panel the shown tab's content measured, which a view sizes the tab by. */
   private panel: PanelReport | null = null
   /** The browser tab whose content is shown, which the view watches while the page is visible. */
@@ -184,6 +200,62 @@ export class BrowserTabsController {
   /** The browser tab `tab` as a view last reported it, if one did. */
   tab(tab: string | undefined): LiveTab | null {
     return tab === undefined ? null : (this.known.get(tab) ?? null)
+  }
+
+  /**
+   * Whether the panel tab bound to `tab`, asking for `url`, shows its page
+   * loading (`live-view.md` § A browser tab in the panel). A request of the
+   * user's loads from the moment it is made until a tab list read after its
+   * answer says otherwise: on a far backend the browser may start loading
+   * well after the answer, and a list read before it describes the page as
+   * it was. Otherwise the page loads while the browser last said it does, or,
+   * before the browser ever reported the tab, as for one whose browser tab is
+   * still opening, while the tab asks for an address. A tab shown again keeps
+   * what the browser last said, so a page that had loaded shows no loading.
+   */
+  loading(tab: string | undefined, url: string): boolean {
+    const request = tab === undefined ? undefined : this.requests.get(tab)
+    if (request?.status === 'asked') {
+      return true
+    }
+    if (request?.status === 'answered' && request.reports === this.reports.value) {
+      return true
+    }
+    const live = this.tab(tab)
+    return live ? live.loading : url !== NEW_TAB_URL
+  }
+
+  /** What the user's latest request on `tab` could not do, until the next one. */
+  refusal(tab: string | undefined): BrowserTabsError | null {
+    const request = tab === undefined ? undefined : this.requests.get(tab)
+    return request?.status === 'refused' ? request.error : null
+  }
+
+  /** The user's address, loaded in `tab`. */
+  navigate(tab: string, url: string): Promise<void> {
+    return this.request(tab, () => this.api.navigate(tab, url))
+  }
+
+  /** The user's Back, Forward or Reload on `tab`. */
+  history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void> {
+    return this.request(tab, () => this.api.history(tab, action))
+  }
+
+  /** Runs a request of the user's on `tab`; the latest one on the tab is the one its content shows. */
+  private async request(tab: string, run: () => Promise<unknown>): Promise<void> {
+    const asked: TabRequest = { status: 'asked' }
+    this.requests.set(tab, asked)
+    let settled: TabRequest
+    try {
+      await run()
+      settled = { status: 'answered', reports: this.reports.value }
+    } catch (error) {
+      settled = { status: 'refused', error: asTabsError(error) }
+    }
+    // A later request on the tab replaced this one.
+    if (this.requests.get(tab) === asked) {
+      this.requests.set(tab, settled)
+    }
   }
 
   /**
@@ -279,6 +351,7 @@ export class BrowserTabsController {
    * closed if the browser lost it.
    */
   private viewTabs(tabs: readonly LiveTab[]): void {
+    this.reports.value += 1
     for (const id of [...this.known.keys()]) {
       if (!tabs.some((tab) => tab.id === id)) {
         this.known.delete(id)
@@ -327,6 +400,7 @@ export class BrowserTabsController {
     }
     this.shown = null
     this.known.clear()
+    this.requests.clear()
     this.closeView()
   }
 }

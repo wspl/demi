@@ -35,10 +35,8 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ update: [data: BrowserTabData]; close: [] }>()
 
-/** What a request of this content could not do, until its next one. */
-const refused = ref<BrowserTabsError | null>(null)
-/** A navigation the user asked for that the browser has not taken up yet. */
-const navigating = ref(false)
+/** What Retry or Reload of a tab without its browser tab could not do, until the next one. */
+const rebindRefused = ref<BrowserTabsError | null>(null)
 const address = ref(props.data.url)
 const editing = ref(false)
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
@@ -56,17 +54,9 @@ const viewport = computed(() => live.value?.viewport ?? null)
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
-/**
- * The page loads: a request of the user's the browser has not taken up, a
- * page the browser last said it loads, or an address the tab asks for
- * before the browser ever reported its tab, as for one whose browser tab is
- * still opening. A tab shown again keeps what the browser last said, so a
- * page that had loaded shows no loading line.
- */
-const loading = computed(() =>
-  navigating.value
-  || (live.value ? live.value.loading : props.data.url !== NEW_TAB_URL),
-)
+const loading = computed(() => props.session.loading(bound.value, props.data.url))
+/** What a request of this content could not do, until its next one. */
+const refused = computed(() => rebindRefused.value ?? props.session.refusal(bound.value))
 
 // A shown tab with its browser tab is watched on the page's view, once its area measured the panel.
 watch(
@@ -172,23 +162,6 @@ watch(
   },
 )
 
-/** Runs a request of the user's on the bound tab; what it could not do shows above the picture. */
-async function request(run: (tab: string) => Promise<unknown>): Promise<void> {
-  const tab = bound.value
-  if (tab === undefined) {
-    return
-  }
-  refused.value = null
-  navigating.value = true
-  try {
-    await run(tab)
-  } catch (error) {
-    refused.value = asTabsError(error)
-  } finally {
-    navigating.value = false
-  }
-}
-
 /**
  * The address shows at once and the tab keeps it. A tab with its browser tab
  * loads it now; one without loads it once the plugin opened its browser tab,
@@ -206,20 +179,25 @@ function submit(): void {
   // The page it leaves names the tab no more.
   const { title: _left, ...data } = props.data
   emit('update', { ...data, url })
-  void request((tab) => props.session.api.navigate(tab, url))
+  if (bound.value !== undefined) {
+    void props.session.navigate(bound.value, url)
+  }
 }
 
+/** Back, Forward and Reload, on the bound tab; what they could not do shows above the picture. */
 function history(action: 'back' | 'forward' | 'reload'): void {
-  void request((tab) => props.session.api.history(tab, action))
+  if (bound.value !== undefined) {
+    void props.session.history(bound.value, action)
+  }
 }
 
 /** Retry and Reload: the plugin opens a browser tab for this panel tab again. */
 async function rebind(): Promise<void> {
-  refused.value = null
+  rebindRefused.value = null
   try {
     await props.session.api.bind(props.tabId)
   } catch (error) {
-    refused.value = asTabsError(error)
+    rebindRefused.value = asTabsError(error)
   }
 }
 </script>
