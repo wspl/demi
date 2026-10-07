@@ -8,6 +8,12 @@
 
 use std::{num::NonZeroU32, sync::Arc};
 
+use comrak::{
+    Arena, Options,
+    arena_tree::NodeEdge,
+    nodes::{AstNode, LineColumn, NodeValue},
+    parse_document,
+};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderRuntime, UserPart,
 };
@@ -61,10 +67,147 @@ Write a brief title that would help the user find this conversation later.
 /// outside this list sorts after them.
 const EFFORT_ORDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
-/// The title the first message gives before any model answers: its start,
-/// on one line.
+/// The title the first message gives before any model answers: the start
+/// of its plain text, on one line.
 pub fn title_from_message(text: &str) -> String {
-    prefix(&one_line(text), TITLE_MAX_CHARS).to_owned()
+    prefix(&one_line(&plain_text(text)), TITLE_MAX_CHARS).to_owned()
+}
+
+/// A user message's Markdown as the user reads it, plain text: `` `pnpm
+/// build` `` is `pnpm build`, and no mark or escape shows.
+///
+/// The message dialect (`product.md` § Writing a message) keeps some
+/// CommonMark as typed: each line reads only inline constructs, so a list,
+/// heading or quote marker at a line's start stays, as do `_` and `__`,
+/// a single `~` and `<…>`. Those come from the source; the rest is the
+/// parser's text.
+fn plain_text(markdown: &str) -> String {
+    let mut options = Options::default();
+    options.extension.strikethrough = true;
+    // `**注意：**这是` is bold, as the message dialect reads it.
+    options.extension.cjk_friendly_emphasis = true;
+    let arena = Arena::new();
+    let root = parse_document(&arena, markdown, &options);
+    let source = Source::new(markdown);
+    let mut text = String::new();
+    for edge in root.traverse() {
+        match edge {
+            NodeEdge::Start(node) => {
+                let ast = node.data.borrow();
+                match &ast.value {
+                    // The line's markers, before its first inline: `1. `,
+                    // `> `, `# `.
+                    NodeValue::Paragraph | NodeValue::Heading(_) => {
+                        text.push(' ');
+                        if let Some(first) = node.first_child() {
+                            text.push_str(source.before(first.data.borrow().sourcepos.start));
+                        }
+                    }
+                    NodeValue::SoftBreak | NodeValue::LineBreak => {
+                        text.push(' ');
+                        if let Some(next) = node.next_sibling() {
+                            text.push_str(source.before(next.data.borrow().sourcepos.start));
+                        }
+                    }
+                    NodeValue::Text(literal) => text.push_str(literal),
+                    NodeValue::Code(code) => text.push_str(&code.literal),
+                    NodeValue::HtmlInline(literal) => text.push_str(literal),
+                    NodeValue::CodeBlock(block) => {
+                        text.push(' ');
+                        text.push_str(&block.literal);
+                    }
+                    NodeValue::HtmlBlock(block) => {
+                        text.push(' ');
+                        text.push_str(&block.literal);
+                    }
+                    NodeValue::ThematicBreak => {
+                        text.push(' ');
+                        text.push_str(source.line(ast.sourcepos.start.line));
+                    }
+                    _ => {
+                        if let Some((opening, _)) = typed_delimiters(&source, node) {
+                            text.push_str(opening);
+                        }
+                    }
+                }
+            }
+            NodeEdge::End(node) => {
+                let ast = node.data.borrow();
+                if let NodeValue::Heading(heading) = &ast.value
+                    && heading.setext
+                {
+                    text.push(' ');
+                    text.push_str(source.line(ast.sourcepos.end.line));
+                } else if let Some((_, closing)) = typed_delimiters(&source, node) {
+                    text.push_str(closing);
+                }
+            }
+        }
+    }
+    // U+FFFC, the object replacement character, stands for an object that
+    // has no text: in a message, a file's capsule (`web-api.md` § Drafts).
+    text.replace('\u{FFFC}', "")
+}
+
+/// The delimiters of an inline that the message dialect keeps as typed:
+/// emphasis with `_`, a strikethrough with one `~` and a `<…>` link.
+fn typed_delimiters<'s>(source: &Source<'s>, node: &AstNode<'_>) -> Option<(&'s str, &'s str)> {
+    let ast = node.data.borrow();
+    let start = source.offset(ast.sourcepos.start);
+    let opening = source.text.get(start..)?;
+    let typed = match ast.value {
+        NodeValue::Emph | NodeValue::Strong => opening.starts_with('_'),
+        NodeValue::Strikethrough => !opening.starts_with("~~"),
+        NodeValue::Link(_) => opening.starts_with('<'),
+        _ => false,
+    };
+    if !typed {
+        return None;
+    }
+    let first = source.offset(node.first_child()?.data.borrow().sourcepos.start);
+    let last = source.offset(node.last_child()?.data.borrow().sourcepos.end) + 1;
+    let end = source.offset(ast.sourcepos.end) + 1;
+    Some((source.slice(start, first), source.slice(last, end)))
+}
+
+/// A message's source, addressed by the parser's source positions: 1-based
+/// lines and byte columns.
+struct Source<'s> {
+    text: &'s str,
+    /// The byte offset at which each line starts.
+    lines: Vec<usize>,
+}
+
+impl<'s> Source<'s> {
+    fn new(text: &'s str) -> Self {
+        let lines = std::iter::once(0)
+            .chain(text.match_indices('\n').map(|(at, _)| at + 1))
+            .collect();
+        Self { text, lines }
+    }
+
+    fn offset(&self, at: LineColumn) -> usize {
+        let line = self.lines.get(at.line.saturating_sub(1)).copied();
+        line.unwrap_or(self.text.len()) + at.column.saturating_sub(1)
+    }
+
+    /// The source from `from` to `to`; a range the parser's positions do
+    /// not land on is none, which only loses a mark the dialect keeps.
+    fn slice(&self, from: usize, to: usize) -> &'s str {
+        self.text.get(from..to).unwrap_or_default()
+    }
+
+    /// The source on the line of `at` before it.
+    fn before(&self, at: LineColumn) -> &'s str {
+        self.slice(self.offset(LineColumn { line: at.line, column: 1 }), self.offset(at))
+    }
+
+    /// The whole line `line`, without its line break.
+    fn line(&self, line: usize) -> &'s str {
+        let from = self.offset(LineColumn { line, column: 1 });
+        let rest = self.slice(from, self.text.len());
+        rest.lines().next().unwrap_or_default()
+    }
 }
 
 /// What a request reads: the text of the user's messages, oldest first and
