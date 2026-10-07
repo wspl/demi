@@ -93,6 +93,11 @@ function even(length: number): number {
 
 /** How long the gallery's conversation browser takes over a request, as a Host takes a moment. */
 const REQUEST_DELAY_MS = 900
+/**
+ * How long after its answer the browser starts loading the page a request
+ * asked for, as a far Host's tab list reaches the page after its answer.
+ */
+const LOAD_START_MS = 700
 /** How long a page the gallery's browser loads takes, so the page's loading shows. */
 const LOAD_MS = 1200
 /** Tab ids as the protocol spells them: `t` and the tab's number in the conversation. */
@@ -463,10 +468,30 @@ export function galleryBrowser(
     return tab
   }
 
+  /** Each tab's history, as the browser keeps it: its addresses, and the one it shows. */
+  const histories = new Map<string, { entries: string[]; index: number }>()
+
+  function historyOf(tab: LiveTab): { entries: string[]; index: number } {
+    let history = histories.get(tab.id)
+    if (!history) {
+      history = { entries: [tab.url], index: 0 }
+      histories.set(tab.id, history)
+    }
+    return history
+  }
+
+  /** `tab` starts loading `url` a moment after the request's answer. The timer ends by itself. */
+  function loadLater(tab: LiveTab, url: string): void {
+    setTimeout(() => load(tab, url), LOAD_START_MS)
+  }
+
   /** `tab` loads `url`: it says so until the page is there. The timer ends by itself. */
   function load(tab: LiveTab, url: string): void {
+    // A page loaded again keeps its title; another is named by its host until it says otherwise.
+    if (url !== tab.url) {
+      tab.title = URL.parse(url)?.host ?? url
+    }
     tab.url = url
-    tab.title = URL.parse(url)?.host ?? url
     tab.loading = url !== 'about:blank'
     changed()
     if (tab.loading) {
@@ -513,13 +538,28 @@ export function galleryBrowser(
       return info(tab)
     }),
     close: (id) => later(() => remove(id)),
-    navigate: (id, url) => later(() => load(found(id), url)),
+    navigate: (id, url) => later(() => {
+      const tab = found(id)
+      const history = historyOf(tab)
+      history.entries.splice(history.index + 1, Infinity, url)
+      history.index = history.entries.length - 1
+      loadLater(tab, url)
+    }),
     history: (id, action) => later(() => {
       const tab = found(id)
-      // The gallery's pages have no history of their own; a reload loads the page again.
       if (action === 'reload') {
-        load(tab, tab.url)
+        loadLater(tab, tab.url)
+        return
       }
+      const history = historyOf(tab)
+      const index = history.index + (action === 'back' ? -1 : 1)
+      const url = history.entries[index]
+      // The Host's own refusal at either end of the history.
+      if (url === undefined) {
+        throw new BrowserTabsError('history_boundary', 'no navigation entry in that direction')
+      }
+      history.index = index
+      loadLater(tab, url)
     }),
     closeOnDevice: remove,
     show: (id) => {
