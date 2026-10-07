@@ -46,7 +46,7 @@ providePageHost(productPageHost())
 // § A page of another build).
 const updateFailed = ref(false)
 watch(
-  () => product.outdated ? product.snapshot?.webBuild ?? null : null,
+  () => product.newBuild,
   (served) => {
     if (served !== null && !reloadFor(served, reload)) {
       updateFailed.value = true
