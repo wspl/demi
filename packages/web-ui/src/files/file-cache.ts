@@ -6,8 +6,9 @@
  * showing it again asks nothing until a report of that watch names its path.
  * Any other entry is unconfirmed: showing it shows it at once and reads it
  * again. Reads of one entry share one request, and a report that names an
- * entry being read reads it once more after. At most `budget` of text stay,
- * the entries shown longest ago leaving first.
+ * entry being read reads it once more after. A report reads a shown entry
+ * again at once, a folder's listing at most once a second. At most `budget`
+ * of text stay, the entries shown longest ago leaving first.
  */
 import { reactive } from 'vue'
 import { parentPath } from './paths'
@@ -15,6 +16,13 @@ import { FileBrowserError, type FileBrowserFailure } from './types'
 
 /** The most text a page keeps of the Hosts' files, counted in characters. */
 export const KEPT_TEXT = 64 * 1024 * 1024
+
+/**
+ * The least time between two reads of a folder's listing that reports ask
+ * for, in milliseconds: a log appended many times a second updates its
+ * size once a second, as Finder does.
+ */
+export const LISTING_REREAD_MS = 1000
 
 /**
  * What an entry is, which decides which reports concern it: a listing is
@@ -86,6 +94,10 @@ class Entry<T> {
   /** Rises with each report that names it: a read that began before one cannot confirm it. */
   stamp = 0
   reading: Promise<void> | null = null
+  /** When its last read began, by `performance.now()`. */
+  readStart = Number.NEGATIVE_INFINITY
+  /** The read a report asked for that waits for the listing's second to end. */
+  rereadTimer: ReturnType<typeof setTimeout> | null = null
 
   constructor(readonly spec: KeptSpec<T>) {
     this.state = reactive({ value: undefined, failure: null, reading: false }) as Entry<T>['state']
@@ -159,6 +171,9 @@ export class HostFiles {
       return entry.reading
     const stamp = entry.stamp
     const coverage = this.coverageOf(entry.spec.path)
+    // This read sees every report so far, so a reread still waiting is not needed.
+    this.cancelReread(entry)
+    entry.readStart = performance.now()
     entry.state.reading = true
     // A view with nothing to show but the failure shows the read instead, as
     // a region's Retry returns it to loading (`RegionStatus`).
@@ -189,11 +204,44 @@ export class HostFiles {
         entry.state.reading = false
       }
       if (entry.stamp !== stamp && entry.shown > 0)
-        void this.read(entry)
+        this.reread(entry)
       this.evict()
     })()
     entry.reading = reading
     return reading
+  }
+
+  /**
+   * Reads again an entry a view shows, for a report that named it: at once,
+   * but a folder's listing at most once a second. A report within a second
+   * of the listing's last read waits for that second to end and is then
+   * read with any that came meanwhile, so the last report is never dropped.
+   */
+  private reread(entry: Entry<unknown>): void {
+    if (entry.spec.kind !== 'listing') {
+      void this.read(entry)
+      return
+    }
+    if (entry.rereadTimer !== null)
+      return
+    const wait = entry.readStart + LISTING_REREAD_MS - performance.now()
+    if (wait <= 0) {
+      void this.read(entry)
+      return
+    }
+    entry.rereadTimer = setTimeout(() => {
+      entry.rereadTimer = null
+      // A view that let go meanwhile reads it when it shows it next, as it is unconfirmed.
+      if (entry.shown > 0)
+        void this.read(entry)
+    }, wait)
+  }
+
+  private cancelReread(entry: Entry<unknown>): void {
+    if (entry.rereadTimer === null)
+      return
+    clearTimeout(entry.rereadTimer)
+    entry.rereadTimer = null
   }
 
   private confirms(coverage: Coverage | null, entry: Entry<unknown>, stamp: number): boolean {
@@ -216,6 +264,7 @@ export class HostFiles {
       if (this.kept <= this.budget)
         return
       this.kept -= entry.size
+      this.cancelReread(entry)
       this.entries.delete(key)
     }
   }
@@ -292,8 +341,8 @@ export class HostFiles {
 
   /**
    * Something changed at each of `paths`, of which git ignores `ignored`:
-   * every entry they concern is unconfirmed, and read again at once while a
-   * view shows it. An ignored path, such as a log a process appends to,
+   * every entry they concern is unconfirmed, and read again while a view
+   * shows it, at once but a listing at most once a second. An ignored path, such as a log a process appends to,
    * concerns its file and folder but not the working tree's changes
    * (`web-api.md` § File text and working tree changes).
    */
@@ -304,7 +353,7 @@ export class HostFiles {
         continue
       this.unconfirm(entry)
       if (entry.shown > 0)
-        void this.read(entry)
+        this.reread(entry)
     }
   }
 
