@@ -80,7 +80,7 @@ function revoke() {
 <template>
   <SettingsPage
     title="Devices"
-    description="Machines that can host a conversation's working directory."
+    description="Machines that can host a conversation’s working directory."
   >
     <CloudSettings
       v-if="cloud"
