@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
+import { useElementSize } from '@vueuse/core'
 import { Monitor, Smartphone } from '@lucide/vue'
 import {
   AddressBar,
@@ -12,6 +13,7 @@ import {
   Tooltip,
   usePage,
 } from '@demicodes/plugin-sdk'
+import { PHONE_HEIGHT, PHONE_WIDTH } from '../generated/plugin'
 import { BLANK_PAGE } from '../live/view'
 import type { BrowserPanel } from '../panel'
 import type { PreviewTabData } from './tabs'
@@ -85,9 +87,33 @@ const ALLOW = [
   'web-share',
 ].join('; ')
 
-/** The size menu: Web; Mobile comes with the preview's phone layer. */
+/** The size menu: Web, or Mobile, a phone's page (`preview.md` § Mobile). Custom is the agent's alone. */
 const menu = ref(false)
 const anchor = ref<HTMLElement | null>(null)
+const mobile = computed(() => props.data.mobile === true)
+function choose(phone: boolean): void {
+  menu.value = false
+  tab.setMobile(phone)
+}
+
+/**
+ * In Mobile the page is a phone's, 390 × 844, scaled to fit the panel and
+ * centred, as the live view shows a tab of the agent's browser in Mobile;
+ * its devicePixelRatio stays the user's own.
+ */
+const area = ref<HTMLElement | null>(null)
+const { width: areaWidth, height: areaHeight } = useElementSize(area)
+const phoneStyle = computed(() => {
+  const scale = Math.min(areaWidth.value / PHONE_WIDTH, areaHeight.value / PHONE_HEIGHT) || 1
+  return {
+    width: `${PHONE_WIDTH}px`,
+    height: `${PHONE_HEIGHT}px`,
+    left: `${(areaWidth.value - PHONE_WIDTH * scale) / 2}px`,
+    top: `${(areaHeight.value - PHONE_HEIGHT * scale) / 2}px`,
+    transform: `scale(${scale})`,
+    transformOrigin: '0 0',
+  }
+})
 </script>
 
 <template>
@@ -109,7 +135,7 @@ const anchor = ref<HTMLElement | null>(null)
         <Tooltip content="Viewport" class="shrink-0">
           <span ref="anchor" class="flex">
             <IconButton
-              :icon="Monitor"
+              :icon="mobile ? Smartphone : Monitor"
               variant="ghost"
               aria-label="Viewport"
               aria-haspopup="menu"
@@ -143,22 +169,30 @@ const anchor = ref<HTMLElement | null>(null)
         label="Starting Cloud…"
       />
       <!-- The page, or a blank page while the tab has none, as a browser's new tab is. -->
-      <iframe
+      <div
         v-show="view.src !== null && !view.failure && !view.starting"
-        ref="frame"
-        class="min-h-0 w-full flex-1 border-0 bg-white"
-        title="Page"
-        :src="view.src ?? 'about:blank'"
-        :sandbox="SANDBOX"
-        :allow="ALLOW"
-        @load="tab.loaded()"
-      />
+        ref="area"
+        class="relative min-h-0 flex-1 overflow-hidden"
+        :class="mobile ? 'bg-surface-base' : ''"
+      >
+        <iframe
+          ref="frame"
+          class="border-0 bg-white"
+          :class="mobile ? 'absolute' : 'absolute inset-0 size-full'"
+          :style="mobile ? phoneStyle : undefined"
+          title="Page"
+          :src="view.src ?? 'about:blank'"
+          :sandbox="SANDBOX"
+          :allow="ALLOW"
+          @load="tab.loaded()"
+        />
+      </div>
       <div v-if="view.src === null && !unavailable && !view.failure && !view.starting" class="min-h-0 flex-1" :class="BLANK_PAGE" />
     </div>
     <Popover :overlay-store="overlays" :is-open="menu" :anchor-el="anchor" @close="menu = false">
       <Menu>
-        <MenuItem label="Web" :icon="Monitor" choice :is-selected="true" @select="menu = false" />
-        <MenuItem label="Mobile" :icon="Smartphone" choice :is-selected="false" disabled />
+        <MenuItem label="Web" :icon="Monitor" choice :is-selected="!mobile" @select="choose(false)" />
+        <MenuItem label="Mobile" :icon="Smartphone" choice :is-selected="mobile" @select="choose(true)" />
       </Menu>
     </Popover>
   </div>

@@ -245,7 +245,7 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
       if (!page) {
         throw new Error('The agent’s tab is gone.')
       }
-      return { ...page, storage: signedIn(new URL(page.url).origin), tooLarge: false }
+      return { ...page, mobile: false, storage: signedIn(new URL(page.url).origin), tooLarge: false }
     },
     writeState: async () => [],
     async readState(tab) {
