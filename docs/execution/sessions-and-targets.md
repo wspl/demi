@@ -436,6 +436,19 @@ originated it throughout the shared-device activity.
 
 An unavailable paired device or failed Cloud wake produces an operation error.
 History remains readable, and the backend does not redirect the operation.
+
+A restart is not a device going away. When the backend starts, the runners
+its shutdown disconnected, the Cloud's among them, connect again by
+themselves within seconds. For the first 30 seconds after the start, a Host
+operation for such a device waits for its runner, as an operation waits for
+a held conversation, instead of answering `device_offline` or
+`host_stopped`; a device still not back after that answers as usual. The
+backend knows them as the devices whose last connection ended with its
+shutdown. For example, the user presses Reload in a browser tab while Demi
+restarts: the page holds the call until it reaches the backend
+([The page context](../architecture/plugin-pages.md#the-page-context)), the
+backend holds it until the device's runner is back, and the page reloads
+with nothing saying that the device was offline.
 A page that disconnects does not abort the agent turn; a page that reconnects
 synchronizes with the backend transcript.
 
