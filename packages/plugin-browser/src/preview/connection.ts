@@ -64,6 +64,8 @@ interface Question {
 export interface TakenState {
   url: string
   title: string
+  /** The agent's tab shows the page in Mobile. */
+  mobile: boolean
   /** Its top-level origin's storage; null when it was too large to move. */
   storage: PageStorage | null
   tooLarge: boolean
@@ -329,7 +331,7 @@ export class PreviewConnection {
     if (answer.type !== 'state') {
       throw unexpected(answer)
     }
-    return { url: answer.url, title: answer.title, storage: answer.storage, tooLarge: answer.too_large }
+    return { url: answer.url, title: answer.title, mobile: answer.mobile, storage: answer.storage, tooLarge: answer.too_large }
   }
 
   /**

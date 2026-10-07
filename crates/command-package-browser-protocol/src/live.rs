@@ -21,6 +21,10 @@ use crate::browser::{BrowserCreatedBy, BrowserViewport, DialogType, TabId};
 /// streams).
 pub const OPERATION: &str = "browser.live";
 
+/// Mobile's size in CSS pixels, a tab of the agent's browser's and a tab of
+/// the user's browser's alike (`live-view.md` § Modes, `preview.md` § Mobile).
+pub const PHONE: (u32, u32) = (390, 844);
+
 /// The view's arguments: none; the page and the module speak over the stream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]

@@ -135,7 +135,7 @@ function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>
       }
     } else if (message.type === 'state_take') {
       send(message.tab === 't1'
-        ? { type: 'state', id: message.id, url: 'http://localhost:5173/', title: 'App', storage: null, too_large: true }
+        ? { type: 'state', id: message.id, url: 'http://localhost:5173/', title: 'App', mobile: true, storage: null, too_large: true }
         : { type: 'failed', id: message.id, reason: 'The agent’s tab is gone.' })
     } else if (message.type === 'state_keep') {
       kept.push(message.token)
@@ -184,6 +184,7 @@ function world(engine: ReturnType<typeof scriptedEngine>, runtime = async () => 
     id: 'p1',
     place: () => PLACE,
     frameWindow: () => top,
+    mobile: () => false,
     connection: new PreviewConnection(engine.open),
     report: (event) => events.push(event),
     openWindow: () => {},
@@ -273,6 +274,27 @@ test('a channel binds to the label of the origin that asked, in the tab whose fr
   expect(await connect(relay, app.replace('k3f9x2ab', 'z9z9z9z9'), top)).toBeNull()
   expect(await connect(relay, 'https://evil.test', top)).toBeNull()
   expect(await connect(relay, app, { parent: { parent: null } })).toBeNull()
+})
+
+test('a tab in Mobile describes an Android Chrome of the user’s version to the Host', async () => {
+  const engine = scriptedEngine(() => ({ status: 200 }))
+  const { relay, tab, top } = world(engine)
+  let mobile = false
+  tab.mobile = () => mobile
+  relay.know(PLACE, { [APP_LABEL]: APP })
+  const port = (await connect(relay, origin(APP_LABEL), top))!
+  await exchange(port, fetchMessage(1, `${origin(APP_LABEL)}/`))
+  mobile = true
+  await exchange(port, fetchMessage(2, `${origin(APP_LABEL)}/`))
+  expect(engine.said.filter((message) => message.type === 'request').map((message) => message.client)).toEqual([
+    client(),
+    {
+      ...client(),
+      userAgent: 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/154.0.0.0 Mobile Safari/537.36',
+      mobile: true,
+      platform: 'Android',
+    },
+  ])
 })
 
 test('a runtime’s registration keeps only the labels the engine names for its environments', async () => {
@@ -494,7 +516,7 @@ test('a stream that ends fails what it carried, and the next request opens a new
 test('page states are questions on the stream: the engine’s answer, or why it failed', async () => {
   const engine = scriptedEngine(() => ({ status: 200 }))
   const connection = new PreviewConnection(engine.open)
-  await expect(connection.takeState(PLACE, 't1')).resolves.toEqual({ url: 'http://localhost:5173/', title: 'App', storage: null, tooLarge: true })
+  await expect(connection.takeState(PLACE, 't1')).resolves.toEqual({ url: 'http://localhost:5173/', title: 'App', mobile: true, storage: null, tooLarge: true })
   await expect(connection.takeState(PLACE, 't9')).rejects.toThrow('The agent’s tab is gone.')
   await connection.keepState(PLACE, 'kept-1', ['http://localhost:5173'], null)
   expect(engine.kept).toEqual(['kept-1'])

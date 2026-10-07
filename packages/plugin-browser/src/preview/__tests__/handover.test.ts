@@ -47,7 +47,7 @@ function world(script: Partial<PreviewDriver> = {}) {
     icon: async () => null,
     async takeState(_tab, _place, from) {
       steps.push(`take ${from}`)
-      return { url: 'http://localhost:5173/app', title: 'App', storage: storage(), tooLarge: false } satisfies TakenState
+      return { url: 'http://localhost:5173/app', title: 'App', mobile: false, storage: storage(), tooLarge: false } satisfies TakenState
     },
     async writeState(_tab, opened, written) {
       steps.push(`write ${opened.origin} ${written.local[0]?.value}`)
@@ -111,7 +111,7 @@ test('Open in Your Browser writes the agent’s page state before the page boots
 
 test('what of the page’s state did not move is a toast, and the page opens either way', async () => {
   const partial = world({
-    takeState: async () => ({ url: 'http://localhost:5173/', title: 'App', storage: storage(['keys/crypto']), tooLarge: false }),
+    takeState: async () => ({ url: 'http://localhost:5173/', title: 'App', mobile: false, storage: storage(['keys/crypto']), tooLarge: false }),
     writeState: async () => ['drafts'],
   })
   partial.attach('p1', { url: 'http://localhost:5173/', from: 't3' })
@@ -120,7 +120,7 @@ test('what of the page’s state did not move is a toast, and the page opens eit
     ['Some of the Page’s Storage Didn’t Move', 'On localhost:5173, keys/crypto has a value that can’t be copied; drafts is open in another tab.'],
   ])
 
-  const large = world({ takeState: async () => ({ url: 'http://localhost:5173/', title: 'App', storage: null, tooLarge: true }) })
+  const large = world({ takeState: async () => ({ url: 'http://localhost:5173/', title: 'App', mobile: false, storage: null, tooLarge: true }) })
   large.attach('p1', { url: 'http://localhost:5173/', from: 't3' })
   await settled()
   expect(large.notices).toEqual([['Only the Page’s Cookies Moved', 'Its storage is larger than the 16 MB a page state moves.']])
@@ -181,4 +181,20 @@ test('Open in Agent’s Browser moves cookies only past the size a page state mo
   await unread.tabs.toAgent('p1')
   expect(unread.steps.at(-1)).toBe('keep the tab’s token  cookies only')
   expect(unread.notices).toEqual([['The Page Opened Without Its State', 'The preview took too long to read or write the page’s storage.']])
+})
+
+test('the size mode moves with the page both ways: Mobile stays Mobile', async () => {
+  const fromAgent = world({ takeState: async () => ({ url: 'http://localhost:5173/', title: 'App', mobile: true, storage: null, tooLarge: false }) })
+  const { data } = fromAgent.attach('p1', { url: 'http://localhost:5173/', from: 't3' })
+  await settled()
+  // The page boots as a phone's, from its first request.
+  expect(data()).toEqual({ url: 'http://localhost:5173/', mobile: true })
+  expect(fromAgent.steps).toEqual(['boot http://localhost:5173/'])
+
+  const toAgent = world()
+  const shown = toAgent.attach('p1', { url: 'http://localhost:5173/', mobile: true })
+  await settled()
+  shown.tab.report({ type: 'page', page: { url: 'http://localhost:5173/', title: 'App', icon: '' } })
+  await toAgent.tabs.toAgent('p1')
+  expect(toAgent.agentTabs).toEqual([{ url: 'http://localhost:5173/', openedBy: 'p1', handover: expect.any(String), mobile: true }])
 })
