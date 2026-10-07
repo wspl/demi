@@ -1,0 +1,33 @@
+[package]
+name = "demi-command-package-browser-preview"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# Its tests read what the client sends on the wire, below the engine's
+# boundary, so they are unit tests and the crate has no integration tests
+# (`crates-and-packages.md` § Module layout). No doc examples.
+doctest = false
+bench = false
+
+[dependencies]
+http.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+url = "2"
+# The Mozilla root store the upstream requests verify against
+# (CDLA-Permissive-2.0).
+webpki-root-certs = "1"
+# Upstream requests with a browser's TLS and HTTP/2 fingerprint, on the
+# vendored BoringSSL (`builds-and-releases.md` § Vendored crates); vendored
+# in `vendor/wreq/wreq` and `vendor/btls/btls-sys` with Chrome 154's
+# ClientHello options (Apache-2.0; btls-sys MIT, BoringSSL Apache-2.0).
+wreq = { version = "=6.0.0-rc.31", features = ["gzip", "brotli", "zstd", "deflate", "stream", "ws"] }
+# The browsers wreq emulates, chosen by name from the User-Agent (Apache-2.0).
+wreq-util = { version = "=3.0.0-rc.14", features = ["emulation-serde"] }
+# The error type wreq does not re-export: whether a connection closed before
+# its response (Apache-2.0).
+wreq-proto = "0.2.6"
