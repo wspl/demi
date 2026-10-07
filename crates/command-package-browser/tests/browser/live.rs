@@ -1262,6 +1262,121 @@ async fn a_panel_resized_while_a_navigation_hangs_keeps_the_picture_and_the_view
     .await;
 }
 
+/// Mobile chosen while the watched tab loads an address that does not
+/// answer applies once the navigation ends, though the page that chose it
+/// was reloaded meanwhile, and the view answers its viewers meanwhile: the
+/// hub put the tab in the mode at once, waiting for the page Chrome holds,
+/// and answered no viewer, the reloaded page's view included, until the
+/// navigation ended (`live-view.md` § Modes). About 2 s.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_mode_chosen_while_a_navigation_hangs_applies_once_it_ends_and_the_view_answers() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let tab = fixture
+            .call("browser.open", json!({"url": site.base, "timeout": 120000}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        watch(&mut view, &tab).await;
+        request(&fixture, "browser.goto", json!({"tab": tab, "url": format!("{}slow", site.base)})).await;
+        view.until("the tab loading", |message| {
+            message["type"] == "state" && message["tabs"][0]["loading"] == json!(true)
+        })
+        .await;
+        view.send(json!({"type": "mode", "tab": tab, "mode": "mobile"}));
+        assert_eq!(view.close().await.exit_code, 0);
+        // The reloaded page's view opens and is answered while the page
+        // hangs: far sooner than Chrome's 30 s for a held command, and in
+        // time for a busy machine.
+        let prompt = Duration::from_secs(10);
+        let mut reloaded = View::open(&fixture);
+        hello(&reloaded, "mac");
+        tokio::time::timeout(prompt, reloaded.message("state"))
+            .await
+            .expect("the view answers a new viewer while the page hangs");
+        reloaded.send(json!({"type": "watch", "tab": tab}));
+        let stream = tokio::time::timeout(prompt, reloaded.message("stream"))
+            .await
+            .expect("the view answers a watch while the page hangs");
+        assert_eq!(
+            (&stream["width"], &stream["viewport"]["mode"]),
+            (&json!(1600), &json!("web")),
+            "the tab keeps its mode while its navigation is under way: {stream}"
+        );
+        // Once the navigation ends, the tab is a phone and its page loads
+        // again as one.
+        request(&fixture, "browser.stop", json!({"tab": tab})).await;
+        reloaded.until("a phone-wide stream", |message| {
+            message["type"] == "stream" && message["width"] == 780
+        })
+        .await;
+        for _ in 0..200 {
+            if site.served.lock().unwrap().iter().any(|agent| agent.contains("Android")) {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        let served = site.served.lock().unwrap().clone();
+        assert!(
+            served.last().is_some_and(|agent| agent.contains("Android")),
+            "the page was never served to a phone: {served:?}"
+        );
+        assert_eq!(reloaded.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// A tab the user sent to an address that does not answer lists that
+/// address, with no title yet, until the navigation ends, as Chrome's
+/// address bar shows the address a navigation the user started loads: a
+/// page reloaded meanwhile showed the address the tab was leaving. Stop
+/// returns the tab to the page it stayed on. About 2 s.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_users_navigation_lists_its_address_until_it_ends() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let page = format!("{}icon", site.base);
+        let slow = format!("{}slow", site.base);
+        let tab = fixture
+            .call("browser.open", json!({"url": page, "timeout": 120000}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        request(&fixture, "browser.goto", json!({"tab": tab, "url": slow})).await;
+        listed_until(&fixture, &tab, |_, row| {
+            row["loading"] == json!(true) && row["url"] == json!(slow) && row["title"] == json!("")
+        })
+        .await;
+        // A page's view opened meanwhile, as one reloaded, shows it too.
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        let state = view.message("state").await;
+        assert_eq!(
+            (&state["tabs"][0]["url"], &state["tabs"][0]["title"]),
+            (&json!(slow), &json!("")),
+            "{state}"
+        );
+        request(&fixture, "browser.stop", json!({"tab": tab})).await;
+        view.until("the page the tab stayed on", |message| {
+            message["type"] == "state"
+                && message["tabs"][0]["url"] == json!(page)
+                && message["tabs"][0]["title"] == json!("Icon")
+        })
+        .await;
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
 /// Decodes a key frame as the page does (`pictures.ts`: WebCodecs, with the
 /// live protocol's codec) and keeps the picture in the page as a PNG in
 /// base64, the form in which a picture leaves Chrome whole; answers its
