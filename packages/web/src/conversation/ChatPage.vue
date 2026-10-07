@@ -194,6 +194,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @update:message-edit="conversation.messageEdit = $event"
     @regenerate="store.regenerate(conversation, $event)"
     @save-scroll="saveScroll"
+    :reveal-block-id="store.reveal?.conversationId === conversation.id ? store.reveal.blockId : null"
+    @revealed="store.reveal = null"
     @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
   >
     <template #workspace

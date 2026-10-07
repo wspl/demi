@@ -44,6 +44,7 @@ subtle = "2"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-rusqlite = "0.8"
+tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]

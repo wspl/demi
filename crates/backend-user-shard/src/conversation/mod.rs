@@ -3,8 +3,8 @@
 //! over the conversation's database, the conversation socket, the provider
 //! runtimes the sessions infer with, the Claude Code CLI's work on the
 //! user's Cloud and the provider test, the conversations' summaries, and the
-//! failure facts of their history, and the saved wakeups that a restart
-//! carries over.
+//! failure facts of their history, the saved wakeups that a restart
+//! carries over, and the search index that follows them.
 
 mod announcement;
 pub mod claude_cli;
@@ -15,6 +15,7 @@ mod failure_facts;
 mod fork;
 pub(crate) mod product;
 mod providers;
+pub mod search;
 pub mod settings;
 mod socket;
 mod summary;

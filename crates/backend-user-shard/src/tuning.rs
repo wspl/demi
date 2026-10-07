@@ -37,6 +37,10 @@ pub struct ConversationTuning {
     /// first message gives. A test whose scripted vendor answers only the
     /// turns turns it off.
     pub titles: bool,
+    /// The least time between two indexings of one conversation for search
+    /// (`storage.md` § Search index); a change within it is indexed once it
+    /// has passed.
+    pub search_interval: Duration,
 }
 
 impl Default for ConversationTuning {
@@ -45,6 +49,7 @@ impl Default for ConversationTuning {
             outbox_frames: demi_agent_server::ServerConfig::default().outbox_frames,
             requests_per_minute: demi_backend_providers::usage::rate_limit::REQUESTS_PER_WINDOW,
             titles: true,
+            search_interval: Duration::from_secs(2),
         }
     }
 }

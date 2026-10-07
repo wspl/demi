@@ -48,6 +48,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
 use crate::conversation::claude_cli::ClaudeCli;
+use crate::conversation::search::SearchIndexer;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationParts, ShardHosts};
 use crate::lifecycle::conversations::ConversationWatches;
@@ -95,6 +96,8 @@ pub struct Shard {
     agent: Rc<AgentServer<ShardHosts>>,
     /// The title requests of the user's conversations.
     titles: Titles,
+    /// What keeps the user's search index in step with the conversations.
+    search: SearchIndexer,
     /// What opens a conversation's tree: the conversation sockets being
     /// served and the restores of trees whose saved wakeup is due. The close
     /// ends them before the agent shuts down, so no tree opens and no frame
@@ -149,6 +152,7 @@ impl Shard {
             rate_limit,
         );
         Self {
+            search: SearchIndexer::new(&services, &user),
             user,
             this: shard,
             services,
@@ -242,6 +246,10 @@ impl Shard {
 
     pub(crate) fn titles(&self) -> &Titles {
         &self.titles
+    }
+
+    pub(crate) fn search_indexer(&self) -> &SearchIndexer {
+        &self.search
     }
 
     pub(crate) fn tree_openers(&self) -> &TaskTracker {
@@ -626,9 +634,13 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                 let shard = shards
                     .entry(job.user().clone())
                     .or_insert_with_key(|user| {
-                        Rc::new_cyclic(|shard| {
+                        let shard = Rc::new_cyclic(|shard| {
                             Shard::new(shard.clone(), user.clone(), services.clone(), http.clone())
-                        })
+                        });
+                        // The search index follows the user's changes from
+                        // the shard's first call until it closes.
+                        shard.tasks.spawn_local(shard.clone().follow_for_search());
+                        shard
                     })
                     .clone();
                 calls.spawn_local(job.run(shard));

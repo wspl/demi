@@ -4,7 +4,8 @@
 //! the part to the set of each of the user's channels and wakes the
 //! channel's task, which reads the part in the shard when it can send it. A
 //! channel holds at most one mark per part however far its page falls
-//! behind, so it never queues.
+//! behind, so it never queues. A part of the backend that follows a user's
+//! changes as a page does, the search index, watches them the same way.
 
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
@@ -42,8 +43,9 @@ pub struct SyncRegistry(Arc<Mutex<HashMap<UserId, Vec<Arc<Channel>>>>>);
 
 /// One open channel as the registry marks it.
 struct Channel {
-    /// The session the channel opened with.
-    session: TokenHash,
+    /// The session the channel opened with; none for a watch of the
+    /// backend's own, which no sign-out ends.
+    session: Option<TokenHash>,
     marked: Mutex<Marked>,
     /// Woken by each mark; a mark while the task is busy leaves a permit, so
     /// none is missed.
@@ -88,6 +90,17 @@ impl SyncRegistry {
     /// `session`, for every change marked from now on, until the
     /// registration is dropped.
     pub fn register(&self, user: &UserId, session: TokenHash) -> Registration {
+        self.add(user, Some(session))
+    }
+
+    /// Registers a watch of `user`'s changes for a part of the backend that
+    /// follows them as a page does, such as the search index, until the
+    /// registration is dropped.
+    pub fn watch(&self, user: &UserId) -> Registration {
+        self.add(user, None)
+    }
+
+    fn add(&self, user: &UserId, session: Option<TokenHash>) -> Registration {
         let channel = Arc::new(Channel {
             session,
             marked: Mutex::default(),
@@ -138,7 +151,7 @@ impl SyncRegistry {
         if let Some(channels) = self.lock().get(user) {
             for channel in channels
                 .iter()
-                .filter(|channel| channel.session == *session)
+                .filter(|channel| channel.session.as_ref() == Some(session))
             {
                 channel.lock().session_ended = true;
                 channel.wake.notify_one();
