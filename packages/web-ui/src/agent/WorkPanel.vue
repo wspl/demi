@@ -145,33 +145,34 @@ function reorder(from: number, to: number): void {
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
-      <!-- The pinned tabs give way before the strip: in a narrow panel their titles truncate, down to their
-           marks and badges, so the strip keeps room for its selected tab whole, up to a tab's full 160px
-           and the New tab control beside it. A pinned tab is a grid so that its smallest width is its mark
-           and badge, never a cut badge; only then does the strip give way, its selected tab's title
-           truncating. -->
-      <div v-if="pinnedTabs.length" class="flex shrink-[100] items-center gap-1" role="group" aria-label="Pinned tabs">
-        <button
-          v-for="item in pinnedTabs"
-          :key="item.kind.kind"
-          type="button"
-          :aria-pressed="item.kind.kind === selection"
-          :title="item.kind.title(item.data)"
-          class="grid h-7 grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome hover:bg-surface-base hover:text-fg"
-          :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
-          @click="emit('select', item.kind.kind)"
-        >
-          <component :is="item.kind.mark" :data="item.data" />
-          <span class="truncate">{{ item.kind.title(item.data) }}</span>
-          <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
-        </button>
-      </div>
       <TabStrip
         class="min-w-0 grow"
-        :class="tabs.length > 0 ? 'basis-48' : 'basis-0'"
         surface="raised"
         @reorder="reorder"
       >
+        <!-- The pinned tabs lead the strip and give way before its tabs: in a narrow panel their titles
+             truncate, down to their marks and badges, so the strip keeps room for its selected tab. A pinned
+             tab is a grid so that its smallest width is its mark and badge, never a cut badge. It is a tab as
+             the strip's own are: a press selects it, as do Enter and Space, and the arrows reach it. -->
+        <template v-if="pinnedTabs.length" #leading>
+          <span
+            v-for="item in pinnedTabs"
+            :key="item.kind.kind"
+            role="tab"
+            tabindex="0"
+            :aria-selected="item.kind.kind === selection"
+            :title="item.kind.title(item.data)"
+            class="grid h-7 grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
+            :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
+            @pointerdown.left="emit('select', item.kind.kind)"
+            @keydown.enter.self="emit('select', item.kind.kind)"
+            @keydown.space.self.prevent="emit('select', item.kind.kind)"
+          >
+            <component :is="item.kind.mark" :data="item.data" />
+            <span class="truncate">{{ item.kind.title(item.data) }}</span>
+            <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
+          </span>
+        </template>
         <TabItem
           v-for="item in tabs"
           :key="item.tab.id"

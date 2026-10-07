@@ -66,6 +66,7 @@ import type { Conversation, ProductAttachment } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { createDraftSync, hasUnsavedDraft } from './draft-sync'
 import { transcriptTerminals } from './terminals'
+import { executionFor } from '../targets/execution'
 import {
   deleteDraft,
   readDraft,
@@ -1036,6 +1037,14 @@ export const useConversations = defineStore('conversations', () => {
           conversation.target.kind === 'workspace'
             ? conversation.target.workspaceId
             : null
+        // The device the draft now runs on is its primary and leaves its
+        // attached hosts, as a switch of a conversation's target does
+        // (`sessions-and-targets.md` § Switch the primary target): the last
+        // choice wins, and the first send creates what the user sees.
+        const primary = executionFor(conversation).deviceId
+        conversation.attachedHosts = conversation.attachedHosts.filter(
+          (host) => host.deviceId !== primary,
+        )
       }
     }
     ids = ids.filter(
