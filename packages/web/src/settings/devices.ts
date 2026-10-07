@@ -6,14 +6,17 @@ import { useProduct } from '../state/product'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   cloudResetAnswerSchema,
+  deviceAnswerSchema,
   revokedDeviceSchema,
   type CloudReset,
+  type RenameDevice,
 } from '../api/generated/web-api'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
   let lifetime = new AbortController()
   const revoking = ref<string[]>([])
+  const renaming = ref<string[]>([])
   const reset = ref<
     | { status: 'idle' | 'pending' }
     | {
@@ -22,12 +25,14 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       }
   >({ status: 'idle' })
   // The product state carries the Cloud's status; there is none only before
-  // the channel's first snapshot arrives.
+  // the channel's first snapshot arrives. Its device, and what its runner
+  // reported, is there once the Cloud's first use made it.
   const cloud = computed(() => {
     const status = product.snapshot?.cloud
     if (!status) {
       return null
     }
+    const device = product.snapshot?.devices.find((candidate) => candidate.kind === 'managed')
     return {
       state: status.state,
       operationId: status.operation?.id ?? null,
@@ -36,6 +41,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       volumes: status.volumes,
       limits: status.limits,
       newerImage: status.newerImage,
+      report: { os: device?.os ?? null, runnerVersion: device?.runnerVersion ?? null },
     }
   })
   async function revoke(id: string): Promise<void> {
@@ -59,6 +65,31 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     } finally {
       if (current === lifetime) {
         revoking.value = revoking.value.filter((value) => value !== id)
+      }
+    }
+  }
+
+  /** Gives a paired device a new name; the channel brings it to every page, this one included. */
+  async function rename(id: string, name: string): Promise<void> {
+    if (renaming.value.includes(id)) {
+      return
+    }
+    const current = lifetime
+    renaming.value.push(id)
+    try {
+      const response = await apiRequest(`/devices/${encodeURIComponent(id)}`, {
+        method: 'PATCH',
+        signal: current.signal,
+        ...jsonBody({ name } satisfies RenameDevice),
+      })
+      await readResponse(response, deviceAnswerSchema)
+    } catch (error) {
+      if (!current.signal.aborted) {
+        reportError('Could Not Rename Device', error, { userVisible: true })
+      }
+    } finally {
+      if (current === lifetime) {
+        renaming.value = renaming.value.filter((value) => value !== id)
       }
     }
   }
@@ -101,6 +132,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       lifetime.abort()
       lifetime = new AbortController()
       revoking.value = []
+      renaming.value = []
       reset.value = { status: 'idle' }
     },
   )
@@ -110,6 +142,8 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     reset,
     revoking,
     revoke,
+    renaming,
+    rename,
     resetCloud,
   }
 })

@@ -14,7 +14,7 @@ import {
 } from './message-input/attachments'
 import { useMessageEditComposer } from './message-input/useMessageEditComposer'
 import { draftPreview } from './message-input/draft-preview'
-import { editHasContent, type MessageEditState } from './message-editing'
+import { editHasContent, useEditLastMessage, type MessageEditState } from './message-editing'
 import { composerCapsule, composerTransfer, provideTransfers, type MessageCapsule } from './message-editor/capsules'
 import { parseUserMarkdown, serializeUserMarkdown } from '../markdown/user-markdown'
 import MessageEditor from './message-editor/MessageEditor.vue'
@@ -130,11 +130,20 @@ const emit = defineEmits<{
   /** Open the conversation again with the plugins the user has on. */
   reloadPlugins: []
 }>()
+/**
+ * The edit the composer shows: none while Regenerate sends one, which never
+ * opens the editor; the draft stays, and waits for that edit to be answered.
+ */
+const regenerating = computed(() => props.messageEdit?.phase === 'regenerating')
+const shownEdit = computed(() => regenerating.value ? null : props.messageEdit ?? null)
 const edit = useMessageEditComposer({
-  state: () => props.messageEdit,
+  state: () => shownEdit.value,
   update: (state) => emit('update:messageEdit', state),
   upload: (file, options) => props.upload(file, options),
 })
+/** Up Arrow in the empty draft opens the editor on the last message, where the page offers editing it. */
+const editLastMessage = useEditLastMessage()
+const editLast = computed(() => props.disabled ? undefined : editLastMessage())
 /** Read once, as the composer shows: the focus it finds then decides. */
 const touchOnly = useTouchOnly()
 const takesFocus = props.focusOnShow && !touchOnly.value && !isFocusedElementEditable()
@@ -142,7 +151,7 @@ const takesFocus = props.focusOnShow && !touchOnly.value && !isFocusedElementEdi
 const editor = ref<InstanceType<typeof MessageEditor>>()
 const focused = ref(false)
 // An editor taken away while it has the focus tells no blur; the one in its place starts unfocused.
-watch(() => props.messageEdit?.request.operationId, () => {
+watch(() => shownEdit.value?.request.operationId, () => {
   focused.value = false
 })
 /**
@@ -153,7 +162,7 @@ watch(() => props.messageEdit?.request.operationId, () => {
  */
 let editSent = false
 watch(editor, (current) => {
-  if (!current || props.messageEdit || !editSent) {
+  if (!current || shownEdit.value || !editSent) {
     return
   }
   editSent = false
@@ -202,7 +211,7 @@ const carrying = computed(() => {
   return props.attachments.filter((item) => ids.has(item.id))
 })
 const hasDraft = computed(
-  () => props.messageEdit ? editHasContent(props.messageEdit)
+  () => shownEdit.value ? editHasContent(shownEdit.value)
     : !!draft.value.trim() || !!capsules.value.length,
 )
 const modelState = computed(() =>
@@ -216,9 +225,10 @@ const modelState = computed(() =>
 const sendDisabled = computed(
   () =>
     props.disabled ||
+    regenerating.value ||
     modelState.value.kind !== 'ready' ||
-    (props.messageEdit
-      ? props.messageEdit.phase === 'sending' || !!edit.sendBlockReason.value
+    (shownEdit.value
+      ? shownEdit.value.phase === 'sending' || !!edit.sendBlockReason.value
       : !attachmentsReady(carrying.value)),
 )
 const sendBlockReason = computed(() => {
@@ -228,7 +238,7 @@ const sendBlockReason = computed(() => {
   if (props.disabled) {
     return undefined
   }
-  return props.messageEdit
+  return shownEdit.value
     ? edit.sendBlockReason.value
     : attachmentSendBlockReason(carrying.value.filter(isComposerFile).map((item) => item.phase))
 })
@@ -242,13 +252,13 @@ watch(edit.attachmentError, (message) => {
 })
 /** The replaced version as the offer shows it; none while there is none, or while a message is edited. */
 const replacedPreview = computed(() =>
-  props.replaced && !props.messageEdit
+  props.replaced && !shownEdit.value
     ? draftPreview(props.replaced.markdown, props.replaced.fileNames)
     : null,
 )
 /** Why Compact cannot run now apart from how full the context is: the session takes it only while idle. */
 const compactUnavailable = computed(() => {
-  if (props.messageEdit) {
+  if (shownEdit.value) {
     return 'Compaction is available after the edit.'
   }
   if (props.running) {
@@ -256,8 +266,8 @@ const compactUnavailable = computed(() => {
   }
   return null
 })
-const submitLabel = computed(() => props.messageEdit
-  ? props.messageEdit.phase === 'uncertain' ? 'Retry' : 'Save and resend'
+const submitLabel = computed(() => shownEdit.value
+  ? shownEdit.value.phase === 'uncertain' ? 'Retry' : 'Save and resend'
   : props.running ? 'Queue' : 'Send',
 )
 
@@ -270,7 +280,7 @@ function submit() {
   if (!hasDraft.value) {
     return
   }
-  if (props.messageEdit) {
+  if (shownEdit.value) {
     editSent = true
     emit('submitEdit')
     return
@@ -305,7 +315,7 @@ function attachRemote() {
 }
 
 function addFiles(files: File[]): void {
-  if (!props.messageEdit) {
+  if (!shownEdit.value) {
     emit('addFiles', files)
     return
   }
@@ -409,8 +419,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       >
         <template #editor="{ line }">
           <MessageEditor
-            v-if="messageEdit"
-            :key="messageEdit.request.operationId"
+            v-if="shownEdit"
+            :key="shownEdit.request.operationId"
             ref="editor"
             v-model:multiline="multiline"
             composer
@@ -440,6 +450,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :shown-from-outside="draftShown"
             :autofocus="takesFocus"
             :placeholder="placeholder"
+            :edit-last="editLast"
             label="Message"
             @change="changeDraft"
             @submit="submit"
@@ -450,7 +461,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         </template>
         <template #attach>
           <Dropdown
-            v-if="!messageEdit || edit.editable.value"
+            v-if="!shownEdit || edit.editable.value"
             :overlay-store="appOverlayStore"
             :placement="attachOpen ? 'bottom-start' : 'top-start'"
             v-bind="attachOpen ? { open: true } : {}"
@@ -474,7 +485,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
                   @select="pickFiles(close)"
                 />
                 <MenuItem
-                  v-if="remoteFiles && !messageEdit"
+                  v-if="remoteFiles && !shownEdit"
                   :icon="HardDrive"
                   label="Attach Remote File…"
                   @select="attachRemote"
@@ -484,7 +495,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           </Dropdown>
         </template>
         <template #model>
-          <div :inert="!!messageEdit && !edit.editable.value">
+          <div :inert="!!shownEdit && !edit.editable.value">
             <ModelSelector
               :load="modelLoad"
               @retry="emit('retryModels')"
@@ -503,7 +514,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :unavailable-reason="compactUnavailable"
             @compact="emit('compact')"
           />
-          <Tooltip v-if="messageEdit" content="Cancel edit">
+          <Tooltip v-if="shownEdit" content="Cancel edit">
             <IconButton
               :icon="X"
               variant="ghost"
@@ -516,7 +527,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             />
           </Tooltip>
           <!-- Stop stays for the whole turn, beside Queue while the message holds text. -->
-          <Tooltip v-if="(running || compacting) && !messageEdit" content="Stop">
+          <Tooltip v-if="(running || compacting) && !shownEdit" content="Stop">
             <IconButton
               :icon="Square"
               variant="ghost"
@@ -534,11 +545,11 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           >
             <IconButton
               ref="sendButton"
-              :icon="messageEdit?.phase === 'uncertain' ? RotateCcw : ArrowUp"
+              :icon="shownEdit?.phase === 'uncertain' ? RotateCcw : ArrowUp"
               variant="accent"
               circle
               :disabled="sendDisabled"
-              :loading="messageEdit?.phase === 'sending'"
+              :loading="shownEdit?.phase === 'sending'"
               :disabled-reason="sendBlockReason"
               :aria-label="submitLabel"
               @mousedown.prevent

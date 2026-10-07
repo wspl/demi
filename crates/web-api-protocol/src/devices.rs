@@ -1,7 +1,7 @@
 //! Devices: the list, pairing, and a Host's log (`web-api.md` § Workspaces,
 //! devices, and attached hosts, § Device log).
 
-use demi_runner_protocol::wire::{HostArtifact, RunnerPlatform};
+use demi_runner_protocol::wire::{HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::ids::{DeviceId, WorkspaceId};
+use crate::text::Trimmed;
+
+/// The most characters a device's name has.
+pub const DEVICE_NAME_MAX: usize = 64;
 
 /// How a device came to be: `user` for one its user paired, `managed` for
 /// the user's Cloud.
@@ -38,9 +42,11 @@ pub enum DeviceState {
 /// the home directory it reported when it last connected, null until then
 /// (the backend keeps it in memory only); `installed` is what its runner
 /// last reported its artifact cache holds, kept while it is offline
-/// (`native-runtime.md` § Installed artifacts); `start_command` is what a
-/// person types in a terminal on a paired device to start its runner again,
-/// null for the Cloud.
+/// (`native-runtime.md` § Installed artifacts); `os` and `runner_version`
+/// are the operating system and the runner release its runner last
+/// reported, null before its runner first connected; `start_command` is what
+/// a person types in a terminal on a paired device to start its runner
+/// again, null for the Cloud.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
@@ -57,6 +63,12 @@ pub struct DeviceDto {
     #[schemars(with = "Nullable<String>")]
     pub home: Option<String>,
     pub installed: Vec<HostArtifact>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<OperatingSystem>")]
+    pub os: Option<OperatingSystem>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub runner_version: Option<String>,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub start_command: Option<String>,
@@ -77,9 +89,17 @@ pub struct Claim {
     pub code: String,
 }
 
-/// `{ device }`: the answer of a claim.
+/// `PATCH /devices/:id`: a paired device's new name.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(deny_unknown_fields)]
+pub struct RenameDevice {
+    #[garde(length(chars, min = 1, max = DEVICE_NAME_MAX))]
+    pub name: Trimmed,
+}
+
+/// `{ device }`: the answer of a claim and of a rename.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct ClaimedDevice {
+pub struct DeviceAnswer {
     pub device: DeviceDto,
 }
 

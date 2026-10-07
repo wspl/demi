@@ -33,6 +33,12 @@ const props = withDefaults(
     disabled?: boolean
     /** Escape ends something, such as an edit. */
     cancelable?: boolean
+    /**
+     * What Up Arrow does while the composer holds no text and no files, read
+     * at each press, such as opening the editor on the last message; absent,
+     * the key moves the caret as usual.
+     */
+    editLast?: () => void
     placeholder?: PlaceholderText
     /** What assistive technology calls the field. */
     label?: string
@@ -96,6 +102,10 @@ const editor = new Editor({
             emit('cancel')
           }
           return !!props.cancelable
+        },
+        editLast: () => {
+          props.editLast?.()
+          return !!props.editLast
         },
       })
     : readOnlyExtensions(),
