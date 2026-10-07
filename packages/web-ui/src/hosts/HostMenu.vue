@@ -174,7 +174,7 @@ function connect() {
             />
           </template>
         </MenuItem>
-        <MenuItem label="Connect New Device…" :icon="Link" @select="connect" />
+        <MenuItem label="Add Device…" :icon="Link" @select="connect" />
       </Menu>
     </template>
   </Dropdown>

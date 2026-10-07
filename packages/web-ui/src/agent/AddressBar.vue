@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { nextTick, ref } from 'vue'
 import { ArrowLeft, ArrowRight, RotateCw, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import TextInput from '../ui/TextInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { SentenceText } from '../ui/ui-text'
+import { addressUrl } from './address'
 
 /**
  * The address bar both kinds of web page tab share
@@ -12,7 +13,9 @@ import type { SentenceText } from '../ui/ui-text'
  * conversation browser has its own history, a `page` tab keeps a framed
  * page's history to itself. It shows the page's address and follows it,
  * except while the user has the field: then it keeps what the user types,
- * and leaving without Enter shows the page's address again. While the page
+ * and leaving without Enter, or Escape, shows the page's address again. It
+ * reads what the user typed as a browser's address bar does (`addressUrl`).
+ * While the page
  * loads, Reload is Stop, in the same place, as in a web browser; Stop is
  * never unavailable while the page loads.
  */
@@ -34,7 +37,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  /** Enter on an address, as a whole URL: what the user typed, `https://` before it when it names no scheme. */
+  /** Enter on an address, as the whole URL a browser's address bar opens for what the user typed. */
   submit: [url: string]
   back: []
   forward: []
@@ -69,26 +72,32 @@ function focus(): void {
   field.value?.select()
 }
 
-/** The URL `text` names, `https://` before it when it names no scheme; null when it names none. */
-function urlOf(text: string): string | null {
-  const typed = text.trim()
-  const candidate = typed.includes('://') ? typed : `https://${typed}`
-  if (!typed || !URL.canParse(candidate)) {
-    return null
-  }
-  return new URL(candidate).href
-}
-
-// An address is submitted and the field lets go, so keys reach the page again. Text that names no
-// address stays in the field for the user to correct.
+// An address is submitted and the field lets go, so keys reach the page again. An empty field opens
+// nothing.
 function submit(): void {
-  const url = urlOf(draft.value ?? props.address)
+  const url = addressUrl(draft.value ?? props.address)
   if (url === null) {
     return
   }
   emit('submit', url)
   field.value?.el?.blur()
 }
+
+// Escape gives up what the user typed: the page's address shows again, selected, as in a browser.
+async function revert(): Promise<void> {
+  draft.value = props.address
+  // Selected once the field shows the address: writing its value puts the caret at the end.
+  await nextTick()
+  field.value?.select()
+}
+
+defineExpose({
+  /** Puts the focus in the address, selected whole, as a browser's ⌘L does. */
+  focus(): void {
+    field.value?.focus()
+    field.value?.select()
+  },
+})
 </script>
 
 <template>
@@ -134,6 +143,7 @@ function submit(): void {
       aria-label="Browser address"
       @update:model-value="draft = $event"
       @keydown.enter="submit"
+      @keydown.esc.stop.prevent="revert"
       @focus="focus"
       @blur="draft = null"
       @pointerdown="pointerDown"

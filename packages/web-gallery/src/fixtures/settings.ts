@@ -84,7 +84,7 @@ export function skillsShowcase(): SkillsState {
         skills: [
           showcaseSkill('design-review', 'Review UI against the web interface guidelines.'),
           showcaseSkill('perf-audit', 'Find the slow paths of a page load.', { enabled: false }),
-          showcaseSkill('copy-edit', 'Tighten interface copy.', { warnings: ['the name "Copy_Edit" breaks the name rule'] }),
+          showcaseSkill('copy-edit', 'Tighten interface copy.', { warnings: ['The name "Copy_Edit" breaks the name rule'] }),
           showcaseSkill('review', 'Review a component and its specimens.', { enabled: false }),
           showcaseSkill('release-notes', 'Write the release notes the user asks for.', { enabled: false, disableModelInvocation: true }),
         ],
@@ -717,7 +717,7 @@ export function createSettingsState() {
             { name: 'web-design-guidelines', description: 'Review UI against Vercel’s web interface guidelines.', warnings: [], enabled: true, disableModelInvocation: false },
             { name: 'vercel-react-best-practices', description: 'React composition and data-fetching patterns.', warnings: [], enabled: true, disableModelInvocation: false },
             { name: 'vercel-react-native-skills', description: 'React Native layout and navigation conventions.', warnings: [], enabled: false, disableModelInvocation: false },
-            { name: 'vercel-composition-patterns', description: 'When to split a component and when to leave it.', warnings: ['the description is longer than 1,024 characters'], enabled: true, disableModelInvocation: false },
+            { name: 'vercel-composition-patterns', description: 'When to split a component and when to leave it.', warnings: ['The description is longer than 1,024 characters'], enabled: true, disableModelInvocation: false },
             { name: 'frontend-design', description: 'Taste-led interface work: type, color, motion.', warnings: [], enabled: false, disableModelInvocation: false },
             { name: 'tdd', description: 'Write the failing test before the change.', warnings: [], enabled: false, disableModelInvocation: false },
             { name: 'agent-browser', description: 'Browse and act on a page the agent can see.', warnings: [], enabled: false, disableModelInvocation: false },

@@ -4,6 +4,7 @@ import { TriangleAlert } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import Button from '../ui/Button.vue'
+import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import Switch from '../ui/Switch.vue'
 import Tag from '../ui/Tag.vue'
 import TagLine from '../ui/TagLine.vue'
@@ -119,7 +120,11 @@ async function save(draft: SettingsSubagentDraft): Promise<void> {
   }
 }
 
+/** Deleting asks first, over the profile's dialog. */
+const deleteOpen = ref(false)
+
 async function remove(): Promise<void> {
+  deleteOpen.value = false
   const current = editor.value
   if (!current?.id || current.status.kind === 'saving') {
     return
@@ -223,7 +228,17 @@ const empty = computed(() => props.profiles.length === 0)
       :error="editor.status.kind === 'failed' ? editor.status.message : null"
       @close="editor.open = false"
       @save="save"
-      @delete="remove"
+      @delete="deleteOpen = true"
     />
+    <ConfirmDialog
+      :is-open="deleteOpen"
+      :overlay-store="overlayStore"
+      :title="`Delete the profile “${editor?.draft.name ?? ''}”?`"
+      action="Delete"
+      @close="deleteOpen = false"
+      @confirm="remove"
+    >
+      <p>Agents can no longer spawn with it. Children already spawned with it go on as they are.</p>
+    </ConfirmDialog>
   </SettingsPage>
 </template>

@@ -67,7 +67,7 @@ function disabledReason(device: HostDeviceOption): SentenceText | undefined {
       />
       <MenuItem
         :icon="Plus"
-        label="Connect New Device…"
+        label="Add Device…"
         @select="emit('connect')"
       />
     </template>

@@ -23,26 +23,27 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         id: 'general',
         label: 'General',
         icon: Settings2,
-        keywords: [
-          'language',
-          'theme',
-          'tone',
-          'accent',
-          'font size'
-        ]
+        keywords: ['appearance', 'look'],
+        settings: [
+          { label: 'Language' },
+          { label: 'Theme', keywords: ['dark mode', 'light mode', 'appearance'] },
+          { label: 'Tone' },
+          { label: 'Accent', keywords: ['color', 'colour'] },
+          { label: 'Transcript text size', keywords: ['font size', 'text size'] },
+        ],
       },
       {
         id: 'account',
         label: 'Account',
         icon: CircleUser,
-        keywords: [
-          'avatar',
-          'display name',
-          'email',
-          'password',
-          'sign out',
-          'delete account'
-        ]
+        settings: [
+          { label: 'Avatar', keywords: ['picture', 'photo'] },
+          { label: 'Display name', keywords: ['nickname', 'name'] },
+          { label: 'Email', keywords: ['address', 'e-mail'] },
+          { label: 'Password' },
+          { label: 'Sign out', keywords: ['log out', 'logout'] },
+          { label: 'Delete account' },
+        ],
       },
       {
         id: 'notifications',
@@ -75,12 +76,12 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         label: 'Subagent',
         icon: Bot,
         keywords: [
-          'subagent',
           'profile',
           'spawn',
           'delegate',
           'child agent'
-        ]
+        ],
+        settings: [{ label: 'Subagents' }],
       },
       {
         id: 'plugins',
@@ -98,12 +99,17 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         label: 'Devices',
         icon: Monitor,
         keywords: [
+          'add device',
           'pairing code',
           'claim',
           'revoke',
           'runner',
           'machine'
-        ]
+        ],
+        settings: [
+          { label: 'Your Cloud environment', keywords: ['cloud', 'reset environment'] },
+          { label: 'Storage', keywords: ['disk', 'space'] },
+        ],
       },
       {
         id: 'archived',
@@ -115,7 +121,13 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         id: 'keyboard',
         label: 'Keyboard',
         icon: Keyboard,
-        keywords: ['shortcut', 'hotkey', 'binding']
+        keywords: ['shortcut', 'hotkey', 'binding'],
+        settings: [
+          { label: 'New conversation' },
+          { label: 'Toggle sidebar' },
+          { label: 'Open settings' },
+          { label: 'Reset all shortcuts' },
+        ],
       },
       {
         id: 'data',

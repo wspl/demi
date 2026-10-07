@@ -21,7 +21,10 @@ export function browserPage(options: BrowserTabsOptions = {}) {
     kinds: [browserTabKind],
     panel: (conversation, page) =>
       new BrowserTabsController(
-        browserTabsApi(page.plugin.conversation(conversation)),
+        browserTabsApi(
+          page.plugin.conversation(conversation),
+          (panelTab) => page.panel.select(conversation, browserTabKind.kind, panelTab),
+        ),
         page.errors,
         options,
       ),
