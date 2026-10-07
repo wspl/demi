@@ -13,6 +13,9 @@ packages/plugin-*/src/generated/
 packages/web/src/plugins/generated/
 packages/web-gallery/src/generated/
 
+# The preview rewriter's WebAssembly and glue, by `bun xtask preview-runtime`
+packages/preview-runtime/src/generated/
+
 # Internal-only docs (design history, research, QA acceptance, the readiness plan).
 # Kept locally for the team, excluded from the published/open-source repo.
 docs/internal/
