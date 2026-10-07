@@ -101,6 +101,22 @@ const accent = computed({
   },
 })
 
+/**
+ * The stand-in browser's permission prompt: it answers what the fixture says
+ * after a beat, as a person would; one that blocks the site answers at once,
+ * without asking, as a browser does.
+ */
+async function askBrowser(): Promise<NotificationPermission> {
+  const notifications = s.value.notifications
+  if (notifications.permission !== 'default') {
+    return notifications.permission
+  }
+  productWould('The Browser Would Ask to Allow Notifications')
+  await new Promise((resolve) => setTimeout(resolve, 800))
+  notifications.permission = notifications.answer
+  return notifications.permission
+}
+
 // The field shows the new name at once and waits a beat, as the product's save does.
 const nameSaving = ref(false)
 let nameTimer = 0
@@ -284,10 +300,12 @@ function resetShortcuts() {
 
   <SettingsNotifications
     v-else-if="tab === 'notifications'"
-    v-model:web-browser="s.notifications.webBrowser"
-    v-model:sound="s.notifications.sound"
-    v-model:on-finish="s.notifications.onFinish"
-    v-model:on-error="s.notifications.onError"
+    v-model:enabled="s.notifications.enabled"
+    v-model:turn-finishes="s.notifications.turnFinishes"
+    v-model:turn-fails="s.notifications.turnFails"
+    v-model:needs-permission="s.notifications.needsPermission"
+    :permission="s.notifications.permission"
+    :request-permission="askBrowser"
   />
 
   <GallerySettingsProviders v-else-if="tab === 'models'" :state="state" />
@@ -339,9 +357,7 @@ function resetShortcuts() {
 
   <SettingsData
     v-else-if="tab === 'data'"
-    v-model:share-links="s.data.shareLinks"
     v-model:telemetry="s.data.telemetry"
-    @export="productWould('The product would prepare an export of everything')"
     @delete-all="productWould('The product would delete all conversations')"
   />
 

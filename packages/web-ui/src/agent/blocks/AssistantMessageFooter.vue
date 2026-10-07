@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { useClipboard } from '@vueuse/core'
-import { Check, Copy, GitFork, LoaderCircle } from '@lucide/vue'
+import { Check, Copy, GitFork, LoaderCircle, RefreshCw } from '@lucide/vue'
 import type { MessageForkState } from '../message-fork'
 import Tooltip from '../../ui/Tooltip.vue'
 import RelativeTime from '../../ui/RelativeTime.vue'
@@ -11,6 +11,12 @@ const props = defineProps<{
   createdAt: string
   fork?: () => Promise<void>
   forkState?: MessageForkState
+  /**
+   * Asks for a new answer to the message before it, offered on the last
+   * answer exactly when editing that message is (`message-editing.md`
+   * § Regenerate and the Up Arrow key); absent elsewhere.
+   */
+  regenerate?: () => void
 }>()
 const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 const copyError = ref(false)
@@ -49,6 +55,16 @@ async function copyMessage(): Promise<void> {
       >
         <LoaderCircle v-if="forkState?.phase === 'pending'" :size="13" class="animate-spin" />
         <GitFork v-else :size="13" />
+      </button>
+    </Tooltip>
+    <Tooltip v-if="regenerate" content="Regenerate">
+      <button
+        type="button"
+        aria-label="Regenerate"
+        class="flex size-6 items-center justify-center rounded transition-colors hover:bg-hover hover:text-fg-muted"
+        @click="regenerate()"
+      >
+        <RefreshCw :size="13" />
       </button>
     </Tooltip>
     <RelativeTime :timestamp="createdAt" class="ml-1 text-[11px] leading-6" />
