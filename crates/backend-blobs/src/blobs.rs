@@ -7,7 +7,7 @@
 //! put of a blob the namespace holds already is remembered for a day, since
 //! it writes nothing that would show its age.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 
 use bytes::Bytes;
@@ -63,7 +63,7 @@ impl BlobStores {
             objects,
             again: Arc::new(PutAgain {
                 clock,
-                puts: Mutex::new(HashMap::new()),
+                users: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -74,57 +74,51 @@ impl BlobStores {
         UserBlobs {
             objects: self.objects.clone(),
             namespace: Path::from_iter(["blobs", user.as_str()]),
-            user: user.clone(),
-            again: self.again.clone(),
+            clock: self.again.clock.clone(),
+            puts: self.again.of(user),
         }
     }
 }
 
-/// When each user's blobs that existed already were last put again, within
-/// the grace. It lives with the process: a restart forgets it, and with it
-/// only references the stopped process had not written and never will.
+/// Each user's puts of blobs that existed already, behind one lock per user.
+/// It lives with the process: a restart forgets it, and with it only
+/// references the stopped process had not written and never will.
 struct PutAgain {
     clock: Arc<dyn Clock>,
-    /// A `std` mutex: uploads at the edge and the shard threads share it,
-    /// and each section only reads or changes the map.
-    puts: Mutex<HashMap<UserId, HashMap<BlobRef, Timestamp>>>,
+    /// A `std` mutex: uploads at the edge and the shard threads share it, and
+    /// each section only looks up or inserts a user's entry. An entry stays
+    /// while the process runs, one per user who put a blob.
+    users: Mutex<HashMap<UserId, Arc<UserPuts>>>,
 }
 
+/// When each of a user's blobs that existed already was last put again,
+/// within the grace. Its lock is held across a put's question whether the
+/// blob exists and the record of its answer, and across a collection's last
+/// check of a blob and its deletion, so a put again comes either before
+/// that check, which then keeps the blob, or after the deletion, and then
+/// finds no blob and writes its bytes again. The lock is held for those
+/// steps alone, never across a collection's listing or its reading of the
+/// records.
+type UserPuts = tokio::sync::Mutex<HashMap<BlobRef, Timestamp>>;
+
 impl PutAgain {
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<UserId, HashMap<BlobRef, Timestamp>>> {
+    /// `user`'s puts, made on the first use.
+    fn of(&self, user: &UserId) -> Arc<UserPuts> {
         // No section panics while it holds the lock, so a poisoned one still
         // holds a whole map.
-        self.puts.lock().unwrap_or_else(PoisonError::into_inner)
+        self.users
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .entry(user.clone())
+            .or_default()
+            .clone()
     }
+}
 
-    /// The time, in milliseconds, before which a put at `now` is past the
-    /// grace.
-    fn cutoff(now: Timestamp) -> i64 {
-        now.as_millisecond() - GRACE_MS
-    }
-
-    fn record(&self, user: &UserId, blob: &BlobRef) {
-        let now = self.clock.now();
-        let cutoff = Self::cutoff(now);
-        let mut puts = self.lock();
-        let user_puts = puts.entry(user.clone()).or_default();
-        user_puts.retain(|_, at| at.as_millisecond() >= cutoff);
-        user_puts.insert(blob.clone(), now);
-    }
-
-    fn recent(&self, user: &UserId) -> HashSet<BlobRef> {
-        let cutoff = Self::cutoff(self.clock.now());
-        let mut puts = self.lock();
-        let Some(user_puts) = puts.get_mut(user) else {
-            return HashSet::new();
-        };
-        user_puts.retain(|_, at| at.as_millisecond() >= cutoff);
-        let recent = user_puts.keys().cloned().collect();
-        if user_puts.is_empty() {
-            puts.remove(user);
-        }
-        recent
-    }
+/// Forgets the puts in `puts` past the grace at `now`.
+fn forget_old(puts: &mut HashMap<BlobRef, Timestamp>, now: Timestamp) {
+    let cutoff = now.as_millisecond() - GRACE_MS;
+    puts.retain(|_, at| at.as_millisecond() >= cutoff);
 }
 
 /// One user's blobs.
@@ -132,8 +126,8 @@ impl PutAgain {
 pub struct UserBlobs {
     objects: Arc<dyn ObjectStore>,
     namespace: Path,
-    user: UserId,
-    again: Arc<PutAgain>,
+    clock: Arc<dyn Clock>,
+    puts: Arc<UserPuts>,
 }
 
 impl UserBlobs {
@@ -162,13 +156,16 @@ impl UserBlobs {
     /// Stores `bytes` under `blob`, their name.
     async fn store(&self, blob: &BlobRef, bytes: Bytes) -> Result<(), ObjectError> {
         let location = self.location(blob);
-        match self.objects.head(&location).await {
-            Ok(_) => {
-                self.again.record(&self.user, blob);
-                return Ok(());
+        {
+            let mut puts = self.puts.lock().await;
+            match self.objects.head(&location).await {
+                Ok(_) => {
+                    self.put_again(&mut puts, blob);
+                    return Ok(());
+                }
+                Err(object_store::Error::NotFound { .. }) => {}
+                Err(error) => return Err(error.into()),
             }
-            Err(object_store::Error::NotFound { .. }) => {}
-            Err(error) => return Err(error.into()),
         }
         let create = PutOptions {
             mode: PutMode::Create,
@@ -182,7 +179,8 @@ impl UserBlobs {
             Ok(_) => Ok(()),
             // A put of the same bytes created it since the HEAD.
             Err(object_store::Error::AlreadyExists { .. }) => {
-                self.again.record(&self.user, blob);
+                let mut puts = self.puts.lock().await;
+                self.put_again(&mut puts, blob);
                 Ok(())
             }
             Err(error) => Err(error.into()),
@@ -240,17 +238,28 @@ impl UserBlobs {
         Ok(blobs)
     }
 
-    /// The blobs put again within the last [`GRACE_MS`]: each a put of a
-    /// blob the namespace held already, which wrote nothing. Older ones are
-    /// forgotten.
-    pub fn put_again_recently(&self) -> HashSet<BlobRef> {
-        self.again.recent(&self.user)
+    /// Records that `blob`, which the namespace held already, was put
+    /// again now.
+    fn put_again(&self, puts: &mut HashMap<BlobRef, Timestamp>, blob: &BlobRef) {
+        let now = self.clock.now();
+        forget_old(puts, now);
+        puts.insert(blob.clone(), now);
     }
 
-    /// Deletes `blob`; one the namespace does not hold is deleted already.
-    pub async fn delete(&self, blob: &BlobRef) -> Result<(), ObjectError> {
+    /// A collection's last step for `blob`, which the listing found older
+    /// than the grace and no record names: deletes it unless it was put
+    /// again within the grace, and answers whether it did. Its age needs no
+    /// second look: a put of a blob that exists writes nothing, and only a
+    /// collection, one at a time per user, deletes one. A blob the namespace
+    /// no longer holds is deleted already.
+    pub async fn delete_unless_put_again(&self, blob: &BlobRef) -> Result<bool, ObjectError> {
+        let mut puts = self.puts.lock().await;
+        forget_old(&mut puts, self.clock.now());
+        if puts.contains_key(blob) {
+            return Ok(false);
+        }
         match self.objects.delete(&self.location(blob)).await {
-            Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(()),
+            Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(true),
             Err(error) => Err(error.into()),
         }
     }
@@ -294,5 +303,116 @@ impl BlobStore for UserBlobs {
                 .map_err(|error| StoreError::Failed(error.to_string()))?;
             Ok(bytes.map(B64Bytes::from))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fmt;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use futures_util::FutureExt as _;
+    use futures_util::stream::BoxStream;
+    use object_store::memory::InMemory;
+    use object_store::{
+        CopyOptions, GetResult, ListResult, MultipartUpload, ObjectMeta, PutMultipartOptions,
+        PutResult, RenameOptions, Result,
+    };
+    use tokio::sync::Notify;
+
+    use super::*;
+
+    /// An object store in memory whose answer that an object exists waits,
+    /// once it has it and while `hold` is on, until the test lets it go.
+    #[derive(Debug, Default)]
+    struct HeldHeads {
+        inner: InMemory,
+        hold: AtomicBool,
+        reached: Notify,
+        go: Notify,
+    }
+
+    impl fmt::Display for HeldHeads {
+        fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(formatter, "HeldHeads({})", self.inner)
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl ObjectStore for HeldHeads {
+        async fn put_opts(
+            &self,
+            location: &Path,
+            payload: PutPayload,
+            opts: PutOptions,
+        ) -> Result<PutResult> {
+            self.inner.put_opts(location, payload, opts).await
+        }
+
+        async fn put_multipart_opts(
+            &self,
+            location: &Path,
+            opts: PutMultipartOptions,
+        ) -> Result<Box<dyn MultipartUpload>> {
+            self.inner.put_multipart_opts(location, opts).await
+        }
+
+        async fn get_opts(&self, location: &Path, options: GetOptions) -> Result<GetResult> {
+            let head = options.head;
+            let answer = self.inner.get_opts(location, options).await;
+            if head && answer.is_ok() && self.hold.load(Ordering::SeqCst) {
+                self.reached.notify_one();
+                self.go.notified().await;
+            }
+            answer
+        }
+
+        fn delete_stream(
+            &self,
+            locations: BoxStream<'static, Result<Path>>,
+        ) -> BoxStream<'static, Result<Path>> {
+            self.inner.delete_stream(locations)
+        }
+
+        fn list(&self, prefix: Option<&Path>) -> BoxStream<'static, Result<ObjectMeta>> {
+            self.inner.list(prefix)
+        }
+
+        async fn list_with_delimiter(&self, prefix: Option<&Path>) -> Result<ListResult> {
+            self.inner.list_with_delimiter(prefix).await
+        }
+
+        async fn copy_opts(&self, from: &Path, to: &Path, options: CopyOptions) -> Result<()> {
+            self.inner.copy_opts(from, to, options).await
+        }
+
+        async fn rename_opts(&self, from: &Path, to: &Path, options: RenameOptions) -> Result<()> {
+            self.inner.rename_opts(from, to, options).await
+        }
+    }
+
+    #[tokio::test]
+    async fn a_put_again_that_meets_a_collections_last_step_keeps_its_blob() {
+        let objects = Arc::new(HeldHeads::default());
+        let blobs = BlobStores::new(objects.clone(), Arc::new(demi_shared_types::SystemClock))
+            .for_user(&UserId::try_from("ana").unwrap());
+        let bytes = Bytes::from_static(b"a screenshot");
+        let blob = blobs.put(bytes.clone()).await.unwrap();
+        // A put of the same bytes learns that the blob exists, and is held
+        // before it goes on.
+        objects.hold.store(true, Ordering::SeqCst);
+        let put = tokio::spawn({
+            let (blobs, bytes) = (blobs.clone(), bytes.clone());
+            async move { blobs.put(bytes).await }
+        });
+        objects.reached.notified().await;
+        // The collection's last step for the blob, which nothing names, comes
+        // now: it waits for the put rather than delete the blob under it.
+        let mut deletion = std::pin::pin!(blobs.delete_unless_put_again(&blob));
+        assert!(deletion.as_mut().now_or_never().is_none());
+        objects.go.notify_one();
+        assert_eq!(put.await.unwrap().unwrap(), blob);
+        assert!(!deletion.await.unwrap(), "a blob put again within the day stays");
+        assert_eq!(blobs.get(&blob).await.unwrap(), Some(bytes));
     }
 }
