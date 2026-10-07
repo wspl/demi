@@ -357,7 +357,7 @@ happened to use, and the SDK's entry exports them by these groups:
 | Settings | `SettingsPage`, `SettingsGroup`, `SettingsRow` |
 | Controls | `Button`, `IconButton`, `Switch`, `TextInput`, `Dropdown`, `Menu`, `MenuItem`, `MenuGroup`, `MenuDivider`, `Popover`, `Tooltip`, `Dialog`, `Fold`, `FoldChevron`, `ExternalLink` |
 | Progress | `IndeterminateSpinner`, `ProgressLine` |
-| Status | `RegionStatus`, what a region shows in place of content it cannot show ([Errors](../../packages/web-gallery/src/sections/ErrorsSection.vue)) |
+| Status | `RegionStatus`, what a region shows in place of content it cannot show (the gallery's Errors page) |
 | Layout | `ScrollArea` |
 | Navigation | `AddressBar` |
 | Files | `FileIcon`, `FileView`, `ChangeView`, and the shapes and paths the conversation files service gives |
