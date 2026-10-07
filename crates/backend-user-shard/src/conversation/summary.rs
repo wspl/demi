@@ -92,6 +92,7 @@ impl Shard {
             revision: facts.revision,
             draft_revision: record.draft_revision,
             panel_revision: record.panel_revision,
+            hosts_revision: record.hosts_revision,
             plugin_revisions,
             permission_requests: record.permission_requests,
             permissions_revision,

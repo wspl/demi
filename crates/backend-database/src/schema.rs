@@ -40,7 +40,7 @@ pub(crate) enum Migration {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema; 0.1.12 and 0.1.13
+/// release before the one that ships the current schema; 0.1.14 and 0.1.15
 /// shipped the last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
@@ -52,6 +52,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.13.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_13),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.15.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_15),
         },
     ],
 };
@@ -79,6 +83,12 @@ ALTER TABLE conversations DROP COLUMN live_at;
 const CONTROL_FROM_0_1_13: &str = "
 DROP TABLE exposes;
 ALTER TABLE devices ADD COLUMN os TEXT;
+";
+
+/// From 0.1.15's control schema: a conversation counts the changes of its
+/// attached hosts, from 0.
+const CONTROL_FROM_0_1_15: &str = "
+ALTER TABLE conversations ADD COLUMN hosts_revision INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0);
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -394,6 +404,9 @@ CREATE TABLE conversations (
   -- start restores the tree at: 0 for one whose action had not ended, due
   -- at start; null when it saved none.
   wakeup_at           INTEGER CHECK (wakeup_at >= 0),
+  -- The revision of its attached hosts, raised by each change of them and
+  -- of the directory a host's shell recorded; 0 before the first.
+  hosts_revision      INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0),
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)

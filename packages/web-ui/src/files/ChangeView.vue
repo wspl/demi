@@ -281,6 +281,7 @@ onBeforeUnmount(() => {
         </Tooltip>
       </div>
     </template>
+    <template #default="{ overlap }">
     <div class="flex h-full min-h-0 flex-col">
       <div
         v-if="heading && selectedChange"
@@ -362,17 +363,20 @@ onBeforeUnmount(() => {
         :modified="state.sides.modified"
         :path="selectedChange.path"
       />
-      <RegionStatus
-        v-else-if="state.phase !== 'unavailable'"
-        class="h-full"
-        :status="state.phase === 'loading' || state.phase === 'failed' ? state.phase : 'note'"
-        :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
-        loading-label="Reading…"
-        :detail="state.phase === 'failed' ? state.message : null"
-        :on-retry="retry"
-      />
+      <!-- It centres in the space beside a tree shown over the view. -->
+      <div v-else-if="state.phase !== 'unavailable'" class="h-full" :style="{ paddingInlineEnd: `${overlap}px` }">
+        <RegionStatus
+          class="h-full"
+          :status="state.phase === 'loading' || state.phase === 'failed' ? state.phase : 'note'"
+          :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
+          loading-label="Reading…"
+          :detail="state.phase === 'failed' ? state.message : null"
+          :on-retry="retry"
+        />
+      </div>
       </div>
     </div>
+    </template>
     <template v-if="treeAvailable" #tree>
       <ChangeTree
         :source="workingTree"

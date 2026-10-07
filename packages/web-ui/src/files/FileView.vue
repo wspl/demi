@@ -281,6 +281,7 @@ onBeforeUnmount(() => {
         <IconButton :icon="Download" variant="ghost" aria-label="Download" :disabled="path === null" @click="download" />
       </Tooltip>
     </template>
+    <template #default="{ overlap }">
     <div class="flex h-full min-h-0 flex-col">
       <RegionNote
         v-if="source.watch?.unavailable"
@@ -330,17 +331,20 @@ onBeforeUnmount(() => {
           :contents="source.contents"
           :note="state.tooLarge ? TOO_LARGE_NOTE : null"
         />
-        <RegionStatus
-          v-else
-          class="h-full"
-          :status="placeholder.status"
-          :label="placeholder.label"
-          loading-label="Reading…"
-          :detail="placeholder.detail"
-          :on-retry="shown.retry"
-        />
+        <!-- It centres in the space beside a tree shown over the view. -->
+        <div v-else class="h-full" :style="{ paddingInlineEnd: `${overlap}px` }">
+          <RegionStatus
+            class="h-full"
+            :status="placeholder.status"
+            :label="placeholder.label"
+            loading-label="Reading…"
+            :detail="placeholder.detail"
+            :on-retry="shown.retry"
+          />
+        </div>
       </div>
     </div>
+    </template>
     <template #tree>
       <FileTree
         ref="treeView"

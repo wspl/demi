@@ -9,7 +9,7 @@ import { nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import type { ConversationDraft, ConversationSummary, DraftFile, Preferences } from '../api/generated/web-api'
+import type { AttachedHost, ConversationDraft, ConversationSummary, DraftFile, Preferences } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
@@ -136,6 +136,7 @@ function record(id: string, title = id): ConversationSummary {
     pluginsChanged: false,
     draftRevision: 0,
     panelRevision: 0,
+    hostsRevision: 0,
     pluginRevisions: [],
     permissionRequests: 0,
     permissionsRevision: 0,
@@ -1098,7 +1099,8 @@ test('failed Fork creates no local conversation; retry forwards the same destina
   expect(store.items.filter((item) => item.id === request.id)).toHaveLength(1)
 })
 
-function serveHistory(gate?: ReturnType<typeof deferred<void>>) {
+/** Serves each opening's transcript, held by `gate`, and the attached hosts `hosts` names when asked. */
+function serveHistory(gate?: ReturnType<typeof deferred<void>>, hosts: () => AttachedHost[] = () => []) {
   const requested = deferred<void>()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
@@ -1106,7 +1108,7 @@ function serveHistory(gate?: ReturnType<typeof deferred<void>>) {
     if (path.endsWith('/hosts') || path.endsWith('/transcript')) {
       requests.push({ path, body: null })
       if (path.endsWith('/hosts')) {
-        return Response.json({ hosts: [] })
+        return Response.json({ hosts: hosts() })
       }
       requested.resolve()
       await gate?.promise
@@ -1212,22 +1214,26 @@ test('switching between opened sessions performs no reads or load reset', async 
   expect(first.draft).toBe('Keep this input')
 })
 
-test('output that advances an open conversation\'s revision reads nothing; a host change, which advances its context, reads its hosts again', async () => {
-  serveHistory()
+test('output that advances an open conversation\'s revision reads nothing; a raised hosts revision reads and shows its hosts without opening it again', async () => {
+  let hosts: AttachedHost[] = []
+  serveHistory(undefined, () => hosts)
   const store = useConversations()
   await store.activate(FIRST)
-  const hostReads = () => requests.filter((item) => item.path === `/api/conversations/${FIRST}/hosts`).length
-  expect(hostReads()).toBe(1)
+  const reads = (route: string) => requests.filter((item) => item.path === `/api/conversations/${FIRST}/${route}`).length
+  expect(reads('hosts')).toBe(1)
   // A background job's turn: each saved step advances the revision.
   for (const revision of [1, 2, 3]) {
     records[0]!.revision = revision
     await changed(FIRST)
   }
-  expect(hostReads()).toBe(1)
-  // Another page attaches a device.
-  records[0]!.contextVersion += 1
+  expect(reads('hosts')).toBe(1)
+  // A shell on the attached host ended in another directory.
+  hosts = [{ deviceId: 'ci', name: 'ci', cwd: '/work/sub', state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' }]
+  records[0]!.hostsRevision = 1
   await changed(FIRST)
-  await waitFor(() => hostReads() === 2)
+  const first = store.items.find((item) => item.id === FIRST)!
+  await waitFor(() => first.attachedHosts[0]?.cwd === '/work/sub', () => 'the hosts were not read again')
+  expect([reads('hosts'), reads('transcript'), first.load]).toEqual([2, 1, 'ready'])
 })
 
 test('leaving and returning during history loading shares the pending request', async () => {
@@ -1243,20 +1249,28 @@ test('leaving and returning during history loading shares the pending request', 
   expect(store.items[0]!.load).toBe('ready')
 })
 
-test('inactive context changes invalidate only that session; retry explicitly reloads', async () => {
+test('a raised hosts revision reads the hosts of a conversation opened before and nothing of one never opened; retry explicitly reloads', async () => {
   serveHistory()
   const store = useConversations()
   await store.activate(FIRST)
   await store.activate(SECOND)
-  records[0]!.contextVersion += 1
+  const hostReads = (id: string) => requests.filter((item) => item.path === `/api/conversations/${id}/hosts`).length
+  const transcripts = () => requests.filter((item) => item.path.endsWith('/transcript')).length
+  records[0]!.hostsRevision = 1
   await changed(FIRST)
-  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(2)
+  await waitFor(() => hostReads(FIRST) === 2, () => 'the hosts were not read again')
   await store.activate(FIRST)
-  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
-  await store.activate(SECOND)
-  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(3)
+  expect(transcripts()).toBe(2)
   await store.reloadSession(SECOND)
-  expect(requests.filter((item) => item.path.endsWith('/transcript'))).toHaveLength(4)
+  expect(transcripts()).toBe(3)
+  // Another page made a conversation this one never opened.
+  const third = record('00000000-0000-4000-8000-000000000003')
+  records.push(third)
+  await changed(third.id)
+  expect(store.items.some((item) => item.id === third.id)).toBe(true)
+  third.hostsRevision = 1
+  await changed(third.id)
+  expect(hostReads(third.id)).toBe(0)
 })
 
 test('archive changes and removal invalidate cached history', async () => {
