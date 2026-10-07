@@ -10,7 +10,8 @@ import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
-import RestartScreen from '@demicodes/web-ui/ui/RestartScreen.vue'
+import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
+import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
@@ -173,74 +174,74 @@ useAppShortcuts(
   >
     <AsyncRegion state="loading" label="Loading Demi…" />
   </div>
-  <SidebarLayout
-    v-else-if="session.signedIn"
-    v-model:open="resources.sidebarOpen"
-    v-model:width="sidebarWidth"
-    v-model:aside-share="asideShare"
-    v-model:aside-open="asideOpen"
-    @resize-end="resources.sidebarWidth = $event"
-    @aside-resize-end="resources.asideShare = $event"
-  >
-    <template #sidebar>
-      <AppSidebar
-        v-model:collapsed-projects="folded"
-        :account="account"
-        :projects="resources.projects"
-        :conversations="conversations.items.filter((c) => !c.archived)"
-        :active-id="activeId"
-        :list-status="conversations.listStatus"
-        :pending-ids="conversations.pendingChanges"
-        :section-entries="resources.sectionEntries"
-        @retry-list="conversations.reloadList"
-        @reorder="reorder"
-        @select="open"
-        @create="create"
-        @add-project="addProject"
-        @remove-project="removeProject"
-        @rename="conversations.rename"
-        @pin="conversations.pin"
-        @move-to-project="conversations.move"
-        @archive="conversations.archive"
-        @open-settings="resources.openSettings"
-        @sign-out="signOut"
-      />
-    </template>
-    <RouterView />
-    <template #aside>
-      <!-- The panel belongs to the open conversation; the frame shows it only while one is open. -->
-      <WorkPane
-        v-if="activeId"
-        :conversation-id="activeId"
-        @close="asideOpen = false"
-      />
-    </template>
-    <template #dialogs>
-      <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
-      <SettingsDialog @sign-out="signOut" />
-      <TargetDialog />
-      <DevicePairingDialog
-        v-if="installation"
-        :is-open="pairing.isOpen.value"
-        stack
-        :overlay-store="appOverlayStore"
-        :installation="installation"
-        :phase="pairing.phase.value"
-        @close="resources.pairingRequest = null"
-        @next="pairing.phase.value = { kind: 'code' }"
-        @back="pairing.phase.value = { kind: 'setup' }"
-        @submit="pairing.submit"
-      />
-    </template>
-  </SidebarLayout>
+  <div v-else-if="session.signedIn" class="flex h-full flex-col">
+    <ConnectionBanner v-if="product.connection" :problem="product.connection" />
+    <SidebarLayout
+      class="min-h-0 flex-1"
+      v-model:open="resources.sidebarOpen"
+      v-model:width="sidebarWidth"
+      v-model:aside-share="asideShare"
+      v-model:aside-open="asideOpen"
+      @resize-end="resources.sidebarWidth = $event"
+      @aside-resize-end="resources.asideShare = $event"
+    >
+      <template #sidebar>
+        <AppSidebar
+          v-model:collapsed-projects="folded"
+          :account="account"
+          :projects="resources.projects"
+          :conversations="conversations.items.filter((c) => !c.archived)"
+          :active-id="activeId"
+          :list-status="conversations.listStatus"
+          :pending-ids="conversations.pendingChanges"
+          :section-entries="resources.sectionEntries"
+          :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"
+          @retry-list="conversations.reloadList"
+          @reorder="reorder"
+          @select="open"
+          @create="create"
+          @add-project="addProject"
+          @remove-project="removeProject"
+          @rename="conversations.rename"
+          @pin="conversations.pin"
+          @move-to-project="conversations.move"
+          @archive="conversations.archive"
+          @open-settings="resources.openSettings"
+          @sign-out="signOut"
+        />
+      </template>
+      <RouterView />
+      <template #aside>
+        <!-- The panel belongs to the open conversation; the frame shows it only while one is open. -->
+        <WorkPane
+          v-if="activeId"
+          :conversation-id="activeId"
+          @close="asideOpen = false"
+        />
+      </template>
+      <template #dialogs>
+        <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
+        <SettingsDialog @sign-out="signOut" />
+        <TargetDialog />
+        <DevicePairingDialog
+          v-if="installation"
+          :is-open="pairing.isOpen.value"
+          stack
+          :overlay-store="appOverlayStore"
+          :installation="installation"
+          :phase="pairing.phase.value"
+          @close="resources.pairingRequest = null"
+          @next="pairing.phase.value = { kind: 'code' }"
+          @back="pairing.phase.value = { kind: 'setup' }"
+          @submit="pairing.submit"
+        />
+      </template>
+    </SidebarLayout>
+  </div>
   <div v-else class="h-full">
     <RouterView />
   </div>
   <ToastHost />
-  <RestartScreen
-    v-if="product.restarting || product.outdated"
-    :failed="updateFailed"
-    @reload="reload"
-  />
+  <UpdateFailedScreen v-if="updateFailed" @reload="reload" />
   <MediaViewer :viewer="mediaViewer" />
 </template>

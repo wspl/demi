@@ -13,13 +13,14 @@ import { printLive } from './live-command'
 /**
  * `turn` is a full turn from a sent message, whose delivery the server
  * confirms; `undelivered` is a sent message whose delivery fails, until Retry
- * sends it again; `resume` and `retry` recover an aborted or failed tail;
+ * sends it again; `offline` is a message sent while the backend cannot be
+ * reached, which waits and goes once it can; `resume` and `retry` recover an aborted or failed tail;
  * `connect` opens over a dropped socket; `stream` is thinking then reply with
  * nothing waited for. Every fixture only changes conversation state,
  * the way the product's runtime does: the transcript's tail row, its faces and
  * the handoff into a block are `web-ui`'s.
  */
-export type TurnFlowKind = 'turn' | 'undelivered' | 'resume' | 'retry' | 'connect' | 'stream'
+export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retry' | 'connect' | 'stream'
 
 /** A sent message as the composer showed it: what the page holds until the server confirms it. */
 export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'>
@@ -46,6 +47,8 @@ const ADMIT_MS = 400
 /** The simulated server writes the sent message to the transcript, which confirms its delivery; past a second, so the wait shows its clock first. */
 const CONFIRM_MS = 1600
 const DELIVERY_ERROR = 'Connection closed before confirmation'
+/** How long the simulated backend stays out of reach after an offline send. */
+const OFFLINE_MS = 2500
 const WAIT_MS = 80
 /** Time the model takes before its first output in a turn. */
 const FIRST_OUTPUT_MS = 1000
@@ -336,9 +339,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     deliver(token, false)
   }
 
-  /** The page holds a sent message until the server confirms it, or with why its delivery failed. */
-  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null): void {
-    pendingSubmission.value = { id: nextId('message'), ...message, error }
+  /**
+   * The page holds a sent message until the server confirms it, with why its
+   * delivery failed, or waiting while the backend cannot be reached.
+   */
+  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null, waiting = false): void {
+    pendingSubmission.value = { id: nextId('message'), ...message, error, waiting }
     pendingContent = content
   }
 
@@ -608,6 +614,18 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
 
     state.blocks = []
+    if (kind === 'offline') {
+      // The backend is out of reach: the message waits, then goes with its id once it is back.
+      holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null, true)
+      at(run, OFFLINE_MS, () => {
+        const pending = pendingSubmission.value
+        if (pending) {
+          pendingSubmission.value = { ...pending, waiting: false }
+        }
+        deliver(run, false)
+      })
+      return
+    }
     holdMessage([{ type: 'text', text: USER_TEXT }], { text: USER_TEXT, attachments: [] }, null)
     deliver(run, kind === 'undelivered')
   }

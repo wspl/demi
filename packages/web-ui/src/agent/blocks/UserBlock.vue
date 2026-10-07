@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
 import { useClipboard, useResizeObserver } from '@vueuse/core'
-import { ArrowUp, Check, ChevronsUp, Copy, Pencil, X } from '@lucide/vue'
+import { Check, Copy, Pencil } from '@lucide/vue'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
+import Button from '@demicodes/web-ui/ui/Button.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import type { MessageEditContent } from '../message-editing'
 import { composerCapsule, contentCapsule } from '../message-editor/capsules'
@@ -19,10 +20,14 @@ const props = defineProps<{
    */
   attachments?: readonly ComposerAttachment[]
   forceStuck?: boolean
-  pending?: boolean
-  deletable?: boolean
-  sendable?: boolean
-  interruptible?: boolean
+  /**
+   * A message the agent has not read yet, drawn faded, with what happens to
+   * it said under it and its controls in view: a steer, which the running
+   * turn reads at its next step, or a queued message, which runs after it.
+   * Send Now delivers either at once (`product.md` § Conversations and
+   * projects); Remove takes it back.
+   */
+  pending?: 'steer' | 'queued'
   /** Keep the hover actions visible (a catalog specimen, not a hover). */
   actionsPinned?: boolean
   /** Allows editing an explicitly submitted user message. */
@@ -30,9 +35,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  delete: []
+  remove: []
   sendNow: []
-  interrupt: []
   /** Open this message's editor. */
   edit: []
 }>()
@@ -63,47 +67,24 @@ const copyText = computed(() => message.value.markdown
   .map((text, index) => `${text}${message.value.capsules[index]?.name ?? ''}`)
   .join(''))
 
-// Sent messages get copy and edit; pending ones get the queue and steer controls instead.
+// Sent messages get copy and edit on hover.
 const actions = computed<BubbleAction[]>(() => {
   const list: BubbleAction[] = []
-  if (!props.pending) {
-    list.push({
-      key: 'copy',
-      hint: copied.value ? 'Copied' : 'Copy',
-      icon: copied.value ? Check : Copy,
-      emit: () => void copy(copyText.value),
-    })
-    if (props.editable) {
-      list.push({
-        key: 'edit',
-        hint: 'Edit',
-        icon: Pencil,
-        emit: () => emit('edit'),
-      })
-    }
+  if (props.pending) {
+    return list
   }
-  if (props.deletable) {
+  list.push({
+    key: 'copy',
+    hint: copied.value ? 'Copied' : 'Copy',
+    icon: copied.value ? Check : Copy,
+    emit: () => void copy(copyText.value),
+  })
+  if (props.editable) {
     list.push({
-      key: 'delete',
-      hint: props.sendable ? 'Remove' : 'Discard',
-      icon: X,
-      emit: () => emit('delete'),
-    })
-  }
-  if (props.sendable) {
-    list.push({
-      key: 'send',
-      hint: 'Send now',
-      icon: ArrowUp,
-      emit: () => emit('sendNow'),
-    })
-  }
-  if (props.interruptible) {
-    list.push({
-      key: 'interrupt',
-      hint: 'Interrupt and send',
-      icon: ChevronsUp,
-      emit: () => emit('interrupt'),
+      key: 'edit',
+      hint: 'Edit',
+      icon: Pencil,
+      emit: () => emit('edit'),
     })
   }
   return list
@@ -225,6 +206,16 @@ useResizeObserver(bodyRef, measure)
           />
         </div>
       </div>
+    </div>
+    <!-- A pending message says what happens to it, its controls in view rather than on hover. -->
+    <div
+      v-if="pending"
+      class="mt-1 flex max-w-[80%] select-none flex-wrap items-center justify-end gap-x-1 text-[12px] leading-5 text-fg-subtle"
+    >
+      <!-- A queued message stands under the queue's divider, which already says so. -->
+      <span v-if="pending === 'steer'" class="mr-1">Will be sent to the agent at its next step</span>
+      <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">Send Now</Button>
+      <Button size="xs" variant="ghost" @click.stop="emit('remove')">Remove</Button>
     </div>
   </div>
 </template>

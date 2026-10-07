@@ -10,24 +10,7 @@ import {
   type PreferencesPatch,
 } from '../api/generated/web-api'
 import { useProduct } from './product'
-
-export const DEFAULT_KEYS = [
-  {
-    id: 'new',
-    action: 'New conversation',
-    keys: '⌘N',
-  },
-  {
-    id: 'sidebar',
-    action: 'Toggle sidebar',
-    keys: '⌘B',
-  },
-  {
-    id: 'settings',
-    action: 'Open settings',
-    keys: '⌘,',
-  },
-] as const
+import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 
 export const usePreferences = defineStore('preferences', () => {
   const product = useProduct()
@@ -84,7 +67,7 @@ export const usePreferences = defineStore('preferences', () => {
     ...pending.value.appearance,
   }))
   const keys = computed(() =>
-    DEFAULT_KEYS.map((binding) => {
+    APP_SHORTCUTS.map((binding) => {
       const queued = pending.value.shortcuts?.[binding.id]
       return {
         ...binding,

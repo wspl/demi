@@ -14,6 +14,8 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
+import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/web-ui/plugins/page'
@@ -37,6 +39,8 @@ const settings = createSettingsState()
 providePageHost(galleryPageHost({ skills: skillsPlugin(settings.skills) }))
 const pluginOn = (plugin: string) =>
   settings.plugins.some((entry) => entry.id === plugin && entry.enabled)
+/** New's keys as the keyboard settings set them by default. */
+const newShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys
 const settingsSections = computed(() => withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, pluginOn))
 const sectionEntries = computed(() => sidebarEntries(PLUGIN_PAGES, pluginOn))
 const settingsOpen = ref(false)
@@ -166,11 +170,17 @@ function patchMany(
   )
 }
 
+/** Archives the rows, as the product does: they leave the list, and the toast's Undo puts them back where they were. */
 function dropMany(ids: string[]): void {
   const set = new Set(ids)
-  conversations.value = conversations.value.filter((conversation) => !set.has(conversation.id))
+  const before = conversations.value
+  conversations.value = before.filter((conversation) => !set.has(conversation.id))
   if (activeId.value && set.has(activeId.value))
     activeId.value = conversations.value[0]?.id ?? null
+  showArchived(ids.length, () => {
+    const kept = new Set(conversations.value.map((conversation) => conversation.id))
+    conversations.value = before.filter((conversation) => kept.has(conversation.id) || set.has(conversation.id))
+  })
 }
 
 /** Removing a project keeps its conversations as plain ones. */
@@ -257,6 +267,7 @@ onBeforeUnmount(() => listRestore.stop())
             :conversations="conversations"
             :active-id="activeId"
             :section-entries="sectionEntries"
+            :new-shortcut="newShortcut"
             @reorder="reorder"
             @select="select"
             @create="create"
@@ -314,6 +325,7 @@ onBeforeUnmount(() => listRestore.stop())
               :conversations="[]"
               :active-id="null"
               :section-entries="specimen.entries"
+              :new-shortcut="newShortcut"
               @create="productWould('Start a New Conversation')"
               @add-project="productWould('Add a Project')"
               @open-settings="wouldOpenSettings"
@@ -332,6 +344,7 @@ onBeforeUnmount(() => listRestore.stop())
         <GallerySpecimen variant="loading">
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
             <AppSidebar
+              :new-shortcut="newShortcut"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
               :conversations="[]"
@@ -353,6 +366,7 @@ onBeforeUnmount(() => listRestore.stop())
           </div>
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
             <AppSidebar
+              :new-shortcut="newShortcut"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
               :conversations="recoveredConversations"
@@ -367,6 +381,7 @@ onBeforeUnmount(() => listRestore.stop())
         <GallerySpecimen variant="first run">
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
             <AppSidebar
+              :new-shortcut="newShortcut"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
               :conversations="emptyList"
@@ -395,6 +410,7 @@ onBeforeUnmount(() => listRestore.stop())
         >
           <div class="gallery-frame flex h-[20rem] overflow-hidden" :style="{ '--sidebar-width': `${specimen.width}px` }">
             <AppSidebar
+              :new-shortcut="newShortcut"
               :account="specimen.account"
               :projects="[]"
               :conversations="[]"

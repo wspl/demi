@@ -9,7 +9,7 @@
  * double. Timers stop while a laptop sleeps, so when the page becomes visible
  * again or comes back online, this module checks every socket at once.
  */
-import { defaultDocument, defaultWindow, useEventListener } from '@vueuse/core'
+import { defaultDocument, defaultWindow, useEventListener, useOnline } from '@vueuse/core'
 
 /** Two and a half of the longest heartbeat, the backend's 30 seconds: a socket silent this long is broken. */
 const SILENCE_MS = 75_000
@@ -181,3 +181,9 @@ useEventListener(defaultDocument, 'visibilitychange', () => {
   }
 })
 useEventListener(defaultWindow, 'online', pageReturned)
+
+/**
+ * Whether the user's browser reports a network, which the connection banner
+ * says when it does not (`web-application.md` § A page of another build).
+ */
+export const browserOnline = useOnline()

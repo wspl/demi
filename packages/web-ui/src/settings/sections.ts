@@ -115,6 +115,7 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
         id: 'keyboard',
         label: 'Keyboard',
         icon: Keyboard,
+        keyboard: true,
         keywords: ['shortcut', 'hotkey', 'binding']
       },
       {

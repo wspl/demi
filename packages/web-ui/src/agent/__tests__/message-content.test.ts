@@ -62,13 +62,23 @@ test('sent content is trimmed at its ends, a text of spaces between files is dro
 })
 
 test('a capsule names its file, shows its picture or opening lines, and its upload', () => {
+  if (image.type !== 'image' || record.type !== 'attachment') {
+    throw new Error('The fixtures are an image and its attachment record')
+  }
+  // A sent image shows as its thumbnail, from the picture the model read.
   expect(contentCapsule('0', [image, record])).toEqual({
     id: '0',
     name: 'before.png',
-    image: image.type === 'image' ? image.source : undefined,
-    path: record.type === 'attachment' ? record.path : undefined,
+    image: image.source,
+    medium: { kind: 'image', source: image.source },
+    path: record.path,
     snippet: undefined,
   })
+  // A video the model could not read natively shows its own bytes.
+  expect(contentCapsule('3', [{
+    type: 'attachment', name: 'demo.mp4', path: '/home/demi/.demi/attachments/c/demo.mp4',
+    mediaType: 'video/mp4', sizeBytes: 3, sha256: 'b'.repeat(64),
+  }]).medium).toEqual({ kind: 'video', source: { type: 'ref', ref: 'b'.repeat(64), mediaType: 'video/mp4' } })
   expect(contentCapsule('1', [log])).toMatchObject({ name: 'build.log', snippet: 'error: the test failed' })
   expect(contentCapsule('2', [{
     type: 'reference',

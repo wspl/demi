@@ -1,7 +1,10 @@
 // `bun check shot [name]`: saves a PNG of the page at its real size and
 // pixel ratio and prints its path, for the report to list. `--element`
 // clips to an element, `--region` to an area, `--pad` widens either, and
-// `--zoom` renders the area magnified rather than enlarging its pixels.
+// `--zoom` renders the area magnified rather than enlarging its pixels. It
+// waits first for the page's transitions and finite animations to end, up to
+// two seconds, so a dialog that just opened is shot open rather than half
+// faded in; `--now` shoots at once, and `timeline` keeps the moments between.
 import { writeFileSync } from 'node:fs'
 import { CheckFailure, numeric, parse, type Context } from '../command'
 import { launchOptions } from '../browser'
@@ -9,14 +12,18 @@ import { element } from '../find'
 import { readState } from '../state'
 import { pngSize, shotPath, zoomed, type Clip } from '../shots'
 
-const USAGE = 'shot [name|path.png] [--element <locator>] [--region x,y,w,h] [--pad <px>] [--zoom <n>] [--full]'
+const USAGE = 'shot [name|path.png] [--element <locator>] [--region x,y,w,h] [--pad <px>] [--zoom <n>] [--full] [--now]'
 const OPTIONS = {
   element: { type: 'string' },
   region: { type: 'string' },
   pad: { type: 'string' },
   zoom: { type: 'string' },
   full: { type: 'boolean' },
+  now: { type: 'boolean' },
 } as const
+
+/** How long a shot waits for the page's movements to end. */
+const SETTLE_MS = 2_000
 
 export async function run(context: Context, argv: string[]): Promise<void> {
   const { positionals, values } = parse(argv, OPTIONS, USAGE)
@@ -24,6 +31,17 @@ export async function run(context: Context, argv: string[]): Promise<void> {
     throw new CheckFailure(`Usage: bun check ${USAGE}`)
   }
   const page = await context.browser.page()
+  if (!values.now) {
+    // Spinners and other endless animations never end; only what finishes is waited for.
+    await page.waitForFunction(
+      () => document.getAnimations().every((animation) =>
+        animation.playState !== 'running' || animation.effect?.getComputedTiming().endTime === Infinity),
+      undefined,
+      { timeout: SETTLE_MS },
+    ).catch(() => {
+      // Still moving after the wait: the shot shows the page as it is then.
+    })
+  }
   const path = shotPath(context.slot, positionals[0])
   const pad = values.pad === undefined ? 0 : numeric(values.pad, '--pad')
   let clip: Clip | undefined

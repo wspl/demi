@@ -1,5 +1,6 @@
 import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
+import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import type {
   SettingsArchivedConversation,
   SettingsDevice,
@@ -780,15 +781,8 @@ export function createSettingsState() {
     ] satisfies SettingsArchivedConversation[],
     devices: galleryDevices(),
     deviceProjects: galleryDeviceProjects(),
-    keys: [
-      { id: 'new', action: 'New conversation', keys: '⌘⇧O' },
-      { id: 'send', action: 'Send message', keys: '⏎' },
-      { id: 'stop', action: 'Stop the turn', keys: '⎋' },
-      { id: 'sidebar', action: 'Toggle sidebar', keys: '⌘B' },
-      { id: 'search', action: 'Search conversations', keys: '⌘K' },
-      { id: 'focus', action: 'Focus composer', keys: '⌘J' },
-      { id: 'settings', action: 'Open settings', keys: '⌘,' },
-    ] satisfies SettingsKeyBinding[],
+    // The product's shortcuts with their own keys: the gallery changes them as the product does.
+    keys: APP_SHORTCUTS.map((shortcut): SettingsKeyBinding => ({ ...shortcut })),
     data: {
       shareLinks: false,
       telemetry: true,

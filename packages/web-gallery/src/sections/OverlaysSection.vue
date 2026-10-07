@@ -5,7 +5,8 @@ import { showToast } from '@demicodes/web-ui/infra/toast'
 import { productWould } from '../product-would'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
-import RestartScreen from '@demicodes/web-ui/ui/RestartScreen.vue'
+import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
+import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -873,18 +874,30 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
       </GallerySection>
 
       <GallerySection
-        title="Restart Screen"
-        note="Over the whole app while the backend restarts, which the backend said as it closed the page's channel; the page loads the new build by itself once Demi is back. A page that loaded itself for that build and still got another one says so and offers Reload."
+        title="Connection Banner"
+        note="Across the top of the app while the backend cannot be reached, as Slack and Linear show one; everything under it stays readable and usable, and it goes once the page reaches the backend again. It says why in the user's words: no network, Demi restarting (the backend said so as it closed the page's channel), or reconnecting once a lost channel's first new attempt failed too. A message sent meanwhile says it waits to be sent (Session › Turns › Offline)."
+      >
+        <div class="specimen-stack">
+          <GallerySpecimen variant="offline" wide>
+            <ConnectionBanner problem="offline" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="restarting" wide>
+            <ConnectionBanner problem="restarting" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="reconnecting" wide>
+            <ConnectionBanner problem="reconnecting" />
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Page Could Not Be Updated"
+        note="Over the whole app once a page that loaded itself for the build the backend serves still got another one, as when a cache in front of Demi keeps an earlier page. It says so and offers Reload."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GalleryOverlayWell>
-            <GallerySpecimen variant="restarting">
-              <RestartScreen />
-            </GallerySpecimen>
-          </GalleryOverlayWell>
-          <GalleryOverlayWell>
             <GallerySpecimen variant="could not be updated">
-              <RestartScreen failed @reload="productWould('Reload the Page')" />
+              <UpdateFailedScreen @reload="productWould('Reload the Page')" />
             </GallerySpecimen>
           </GalleryOverlayWell>
         </div>

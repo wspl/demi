@@ -132,8 +132,8 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[]) {
   }
 }
 
-function sent(error: string | null = null): PendingSubmissionState {
-  return { id: 'turn-1', text: 'hello', attachments: [], error }
+function sent(error: string | null = null, waiting = false): PendingSubmissionState {
+  return { id: 'turn-1', text: 'hello', attachments: [], error, waiting }
 }
 
 test('a message sent to an idle conversation says Requesting from the send, through its confirmation, on one clock', async () => {
@@ -173,6 +173,19 @@ test('a failed delivery ends the wait, and Retry starts it again from the retry'
   conversation.pendingSubmission = sent()
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 9_000 })
+})
+
+test('a message waiting for the backend to be reachable is no request yet; Requesting starts once it goes', async () => {
+  using session = slotOver('idle', [])
+  const { conversation, slot, at } = session
+  conversation.pendingSubmission = sent(null, true)
+  await nextTick()
+  expect(slot.value).toBeNull()
+
+  at(12_000)
+  conversation.pendingSubmission = sent()
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 12_000 })
 })
 
 test('a message sent during a turn joins the queue and adds no Requesting under the streaming answer', async () => {
