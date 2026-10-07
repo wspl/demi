@@ -430,6 +430,13 @@ the user test how real sites and applications behave for real visitors:
 - The virtual screen and every window follow the
   [live view's pixel ratio](live-view.md#pixel-ratio), and a window's
   outer size is never smaller than its viewport.
+- The color scheme follows the user's: the browser starts with the light or
+  dark scheme the user's page last reported, as it does with the time zone and
+  languages below, so pages render in the user's scheme whatever the Host's
+  own appearance, and the agent sees what the user would. A blank page in the
+  live view therefore has the color Chrome paints that scheme's empty page,
+  `#ffffff` or `#121212`, from its first frame
+  ([A browser tab in the panel](live-view.md#a-browser-tab-in-the-panel)).
 - Time zone and languages are the ones the user's browser last reported,
   which arrive in the starting invocation's
   [command context](../execution/native-runtime.md#command-context); the Host's own
