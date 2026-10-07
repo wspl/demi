@@ -118,23 +118,29 @@ function closeScope(scope: TabCloseScope): void {
 <template>
   <aside class="flex h-full min-w-0 flex-col overflow-hidden border-l border-line bg-surface text-fg">
     <div class="flex h-11 shrink-0 items-center gap-1 pl-2 pr-3">
-      <div v-if="pinnedTabs.length" class="flex shrink-0 items-center gap-1" role="group" aria-label="Pinned tabs">
+      <!-- The pinned tabs give way with the strip: in a narrow panel their titles truncate, down to their
+           marks and badges, while the strip keeps a share of the row, so a tab the user just made shows.
+           A pinned tab is a grid so that its smallest width is its mark and badge, never a cut badge. -->
+      <div v-if="pinnedTabs.length" class="flex items-center gap-1" role="group" aria-label="Pinned tabs">
         <button
           v-for="item in pinnedTabs"
           :key="item.kind.kind"
           type="button"
           :aria-pressed="item.kind.kind === selection"
           :title="item.kind.title(item.data)"
-          class="flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome hover:bg-surface-base hover:text-fg"
-          :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
+          class="grid h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome hover:bg-surface-base hover:text-fg"
+          :class="[
+            item.kind.badge ? 'grid-cols-[auto_minmax(0,auto)_auto]' : 'grid-cols-[auto_minmax(0,auto)]',
+            item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle',
+          ]"
           @click="pick(item.kind, item.data)"
         >
           <component :is="item.kind.mark" :data="item.data" />
-          <span>{{ item.kind.title(item.data) }}</span>
+          <span class="truncate">{{ item.kind.title(item.data) }}</span>
           <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
         </button>
       </div>
-      <TabStrip class="min-w-0 flex-1" surface="raised">
+      <TabStrip class="min-w-0 grow" :class="tabs.length > 0 ? 'basis-32' : 'basis-0'" surface="raised">
         <TabItem
           v-for="item in tabs"
           :key="item.tab.id"

@@ -234,14 +234,6 @@ function rebind(): void {
         </Tooltip>
       </template>
     </AddressBar>
-    <!-- What the view itself could not do, above a page that still shows. -->
-    <p
-      v-if="view?.state.notice"
-      class="border-t border-line px-3 py-1.5 text-[12px] text-on-danger"
-      role="alert"
-    >
-      {{ view.state.notice.message }}
-    </p>
     <div ref="area" class="relative flex min-h-0 flex-1 flex-col border-t border-line">
       <ProgressLine :active="loading && !data.failure && !data.closed" />
       <!-- A tab the plugin could not open cannot be shown at all: Retry returns it to opening. -->
