@@ -210,6 +210,7 @@ pub(crate) async fn open(port: &PluginPort, url: &str) -> Result<BrowserTab, Plu
         can_go_back: false,
         can_go_forward: false,
         shows: 0,
+        favicon: None,
     })
 }
 

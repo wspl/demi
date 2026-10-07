@@ -176,9 +176,11 @@ watch(() => [props.source, props.root, props.selected], () => unfoldTo(props.sel
 // A row the host asked to see: scrolled to once the listings unfolding to it have put it in.
 const revealing = ref<string | null>(null)
 
+/** A folder the host goes to, as Finder's Go to Folder opens one: unfolded with the folders above it, its row scrolled to. */
 function reveal(path: string): void {
   unfoldTo(path)
   const target = normalizePath(path)
+  open(target)
   // The root heads the tree as its caption; it has no row to scroll to.
   revealing.value = target === normalizePath(props.root) ? null : target
 }

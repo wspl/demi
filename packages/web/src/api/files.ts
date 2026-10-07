@@ -11,6 +11,7 @@ import { ApiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse }
 import { directorySchema, fileTextSchema, type CreateDirectory } from './generated/web-api'
 import { uploadBytes } from './uploads'
 import type { Device } from '../state/types'
+import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
 /**
  * A raw file answer's headers as a file description (`web-api.md` § File
@@ -49,9 +50,53 @@ function failureKind(error: ApiError): FileBrowserFailure['kind'] {
   return 'other'
 }
 
-/** An API failure as the file views read it; anything else as it is. */
+/**
+ * What the file views say of a failure, after their own line such as
+ * “Could not read this file.” (the gallery's Writing page): the page's
+ * sentence for what happened, never the backend's message, which names its
+ * internals, such as a Cloud runner's reconnect timeout.
+ */
+function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): SentenceText {
+  switch (error.code) {
+    case 'host_stopped':
+      return 'The Cloud is stopped.'
+    case 'cloud_resetting':
+      return 'The Cloud is resetting.'
+    case 'cloud_capacity':
+      return 'The Cloud cannot start now: the server has no room for it.'
+    case 'cloud_crash_loop':
+      return 'The Cloud stopped starting after repeated failures.'
+    case 'cloud_unavailable':
+      return 'The Cloud is not available right now.'
+    case 'conversation_archived':
+      return 'This conversation is archived.'
+    case 'conversation_busy':
+      return 'The conversation is changing its Host.'
+  }
+  switch (kind) {
+    case 'offline':
+      return 'The device is offline.'
+    case 'not-found':
+      return 'It is no longer there.'
+    case 'permission':
+      return 'The Host does not allow access to it.'
+    case 'exists':
+      return 'Something of that name is there already.'
+    case 'binary':
+      return 'It is not text.'
+    case 'too-large':
+      return 'It is too large.'
+    case 'other':
+      return 'The Host did not answer.'
+  }
+}
+
+/** An API failure as the file views read it, in the page's words; anything else as it is. */
 export function fileBrowserError(error: unknown): unknown {
-  return error instanceof ApiError ? new FileBrowserError(failureKind(error), error.message) : error
+  if (!(error instanceof ApiError))
+    return error
+  const kind = failureKind(error)
+  return new FileBrowserError(kind, failureSentence(error, kind))
 }
 
 function browserError(error: unknown): never {
@@ -85,6 +130,20 @@ export function rawFileContents(endpoint: string): ContentReads {
       if (!headers.success)
         throw invalidResponse(headers.error)
       return headers.data
+    },
+    // One byte range, which the route answers with exactly those bytes.
+    async readStart(path, length, options = {}) {
+      const query = new URLSearchParams({ path, ...(options.version ? { version: options.version } : {}) })
+      let response: Response
+      try {
+        response = await apiRequest(`${endpoint}?${query}`, {
+          headers: { range: `bytes=0-${length - 1}` },
+          signal: options.signal,
+        })
+      } catch (error) {
+        browserError(error)
+      }
+      return new Uint8Array(await response.arrayBuffer()).subarray(0, length)
     },
   }
 }

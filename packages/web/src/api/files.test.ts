@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
-import { rawFileContents } from './files'
+import { fileReads, rawFileContents } from './files'
 
 // A raw route as the file views load it (`web-api.md` § File text and working
 // tree changes): URLs the web browser fetches itself, and HEAD answers read as
@@ -56,4 +56,29 @@ test('a failed HEAD says what it can by its status, and malformed headers are re
   await expect(contents.describe('a.png')).rejects.toThrow('Invalid server response: Expected an HTTP date')
   answer(new Response(null, { headers: { 'content-length': 'many' } }))
   await expect(contents.describe('a.png')).rejects.toThrow('Invalid server response')
+})
+
+test('a failed read says what happened in the page\'s words, never the backend\'s internals', async () => {
+  const reads = fileReads({ directory: '/conversations/c1/fs', text: '/conversations/c1/fs/file' }, null)
+  const failure = (code: string, message: string) => new Response(JSON.stringify({ code, message }), { status: 503 })
+  answer(failure('cloud_unavailable', 'Cloud runner reconnect timeout'))
+  expect(await reads.readText!('/work/README.md', null).catch((error: unknown) => error))
+    .toMatchObject({ kind: 'other', message: 'The Cloud is not available right now.' })
+  answer(new Response(JSON.stringify({ code: 'device_offline', message: 'runner 4f2 has no connection' }), { status: 409 }))
+  expect(await reads.list('/work').catch((error: unknown) => error))
+    .toMatchObject({ kind: 'offline', message: 'The device is offline.' })
+})
+
+test('the start of a large file is one byte range, read up to the length asked for', async () => {
+  const requests: Array<{ url: string; method?: string }> = []
+  const ranges: Array<string | null> = []
+  globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+    requests.push({ url: String(input), method: init?.method })
+    ranges.push(new Headers(init?.headers).get('range'))
+    return new Response(new Uint8Array([104, 105, 33]), { status: 206 })
+  }, { preconnect: originalFetch.preconnect })
+  const bytes = await contents.readStart!('/work/big.log', 2, { version: 'W/"9"' })
+  expect([...bytes]).toEqual([104, 105])
+  expect(ranges).toEqual(['bytes=0-1'])
+  expect(requests[0]?.url).toBe('/api/conversations/c1/fs/raw?path=%2Fwork%2Fbig.log&version=W%2F%229%22')
 })

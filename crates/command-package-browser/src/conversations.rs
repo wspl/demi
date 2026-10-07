@@ -1102,6 +1102,7 @@ impl Conversations {
                     can_go_back: listed.tab.history().back,
                     can_go_forward: listed.tab.history().forward,
                     shows: listed.tab.shows(),
+                    favicon: listed.tab.favicon(),
                 })
                 .collect();
             return Ok(CommandOutput::Json(output::value(TabsResult {

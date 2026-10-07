@@ -1,7 +1,10 @@
 // `bun check shot [name]`: saves a PNG of the page at its real size and
 // pixel ratio and prints its path, for the report to list. `--element`
 // clips to an element, `--region` to an area, `--pad` widens either, and
-// `--zoom` renders the area magnified rather than enlarging its pixels.
+// `--zoom` renders the area magnified rather than enlarging its pixels. A
+// shot is of a settled page: it waits, up to a second, for the motions
+// running, such as a menu fading in, to end; `timeline` is for the moments
+// between.
 import { writeFileSync } from 'node:fs'
 import { CheckFailure, numeric, parse, type Context } from '../command'
 import { launchOptions } from '../browser'
@@ -24,6 +27,13 @@ export async function run(context: Context, argv: string[]): Promise<void> {
     throw new CheckFailure(`Usage: bun check ${USAGE}`)
   }
   const page = await context.browser.page()
+  // Motions that end, as a menu's fade does; an endless one, such as a spinner, is not waited for.
+  await page.evaluate(() => Promise.race([
+    Promise.all(document.getAnimations()
+      .filter((animation) => animation.effect?.getComputedTiming().endTime !== Infinity)
+      .map((animation) => animation.finished.catch(() => undefined))),
+    new Promise((resolve) => setTimeout(resolve, 1000)),
+  ]))
   const path = shotPath(context.slot, positionals[0])
   const pad = values.pad === undefined ? 0 : numeric(values.pad, '--pad')
   let clip: Clip | undefined

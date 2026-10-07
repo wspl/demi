@@ -107,6 +107,11 @@ pub fn module(header: &str) -> String {
 
     for (name, description, value) in [
         (
+            "TEXT_FILE_BYTES",
+            "The most bytes of a file the text route reads; a larger text file shows its first this many (`file-previews.md` § Getting the bytes).",
+            count(demi_command_protocol::EDIT_FILE_BYTES),
+        ),
+        (
             "DIRECT_MESSAGE_BYTES",
             "The most bytes of one binary message on a direct channel (`direct-channel.md`).",
             count(direct::MESSAGE_BYTES),

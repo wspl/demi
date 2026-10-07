@@ -131,6 +131,15 @@ Work keeps running while the laptop sleeps.
 <img src="assets/missing.png" onerror="alert('nor handlers')" alt="A missing image">
 `
 
+/**
+ * A server log past the text route's 8 MiB, which the File view opens as its
+ * first 8 MiB with a line saying so (`file-previews.md` § Getting the bytes).
+ */
+const serverLog = Array.from(
+  { length: 150_000 },
+  (_, index) => `2026-10-07T14:${String(Math.floor(index / 2500) % 60).padStart(2, '0')}:00Z INFO request ${index + 1} served GET /api/orders in ${(index * 7) % 90 + 3} ms\n`,
+).join('')
+
 const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
   <rect x="10" y="10" width="100" height="100" rx="24" fill="#3b82f6"/>
   <circle cx="60" cy="60" r="26" fill="#ffffff"/>
@@ -209,6 +218,7 @@ function tree(): MemoryDirectory {
     'AGENTS.md': stub('AGENTS.md'),
     'CLAUDE.md': stub('CLAUDE.md'),
     'README.md': textFile(readme, at),
+    'server.log': textFile(serverLog, at),
     'bunfig.toml': stub('bunfig.toml'),
     'package.json': textFile(packageJson, at),
     'tsconfig.json': stub('tsconfig.json'),

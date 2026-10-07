@@ -3,9 +3,10 @@
 import { CheckFailure, parse, type Context } from '../command'
 import { resolve } from '../find'
 
-const USAGE = 'click <locator|x,y> [--right] [--double] [--modifiers Meta,Shift]'
+const USAGE = 'click <locator|x,y> [--right | --middle] [--double] [--modifiers Meta,Shift]'
 const OPTIONS = {
   right: { type: 'boolean' },
+  middle: { type: 'boolean' },
   double: { type: 'boolean' },
   modifiers: { type: 'string' },
 } as const
@@ -31,7 +32,7 @@ export async function run(context: Context, argv: string[]): Promise<void> {
   if (positionals.length !== 1) {
     throw new CheckFailure(`Usage: bun check ${USAGE}`)
   }
-  const button = values.right ? 'right' : 'left'
+  const button = values.right ? 'right' : values.middle ? 'middle' : 'left'
   const clickCount = values.double ? 2 : 1
   const held = modifiers(values.modifiers)
   const target = await resolve(context, positionals[0])

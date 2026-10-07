@@ -1,7 +1,7 @@
 {
   "name": "@demicodes/plugin-sdk",
   "description": "The plugin page API: slots, the plugin client, services and the public components a plugin page is built from.",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "exports": {

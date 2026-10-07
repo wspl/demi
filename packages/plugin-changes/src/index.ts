@@ -7,7 +7,7 @@ import { ICON_PX, definePage, type PanelKind } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
 import ChangeBadge from './ChangeBadge.vue'
 import ChangeTab from './ChangeTab.vue'
-import { changeDataSchema, firstChangeData, showCallEdit, showChange, type ChangeData } from './data'
+import { changeDataSchema, firstChangeData, showCallEdit, type ChangeData } from './data'
 
 const ChangeMark = defineComponent({
   setup: () => () => h(FileDiff, { size: ICON_PX.markIn28 }),
@@ -22,8 +22,6 @@ export const changeKind: PanelKind<ChangeData> = {
   content: ChangeTab,
   badge: ChangeBadge,
   pinned: { data: firstChangeData },
-  // Picking Change returns to Uncommitted, even while it is selected.
-  picked: (data) => showChange(data, 'uncommitted', data.uncommitted),
   intents: {
     edit: (payload, current) => showCallEdit(current ?? firstChangeData(), payload),
   },

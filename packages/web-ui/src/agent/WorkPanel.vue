@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from 'vue'
-import { PanelRightClose, Plus, X } from '@lucide/vue'
+import { Copy, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import Menu from '../ui/Menu.vue'
+import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
@@ -37,7 +38,10 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   select: [selection: string]
-  addTab: [kind: string, data: unknown]
+  /** A new tab, selected; at `index` among the tabs when given, else after them. */
+  addTab: [kind: string, data: unknown, index?: number]
+  /** The tab `id` moved to `index` among the others, as the user dragged it. */
+  moveTab: [id: string, index: number]
   updateTab: [id: string, data: unknown]
   updatePinned: [kind: string, data: unknown]
   closeTabs: [ids: string[]]
@@ -51,14 +55,6 @@ const pinnedTabs = computed(() =>
     .map((kind) => ({ kind, data: pinnedData(props.pinned, kind) })),
 )
 const selection = computed(() => shownSelection(props.panel, props.kinds))
-
-/** Picking a pinned tab may change what it shows, even while it is selected. */
-function pick(kind: PanelTabKind, data: unknown): void {
-  if (kind.picked) {
-    emit('updatePinned', kind.kind, kind.picked(data))
-  }
-  emit('select', kind.kind)
-}
 
 /** Each tab with its kind and checked data, in the user's order. */
 const tabs = computed(() => props.panel.tabs.map((tab) => resolvePanelTab(tab, props.kinds)))
@@ -113,6 +109,37 @@ function closeScope(scope: TabCloseScope): void {
   }
   menu.close()
 }
+
+/** The tab the menu is open on, with its kind. */
+const menuTab = computed(() => tabs.value.find((item) => item.tab.id === menuId.value) ?? null)
+/** What the menu's tab kind offers before the Close commands. */
+const menuCommands = computed(() => {
+  const item = menuTab.value
+  return item?.kind?.commands?.(item.data, item.tab.id) ?? []
+})
+
+function runCommand(run: () => void): void {
+  run()
+  menu.close()
+}
+
+/** A copy of the menu's tab right after it, selected, as a web browser's Duplicate. */
+function duplicate(): void {
+  const item = menuTab.value
+  if (item?.kind?.duplicate) {
+    const at = props.panel.tabs.findIndex((tab) => tab.id === item.tab.id)
+    emit('addTab', item.kind.kind, item.kind.duplicate(item.data), at + 1)
+  }
+  menu.close()
+}
+
+/** A tab dragged along the strip, by its place in it. */
+function reorder(from: number, to: number): void {
+  const moved = props.panel.tabs[from]
+  if (moved) {
+    emit('moveTab', moved.id, to)
+  }
+}
 </script>
 
 <template>
@@ -130,29 +157,29 @@ function closeScope(scope: TabCloseScope): void {
           type="button"
           :aria-pressed="item.kind.kind === selection"
           :title="item.kind.title(item.data)"
-          class="grid h-7 items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome hover:bg-surface-base hover:text-fg"
-          :class="[
-            item.kind.badge ? 'grid-cols-[auto_minmax(0,auto)_auto]' : 'grid-cols-[auto_minmax(0,auto)]',
-            item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle',
-          ]"
-          @click="pick(item.kind, item.data)"
+          class="grid h-7 grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome hover:bg-surface-base hover:text-fg"
+          :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
+          @click="emit('select', item.kind.kind)"
         >
           <component :is="item.kind.mark" :data="item.data" />
           <span class="truncate">{{ item.kind.title(item.data) }}</span>
           <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
         </button>
       </div>
-      <TabStrip class="min-w-0 grow" :class="tabs.length > 0 ? 'basis-48' : 'basis-0'" surface="raised">
+      <TabStrip
+        class="min-w-0 grow"
+        :class="tabs.length > 0 ? 'basis-48' : 'basis-0'"
+        surface="raised"
+        @reorder="reorder"
+      >
         <TabItem
           v-for="item in tabs"
           :key="item.tab.id"
           :title="item.title"
           :is-active="item.tab.id === selection"
           :busy="item.kind?.busy?.(item.data, item.tab.id) ?? false"
-          tabindex="0"
-          @pointerdown="emit('select', item.tab.id)"
-          @keydown.enter="emit('select', item.tab.id)"
-          @keydown.space.prevent="emit('select', item.tab.id)"
+          :icon="item.kind?.icon?.(item.data, item.tab.id) ?? null"
+          @select="emit('select', item.tab.id)"
           @contextmenu="openMenu($event, item.tab.id)"
           @close="emit('closeTabs', [item.tab.id])"
         >
@@ -228,6 +255,18 @@ function closeScope(scope: TabCloseScope): void {
       @close="menu.close"
     >
       <Menu>
+        <template v-if="menuCommands.length > 0 || menuTab?.kind?.duplicate">
+          <MenuItem
+            v-for="command in menuCommands"
+            :key="command.label"
+            :icon="command.icon"
+            :label="command.label"
+            :disabled="command.disabled"
+            @select="runCommand(command.run)"
+          />
+          <MenuItem v-if="menuTab?.kind?.duplicate" :icon="Copy" label="Duplicate" @select="duplicate" />
+          <MenuDivider />
+        </template>
         <MenuItem :icon="X" label="Close" @select="closeScope('self')" />
         <MenuItem
           v-for="item in closeManyItems"

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document'
 import { useMarkdownRenderVersion } from '../markdown/highlight'
 import { useContentScrollers } from '../composables/useContentScrollers'
@@ -10,7 +10,12 @@ import ScrollArea from '../ui/ScrollArea.vue'
  * link to a file asks the host to open it, a `#` link scrolls the document
  * to its heading or anchor, and a web link opens in a new tab of the web browser.
  */
-const props = defineProps<{ text: string; place: DocumentPlace }>()
+const props = defineProps<{
+  text: string
+  place: DocumentPlace
+  /** Counts the times the document was read again; each time, the images that did not load try again. */
+  reloads?: number
+}>()
 const emit = defineEmits<{ open: [path: string] }>()
 
 const renderVersion = useMarkdownRenderVersion()
@@ -45,11 +50,48 @@ function follow(event: MouseEvent): void {
     emit('open', href)
   }
 }
+
+/**
+ * An image whose bytes do not load, as while the Host is away, shows its alt
+ * text in a quiet box in its place, as a web browser shows a missing image's
+ * description, instead of its broken picture glyph. Each placeholder keeps
+ * its image, which tries again when the document is read again.
+ */
+const failedImages = new Map<HTMLElement, HTMLImageElement>()
+
+function onImageError(event: Event): void {
+  const image = event.target
+  if (!(image instanceof HTMLImageElement))
+    return
+  const placeholder = document.createElement('span')
+  placeholder.className = 'inline-flex max-w-full items-center rounded-md border border-dashed border-line px-2 py-0.5 align-middle text-[12px] text-fg-muted'
+  const words = image.alt.trim() || 'Could not show this image.'
+  placeholder.setAttribute('role', 'img')
+  placeholder.setAttribute('aria-label', words)
+  placeholder.textContent = words
+  failedImages.set(placeholder, image)
+  image.replaceWith(placeholder)
+}
+
+// A new rendering brings its own images.
+watch(html, () => failedImages.clear())
+watch(() => props.reloads, () => {
+  for (const [placeholder, image] of failedImages) {
+    placeholder.replaceWith(image)
+    // Setting the address again loads it again.
+    image.src = image.src
+  }
+  failedImages.clear()
+})
 </script>
 
 <template>
   <ScrollArea ref="scrollArea" class="h-full" @click="follow">
     <!-- eslint-disable-next-line vue/no-v-html -- sanitized by the document renderer -->
-    <article class="markdown-body markdown-document mx-auto max-w-[860px] select-text px-8 py-6 text-conversation text-fg-body" v-html="html" />
+    <article
+      class="markdown-body markdown-document mx-auto max-w-[860px] select-text px-8 py-6 text-conversation text-fg-body"
+      @error.capture="onImageError"
+      v-html="html"
+    />
   </ScrollArea>
 </template>

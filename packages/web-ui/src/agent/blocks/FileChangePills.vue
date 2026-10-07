@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import LineCounts from '../../files/LineCounts.vue'
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import CornerDot from '../../ui/CornerDot.vue'
@@ -112,10 +113,7 @@ watch([() => props.files, expanded], () => { void measure() })
           class="min-w-0 truncate"
           :class="file.kind === 'deleted' ? 'line-through text-fg-muted' : ''"
         >{{ baseName(file.path) }}</span>
-        <span class="inline-flex shrink-0 gap-1 font-mono text-[11px] tabular-nums">
-          <span v-if="file.added > 0" class="text-on-success">+{{ file.added }}</span>
-          <span v-if="file.removed > 0" class="text-on-danger">−{{ file.removed }}</span>
-        </span>
+        <LineCounts :added="file.added" :removed="file.removed" />
       </span>
     </component>
     <button
