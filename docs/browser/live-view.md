@@ -126,8 +126,11 @@ page                         backend (panel, plugin-browser)            Host
   asks the browser to stop loading the page; the tab's icon in the strip
   turns into a spinner; and a progress line runs over the picture it still
   shows. The loading lasts from the user's request until the tab list says
-  the page stopped loading, and the agent's own navigations show the same way
-  while the tab list says the page loads. It
+  the page stopped loading and, for a tab that shows no picture yet, such as
+  one opening or reopening, until its first picture arrives; the agent's own
+  navigations show the same way while the tab list says the page loads. Stop
+  is available for the whole loading: pressed while the tab is still
+  opening, it stops the page as soon as the tab exists. It
   appears in the same frame as the click or the Enter, before the request has
   left the page, since on a far backend the browser may start loading
   seconds later. Only a tab list that describes the page after the request
@@ -706,8 +709,8 @@ and `reload` names the number of the last list before the request started.
 
 | State or method | Parameters | Does | A stopped Cloud |
 | --- | --- | --- | --- |
-| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading, canGoBack, canGoForward, shows }] }`; a browser that does not run has none | Is not woken: `{ tabs: [] }` |
-| `bind` | `panelTab` | Opens a browser tab for a panel tab that has none, or whose browser tab is closed or failed to open, as for a new tab | Is woken: opening a tab is ordinary demand |
+| Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading, canGoBack, canGoForward, shows }], closed }`, where `closed` names the tabs closed on purpose, by the agent, by their page or with the last tab, which the conversation's Host keeps across browsers, its 256 most recent; a browser that does not run has no tabs | Is not woken: `{ tabs: [] }` |
+| `bind` | `panelTab` | Opens a browser tab for a panel tab that has none, or whose browser tab is closed or failed to open, as for a new tab, and answers `{ tab }`, the browser tab it bound | Is woken: opening a tab is ordinary demand |
 | `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a job | Is not woken: every bound tab is closed |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |
 | `history` | `tab`, `action`: `back`, `forward` or `reload` | Moves the tab or reloads it | Is not woken: refused with `host_stopped` |
