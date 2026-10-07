@@ -1265,7 +1265,7 @@ file bodies or raw bytes, and its type is fixed per tool by `kind`:
 
 | `kind` | Fields |
 | --- | --- |
-| `shell` | `status` (`running`, `exited` or `aborted`); `shellId`; `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the output the result covers, stdout and stderr merged, each chunk tagged with its stream, a line that stands for bytes the output does not hold tagged as stderr; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files |
+| `shell` | `status` (`running`, `exited` or `aborted`); `shellId`; `commandId`; `exitCode`, once exited; `runningMs`; `idleMs`; `chunks`, the last 32,768 characters of the output the result covers, stdout and stderr merged, each chunk tagged with its stream, a line that stands for bytes the output does not hold tagged as stderr; `viewTruncated`, true when that window or the output itself was cut; `files` and `filesTruncated`, once the command has exited and changed files; `presented`, once the command has exited and presented pages with `demi browser present`, each `{ tab, title, url }` ([Presenting a page](../browser/preview.md#presenting-a-page)) |
 | `repeated_shell_exec` | `script`, `count` |
 | `yield_wakeup` | `wakeupId`, `durationMs` |
 
