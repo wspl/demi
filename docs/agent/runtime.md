@@ -995,6 +995,10 @@ Words used for session data:
 | `compaction_boundary` | Compaction: the summary, inserted where the kept history begins | A user message: "Previous conversation summary:" and the summary | Through its marker; at its own place only when an edit removed the marker |
 | `compaction_marker` | Compaction: the estimated size of what was summarized, appended at the end | Nothing | Yes, as the compaction's divider, with its boundary's summary size |
 
+Each block carries the time it began by the backend's clock: a `text` block
+the arrival of its first text, a tool block the call's start. The page shows a
+reply's time from it, and never shows a past time as a future one.
+
 A compaction shows where it was triggered, not where its summary sits. For
 example, the user compacts after the eleventh message: the boundary goes in
 before the tenth answer, and the marker after the eleventh message, so the

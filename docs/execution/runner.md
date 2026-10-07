@@ -482,7 +482,11 @@ runner reports, as messages of that watch:
   or renamed, both names of a rename. A file opened or read reports nothing,
   and neither does metadata alone under `.git`, as for the
   [working tree](#working-tree). The runner gathers paths for 100 ms and sends
-  each once; more than 1,000 at once it sends as `lost`.
+  each once; more than 1,000 at once it sends as `lost`. It names among them
+  `ignored`, the paths git ignores in the working tree's repository by its own
+  rules (untracked and matched by an ignore rule, or under an ignored folder),
+  so the page's Change list re-reads only for the others; when the rules cannot
+  be read, it names none.
 - `lost` when the watch lost events or the platform asks for a rescan: what it
   reported no longer tells what changed. It keeps running.
 - `failed` when the watch cannot be created or stops, with the reason: an
