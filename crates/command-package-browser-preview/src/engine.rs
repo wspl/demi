@@ -162,6 +162,16 @@ pub fn opening(input: &PreviewOpenInput) -> Result<PreviewOpened, String> {
     })
 }
 
+/// The labels of `environments` in `place`, each with its environment: what
+/// the relay registers for the environments a document's runtime names
+/// (`preview.md` § The forwarder and the relay).
+pub(crate) fn labels_of(place: &Place, environments: Vec<PreviewEnvironment>) -> BTreeMap<String, PreviewEnvironment> {
+    environments
+        .into_iter()
+        .map(|environment| (address::label(&place.namespace, &place.host, &environment_of(&environment)), environment))
+        .collect()
+}
+
 /// A document environment is a preview tab's top frame when nothing above it
 /// is cross-site and its top is its own site; a same-site nested frame is
 /// counted as top-level too (the labels do not record frames).

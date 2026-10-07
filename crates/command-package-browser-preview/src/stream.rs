@@ -408,6 +408,12 @@ impl Served {
                     let _late = socket.inbound.send(FromPage::Message { binary, data }).await;
                 }
             }
+            Inbound::Control(PreviewRelayMessage::Labels { id, environments }) => {
+                let place = self.place()?;
+                let labels = crate::engine::labels_of(&place, environments);
+                // It fails only once the writer ended, which the serving loop notices.
+                let _closed = self.output.send(control(&PreviewEngineMessage::Labels { id, labels })).await;
+            }
             Inbound::Control(PreviewRelayMessage::SocketClose { id, code, reason }) => {
                 self.place()?;
                 if let Some(socket) = self.sockets.get(&id) {
