@@ -85,13 +85,14 @@ function selectMiddle(): void {
   selectAt(Math.floor(ids().length / 2))
 }
 
-/** The first tab the frame cuts off, else the last one. */
+/** The first page the strip cuts off, else the last one. */
 function selectCutOff(): void {
-  const strip = frame.value?.querySelector('[role="tablist"]')
+  // The pages follow Change and File in the strip's tab list, in the scrolled part of it.
+  const shown = [...frame.value?.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]') ?? []].slice(-ids().length)
+  const strip = shown[0]?.parentElement
   if (!strip)
     return
   const view = strip.getBoundingClientRect()
-  const shown = [...strip.querySelectorAll<HTMLElement>('[role="tab"]')]
   const cut = shown.find((tab) => {
     const rect = tab.getBoundingClientRect()
     return rect.left < view.left || rect.right > view.right

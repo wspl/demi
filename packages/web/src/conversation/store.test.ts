@@ -746,6 +746,43 @@ test('the first send creates the conversation with its settings and hosts in one
   }
 })
 
+test('a draft whose attached device becomes its primary creates the conversation on that device alone', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  useProduct().snapshot!.devices.push({
+    id: 'laptop', kind: 'user', name: 'laptop', platform: 'darwin', claimedAt: '2026-09-10T00:00:00.000Z',
+    lastSeenAt: null, state: 'online', home: '/Users/ada', installed: [], startCommand: null, os: null, runnerVersion: null,
+  })
+  useProduct().snapshot!.providers.push(stubProvider)
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) =>
+    String(input).startsWith('/api/models') ? Response.json(stubCatalog()) : originalFetch(input, init)) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  try {
+    await useProduct().loadModels(true)
+    await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
+    await store.attachHost(conversation, 'laptop')
+    expect(conversation.attachedHosts.map((host) => host.deviceId)).toEqual(['laptop'])
+    await store.switchTarget(id, { kind: 'device', deviceId: 'laptop', path: '/Users/ada/work' })
+    expect(conversation.attachedHosts).toEqual([])
+    conversation.draft = 'First message'
+    await store.send(conversation)
+    expect(submit).toHaveBeenCalledTimes(1)
+    const created = requests.filter((request) => request.path === '/api/conversations')
+    expect(created.map((request) => request.body)).toMatchObject([{
+      target: { kind: 'device', deviceId: 'laptop', path: '/Users/ada/work' },
+      hosts: [],
+    }])
+  } finally {
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('an attach and a rename show the hosts their answers list, and a detach the one it removed, with no read', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!

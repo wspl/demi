@@ -4,10 +4,12 @@
 // its output revision advances with each saved change of output, never with
 // the user's input alone. `demi.message` waits the same way.
 import type { Page } from 'playwright'
-import { conversationsSchema } from '@demicodes/web/src/api/generated/web-api'
+import { conversationsSchema, type TurnOutcome } from '@demicodes/web/src/api/generated/web-api'
+import type { Slot } from '../slot'
 import { Failure, webBase, type Tool } from '../tool'
 
-export type Summary = { status: string, revision: number }
+/** The conversation's status, output revision, and how its latest ended turn ended (null before the first). */
+export type Summary = { status: string, revision: number, outcome: TurnOutcome | null }
 
 /** How often the backend is asked about the conversation while a turn runs. */
 const POLL_MS = 250
@@ -25,14 +27,16 @@ export function conversationId(page: Page): string | null {
  * them to the signed-in page; null while it has none, as for a new
  * conversation, which the backend holds once its first message is sent.
  */
-export async function summary(tool: Tool, page: Page, id: string): Promise<Summary | null> {
-  const answer = await page.request.get(`${webBase(tool.slot)}/api/conversations`)
+export async function summary(slot: Slot, page: Page, id: string): Promise<Summary | null> {
+  const answer = await page.request.get(`${webBase(slot)}/api/conversations`)
   if (!answer.ok()) {
     throw new Failure(`The backend answered ${answer.status()} for the conversations: ${await answer.text()}`)
   }
   const { conversations } = conversationsSchema.parse(await answer.json())
   const conversation = conversations.find((entry) => entry.id === id)
-  return conversation ? { status: conversation.status, revision: conversation.revision } : null
+  return conversation
+    ? { status: conversation.status, revision: conversation.revision, outcome: conversation.lastTurn?.outcome ?? null }
+    : null
 }
 
 function running(status: string): boolean {
@@ -42,16 +46,19 @@ function running(status: string): boolean {
 /**
  * Waits until the conversation `id` no longer runs and, when `after` is
  * given, has output newer than that revision: the end of the turn a message
- * started. Answers the conversation's summary then.
+ * started. Answers the conversation's summary then. `check` runs before each
+ * look at the backend and throws to end the wait, as when the page shows the
+ * turn can never come.
  */
 export async function waitTurnEnd(
-  tool: Tool,
+  slot: Slot,
   page: Page,
   id: string,
-  options: { after?: number, timeoutMs: number },
+  options: { after?: number, timeoutMs: number, check?: () => Promise<void> },
 ): Promise<Summary> {
   const deadline = Date.now() + options.timeoutMs
-  let last = await summary(tool, page, id)
+  await options.check?.()
+  let last = await summary(slot, page, id)
   while (last === null || running(last.status) || (options.after !== undefined && last.revision <= options.after)) {
     if (Date.now() >= deadline) {
       const what = options.after === undefined ? 'its turn to end' : 'the turn of the message to end'
@@ -61,7 +68,8 @@ export async function waitTurnEnd(
     // The backend tells the page of a turn's end over its sync socket, which
     // the tool does not read: it asks again in a moment.
     await page.waitForTimeout(POLL_MS)
-    last = await summary(tool, page, id)
+    await options.check?.()
+    last = await summary(slot, page, id)
   }
   return last
 }
@@ -73,8 +81,8 @@ export async function turn(tool: Tool, options: { timeout?: number } = {}): Prom
   if (!id) {
     throw new Failure(`The page shows no conversation: ${page.url()}`)
   }
-  if (await summary(tool, page, id) === null) {
+  if (await summary(tool.slot, page, id) === null) {
     throw new Failure(`Conversation ${id} has no message yet, so it has no turn`)
   }
-  return waitTurnEnd(tool, page, id, { timeoutMs: options.timeout ?? TURN_MS })
+  return waitTurnEnd(tool.slot, page, id, { timeoutMs: options.timeout ?? TURN_MS })
 }
