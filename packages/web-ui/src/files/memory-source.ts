@@ -13,7 +13,7 @@
  * that cannot watch does.
  */
 import { reactive } from 'vue'
-import { previewMediaType } from '@demicodes/protocol'
+import { previewMediaType, TEXT_FILE_BYTES } from '@demicodes/protocol'
 import { delay } from '@demicodes/utils'
 import { HostFiles, type Coverage } from './file-cache'
 import { keptSource, type FileFollower, type FileReads } from './kept-source'
@@ -244,6 +244,9 @@ function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
       const node = fileAt(path)
       if (node.url !== undefined && node.content === undefined)
         throw new FileBrowserError('binary', 'The file is not UTF-8 text')
+      // The text route's limit, as a Host's text route answers a larger file.
+      if (node.size > TEXT_FILE_BYTES)
+        throw new FileBrowserError('too-large')
       // A file's version is when it was written.
       return held === node.modifiedAt ? null : { text: node.content ?? '', version: node.modifiedAt }
     },
@@ -259,6 +262,13 @@ function memoryHost(options: MemoryFileSourceOptions): MemoryHost {
         await wait(path)
         const node = fileAt(path)
         return { size: node.size, modifiedAt: node.modifiedAt, version: node.modifiedAt }
+      },
+      async readStart(path, length) {
+        await wait(path)
+        const node = fileAt(path)
+        if (node.content === undefined)
+          throw new FileBrowserError('binary', 'The file is not UTF-8 text')
+        return new TextEncoder().encode(node.content).subarray(0, length)
       },
     },
     async createDirectory(path) {

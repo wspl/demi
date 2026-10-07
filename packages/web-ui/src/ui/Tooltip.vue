@@ -3,6 +3,33 @@ import type { InjectionKey } from 'vue'
 
 /** How a tip tells the tip around it that something inside is showing. One key for every instance. */
 const tooltipNestKey: InjectionKey<{ showing(delta: 1 | -1): void }> = Symbol('tooltip-nest')
+
+/** Where the pointer last moved on the page; null before it moved. */
+let lastMove: { x: number; y: number } | null = null
+let following = false
+
+/**
+ * Follows the pointer over the whole page, for every tip: one listener,
+ * added with the first tip and kept for the page's lifetime, since tips come
+ * and go with every view.
+ */
+function followPointer(): void {
+  if (following || typeof window === 'undefined')
+    return
+  following = true
+  window.addEventListener('pointermove', (event) => {
+    lastMove = { x: event.clientX, y: event.clientY }
+  }, { capture: true, passive: true })
+}
+
+/**
+ * Whether a pointer entering an element at (`x`, `y`) did not move there:
+ * the element came under it. A pointer that moves in enters before the page
+ * sees that move, so its last move lies elsewhere.
+ */
+function pointerRestsAt(x: number, y: number): boolean {
+  return lastMove !== null && lastMove.x === x && lastMove.y === y
+}
 </script>
 
 <script setup lang="ts">
@@ -37,6 +64,13 @@ import type { SentenceText } from './ui-text'
  *   (Copied), the label follows with it.
  * - A reason (why a control is disabled or unavailable) is a full sentence and
  *   may be long: "Fork is available after this message completes."
+ *
+ * A tip shows as the pointer rests on its trigger, after a delay, and only
+ * once the pointer moved there: a trigger that slides under a pointer at rest,
+ * as a new tab does under the New tab control just clicked, shows none. A
+ * press on the trigger hides the tip until the pointer leaves, so a click
+ * never brings one. Keyboard focus shows it as well, but focus a click gave
+ * does not. A touch shows none.
  */
 defineOptions({
   inheritAttrs: false,
@@ -71,6 +105,8 @@ const props = withDefaults(defineProps<{
   closeDelayMs: 0,
   tag: 'span',
 })
+
+followPointer()
 
 const triggerRef = ref<HTMLElement | null>(null)
 const floatingRef = ref<HTMLElement | null>(null)
@@ -221,6 +257,49 @@ function scheduleOpen() {
   }, props.openDelayMs)
 }
 
+/** Where the pointer entered the trigger without moving, as when the trigger slid under it; null otherwise. */
+let enteredAtRest: { x: number; y: number } | null = null
+/** The trigger was pressed: no tip until the pointer leaves it. */
+let pressed = false
+
+function onPointerenter(event: PointerEvent) {
+  if (pressed || event.pointerType === 'touch')
+    return
+  if (pointerRestsAt(event.clientX, event.clientY)) {
+    enteredAtRest = { x: event.clientX, y: event.clientY }
+    return
+  }
+  scheduleOpen()
+}
+
+function onPointermove(event: PointerEvent) {
+  if (pressed || !enteredAtRest)
+    return
+  if (enteredAtRest.x === event.clientX && enteredAtRest.y === event.clientY)
+    return
+  enteredAtRest = null
+  scheduleOpen()
+}
+
+function onPointerleave() {
+  enteredAtRest = null
+  pressed = false
+  scheduleClose()
+}
+
+function onPointerdown() {
+  pressed = true
+  clearTimers()
+  closeNow()
+}
+
+function onFocusin(event: FocusEvent) {
+  const target = event.target
+  if (pressed || !(target instanceof Element) || !target.matches(':focus-visible'))
+    return
+  scheduleOpen()
+}
+
 function scheduleClose() {
   clearOpenTimer()
   clearCloseTimer()
@@ -278,9 +357,11 @@ onBeforeUnmount(() => {
     :is="props.tag"
     ref="triggerRef"
     v-bind="attrs"
-    @mouseenter="scheduleOpen"
-    @mouseleave="scheduleClose"
-    @focusin="scheduleOpen"
+    @pointerenter="onPointerenter"
+    @pointermove="onPointermove"
+    @pointerleave="onPointerleave"
+    @pointerdown.capture="onPointerdown"
+    @focusin="onFocusin"
     @focusout="scheduleClose"
   >
     <slot />

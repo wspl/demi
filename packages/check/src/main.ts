@@ -18,8 +18,10 @@ const argv = Bun.argv.slice(2)
 const headed = argv.includes('--headed')
 const commandLine = argv.filter((word) => word !== '--headed')
 
-if (commandLine.length === 0 || commandLine[0] === 'help' || commandLine[0] === '--help') {
-  const name = commandLine[1]
+// `help <command>`, and `<command> --help` as every command line tool takes it.
+const asksHelp = commandLine.length === 0 || commandLine[0] === 'help' || commandLine.includes('--help')
+if (asksHelp) {
+  const name = commandLine[0] === 'help' || commandLine[0] === '--help' ? commandLine[1] : commandLine[0]
   const command = name === undefined ? undefined : findCommand(name)
   console.log(command ? `bun check ${command.usage}\n  ${command.summary}` : helpText())
   process.exit(name !== undefined && !command ? 1 : 0)

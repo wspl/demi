@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { usePage } from '@demicodes/plugin-sdk'
+import { LineCounts, usePage } from '@demicodes/plugin-sdk'
 import type { ChangeData } from './data'
 
 /**
  * The strip's counts beside Change: the lines the working tree adds and
- * removes. The badge shows while the panel is open, so the working tree
- * stays fresh as long.
+ * removes, none while it adds and removes none, as GitHub shows no counts
+ * for a branch without changes. The badge shows while the panel is open, so
+ * the working tree stays fresh as long.
  */
 const props = defineProps<{ conversation: string; data: ChangeData }>()
 
@@ -19,8 +20,5 @@ const totals = computed(() => files.changes.files.reduce(
 </script>
 
 <template>
-  <span class="flex items-center gap-0.5 text-[11px] tabular-nums">
-    <span class="text-on-success">+{{ totals.added }}</span>
-    <span class="text-on-danger">−{{ totals.removed }}</span>
-  </span>
+  <LineCounts :added="totals.added" :removed="totals.removed" compact />
 </template>

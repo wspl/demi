@@ -12,7 +12,7 @@ import PathInput from './PathInput.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { fitCrumbs, type CrumbFit } from './crumb-fit'
 import { landmarkIcon } from './file-icons'
-import { normalizePath, parentPath, pathSegments, resolveHostPath } from './paths'
+import { normalizePath, parentPath, pathSegments, relativePath, resolveHostPath } from './paths'
 import type { FileBrowserSource } from './types'
 
 /**
@@ -20,9 +20,10 @@ import type { FileBrowserSource } from './types'
  * (a file dialog): a crumb jumps there. `browse` (a file view): a crumb opens
  * a menu of what lies beside it, directories unfolding into their own, so
  * another file is a pick away. In both, a click anywhere on the bar but a
- * crumb turns it into a text field with the full path, the way the Windows
- * address bar edits, and Enter asks the host to go where it says; a relative
- * path starts from `root`. While it is a field it completes the path from the
+ * crumb turns it into a text field with the path, the way the Windows
+ * address bar edits, and Enter asks the host to go where it says; a bar with
+ * a `root` shows the path from there, as its crumbs do, and a relative path
+ * starts from `root`. While it is a field it completes the path from the
  * source's listings (`PathInput`): a completed directory keeps the field
  * open on its entries, a completed file goes there as Enter would. A bar with a `root` starts its crumbs there, the
  * way a file view shows a path inside its workspace; `leaf` says what the last
@@ -151,7 +152,8 @@ const { width: rulerWidth } = useElementSize(ruler)
 watch([barWidth, rulerWidth, crumbs], measure, { flush: 'post', immediate: true })
 
 function startEdit() {
-  draft.value = props.path
+  // The path as the crumbs read it: from the workspace when the bar has one, so the Host's own directories stay out of sight.
+  draft.value = props.root === undefined ? props.path : relativePath(props.root, props.path)
   editing.value = true
   nextTick(() => {
     input.value?.focus()
