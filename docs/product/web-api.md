@@ -39,7 +39,8 @@ Partial conversation mutations use the explicit outcomes described below.
 | Page synchronization | `WS /sync` sends the product state, then each part of it that changes ([Page synchronization](#page-synchronization)) |
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Subagents | `PUT /subagents { enabled }`; `POST /subagents/profiles`, `PATCH /subagents/profiles/:id`, `DELETE /subagents/profiles/:id`; the switch and the profiles are part of the product state ([Subagents](#subagents)) |
-| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
+| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
+| Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
 | Conversation history | `GET /conversations/:id/transcript` returns root blocks and subagent histories, each with the [failure facts](../backend/backend.md#failure-facts) of its error blocks; `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
@@ -54,7 +55,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
-| Devices | `GET /devices`, `POST /devices/claim { code }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
+| Devices | `GET /devices`, `POST /devices/claim { code }`, `PATCH /devices/:id { name }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
 | Attachments | `POST /attachments` with raw bytes; `GET /blobs/:sha256?type=...` |
@@ -187,6 +188,18 @@ that URL's scheme, TLS 1.2 or newer for `https`; a development backend serves
 plain `http`. The runner receives a pending code; the signed-in page claims
 it through `POST /api/devices/claim`. Device tokens are delivered only to the
 runner.
+
+A device in `GET /devices` and in the product state carries, besides its
+name and online state, `os`, the operating system and architecture its runner
+last reported, and `runnerVersion`, the runner release it last reported, such
+as `0.1.16`; both are null before its runner first connected. Settings shows
+them under the device's name, the Cloud's included. `PATCH /devices/:id
+{ name }` renames a paired device: the name is trimmed and has 1 to 64
+characters, and the answer is the device, 200. The Cloud's device keeps its
+name: renaming it answers 409 `device_managed`, and a device the caller does
+not have 404 `device_not_found`. A rename reaches every page of the user in
+the product state; the names a conversation gives its attached hosts are its
+own and do not change with it.
 
 Attached-host responses contain device identity, name, cwd, online state, and
 attachment time. A conversation's primary device cannot also be attached: attaching
@@ -907,6 +920,18 @@ the stream from a page that is not the product's answers 403
 `forbidden_origin` ([Authentication](#authentication)), and a request to the
 stream that is not a WebSocket upgrade 426 `upgrade_required`.
 
+`DELETE /api/conversations/:id` deletes a conversation, archived or not, and
+answers 204; one the caller does not have answers 404
+`conversation_not_found`. Nothing refuses a deletion. It is a transition that
+stops the conversation's work as [Stop](../agent/runtime.md#stop) does, its
+subagents and commands included, ends its streams and Host operations as
+archive ends them, and then removes the conversation
+([Deleting a conversation](../backend/storage.md#deleting-a-conversation)).
+A request about the conversation that arrives once the deletion has begun
+answers 404 `conversation_not_found`. The synchronization channel drops the
+conversation's summary, and a page that shows the conversation goes to a new
+conversation.
+
 `POST /api/sidebar/reorder` takes `{ kind: "conversation" | "workspace", id,
 beforeId: string | null }`; null appends, and a success answers 204.
 Conversation moves stay within the same project and pin partition, and a
@@ -975,6 +1000,25 @@ Checkpoint output changes advance a persisted revision; user input alone does
 not. A page sends `POST /api/conversations/:id/read { revision }` for the
 output it actually showed. Acknowledgements only move forward, and revisions
 beyond current output are refused.
+
+## Search
+
+`GET /api/search?q=<query>` answers `{ results }`: the caller's conversations
+that match the query, at most 50, in the order
+[Finding a conversation](product.md#finding-a-conversation) gives. A result is
+`{ conversationId, title, archived, lastActiveAt, match }`, where
+`lastActiveAt` is when the conversation's latest message was written. `match`
+is null when only the title matches, and otherwise `{ blockId, text, ranges }`:
+the block of the matching message, newest first when several match, a line of
+its text of at most 160 characters around the first match, and the ranges of
+the query's words in that line as `[start, end]` offsets in UTF-16 code units,
+end exclusive, which the page marks. The query is trimmed and has 1 to 256
+characters; another answers 400 `invalid_query`. The search window sends no
+empty query: it shows the most recent conversations from the product state
+until the user types.
+
+The backend answers from the caller's [search index](../backend/storage.md#search-index)
+alone: it opens no conversation's database and wakes no Host.
 
 ## Page synchronization
 

@@ -112,11 +112,25 @@ Conversation does: an immediately typeable draft, which the first send makes a
 conversation, so a project the user only wanted to set up leaves no empty
 conversation behind.
 
-Conversations can be archived and restored, but not deleted. Archiving is refused
+Conversations can be archived and restored, or deleted. Archiving is refused
 while root or child work or conflicting operations are active. Archiving says
 so in a toast with Undo, as Gmail and Linear do. Archived history remains
 readable: a conversation in the Archived list opens read-only with a bar that
 offers Restore, and sending and metadata changes require restore.
+
+Delete removes a conversation for good, as deleting a chat in ChatGPT or
+Claude does. It is in a conversation's menu in the sidebar, in the menu of a
+selection of several, and on each row of the Archived list, and it asks
+first: a dialog titled Delete “Fix the login test”?, or Delete 3
+Conversations? for a selection, says that the conversation goes with its
+messages and the files it holds, that this cannot be undone, and that the
+files it changed in its project stay; its Delete button is the destructive
+one. A running conversation can be deleted: the deletion stops its work
+first, as Stop does, its subagents and commands included. A page that shows
+the conversation when it is deleted, the one that deleted it or any other,
+goes to a new conversation. A fork of it stays, with its history and its
+files. What a deletion removes, and when its stored files go, belongs to
+[Deleting a conversation](../backend/storage.md#deleting-a-conversation).
 
 Removing something the user set up, such as a provider, an account of a
 subscription, a model added by hand, a subagent profile or a skill source,
@@ -127,7 +141,7 @@ is independent of activity; its storage rules belong to
 
 A conversation keeps everything the user wrote and uploaded and everything
 its tools produced, images, videos and commands' outputs among them, for as
-long as the account exists ([Retention](../backend/storage.md#retention)). A
+long as the conversation exists ([Retention](../backend/storage.md#retention)). A
 command's output kept on its Host while it runs goes when the conversation's
 Host resources are released, once the backend has stored it.
 
@@ -297,6 +311,63 @@ The request:
 
 The limits of 80, 400 and 4,000 characters count Unicode scalar values, and a
 cut never splits one.
+
+### Finding a conversation
+
+A user remembers that a conversation explained a TS2307 error, but not which
+one. ⌘K, or Search in the sidebar, opens the search window: a field, and
+under it the most recent conversations. Typing `TS2307` lists, a moment after
+the typing pauses, the conversations whose title or messages contain it, each
+with its title, a line of the message around the match with the match
+marked, and when the conversation was last active. ↑ and ↓ move through the
+list; Return or a click opens the selected conversation at the message that
+matched, which scrolls into view and is marked for a moment; Escape closes the
+window, as ⌘K does in Slack, Linear and ChatGPT.
+
+A query searches what was said: titles, the user's messages and the text of
+the answers. Thinking, tool calls, commands' output and attached files are
+not searched, since they would bury the message the user remembers under
+logs, and neither are subagents' histories, whose conversation its own
+messages find. Each word of the query must appear, in any order, ignoring
+case. A word matches inside longer text, so `login` finds `relogin`, and a
+word of one or two characters, as Chinese often has, matches too.
+Conversations whose title matches come first, then those whose messages do,
+each group newest first, at most 50 in all. Archived conversations are listed
+too, marked Archived, and open read-only as from the Archived list. The
+backend answers from an index of each user's conversations
+([Search](web-api.md#search), [Search index](../backend/storage.md#search-index)).
+
+### Notifications
+
+A user sends a long task and switches to another app. When the turn ends,
+the system shows a notification from the browser with the conversation's
+title and the start of the answer; clicking it brings the Demi tab forward
+with that conversation open.
+
+Notifications are off until the user turns them on in Settings ›
+Notifications. The setting belongs to the browser, not the account, because
+a browser grants a site permission to notify on that browser alone; the page
+keeps it in the browser's storage. Turning on Browser notifications asks the
+browser for permission. When the browser refuses, the switch goes back off and
+the row says that the browser blocks notifications for this site and that its
+site settings allow them again. Under it the user chooses what notifies, each
+on by default:
+
+| Switch | Notifies when | The notification says |
+| --- | --- | --- |
+| A turn finishes | A turn of the conversation's root ends with an answer | The title, and the start of the answer, cut to 120 characters |
+| A turn fails | A turn of the root ends with an error, which offers Resume | The title, and that the turn stopped with an error |
+| Demi needs permission | The conversation asks for a [permission](../agent/permissions.md) | The title, and what the request asks |
+
+A notification shows only while its conversation is not in front of the
+user: the page is hidden or not focused, or it shows another conversation. A
+turn the user stopped notifies nothing, since the user was there. The pages
+learn of these events from their synchronization channel, so notifications
+come while any Demi page of the browser is open, and none come when none is,
+which would need push notifications. Each notification is tagged with its
+conversation and turn, or its permission request, so several open pages show
+it once. The system's own notification sound plays as the system's settings
+say; Demi adds no sound of its own.
 
 The instruction tells the model to produce a title, never an answer: one line
 that fits where it is shown, in the language the user writes in, where names
@@ -544,10 +615,11 @@ A profile whose provider entry, model, effort or tier is gone is marked as
 unavailable, with the part that is missing, until the user fixes it.
 Skills have a settings section of their own, which the sidebar also opens
 ([Skills](../agent/skills.md#the-page)).
-Notifications, data/privacy actions, language switching, and account
-deletion are also deferred.
+Data and privacy actions, language switching, and account deletion are also
+deferred. Exporting conversations and public share links are not offered, and
+nothing in the web app leads to them.
 
-The selected scope excludes public sharing, collaboration, search, offline mode,
+The selected scope excludes public sharing, collaboration, offline mode,
 PWA behavior, push notifications, and localization. Technology and package
 responsibilities belong to [Web architecture](web-application.md). Components,
 layout, and interaction examples are maintained in the gallery.
