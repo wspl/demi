@@ -495,7 +495,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'skills'">
-      <GallerySection title="Add Skill Source" note="A git origin whose SKILL.md files become a pack.">
+      <GallerySection title="Add Skill Source" note="A Git repository whose SKILL.md files become a pack.">
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <AddSkillSourceDialog
             :is-open="open"

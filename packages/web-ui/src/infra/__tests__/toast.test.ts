@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { reportError } from '../errors'
-import { dismissToast, holdToasts, releaseToasts, showToast, toasts, TOAST_DURATION_MS } from '../toast'
+import { ACTION_TOAST_DURATION_MS, dismissToast, holdToasts, releaseToasts, showToast, toasts, TOAST_DURATION_MS } from '../toast'
 
 // Cost: no I/O, fake timers; a few milliseconds.
 beforeEach(() => {
@@ -34,6 +34,14 @@ test('a failure stays until it is closed; a success closes by itself', () => {
   showToast({ title: 'Copied', tone: 'success' })
   jest.advanceTimersByTime(TOAST_DURATION_MS * 10)
   expect(toasts.map((toast) => toast.title)).toEqual(['Could Not Save'])
+})
+
+test('a toast that offers Undo stays at least ten seconds', () => {
+  showToast({ title: 'Conversation Archived', tone: 'success', action: { label: 'Undo', run: () => {} } })
+  jest.advanceTimersByTime(9999)
+  expect(toasts).toHaveLength(1)
+  jest.advanceTimersByTime(ACTION_TOAST_DURATION_MS - 9999)
+  expect(toasts).toHaveLength(0)
 })
 
 test('a toast under the pointer waits, and goes on with the time it had left', () => {
