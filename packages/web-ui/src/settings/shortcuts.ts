@@ -5,10 +5,11 @@ import type { SettingsKeyBinding } from './types'
  * The app's keyboard shortcuts and the keys each has until the user changes
  * them, in the recorder's notation (`ui/shortcut.ts`). New conversation is
  * ⇧⌘O, as in ChatGPT: ⌘N is the browser's new window, which a page never
- * receives.
+ * receives. Search is ⌘K, as in Slack, Linear and ChatGPT.
  */
 export const APP_SHORTCUTS = [
   { id: 'new', action: 'New conversation', keys: '⇧⌘O' },
+  { id: 'search', action: 'Search conversations', keys: '⌘K' },
   { id: 'sidebar', action: 'Toggle sidebar', keys: '⌘B' },
   { id: 'settings', action: 'Open settings', keys: '⌘,' },
 ] as const
