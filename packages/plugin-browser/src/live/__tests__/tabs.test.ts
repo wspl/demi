@@ -521,3 +521,18 @@ test('Stop pressed on a new tab that then could not open stops nothing', async (
   expect(stopped).toEqual([])
   end()
 })
+
+test('a Reload the lost browser answered ends on the new browser’s first list, numbered after it', async () => {
+  const { controller, answers, opened, end } = await requestHarness()
+  const url = 'https://example.test/orders'
+  const reloaded = controller.history('t1', 'reload')
+  answers[0]!.resolve(27)
+  await reloaded
+  // The browser ends; the view opens again on the conversation's next browser.
+  opened[0]!.closed('browser_lost')
+  controller.session.value!.reconnect()
+  const tab = { id: 't1', title: 'Orders', url, createdBy: { kind: 'user' } as const, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false }
+  opened[1]!.data(framed({ type: 'state', running: true, list: 28, tabs: [tab], watched: 't1' }))
+  expect(controller.loading('t1', url)).toBe(false)
+  end()
+})
