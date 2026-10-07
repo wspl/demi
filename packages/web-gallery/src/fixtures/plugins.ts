@@ -146,7 +146,8 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
   }
   return {
     followState: () => ({
-      value: () => browser.listed.value,
+      // A browser held while the page connects has brought no list yet, as before a feed's first answer.
+      value: () => (browser.held.value === 'connecting' ? undefined : browser.listed.value),
       error: () => null,
       read: () => {},
       stop: () => {},

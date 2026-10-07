@@ -596,8 +596,8 @@ test('the user’s downloads in a tab stay listed while its view opens again', a
   end()
 })
 
-test('before the browser has a tab, the content says what Demi starts: the Cloud, then the browser, then the page', async () => {
-  const starting = ref(true)
+test('before the browser has a tab, the content says what Demi does: connecting, the Cloud, the browser, then the page', async () => {
+  const starting = ref(false)
   const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
   const { controller, list, end } = harness(
     { hostStarting: () => starting.value, stream: recordingStream(views) },
@@ -609,8 +609,13 @@ test('before the browser has a tab, the content says what Demi starts: the Cloud
   // A content shown before the browser has its tab: the view tells the Host the panel, and watches nothing.
   controller.show('p1', null)
   expect(views.map((view) => view.sent.map((message) => message.type))).toEqual([['hello', 'panel']])
+  // Neither the plugin's list nor the view said yet what the Host is doing.
+  expect(controller.startingPhase('p1', opening)).toBe('connecting')
+  // The product state says the Cloud starts, which comes first.
+  starting.value = true
   expect(controller.startingPhase('p1', opening)).toBe('cloud')
   starting.value = false
+  expect(controller.startingPhase('p1', opening)).toBe('connecting')
   // The conversation's browser has no tabs yet, as the plugin's list says until the view says otherwise.
   list.value = { tabs: [], browser: { name: 'Chrome for Testing', version: '153.0.8010.36' } }
   expect(controller.startingPhase('p1', opening)).toBe('browser')
