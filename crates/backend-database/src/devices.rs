@@ -322,6 +322,44 @@ impl ControlService {
         .await
     }
 
+    /// Records that the backend's shutdown ended the connections of
+    /// `devices` (`sessions-and-targets.md` § Recovery and persistence).
+    pub async fn set_devices_ended_by_shutdown(
+        &self,
+        devices: Vec<DeviceId>,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            {
+                let mut statement = transaction
+                    .prepare_cached("UPDATE devices SET ended_by_shutdown = 1 WHERE id = ?1")?;
+                for device in &devices {
+                    statement.execute([device.as_str()])?;
+                }
+            }
+            transaction.commit()?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The devices whose connections the backend's last shutdown ended, for
+    /// the start that follows it, which takes them: none is recorded after.
+    pub async fn take_devices_ended_by_shutdown(&self) -> Result<Vec<DeviceId>, StorageError> {
+        self.call(|connection, _| {
+            let mut statement = connection.prepare_cached(
+                "UPDATE devices SET ended_by_shutdown = 0 WHERE ended_by_shutdown = 1 RETURNING id",
+            )?;
+            let ids = statement
+                .query_map([], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            ids.into_iter()
+                .map(|id| decode("devices", "id", DeviceId::try_from(id)))
+                .collect()
+        })
+        .await
+    }
+
     /// Records that the device's runner was connected just now.
     pub async fn touch_device_seen(&self, device: DeviceId) -> Result<(), StorageError> {
         self.call(move |connection, now| {

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use bytes::Bytes;
+use demi_backend_user_shard::holds::HelloStep;
 use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
@@ -868,6 +869,80 @@ async fn a_shutdown_ends_an_open_download_instead_of_waiting_for_it() {
         }
     };
     assert_eq!(ended, "cut");
+}
+
+impl OnDevice {
+    /// Restarts the backend at its address, as an upgrade does, with the
+    /// device's runner stopped meanwhile: the shutdown ended the runner's
+    /// connection, and the runner is not back when the backend is.
+    async fn restart_without_runner(self) -> Self {
+        let OnDevice {
+            harness,
+            backend,
+            master,
+            mut paired,
+            root,
+        } = self;
+        let address = backend.address();
+        backend.close().await;
+        paired.runner.stop().await;
+        let backend = harness.start_at(address).await;
+        Self {
+            harness,
+            backend,
+            master,
+            paired,
+            root,
+        }
+    }
+}
+
+/// A restart is not a device going away (`sessions-and-targets.md`
+/// § Recovery and persistence): for 30 seconds after the start, an operation
+/// for a device whose connection the shutdown ended waits for its runner
+/// instead of answering that the device is offline; after that it answers
+/// as for any device that is away. Costs two restarts, a runner start and
+/// 300 ms of a bound on what must not happen.
+#[tokio::test]
+async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconnected_until_the_grace_ends()
+{
+    let device = OnDevice::start().await;
+    std::fs::write(device.root.join("a.txt"), "kept").unwrap();
+    let read = format!("/fs/file?{}", query(&[("path", &device.path("a.txt"))]));
+
+    // The runner comes back a moment after the backend, and its hello waits
+    // to be bound. The page's request meanwhile waits for it, rather than
+    // answering that the device is offline, and is answered once it is bound.
+    let mut device = device.restart_without_runner().await;
+    let binds = device.backend.hold_hellos(HelloStep::Bind);
+    device.paired.runner.start_again();
+    binds.until_arrived(1).await;
+    {
+        let path = format!("/api/conversations/{CONVERSATION}{read}");
+        let mut request = std::pin::pin!(device.backend.response(Method::GET, &path, &device.master, &[], None));
+        // A bound on a negative: without the wait, the answer comes in milliseconds.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(300), &mut request)
+                .await
+                .is_err(),
+            "the operation answered while the device's runner was coming back"
+        );
+        binds.release();
+        let answered = answer(request.await).await;
+        assert_eq!(answered.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answered.body));
+    }
+
+    // Once the grace is over, a device still away is offline at once.
+    let device = device.restart_without_runner().await;
+    device.harness.clock.advance(jiff::SignedDuration::from_secs(31));
+    let refused = tokio::time::timeout(Duration::from_secs(10), device.get(&read))
+        .await
+        .expect("the operation waited after the grace");
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::DeviceOffline)
+    );
+    device.backend.close().await;
 }
 
 type Socket =

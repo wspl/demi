@@ -21,8 +21,8 @@ import { conversationStates } from './states'
  * The plugin pages' host in the product (`plugins.md` § The page): each
  * plugin's user state from the product state the sync channel keeps, which
  * drops a plugin the user turned off; its conversation states by revision;
- * its calls over the plugin call routes (`web-api.md` § Plugin calls), each
- * waiting while the backend cannot be reached; its
+ * its calls over the plugin call routes (`web-api.md` § Plugin calls), these
+ * calls and the states' reads waiting while the backend cannot be reached; its
  * user streams; what a conversation's primary Host holds of its packages,
  * from that device's in the product state, and whether that Host is a Cloud
  * that does not run, from the Cloud's state there;
@@ -34,7 +34,7 @@ export function productPageHost(): PageHost {
   const work = useWorkPanel()
   const resources = useResources()
   const settings = useSettingsAddress()
-  const states = conversationStates(() => product.snapshot)
+  const states = conversationStates(() => product.snapshot, (send) => product.untilReached(send))
   /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
   function primaryHost(plugin: string, conversation: string) {
     const state = product.snapshot

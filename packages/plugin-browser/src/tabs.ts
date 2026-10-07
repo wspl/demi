@@ -1,4 +1,4 @@
-import { computed } from 'vue'
+import { computed, onScopeDispose } from 'vue'
 import { z } from 'zod'
 import { BrowserTabsError, asTabsError, refusalSentence, type BrowserTabsApi } from './live/tabs'
 import { PluginCallError, type ConversationPlugin } from '@demicodes/plugin-sdk'
@@ -33,15 +33,23 @@ function tabsError(error: PluginCallError): BrowserTabsError {
 /**
  * The conversation browser's tab list, its tab methods and its `browser`
  * user stream over the plugin (`live-view.md` § The tab methods), for a
- * panel session, whose effect scope the tab list is followed in.
+ * panel session, whose effect scope the tab list is followed in. A call
+ * still waiting for the backend when the session ends, as the panel closes,
+ * is dropped and never sent (`plugin-pages.md` § The page context).
  */
 export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: string) => void): BrowserTabsApi {
   const tabs = plugin.state(browserTabsSchema)
+  const session = new AbortController()
+  onScopeDispose(() => session.abort())
   async function call<T>(method: string, params: object, answer: z.ZodType<T>, timeoutMs?: number): Promise<T> {
     try {
-      return await plugin.call(method, params, answer, { timeoutMs })
+      return await plugin.call(method, params, answer, { timeoutMs, signal: session.signal })
     } catch (error) {
-      // Anything but a refusal, such as an abort, has no code.
+      if (session.signal.aborted) {
+        // Dropped with the panel: the abort, which nothing reports.
+        throw error
+      }
+      // Anything but a refusal has no code.
       throw error instanceof PluginCallError ? tabsError(error) : asTabsError(error)
     }
   }

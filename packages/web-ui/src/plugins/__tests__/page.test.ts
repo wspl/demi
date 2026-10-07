@@ -151,6 +151,23 @@ test('a user state the page cannot read is reported once, and the page goes on w
   for (const toast of [...toasts]) dismissToast(toast.id)
 })
 
+test('a call its caller dropped, as a panel that closed, is neither a toast nor a defect', () => {
+  for (const toast of [...toasts]) dismissToast(toast.id)
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  const context = pageContext(host(), definePage({ plugin: 'browser' }))
+  const left = new AbortController()
+  left.abort()
+  context.errors.report('Could Not Reload the Page', left.signal.reason)
+  context.errors.defect('The panel could not look for a closed tab', left.signal.reason)
+  expect(toasts).toEqual([])
+  expect(logged).not.toHaveBeenCalled()
+  // Any other failure still says so.
+  context.errors.report('Could Not Reload the Page', new Error('The device is offline.'))
+  expect(toasts.map((toast) => toast.title)).toEqual(['Could Not Reload the Page'])
+  logged.mockRestore()
+  for (const toast of [...toasts]) dismissToast(toast.id)
+})
+
 test("a conversation state the page cannot read is the state's error until one reads, and the last one stays", () => {
   const sent = shallowRef<unknown>({ sources: [{ id: 'src_1', updateAvailable: false }] })
   const context = pageContext(
