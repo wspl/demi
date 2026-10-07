@@ -80,7 +80,7 @@ const body = computed(() => {
       <div class="flex justify-end gap-2">
         <Button @click="emit('skip')">Skip</Button>
         <Button v-if="merges" @click="emit('merge')">Merge</Button>
-        <Button variant="danger" @click="emit('replace')">Replace</Button>
+        <Button variant="destructive" @click="emit('replace')">Replace</Button>
       </div>
     </div>
   </Dialog>

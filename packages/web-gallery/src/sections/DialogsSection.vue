@@ -11,6 +11,7 @@ import type { AddSourceAnswer } from '@demicodes/plugin-skills/types'
 import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import DeviceRevokeDialog from '@demicodes/web-ui/devices/DeviceRevokeDialog.vue'
+import ConfirmDialog from '@demicodes/web-ui/ui/ConfirmDialog.vue'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import type { DeviceInstallation } from '@demicodes/web-ui/devices/installation'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
@@ -275,6 +276,43 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'providers'">
+      <GallerySection
+        title="Confirm Removal"
+        note="Removing what the user set up asks first: the title asks, the body says what goes with it, Cancel is the safe answer, and the action is the destructive button, filled red under white text in both schemes."
+      >
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen wide variant="provider">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <ConfirmDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                title="Remove “OpenAI API”?"
+                action="Remove"
+                @close="close"
+                @confirm="finish(close, 'Remove the Provider')"
+              >
+                <p>Its API key and its 4 models go with it.</p>
+                <p>Conversations that use one of its models keep their history, and their next message needs another model.</p>
+              </ConfirmDialog>
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+          <GallerySpecimen wide variant="skill source · what goes, named">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <ConfirmDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                title="Remove “agent-skills”?"
+                action="Remove"
+                :goes="['web-design-guidelines', 'react-best-practices', 'and 3 more']"
+                @close="close"
+                @confirm="finish(close, 'Remove the Skill Source')"
+              >
+                <p>Its skills go with it, and the agent is no longer offered them. You can add the repository again later.</p>
+              </ConfirmDialog>
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
       <GallerySection title="Add Provider" note="A vendor from the catalog, or a bare endpoint speaking one of the protocols Demi implements.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen
