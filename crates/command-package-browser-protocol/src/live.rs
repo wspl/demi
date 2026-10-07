@@ -576,11 +576,6 @@ pub struct LiveTab {
     /// Whether the tab's history has a page after the current one.
     #[garde(skip)]
     pub can_go_forward: bool,
-    /// The page's icon, as the tab list carries it.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
-    #[garde(length(max = crate::browser::FAVICON_LENGTH))]
-    pub favicon: Option<String>,
 }
 
 /// What lies under the viewer's right click in the watched tab, which the
