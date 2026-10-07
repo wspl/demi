@@ -50,6 +50,7 @@ use tokio_util::task::TaskTracker;
 use crate::conversation::claude_cli::ClaudeCli;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationParts, ShardHosts};
+use crate::lifecycle::collection::BlobCollection;
 use crate::lifecycle::conversations::ConversationWatches;
 use crate::services::Services;
 use demi_backend_host_access::access::Conversations;
@@ -109,6 +110,8 @@ pub struct Shard {
     cloud: Cloud,
     /// Each conversation's idle watch.
     idle_watches: ConversationWatches,
+    /// The collections of the user's blob namespace.
+    blob_collection: BlobCollection,
     /// The Claude Code CLI work on the user's Cloud.
     claude_cli: ClaudeCli,
     /// An instance of every plugin for the user.
@@ -166,6 +169,7 @@ impl Shard {
             forks: KeyedSerialGate::new(),
             cloud: Cloud::default(),
             idle_watches: ConversationWatches::default(),
+            blob_collection: BlobCollection::default(),
             claude_cli: ClaudeCli::default(),
             plugins,
             plugin_installs: PluginInstalls::default(),
@@ -192,6 +196,20 @@ impl Shard {
 
     pub(crate) fn idle_watches(&self) -> &ConversationWatches {
         &self.idle_watches
+    }
+
+    pub(crate) fn blob_collection(&self) -> &BlobCollection {
+        &self.blob_collection
+    }
+
+    /// Resolves once no collection of the user's blobs runs or is to follow.
+    #[cfg(feature = "testing")]
+    pub async fn until_collected(&self) {
+        let mut state = self.blob_collection.subscribe();
+        // The shard keeps the sender while this call holds it.
+        let _ = state
+            .wait_for(|state| *state == crate::lifecycle::collection::CollectionState::Idle)
+            .await;
     }
 
     pub fn user(&self) -> &UserId {
