@@ -11,13 +11,16 @@ const enterWidths = new WeakMap<HTMLElement, number>()
 function measureOpenWidth(tab: HTMLElement): number {
   const prevWidth = tab.style.width
   const prevShrink = tab.style.flexShrink
-  // No inline width: the tab's own class width is what it opens to.
+  const prevMin = tab.style.minWidth
+  // No inline width: the tab's own class width, shrunk as its strip shrinks its tabs, is what it opens to.
   tab.style.width = ''
   tab.style.flexShrink = ''
+  tab.style.minWidth = ''
   void tab.offsetWidth
   const width = tab.getBoundingClientRect().width
   tab.style.width = prevWidth
   tab.style.flexShrink = prevShrink
+  tab.style.minWidth = prevMin
   return width
 }
 

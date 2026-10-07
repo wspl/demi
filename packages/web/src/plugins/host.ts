@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { TabOpeners } from '@demicodes/web-ui/agent/panel-changes'
+import { openedTabIndex } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PageHost } from '@demicodes/web-ui/plugins/page'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { userStreamAt } from '@demicodes/web-ui/transport/user-stream'
@@ -14,6 +14,7 @@ import { useResources } from '../state/resources'
 import { useSettingsAddress } from '../settings/address'
 import { executionFor } from '../targets/execution'
 import { callFailure } from './errors'
+import { PLUGIN_PAGES } from './generated/pages'
 import { conversationStates } from './states'
 
 /**
@@ -32,7 +33,6 @@ export function productPageHost(): PageHost {
   const resources = useResources()
   const settings = useSettingsAddress()
   const states = conversationStates(() => product.snapshot)
-  const openers = new TabOpeners()
   /** `conversation`'s primary Host and `plugin`'s packages, once the product state names both. */
   function primaryHost(plugin: string, conversation: string) {
     const state = product.snapshot
@@ -80,8 +80,8 @@ export function productPageHost(): PageHost {
       tabs: (conversation, kind) =>
         work.stateFor(conversation).panel.tabs.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       add: (conversation, kind, data, options = { select: false }) => {
-        const tabs = work.stateFor(conversation).panel.tabs
-        openers.add(tabs, options.after, (index) => work.add(conversation, kind, data, { select: options.select, index }))
+        const index = openedTabIndex(work.stateFor(conversation).panel.tabs, PLUGIN_PAGES, kind, data)
+        work.add(conversation, kind, data, { select: options.select, index })
       },
       select: (conversation, _kind, id) => {
         work.select(conversation, id)
