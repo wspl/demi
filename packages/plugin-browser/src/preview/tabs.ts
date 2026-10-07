@@ -12,7 +12,7 @@ import type { PanelSession, PreviewPlace } from '@demicodes/plugin-sdk'
 import type { PreviewOpened } from '../generated/plugin'
 import { previewUnsupported } from './client'
 import type { PreviewConnection } from './connection'
-import type { Navigation, RelayBinding, RelayTab, TabEvent, TabPage } from './relay'
+import type { Navigation, NavigationType, RelayBinding, RelayTab, TabEvent, TabPage } from './relay'
 
 /** A tab of the user's browser as its panel tab keeps it. */
 export const previewTabDataSchema = z.object({
@@ -73,6 +73,42 @@ export interface PreviewTabView {
   failure: string | null
   /** The tab waits for the Host: its Cloud starts. */
   starting: boolean
+  /** The tab's history has a page before the one it shows, of any origin. */
+  canGoBack: boolean
+  /** The tab's history has a page after the one it shows. */
+  canGoForward: boolean
+}
+
+/**
+ * The entries of a tab's frame's history, of every origin its pages had, as
+ * its top documents report each move: a browser's Back and Forward count
+ * them, and the Navigation API in a page sees only its own origin's.
+ */
+export class TabHistory {
+  private entries: string[] = []
+  private index = -1
+
+  /** The history moved to the entry `key`, as `navigationType` says. */
+  moved(key: string, navigationType: NavigationType): void {
+    const known = navigationType === 'traverse' ? this.entries.indexOf(key) : -1
+    if (known >= 0) {
+      this.index = known
+    } else if (this.index >= 0 && (navigationType === 'replace' || navigationType === 'reload')) {
+      this.entries[this.index] = key
+    } else {
+      // A new page; an entry the list never met, as one before the tab's content started, counts as one.
+      this.entries = [...this.entries.slice(0, this.index + 1), key]
+      this.index = this.entries.length - 1
+    }
+  }
+
+  get canGoBack(): boolean {
+    return this.index > 0
+  }
+
+  get canGoForward(): boolean {
+    return this.index < this.entries.length - 1
+  }
 }
 
 /** What a tab's content gives its tab: its frame, and how to change and close the panel tab. */
@@ -113,7 +149,17 @@ interface OpenedWindow {
 
 /** One tab of the user's browser while its content lives. */
 export class PreviewTab implements RelayTab {
-  readonly view: PreviewTabView = reactive({ src: null, page: null, icon: null, loading: false, failure: null, starting: false })
+  readonly view: PreviewTabView = reactive({
+    src: null,
+    page: null,
+    icon: null,
+    loading: false,
+    failure: null,
+    starting: false,
+    canGoBack: false,
+    canGoForward: false,
+  })
+  private entries = new TabHistory()
   opener: { binding: RelayBinding; popup: number } | null = null
   /** The navigation the tab loads, which Retry opens again. */
   private current: Navigation | null = null
@@ -202,6 +248,10 @@ export class PreviewTab implements RelayTab {
 
   /** Back, Forward or Reload in the page; Reload of a page that failed opens its address again. */
   history(action: 'back' | 'forward' | 'reload'): void {
+    // The page's own history would move the Demi page's, past the tab's first page.
+    if ((action === 'back' && !this.view.canGoBack) || (action === 'forward' && !this.view.canGoForward)) {
+      return
+    }
     if (this.tabs.driver.command(this, action)) {
       return
     }
@@ -233,6 +283,10 @@ export class PreviewTab implements RelayTab {
     this.view.src = null
     this.view.page = null
     this.view.failure = null
+    // The blank page starts the tab's history again: what came before is not the tab's to go back to.
+    this.entries = new TabHistory()
+    this.view.canGoBack = false
+    this.view.canGoForward = false
     const { title: _left, ...data } = this.host.data()
     this.host.update({ ...data, url: '' })
   }
@@ -267,6 +321,11 @@ export class PreviewTab implements RelayTab {
         void this.showIcon(event.page)
         return
       }
+      case 'entry':
+        this.entries.moved(event.key, event.navigationType)
+        this.view.canGoBack = this.entries.canGoBack
+        this.view.canGoForward = this.entries.canGoForward
+        return
       case 'leaving':
         this.view.loading = true
         return
@@ -280,6 +339,7 @@ export class PreviewTab implements RelayTab {
   private async showIcon(page: TabPage): Promise<void> {
     const place = this.place()
     if (!place || !page.icon) {
+      this.iconOf = ''
       this.view.icon = null
       return
     }

@@ -64,8 +64,8 @@ export function relayDriver(relay: PreviewRelay): PreviewDriver {
       }
     },
     async boot(_tab, place, opened, navigation) {
-      await relay.learn(place, { [opened.label]: opened.environment })
-      return relay.bootAddress(place, opened.label, navigation)
+      relay.know(place, { [opened.label]: opened.environment })
+      return relay.bootAddress(opened, navigation)
     },
     command: (tab, command) => relay.command(tab, command),
     async icon(tab, place, page) {

@@ -21,6 +21,10 @@ pub const OPERATION: &str = "browser.preview";
 /// stopped Cloud first as opening any tab does (`preview.md` § The stream).
 pub const OPEN_OPERATION: &str = "browser.preview_open";
 
+/// The most environments one `labels` message names: more than a document's
+/// rewriting meets in one go.
+pub const MAX_LABELS: usize = 256;
+
 /// The stream's arguments: none; the relay and the engine speak over the
 /// stream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -347,6 +351,15 @@ pub enum PreviewRelayMessage {
         #[garde(dive)]
         client: PreviewClient,
     },
+    /// Compute the labels of `environments`, which a preview document's
+    /// runtime names as its rewriting met them; the relay keeps only the
+    /// labels the engine answers.
+    Labels {
+        #[garde(skip)]
+        id: u32,
+        #[garde(length(max = MAX_LABELS), dive)]
+        environments: Vec<PreviewEnvironment>,
+    },
     /// The page closed its socket.
     SocketClose {
         #[garde(skip)]
@@ -386,6 +399,14 @@ pub enum PreviewEngineMessage {
     Pull {
         #[garde(skip)]
         id: u32,
+    },
+    /// The labels of the environments the relay's `labels` named, each with
+    /// its environment.
+    Labels {
+        #[garde(skip)]
+        id: u32,
+        #[garde(dive)]
+        labels: BTreeMap<String, PreviewEnvironment>,
     },
     /// The request failed before or during its answer; the forwarder answers
     /// a network error.
