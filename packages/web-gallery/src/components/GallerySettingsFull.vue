@@ -201,6 +201,7 @@ onBeforeUnmount(() => {
   }
 })
 
+/** A restored or deleted conversation leaves the archived list, as the product's does. */
 function restoreArchived(id: string) {
   s.value.archived = s.value.archived.filter((entry) => entry.id !== id)
 }
@@ -300,8 +301,10 @@ function resetShortcuts() {
   <SettingsArchived
     v-else-if="tab === 'archived'"
     :conversations="s.archived"
+    :overlay-store="appOverlayStore"
     @open="productWould('Open the Conversation Read-Only')"
     @restore="restoreArchived"
+    @delete="restoreArchived"
   />
 
   <SettingsDevices

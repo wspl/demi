@@ -124,6 +124,31 @@ impl ConversationStores {
         failures
     }
 
+    /// Removes the conversation's database (`storage.md` § Deleting a
+    /// conversation): its writer closes, under the file's opening turn so
+    /// none opens meanwhile, and its file goes with the write-ahead log and
+    /// the shared memory beside it. A file already gone is no failure, so a
+    /// deletion that a start finishes may remove it again.
+    pub async fn remove(&self, conversation: &ConversationId) -> Result<(), StorageError> {
+        let file = DatabaseFile::of(conversation);
+        let _turn = self.0.opening.acquire(file.clone()).await;
+        let writer = self.0.lock().open.remove(&file);
+        if let Some(writer) = writer {
+            sqlite::close(writer).await?;
+        }
+        let database = file.path(&self.0.directory);
+        for suffix in ["", "-wal", "-shm"] {
+            let mut path = database.clone().into_os_string();
+            path.push(suffix);
+            match tokio::fs::remove_file(PathBuf::from(path)).await {
+                Ok(()) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => return Err(error.into()),
+            }
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     fn open_writers(&self) -> usize {
         self.0.lock().open.len()

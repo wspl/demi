@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use demi_provider_common::{MediaBytes, ResultPart};
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, DocumentSource, GoneCause, MediaSource, ModelMediaKind,
-    ToolMediaSource, ToolResultContentBlock, UserContentBlock,
+    ToolCallBlock, ToolMediaSource, ToolResultContentBlock, ToolView, UserContentBlock,
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, stream};
 
@@ -193,6 +193,26 @@ fn sources(block: &Block) -> Vec<Source<'_>> {
 /// The blobs a block's media reference.
 pub fn references(block: &Block) -> impl Iterator<Item = &BlobRef> {
     sources(block).into_iter().filter_map(Source::reference)
+}
+
+/// Every blob a block names: its media, then the two sides of each edit
+/// segment of the files its shell command changed, which only the user sees
+/// (`edit-tracking.md` § Edit copies). A collection of the owner's blobs
+/// keeps each one (`storage.md` § Deleting a conversation).
+pub fn block_blobs(block: &Block) -> impl Iterator<Item = &BlobRef> {
+    let files = match block {
+        Block::ToolCall(ToolCallBlock {
+            view: Some(ToolView::Shell(view)),
+            ..
+        }) => view.files.as_deref().unwrap_or_default(),
+        _ => &[],
+    };
+    let copies = files
+        .iter()
+        .flat_map(|file| &file.edits)
+        .filter_map(|edit| edit.copies.as_ref())
+        .flat_map(|copies| [&copies.original, &copies.modified]);
+    references(block).chain(copies)
 }
 
 /// The blobs the media of a message's or a steer's content reference, such

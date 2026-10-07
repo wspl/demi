@@ -28,6 +28,7 @@ import SidebarProjectHeader from './SidebarProjectHeader.vue'
 import SidebarProjectMenu from './SidebarProjectMenu.vue'
 import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
+import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
 
 /**
  * Top: the app and its entries: New, then the entries the host gives, such as a plugin's
@@ -59,6 +60,8 @@ const emit = defineEmits<{
   pin: [ids: string[], pinned: boolean]
   moveToProject: [ids: string[], projectId: string | null]
   archive: [ids: string[]]
+  /** Delete, once its dialog was answered: the conversations go for good. */
+  delete: [ids: string[]]
   /** Settings, on a section when an entry names one (`archived`, or an entry's own). */
   openSettings: [section?: string]
   signOut: []
@@ -335,6 +338,20 @@ function leaveEntry(el: Element): void {
   row.style.marginBottom = '-1px'
 }
 
+// Delete asks first. The dialog keeps its targets while it closes, so its leave shows what it asked.
+const deleteTargets = ref<SidebarConversation[]>([])
+const deleteOpen = ref(false)
+
+function askDelete(ids: string[]): void {
+  deleteTargets.value = conversationsOf(ids)
+  deleteOpen.value = deleteTargets.value.length > 0
+}
+
+function confirmDelete(): void {
+  deleteOpen.value = false
+  emit('delete', deleteTargets.value.map((target) => target.id))
+}
+
 function rowMenuOpenFor(id: string): boolean {
   return rowMenu.isOpen.value && menuTargets.value.some((target) => target.id === id)
 }
@@ -584,8 +601,19 @@ function selectProjectConversations(project: SidebarProject): void {
           rowMenu.close()
           emit('archive', ids)
         }"
+        @delete="(ids) => {
+          rowMenu.close()
+          askDelete(ids)
+        }"
       />
     </Popover>
+    <ConversationDeleteDialog
+      :is-open="deleteOpen"
+      :overlay-store="appOverlayStore"
+      :titles="deleteTargets.map((target) => target.title)"
+      @close="deleteOpen = false"
+      @delete="confirmDelete"
+    />
     <Popover
       :key="projectMenu.menuKey.value"
       :overlay-store="appOverlayStore"

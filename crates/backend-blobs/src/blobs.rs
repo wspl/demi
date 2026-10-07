@@ -2,16 +2,17 @@
 //! media, § The object store): each user's bytes under `blobs/<user>/`, named
 //! by their SHA-256 in lowercase hexadecimal. A name identifies bytes only
 //! within its user's namespace, so knowing another user's hash reaches
-//! nothing of theirs. Nothing deletes a blob but the account's deletion
-//! (`storage.md` § Retention).
+//! nothing of theirs. A collection of the namespace lists it and deletes
+//! the blobs nothing names (`storage.md` § Deleting a conversation).
 
 use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_agent_store::StoreError;
 use demi_agent_store::media::BlobStore;
-use demi_shared_types::{B64Bytes, BlobRef};
+use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use demi_web_api_protocol::ids::UserId;
+use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
 use object_store::path::Path;
 use object_store::{GetOptions, ObjectStore, ObjectStoreExt as _, PutMode, PutOptions, PutPayload};
@@ -28,6 +29,15 @@ pub const OPENING_BYTES: u64 = 64 * 1024;
 pub struct BlobOpening {
     pub bytes: Bytes,
     pub size: u64,
+}
+
+/// A blob of a namespace, as its listing finds it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredBlob {
+    pub blob: BlobRef,
+    /// When its object was written. A put of a blob the namespace holds
+    /// writes nothing, so this is when its bytes were first stored.
+    pub written: Timestamp,
 }
 
 /// Every user's blob namespace.
@@ -126,6 +136,40 @@ impl UserBlobs {
                 Ok(Some(BlobOpening { bytes, size }))
             }
             Err(object_store::Error::NotFound { .. }) => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    /// Every blob the namespace holds, with when its object was written: one
+    /// listing, which on S3 is one request per 1,000 objects. An object
+    /// whose name is no blob's is left out: no record can name it, and a
+    /// collection never deletes what it does not know.
+    pub async fn list(&self) -> Result<Vec<StoredBlob>, ObjectError> {
+        let mut listing = self.objects.list(Some(&self.namespace));
+        let mut blobs = Vec::new();
+        while let Some(object) = listing.next().await {
+            let object = object?;
+            let Some(name) = object.location.filename() else {
+                continue;
+            };
+            let Ok(blob) = BlobRef::try_from(name.to_owned()) else {
+                continue;
+            };
+            let written = Timestamp::from_millisecond(object.last_modified.timestamp_millis())
+                .map_err(|error| ObjectError::Corrupt {
+                    location: object.location.to_string(),
+                    field: "last modified time",
+                    reason: error.to_string(),
+                })?;
+            blobs.push(StoredBlob { blob, written });
+        }
+        Ok(blobs)
+    }
+
+    /// Deletes `blob`; one the namespace does not hold is deleted already.
+    pub async fn delete(&self, blob: &BlobRef) -> Result<(), ObjectError> {
+        match self.objects.delete(&self.location(blob)).await {
+            Ok(()) | Err(object_store::Error::NotFound { .. }) => Ok(()),
             Err(error) => Err(error.into()),
         }
     }
