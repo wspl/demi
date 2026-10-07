@@ -390,11 +390,14 @@ async fn run_on_host(
     if target.role == HostRole::Attached
         && let Some(cwd) = ran.cwd.clone()
     {
-        shard
+        let changed = shard
             .control()
             .set_attached_cwd(conversation.clone(), target.device.clone(), cwd)
             .await
             .map_err(|error| error.to_string())?;
+        if changed {
+            shard.hosts_changed(&conversation);
+        }
     }
     match ran.status {
         ProcessEnd::NotStarted(error) => {

@@ -316,6 +316,9 @@ function fileViewGoForward() {
   fileViewBack.value = [...fileViewBack.value, fileViewPath.value]
   fileViewPath.value = next
 }
+/** The narrow File view that has shown no file yet: a pick in its tree opens one, and Back returns to none. */
+const unchosenPath = ref<string | null>(null)
+const unchosenTree = ref(true)
 // The frame's conversation has opened no browser tab yet: its strip starts empty.
 const panelWork = useWorkTabs('change', { browser: galleryBrowser([]) })
 /** Whether the frame's panel is open: the user closes it, and a tab the agent shows opens it. */
@@ -2097,6 +2100,21 @@ onBeforeUnmount(() => {
               @open="showInFileView"
               @back="fileViewGoBack"
               @forward="fileViewGoForward"
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="narrow · no file chosen yet, the note centred beside the tree shown over it" wide>
+          <div class="gallery-frame flex h-[24rem] max-w-full resize-x overflow-hidden" style="width: 30rem; min-width: 16rem">
+            <FileView
+              class="w-full"
+              v-model:tree="unchosenTree"
+              :source="workspace.source"
+              :root="workspace.root"
+              :path="unchosenPath"
+              :can-back="unchosenPath !== null"
+              @open="unchosenPath = $event"
+              @back="unchosenPath = null"
+              @forward="productWould('Show the File After')"
             />
           </div>
         </GallerySpecimen>
