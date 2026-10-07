@@ -143,7 +143,10 @@ page                         backend (panel, plugin-browser)            Host
   A new tab with no address yet is not loading anything, so it shows none of
   this: it is the blank New Tab at once, with the focus in the address bar
   and no spinner, Stop or progress line, as a browser's new tab is, while the
-  browser opens its tab unseen. Once the user enters an address before the
+  browser opens its tab unseen. A blank page, here and under the progress
+  line, has the color Chrome paints an empty page in the color scheme the
+  tab is shown with, white or dark, so the first picture does not flash from
+  one to the other. Once the user enters an address before the
   browser has the tab, the tab loads and says what it waits for.
   The words appear in the same frame as the Enter or the click that opens the
   tab, since the page already knows which of these it waits for; an empty
