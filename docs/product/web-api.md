@@ -524,7 +524,8 @@ and its log is read when it runs again, since the log outlives a restart.
 
 `POST /api/setup` takes `{ nickname, email, password }`, the nickname as
 `PATCH /api/auth/me` takes it, and `POST /api/auth/login` takes
-`{ email, password }`.
+`{ email, password }`; refused for too many failed sign-ins, it answers 429
+with `Retry-After`, the seconds until it takes the address again.
 The users routes are an administrator's: a user answers 403 `forbidden`.
 `GET /api/users` returns `{ users }`, every account in the order they were
 created. `POST /api/users` takes `{ email, password, role }` with role `admin`
@@ -1008,7 +1009,9 @@ later one is the current value of one part of it that changed:
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
-The product state holds the current user, the instance mode, preferences, the
+The product state holds the current user, the instance mode, whether the
+backend can send email (`mail`, without which changing the email address is
+unavailable), preferences, the
 provider entries of the user's scope, workspaces, devices (the paired ones and
 the user's Cloud device, which the file and working-tree routes address
 alike, each with `installed`, the artifacts its runner's cache holds, as the runner last
