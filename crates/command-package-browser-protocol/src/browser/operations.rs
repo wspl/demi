@@ -7,6 +7,7 @@ use std::time::Duration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use demi_shared_types::MAX_SAFE_INTEGER;
 use serde_with::rust::unwrap_or_skip;
 
 
@@ -227,6 +228,9 @@ input! {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TabsResult {
+    /// The list's number in the Host's sequence (`live-view.md` § The tab
+    /// methods).
+    pub list: u64,
     pub tabs: Vec<BrowserTab>,
     pub truncated: bool,
 }
@@ -300,7 +304,9 @@ input! {
 }
 
 /// What a navigation answers: the URL it observed, with the title when the
-/// same document reported it in time.
+/// same document reported it in time. A user's navigation, which answers
+/// before the page loads, names instead the number of the last tab list
+/// before it started (`live-view.md` § The tab methods).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct NavigationResult {
@@ -313,6 +319,24 @@ pub struct NavigationResult {
     )]
     #[schemars(with = "String")]
     pub title: Option<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "u64")]
+    pub list: Option<u64>,
+}
+
+/// What the conversation browser's `navigate` and `history` tab methods
+/// answer the page: the number of the last tab list before the request
+/// started, so the page knows which lists describe the tab after it
+/// (`live-view.md` § A browser tab in the panel).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct TabMoved {
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub list: u64,
 }
 
 input! {

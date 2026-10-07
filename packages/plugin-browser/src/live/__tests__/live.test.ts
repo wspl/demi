@@ -270,12 +270,14 @@ const TAB: LiveTab = {
   createdBy: { kind: 'agent', number: 0 },
   viewport: { ...WEB },
   loading: false,
+  canGoBack: false,
+  canGoForward: false,
 }
 
 test('a view says hello, learns the tabs and acknowledges what it shows', () => {
   const view = session()
   expect(view.sent[0]).toEqual({ type: 'hello', platform: 'mac' })
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   expect(view.live.state).toMatchObject({ connection: 'live', running: true, watched: TAB.id })
   view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.receive(video(TAB.id, 1, 4, true, [0, 0, 0, 1]))
@@ -289,7 +291,7 @@ test('a view says hello, learns the tabs and acknowledges what it shows', () => 
 test('a canvas that comes after its stream started shows it from a key frame it asks for', () => {
   // After a reload the stream starts, and a still page sends its one key frame, before the view has a canvas.
   const view = session()
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 2, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.receive(video(TAB.id, 2, 1, true, [0, 0, 0, 1]))
   const started: number[] = []
@@ -298,7 +300,7 @@ test('a canvas that comes after its stream started shows it from a key frame it 
   expect(view.sent.at(-1)).toEqual({ type: 'keyframe', generation: 2 })
   // The canvas of a tab the view moves to does not start on the pictures of the one it left.
   const other = { ...TAB, id: 't2' }
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB, other], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB, other], watched: TAB.id }))
   view.live.watch(other.id)
   view.live.attach({ start: (stream) => started.push(stream.generation), show: () => {}, stop: () => {} })
   expect(started).toEqual([2])
@@ -306,7 +308,7 @@ test('a canvas that comes after its stream started shows it from a key frame it 
 
 test('a stalled stream discards input and resumes from a key frame', () => {
   const view = session()
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.advance(300)
   view.live.tick()
@@ -325,7 +327,7 @@ test('a stalled stream discards input and resumes from a key frame', () => {
 
 test('a choice names the revision the viewer saw, and a dialog is answered once', () => {
   const view = session()
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   const control: LiveControl = {
     token: '00000000-0000-4000-8000-000000000000',
     revision: 3,
@@ -387,7 +389,7 @@ test('a view that ends opens again after the page\'s waits, which start over onc
       waits.push(reopenWait())
     }
     expect(waits).toEqual([1_000, 2_000, 4_000, 8_000, 16_000, 30_000])
-    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
     expect(reopenWait()).toBe(1_000)
     view.live.close()
   } finally {
@@ -404,7 +406,7 @@ test('a view whose stream brings nothing for 75 seconds is broken and opens agai
     const ended: string[] = []
     const view = session({ onEnded: (reason) => ended.push(reason) })
     const hellos = () => view.sent.filter((message) => message.type === 'hello').length
-    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
     // A still page: the module's heartbeats are all the view hears, and they keep it.
     for (let beats = 0; beats < 3; beats += 1) {
       jest.advanceTimersByTime(74_000)
@@ -418,7 +420,7 @@ test('a view whose stream brings nothing for 75 seconds is broken and opens agai
     expect(view.live.state).toMatchObject({ connection: 'opening', ended: SILENT_STREAM })
     jest.advanceTimersByTime(1_000)
     expect(hellos()).toBe(2)
-    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
     // The laptop sleeps for 80 seconds with the page shown: the clock goes
     // on, the watch's timer does not, and the page comes back online.
     jest.setSystemTime(Date.now() + 80_000)
@@ -440,7 +442,7 @@ test('a view that ends opens again, watching what the viewer watched', () => {
   try {
     const report: PanelReport = { panel: { width: 800, height: 600 }, devicePixelRatio: 2, screen: { width: 1440, height: 900 } }
     const view = session({ panel: () => report })
-    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
     view.close('host_unreachable')
     expect(view.live.state).toMatchObject({ connection: 'opening', running: false })
     expect(view.live.state.tabs).toHaveLength(0)
@@ -467,7 +469,7 @@ test('a frame the protocol refuses ends the view, and the next view opens', () =
   try {
     const ended: string[] = []
     const view = session({ onEnded: (reason) => ended.push(reason) })
-    view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+    view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
     view.receive(rawFrame(1, new TextEncoder().encode('{"type":"state","running":"yes"}')))
     expect(ended).toEqual([REFUSED_FRAME])
     expect(view.live.state).toMatchObject({ connection: 'opening', running: false, ended: REFUSED_FRAME })
@@ -483,7 +485,7 @@ test('a view that opens again reads its stream from the first byte', () => {
   jest.useFakeTimers()
   try {
     const view = session()
-    const state = moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id })
+    const state = moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id })
     // The stream ends inside a frame; the next stream's first frame is whole.
     view.receive(state.subarray(0, 7))
     view.close('host_unreachable')
@@ -512,7 +514,7 @@ test('a view the module ended and the socket then closed opens again once', () =
 
 test('a picture ends the notice that capture failed, and no other', () => {
   const view = session()
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   view.receive(moduleFrame({ type: 'stream', tab: TAB.id, generation: 1, width: 1600, height: 1200, viewport: WEB, scale: 1 }))
   view.receive(moduleFrame({ type: 'notice', code: 'capture_failed', message: 'the capture extension did not connect' }))
   expect(view.live.state.notice?.code).toBe('capture_failed')
@@ -525,7 +527,7 @@ test('a picture ends the notice that capture failed, and no other', () => {
 
 test('a message the protocol refuses is never sent, so the module does not end the view', () => {
   const view = session()
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: TAB.id }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: TAB.id }))
   // A DOM event's fields are getters on its prototype: a spread copy of one has none of them.
   class Hover {
     get button() { return 0 }
@@ -548,15 +550,15 @@ test('a message the protocol refuses is never sent, so the module does not end t
 test('the page decides what it watches: a tab that is still there is asked for again, a tab that went is let go', () => {
   const OTHER: LiveTab = { ...TAB, id: 't4' }
   const view = session()
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB, OTHER], watched: null }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB, OTHER], watched: null }))
   view.live.watch(OTHER.id)
   const asked = view.sent.length
   // The module's answer to an older state of things crosses the page's wish.
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB, OTHER], watched: null }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB, OTHER], watched: null }))
   expect(view.live.state.watched).toBe(OTHER.id)
   expect(view.sent.slice(asked)).toEqual([{ type: 'watch', tab: OTHER.id }])
   // The tab itself went away.
-  view.receive(moduleFrame({ type: 'state', running: true, tabs: [TAB], watched: null }))
+  view.receive(moduleFrame({ type: 'state', running: true, list: 1, tabs: [TAB], watched: null }))
   expect(view.live.state.watched).toBeNull()
 })
 

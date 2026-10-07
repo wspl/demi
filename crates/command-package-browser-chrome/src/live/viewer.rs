@@ -214,6 +214,8 @@ impl<B: ViewedBrowser> Viewer<B> {
             self.writer
                 .control(&LiveModuleMessage::State {
                     running: false,
+                    // No browser runs: no list of its sequence.
+                    list: 0,
                     tabs: Vec::new(),
                     watched: None,
                 })
@@ -525,12 +527,12 @@ struct Session<'a> {
 impl Session<'_> {
     /// The browser's tabs and the one this viewer watches.
     async fn state(&mut self) {
-        let listing = match self
+        let (list, listing) = match self
             .environment
-            .listed(&CancellationToken::new(), CONTROL_TIMEOUT)
+            .numbered(&CancellationToken::new(), CONTROL_TIMEOUT)
             .await
         {
-            Ok(listed) => listed,
+            Ok(numbered) => numbered,
             Err(error) => {
                 // A browser that ended takes its tab list with it; the view
                 // ends with it and says so.
@@ -556,11 +558,14 @@ impl Session<'_> {
                 created_by: listed.tab.created_by().clone(),
                 viewport: listed.tab.viewport(),
                 loading: listed.tab.loading(),
+                can_go_back: listed.tab.history().back,
+                can_go_forward: listed.tab.history().forward,
             })
             .collect();
         self.writer
             .control(&LiveModuleMessage::State {
                 running: true,
+                list,
                 tabs,
                 watched: self
                     .watched

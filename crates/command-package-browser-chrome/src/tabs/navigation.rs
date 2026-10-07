@@ -454,6 +454,9 @@ pub async fn steer(
     command: &BrowserOperation,
     operation: &Operation<'_>,
 ) -> Result<NavigationResult> {
+    // Read before the request starts: a list numbered higher describes the
+    // tab after it.
+    let list = tab.list_number();
     let url = match command {
         BrowserOperation::Goto(input) => {
             validate_url(&input.url)?;
@@ -481,6 +484,7 @@ pub async fn steer(
         tab: tab.id().clone(),
         url,
         title: None,
+        list: Some(list),
     })
 }
 
