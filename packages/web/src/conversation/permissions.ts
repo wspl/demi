@@ -95,8 +95,7 @@ export const usePermissions = defineStore('permissions', () => {
     const current = { again: false }
     reading.set(conversationId, current)
     try {
-      // A read that cannot reach the backend waits for it (`web-application.md` § A page of another build).
-      take(state, await product.untilReached(() => readPermissions(conversationId)))
+      take(state, await readPermissions(conversationId))
     } catch (error) {
       reportError('Could Not Read Permissions', error)
     } finally {
