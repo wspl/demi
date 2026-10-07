@@ -46,6 +46,7 @@ mod providers;
 mod real_browser;
 mod real_cloud;
 mod runners;
+mod search;
 mod settings;
 mod skills;
 mod startup;
