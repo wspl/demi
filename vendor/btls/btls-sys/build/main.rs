@@ -567,6 +567,19 @@ fn build_boringssl_or_get_prebuilt(config: &Config) -> &Path {
             return path.into();
         }
 
+        // Demi's: CMake configures a fresh build directory every time. One
+        // left by an earlier run may hold settings CMake cannot change in
+        // place, such as another generator, and fails the configure step;
+        // and since every run copies the source anew, an old directory saves
+        // little of the build.
+        let build_dir = config.out_dir.join("build");
+        match fs::remove_dir_all(&build_dir) {
+            Ok(()) => {}
+            // Nothing to remove: the first run in this output directory.
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => panic!("removing {}: {error}", build_dir.display()),
+        }
+
         let mut cfg = get_boringssl_cmake_config(config);
 
         let num_jobs = std::env::var("NUM_JOBS").ok().or_else(|| {

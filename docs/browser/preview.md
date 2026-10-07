@@ -440,6 +440,8 @@ the relay chooses.
 | `socket_opened` | Engine | `{ id, protocol, extensions }` |
 | `socket_message` | Either | `id`, a text or binary flag, then the message |
 | `socket_close` | Either | `{ id, code, reason }`; a socket that could not open closes with 1006 |
+| `state_take` | Relay | `{ id, tab }`: the agent's tab whose state a tab of your browser opens with; the engine answers `state` with its storage, after moving the agent's browser's cookies into the jar |
+| `state_keep` | Relay | `{ id, origins, storage }`: the state of a tab of your browser, with the origins of its documents, for Open in Agent's Browser; the engine answers a token, which the new agent tab's opening carries to `browser.handover` |
 
 The relay, which holds the labels and the kept requests, resolves each
 request's initiator from them ([The preview engine](#the-preview-engine)) and
@@ -455,8 +457,12 @@ the same way on the engine's `pull`. A frame the protocol refuses ends the
 stream, as on the live view's, and the relay answers every open request with a
 network error and opens the stream again.
 
-The tab methods of the browser plugin carry what is not a request: the
-top-level label of an address the user opens, the `preview_open` method,
+Page state travels on the stream rather than in tab methods, since a page
+call's body is limited to 1 MiB and a runner's message to 4 MiB; a tab that
+has state to move implies a running Host, so the stream's never waking a
+stopped Cloud costs nothing there. The tab methods of the browser plugin
+carry what is not a request: the top-level label of an address the user
+opens, the `preview_open` method,
 which runs the `browser.preview_open` operation and answers `{ label,
 environment, origin }`, or `invalid_input` for an address that is not a web
 address, the state moved between the two
@@ -773,6 +779,15 @@ your browser ──▶ agent's browser
   write the storage, then navigate to the target
 ```
 
+- **One codec** reads and writes the storage on both sides: the preview
+  domain's `/__demi/v1/state.js`, which a hidden frame on the preview origin
+  runs in the user's browser (`state.html`, `state-frame.js`), sharing the
+  origin's storage, sessionStorage included, and which `demi-browser` runs in
+  an isolated script context over CDP in the agent's browser, so the page
+  never sees it. The agent's browser takes the state with the
+  `browser.handover` operation, which sets the jar's cookies and writes the
+  storage into a blank document on the origin before navigating; a reload or
+  a retry opens the address alone.
 - **IndexedDB values** keep their structured-clone types with a tagged
   encoding: `Date`, `ArrayBuffer`, typed arrays, `Blob`, `Map`, `Set` and
   `BigInt`. A value that cannot be serialized, such as a `CryptoKey`, is not
