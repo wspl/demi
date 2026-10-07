@@ -2,193 +2,158 @@
 
 A product check uses the running product, or the gallery, the way a person
 would, and shows the result in screenshots ([AGENTS.md](../../AGENTS.md)). This
-document owns the tool agents do it with: `bun browse`, a command-line tool over
-[Playwright](https://playwright.dev) in the private package `packages/browse`.
+document owns the tool agents do it with: `bun browse`, which runs a
+JavaScript check against a browser that stays open, over
+[Playwright](https://playwright.dev), in the private package `packages/browse`.
 
 For example, an agent in slot 2 checks that Reload shows the loading state at
-once on a far backend:
+once on a far backend, in one call:
 
 ```text
-$ bun browse up web
+$ bun browse <<'JS'
+await demi.up('web')
+await demi.net.latency(400)
+await page.goto('/chat/c-1')
+const reload = page.getByRole('button', { name: 'Reload' })
+await demi.timeline(() => reload.click(), [0, 100, 1500])
+await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible()
+JS
 Backend   http://127.0.0.1:3320  ready in 71 s
-Web       http://127.0.0.1:3323  ready in 4 s, signed in as developer@example.test
-$ bun browse net latency 400
-$ bun browse open /chat/c-1
-$ bun browse timeline 'click role=button[name="Reload"]' --at 0,100,1500
-/…/demi-slots/2/.cache/browse/shots/timeline-0ms.png     painted at -30 ms
-/…/demi-slots/2/.cache/browse/shots/timeline-100ms.png   painted at 85 ms
-/…/demi-slots/2/.cache/browse/shots/timeline-1500ms.png  painted at 1484 ms
-$ bun browse down
+Web       http://127.0.0.1:3323  signed in as developer@example.test
+timeline  /…/demi-slots/2/.cache/browse/shots/timeline-0ms.png     painted at -30 ms
+timeline  /…/demi-slots/2/.cache/browse/shots/timeline-100ms.png   painted at 85 ms
+timeline  /…/demi-slots/2/.cache/browse/shots/timeline-1500ms.png  painted at 1484 ms
+Page      http://127.0.0.1:3323/chat/c-1 · "Reload check — Demi"
+Focus     button "Stop"
 ```
 
-## Why a tool of our own
+## Why a tool of our own, and why JavaScript
 
 Before it, every check started from nothing. In 39 checks, agents wrote at least
 14 browser drivers and about 200 one-off scripts, and lost the most time to
 getting the product into the state a check needs, fixed sleeps, elements they
 could not find, the app's shared browser pane being hidden or shared, and
 servers they could not stop cleanly; one agent's `pkill` stopped the user's own
-backend. `bun browse` does each of those once, in one place, the same way every
-time.
+backend. A first version gave each step its own command, and a batch of fixes
+then cost hundreds of model turns, one shell call per click, wait and look.
 
-## What it does
+So a check is a short script, as the leading harnesses do it: Codex gives the
+model one JavaScript REPL against a browser tab, and OpenAI's computer-use
+guidance prefers such code to lists of actions. The model already knows
+Playwright's API from its training, so the tool invents no language of its
+own: finding, acting and waiting are Playwright's, and the tool adds only what
+this project needs and Playwright does not have, on one object, `demi`.
 
-**One browser per slot.** The first command of a slot starts a browser that
-lives between commands: Playwright's Chromium, headless unless `--headed`,
-with its own profile in the slot's `.cache/browse/`, so cookies, storage and
-sign-ins never mix between slots or with the user's browser. Commands reach it
-through a socket in the same folder; it ends on `bun browse stop`, on `bun
-browse down` or after 30 minutes without a command. The browser runs as a
-process of its own that the tool's server reaches over the DevTools protocol,
-so when the tool's own code changes, only the server restarts, with the
-agent's current code, and the browser, its pages and what was typed in them
-stay as they were; the new server keeps the browser's `net` settings, which
-the slot's state holds until the browser stops, and goes on from the page's
-logs and the log mark the last one left. A command starts the browser again
-when it crashed. The slot comes from the working directory: slot *n*
-for `../demi-slots/n`, slot 0 for the user's own checkout.
+## A call
 
-**The slot's servers.** `bun browse up [backend] [web] [gallery]` starts what
-it names on the slot's ports (slot *n*: backend 33*n*0, web 33*n*1, gallery
-33*n*2), waits until each answers, puts the tool's own forwarder on 33*n*3 in
-front of the web app, which the browser loads it through, since the browser's
-own network emulation can neither slow a WebSocket nor drop one without a
-close, signs the browser in with the development
-account once the web app is up, and records each process group. `bun browse
-down` stops exactly those groups, never anything found by name, so the user's
-servers and other slots' are never touched; `down <server>…` stops only those.
-`up` copies the user's `.env` into the slot for the backend and `down` deletes
-it. The backend's data lives in the slot's `.cache/browse/`, through `bun xtask
-dev --data`, and survives `down` and `up`, so a check can restart the backend
-as an upgrade does and see a page come back to the same account and
-conversations; the paired runner stays too. `down --wipe` removes both. `up web` keeps the page the
-browser shows when the backend still knows its session; otherwise it signs in
-and loads the same page again, so a sign-in page goes on to the page it was
-opened for. Only a page outside the web app opens `/`. The
-web app's development server keeps its live-update connection on its own
-port rather than through the forwarder, so a restart of the tool never
-reloads the page.
+`bun browse` reads a script from standard input, or from a file it names, and
+runs it as the body of an async function in which these are defined:
 
-**Finding things.** Every command that acts takes a Playwright locator:
-`role=button[name="Reload"]`, `text=Allow for This Conversation`,
-`label=Email`, `testid=…`, or CSS. `text=` matches the whole visible text of
-an element, as a person reads a label; `text~=` matches a part of it. A
-textbox locator also finds a field the page marks as a combobox, as a person
-sees one, and also finds an editable element with that label, such as the
-composer. A role's quoted name, `role=button[name="Add Device"]`, matches the
-whole accessible name ignoring a trailing ellipsis, as a person reads "Add
-Device…"; `[name~="device"]` matches a part of it in any case. A locator that
-matches more than one element fails at once, as do `wait` and `wait gone`, and one that matches nothing after two seconds, time
-for a menu or dialog still opening; either failure says what it looked for
-and what it found, with a screenshot. Gallery specimens open by address, `bun browse open
-gallery:/session?view=blocks`.
+| Name | What it is |
+| --- | --- |
+| `page` | The slot's browser page, a Playwright `Page`, open between calls; relative addresses go to the slot's web app |
+| `context` | Its `BrowserContext` |
+| `expect` | Playwright's `expect`, whose assertions wait until they hold |
+| `cdp` | A DevTools protocol session on the page |
+| `demi` | The project's helpers, below |
+| `keep` | An object that keeps its properties from one call to the next, for values a later call needs |
 
-**Acting.** `click`, `fill`, `type`, `press`, `hover`, `select`, `upload`,
-`drag`, `scroll`, and `ime <text>`, which composes the text through an input
-method and commits it, as a Chinese or Japanese input method does. An action
-on an element a dialog covers fails at once and names the dialog, since the
-dialog would take the click, the typing or the keys.
+A call ends by printing what the script printed with `console.log`, then the
+page's state, so the agent rarely needs another call only to see where the page
+stands: its address and title, a dialog or layer that covers it, the focused
+element, the console errors and failed requests since the call began, and the
+screenshots the call wrote. A call has a time limit, ten minutes unless
+`--limit` says otherwise.
 
-**Waiting for what happens, never for time.** `wait` takes a locator to appear
-or go, text, a URL, a JavaScript condition, or `turn`, the end of the open
-conversation's current turn. Every wait has a timeout and says on failure what
-it waited for.
+**Failures.** A script that throws stops there. The call prints the line of the
+script it stopped at, what it was doing, what Playwright looked for and found
+(its strict mode lists every element a locator matched, and an action on an
+element something covers names what covers it), and a screenshot, then the
+page's state. A step's failure is never silent and never a raw stack of the
+tool's own frames.
 
-**Seeing.** `shot [name]` writes a PNG at the page's real size and pixel ratio,
-once the page's finite animations end (up to two seconds; `--now` at once),
-into `.cache/browse/shots/` and prints its path, which the agent lists in its
-report for the lead to send. `--element <locator>` clips to an element,
-`--region x,y,w,h` to an area, `--zoom 2` magnifies without changing the
-page's own pixel ratio. `timeline '<action>' --at 0,100,1500 [--region …]` runs one action and keeps the browser's frames painted nearest to
-those milliseconds after it, for the moments between a click and its result;
-each line says when its frame was painted, since a full screenshot takes
-about 100 ms and could not show the 100th. `pixel x y` reads a colour.
+**Waiting.** Playwright's actions and `expect` wait for what they need, so a
+script never sleeps for a fixed time; `demi.turn()` waits for the open
+conversation's turn to end.
 
-**Conditions.** `emulate` sets the viewport, pixel ratio, light or dark
-theme, a phone, locale and time zone, for the page as it is, without
-reloading it; the theme reaches the gallery's own setting too. `net` makes the network offline or
-online, adds latency or limits bandwidth for the app's requests and sockets
-(the development server's own files stay fast, or a page of hundreds of
-modules would take half a minute to open), or cuts the sockets matching a
-pattern without a close, as a lost connection does. `grant` gives a permission such as the clipboard or local network
-access.
+## What `demi` adds
 
-**Watching.** `log console`, `log network` and `log sockets` print what the
-page logged, requested and sent or received since the browser started or
-since a mark, `log mark`.
+- **The slot's servers.** `demi.up(...servers)` starts `backend`, `web` and
+  `gallery`, the first two when none is named, on the slot's ports (slot *n*:
+  backend 33*n*0, web 33*n*1, gallery 33*n*2), waits until each answers, and
+  signs the browser in with the development account, keeping the page it
+  shows when the backend still knows its session. `demi.down(...servers)`
+  stops exactly the process groups it recorded, never anything found by name,
+  so the user's servers and other slots' are never touched;
+  `demi.down({ wipe: true })` also removes the backend's data and the paired
+  runner. The backend's data lives in the slot's `.cache/browse/`, through
+  `bun xtask dev --data`, so a check can restart the backend as an upgrade
+  does and see the page come back to the same account and conversations.
+  `up` copies the user's `.env` into the slot for the backend and `down`
+  deletes it.
+- **Seeing.** `demi.shot(name, { element, region, zoom })` writes a PNG at the
+  page's real size and pixel ratio, once the page's finite animations end, up
+  to two seconds, into `.cache/browse/shots/`, and returns its path, which the
+  agent lists in its report for the lead to send. `demi.timeline(action,
+  [0, 100, 1500], { region })` runs the action and keeps the browser's frames
+  painted nearest to those milliseconds after it, for the moments between a
+  click and its result; a full screenshot takes about 100 ms and could not
+  show the 100th. `demi.pixel(x, y)` reads a colour.
+- **The network.** The browser loads the web app through the tool's forwarder
+  on 33*n*3, since the browser's own emulation can neither slow a WebSocket
+  nor drop one without a close. `demi.net.latency(ms)`, `.bandwidth(kbps)`,
+  `.offline()`, `.unreachable()` (the page's traffic goes nowhere while the
+  browser still reports a network), `.cut(pattern)` (sockets close without a
+  close frame, as a lost connection does) and `.reset()`. They apply to the
+  app's requests and sockets; the development server's own files stay fast.
+  The web app's live-update connection bypasses the forwarder, so a restart of
+  the tool never reloads the page.
+- **Input Playwright cannot give.** `demi.ime(text, { into })` composes text
+  through an input method and commits it, as a Chinese or Japanese input
+  method does.
+- **Conditions.** `demi.emulate({ viewport, scale, theme, device, locale,
+  timeZone })` applies to the page as it is, without reloading it; the theme
+  reaches the gallery's own setting too. `demi.grant(permission)` gives a
+  permission such as the clipboard or local network access.
+- **The gallery.** `demi.gallery('/session?view=blocks')` opens a specimen
+  page of the slot's gallery.
+- **The product's other parts.** `demi.message(text)` replaces any draft,
+  sends the text in the open conversation and waits for its turn to end, not
+  for background jobs. `demi.runner()` starts the slot's built runner with its
+  own installation folder under `.cache/browse/` and pairs it through Add
+  Device, or reuses the one it paired; `demi.runner.stop()` and `.start()`
+  stop and start that same runner, as a device that goes away and comes back,
+  and `demi.runner({ fresh: true })` pairs a new one.
+- **Watching.** `demi.log.console()`, `.network()` and `.sockets()` return
+  what the page logged, requested, and sent or received since the browser
+  started or since `demi.log.mark(name)`.
 
-**The real product's other parts.** `message <text>` replaces any draft and sends the
-text in the open conversation and waits for its turn to end; `runner` starts the slot's
-built runner with its own installation folder under `.cache/browse/` and pairs
-it to the slot's backend through Add Device; `runner stop` and `runner start`
-stop and start that same runner, as a device that goes away and comes back,
-and `runner --new` pairs a new one. `focus` says which element has the
-focus, and `download '<command>'` keeps the file a command downloads.
+## One browser per slot
 
-**Anything else.** `eval <js>` runs JavaScript in the page, `await` included, and prints the
-result, `cdp <method> [params]` sends a DevTools protocol command, and
-`script` runs a script with the page, its context and a CDP session, for a
-step no command covers yet; it takes the code from a file or, as `script -`,
-from standard input, so an agent writes it in the same shell call.
+The first call of a slot starts a browser that lives between calls:
+Playwright's Chromium, headless unless `--headed`, with its own profile in the
+slot's `.cache/browse/`, so cookies, storage and sign-ins never mix between
+slots or with the user's browser. The browser runs as a process of its own that
+the tool's server reaches over the DevTools protocol, so when the tool's own
+code changes, only the server restarts, with the agent's current code, and the
+browser, its pages, what was typed in them, `keep`, the network settings and
+the logs stay as they were. A call starts the browser again when it crashed.
+The slot comes from the working directory: slot *n* for `../demi-slots/n`, slot
+0 for the user's own checkout.
 
-## Many steps in one call
-
-A check is a sequence: open a page, act, wait for the result, look. Each step
-as its own shell call costs the agent a turn of the model, and a batch of
-fixes cost hundreds of them. So `bun browse` runs a whole sequence in one call,
-as the leading harnesses do: Codex drives its browser with one script per
-turn, and Claude's `browser_batch` and agent-browser's `batch` take a list of
-actions that stops at the first failure.
-
-`bun browse run` reads commands, one per line, from standard input:
-
-```text
-$ bun browse run <<'STEPS'
-open /settings/devices
-click role=button[name="Add Device"]
-wait role=dialog[name="Add Device"]
-shot add-device
-press Escape
-wait gone role=dialog
-STEPS
-1 open          ok    /settings/devices
-2 click         ok
-3 wait          ok    after 0.2 s
-4 shot          ok    /…/.cache/browse/shots/add-device.png
-5 press         ok
-6 wait gone     ok    after 0.1 s
-Page   http://127.0.0.1:3323/settings/devices · "Devices — Demi"
-Focus  role=button[name="Add Device"]
-```
-
-- Every command works as a step, `up`, `message` and `timeline` included,
-  with its arguments as on the command line.
-- The run stops at the first step that fails. That step prints what single
-  commands print on failure, what it looked for, what it found and a
-  screenshot, and the steps after it say `not run`, so the agent knows exactly
-  what happened and what did not.
-- After an action, a step waits briefly for the page to settle, its
-  navigations, requests and finite animations, at most a second, so the next
-  step and a `shot` see the result; `timeline` keeps its own moments.
-- A run has a time limit, ten minutes unless `--limit` says otherwise, and on
-  running out names the step it was in.
-
-**What every call ends with.** A single command and a run end alike with the
-page's state: its address and title, a dialog or layer that covers it, the
-focused element, the console errors and failed requests since the call began,
-and the screenshots the call wrote. An agent then rarely needs a second call
-only to see where the page stands, which the harnesses that leave this out
-measured as their largest cost.
+For a person at a shell, `bun browse up`, `bun browse down`, `bun browse stop`
+(the browser) and `bun browse help` do what the helpers of the same names do.
+Nothing else is a command: a check is a script.
 
 ## Whose tool it is
 
 `bun browse` is ordinary code of this repository, and every agent changes it as
-part of its own work: a check that needs what the tool lacks adds it, as a
-command or an option, and a command that misleads or breaks is fixed then, so
-the next agent has it. A `script` that proves useful becomes a command. The
-code stays plain so that this stays cheap: one file per command under
-`packages/browse/src/commands/`, sharing the browser, the slot and the
-locator handling.
+part of its own work: a check that needs what the tool lacks adds it to `demi`,
+and a helper that misleads or breaks is fixed then, so the next agent has it.
+What Playwright already does is never wrapped: a helper exists only for what
+this project needs and Playwright lacks. The code stays plain so that this stays
+cheap: one file per helper under `packages/browse/src/demi/`, sharing the
+browser, the slot and the failure reporting.
 
 ## What it is not
 

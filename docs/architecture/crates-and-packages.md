@@ -1531,7 +1531,8 @@ under `packages/`.
 - **Private.**
 - **Owns:** `bun browse`, the product-check tool over Playwright
   ([Product checks](../delivery/browse.md)): the per-slot browser
-  daemon, the slot's servers, one file per command.
+  daemon, the slot's servers, and the `demi` helpers a check script gets
+  beside Playwright's page, one file per helper.
 - **Public boundary:** `bun browse <command>`. It reads a conversation's state
   through `web`'s generated schemas.
 - **Must not:** be imported by another package. It is a Bun program, so it may
