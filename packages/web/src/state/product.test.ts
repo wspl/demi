@@ -105,15 +105,64 @@ test('a page of another build than the backend serves is out of date, as soon as
   process.env.DEMI_WEB_BUILD = 'b1'
   try {
     const product = started(productState({ webBuild: 'b1' }))
-    expect(product.outdated).toBe(false)
+    expect(product.newBuild).toBeNull()
     // The backend restarted with a new release; the channel connects again.
     channels.last().send({ type: 'snapshot', state: productState({ webBuild: 'b2' }) })
-    expect(product.outdated).toBe(true)
+    expect(product.newBuild).toBe('b2')
     // A backend that serves no web app, as in development, says nothing.
     channels.last().send({ type: 'snapshot', state: productState({ webBuild: null }) })
-    expect(product.outdated).toBe(false)
+    expect(product.newBuild).toBeNull()
   } finally {
     delete process.env.DEMI_WEB_BUILD
+  }
+})
+
+test('a snapshot of another build that this page cannot read still names the build to load, and the banner goes', () => {
+  process.env.DEMI_WEB_BUILD = 'b1'
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(1)
+  try {
+    const product = started(productState({ webBuild: 'b1' }))
+    channels.last().end(1001, 'backend_closing')
+    expect(product.connection).toBe('restarting')
+    jest.advanceTimersByTime(2_000)
+    // The new release's Cloud has a state this build does not know.
+    const state = productState({ webBuild: 'b2' })
+    channels.last().open()
+    channels.last().deliver({ type: 'snapshot', state: { ...state, cloud: { ...state.cloud, state: 'migrating' } } })
+    expect(product.newBuild).toBe('b2')
+    expect(product.connection).toBeNull()
+    // The page loads the new build; the channel is not replaced meanwhile.
+    const count = channels.opened.length
+    jest.advanceTimersByTime(60_000)
+    expect(channels.opened.length).toBe(count)
+  } finally {
+    random.mockRestore()
+    delete process.env.DEMI_WEB_BUILD
+  }
+})
+
+test('a connection whose handshake does not complete within 10 seconds is abandoned and tried again', () => {
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(1)
+  try {
+    const product = started()
+    channels.last().end(1001, 'backend_closing')
+    jest.advanceTimersByTime(2_000)
+    // A proxy in front of the restarting backend holds the upgrade.
+    const held = channels.last()
+    const count = channels.opened.length
+    jest.advanceTimersByTime(9_999)
+    expect(held.closed).toBe(false)
+    jest.advanceTimersByTime(1)
+    expect(held.closed).toBe(true)
+    expect(product.connection).toBe('restarting')
+    jest.advanceTimersByTime(2_000)
+    expect(channels.opened.length).toBe(count + 1)
+    channels.last().connect(productState())
+    expect(product.connection).toBeNull()
+  } finally {
+    random.mockRestore()
   }
 })
 

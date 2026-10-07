@@ -513,6 +513,13 @@ impl Harness {
         self
     }
 
+    /// The web app build `with_web` wrote, which a test may replace between starts.
+    pub fn web_dir(&self) -> PathBuf {
+        self.web_directory
+            .clone()
+            .expect("the harness serves a web app build")
+    }
+
     pub async fn start(&self) -> TestBackend {
         self.start_in_mode(self.mode).await
     }

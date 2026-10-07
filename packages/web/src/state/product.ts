@@ -2,11 +2,12 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { browserOnline, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { browserOnline, openSocket, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
+  productStateSchema,
   syncEventSchema,
   vendorCatalogSchema,
   type CatalogProvider,
@@ -105,6 +106,16 @@ function withPart(state: ProductState, event: PartEvent): ProductState {
   }
 }
 
+/**
+ * The build a snapshot names, read before the rest of it: a snapshot of
+ * another build, whose other parts this page may not read, still says which
+ * build to load (`web-application.md` § A page of another build).
+ */
+const snapshotBuildSchema = z.object({
+  type: z.literal('snapshot'),
+  state: productStateSchema.pick({ webBuild: true }),
+})
+
 /** This page's web app build, which `vite build` writes in; none in development, where Vite serves the sources. */
 function pageBuild(): string | null {
   return import.meta.env.DEMI_WEB_BUILD ?? null
@@ -156,14 +167,17 @@ export const useProduct = defineStore('product', () => {
     failedAttempts: failures.value,
     hasSnapshot: snapshot.value !== null,
   }))
+  /** The build of the web app the backend serves, as the last snapshot named it. */
+  const servedBuild = ref<string | null>(null)
   /**
-   * The backend serves another build of the web app than this page's, so a
-   * reload loads it (`web-application.md` § A page of another build).
+   * The build the backend serves when it is another than this page's, which
+   * a reload loads; null otherwise (`web-application.md` § A page of another
+   * build).
    */
-  const outdated = computed(() => {
+  const newBuild = computed(() => {
     const page = pageBuild()
-    const served = snapshot.value?.webBuild ?? null
-    return page !== null && served !== null && served !== page
+    const served = servedBuild.value
+    return page !== null && served !== null && served !== page ? served : null
   })
   const catalogKey = computed(() => JSON.stringify((snapshot.value?.providers ?? []).map(provider => {
     const { details, ...config } = provider
@@ -230,7 +244,7 @@ export const useProduct = defineStore('product', () => {
     clearRetry()
     const url = new URL(apiUrl('/sync'), window.location.href)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    const channel = new WebSocket(url)
+    const channel = openSocket(url)
     socket = channel
     let opened = false
     channel.onopen = () => {
@@ -246,15 +260,29 @@ export const useProduct = defineStore('product', () => {
         return
       }
       silence?.heard()
-      const parsed = syncEventSchema.safeParse(parse(message.data))
-      if (!parsed.success) {
-        // A message outside the contract changes nothing; a new connection
-        // starts again from a snapshot. The console says what did not read.
-        reportError('Could not read a message of the synchronization channel.', z.prettifyError(parsed.error))
-        replace()
+      const data = parse(message.data)
+      const build = snapshotBuildSchema.safeParse(data)
+      if (build.success) {
+        servedBuild.value = build.data.state.webBuild ?? null
+      }
+      const parsed = syncEventSchema.safeParse(data)
+      if (parsed.success) {
+        receive(parsed.data)
         return
       }
-      receive(parsed.data)
+      if (newBuild.value !== null) {
+        // Another build's contract may say what this page cannot read; the
+        // page loads that build, and the backend is back once it named it.
+        if (build.success) {
+          failures.value = 0
+          restarting.value = false
+        }
+        return
+      }
+      // A message outside the contract changes nothing; a new connection
+      // starts again from a snapshot. The console says what did not read.
+      reportError('Could not read a message of the synchronization channel.', z.prettifyError(parsed.error))
+      replace()
     }
     channel.onclose = (close) => {
       if (socket !== channel) {
@@ -541,6 +569,7 @@ export const useProduct = defineStore('product', () => {
     dropChannel()?.close()
     failures.value = 0
     restarting.value = false
+    servedBuild.value = null
     received = 0
     snapshotAt = 0
     partAt.clear()
@@ -557,7 +586,7 @@ export const useProduct = defineStore('product', () => {
     snapshot,
     load,
     connection,
-    outdated,
+    newBuild,
     catalog,
     vendors,
     vendorLoad,

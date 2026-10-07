@@ -5,8 +5,13 @@ import type { ProductState, SyncEvent } from '../api/generated/web-api'
  * backend would (`web-api.md` § Page synchronization): it opens the channel,
  * sends its messages and ends it.
  */
-export class TestChannel {
+export class TestChannel extends EventTarget {
+  static readonly CONNECTING = 0
+  static readonly OPEN = 1
+  static readonly CLOSING = 2
+  static readonly CLOSED = 3
   readonly url: string
+  readyState: number = TestChannel.CONNECTING
   onopen: (() => void) | null = null
   onmessage: ((message: { data: string }) => void) | null = null
   onclose: ((close: { code: number; reason: string }) => void) | null = null
@@ -14,30 +19,41 @@ export class TestChannel {
   closed = false
 
   constructor(url: string | URL) {
+    super()
     this.url = String(url)
     opened.push(this)
   }
 
   /**
-   * A socket that listens rather than taking handlers, such as a
-   * conversation's file watch, hears nothing: it stays connecting.
+   * The page closes it. One still connecting fails, as the web browser
+   * fails it, with a close; one open waits for the backend's answer to its
+   * close, which never comes in a test.
    */
-  addEventListener(): void {}
-
-  removeEventListener(): void {}
-
-  /** The page closes it. */
   close(): void {
+    const connecting = this.readyState === TestChannel.CONNECTING
     this.closed = true
+    this.readyState = TestChannel.CLOSED
+    if (connecting) {
+      this.closeWith(1006, '')
+    }
   }
 
   /** The upgrade succeeds. */
   open(): void {
+    this.readyState = TestChannel.OPEN
     this.onopen?.()
+    this.dispatchEvent(new Event('open'))
   }
 
   send(event: SyncEvent): void {
-    this.onmessage?.({ data: JSON.stringify(event) })
+    this.deliver(event)
+  }
+
+  /** A message as another build's backend may send it, outside this page's contract. */
+  deliver(message: unknown): void {
+    const data = JSON.stringify(message)
+    this.onmessage?.({ data })
+    this.dispatchEvent(new MessageEvent('message', { data }))
   }
 
   /** The channel opens and sends `state` first, as every connection does. */
@@ -48,7 +64,13 @@ export class TestChannel {
 
   /** The backend or the network ends it. */
   end(code = 1006, reason = ''): void {
+    this.readyState = TestChannel.CLOSED
+    this.closeWith(code, reason)
+  }
+
+  private closeWith(code: number, reason: string): void {
     this.onclose?.({ code, reason })
+    this.dispatchEvent(new CloseEvent('close', { code, reason }))
   }
 }
 
