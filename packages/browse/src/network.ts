@@ -1,7 +1,7 @@
-// The slot's network (browse.md § Conditions): the browser reaches
+// The slot's network (browse.md § What `demi` adds): the browser reaches
 // the web app through this forwarder, which passes each of the page's
 // connections, requests and sockets alike, on to the web server, and adds
-// what `net` sets: latency, a bandwidth limit, an offline spell, or a cut.
+// what `demi.net` sets: latency, a bandwidth limit, an offline spell, or a cut.
 // The browser's own network emulation cannot do these to a WebSocket, and
 // cannot end a connection without a close.
 //
@@ -10,7 +10,6 @@
 // serves: a built app loads a few of them once, while the dev server's
 // hundreds of modules would take minutes to load at a far backend's pace.
 import net from 'node:net'
-import { matcher } from './pattern'
 import type { Conditions } from './state'
 
 /** The conditions of a network nothing slows or holds. */
@@ -228,12 +227,13 @@ export class Network {
   }
 
   /**
-   * Ends every connection whose requests match `pattern` with a reset, as a
-   * lost connection does: the page's socket closes without a close frame.
-   * Answers what it cut.
+   * Ends every connection a request of which, such as `GET /api/sync`,
+   * matches `pattern` (a part of it, or a regular expression) with a reset,
+   * as a lost connection does: the page's socket closes without a close
+   * frame. Answers what it cut.
    */
-  cut(pattern: string): string[] {
-    const matches = matcher(pattern)
+  cut(pattern: string | RegExp): string[] {
+    const matches = (request: string) => typeof pattern === 'string' ? request.includes(pattern) : pattern.test(request)
     const cut: string[] = []
     for (const connection of [...this.connections.values()]) {
       if (!connection.requests.some(matches)) {
