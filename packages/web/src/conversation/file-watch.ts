@@ -243,7 +243,7 @@ export class ConversationWatch implements FileFollower {
     if (message.type === 'heartbeat')
       return
     if (message.type === 'changed') {
-      files.changed(message.paths)
+      files.changed(message.paths, message.ignored)
       return
     }
     switch (message.state) {

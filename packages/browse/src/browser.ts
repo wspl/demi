@@ -199,7 +199,7 @@ export class Browser {
     if (state.net?.reach === 'offline') {
       await context.setOffline(true)
     }
-    this.logs.watch(context)
+    await this.logs.watch(context)
     context.on('page', (page) => {
       // A page that closes as it opens, such as a popup, needs no emulation.
       this.session(page, connection).catch(() => undefined)

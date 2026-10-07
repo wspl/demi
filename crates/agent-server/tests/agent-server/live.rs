@@ -349,3 +349,15 @@ async fn a_detached_tree_stays_live_while_its_command_runs_and_goes_after_its_id
     settle().await;
     assert!(server.tree(&conversation()).is_none());
 }
+
+/// A command that outlives its turn is the conversation's work, but its exit
+/// wakes no one (`web-api.md` § Sidebar mutations and read state): once the
+/// turn ended the tree no longer works, so its conversation is not running,
+/// while the command keeps the tree live.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_command_that_outlives_its_turn_does_not_keep_the_tree_working() {
+    let (server, _shell, _first, _script) = serving().await;
+    let tree = server.tree(&conversation()).expect("the tree is live");
+    assert!(!tree.works());
+    assert!(!tree.is_quiescent(), "the command still runs");
+}
