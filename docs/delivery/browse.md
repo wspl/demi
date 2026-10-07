@@ -127,8 +127,58 @@ focus, and `download '<command>'` keeps the file a command downloads.
 
 **Anything else.** `eval <js>` runs JavaScript in the page, `await` included, and prints the
 result, `cdp <method> [params]` sends a DevTools protocol command, and
-`script <file>` runs a script with the page, its context and a CDP session, for
-a step no command covers yet.
+`script` runs a script with the page, its context and a CDP session, for a
+step no command covers yet; it takes the code from a file or, as `script -`,
+from standard input, so an agent writes it in the same shell call.
+
+## Many steps in one call
+
+A check is a sequence: open a page, act, wait for the result, look. Each step
+as its own shell call costs the agent a turn of the model, and a batch of
+fixes cost hundreds of them. So `bun browse` runs a whole sequence in one call,
+as the leading harnesses do: Codex drives its browser with one script per
+turn, and Claude's `browser_batch` and agent-browser's `batch` take a list of
+actions that stops at the first failure.
+
+`bun browse run` reads commands, one per line, from standard input:
+
+```text
+$ bun browse run <<'STEPS'
+open /settings/devices
+click role=button[name="Add Device"]
+wait role=dialog[name="Add Device"]
+shot add-device
+press Escape
+wait gone role=dialog
+STEPS
+1 open          ok    /settings/devices
+2 click         ok
+3 wait          ok    after 0.2 s
+4 shot          ok    /…/.cache/browse/shots/add-device.png
+5 press         ok
+6 wait gone     ok    after 0.1 s
+Page   http://127.0.0.1:3323/settings/devices · "Devices — Demi"
+Focus  role=button[name="Add Device"]
+```
+
+- Every command works as a step, `up`, `message` and `timeline` included,
+  with its arguments as on the command line.
+- The run stops at the first step that fails. That step prints what single
+  commands print on failure, what it looked for, what it found and a
+  screenshot, and the steps after it say `not run`, so the agent knows exactly
+  what happened and what did not.
+- After an action, a step waits briefly for the page to settle, its
+  navigations, requests and finite animations, at most a second, so the next
+  step and a `shot` see the result; `timeline` keeps its own moments.
+- A run has a time limit, ten minutes unless `--limit` says otherwise, and on
+  running out names the step it was in.
+
+**What every call ends with.** A single command and a run end alike with the
+page's state: its address and title, a dialog or layer that covers it, the
+focused element, the console errors and failed requests since the call began,
+and the screenshots the call wrote. An agent then rarely needs a second call
+only to see where the page stands, which the harnesses that leave this out
+measured as their largest cost.
 
 ## Whose tool it is
 
