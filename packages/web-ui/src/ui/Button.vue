@@ -22,7 +22,14 @@ const restAttrs = computed(() => {
 const props = withDefaults(
   defineProps<{
     size?: 'xs' | 'sm' | 'md' | 'lg'
-    variant?: 'default' | 'primary' | 'ghost' | 'danger'
+    /**
+     * primary: the default action, filled with the accent. destructive: the
+     * action of a confirmation that removes or resets what the user set up,
+     * filled red (Remove, Revoke, Reset Environment). danger: a destructive
+     * action that is not a confirmation's answer, red text on a plain face,
+     * which then asks first (Delete beside Save, Delete Account).
+     */
+    variant?: 'default' | 'primary' | 'destructive' | 'ghost' | 'danger'
     disabled?: boolean
     loading?: boolean
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
@@ -94,9 +101,10 @@ const sizeClass = computed(() => {
       :data-pressed="!disabled && pressed ? true : undefined"
       :class="[
         sizeClass,
-        variant === 'primary'
+        variant === 'primary' || variant === 'destructive'
           ? [
-              'btn-primary font-medium text-white',
+              variant === 'primary' ? 'btn-primary' : 'btn-destructive',
+              'font-medium text-white',
               pressed ? 'brightness-110' : 'hover:brightness-110',
             ]
           : variant === 'ghost'
@@ -134,7 +142,8 @@ const sizeClass = computed(() => {
 .button-loading-indicator {
   color: var(--color-fg-muted);
 }
-.btn-primary .button-loading-indicator {
+.btn-primary .button-loading-indicator,
+.btn-destructive .button-loading-indicator {
   color: white;
 }
 </style>

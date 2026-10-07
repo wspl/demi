@@ -95,7 +95,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
     <template v-if="view === 'buttons'">
       <GallerySection
         title="Button"
-        note="Enabled, disabled, sizes, and pressed. A button that refreshes, renews or restarts turns its icon one whole revolution per click, and keeps turning while its work runs, always finishing the turn it is in."
+        note="Enabled, disabled, sizes, and pressed. A confirmation that removes or resets what the user set up answers with destructive, filled red under white text in both schemes, as macOS's destructive button and GitHub's danger button are; danger, red text on a plain face, is a destructive action that is not a confirmation's answer, and asks first. A button that refreshes, renews or restarts turns its icon one whole revolution per click, and keeps turning while its work runs, always finishing the turn it is in."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="spin · full revolution">
@@ -131,6 +131,15 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           </GallerySpecimen>
           <GallerySpecimen variant="primary">
             <Button size="md" variant="primary">Primary</Button>
+          </GallerySpecimen>
+          <GallerySpecimen variant="destructive · a confirmation's answer">
+            <Button size="md" variant="destructive" @click="productWould('Remove the Provider')">Remove</Button>
+          </GallerySpecimen>
+          <GallerySpecimen variant="destructive · loading">
+            <Button size="md" variant="destructive" loading>Remove</Button>
+          </GallerySpecimen>
+          <GallerySpecimen variant="danger · asks first">
+            <Button size="md" variant="danger" @click="productWould('Ask Before Deleting the Profile')">Delete</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="ghost">
             <Button size="md" variant="ghost">Ghost</Button>
@@ -178,6 +187,9 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           </GallerySpecimen>
           <GallerySpecimen variant="ghost · disabled">
             <Button variant="ghost" disabled>Disabled</Button>
+          </GallerySpecimen>
+          <GallerySpecimen variant="destructive · disabled">
+            <Button variant="destructive" disabled>Disabled</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="disabled · reason">
             <Button disabled :disabled-reason="IN_DEVELOPMENT">In Development</Button>
