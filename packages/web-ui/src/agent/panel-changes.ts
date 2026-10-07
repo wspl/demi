@@ -11,10 +11,42 @@ export type PanelChange =
   | { type: 'remove'; id: string }
   | { type: 'move'; id: string; index: number }
 
-/** The place right after the tab `id` among `tabs`, where a tab opened from it goes; undefined without it. */
-export function indexAfter(tabs: readonly PanelTab[], id: string): number | undefined {
-  const at = tabs.findIndex((tab) => tab.id === id)
-  return at < 0 ? undefined : at + 1
+/**
+ * The tabs a page opened from other tabs, each with its opener, as a web
+ * browser remembers them to place the next one: a tab opened from a tab
+ * goes right after it, behind the tabs it opened before that still stand
+ * right after it, as Chrome places a link's tab. The page's memory, for the
+ * page's lifetime.
+ */
+export class TabOpeners {
+  private readonly openers = new Map<string, string>()
+
+  /**
+   * Adds a tab through `create`, which makes it at the index it is given
+   * among `tabs` and answers its id: beside `opener`, or after the others
+   * without one or once the panel no longer has that tab.
+   */
+  add(tabs: readonly PanelTab[], opener: string | undefined, create: (index: number | undefined) => string): void {
+    if (opener === undefined) {
+      create(undefined)
+      return
+    }
+    const id = create(this.place(tabs, opener))
+    this.openers.set(id, opener)
+  }
+
+  /** Where among `tabs` a tab opened from `opener` goes; undefined once the panel no longer has that tab. */
+  private place(tabs: readonly PanelTab[], opener: string): number | undefined {
+    const at = tabs.findIndex((tab) => tab.id === opener)
+    if (at < 0) {
+      return undefined
+    }
+    let end = at + 1
+    while (end < tabs.length && this.openers.get(tabs[end]!.id) === opener) {
+      end += 1
+    }
+    return end
+  }
 }
 
 /** The backend's panel: its tabs, and how many changes made them. */
