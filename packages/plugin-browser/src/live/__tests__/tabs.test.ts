@@ -1,8 +1,8 @@
 import { expect, jest, test } from 'bun:test'
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveTab, type LiveViewerMessage } from '../../generated/plugin'
-import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
+import type { ConversationPlugin, OpenUserStream, UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
-import { effectScope, nextTick, ref, shallowRef } from 'vue'
+import { computed, effectScope, nextTick, ref, shallowRef } from 'vue'
 import {
   NO_BROWSER,
   BrowserTabsController,
@@ -13,6 +13,7 @@ import {
   type PictureSupport,
 } from '../tabs'
 import { browserTabKind } from '../kind'
+import { browserTabsApi } from '../../tabs'
 
 /** A controller in a panel session's effect scope, over a tab list the test sets; what it reports to the user lands in `reported`. */
 function harness(
@@ -689,5 +690,102 @@ test('a view the stopped Cloud refused connects at once once the Cloud runs', as
   starting.value = false
   await nextTick()
   expect(opened).toHaveLength(2)
+  end()
+})
+
+test('a tab not shown that was lost with the browser keeps its title and waits, not loading, until it is shown', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const { controller, list, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true })
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('p-t2', 't2')
+  const browser = { name: 'Chrome for Testing', version: '153.0.8010.36' }
+  const row = (id: string, title: string) => ({
+    id, title, url: `https://example.test/${id}`, createdBy: { kind: 'user' } as const,
+    loading: false, canGoBack: false, canGoForward: false, shows: 0,
+  })
+  list.value = { tabs: [row('t1', 'Orders'), row('t2', 'Invoices')], browser }
+  const orders = { url: 'https://example.test/t1', tab: 't1', title: 'Orders' }
+  expect(controller.busy('p-t1', orders)).toBe(false)
+  // The browser ended: the view and the plugin's list name no tab, before the plugin read the list and marked the panel tabs.
+  views[0]!.handlers.data(framed({ type: 'state', running: false, list: 2, tabs: [], watched: null }))
+  list.value = { tabs: [], browser }
+  expect(controller.busy('p-t1', orders)).toBe(false)
+  expect(browserTabKind.title(orders, { conversation: 'c1', session: controller })).toBe('Orders')
+  end()
+})
+
+/** The plugin of a conversation whose backend the page cannot reach while `reachable` is false, as while it restarts; it counts the calls. */
+function restartingPlugin(stream: OpenUserStream) {
+  const backend = { reachable: false, calls: 0 }
+  const plugin: ConversationPlugin = {
+    state: () => ({ value: computed(() => null), error: computed(() => null), read: () => {} }),
+    call: async (_method, _params, result) => {
+      backend.calls += 1
+      if (!backend.reachable) {
+        // What fetch rejects with when no connection could be made.
+        throw new TypeError('Failed to fetch')
+      }
+      return result.parse(null)
+    },
+    stream: () => stream,
+    installed: computed(() => []),
+    hostStarting: computed(() => false),
+  }
+  return { backend, api: browserTabsApi(plugin, () => {}) }
+}
+
+/** Lets every promise the page started settle: a task runs only after every microtask. */
+const settled = () => new Promise<void>((resolve) => setTimeout(resolve))
+
+test('a look for the shown tab while the backend restarts is no defect, and the next list without the tab looks again', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const defects: Array<[string, unknown]> = []
+  const { backend, api } = restartingPlugin(recordingStream(views))
+  const { controller, end } = harness(api, { pictures: async () => true }, [], defects)
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('p-t1', 't1')
+  // The backend restarts: the view ends, and the plugin cannot be asked whether the browser still has the tab.
+  views[0]!.handlers.closed('lost')
+  await settled()
+  expect(backend.calls).toBe(1)
+  expect(defects).toEqual([])
+  // The backend is back, and the view, open again, lists a browser without the tab: the plugin is asked.
+  backend.reachable = true
+  controller.session.value!.reconnect()
+  views[1]!.handlers.data(framed({ type: 'state', running: true, list: 1, tabs: [], watched: null }))
+  await settled()
+  expect(backend.calls).toBe(2)
+  expect(defects).toEqual([])
+  end()
+})
+
+test('a tab a page opens while the backend restarts is no defect, and the next list adds it', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const defects: Array<[string, unknown]> = []
+  const { backend, api } = restartingPlugin(recordingStream(views))
+  const { controller, end } = harness(api, { pictures: async () => true }, [], defects)
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('p-t1', 't1')
+  const tab = (id: string, createdBy: LiveTab['createdBy']): LiveTab => ({
+    id, title: id, url: `https://example.test/${id}`, createdBy, viewport: VIEWPORT,
+    loading: false, canGoBack: false, canGoForward: false,
+  })
+  const state = (list: number, tabs: LiveTab[]) =>
+    views[0]!.handlers.data(framed({ type: 'state', running: true, list, tabs, watched: 't1' }))
+  const watchedTab = tab('t1', { kind: 'user' })
+  const popup = tab('t2', { kind: 'page', opener: 't1' })
+  state(1, [watchedTab])
+  state(2, [watchedTab, popup])
+  await settled()
+  expect(backend.calls).toBe(1)
+  expect(defects).toEqual([])
+  backend.reachable = true
+  state(3, [watchedTab, popup])
+  await settled()
+  expect(backend.calls).toBe(2)
+  expect(defects).toEqual([])
   end()
 })
