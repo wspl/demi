@@ -418,19 +418,33 @@ export class BrowserTabsController {
    * tab opens, the first time or again, and otherwise as its browser tab
    * does; and a shown tab that has no picture yet loads until its first
    * picture, unless none can come. A tab that could not open, or whose
-   * browser tab the browser lost and no one opened again yet, does not.
+   * browser tab the browser lost and no one opened again yet, does not, nor
+   * does a new tab nobody sent anywhere yet, which loads nothing.
    */
   busy(panelTab: string, data: BrowserTabData): boolean {
+    const blank = this.blank(data)
     if (this.opening(panelTab, data)) {
-      return true
+      return !blank
     }
     if (data.failure || data.closed) {
       return false
     }
-    if (data.tab === undefined || this.loading(data.tab, data.url)) {
-      return true
+    if (data.tab === undefined) {
+      return !blank
     }
-    return this.awaitsPicture(data.tab)
+    return this.loading(data.tab, data.url) || (!blank && this.awaitsPicture(data.tab))
+  }
+
+  /**
+   * Whether the panel tab with `data` is a new tab nobody sent anywhere yet:
+   * its address is the new tab's and no request of the user's is under way on
+   * its browser tab. It loads nothing, so it shows the blank New Tab, not
+   * what Demi waits for, while the browser opens its tab unseen; only the
+   * browser's own word that its page loads shows it loading
+   * (`live-view.md` § A browser tab in the panel).
+   */
+  private blank(data: BrowserTabData): boolean {
+    return data.url === NEW_TAB_URL && !this.requested(data.tab)
   }
 
   /**
@@ -454,10 +468,14 @@ export class BrowserTabsController {
    * first, which the product state says; then connecting, while neither a
    * view nor the plugin's list has said what the conversation's browser
    * holds; then the browser starting, while it has no tabs; then the browser
-   * opening the tab. Null once the list names the tab, and for a tab that
-   * could not open and was not retried.
+   * opening the tab. Null once the list names the tab, for a tab that could
+   * not open and was not retried, and for a new tab nobody sent anywhere yet,
+   * which waits for nothing the user asked for.
    */
   startingPhase(panelTab: string, data: BrowserTabData): StartingPhase | null {
+    if (this.blank(data)) {
+      return null
+    }
     const opening = this.opening(panelTab, data)
     if (!opening && data.failure) {
       return null
