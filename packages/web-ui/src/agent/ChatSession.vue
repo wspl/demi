@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
+import { providePageOpening, type PageOpeningHandler } from './page-opening'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, ref, watch } from 'vue'
@@ -50,6 +51,8 @@ const props = withDefaults(defineProps<{
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
+  /** Opens a page the agent presented; without it, its card offers no Open. */
+  openPage?: PageOpeningHandler
   fork?: MessageForkHandler
   /**
    * Detect Title in the Rename menu: `available` while a message is newer
@@ -105,6 +108,7 @@ const emit = defineEmits<{
   revealed: []
 }>()
 provideEditSelection(() => props.selectEdit)
+providePageOpening(() => props.openPage)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`runtime.md`
 // § Rendering boundary).

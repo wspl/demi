@@ -197,7 +197,7 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         );
     }
     // Every listed name decodes, so the descriptor lists nothing unserved.
-    assert_eq!(Operation::names().count(), OPERATIONS.len() + 3);
+    assert_eq!(Operation::names().count(), OPERATIONS.len() + 4);
     let opening = json!({
         "url": "http://localhost:5173/",
         "scheme": "https",
@@ -216,8 +216,17 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         Operation::parse("browser.preview_open", file),
         Err(OperationError::Invalid(_))
     ));
+    let handover = json!({ "url": "http://localhost:5173/", "state": "kept-1" });
+    assert!(matches!(
+        Operation::parse("browser.handover", handover.clone()),
+        Ok(Operation::Handover(_))
+    ));
     for name in Operation::names() {
-        let args = if name == "browser.preview_open" { opening.clone() } else { json!({}) };
+        let args = match name {
+            "browser.preview_open" => opening.clone(),
+            "browser.handover" => handover.clone(),
+            _ => json!({}),
+        };
         assert!(
             !matches!(
                 Operation::parse(name, args),

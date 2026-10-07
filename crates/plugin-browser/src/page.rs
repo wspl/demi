@@ -13,7 +13,7 @@
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
-use demi_command_package_browser_protocol::preview::{PreviewOpenInput, PreviewOpened};
+use demi_command_package_browser_protocol::preview::{HANDOVER_OPERATION, HandoverInput, PreviewOpenInput, PreviewOpened};
 use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_command_package_browser_protocol::browser::{
     BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab, CloseInput,
@@ -116,6 +116,15 @@ fn operation(name: &str) -> NativeOperation {
     }
 }
 
+/// `browser.handover`, which opens a tab with a page state of the user's
+/// browser.
+fn handover_operation() -> NativeOperation {
+    NativeOperation {
+        package: PACKAGE.into(),
+        operation: HANDOVER_OPERATION.into(),
+    }
+}
+
 /// The page: its tab list, its methods, each declared with the operations
 /// it calls, and its panel kind, whose tabs the plugin brings up to date
 /// after each job.
@@ -134,6 +143,7 @@ pub(crate) fn page() -> Page {
         .method(
             Method::new::<BindTab, TabBound>("bind", Scope::Conversation)
                 .calls(operation("open"))
+                .calls(handover_operation())
                 .calls(operation("goto"))
                 .calls(operation("close")),
         )
@@ -209,7 +219,12 @@ pub(crate) async fn open(port: &PluginPort, url: &str) -> Result<BrowserTab, Plu
     let opened = run::<OpenResult, _>(port, BrowserOperation::Open, input, CallKind::Starts)
         .await
         .map_err(refused)?;
-    Ok(BrowserTab {
+    Ok(user_tab(opened))
+}
+
+/// The user's tab a browser opened, as the tab list shows it before it loads.
+fn user_tab(opened: OpenResult) -> BrowserTab {
+    BrowserTab {
         id: opened.tab,
         title: opened.title.unwrap_or_default(),
         url: opened.url,
@@ -218,7 +233,28 @@ pub(crate) async fn open(port: &PluginPort, url: &str) -> Result<BrowserTab, Plu
         can_go_back: false,
         can_go_forward: false,
         shows: 0,
-    })
+    }
+}
+
+/// A new tab on `url` with the page state the `preview` stream kept under
+/// `state` (`preview.md` § Page state): work the user starts, which wakes a
+/// stopped Cloud.
+pub(crate) async fn handover(port: &PluginPort, url: &str, state: &str) -> Result<BrowserTab, PluginError> {
+    let input = HandoverInput {
+        url: url.to_owned(),
+        state: state.to_owned(),
+    };
+    let Ok(Value::Object(args)) = serde_json::to_value(&input) else {
+        unreachable!("a handover serializes to an object")
+    };
+    let opened = port
+        .package_call(handover_operation(), args, CallKind::Starts)
+        .await
+        .map_err(refused)?;
+    let opened: OpenResult = serde_json::from_value(opened).map_err(|error| {
+        PluginError::failed(format!("the browser answered what the plugin cannot read: {error}"))
+    })?;
+    Ok(user_tab(opened))
 }
 
 /// Closes the browser's tab `tab`. A tab the browser does not have, or a

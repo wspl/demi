@@ -110,6 +110,8 @@ export interface RelayTab {
 /** A channel the relay bound to the label of the origin that asked for it. */
 export interface RelayBinding {
   readonly port: MessagePort
+  /** The preview origin of the window that asked, which the browser guarantees. */
+  readonly origin: string
   readonly label: string
   readonly environment: PreviewEnvironment
   readonly tab: RelayTab
@@ -376,6 +378,7 @@ export class PreviewRelay {
     const channel = new MessageChannel()
     const binding: Binding = {
       port: channel.port1,
+      origin: event.origin,
       label,
       environment,
       tab,
@@ -778,9 +781,22 @@ export class PreviewRelay {
     }
   }
 
-  /** The environment of `tab`'s top document, while it has one. */
-  topEnvironment(tab: RelayTab): PreviewEnvironment | null {
-    return this.tops.get(tab)?.environment ?? null
+  /** The channel of `tab`'s top document, while it has one: its preview origin and environment. */
+  top(tab: RelayTab): RelayBinding | null {
+    return this.tops.get(tab) ?? null
+  }
+
+  /** The real origins of `tab`'s documents, whose sites' cookies a page state moves with it. */
+  origins(tab: RelayTab): string[] {
+    const origins = new Set<string>()
+    for (const bindings of this.documents.values()) {
+      for (const binding of bindings) {
+        if (binding.tab === tab) {
+          origins.add(binding.environment.origin)
+        }
+      }
+    }
+    return [...origins]
   }
 
   /**

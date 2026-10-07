@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { History, SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import PresentedPages from './PresentedPages.vue'
 import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import ToolMedia from './ToolMedia.vue'
@@ -52,4 +53,5 @@ const iconComponent = computed(() => {
   </FunctionalBlock>
   <ToolMedia :output="block.output" :title="title" />
   <ShellEditPills :block="block" />
+  <PresentedPages :block="block" />
 </template>
