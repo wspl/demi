@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, type ComponentPublicInstance } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, type ComponentPublicInstance } from 'vue'
 import {
+  TAB_DRAG_PX,
   TAB_TRANSITION,
   TAB_WIDTH_MS,
   afterEnterTab,
@@ -8,11 +9,15 @@ import {
   beforeEnterTab,
   beforeLeaveTab,
   cutMarkCover,
+  dragShift,
+  dragTarget,
   enterTab,
+  isLeavingTab,
   fadeRoom,
   leaveTab,
   revealScroll,
   settledTabBounds,
+  stripGap,
   tabsChanged,
 } from './tab-strip'
 
@@ -46,8 +51,18 @@ const FADE_PX = 24
  * raised to the surface color; on a raised surface it is pressed to the base
  * color, and hover uses the active color either way. The tabs and the edge
  * fades take their colors from the strip, so a host sets this once.
+ *
+ * The arrow keys, Home and End move the keyboard's focus between the tabs.
+ * A host that listens to `reorder` lets the user drag a tab along the strip,
+ * as in a web browser: the others step aside as it passes their middle, and
+ * on release `reorder` names where it was and its index among the others,
+ * which the host applies; Escape puts it back.
  */
-const props = withDefaults(defineProps<{ surface?: 'base' | 'raised' }>(), {
+const props = withDefaults(defineProps<{
+  surface?: 'base' | 'raised'
+  /** A tab dragged from `from` to `to`, its index among the others; without it tabs do not drag. */
+  onReorder?: (from: number, to: number) => void
+}>(), {
   surface: 'base',
 })
 const colors = computed(() =>
@@ -210,7 +225,152 @@ function onAfterLeave(el: Element): void {
   revealActive()
 }
 
+/** The strip's tabs in order, without those on their way out. */
+function tabElements(): HTMLElement[] {
+  const strip = el.value
+  if (!strip) {
+    return []
+  }
+  return [...strip.querySelectorAll<HTMLElement>(':scope > [role="tab"]')].filter((tab) => !isLeavingTab(tab))
+}
+
+// The arrows move the focus along the tabs, wrapping at the ends; Enter or Space on a tab is the tab's own.
+function onKeydown(event: KeyboardEvent): void {
+  const tabs = tabElements()
+  const at = tabs.findIndex((tab) => tab === event.target)
+  if (at < 0) {
+    return
+  }
+  const next = {
+    ArrowLeft: (at - 1 + tabs.length) % tabs.length,
+    ArrowRight: (at + 1) % tabs.length,
+    Home: 0,
+    End: tabs.length - 1,
+  }[event.key]
+  if (next === undefined) {
+    return
+  }
+  event.preventDefault()
+  tabs[next]?.focus()
+}
+
+/** A tab pressed with the primary button, which drags once the pointer moves far enough. */
+interface Drag {
+  pointerId: number
+  startX: number
+  from: number
+  tabs: HTMLElement[]
+  /** Each tab's center when the press began, in strip order. */
+  centers: number[]
+  /** How far the dragged tab may move each way, so it stays within the tabs. */
+  min: number
+  max: number
+  /** The width the others step aside by: the dragged tab's and a gap. */
+  step: number
+  to: number
+  moving: boolean
+}
+let drag: Drag | null = null
+
+function onPointerdown(event: PointerEvent): void {
+  const strip = el.value
+  const tab = event.target instanceof Element ? event.target.closest<HTMLElement>('[role="tab"]') : null
+  if (!props.onReorder || event.button !== 0 || !strip || !tab) {
+    return
+  }
+  const tabs = tabElements()
+  const from = tabs.indexOf(tab)
+  if (from < 0) {
+    return
+  }
+  const rects = tabs.map((each) => each.getBoundingClientRect())
+  const own = rects[from]!
+  drag = {
+    pointerId: event.pointerId,
+    startX: event.clientX,
+    from,
+    tabs,
+    centers: rects.map((rect) => rect.left + rect.width / 2),
+    min: rects[0]!.left - own.left,
+    max: rects.at(-1)!.right - own.right,
+    step: own.width + stripGap(strip),
+    to: from,
+    moving: false,
+  }
+}
+
+function onPointermove(event: PointerEvent): void {
+  const held = drag
+  if (!held || event.pointerId !== held.pointerId) {
+    return
+  }
+  const dx = event.clientX - held.startX
+  if (!held.moving) {
+    if (Math.abs(dx) < TAB_DRAG_PX) {
+      return
+    }
+    held.moving = true
+    el.value?.setPointerCapture(event.pointerId)
+    cancelScroll()
+  }
+  const offset = Math.min(held.max, Math.max(held.min, dx))
+  held.to = dragTarget(held.centers, held.from, held.centers[held.from]! + offset)
+  held.tabs.forEach((tab, index) => {
+    if (index === held.from) {
+      tab.style.transition = 'none'
+      tab.style.zIndex = '2'
+      tab.style.transform = `translateX(${offset}px)`
+      return
+    }
+    tab.style.transition = 'transform 150ms ease-out'
+    tab.style.transform = `translateX(${dragShift(index, held.from, held.to) * held.step}px)`
+  })
+}
+
+/** Puts every tab of `ended` back in its own place, without motion. */
+function release(ended: Drag): void {
+  for (const tab of ended.tabs) {
+    tab.style.transition = ''
+    tab.style.zIndex = ''
+    tab.style.transform = ''
+  }
+}
+
+function onPointerup(event: PointerEvent): void {
+  const ended = drag
+  if (!ended || event.pointerId !== ended.pointerId) {
+    return
+  }
+  drag = null
+  if (!ended.moving) {
+    return
+  }
+  if (ended.to === ended.from) {
+    release(ended)
+    return
+  }
+  props.onReorder?.(ended.from, ended.to)
+  // The host's order lands with the next render; until then the tabs hold where the drag left them.
+  void nextTick(() => release(ended))
+}
+
+function cancelDrag(): void {
+  const ended = drag
+  drag = null
+  if (ended?.moving) {
+    release(ended)
+  }
+}
+
+function onDragKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && drag?.moving) {
+    event.preventDefault()
+    cancelDrag()
+  }
+}
+
 onMounted(() => {
+  window.addEventListener('keydown', onDragKeydown)
   const strip = el.value
   if (!strip) {
     return
@@ -239,6 +399,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onDragKeydown)
+  cancelDrag()
   resizeObserver?.disconnect()
   watchedTab = null
   mutationObserver?.disconnect()
@@ -260,6 +422,11 @@ defineExpose({ el })
       role="tablist"
       @scroll.passive="updateEdges"
       @wheel="onWheel"
+      @keydown="onKeydown"
+      @pointerdown="onPointerdown"
+      @pointermove="onPointermove"
+      @pointerup="onPointerup"
+      @pointercancel="cancelDrag"
       @before-enter="beforeEnterTab"
       @enter="enterTab"
       @after-enter="onAfterEnter"

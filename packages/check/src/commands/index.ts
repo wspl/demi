@@ -30,7 +30,7 @@ export const COMMANDS: CommandEntry[] = [
   },
   {
     name: 'click',
-    usage: 'click <locator|x,y> [--right] [--double] [--modifiers Meta,Shift]',
+    usage: 'click <locator|x,y> [--right | --middle] [--double] [--modifiers Meta,Shift]',
     summary: 'Click an element or a point',
     load: () => import('./click'),
   },
@@ -72,8 +72,8 @@ export const COMMANDS: CommandEntry[] = [
   },
   {
     name: 'drag',
-    usage: 'drag <from locator|x,y> <to locator|x,y> [--steps <n>]',
-    summary: 'Drag from one element or point to another',
+    usage: 'drag <from locator|x,y> <to locator|x,y> [--steps <n>] [--hold] | drag --release [<to locator|x,y>]',
+    summary: 'Drag from one element or point to another; --hold keeps the button down until drag --release',
     load: () => import('./drag'),
   },
   {

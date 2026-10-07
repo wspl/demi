@@ -285,6 +285,22 @@ export class BrowserTabsController {
   }
 
   /**
+   * The icon of the page the panel tab with `data` shows, as a web
+   * browser's tab shows it: as a view last reported it, else as the plugin
+   * last listed it; null without a browser tab, or for a page without one.
+   */
+  favicon(data: BrowserTabData): string | null {
+    if (data.tab === undefined || data.closed || data.failure) {
+      return null
+    }
+    const live = this.tab(data.tab)
+    if (live) {
+      return live.favicon ?? null
+    }
+    return this.list.value?.tabs.find((candidate) => candidate.id === data.tab)?.favicon ?? null
+  }
+
+  /**
    * Whether the panel tab `panelTab`, with `data`, shows its page loading:
    * the one state its strip's spinner, its Stop and its progress line show
    * (`live-view.md` § A browser tab in the panel). It loads while its browser
@@ -399,6 +415,18 @@ export class BrowserTabsController {
   /** The user's Back, Forward or Reload on `tab`; rejects with what refused it. */
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void> {
     return this.request(tab, () => this.api.history(tab, action))
+  }
+
+  /**
+   * The tab menu's Reload of the panel tab with `data`, as the address bar's
+   * Reload does it; a refusal is a toast. A tab without its browser tab has
+   * nothing to reload.
+   */
+  reload(data: BrowserTabData): void {
+    if (data.tab === undefined || data.closed) {
+      return
+    }
+    this.history(data.tab, 'reload').catch((error: unknown) => this.errors.report('Could Not Reload the Page', error))
   }
 
   /**

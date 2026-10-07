@@ -1,6 +1,16 @@
 import type { Component } from 'vue'
 import type { z } from 'zod'
 import type { PanelTab } from '../panel-tabs'
+import type { TitleText } from '../../ui/ui-text'
+
+/** A command of a tab's menu that its kind offers, such as Reload. */
+export interface TabCommand {
+  label: TitleText
+  icon?: Component
+  /** It cannot run now, and shows disabled. */
+  disabled?: boolean
+  run(): void
+}
 
 /**
  * What the work panel needs to show the tabs of one kind
@@ -15,6 +25,8 @@ export interface PanelTabKind<Data = unknown> {
   title(data: Data): string
   /** The strip's mark. Props: `data`. */
   mark: Component
+  /** A picture in place of the mark, such as a web page's icon, as an image URL; null while there is none. */
+  icon?(data: Data, id: string): string | null
   /** Whether the tab `id` is at work, read reactively: its mark is a spinner meanwhile. */
   busy?(data: Data, id: string): boolean
   /**
@@ -29,8 +41,10 @@ export interface PanelTabKind<Data = unknown> {
    * lives in the page's memory. Its id is the kind's id.
    */
   pinned?: { data(): Data }
-  /** What a tab shows next when its user picks it in the strip, even while it is selected. */
-  picked?(data: Data): Data
+  /** What the tab's menu offers before its Close commands, read when the menu opens. */
+  commands?(data: Data, id: string): readonly TabCommand[]
+  /** The data of a copy of a tab, which its menu's Duplicate opens right after it; without it there is no Duplicate. */
+  duplicate?(data: Data): Data
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `data`. */
   badge?: Component
   /**
