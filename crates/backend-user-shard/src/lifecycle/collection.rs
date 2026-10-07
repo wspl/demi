@@ -109,9 +109,6 @@ impl Shard {
             .await
             .map_err(|error| format!("the control records cannot be read: {error}"))?;
         let mut referenced = control.blobs;
-        // A put of a blob that existed wrote nothing, so the blob's age is
-        // its first write's; one put again within the day stays too.
-        referenced.extend(blobs.put_again_recently());
         for id in control.databases {
             let named = services
                 .conversations
@@ -127,8 +124,11 @@ impl Shard {
             if self.is_closing() {
                 break;
             }
-            match blobs.delete(&blob).await {
-                Ok(()) => removed.push(blob),
+            // A put of a blob that existed wrote nothing, so the blob's age
+            // is its first write's; one put again within the day stays too.
+            match blobs.delete_unless_put_again(&blob).await {
+                Ok(true) => removed.push(blob),
+                Ok(false) => {}
                 // The blob stays, and so does its upload record, until a
                 // later collection removes both.
                 Err(error) => {
