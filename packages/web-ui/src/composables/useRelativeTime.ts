@@ -8,9 +8,21 @@ dayjs.extend(relativeTime)
 // VueUse releases the shared clock when its last consuming scope is disposed.
 const useClock = createSharedComposable(() => useNow({ interval: 1000 }))
 
+/** A moment that has passed, in words against the shared clock, which ticks each second. */
 export function useRelativeTime(timestamp: MaybeRefOrGetter<string>) {
   const now = useClock()
-  return computed(() => dayjs(toValue(timestamp)).from(now.value))
+  return computed(() => formatPast(toValue(timestamp), now.value))
+}
+
+/**
+ * A moment that has passed, in words against `now`: "3 minutes ago". One
+ * `now` has not reached yet, as a reply the backend stamped within the
+ * clock's last second or by a clock running slightly ahead, reads "a few
+ * seconds ago" rather than "in a few seconds".
+ */
+export function formatPast(timestamp: string, now: Date): string {
+  const moment = dayjs(timestamp)
+  return (moment.isAfter(now) ? dayjs(now) : moment).from(now)
 }
 
 /** A timestamp against now, in words: "in 2 days", "3 hours ago". A label for one render, not a ticking one. */
