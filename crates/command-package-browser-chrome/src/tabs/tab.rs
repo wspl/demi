@@ -47,6 +47,9 @@ pub struct TabState {
     pub viewport: watch::Sender<crate::tabs::viewport::Viewports>,
     /// Where the tab's top-level page is in its loading.
     pub load: watch::Sender<crate::tabs::loading::PageLoad>,
+    /// The address a navigation the user started loads, until its document
+    /// commits or it ends: what the tab's address bar shows meanwhile.
+    pub requested: watch::Sender<Option<String>>,
     /// Which ends of its history the tab is away from.
     pub history: watch::Sender<crate::tabs::history::HistoryEnds>,
     /// The page's icon as a PNG `data:` URL, while it has one.
@@ -73,8 +76,15 @@ impl TabState {
             .event_listener::<EventJavascriptDialogOpening>()
             .await?;
         let console = crate::tabs::logs::observe(page, ended.clone(), tasks).await?;
-        let load =
-            crate::tabs::loading::observe(page, ended.clone(), tasks, changes.clone()).await?;
+        let requested = watch::channel(None).0;
+        let load = crate::tabs::loading::observe(
+            page,
+            ended.clone(),
+            tasks,
+            changes.clone(),
+            requested.clone(),
+        )
+        .await?;
         let history =
             crate::tabs::history::observe(page, ended.clone(), tasks, changes.clone()).await?;
         let favicon =
@@ -88,6 +98,7 @@ impl TabState {
             dialog,
             viewport: watch::channel(Default::default()).0,
             load,
+            requested,
             history,
             favicon,
             shows: watch::channel(0).0,

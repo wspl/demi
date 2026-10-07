@@ -1093,16 +1093,19 @@ impl Conversations {
                 .iter()
                 .skip(offset)
                 .take(limit)
-                .map(|listed| protocol::BrowserTab {
-                    id: listed.tab.id().clone(),
-                    title: listed.title.clone(),
-                    url: listed.url.clone(),
-                    created_by: listed.tab.created_by().clone(),
-                    loading: listed.tab.loading(),
-                    can_go_back: listed.tab.history().back,
-                    can_go_forward: listed.tab.history().forward,
-                    shows: listed.tab.shows(),
-                    favicon: listed.tab.favicon(),
+                .map(|listed| {
+                    let (title, url) = listed.shown();
+                    protocol::BrowserTab {
+                        id: listed.tab.id().clone(),
+                        title,
+                        url,
+                        created_by: listed.tab.created_by().clone(),
+                        loading: listed.tab.loading(),
+                        can_go_back: listed.tab.history().back,
+                        can_go_forward: listed.tab.history().forward,
+                        shows: listed.tab.shows(),
+                        favicon: listed.tab.favicon(),
+                    }
                 })
                 .collect();
             return Ok(CommandOutput::Json(output::value(TabsResult {
