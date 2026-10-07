@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
-import { cutMarkCover, revealScroll, tabsChanged, type StripMutation } from '../tab-strip'
+import { cutMarkCover, fadeRoom, revealScroll, tabsChanged, type StripMutation } from '../tab-strip'
 
-test('the active tab is revealed clear of the fades, and a tab too wide for them settles on its start', () => {
+test('the selected tab is revealed whole and clear of the fades, and where they do not fit the fades give way', () => {
   const view = { scrollLeft: 0, clientWidth: 300, scrollWidth: 900 }
   // Whole and clear of both fades: nothing moves.
   expect(revealScroll(view, { left: 40, right: 140 }, 24)).toBeNull()
@@ -12,11 +12,15 @@ test('the active tab is revealed clear of the fades, and a tab too wide for them
   // The last tab: the strip's end is as far as it goes, and once there nothing moves.
   expect(revealScroll(view, { left: 800, right: 900 }, 24)).toBe(600)
   expect(revealScroll({ ...view, scrollLeft: 600 }, { left: 800, right: 900 }, 24)).toBeNull()
-  // A strip narrower than the tab with its fades: the start wins from either side, then it rests.
-  const narrow = { scrollLeft: 307, clientWidth: 129, scrollWidth: 436 }
-  const last = { left: 323, right: 411 }
-  expect(revealScroll(narrow, last, 24)).toBe(299)
-  expect(revealScroll({ ...narrow, scrollLeft: 299 }, last, 24)).toBeNull()
+  // A view narrower than the tab with its fades: the tab shows whole, its end included, and the
+  // fades shrink to the room beside it, so none lies over it.
+  const narrow = { scrollLeft: 340, clientWidth: 129, scrollWidth: 600 }
+  const middle = { left: 323, right: 411 }
+  expect(revealScroll(narrow, middle, 24)).toBe(323)
+  expect(revealScroll({ ...narrow, scrollLeft: 290 }, middle, 24)).toBeNull()
+  expect(fadeRoom(129, { left: middle.left - 290, right: middle.right - 290 })).toEqual({ before: 33, after: 8 })
+  // A tab running off an edge leaves that fade no room.
+  expect(fadeRoom(129, { left: -4, right: 84 })).toEqual({ before: 0, after: 45 })
 })
 
 test('a scrolled edge covers a tab mark it cuts, and only that one', () => {
