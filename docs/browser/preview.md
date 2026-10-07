@@ -13,7 +13,7 @@ there.
 ```text
 the user's browser
   Demi page (the relay)
-    └─ iframe https://k3f9x2ab--p4q8h2m6c1v9z7w2.demi-preview.dev/dashboard
+    └─ iframe https://k3f9a2ab--p4q8h2m6c1v9t7s2.demi-preview.dev/dashboard
          │ every request the browser makes for it
          ▼
        forwarder (that origin's service worker) ── MessagePort ──▶ relay
@@ -200,7 +200,9 @@ How addresses map:
 
 Every Demi shares one preview domain, `demi-preview.dev` by default;
 `DEMI_PREVIEW_DOMAIN` names another, which then runs the same service with a
-wildcard DNS record and certificate ([Backend](../backend/backend.md#configuration)).
+wildcard DNS record and certificate. A domain under `.localhost` may carry a
+port and is served over plain HTTP, which Chrome treats as a secure context
+there; every other is HTTPS ([Backend](../backend/backend.md#configuration)).
 The service is Demi's: its code is in this repository at
 `services/preview-domain`, and CI deploys it to a Cloudflare Worker with KV
 storage ([Preview domain deployment](../delivery/builds-and-releases.md#preview-domain-deployment)).
@@ -215,8 +217,10 @@ storage ([Preview domain deployment](../delivery/builds-and-releases.md#preview-
 | `DELETE /api/v1/namespaces/<ns>` | Deletes it |
 
 - Every request but creation carries `Authorization: Bearer <secret>`.
-- `origins` are at most 8 secure-context origins: HTTPS, or `http://localhost`
-  and `http://127.0.0.1` with a port.
+- `origins` are 1 to 8 secure-context origins, each exactly an origin: HTTPS,
+  or `http://localhost` and `http://127.0.0.1`, with or without a port. Their
+  hosts hold only letters, digits, dots and hyphens, since they go into a CSP
+  as written.
 - A namespace lives 90 days. The backend registers its namespace when it first
   starts, with the origins it serves its pages on (its public URL, and in
   development the web dev server's), keeps the namespace and its secret as a
@@ -240,7 +244,8 @@ ancestor; and `Referrer-Policy: same-origin`.
   versioned static files, never changed or removed once published. A Demi page
   uses the version it was built with. `sw.js` carries `Service-Worker-Allowed: /`.
 - Any other path arrives only before the forwarder is installed: a document
-  navigation gets the boot page, with that address as its target, and anything
+  navigation gets the newest version's boot page, with that address as its
+  target, and anything
   else 404. The service never logs paths, queries or bodies, and never serves a
   script there, so a site's own service worker registration always fails.
 - The root has a page that says what the domain is for and how to report
@@ -312,7 +317,8 @@ with no document to ask gets a small page that connects and reloads. When the
 Demi page closes, the channel closes and the forwarder gets `close`.
 
 **A request** from the forwarder to the relay carries what the browser gave:
-`url`, `method`, `headers`, the body as a stream, `mode`, `destination`,
+`url`, `method`, `headers`, the body, read whole as an `ArrayBuffer` since a
+stream cannot be transferred to the page in every browser, `mode`, `destination`,
 `credentials`, `redirect`, `referrer`, `referrerPolicy`, and the `token` and
 `announcedReferrer` the boot page announced for a navigation. The answer is a
 status, headers and a body the relay pulls one chunk at a time on the
