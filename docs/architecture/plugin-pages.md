@@ -321,10 +321,12 @@ without a loading state.
 - **A report.** A changed path makes unconfirmed: its own text, description,
   diff sides and, for a folder, its listing; its folder's listing, since a
   file came, went or was renamed; and the changes list of the working tree
-  it lies in. A path under the repository's `.git`, such as `HEAD`, the index
-  or a ref, makes the changes list and every committed side unconfirmed. What
-  a report makes unconfirmed and something shows is read again at once; the
-  rest is read again when it is shown next.
+  it lies in, unless git ignores the path. A path under the repository's
+  `.git`, such as `HEAD`, the index or a ref, makes the changes list and every
+  committed side unconfirmed. What a report makes unconfirmed and something
+  shows is read again at once, a folder's listing at most once a second, as
+  Finder updates a size that keeps growing; the rest is read again when it is
+  shown next.
 - **Unconfirmed entries are shown, then checked.** An entry read while no
   watch covered it, or once the watch said it lost reports, or across a lost
   connection to the Host or a watch stream that reconnected, may be out of
