@@ -126,7 +126,10 @@ conversation's turn to end.
   and `demi.runner({ fresh: true })` pairs a new one.
 - **Watching.** `demi.log.console()`, `.network()` and `.sockets()` return
   what the page logged, requested, and sent or received since the browser
-  started or since `demi.log.mark(name)`.
+  started or since `demi.log.mark(name)`, including what goes over a
+  [direct channel](../execution/direct-channel.md), which no HTTP request
+  shows: each operation as `direct <kind> <status> <path>`, the file watch's
+  messages among the sockets'.
 
 ## One browser per slot
 
