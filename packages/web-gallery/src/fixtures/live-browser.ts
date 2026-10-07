@@ -9,6 +9,7 @@ import type {
   BrowserViewport,
   CursorRegion,
   LiveControl,
+  LiveDownload,
   LiveModuleMessage,
   LiveTab,
   LiveViewerMessage,
@@ -19,6 +20,7 @@ import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugi
 import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
 import { BrowserTabsError, type BrowserTabList } from '@demicodes/plugin-browser/live/tabs'
 import type { HostArtifact } from '@demicodes/web-ui/devices/installed'
+import { WORKSPACE_ROOT } from './workspace'
 
 const FPS = 10
 const encoder = new TextEncoder()
@@ -72,12 +74,30 @@ const SELECT: LiveControl = {
   rect: { x: 24, y: 168, width: 180, height: 32 },
 }
 
-/** Where the drawn page shows which cursor, as a page's observer reports it: the button, the select and the field. */
+/** The drawn page's link that opens the invoice in a new tab, as a `target=_blank` link does. */
+const INVOICE = { x: 184, y: 98, width: 200, height: 18, url: 'https://example.test/invoices/4711' }
+/** The drawn page's link that downloads a file, which the gallery's workspace holds where the Host would save it. */
+const DOWNLOAD = { x: 184, y: 118, width: 140, height: 18, url: 'https://example.test/guide.pdf' }
+const DOWNLOADED: Pick<LiveDownload, 'name' | 'total' | 'path'> = {
+  name: 'guide.pdf',
+  total: 734,
+  path: `${WORKSPACE_ROOT}/docs/guide.pdf`,
+}
+/** How long the drawn page's download takes, so its progress shows in the bubble. */
+const DOWNLOAD_MS = 1500
+
+function within(area: { x: number; y: number; width: number; height: number }, x: number, y: number): boolean {
+  return x >= area.x && x <= area.x + area.width && y >= area.y && y <= area.y + area.height
+}
+
+/** Where the drawn page shows which cursor, as a page's observer reports it: the button, the select, the field and the links. */
 function pageCursors(viewport: BrowserViewport): CursorRegion[] {
   return [
     { x: 24, y: 96, width: 136, height: 40, cursor: 'pointer' },
     { x: 24, y: 168, width: 180, height: 32, cursor: 'default' },
     { x: 24, y: 216, width: viewport.width - 48, height: 36, cursor: 'text' },
+    { x: INVOICE.x, y: INVOICE.y, width: INVOICE.width, height: INVOICE.height, cursor: 'pointer' },
+    { x: DOWNLOAD.x, y: DOWNLOAD.y, width: DOWNLOAD.width, height: DOWNLOAD.height, cursor: 'pointer' },
   ]
 }
 
@@ -181,6 +201,9 @@ class GalleryBrowserView {
   private pressed = false
   private overText = false
   private status = 'open'
+  /** The downloads the user started in each tab, as the Host follows them. */
+  private readonly downloads = new Map<string, LiveDownload[]>()
+  private readonly downloading = new Set<ReturnType<typeof setTimeout>>()
 
   constructor(
     private readonly handlers: UserStreamHandlers,
@@ -190,6 +213,8 @@ class GalleryBrowserView {
     private readonly list: () => number,
     /** Whether the Host can capture its tabs; one that cannot says so for each tab watched, as an Apple M4's Linux VM does. */
     private readonly capture: boolean,
+    /** The watched page opens a tab, as a `target=_blank` link does. */
+    private readonly pageOpens: (opener: string, url: string) => void,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
@@ -262,6 +287,31 @@ class GalleryBrowserView {
         break
       }
       case 'pointer':
+        if (value.action === 'down' && tab && value.button === 'right') {
+          // The page leaves the right click to the browser: what lies under it builds the menu.
+          const link = within(INVOICE, value.x, value.y) ? INVOICE.url : within(DOWNLOAD, value.x, value.y) ? DOWNLOAD.url : ''
+          this.send({
+            type: 'menu',
+            tab: tab.id,
+            menu: {
+              x: value.x,
+              y: value.y,
+              link,
+              selection: this.selection === 'all',
+              editable: value.x >= 24 && value.x <= tab.viewport.width - 24 && value.y >= 216 && value.y <= 252,
+            },
+          })
+          break
+        }
+        // A link acts on the click, once the button is up, as a browser's does.
+        if (value.action === 'up' && value.button === 'left' && tab && within(INVOICE, value.x, value.y)) {
+          this.pageOpens(tab.id, INVOICE.url)
+          break
+        }
+        if (value.action === 'up' && value.button === 'left' && tab && within(DOWNLOAD, value.x, value.y)) {
+          this.download(tab.id)
+          break
+        }
         if (value.action === 'down' && tab) {
           this.pressed = value.y > 96 && value.y < 136 && value.x > 24 && value.x < 160
           if (this.pressed) {
@@ -281,6 +331,15 @@ class GalleryBrowserView {
         }
         if ((value.modifiers & (CONTROL | META)) !== 0 && !value.altGraph && value.key.toLowerCase() === 'a') {
           this.selection = 'all'
+        } else if ((value.modifiers & (CONTROL | META)) !== 0 && ['c', 'x'].includes(value.key.toLowerCase())) {
+          // The page copies or cuts what is selected, and the Host hands it to the viewer's clipboard.
+          if (this.selection === 'all') {
+            this.send({ type: 'clipboard', text: this.typed })
+            if (value.key.toLowerCase() === 'x') {
+              this.typed = ''
+              this.selection = 'caret'
+            }
+          }
         } else if (value.text) {
           this.handle({ type: 'text', tab: value.tab, text: value.text })
         } else if (value.key === 'Backspace') {
@@ -291,6 +350,9 @@ class GalleryBrowserView {
       case 'text':
         this.typed = (this.selection === 'all' ? '' : this.typed) + value.text
         this.selection = 'caret'
+        break
+      case 'paste':
+        this.handle({ type: 'text', tab: value.tab, text: value.text })
         break
       case 'choice':
         this.status = value.value
@@ -310,6 +372,24 @@ class GalleryBrowserView {
     }
   }
 
+  /** The user's download in `tab`: it comes in for a moment, then the Host holds it under its name. */
+  private download(tab: string): void {
+    const id = crypto.randomUUID()
+    const list = this.downloads.get(tab) ?? []
+    list.push({ id, ...DOWNLOADED, state: 'inProgress', received: 0, path: '' })
+    this.downloads.set(tab, list)
+    this.send({ type: 'downloads', tab, downloads: [...list] })
+    const timer = setTimeout(() => {
+      this.downloading.delete(timer)
+      const entry = list.find((download) => download.id === id)
+      if (entry) {
+        Object.assign(entry, { state: 'complete', received: DOWNLOADED.total, path: DOWNLOADED.path })
+        this.send({ type: 'downloads', tab, downloads: [...list] })
+      }
+    }, DOWNLOAD_MS)
+    this.downloading.add(timer)
+  }
+
   private restart(): void {
     this.stopPictures()
     const tab = this.tab()
@@ -327,6 +407,7 @@ class GalleryBrowserView {
     this.canvas.height = size.height
     this.send({ type: 'controls', tab: tab.id, controls: [{ ...SELECT, value: this.status }] })
     this.send({ type: 'cursors', tab: tab.id, regions: pageCursors(tab.viewport) })
+    this.send({ type: 'downloads', tab: tab.id, downloads: [...(this.downloads.get(tab.id) ?? [])] })
     if (!this.capture) {
       this.notice(LIVE_CAPTURE_UNAVAILABLE, 'this CPU reports SME without SVE, and Chrome cannot capture on it')
       return
@@ -414,6 +495,9 @@ class GalleryBrowserView {
       context.fillStyle = '#0f172a'
     }
     context.fillText(this.typed, 34, 239)
+    context.fillStyle = '#2563eb'
+    context.fillText('Open the invoice in a new tab', INVOICE.x, INVOICE.y + 14)
+    context.fillText('Download guide.pdf', DOWNLOAD.x, DOWNLOAD.y + 14)
     // A moving mark, so a still picture is told from a stalled one.
     const seconds = (performance.now() - this.started) / 1000
     context.fillStyle = '#22c55e'
@@ -441,6 +525,10 @@ class GalleryBrowserView {
 
   stop(): void {
     this.stopPictures()
+    for (const timer of this.downloading) {
+      clearTimeout(timer)
+    }
+    this.downloading.clear()
     if (this.heartbeat !== null) {
       clearInterval(this.heartbeat)
       this.heartbeat = null
@@ -614,7 +702,7 @@ export function galleryBrowser(
   const closedOnPurpose = new Set<string>()
 
   const stream: OpenUserStream = (handlers) => {
-    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture)
+    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture, pageOpens)
     views.add(browser)
     return {
       send: (bytes) => browser.receive(bytes),
@@ -638,6 +726,22 @@ export function galleryBrowser(
 
   /** Whether the next open is refused. */
   let refuseOpen = false
+
+  /** A page opens a tab, as a `target=_blank` link or `window.open` does: it loads beside its opener. */
+  function pageOpens(opener: string, url: string): void {
+    const tab: LiveTab = {
+      id: `t${next++}`,
+      title: URL.parse(url)?.host ?? url,
+      url,
+      createdBy: { kind: 'page', opener },
+      viewport: { width: 800, height: 600, devicePixelRatio: 2, mode: 'web' },
+      loading: false,
+      canGoBack: false,
+      canGoForward: false,
+    }
+    tabs.push(tab)
+    load(tab, url)
+  }
 
   return {
     listed,

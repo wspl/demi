@@ -1642,3 +1642,141 @@ async fn capture_extension_reload_preserves_pages_and_recreates_its_worker() {
     })
     .await;
 }
+
+/// A page with a link, a field, an element whose own menu the page shows, a
+/// download and a select, for the browser's menu, the user's downloads and a
+/// page Back brings back.
+const MENU_PAGE: &str = r#"<!doctype html>
+<style>body { margin: 0; font: 16px sans-serif }</style>
+<a id="link" href="/two" style="position: absolute; left: 10px; top: 10px">Page two</a>
+<input id="field" style="position: absolute; left: 10px; top: 60px; width: 200px; height: 30px">
+<div id="own" oncontextmenu="event.preventDefault()"
+  style="position: absolute; left: 10px; top: 110px; width: 200px; height: 30px">Own menu</div>
+<a id="download" href="/report" style="position: absolute; left: 10px; top: 160px">Report</a>
+<select id="choice" style="position: absolute; left: 10px; top: 210px; width: 200px; height: 30px">
+  <option>A</option><option>B</option>
+</select>
+<p id="words" style="position: absolute; left: 10px; top: 250px; margin: 0">Some words</p>"#;
+
+async fn menu_site() -> (String, AbortOnDropHandle<()>) {
+    let app = Router::new()
+        .route("/", get(|| async { Html(MENU_PAGE) }))
+        .route("/two", get(|| async { Html("<!doctype html><p>Two</p>") }))
+        .route(
+            "/report",
+            get(|| async {
+                (
+                    [
+                        (axum::http::header::CONTENT_TYPE, "text/plain"),
+                        (
+                            axum::http::header::CONTENT_DISPOSITION,
+                            "attachment; filename=\"report.txt\"",
+                        ),
+                    ],
+                    "the report",
+                )
+            }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}/", listener.local_addr().unwrap());
+    let task = AbortOnDropHandle::new(tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    }));
+    (base, task)
+}
+
+impl View {
+    /// The viewer's right click, which the page may leave to the browser.
+    fn right_click(&self, tab: &str, x: f64, y: f64) {
+        for (action, buttons) in [("down", 2), ("up", 0)] {
+            self.send(json!({
+                "type": "pointer", "tab": tab, "action": action, "x": x, "y": y,
+                "button": "right", "buttons": buttons, "clickCount": 1, "modifiers": 0,
+            }));
+        }
+    }
+}
+
+/// The user's right clicks open the browser's menu with what lies under
+/// them, unless the page shows its own; the user's downloads are named after
+/// their files in the browser's download directory; and a page Back brings
+/// back from the browser's cache reports its controls again. About 4 s.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn the_users_menus_downloads_and_returning_pages_reach_the_viewer() {
+    with_browser_fixture(|fixture| async move {
+        let (base, _site) = menu_site().await;
+        let tab = fixture
+            .call("browser.open", json!({"url": base, "timeout": 120000}))
+            .await["tab"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+        let mut view = View::open(&fixture);
+        hello(&view, "linux");
+        view.message("state").await;
+        view.send(json!({"type": "watch", "tab": tab}));
+        view.until("the page's select", |message| {
+            message["type"] == "controls" && message["controls"].as_array().is_some_and(|controls| controls.len() == 1)
+        })
+        .await;
+
+        // A link: the menu names its address.
+        view.right_click(&tab, 20.0, 15.0);
+        let menu = view.message("menu").await;
+        assert_eq!(menu["tab"], json!(tab));
+        assert_eq!(menu["menu"]["link"], json!(format!("{base}two")));
+        assert_eq!(menu["menu"]["editable"], json!(false));
+        // The page's own menu is the page's: the next menu is the field's.
+        view.right_click(&tab, 50.0, 125.0);
+        view.right_click(&tab, 50.0, 75.0);
+        let menu = view.message("menu").await;
+        assert_eq!(menu["menu"]["y"], json!(75.0), "{menu}");
+        assert_eq!((&menu["menu"]["editable"], &menu["menu"]["link"]), (&json!(true), &json!("")));
+        // Selected text: the menu offers to copy it.
+        fixture
+            .call("browser.select-text", json!({"tab": tab, "css": "#words", "text": "Some words"}))
+            .await;
+        view.right_click(&tab, 30.0, 258.0);
+        let menu = view.message("menu").await;
+        assert_eq!((&menu["menu"]["selection"], &menu["menu"]["link"]), (&json!(true), &json!("")));
+
+        // Two downloads of one name: the second is numbered, both complete on the Host.
+        view.click(&tab, 20.0, 165.0);
+        view.until("the first download complete", |message| {
+            message["type"] == "downloads" && message["downloads"][0]["state"] == "complete"
+        })
+        .await;
+        view.click(&tab, 20.0, 165.0);
+        let downloads = view
+            .until("the second download complete", |message| {
+                message["type"] == "downloads" && message["downloads"][1]["state"] == "complete"
+            })
+            .await;
+        let names: Vec<&Value> = downloads["downloads"].as_array().unwrap().iter().map(|download| &download["name"]).collect();
+        assert_eq!(names, [&json!("report.txt"), &json!("report.txt")]);
+        let first = downloads["downloads"][0]["path"].as_str().unwrap();
+        let second = downloads["downloads"][1]["path"].as_str().unwrap();
+        assert!(first.ends_with("/report.txt"), "{first}");
+        assert!(second.ends_with("/report (1).txt"), "{second}");
+        for path in [first, second] {
+            assert_eq!(tokio::fs::read_to_string(path).await.unwrap(), "the report");
+        }
+        assert_eq!(downloads["downloads"][1]["total"], json!(10));
+
+        // Away and Back: the page returns with its select.
+        request(&fixture, "browser.goto", json!({"tab": tab, "url": format!("{base}two")})).await;
+        view.until("the second page's no controls", |message| {
+            message["type"] == "controls" && message["controls"] == json!([])
+        })
+        .await;
+        request(&fixture, "browser.back", json!({"tab": tab})).await;
+        view.until("the select again", |message| {
+            message["type"] == "controls" && message["controls"].as_array().is_some_and(|controls| controls.len() == 1)
+        })
+        .await;
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}

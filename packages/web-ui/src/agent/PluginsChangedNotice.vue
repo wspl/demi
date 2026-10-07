@@ -24,7 +24,7 @@ const emit = defineEmits<{
     role="status"
   >
     <span class="min-w-0 flex-1 truncate">
-      Plugins changed. Reload to give the agent the new commands.
+      Plugins changed. Reload to update the agent’s commands.
     </span>
     <span class="plugins-changed-notice-reload">
       <Button size="sm" :disabled="reloading" @click="emit('reload')">Reload</Button>

@@ -3,19 +3,19 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import type { LiveTab } from '../generated/plugin'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
-import { RegionStatus } from '@demicodes/plugin-sdk'
+import { Menu, MenuDivider, MenuItem, Popover, RegionStatus, usePage } from '@demicodes/plugin-sdk'
 import { refusalSentence } from './tabs'
 import { CanvasPictures } from './pictures'
 import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
-import { composingKey } from '@demicodes/utils'
-import { ClickCount, keyMessage, localKey, pointerMessage, wheelMessage } from './input'
-import { cursorAt, placePicture, tabPoint, type PanelSize } from './view'
+import { clientPlatform, composingKey } from '@demicodes/utils'
+import { ClickCount, keyMessage, localKey, pointerMessage, shortcutKeys, wheelMessage } from './input'
+import { cursorAt, panelRect, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
  * A tab of the conversation's browser, live (`live-view.md`): its
  * pictures on a canvas, the viewer's input on its way to the page, and the
- * page's own native controls and dialogs over it. The view stays mounted
+ * page's own native controls, dialogs and the browser's menu over it. The view stays mounted
  * while its content is hidden and while no session is open, so its last
  * picture shows at once when the tab is shown again; the page's panel
  * session alone decides which tab a session watches.
@@ -32,6 +32,14 @@ const props = defineProps<{
   /** What moves the picture onto the screen's pixel grid. */
   snap: { x: number; y: number }
 }>()
+const emit = defineEmits<{
+  /** Back, Forward or Reload, chosen in the browser's menu. */
+  history: [action: 'back' | 'forward' | 'reload']
+  /** Open Link in New Tab, chosen in the browser's menu. */
+  openLink: [url: string]
+}>()
+const { overlays, errors } = usePage()
+const platform = clientPlatform(navigator)
 
 const frame = ref<HTMLDivElement | null>(null)
 const canvas = ref<HTMLCanvasElement | null>(null)
@@ -56,6 +64,14 @@ const placement = computed(() => {
   return { ...placed, left: placed.left + props.snap.x, top: placed.top + props.snap.y }
 })
 const state = computed(() => props.session?.state ?? null)
+/**
+ * Whether this view shows the tab the session watches: only it draws the
+ * page's native controls, dialog and the browser's menu. A hidden content's
+ * view stays mounted with its last picture, and would otherwise draw them a
+ * second time, out of sight, where a dialog's keys or a control's choice
+ * could land.
+ */
+const watching = computed(() => props.shown && state.value?.watched === props.tab.id)
 /** Nothing arrives, or the view is connecting again after it ended: the last picture stays under a quiet note. */
 const stalled = computed(() => {
   const connection = state.value?.connection
@@ -217,6 +233,81 @@ function composition(event: CompositionEvent, phase: 'start' | 'update' | 'end')
   }
 }
 
+/** The host of the watched page, which its dialogs name; none for a page without one. */
+const host = computed(() => URL.parse(props.tab.url)?.host ?? '')
+
+/** A dialog answered: the viewer's keys reach the page again. */
+function answered(accept: boolean, text: string | undefined): void {
+  props.session?.answerDialog(accept, text)
+  bridge.value?.focus({ preventScroll: true })
+}
+
+/**
+ * The browser's menu the viewer's right click opened (`live-view.md` § A
+ * browser tab in the panel), built here from what lies under the click: a
+ * link's, a field's, a selection's, or the page's own Back, Forward and
+ * Reload.
+ */
+const menu = computed(() => {
+  const open = state.value?.menu
+  return watching.value && open && open.tab === props.tab.id ? open.menu : null
+})
+/** Where the menu opens on the screen: at the click. */
+const menuAt = computed(() => {
+  const open = menu.value
+  const bounds = frame.value?.getBoundingClientRect()
+  if (!open || !bounds) {
+    return { x: 0, y: 0 }
+  }
+  const at = panelRect({ x: open.x, y: open.y, width: 0, height: 0 }, placement.value)
+  return { x: bounds.left + at.left, y: bounds.top + at.top }
+})
+
+/** The menu closes and the viewer's keys reach the page again. */
+function closeMenu(): void {
+  props.session?.closeMenu()
+  bridge.value?.focus({ preventScroll: true })
+}
+
+function chooseHistory(action: 'back' | 'forward' | 'reload'): void {
+  closeMenu()
+  emit('history', action)
+}
+
+function openLink(link: string): void {
+  closeMenu()
+  emit('openLink', link)
+}
+
+function copyLink(link: string): void {
+  closeMenu()
+  navigator.clipboard.writeText(link).catch((error: unknown) => errors.report('Could Not Copy the Link', error))
+}
+
+/** Copy and Cut run in the page, with the platform's keys, so the page's own handlers decide what is taken. */
+function edit(letter: 'c' | 'x'): void {
+  closeMenu()
+  viewerClipboard.expect()
+  for (const key of shortcutKeys(props.tab.id, letter, platform)) {
+    props.session?.input(key)
+  }
+}
+
+/** Paste takes the viewer's own clipboard, which the viewer's browser may ask about first. */
+async function paste(): Promise<void> {
+  closeMenu()
+  let text: string
+  try {
+    text = await navigator.clipboard.readText()
+  } catch (error) {
+    errors.report('Could Not Paste', error)
+    return
+  }
+  if (text) {
+    props.session?.input({ type: 'paste', tab: props.tab.id, text: text.slice(0, 1_000_000), html: '' })
+  }
+}
+
 /** Leaving the view releases what the viewer holds in the page. */
 function release(): void {
   move = null
@@ -327,7 +418,7 @@ onBeforeUnmount(() => {
       @blur="release"
     >
     <LiveControls
-      v-if="session"
+      v-if="session && watching"
       :session="session"
       :controls="session.state.controls"
       :placement="placement"
@@ -341,9 +432,40 @@ onBeforeUnmount(() => {
       </span>
     </div>
     <LiveDialog
-      v-if="session?.state.dialog"
+      v-if="watching && session?.state.dialog"
       :dialog="session.state.dialog.dialog"
-      @answer="session.answerDialog($event.accept, $event.text)"
+      :host="host"
+      @answer="answered($event.accept, $event.text)"
     />
+    <Popover
+      :overlay-store="overlays"
+      :is-open="menu !== null"
+      :anchor-x="menuAt.x"
+      :anchor-y="menuAt.y"
+      :offset="0"
+      @close="closeMenu"
+    >
+      <Menu v-if="menu" iconless>
+        <template v-if="menu.link">
+          <MenuItem label="Open Link in New Tab" @select="openLink(menu.link)" />
+          <MenuItem label="Copy Link Address" @select="copyLink(menu.link)" />
+        </template>
+        <template v-if="menu.editable">
+          <MenuDivider v-if="menu.link" />
+          <MenuItem label="Cut" :disabled="!menu.selection" @select="edit('x')" />
+          <MenuItem label="Copy" :disabled="!menu.selection" @select="edit('c')" />
+          <MenuItem label="Paste" @select="paste" />
+        </template>
+        <template v-else-if="menu.selection">
+          <MenuDivider v-if="menu.link" />
+          <MenuItem label="Copy" @select="edit('c')" />
+        </template>
+        <template v-if="!menu.link && !menu.editable && !menu.selection">
+          <MenuItem label="Back" :disabled="!tab.canGoBack" @select="chooseHistory('back')" />
+          <MenuItem label="Forward" :disabled="!tab.canGoForward" @select="chooseHistory('forward')" />
+          <MenuItem label="Reload" @select="chooseHistory('reload')" />
+        </template>
+      </Menu>
+    </Popover>
   </div>
 </template>
