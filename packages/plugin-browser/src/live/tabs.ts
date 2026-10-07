@@ -279,6 +279,13 @@ export class BrowserTabsController {
     })
     // The watchers stop with the panel session's effect scope.
     watch(this.visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
+    // A view the stopped Cloud refused connects at once once the Cloud runs, so the Host knows the panel's
+    // size before it opens the tab a shown content waits for.
+    watch(() => api.hostStarting(), (starting, was) => {
+      if (was && !starting) {
+        this.session.value?.reconnect()
+      }
+    })
     watch(this.listError, (error) => {
       if (error?.code && FINAL_CODES.has(error.code)) {
         this.closeView()
