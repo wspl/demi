@@ -342,7 +342,7 @@ function selectDevice(id: string, close: () => void): void {
                 <span class="text-[12px] leading-4 text-fg-subtle">{{
                   projectName
                     ? `The project will be called ${projectName}.`
-                    : "The project takes the folder's name."
+                    : 'The project takes the folder’s name.'
                 }}</span>
               </label>
             </template>

@@ -7,6 +7,7 @@ import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
+import GalleryTextRules, { type TextRule } from '../components/GalleryTextRules.vue'
 
 /**
  * The rule for UI text: macOS capitalization, as Apple's Human Interface
@@ -249,17 +250,26 @@ const wordRules = [
   },
 ]
 
-interface LongTextRule {
-  title: string
-  rule: string
-  right: readonly string[]
-  wrong: readonly string[]
-  /** The products that do it this way. */
-  source: string
-}
+/** How apostrophes and quotation marks are written. */
+const punctuationRules: readonly TextRule[] = [
+  {
+    title: 'Apostrophes are curly',
+    rule: 'A contraction or a possessive takes the typographer’s apostrophe (’, U+2019), as macOS writes Don’t Save. The straight one (\') belongs to code, a command and a path, never to a word the UI says.',
+    right: ['Don’t Save', 'Couldn’t load models.', 'the conversation’s browser'],
+    wrong: ['Don\'t Save', 'Couldn\'t load models.'],
+    source: 'Apple Style Guide: apostrophe; macOS 26 Finder and System Settings',
+  },
+  {
+    title: 'Quotation marks are curly',
+    rule: 'A name or a phrase the UI quotes stands between curly quotation marks (“ ”), as a confirmation names what it removes. Straight ones (") are for code and for what the user typed.',
+    right: ['Remove “OpenAI API”?', 'the sidebar’s “Move To”'],
+    wrong: ['Remove "OpenAI API"?'],
+    source: 'Apple Style Guide: quotation marks; macOS 26 Finder’s Move to Trash confirmation',
+  },
+]
 
 /** What gives way when a line of text does not fit, and how the reader gets it back. */
-const longTextRules: readonly LongTextRule[] = [
+const longTextRules: readonly TextRule[] = [
   {
     title: 'The name gives way last',
     rule: 'The text that tells items apart (an account’s email, a file’s name, a model’s or a conversation’s name) keeps its width. What sits beside it gives way first: tags, counts, sizes, times.',
@@ -396,20 +406,17 @@ const sources: readonly Required<Source>[] = [
     </GallerySection>
 
     <GallerySection
+      title="Apostrophes and Quotation Marks"
+      note="Both styles write them as typesetters do. A written convention, like the rest of this page: nothing checks it."
+    >
+      <GalleryTextRules :rules="punctuationRules" />
+    </GallerySection>
+
+    <GallerySection
       title="Long Text"
       note="When a line does not fit, which text gives way, where it is cut, and how the reader gets it back. A written convention, like the rest of this page: nothing checks it."
     >
-      <div class="grid max-w-5xl gap-3 md:grid-cols-2">
-        <div v-for="item in longTextRules" :key="item.title" class="space-y-2 rounded-xl border border-line p-3">
-          <h3 class="text-[13px] font-medium text-fg-emphasis">{{ item.title }}</h3>
-          <p class="text-[12px] leading-5 text-fg-body">{{ item.rule }}</p>
-          <div class="flex flex-wrap gap-1 text-[12px] leading-4">
-            <span v-for="example in item.right" :key="example" class="rounded bg-overlay/6 px-1.5 py-0.5 text-fg-body">{{ example }}</span>
-            <span v-for="example in item.wrong" :key="example" class="rounded px-1.5 py-0.5 text-fg-muted line-through">{{ example }}</span>
-          </div>
-          <p class="text-[11px] leading-4 text-fg-subtle">{{ item.source }}</p>
-        </div>
-      </div>
+      <GalleryTextRules :rules="longTextRules" />
       <div class="mt-6 flex flex-wrap items-start gap-6">
         <GallerySpecimen
           v-for="width in accountWidths"

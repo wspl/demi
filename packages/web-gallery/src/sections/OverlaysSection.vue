@@ -725,7 +725,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Dropdown Width"
-        note="How wide a dropdown is, one of three widths: content keeps its trigger's width whatever the row, so in a row too narrow for it what follows is pushed out; shrink keeps it while the row has room and gives way when it has not, its label truncating; fill spans the row and gives way the same. Every wrapper around the trigger gives way alike. Each frame resizes from its corner."
+        note="How wide a dropdown is, one of three widths: content keeps its trigger’s width whatever the row, so in a row too narrow for it what follows is pushed out; shrink keeps it while the row has room and gives way when it has not, its label truncating; fill spans the row and gives way the same. Every wrapper around the trigger gives way alike. Each frame resizes from its corner."
       >
         <GallerySpecimen v-for="width in (['content', 'shrink', 'fill'] as const)" :key="width" :variant="width" wide>
           <div class="flex max-w-full resize-x items-center gap-1 overflow-hidden pb-3" style="width: 20rem; min-width: 4rem">
@@ -797,7 +797,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Toast"
-        note="The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, a fact, Copied, Undo, and live host."
+        note="Toasts stand in the top-right corner, below the bar atop the page, the newest nearest the corner, as macOS places its notifications: they never cover the composer or the actions at the bottom of a pane. The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, a fact, Copied, Undo, and live host."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="danger">
@@ -905,7 +905,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Connection Banner"
-        note="Across the top of the app while the backend cannot be reached, as Slack and Linear show one; everything under it stays readable and usable, and it goes once the page reaches the backend again. It says why in the user's words: no network, Demi restarting (the backend said so as it closed the page's channel), or reconnecting once a lost channel's first new attempt failed too. A message sent meanwhile says it waits to be sent (Session › Turns › Offline)."
+        note="Across the top of the app while the backend cannot be reached, as Slack and Linear show one; everything under it stays readable and usable, and it goes once the page reaches the backend again. It says why in the user’s words: no network, Demi restarting (the backend said so as it closed the page’s channel), or reconnecting once a lost channel’s first new attempt failed too. A message sent meanwhile says it waits to be sent (Session › Turns › Offline)."
       >
         <div class="specimen-stack">
           <GallerySpecimen variant="offline" wide>
@@ -996,6 +996,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                     <Dropdown
                       v-model:open="layersMenuOpen"
                       variant="default"
+                      size="sm"
                       :overlay-store="appOverlayStore"
                     >
                       <template #trigger>

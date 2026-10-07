@@ -95,7 +95,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
     <template v-if="view === 'buttons'">
       <GallerySection
         title="Button"
-        note="Enabled, disabled, sizes, and pressed. A confirmation that removes or resets what the user set up answers with destructive, filled red under white text in both schemes, as macOS's destructive button and GitHub's danger button are; danger, red text on a plain face, is a destructive action that is not a confirmation's answer, and asks first. A button that refreshes, renews or restarts turns its icon one whole revolution per click, and keeps turning while its work runs, always finishing the turn it is in."
+        note="Enabled, disabled, sizes, and pressed. A confirmation that removes or resets what the user set up answers with destructive, filled red under white text in both schemes, as macOS’s destructive button and GitHub’s danger button are; danger, red text on a plain face, is a destructive action that is not a confirmation’s answer, and asks first. A button that refreshes, renews or restarts turns its icon one whole revolution per click, and keeps turning while its work runs, always finishing the turn it is in."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="spin · full revolution">
@@ -132,7 +132,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           <GallerySpecimen variant="primary">
             <Button size="md" variant="primary">Primary</Button>
           </GallerySpecimen>
-          <GallerySpecimen variant="destructive · a confirmation's answer">
+          <GallerySpecimen variant="destructive · a confirmation’s answer">
             <Button size="md" variant="destructive" @click="productWould('Remove the Provider')">Remove</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="destructive · loading">
@@ -478,7 +478,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="ScrollArea"
-        note="Every scrolling region is a ScrollArea; a scroller another library owns (the code editor's, a rendered document's code block, table or equation) gets the same bar through attachScrollbars. The bar floats over the content and takes no room on any system, so padding stays even whether or not the content overflows. It shows while the pointer is over that scroller, not one around it, while it scrolls and while its thumb is dragged, then hides; a click beside the thumb moves a page. A region scrolls vertically unless it says horizontal or both, and clips the other axis. Only a strip that scrolls with no bar at all (a tab row, a segmented control, the composer) hides it."
+        note="Every scrolling region is a ScrollArea; a scroller another library owns (the code editor’s, a rendered document’s code block, table or equation) gets the same bar through attachScrollbars. The bar floats over the content and takes no room on any system, so padding stays even whether or not the content overflows. It shows while the pointer is over that scroller, not one around it, while it scrolls and while its thumb is dragged, then hides; a click beside the thumb moves a page. A region scrolls vertically unless it says horizontal or both, and clips the other axis. Only a strip that scrolls with no bar at all (a tab row, a segmented control, the composer) hides it."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="vertical">
@@ -648,7 +648,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="ContextUsageIndicator"
-        note="The ring is the backend's estimate. Point at it for the card: a click on the ring does nothing, Compact compacts. Compact is offered from half the window."
+        note="The ring is the backend’s estimate. Point at it for the card: a click on the ring does nothing, Compact compacts. Compact is offered from half the window."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="below half · 34%">

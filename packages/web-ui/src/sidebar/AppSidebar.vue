@@ -417,7 +417,7 @@ function selectProjectConversations(project: SidebarProject): void {
           v-if="listStatus === 'loading' || listStatus === 'failed'"
           class="h-full min-h-40"
           :status="listStatus"
-          :label="listStatus === 'loading' ? 'Loading conversations…' : 'Couldn\'t load conversations.'"
+          :label="listStatus === 'loading' ? 'Loading conversations…' : 'Couldn’t load conversations.'"
           loading-label="Loading conversations…"
           :on-retry="() => emit('retryList')"
         />

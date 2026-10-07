@@ -30,7 +30,7 @@ const rules = [
   {
     where: 'A form rejected its own input',
     component: 'InlineError',
-    form: 'A line of text under the fields, in their width. The form\'s submit is the retry.',
+    form: 'A line of text under the fields, in their width. The form’s submit is the retry.',
     examples: 'Sign in, codes, passwords, project creation, folder creation',
   },
   {

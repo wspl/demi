@@ -35,11 +35,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Device',
-    'Its own control before the path: a menu of the devices the caller offers with their online dot. Choosing one asks the caller for that device\'s source and the browser starts over at its home.'
+    'Its own control before the path: a menu of the devices the caller offers with their online dot. Choosing one asks the caller for that device’s source and the browser starts over at its home.'
   ],
   [
     'Address',
-    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. A click anywhere on the bar but a crumb turns it into a text field with the full path, and Enter goes there. The field completes the path: the text before the caret names a folder, ~ the home, and what follows its last slash filters that folder\'s entries in a menu under the field, fuzzily, so abc finds a_b_c.txt, best matches first with the matched letters marked; dot entries show once the query starts with a dot. ↓ and ↑ move through the menu, Tab completes the highlighted row or the first, Enter the highlighted one, a click the clicked one, and Escape puts the menu away. A folder completes with a slash and the menu goes on to list it; a file completes and goes there as Enter would.'
+    'Crumbs from the root, each a jump. A bar too narrow for every name turns crumbs into their glyphs, one at a time from the left, each name kept in a tooltip, so the crumbs nearest the end keep their names longest; when even the glyphs overflow, the bar keeps its right end and clips its left. A click anywhere on the bar but a crumb turns it into a text field with the full path, and Enter goes there. The field completes the path: the text before the caret names a folder, ~ the home, and what follows its last slash filters that folder’s entries in a menu under the field, fuzzily, so abc finds a_b_c.txt, best matches first with the matched letters marked; dot entries show once the query starts with a dot. ↓ and ↑ move through the menu, Tab completes the highlighted row or the first, Enter the highlighted one, a click the clicked one, and Escape puts the menu away. A folder completes with a slash and the menu goes on to list it; a file completes and goes there as Enter would.'
   ],
   [
     'Icons',
@@ -47,19 +47,19 @@ const anatomy: [string, string][] = [
   ],
   [
     'List',
-    'Name, date and size, folders first, names in VS Code\'s order: case ignored, numbers by value, punctuation first, so hidden entries lead and show faded; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'
+    'Name, date and size, folders first, names in VS Code’s order: case ignored, numbers by value, punctuation first, so hidden entries lead and show faded; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'
   ],
   [
     'Keys',
-    'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history. Typing a name selects the first row that starts with it: the letters float at the list\'s top right and are marked on the row until a second passes without a key, faint while nothing matches; Backspace then takes back a letter and Escape ends the search.'
+    'Arrows move the selection, Home and End jump, Backspace goes up, ⌥← and ⌥→ walk the history. Typing a name selects the first row that starts with it: the letters float at the list’s top right and are marked on the row until a second passes without a key, faint while nothing matches; Backspace then takes back a letter and Escape ends the search.'
   ],
   [
     'Status row',
-    'Says what is selected, as "Selected folder:" or "Selected file:" with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'
+    'Says what is selected, as “Selected folder:” or “Selected file:” with the name, or what can be. Right: the confirm button and Cancel. A failure to create a folder reads here.'
   ],
   [
     'New project',
-    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar\'s Move To and the header\'s workspace control, not a dialog.'
+    'The working-environment dialog: Cloud or Device as two cards, Cloud first and chosen the first time, then the kind and device chosen last; a device asks which one, with Add Device beside the menu, and a directory on it, the project named after the folder; the Cloud only asks a name; Browse… turns the dialog into the folder browser. Switching between projects is the sidebar’s Move To and the header’s workspace control, not a dialog.'
   ],
   [
     'New folder',
@@ -470,7 +470,7 @@ onMounted(() => {
     <template v-if="view === 'tree'">
       <GallerySection
         title="Rows"
-        note="The workspace tree: open and closed directories, files, the selected file, deep nesting, long names truncated. Directories come before files and each sorts as VS Code's explorer does, so hidden entries lead, drawn faded. Click a directory to fold it, a file to select it; the control at the caption's end lists the open directories again. A click on a row or Tab gives the tree the keyboard: ↑ and ↓ move a ring between the rows, Home and End jump, → unfolds a folder, ← folds it or goes up to the folder a row is in, and Enter acts as a click. Typing a name moves the ring to the first row shown that starts with it, the letters floating at the top right, and opens nothing."
+        note="The workspace tree: open and closed directories, files, the selected file, deep nesting, long names truncated. Directories come before files and each sorts as VS Code’s explorer does, so hidden entries lead, drawn faded. Click a directory to fold it, a file to select it; the control at the caption’s end lists the open directories again. A click on a row or Tab gives the tree the keyboard: ↑ and ↓ move a ring between the rows, Home and End jump, → unfolds a folder, ← folds it or goes up to the folder a row is in, and Enter acts as a click. Typing a name moves the ring to the first row shown that starts with it, the letters floating at the top right, and opens nothing."
       >
         <GallerySpecimen variant="rows · live">
           <div class="gallery-frame h-[28rem] w-[220px] overflow-hidden bg-surface-editor">
@@ -480,7 +480,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Loading and Failures"
-        note="A workspace still listing shows a spinner in place of rows; a directory still listing keeps its chevron and spins at the row's end. A directory that could not be listed wears a red dot on its icon, the reason as tooltip. A workspace that cannot be listed says so."
+        note="A workspace still listing shows a spinner in place of rows; a directory still listing keeps its chevron and spins at the row’s end. A directory that could not be listed wears a red dot on its icon, the reason as tooltip. A workspace that cannot be listed says so."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="workspace listing">
@@ -577,7 +577,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Upload and Download"
-        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, up to four writes on their way at once and the rest waiting, a folder as one row whose files go several at a time. Each row is its name and one line of facts, one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; “Completed” once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name's shows where it goes, and a folder's failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A file that lands, and a folder its files make, show in the tree from the upload's answer, without the folder being listed again; a folder writes its files, which make its folders, and makes only its empty folders itself. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
+        note="A right-click offers what the host can do there: a file downloads; a folder, or the empty space for the workspace itself, takes files uploaded into it. Names the folder already has wait on a question: Replace puts what came in place of what is there, Skip uploads the rest, closing uploads nothing; once a folder meets a folder, Merge adds its files to the one there, writing over files with the same names. The uploads list under the tree, fitting its rows until the divider above it sets its height, up to four writes on their way at once and the rest waiting, a folder as one row whose files go several at a time. Each row is its name and one line of facts, one on its way with a bar between them: how much has gone and how fast, and of a folder how many files; “Completed” once one has landed; why one failed, or of a folder how many of its files did. A line too long for the list is cut and its tooltip shows it whole; the name’s shows where it goes, and a folder’s failures list in theirs. Cancel stops one, and a folder keeps the files that landed; Retry sends what failed again; Clear drops the finished ones. A file that lands, and a folder its files make, show in the tree from the upload’s answer, without the folder being listed again; a folder writes its files, which make its folders, and makes only its empty folders itself. The first specimen is a workspace seeded with an upload in each state, src/auth refusing them; every control works, Reset seeds it again, and the drop buttons hand its tree what a drop from the desktop would. Files and folders dropped on its tree, or right-clicked in, upload at a pace slow enough to watch, as they do in the File view (Session, Panel)."
       >
         <div class="flex flex-wrap items-start gap-6">
           <GallerySpecimen variant="uploads · every state, live">
@@ -628,7 +628,7 @@ onMounted(() => {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Select Folder"
-        note="Creating or moving a workspace: the dialog opens at the device's projects, with the recent workspaces as places. Choose another device in the address bar; the offline device is listed but cannot be chosen."
+        note="Creating or moving a workspace: the dialog opens at the device’s projects, with the recent workspaces as places. Choose another device in the address bar; the offline device is listed but cannot be chosen."
       >
         <GalleryDialogFrame v-slot="{ open, close }">
           <FileBrowserDialog
@@ -654,7 +654,7 @@ onMounted(() => {
 
       <GallerySection
         title="Open File"
-        note="The composer's remote attachment: opens inside the conversation's workspace. Folders are entered, a file is the answer. Cloud shows no status and remains selectable while asleep; its source wakes it when browsing."
+        note="The composer’s remote attachment: opens inside the conversation’s workspace. Folders are entered, a file is the answer. Cloud shows no status and remains selectable while asleep; its source wakes it when browsing."
       >
         <GalleryDialogFrame v-slot="{ open, close }">
           <FileBrowserDialog
@@ -680,7 +680,7 @@ onMounted(() => {
 
       <GallerySection
         title="New Project"
-        note="The working-environment dialog on its form: the Cloud or a device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one and a directory; Add Device after the menu pairs a simulated device with any code, and the menu selects it once the list shows it, a moment after pairing succeeds; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. The directory completes from the device's folders as it is typed, as the address bar does, offering folders only; Enter on no highlighted row still creates. A name already in the list is refused under the form."
+        note="The working-environment dialog on its form: the Cloud or a device, opening on the Cloud the first time and on the kind and device chosen last after that. A device asks which one and a directory; Add Device after the menu pairs a simulated device with any code, and the menu selects it once the list shows it, a moment after pairing succeeds; the Cloud only asks a name, the project named after the folder, with Browse… turning the dialog into the folder browser. The directory completes from the device’s folders as it is typed, as the address bar does, offering folders only; Enter on no highlighted row still creates. A name already in the list is refused under the form."
       >
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-md">
           <WorkspaceDialog
@@ -740,7 +740,7 @@ onMounted(() => {
 
       <GallerySection
         title="Address Bar"
-        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file's crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. A click beside the crumbs turns the bar into a field that completes from the workspace, a relative path starting at its root."
+        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file’s crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. A click beside the crumbs turns the bar into a field that completes from the workspace, a relative path starting at its root."
       >
         <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
           <div class="flex" :style="{ width: entry.width }">
@@ -774,7 +774,7 @@ onMounted(() => {
 
       <GallerySection
         title="Narrow"
-        note="At a phone width the device and nav keep the toolbar's left, the places become a menu at its right, the path takes its own row under it, Forward and the date column go, and the address bar turns its crumbs into glyphs."
+        note="At a phone width the device and nav keep the toolbar’s left, the places become a menu at its right, the path takes its own row under it, Forward and the date column go, and the address bar turns its crumbs into glyphs."
       >
         <GalleryDialogFrame v-slot="{ open, close }" class="max-w-[22rem]">
           <FileBrowserDialog
@@ -787,7 +787,7 @@ onMounted(() => {
             :hosts="hosts"
             :host-id="narrowHostId"
             @update:host-id="narrowHostId = $event"
-            @select="productWould(`Use ${$event} as the Project's Folder`)"
+            @select="productWould(`Use ${$event} as the Project’s Folder`)"
             @close="close"
           />
         </GalleryDialogFrame>
