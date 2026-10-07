@@ -343,6 +343,7 @@ async fn chrome_connects_to_the_runner_directly_and_reads_a_range_of_a_file() {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],
         },
+        demi_command_protocol::ColorScheme::Light,
     )
     .unwrap();
     let (name, value) = master.cookie.split_once('=').unwrap();

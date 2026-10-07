@@ -35,6 +35,7 @@ where
                 time_zone: "UTC".into(),
                 languages: vec!["en-US".into()],
             },
+            demi_command_protocol::ColorScheme::Light,
         )
         .unwrap(),
         numbers,

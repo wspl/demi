@@ -495,6 +495,10 @@ const uncapturedWork = useWorkTabs('browser-t1', { path: '', browser: galleryBro
 function failInput() {
   browserWork.browser.fail('input_failed', 'Input.dispatchKeyEvent: the target closed')
 }
+/** The Host cannot even recreate its capture extension: the view stops trying, and its Retry asks again. */
+function stopCapture() {
+  browserWork.browser.stopCapture()
+}
 // A conversation its first send has not created: no page is bound beside it.
 const unstartedWork = useGalleryWork(null, { files, pages: [] })
 // The Session view is the product's ChatSession over a scripted runtime; Turns and Stream replay one flow each.
@@ -2149,6 +2153,10 @@ onBeforeUnmount(() => {
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" @click="failInput">Fail the Viewer’s Input on the Host</Button>
               <span>A toast says so, once; the picture stays.</span>
+            </div>
+            <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
+              <Button size="sm" @click="stopCapture">Stop Capturing on the Host</Button>
+              <span>The page says the device couldn’t capture it; Retry brings the picture back.</span>
             </div>
           </GallerySpecimen>
           <GallerySpecimen
