@@ -98,8 +98,8 @@ const REQUEST_DELAY_MS = 900
  * asked for, as a far Host's tab list reaches the page after its answer.
  */
 const LOAD_START_MS = 700
-/** How long a page the gallery's browser loads takes, so the page's loading shows. */
-const LOAD_MS = 1200
+/** How long a page the gallery's browser loads takes, as a slow page on a far Host does: long enough to stop it. */
+const LOAD_MS = 5000
 /** Tab ids as the protocol spells them: `t` and the tab's number in the conversation. */
 function galleryTabs(): LiveTab[] {
   return [
@@ -429,8 +429,16 @@ export interface GalleryBrowser {
   /** Answers the number of the last tab list before the request started, as a user's navigation on the Host does. */
   navigate(tab: string, url: string): Promise<number>
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<number>
-  /** The tab closes on the device, as the agent's close or a browser that ended would close it. */
+  /** Stops loading the tab's page; answers as `navigate` does. */
+  stop(tab: string): Promise<number>
+  /** The tabs closed on purpose, which the panel removes rather than open again. */
+  closedOnPurpose: ReadonlySet<string>
+  /** The tab closes on the device on purpose, as the agent's `demi browser close` closes it. */
   closeOnDevice(tab: string): void
+  /** The browser ends on the device and takes its tabs with it, as a release or a stopped Cloud does. */
+  end(): void
+  /** The next tab the browser opens is refused, as an offline device refuses it. */
+  failNextOpen(): void
   /** The agent shows the tab to the user, as `demi browser show` does: its count of showings rises. */
   show(tab: string): void
   /** The agent opens a tab, as `demi browser open` does, and shows it with `show`, as `--show` does. */
@@ -518,20 +526,24 @@ export function galleryBrowser(
     return history
   }
 
+  /** Each tab's load on its way: its start, then its end. A Stop clears it; otherwise it ends by itself. */
+  const loads = new Map<string, ReturnType<typeof setTimeout>>()
+
   /**
    * `tab` starts loading `url` a moment after the request's answer, where
    * `commit` moves its history. Answers the number of the last tab list
-   * before then. The timer ends by itself.
+   * before then.
    */
   function loadLater(tab: LiveTab, url: string, commit: () => void = () => {}): number {
-    setTimeout(() => {
+    clearTimeout(loads.get(tab.id))
+    loads.set(tab.id, setTimeout(() => {
       commit()
       load(tab, url)
-    }, LOAD_START_MS)
+    }, LOAD_START_MS))
     return lists
   }
 
-  /** `tab` loads `url`: it says so until the page is there. The timer ends by itself. */
+  /** `tab` loads `url`: it says so until the page is there. */
   function load(tab: LiveTab, url: string): void {
     // A page loaded again keeps its title; another is named by its host until it says otherwise.
     if (url !== tab.url) {
@@ -544,12 +556,16 @@ export function galleryBrowser(
     tab.canGoForward = history.index < history.entries.length - 1
     changed()
     if (tab.loading) {
-      setTimeout(() => {
+      loads.set(tab.id, setTimeout(() => {
+        loads.delete(tab.id)
         tab.loading = false
         changed()
-      }, LOAD_MS)
+      }, LOAD_MS))
     }
   }
+
+  /** The tabs closed on purpose, as the Host's tab list names them. */
+  const closedOnPurpose = new Set<string>()
 
   const stream: OpenUserStream = (handlers) => {
     const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture)
@@ -565,15 +581,25 @@ export function galleryBrowser(
 
   function remove(id: string): void {
     const index = tabs.findIndex((item) => item.id === id)
+    clearTimeout(loads.get(id))
+    loads.delete(id)
     if (index >= 0) {
+      closedOnPurpose.add(id)
       tabs.splice(index, 1)
       changed()
     }
   }
 
+  /** Whether the next open is refused. */
+  let refuseOpen = false
+
   return {
     listed,
     open: (url) => later(() => {
+      if (refuseOpen) {
+        refuseOpen = false
+        throw new BrowserTabsError('device_offline', 'The device is offline')
+      }
       const tab: LiveTab = {
         id: `t${next++}`,
         title: url === 'about:blank' ? 'about:blank' : URL.parse(url)?.host ?? url,
@@ -617,7 +643,29 @@ export function galleryBrowser(
         history.index = index
       })
     }),
+    stop: (id) => later(() => {
+      const tab = found(id)
+      // The list the Host read before it stopped the page; it reads the list again after.
+      const before = lists
+      clearTimeout(loads.get(id))
+      loads.delete(id)
+      tab.loading = false
+      changed()
+      return before
+    }),
+    closedOnPurpose,
     closeOnDevice: remove,
+    end: () => {
+      for (const timer of loads.values()) {
+        clearTimeout(timer)
+      }
+      loads.clear()
+      tabs.splice(0)
+      changed()
+    },
+    failNextOpen: () => {
+      refuseOpen = true
+    },
     show: (id) => {
       shows.set(id, (shows.get(id) ?? 0) + 1)
       changed()

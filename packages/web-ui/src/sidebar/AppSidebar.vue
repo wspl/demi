@@ -414,11 +414,10 @@ function selectProjectConversations(project: SidebarProject): void {
         <RegionStatus
           v-if="listStatus === 'loading' || listStatus === 'failed'"
           class="h-full min-h-40"
-          :busy="listStatus === 'loading'"
-          :failed="listStatus === 'failed'"
+          :status="listStatus"
           :label="listStatus === 'loading' ? 'Loading conversations' : 'Couldn\'t load conversations.'"
-          :action="listStatus === 'failed' ? 'Retry' : undefined"
-          @action="emit('retryList')"
+          loading-label="Loading conversations"
+          :on-retry="() => emit('retryList')"
         />
         <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
         <TransitionGroup

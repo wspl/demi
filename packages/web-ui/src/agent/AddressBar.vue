@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ArrowLeft, ArrowRight, RotateCw } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, RotateCw, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import TextInput from '../ui/TextInput.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
@@ -11,7 +12,8 @@ import type { SentenceText } from '../ui/ui-text'
  * conversation browser has its own history, a `page` tab keeps a framed
  * page's history to itself. It shows the page's address and follows it,
  * except while the user has the field: then it keeps what the user types,
- * and leaving without Enter shows the page's address again.
+ * and leaving without Enter shows the page's address again. While the page
+ * loads, Reload is Stop, in the same place, as in a web browser.
  */
 const props = withDefaults(
   defineProps<{
@@ -22,10 +24,14 @@ const props = withDefaults(
     /** Why Forward is unavailable, when it is. */
     forwardReason?: SentenceText | null
     canReload?: boolean
+    /** The page loads: Reload is Stop meanwhile. */
+    loading?: boolean
+    /** Why Stop is unavailable while the page loads, such as a tab still opening. */
+    stopReason?: SentenceText | null
     /** Take focus on mount, the address selected: a new tab waits for where to go. */
     focused?: boolean
   }>(),
-  { backReason: null, forwardReason: null, canReload: true, focused: false },
+  { backReason: null, forwardReason: null, canReload: true, loading: false, stopReason: null, focused: false },
 )
 
 const emit = defineEmits<{
@@ -34,6 +40,7 @@ const emit = defineEmits<{
   back: []
   forward: []
   reload: []
+  stop: []
 }>()
 
 const field = ref<InstanceType<typeof TextInput> | null>(null)
@@ -104,14 +111,27 @@ function submit(): void {
         :disabled-reason="forwardReason ?? undefined"
         @click="emit('forward')"
       />
-      <IconButton
-        :icon="RotateCw"
-        variant="ghost"
-        aria-label="Refresh"
-        spin-on-click
-        :disabled="!canReload"
-        @click="emit('reload')"
-      />
+      <!-- Reload and Stop share the place and the size, and a click on either shows the other at once:
+           Reload turns into Stop rather than turning its icon. -->
+      <Tooltip v-if="loading" content="Stop" :disabled="stopReason !== null" class="inline-flex">
+        <IconButton
+          :icon="X"
+          variant="ghost"
+          aria-label="Stop"
+          :disabled="stopReason !== null"
+          :disabled-reason="stopReason ?? undefined"
+          @click="emit('stop')"
+        />
+      </Tooltip>
+      <Tooltip v-else content="Reload" :disabled="!canReload" class="inline-flex">
+        <IconButton
+          :icon="RotateCw"
+          variant="ghost"
+          aria-label="Reload"
+          :disabled="!canReload"
+          @click="emit('reload')"
+        />
+      </Tooltip>
     </div>
     <TextInput
       ref="field"

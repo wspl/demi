@@ -42,6 +42,11 @@ function retry(): void {
   loadVendors()
 }
 
+// The model list's failure is its region's state: a load that fails again says so there.
+function retryModels(): void {
+  void product.loadModels(true).catch(() => {})
+}
+
 function openUrl(url: string): void {
   window.open(url, '_blank', 'noopener,noreferrer')
 }
@@ -75,6 +80,7 @@ onUnmounted(closeLogin)
     :model-load="product.catalogLoad"
     @retry="retry"
     @retry-vendors="loadVendors"
+    @retry-models="retryModels"
     :vendors="resources.vendors"
     :overlay-store="appOverlayStore"
     :operations="settings.operations"
