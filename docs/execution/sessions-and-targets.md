@@ -438,8 +438,9 @@ An unavailable paired device or failed Cloud wake produces an operation error.
 History remains readable, and the backend does not redirect the operation.
 
 A restart is not a device going away. When the backend starts, the runners
-its shutdown disconnected, the Cloud's among them, connect again by
-themselves within seconds. For the first 30 seconds after the start, a Host
+its shutdown disconnected, a running Cloud's among them, connect again by
+themselves within seconds; a Cloud the shutdown let hibernate first is
+stopped, and wakes as any stopped Cloud does. For the first 30 seconds after the start, a Host
 operation for such a device waits for its runner, as an operation waits for
 a held conversation, instead of answering `device_offline` or
 `host_stopped`; a device still not back after that answers as usual. The
