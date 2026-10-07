@@ -1248,7 +1248,9 @@ including Cloud wake and the file gate. Archived conversations answer 409
 exists answers 404 `device_not_found`. A paired device without a live runner answers 409
 `device_offline`; a Cloud that cannot wake answers 503 with the lifecycle's code.
 A file over 8 MiB answers 413 `file_too_large`, the same limit a retained edit
-snapshot has ([Edit tracking](../execution/edit-tracking.md#scope)); one that
+snapshot has ([Edit tracking](../execution/edit-tracking.md#scope)), and the
+page then reads its first 8 MiB from the raw route with a byte range
+([File previews](file-previews.md#getting-the-bytes)); one that
 is not UTF-8 text, or contains a NUL byte, answers 415 `not_text`.
 
 `GET /api/conversations/:id/fs/raw?path=...` streams a file's bytes for

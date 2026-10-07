@@ -739,8 +739,10 @@ user waits in the panel, not in a script: for a `user` caller `open`, `goto`,
 `back`, `forward` and `reload` start their work and answer at once, without
 waiting for the page to load, and the tab's content shows the loading. Each
 tab in the tab list and in the view's `state` carries `loading`: whether the
-browser is loading its top-level page; and `canGoBack` and `canGoForward`:
-whether its history has an entry in that direction. Each tab list carries its
+browser is loading its top-level page; `canGoBack` and `canGoForward`:
+whether its history has an entry in that direction; and `favicon`: the page's
+icon, drawn 32 pixels square on the Host each time the page finishes loading,
+at most 16 KiB, which the strip shows as Chrome does, or none. Each tab list carries its
 number in the Host's sequence, and the answer of `goto`, `back`, `forward`
 and `reload` names the number of the last list before the request started.
 
