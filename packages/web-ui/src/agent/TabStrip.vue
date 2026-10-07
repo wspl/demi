@@ -139,6 +139,7 @@ function updateEdges(): void {
   const room = fadeRoom(
     strip.clientWidth,
     selected ? { left: selected.left - view.left, right: selected.right - view.left } : null,
+    scrollFrame !== null,
   )
   // Written to the style, not kept as state: they change on every frame of
   // a scroll, and a render of the strip then would disturb its tabs' motion.

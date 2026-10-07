@@ -5,6 +5,7 @@ import { useElementSize, usePreferredReducedMotion } from '@vueuse/core'
 import IconButton from '../ui/IconButton.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TooltipPlacement from '../ui/TooltipPlacement.vue'
 import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
 
 /**
@@ -152,17 +153,20 @@ defineExpose({ show, dismiss })
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
+    <!-- The row stands right under the panel's tab strip: its tips open below, never over the strip. -->
     <div class="flex h-11 shrink-0 items-center gap-1 px-2">
-      <slot name="header" />
-      <Tooltip v-if="$slots.tree" :content="shown ? `Hide ${name}` : `Show ${name}`" class="shrink-0">
-        <IconButton
-          :icon="FolderTree"
-          variant="ghost"
-          :pressed="shown"
-          :aria-label="shown ? `Hide ${name}` : `Show ${name}`"
-          @click="toggle"
-        />
-      </Tooltip>
+      <TooltipPlacement placement="bottom">
+        <slot name="header" />
+        <Tooltip v-if="$slots.tree" :content="shown ? `Hide ${name}` : `Show ${name}`" class="shrink-0">
+          <IconButton
+            :icon="FolderTree"
+            variant="ghost"
+            :pressed="shown"
+            :aria-label="shown ? `Hide ${name}` : `Show ${name}`"
+            @click="toggle"
+          />
+        </Tooltip>
+      </TooltipPlacement>
     </div>
     <!-- It clips a tree on its way in or out at the end. -->
     <div ref="body" class="relative flex min-h-0 flex-1 overflow-hidden border-t border-line">
