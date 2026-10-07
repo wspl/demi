@@ -404,8 +404,9 @@ operations, and the [topics](#topics) its changes fire. Hosts is such a
 service; one joins when a plugin needs it, and never as an operation shaped
 for one plugin among the others.
 
-Values and directories name the blobs they use; no blob is ever removed
-([Retention](../backend/storage.md#retention)). A value changes by versioned compare-and-set: a write names the
+Values and directories name the blobs they use, and a blob one of them
+names is never removed
+([Deleting a conversation](../backend/storage.md#deleting-a-conversation)). A value changes by versioned compare-and-set: a write names the
 revision it read and fails when another write came first.
 
 A plugin never receives a live object: no Host handle, no callback into the
