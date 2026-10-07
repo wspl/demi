@@ -98,7 +98,11 @@ export interface PageHost {
   followState(plugin: string, conversation: string): StateFeed
   /**
    * Calls `method` of `plugin` for the user, or for `conversation`, and
-   * answers its JSON result; a refusal rejects with a `PluginCallError`.
+   * answers its JSON result; a refusal rejects with a `PluginCallError`. A
+   * call that cannot reach the backend, as while it restarts, waits until it
+   * can and goes then, so it never rejects for the connection; one whose
+   * `signal` aborts meanwhile rejects with the abort and is never sent
+   * (`plugin-pages.md` § The page context).
    */
   call(
     plugin: string,

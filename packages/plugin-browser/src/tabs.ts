@@ -41,7 +41,7 @@ export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: st
     try {
       return await plugin.call(method, params, answer, { timeoutMs })
     } catch (error) {
-      // Anything but a refusal is a call no answer reached the page for.
+      // Anything but a refusal, such as an abort, has no code.
       throw error instanceof PluginCallError ? tabsError(error) : asTabsError(error)
     }
   }
