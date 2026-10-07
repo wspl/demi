@@ -75,10 +75,12 @@ ALTER TABLE conversations DROP COLUMN live_at;
 
 /// From 0.1.13's control schema: Host expose is gone, and its records with
 /// it; a device keeps the operating system its runner reports, which a
-/// device migrated from 0.1.13 learns at its runner's next hello.
+/// device migrated from 0.1.13 learns at its runner's next hello; a
+/// conversation counts the changes of its attached hosts, from 0.
 const CONTROL_FROM_0_1_13: &str = "
 DROP TABLE exposes;
 ALTER TABLE devices ADD COLUMN os TEXT;
+ALTER TABLE conversations ADD COLUMN hosts_revision INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0);
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -394,6 +396,9 @@ CREATE TABLE conversations (
   -- start restores the tree at: 0 for one whose action had not ended, due
   -- at start; null when it saved none.
   wakeup_at           INTEGER CHECK (wakeup_at >= 0),
+  -- The revision of its attached hosts, raised by each change of them and
+  -- of the directory a host's shell recorded; 0 before the first.
+  hosts_revision      INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0),
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)

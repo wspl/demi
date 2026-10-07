@@ -27,7 +27,6 @@ export type ProductAttachment =
 export interface Conversation extends SidebarConversation {
   persistence: 'draft' | 'pending' | 'synced'
   target: ConversationTarget
-  contextVersion: number
   revision: number
   readRevision: number
   archived: boolean
@@ -64,6 +63,8 @@ export interface Conversation extends SidebarConversation {
     name: string
     cwd: string | null
   }[]
+  /** The hosts revision `attachedHosts` was read at or is being read at; a summary with a higher one reads them again. */
+  hostsRevision: number
   subagents: SubagentRecord[]
   terminals: TerminalRecord[]
   load: SessionLoad

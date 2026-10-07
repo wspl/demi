@@ -150,7 +150,6 @@ export const useConversations = defineStore('conversations', () => {
       | 'pinned'
       | 'archived'
       | 'target'
-      | 'contextVersion'
       | 'revision'
       | 'readRevision'
       | 'unread'
@@ -171,7 +170,6 @@ export const useConversations = defineStore('conversations', () => {
       target: record.target,
       projectId:
         record.target.kind === 'workspace' ? record.target.workspaceId : null,
-      contextVersion: record.contextVersion,
       cwd: record.cwd,
       revision: record.revision,
       readRevision: record.readRevision,
@@ -239,6 +237,8 @@ export const useConversations = defineStore('conversations', () => {
       messageEdit: null,
       scroll: null,
       attachedHosts: [],
+      // Its opening reads the hosts at least this new.
+      hostsRevision: record.hostsRevision,
       subagents: [],
       terminals: [],
       load: 'loading',
@@ -270,7 +270,6 @@ export const useConversations = defineStore('conversations', () => {
         if (current.persistence !== 'synced') {
           return current
         }
-        const contextChanged = current.contextVersion !== record.contextVersion
         const archiveChanged = current.archived !== record.archived
         Object.assign(current, metadata(record))
         followRecordModel(current, record)
@@ -286,10 +285,15 @@ export const useConversations = defineStore('conversations', () => {
         if (current.savedDraft && record.draftRevision > current.savedDraft.revision) {
           void draftSync.read(current).catch((error) => report('Could Not Read the Draft', error))
         }
-        // Attaching, renaming or detaching a host advances the context
-        // version, whose new opening reads the hosts again; output, which
-        // advances the revision, changes none of them.
-        if (contextChanged || archiveChanged) {
+        // Another page or a host's shell changed the hosts since this one
+        // read them; a conversation not opened reads them when it opens.
+        if (record.hostsRevision > current.hostsRevision) {
+          current.hostsRevision = record.hostsRevision
+          if (cache.get(current.id)) {
+            void readHosts(current).catch((error) => report('Could Not Read the Hosts', error))
+          }
+        }
+        if (archiveChanged) {
           cache.delete(current.id)
           current.load = 'loading'
         }
@@ -493,6 +497,7 @@ export const useConversations = defineStore('conversations', () => {
           pluginsChanged: false,
           draftRevision: 0,
           panelRevision: 0,
+          hostsRevision: 0,
           pluginRevisions: [],
           permissionRequests: 0,
           permissionsRevision: 0,
@@ -829,12 +834,16 @@ export const useConversations = defineStore('conversations', () => {
   ): Promise<void> {
     const reads = earlyReads.get(conversation.id) ?? openingReads(conversation.id, signal)
     earlyReads.delete(conversation.id)
+    const hostsRevision = conversation.hostsRevision
     // Taken after this web browser's own copy; a submission it confirms
     // clears the draft after it, so the transcript waits for it.
     const draftRead = draftRestored.then(() => draftSync.read(conversation, reads.draft))
     const hostsRead = reads.hosts.then((answer) => {
       signal.throwIfAborted()
-      conversation.attachedHosts = answer.hosts
+      // A summary that raised the revision meanwhile started a newer read.
+      if (conversation.hostsRevision === hostsRevision) {
+        conversation.attachedHosts = answer.hosts
+      }
     })
     hostsRead.catch(() => {})
     const [transcript] = await Promise.all([reads.transcript, draftRead])
@@ -855,6 +864,22 @@ export const useConversations = defineStore('conversations', () => {
     updateLiveStatus(conversation)
     conversation.load = 'ready'
     await hostsRead
+  }
+
+  /**
+   * Reads the hosts of an open conversation again, after a summary raised
+   * their revision (`web-api.md` § Sidebar mutations and read state); an
+   * answer that a later read overtook is dropped.
+   */
+  async function readHosts(conversation: Conversation): Promise<void> {
+    const revision = conversation.hostsRevision
+    const response = await apiRequest(`/conversations/${encodeURIComponent(conversation.id)}/hosts`, {
+      signal: lifetime.signal,
+    })
+    const answer = await readResponse(response, attachedHostsSchema)
+    if (conversation.hostsRevision === revision) {
+      conversation.attachedHosts = answer.hosts
+    }
   }
 
   async function runtimeFor(
@@ -1080,6 +1105,7 @@ export const useConversations = defineStore('conversations', () => {
       pluginsChanged: false,
       draftRevision: 0,
       panelRevision: 0,
+      hostsRevision: 0,
       pluginRevisions: [],
       permissionRequests: 0,
       permissionsRevision: 0,
@@ -1144,6 +1170,7 @@ export const useConversations = defineStore('conversations', () => {
     Object.assign(conversation, metadata(result.conversation))
     followRecordModel(conversation, result.conversation)
     conversation.attachedHosts = result.hosts
+    conversation.hostsRevision = result.conversation.hostsRevision
     cache.delete(conversation.id)
     // A retry that found the record an earlier attempt made reads it.
     if (response.status === 201) {
@@ -1373,7 +1400,7 @@ export const useConversations = defineStore('conversations', () => {
       // The answer lists the hosts as the rename left them.
       conversation.attachedHosts = (await readResponse(response, attachedHostsSchema)).hosts
     } catch (error) {
-      report('Could Not Rename the Project', error)
+      report('Could Not Rename the Host', error)
     }
   }
 

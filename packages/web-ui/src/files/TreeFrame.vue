@@ -23,7 +23,9 @@ import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
  * that shows or hides the tree, such as the frame showing again in a work
  * panel tab selected again, or its width becoming known, shows it at once.
  * A hidden tree stays mounted, so it shows again as it was left, with no
- * reading.
+ * reading. The view learns how much of its end a tree shown over it covers,
+ * so what it centres, such as an empty state, centres in the space beside
+ * the tree.
  */
 defineProps<{
   /** The tree in its control's words: `file tree` reads "Show file tree". */
@@ -33,8 +35,8 @@ defineProps<{
 defineSlots<{
   /** The header row, before the tree's control. */
   header(): unknown
-  /** The view. */
-  default(): unknown
+  /** The view; `overlap` is the width at its end that a tree shown over it covers, 0 while none does. */
+  default(props: { overlap: number }): unknown
   /** The tree; without it there is no tree and no control. */
   tree?(): unknown
 }>()
@@ -50,6 +52,7 @@ const docks = computed(() => width.value <= room.value)
 /** While the tree cannot dock: whether it is shown over the view. */
 const over = ref(false)
 const shown = computed(() => docks.value ? open.value : over.value)
+const overlap = computed(() => shown.value && !docks.value ? Math.min(width.value, bodyWidth.value) : 0)
 
 // A tree shown over the view does not come back by itself when the frame narrows again.
 watch(docks, () => {
@@ -172,7 +175,7 @@ defineExpose({ show, dismiss })
     <div ref="body" class="relative flex min-h-0 flex-1 overflow-hidden border-t border-line">
       <!-- Its own stacking context: nothing in the view rises over a tree shown above it. -->
       <div class="relative isolate min-w-0 flex-1">
-        <slot />
+        <slot :overlap="overlap" />
       </div>
       <template v-if="$slots.tree">
         <ResizeHandle
