@@ -15,7 +15,7 @@ import { z } from 'zod'
 import type { BrowserTab, LiveTab, NeededBrowser } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from './pictures'
-import type { HostArtifact, OpenUserStream, SentenceText } from '@demicodes/plugin-sdk'
+import type { HeadlineText, HostArtifact, OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession, type PanelReport } from './session'
 
 /** What a new tab shows before the user goes anywhere. */
@@ -70,6 +70,9 @@ const REFUSALS: Readonly<Record<string, SentenceText>> = {
   timeout: 'The browser didn’t answer in time.',
   browser_unavailable: 'The browser on the device isn’t running.',
   browser_lost: 'The browser on the device isn’t running.',
+  input_failed: 'The page didn’t receive your input.',
+  capture_unavailable: 'This device can’t capture the browser’s pages.',
+  capture_failed: 'The device couldn’t capture the page. It’s trying again.',
 }
 
 /** A refusal's code as a sentence the page shows (`live-view.md` § A browser tab in the panel). */
@@ -126,8 +129,11 @@ type TabRequest =
   | { status: 'asked' }
   | { status: 'answered'; list: number }
 
-/** Reports a defect of the page itself, as the page context's `errors.defect` does. */
-export type ReportDefect = (message: string, error: unknown) => void
+/** How the page reports failures: to the user in a toast, or a defect of the page to the console. */
+export type PageErrors = PageContext['errors']
+
+/** What a toast of a notice the picture still shows through names (`live-view.md` § Opening a view). */
+const NOTICE_TITLE: HeadlineText = 'Could Not Operate the Browser'
 
 /** Whether the page is visible: one listener, for the page's lifetime, that every controller shares. */
 const pageVisibility = useDocumentVisibility()
@@ -185,7 +191,7 @@ export class BrowserTabsController {
 
   constructor(
     readonly api: BrowserTabsApi,
-    private readonly defect: ReportDefect,
+    private readonly errors: PageErrors,
     options: BrowserTabsOptions = {},
   ) {
     this.visibility = options.visibility ?? pageVisibility
@@ -208,7 +214,7 @@ export class BrowserTabsController {
         this.closeView()
       }
     })
-    const pictures = options.pictures ?? (() => picturesSupported(defect))
+    const pictures = options.pictures ?? (() => picturesSupported(errors.defect))
     void pictures().then((supported) => {
       if (this.disposed) {
         return
@@ -388,7 +394,7 @@ export class BrowserTabsController {
       return
     }
     this.missed = shown
-    this.api.sync().catch((error: unknown) => this.defect('The panel could not look for a closed tab', error))
+    this.api.sync().catch((error: unknown) => this.errors.defect('The panel could not look for a closed tab', error))
   }
 
   /** The page's one view, opened when there is none. */
@@ -403,11 +409,17 @@ export class BrowserTabsController {
       platform: clientPlatform(navigator),
       onClipboard: (text) => viewerClipboard.receive(text),
       onTabs: (tabs, list) => this.viewTabs(tabs, list),
-      defect: this.defect,
+      onNotice: (code) => this.notice(code),
+      defect: this.errors.defect,
     })
     this.session.value = session
     session.start()
     return session
+  }
+
+  /** A notice the picture still shows through is a failed request: a toast in the Writing page's words for its code. */
+  private notice(code: string): void {
+    this.errors.report(NOTICE_TITLE, new BrowserTabsError(code, refusalSentence(code)))
   }
 
   private closeView(): void {

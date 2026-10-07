@@ -979,12 +979,14 @@ impl Conversations {
         let starting = starts.then(|| Starting {
             locale: context.request.context.locale.clone(),
         });
+        // Only the user's page reads the tab list's number (`live-view.md` § The tab methods).
+        let user = context.request.context.caller.agent_number().is_none();
         let environment = browser.environment(starting.as_ref(), cancellation).await?;
         let Some(environment) = environment else {
             if matches!(command, BrowserOperation::Tabs(_)) {
                 return Ok(CommandOutput::Json(output::value(TabsResult {
                     // No browser runs: no list of its sequence.
-                    list: 0,
+                    list: user.then_some(0),
                     tabs: Vec::new(),
                     truncated: false,
                 })?));
@@ -992,7 +994,7 @@ impl Conversations {
             return Err(BrowserError::TabNotFound);
         };
         if let BrowserOperation::Open(input) = command
-            && context.request.context.caller.agent_number().is_none()
+            && user
         {
             // The user's new tab (`live-view.md` § The tab methods): the
             // work panel shows its loading, so opening does not wait for the page.
@@ -1087,7 +1089,7 @@ impl Conversations {
                 })
                 .collect();
             return Ok(CommandOutput::Json(output::value(TabsResult {
-                list,
+                list: user.then_some(list),
                 tabs: rows,
                 truncated: listing.tabs.len() > offset.saturating_add(limit),
             })?));
@@ -1102,7 +1104,7 @@ impl Conversations {
                 tab: tab.id().clone(),
             })?));
         }
-        if context.request.context.caller.agent_number().is_none()
+        if user
             && matches!(
                 command,
                 BrowserOperation::Goto(_)
