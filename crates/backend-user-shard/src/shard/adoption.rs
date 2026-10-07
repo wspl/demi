@@ -1,7 +1,8 @@
 //! Runner adoption (`runner.md` § Connection and identity): the shard of a
 //! device's owner takes the socket the edge accepted, binds it to the device
 //! with the connection's policy, and serves it until either end closes it;
-//! and the revocation that ends a device's connection for good.
+//! the revocation that ends a device's connection for good; and a device's
+//! new name.
 
 use std::rc::Rc;
 
@@ -139,7 +140,7 @@ impl Shard {
             .bind(device, link, driver, seen.clone(), runner.installation);
         let device = device.clone();
         self.tasks()
-            .spawn_local(async move { seen.hello(device, runner.os).await });
+            .spawn_local(async move { seen.hello(device, runner.os, runner.version).await });
         Some(serving)
     }
 
@@ -191,6 +192,24 @@ impl Shard {
             .collect();
         self.devices().revoke(&device, projects);
         Ok(removal)
+    }
+
+    /// Gives the user's paired device `device` a new name, which every page
+    /// of the user's sees; none once the device is gone. The names the
+    /// conversations give their attached hosts are theirs and stay.
+    pub async fn rename_device(
+        &self,
+        device: DeviceId,
+        name: String,
+    ) -> Result<Option<DeviceDto>, StorageError> {
+        let Some(renamed) = self.services().control.rename_device(device, name).await? else {
+            return Ok(None);
+        };
+        self.mark(Part::Devices);
+        Ok(Some(
+            self.devices()
+                .dto(renamed, self.services().public_url.get()),
+        ))
     }
 
     /// The user's devices as the web app sees them.
