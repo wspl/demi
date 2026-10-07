@@ -97,6 +97,11 @@ export const useConversations = defineStore('conversations', () => {
    * composer then takes the focus again.
    */
   const composerFocusRequests = ref(0)
+  /**
+   * The message a search result opened its conversation at, which the
+   * conversation's page brings into view and marks once, then clears.
+   */
+  const reveal = ref<{ conversationId: string; blockId: string } | null>(null)
   /** The delivery of each conversation's sent message, while it is on its way. */
   const sending = new Map<string, Promise<void>>()
   let storageErrorReported = false
@@ -1628,6 +1633,7 @@ export const useConversations = defineStore('conversations', () => {
     items,
     listStatus,
     composerFocusRequests,
+    reveal,
     activate,
     create,
     fork,

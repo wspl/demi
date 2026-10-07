@@ -137,6 +137,15 @@ pub struct Shortcuts {
     #[schemars(with = "String")]
     #[garde(length(chars, max = SHORTCUT_MAX))]
     pub settings: Option<String>,
+    /// Opening the search window.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(length(chars, max = SHORTCUT_MAX))]
+    pub search: Option<String>,
 }
 
 /// A change to the shortcut overrides: a key sequence sets one, `null`
@@ -168,6 +177,14 @@ pub struct ShortcutsPatch {
     #[schemars(with = "Option<String>")]
     #[garde(length(chars, max = SHORTCUT_MAX))]
     pub settings: Option<Option<String>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<String>")]
+    #[garde(length(chars, max = SHORTCUT_MAX))]
+    pub search: Option<Option<String>>,
 }
 
 /// Where a new project lives: the user's Cloud or one of their devices.

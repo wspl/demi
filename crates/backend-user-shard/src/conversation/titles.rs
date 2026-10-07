@@ -300,7 +300,7 @@ impl Shard {
 
 /// The text of a message the user sent, without its files; none for any
 /// other block, or a message without text.
-fn message_text(block: &Block) -> Option<String> {
+pub(super) fn message_text(block: &Block) -> Option<String> {
     let content = match block {
         Block::User(user) => &user.content,
         Block::Steer(steer) => &steer.content,

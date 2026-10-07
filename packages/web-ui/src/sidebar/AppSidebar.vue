@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Archive, FolderPlus, Settings, SquarePen } from '@lucide/vue'
+import { Archive, FolderPlus, Search, Settings, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -30,8 +30,8 @@ import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
 
 /**
- * Top: the app and its entries: New, then the entries the host gives, such as a plugin's
- * settings section, then Archived; each but New opens its settings section. Middle: plain
+ * Top: the app and its entries: New, Search, then the entries the host gives, such as a
+ * plugin's settings section, then Archived; each but New and Search opens its settings section. Middle: plain
  * conversations, then every project as a collapsible group of its conversations, with one
  * selection across all of them. Bottom: the account and settings.
  */
@@ -47,12 +47,16 @@ const props = defineProps<{
   sectionEntries?: readonly SidebarEntry[]
   /** The keys New conversation has in the keyboard settings, which New shows; none when it has none. */
   newShortcut?: string
+  /** The keys Search conversations has in the keyboard settings, which Search shows; none when it has none. */
+  searchShortcut?: string
 }>()
 
 const emit = defineEmits<{
   reorder: [request: SidebarReorder]
   select: [id: string]
   create: [projectId: string | null]
+  /** Opens the search window. */
+  search: []
   addProject: []
   removeProject: [id: string]
   rename: [id: string, title: string]
@@ -372,13 +376,19 @@ function selectProjectConversations(project: SidebarProject): void {
          starts 10px inside that, so the title, entries, headings, project headers and conversation
          rows align at one line while a lit row has room around its status dot. Row actions sit 2px
          inside the row's end, the same as their 2px above and below in the 28px row. -->
-    <!-- The entries, all alike: New, then the settings sections a conversation reaches for. -->
+    <!-- The entries, all alike: New, Search, then the settings sections a conversation reaches for. -->
     <div class="flex shrink-0 flex-col gap-px px-2">
       <SidebarNavItem
         :icon="SquarePen"
         label="New"
         :shortcut="newShortcut"
         @click="emit('create', null)"
+      />
+      <SidebarNavItem
+        :icon="Search"
+        label="Search"
+        :shortcut="searchShortcut"
+        @click="emit('search')"
       />
       <SidebarNavItem
         v-for="entry in sectionEntries"

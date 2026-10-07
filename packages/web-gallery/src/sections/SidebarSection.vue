@@ -41,6 +41,7 @@ const pluginOn = (plugin: string) =>
   settings.plugins.some((entry) => entry.id === plugin && entry.enabled)
 /** New's keys as the keyboard settings set them by default. */
 const newShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys
+const searchShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'search')?.keys
 const settingsSections = computed(() => withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, pluginOn))
 const sectionEntries = computed(() => sidebarEntries(PLUGIN_PAGES, pluginOn))
 const settingsOpen = ref(false)
@@ -268,6 +269,8 @@ onBeforeUnmount(() => listRestore.stop())
             :active-id="activeId"
             :section-entries="sectionEntries"
             :new-shortcut="newShortcut"
+            :search-shortcut="searchShortcut"
+            @search="productWould('Open the Search Window')"
             @reorder="reorder"
             @select="select"
             @create="create"
@@ -327,6 +330,8 @@ onBeforeUnmount(() => listRestore.stop())
               :active-id="null"
               :section-entries="specimen.entries"
               :new-shortcut="newShortcut"
+              :search-shortcut="searchShortcut"
+              @search="productWould('Open the Search Window')"
               @create="productWould('Start a New Conversation')"
               @add-project="productWould('Add a Project')"
               @open-settings="wouldOpenSettings"
@@ -346,6 +351,8 @@ onBeforeUnmount(() => listRestore.stop())
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
             <AppSidebar
               :new-shortcut="newShortcut"
+              :search-shortcut="searchShortcut"
+              @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
               :conversations="[]"
@@ -368,6 +375,8 @@ onBeforeUnmount(() => listRestore.stop())
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
             <AppSidebar
               :new-shortcut="newShortcut"
+              :search-shortcut="searchShortcut"
+              @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
               :conversations="recoveredConversations"
@@ -383,6 +392,8 @@ onBeforeUnmount(() => listRestore.stop())
           <div class="gallery-frame flex h-[28rem] overflow-hidden">
             <AppSidebar
               :new-shortcut="newShortcut"
+              :search-shortcut="searchShortcut"
+              @search="productWould('Open the Search Window')"
               :account="demoAccount"
               :projects="fixedProjects.slice(0, 1)"
               :conversations="emptyList"
@@ -412,6 +423,8 @@ onBeforeUnmount(() => listRestore.stop())
           <div class="gallery-frame flex h-[20rem] overflow-hidden" :style="{ '--sidebar-width': `${specimen.width}px` }">
             <AppSidebar
               :new-shortcut="newShortcut"
+              :search-shortcut="searchShortcut"
+              @search="productWould('Open the Search Window')"
               :account="specimen.account"
               :projects="[]"
               :conversations="[]"

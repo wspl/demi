@@ -29,6 +29,7 @@ import MessageEditRegion from './MessageEditRegion.vue'
 import { lastEditableUserMessageId, messageEditSuffixIds } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
+import { highlightFound } from '../ui/found-highlight'
 
 const props = defineProps<{
   conversationId: string
@@ -52,6 +53,8 @@ const props = defineProps<{
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
   pendingSubmission?: PendingSubmissionState | null
+  /** A block to bring into view and mark for a moment, as a search result opened at it asks; once shown, `revealed` says so. */
+  revealBlockId?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -66,6 +69,7 @@ const emit = defineEmits<{
   editUser: [blockId: string]
   retryLoad: []
   retrySubmission: []
+  revealed: []
 }>()
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
@@ -172,6 +176,7 @@ const {
   scrollOffset,
   isAtBottom,
   scrollToBottom,
+  reveal,
   onScroll,
   getPersistedState
 } =
@@ -180,6 +185,28 @@ const {
 onBeforeUnmount(() => {
   emit('saveScrollState', props.conversationId, getPersistedState())
 })
+
+// A block a search result opened: shown once the history holds it, after the list placed itself,
+// and marked as it appears; the next request or leaving the list ends a mark still waiting.
+let revealing: AbortController | null = null
+watch(
+  [() => props.revealBlockId, () => renderBlocks.value.length, scrollContainer],
+  ([id]) => {
+    if (!id)
+      return
+    void nextTick(() => {
+      const scroller = scrollContainer.value
+      if (props.revealBlockId !== id || !scroller || !reveal(id))
+        return
+      revealing?.abort()
+      revealing = new AbortController()
+      highlightFound(scroller, `[data-block-id="${CSS.escape(id)}"]`, revealing.signal)
+      emit('revealed')
+    })
+  },
+  { immediate: true, flush: 'post' },
+)
+onBeforeUnmount(() => revealing?.abort())
 
 // The part of the transcript the composer leaves visible, which caps a
 // message's image height (`file-previews.md` § Files named in messages). Until
@@ -237,6 +264,7 @@ defineExpose({
             v-for="item in virtualItems"
             :key="String(item.key)"
             :data-index="item.index"
+            :data-block-id="renderBlocks[item.index]!.id"
             :ref="(el) => measureElement(el as Element)"
             class="absolute inset-x-0 top-0"
             :style="{ transform: `translateY(${item.start}px)` }"

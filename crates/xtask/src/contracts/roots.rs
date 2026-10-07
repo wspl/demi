@@ -69,7 +69,7 @@ pub fn web() -> Vec<Root> {
     use api::{
         attachments, auth, cloud, conversations, devices, drafts, error, files, hosts, panel,
         permissions,
-        plugins, providers, settings, sidebar, state, subagents, usage, users, workspaces,
+        plugins, providers, search, settings, sidebar, state, subagents, usage, users, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -126,6 +126,7 @@ pub fn web() -> Vec<Root> {
         sends::<conversations::CreateConversation>(),
         receives::<conversations::CreatedConversation>(),
         receives::<conversations::Conversations>(),
+        receives::<search::SearchResults>(),
         sends::<conversations::ReadRequest>(),
         receives::<conversations::Transcript>(),
         sends::<conversations::ConversationPatch>(),
