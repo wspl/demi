@@ -111,6 +111,8 @@ export interface PageHost {
   stream(name: string, conversation: string): OpenUserStream
   /** What `conversation`'s primary Host holds of `plugin`'s packages, read reactively. */
   installed(plugin: string, conversation: string): readonly HostArtifact[]
+  /** Whether `conversation`'s primary Host is the user's Cloud while it does not run, read reactively. */
+  hostStarting(conversation: string): boolean
   files(conversation: string): ConversationFileService
   intents: IntentService
   /** The panel tabs of one conversation. */
@@ -155,6 +157,11 @@ export interface ConversationPlugin {
   stream(name: string): OpenUserStream
   /** What the conversation's primary Host holds of the plugin's packages, kept while it is offline. */
   readonly installed: ComputedRef<readonly HostArtifact[]>
+  /**
+   * Whether the conversation's primary Host is the user's Cloud while it
+   * does not run: work the user starts there waits for it to start first.
+   */
+  readonly hostStarting: ComputedRef<boolean>
 }
 
 /** The page's own plugin. */
@@ -427,6 +434,7 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
       validatedCall(host, plugin, method, params, result, conversation, options),
     stream: (name) => host.stream(name, conversation),
     installed: computed(() => host.installed(plugin, conversation)),
+    hostStarting: computed(() => host.hostStarting(conversation)),
   }
 }
 

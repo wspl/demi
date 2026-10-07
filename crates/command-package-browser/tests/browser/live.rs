@@ -58,12 +58,15 @@ struct Site {
     base: String,
     /// The user agent of every request for the page, in order.
     served: Arc<Mutex<Vec<String>>>,
+    /// Lets `/gated` answer.
+    gate: tokio::sync::watch::Sender<bool>,
     _task: AbortOnDropHandle<()>,
 }
 
 async fn site() -> Site {
     let served = Arc::new(Mutex::new(Vec::new()));
     let recording = served.clone();
+    let (gate, opened) = tokio::sync::watch::channel(false);
     let app = Router::new()
         .route(
             "/",
@@ -91,6 +94,18 @@ async fn site() -> Site {
                 )
             }),
         )
+        // A page that answers once the test opens its gate.
+        .route(
+            "/gated",
+            get(move || {
+                let mut opened = opened.clone();
+                async move {
+                    // The site outlives every request: its sender is never dropped.
+                    let _opened = opened.wait_for(|open| *open).await;
+                    Html(PAGE)
+                }
+            }),
+        )
         // A page that does not answer while a test runs.
         .route(
             "/slow",
@@ -107,6 +122,7 @@ async fn site() -> Site {
     Site {
         base,
         served,
+        gate,
         _task: task,
     }
 }
@@ -1267,7 +1283,9 @@ async fn a_panel_resized_while_a_navigation_hangs_keeps_the_picture_and_the_view
 /// was reloaded meanwhile, and the view answers its viewers meanwhile: the
 /// hub put the tab in the mode at once, waiting for the page Chrome holds,
 /// and answered no viewer, the reloaded page's view included, until the
-/// navigation ended (`live-view.md` § Modes). About 2 s.
+/// navigation ended (`live-view.md` § Modes). The reloaded page's view
+/// shows the tab first as a phone, never in the mode it is about to leave.
+/// About 7 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn a_mode_chosen_while_a_navigation_hangs_applies_once_it_ends_and_the_view_answers() {
@@ -1300,21 +1318,24 @@ async fn a_mode_chosen_while_a_navigation_hangs_applies_once_it_ends_and_the_vie
             .await
             .expect("the view answers a new viewer while the page hangs");
         reloaded.send(json!({"type": "watch", "tab": tab}));
-        let stream = tokio::time::timeout(prompt, reloaded.message("stream"))
-            .await
-            .expect("the view answers a watch while the page hangs");
+        tokio::time::timeout(
+            prompt,
+            reloaded.until("the watched tab in the state", |message| {
+                message["type"] == "state" && message["watched"] == json!(tab)
+            }),
+        )
+        .await
+        .expect("the view answers a watch while the page hangs");
+        // Once the navigation ends, the tab is a phone and its page loads
+        // again as one; the view shows it first as one, never in the mode it
+        // leaves (`live-view.md` § Delivery).
+        request(&fixture, "browser.stop", json!({"tab": tab})).await;
+        let stream = reloaded.message("stream").await;
         assert_eq!(
             (&stream["width"], &stream["viewport"]["mode"]),
-            (&json!(1600), &json!("web")),
-            "the tab keeps its mode while its navigation is under way: {stream}"
+            (&json!(780), &json!("mobile")),
+            "the first stream is the phone's: {stream}"
         );
-        // Once the navigation ends, the tab is a phone and its page loads
-        // again as one.
-        request(&fixture, "browser.stop", json!({"tab": tab})).await;
-        reloaded.until("a phone-wide stream", |message| {
-            message["type"] == "stream" && message["width"] == 780
-        })
-        .await;
         for _ in 0..200 {
             if site.served.lock().unwrap().iter().any(|agent| agent.contains("Android")) {
                 break;
@@ -1327,6 +1348,120 @@ async fn a_mode_chosen_while_a_navigation_hangs_applies_once_it_ends_and_the_vie
             "the page was never served to a phone: {served:?}"
         );
         assert_eq!(reloaded.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// A tab the user opens while a viewer has a panel starts at the size the
+/// panel gives it, before anyone watches it: it was made at 1280 × 720 and
+/// sized again once watched, with a paint each time (`live-view.md`
+/// § Delivery). About 1.3 s.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_tab_the_user_opens_starts_at_the_viewers_panel_size() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        let first = request(&fixture, "browser.open", json!({"url": site.base})).await;
+        let first = first["tab"].as_str().unwrap().to_owned();
+        // Watching it shows that the hub laid out the viewer's panel.
+        watch(&mut view, &first).await;
+        let opened = request(&fixture, "browser.open", json!({"url": "about:blank"})).await;
+        let tab = opened["tab"].as_str().unwrap();
+        assert_eq!(
+            evaluate(&fixture, tab, "[innerWidth, innerHeight, devicePixelRatio]").await,
+            json!([800, 600, 2]),
+            "the tab starts at the panel's size and ratio"
+        );
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// A viewer that watches a tab whose address does not answer sees its
+/// blank page at the panel's size at once, and the view answers it
+/// meanwhile: the view waited for the tab's observer, whose commands
+/// Chrome holds until the navigation commits, so no picture came until the
+/// address answered or the navigation gave up (`live-view.md` § Delivery).
+/// About 1.3 s.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_tab_whose_address_does_not_answer_shows_its_pictures_meanwhile() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        let first = request(&fixture, "browser.open", json!({"url": site.base})).await;
+        let first = first["tab"].as_str().unwrap().to_owned();
+        watch(&mut view, &first).await;
+        let slow = format!("{}slow", site.base);
+        let opened = request(&fixture, "browser.open", json!({"url": slow})).await;
+        let tab = opened["tab"].as_str().unwrap().to_owned();
+        listed_until(&fixture, &tab, |_, row| row["loading"] == json!(true)).await;
+        // Far sooner than the navigation's end, and in time for a busy machine.
+        let prompt = Duration::from_secs(10);
+        let generation = tokio::time::timeout(prompt, watch(&mut view, &tab))
+            .await
+            .expect("the pictures come while the address does not answer");
+        // The view goes on answering the viewer: a key frame it asks for comes.
+        view.send(json!({"type": "keyframe", "generation": generation}));
+        let (pictured, key, ..) = tokio::time::timeout(prompt, view.picture(generation))
+            .await
+            .expect("the view answers while the address does not answer");
+        assert_eq!((pictured.as_str(), key), (tab.as_str(), true));
+        listed_until(&fixture, &tab, |_, row| row["loading"] == json!(true)).await;
+        assert_eq!(view.close().await.exit_code, 0);
+        fixture
+    })
+    .await;
+}
+
+/// A tab whose navigation is under way while it has another size than the
+/// viewer's panel is captured only once it has the panel's size: it was
+/// captured at 1280 × 720 at once, and that picture showed until the
+/// navigation committed (`live-view.md` § Delivery). About 1.7 s.
+#[tokio::test]
+#[ignore = "requires pinned real Chrome for Testing"]
+async fn a_navigating_tab_is_first_pictured_at_the_panels_size() {
+    with_browser_fixture(|fixture| async move {
+        let site = site().await;
+        // Opened before any viewer: it starts at 1280 × 720.
+        let gated = format!("{}gated", site.base);
+        let opened = request(&fixture, "browser.open", json!({"url": gated})).await;
+        let tab = opened["tab"].as_str().unwrap().to_owned();
+        listed_until(&fixture, &tab, |_, row| row["loading"] == json!(true)).await;
+        let mut view = View::open(&fixture);
+        hello(&view, "mac");
+        view.message("state").await;
+        view.send(json!({"type": "watch", "tab": tab}));
+        // While the navigation waits, the view sends no picture: until it has
+        // gone quiet twice, past the 0.1 s a capture's first frame takes.
+        let mut quiet = 0;
+        while quiet < 2 {
+            match view.next().await {
+                Frame::Control(message) if message["type"] == "heartbeat" => quiet += 1,
+                Frame::Control(message) if message["type"] == "stream" => {
+                    panic!("a picture of the tab before it has the panel's size: {message}")
+                }
+                Frame::Control(_) => {}
+                Frame::Video { width, height, .. } => {
+                    panic!("a {width} × {height} picture before the panel's size")
+                }
+            }
+        }
+        site.gate.send_replace(true);
+        let stream = view.message("stream").await;
+        assert_eq!(
+            (&stream["width"], &stream["height"]),
+            (&json!(1600), &json!(1200)),
+            "the first stream has the panel's size: {stream}"
+        );
+        assert_eq!(view.close().await.exit_code, 0);
         fixture
     })
     .await;

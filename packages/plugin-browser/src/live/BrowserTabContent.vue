@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from 'vue'
+import { useTimeoutFn } from '@vueuse/core'
 import { ArrowDownToLine, Download, File, FolderSearch, Monitor, Ruler, Smartphone } from '@lucide/vue'
 import { AddressBar } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
@@ -14,19 +15,20 @@ import { clientPlatform } from '@demicodes/utils'
 import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
 import { browserShortcut } from './input'
-import { NEW_TAB_URL, refusalSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
+import { NEW_TAB_URL, STARTING_LABELS, refusalSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
 import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
  * A `browser` tab's content (`live-view.md` § A browser tab in the panel).
  * It shows at once what the tab's data says, and what the Host sends
- * replaces it when it arrives: a new tab is its address bar on `about:blank`
- * and a blank page until its browser tab's first picture; an address the
- * user submits shows at once, with the page loading over the picture the tab
- * still shows. The plugin opens, binds and closes the browser tab on the
- * backend; only a failure interrupts, where it happened, with a way on. A
- * tab whose browser tab the browser lost opens again on its address as soon
- * as it is shown, loading as any page does. A content stays mounted while
+ * replaces it when it arrives: before the browser has the tab, the panel's
+ * own background, which says what Demi is starting once the wait passes half
+ * a second; then a blank page until the browser tab's first picture; an
+ * address the user submits shows at once, with the page loading over the
+ * picture the tab still shows. The plugin opens, binds and closes the
+ * browser tab on the backend; only a failure interrupts, where it happened,
+ * with a way on. A tab whose browser tab the browser lost opens again on its
+ * address as soon as it is shown, loading as any page does. A content stays mounted while
  * another tab is selected (`shown` false), so shown again it shows its
  * picture, address and title at once.
  */
@@ -39,6 +41,9 @@ const props = defineProps<{
   shown: boolean
 }>()
 const emit = defineEmits<{ update: [data: BrowserTabData] }>()
+
+/** How long the content waits before it says what Demi starts: a tab opened on a running browser takes about a third of a second. */
+const STARTING_WORDS_MS = 500
 
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
 const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
@@ -61,22 +66,40 @@ const viewport = computed(() => live.value?.viewport ?? null)
 const choices = computed(() => (viewport.value ? viewportChoices(viewport.value) : []))
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
+/** What Demi does before the browser has the tab, if it does not have it yet. */
+const phase = computed(() => props.session.startingPhase(props.tabId, props.data))
+/** Whether the wait before the browser has the tab passed half a second, so the content says what Demi does. */
+const waitedLong = ref(false)
+const { start: startWaiting, stop: stopWaiting } = useTimeoutFn(() => {
+  waitedLong.value = true
+}, STARTING_WORDS_MS, { immediate: false })
+watch(
+  () => phase.value !== null,
+  (starting) => {
+    stopWaiting()
+    waitedLong.value = false
+    if (starting) {
+      startWaiting()
+    }
+  },
+  { immediate: true },
+)
 /** The tab loads: Stop, the strip's spinner and the progress line show it. */
 const busy = computed(() => props.session.busy(props.tabId, props.data))
 /** Back and Forward are unavailable while the browser says the tab has no page that way, or has said nothing yet. */
 const backReason = computed(() => (live.value?.canGoBack ? null : 'No page to go back to'))
 const forwardReason = computed(() => (live.value?.canGoForward ? null : 'No page to go forward to'))
 
-// A shown tab with its browser tab is watched on the page's view, once its area measured the panel.
+// A shown tab is watched on the page's view, once its area measured the panel; before the browser has its
+// tab, the view watches nothing and tells the Host the panel's size for the tab it opens.
 watch(
   [() => props.shown, bound],
   ([shown, tab], previous) => {
-    const before = previous?.[1]
-    if (before !== undefined && (before !== tab || !shown)) {
-      props.session.hide(before)
+    if (previous?.[0] && (previous[1] !== tab || !shown)) {
+      props.session.hide(props.tabId)
     }
-    if (shown && tab !== undefined) {
-      props.session.show(tab)
+    if (shown) {
+      props.session.show(props.tabId, tab ?? null)
     }
   },
   { immediate: true, flush: 'post' },
@@ -134,9 +157,7 @@ watch(() => props.shown, (shown) => {
 onBeforeUnmount(() => {
   observer?.disconnect()
   density?.removeEventListener('change', watchDensity)
-  if (bound.value !== undefined) {
-    props.session.hide(bound.value)
-  }
+  props.session.hide(props.tabId)
 })
 
 // The tab saves where the page went, with the page's title for the strip. A blank page the browser first
@@ -281,18 +302,21 @@ function showInFiles(download: LiveDownload): void {
 /** What a toast names when Stop was refused. */
 const COULD_NOT_STOP = 'Could Not Stop Loading'
 
-/** Stop, on the bound tab, or on the tab still opening once it has its browser tab; a refusal is a toast. */
+/**
+ * Stop, on the bound tab; a refusal is a toast. Before the browser has the
+ * tab, Stop gives up its address, and the tab opens blank, as stopping a page
+ * before it shows anything leaves a browser's tab blank.
+ */
 function stop(): void {
-  props.session.stopPage(props.tabId, props.data).catch((error: unknown) => errors.report(COULD_NOT_STOP, error))
+  if (phase.value !== null) {
+    const { title: _left, ...data } = props.data
+    emit('update', { ...data, url: NEW_TAB_URL })
+    return
+  }
+  if (bound.value !== undefined) {
+    props.session.stop(bound.value).catch((error: unknown) => errors.report(COULD_NOT_STOP, error))
+  }
 }
-
-// A Stop pressed while the tab opened applies once its browser tab exists.
-watch(
-  [() => props.data, opening],
-  () => {
-    props.session.settle(props.tabId, props.data).catch((error: unknown) => errors.report(COULD_NOT_STOP, error))
-  },
-)
 
 /**
  * Retry, and a lost tab shown: the plugin opens a browser tab for this panel
@@ -380,6 +404,15 @@ watch(
       >
         This browser cannot show the live view: it cannot decode H.264 video.
       </div>
+      <!-- Before the browser has the tab: the panel's own background, which says what Demi starts once the wait
+           passed half a second. -->
+      <RegionStatus
+        v-else-if="phase !== null && waitedLong"
+        class="min-h-0 flex-1"
+        status="loading"
+        :label="STARTING_LABELS[phase]"
+      />
+      <div v-else-if="phase !== null" class="min-h-0 flex-1" />
       <LiveView
         v-else-if="live"
         :session="view"
