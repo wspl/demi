@@ -17,7 +17,7 @@ import type { ClientSessionEvent } from '@demicodes/web-ui/transport/protocol'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../../api/client'
 import { changeReplacedDraft, loadDraft, saveDraft } from '../../api/drafts'
 import {
-  claimedDeviceSchema,
+  deviceAnswerSchema,
   createdConversationSchema,
   conversationUpdateSchema,
   devicesSchema,
@@ -229,7 +229,7 @@ function pairedDevice() {
     runners.push(runner)
     const { device } = await readResponse(
       await apiRequest('/devices/claim', { method: 'POST', ...jsonBody({ code: await runner.code } satisfies Claim) }),
-      claimedDeviceSchema,
+      deviceAnswerSchema,
     )
     const deadline = Date.now() + SETTLE_MS
     for (;;) {

@@ -38,7 +38,7 @@ use demi_plugin_skills::testing::Repos;
 pub use demi_provider_common::testing::ManualClock;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::auth::{Identity, Role, UserDto};
-use demi_web_api_protocol::devices::{ClaimedDevice, DeviceDto, DeviceState, Devices};
+use demi_web_api_protocol::devices::{DeviceAnswer, DeviceDto, DeviceState, Devices};
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
@@ -859,7 +859,7 @@ impl TestBackend {
             "{}",
             String::from_utf8_lossy(&claimed.body)
         );
-        let device = claimed.json::<ClaimedDevice>().device;
+        let device = claimed.json::<DeviceAnswer>().device;
         self.until_online(session, device.id.as_str(), true).await;
         stored_token(&runner).await;
         Paired { runner, device }

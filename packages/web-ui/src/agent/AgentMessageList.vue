@@ -26,7 +26,7 @@ import {
 } from './session-status'
 import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
 import MessageEditRegion from './MessageEditRegion.vue'
-import { lastEditableUserMessageId, messageEditSuffixIds } from './message-editing'
+import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
 import { useFollowSentMessages } from './useFollowSentMessages'
 import { highlightFound } from '../ui/found-highlight'
@@ -67,6 +67,8 @@ const emit = defineEmits<{
   deleteQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
+  /** Regenerate on the last answer: a new answer to the message `blockId`. */
+  regenerate: [blockId: string]
   retryLoad: []
   retrySubmission: []
   revealed: []
@@ -85,7 +87,27 @@ const transcriptBlocks = computed(() => {
   }
   return visible
 })
-const editableUserId = computed(() => lastEditableUserMessageId(props.blocks))
+const editableUserId = computed(() => props.readOnly ? null : offeredEditId(props))
+/**
+ * The answer whose footer offers Regenerate: the last one after the message
+ * the page offers to edit, since regenerating is that edit
+ * (`message-editing.md` § Regenerate and the Up Arrow key).
+ */
+const regenerateId = computed(() => {
+  const target = editableUserId.value
+  if (target === null) {
+    return null
+  }
+  const blocks = visibleBlocks.value
+  const after = blocks.findIndex((block) => block.id === target)
+  return blocks.findLast((block, index) => index > after && footerIds.value.has(block.id))?.id ?? null
+})
+
+function regenerate(): void {
+  if (editableUserId.value !== null) {
+    emit('regenerate', editableUserId.value)
+  }
+}
 const tailBlocks = computed(() => listTailBlocks({
   phase: props.phase,
   pendingSteers: props.pendingSteers,
@@ -281,7 +303,8 @@ defineExpose({
                 :failure="failures?.[renderBlocks[item.index]!.id]"
                 :summary-tokens="summaryTokens.get(renderBlocks[item.index]!.id)"
                 :entering="isEntering(renderBlocks[item.index]!.id)"
-                :editable="renderBlocks[item.index]!.id === editableUserId && !props.readOnly && phase === 'idle' && !queue.length && !pendingSteers.length"
+                :editable="renderBlocks[item.index]!.id === editableUserId"
+                :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
                 @delete-pending-steer="(id) => emit('deletePendingSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
                 @delete-queued="(id) => emit('deleteQueued', id)"
