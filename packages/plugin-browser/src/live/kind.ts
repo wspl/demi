@@ -1,5 +1,5 @@
 import { defineComponent, h } from 'vue'
-import { MonitorDot } from '@lucide/vue'
+import { Globe, RotateCw } from '@lucide/vue'
 import { GlobePlus, ICON_PX, type PanelKind } from '@demicodes/plugin-sdk'
 import BrowserTabContent from './BrowserTabContent.vue'
 import {
@@ -10,7 +10,7 @@ import {
 } from './tabs'
 
 const BrowserTabMark = defineComponent({
-  setup: () => () => h(MonitorDot, { size: ICON_PX.markIn28 }),
+  setup: () => () => h(Globe, { size: ICON_PX.markIn28 }),
 })
 
 /**
@@ -43,9 +43,21 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   // The agent's showings, which the plugin carries from the tab list (`live-view.md` § Showing a tab).
   shows: (data) => data.shows ?? 0,
   mark: BrowserTabMark,
+  // The page's own icon, as a web browser's tab shows it; the mark only for a page without one.
+  icon: (data, tab) => tab.session.favicon(data),
   // The page loads: the strip shows it as a web browser's tab does.
   busy: (data, tab, id) => tab.session.busy(id, data),
   content: BrowserTabContent,
+  // A web browser's tab menu: Reload the page, or open the address again in a tab of its own.
+  commands: (data, tab) => [
+    {
+      label: 'Reload',
+      icon: RotateCw,
+      disabled: data.tab === undefined || data.closed === true,
+      run: () => tab.session.reload(data),
+    },
+  ],
+  duplicate: (data) => (data.title ? { url: data.url, title: data.title } : { url: data.url }),
   create: {
     label: "New Tab in the Conversation's Browser",
     icon: GlobePlus,
