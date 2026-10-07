@@ -306,7 +306,7 @@ onBeforeUnmount(() => {
     <RegionStatus
       v-if="state?.pictureless"
       class="absolute inset-0 bg-surface"
-      failed
+      status="failed"
       label="Couldn’t show this page."
       :detail="refusalSentence(state.pictureless)"
     />

@@ -23,34 +23,19 @@ const emit = defineEmits<{
 }>()
 
 const copy = computed(() => sessionStatusCopy(props.kind))
-const actionLabel = computed(() => {
-  if (copy.value.action === 'retry') {
-    return 'Retry'
-  }
-  if (copy.value.action === 'create') {
-    return 'Start a conversation'
-  }
-  return undefined
-})
-
-function act(): void {
-  if (copy.value.action === 'retry') {
-    emit('retry')
-  } else if (copy.value.action === 'create') {
-    emit('create')
-  }
-}
+const status = computed(() => (props.kind === 'loading' || props.kind === 'failed' ? props.kind : 'note'))
 </script>
 
 <template>
   <RegionStatus
     class="h-full min-h-0 flex-1"
-    :busy="kind === 'loading'"
-    :failed="kind === 'failed'"
+    :status="status"
     :icon="kind === 'empty' || kind === 'none' ? MessageSquareDashed : kind === 'missing' ? MessageSquareOff : undefined"
     :label="copy.label"
-    :detail="kind === 'failed' ? detail : null"
-    :action="actionLabel"
-    @action="act"
+    :loading-label="sessionStatusCopy('loading').label"
+    :detail="detail"
+    :action="copy.action === 'create' ? 'Start a conversation' : undefined"
+    :on-retry="copy.action === 'retry' ? () => emit('retry') : undefined"
+    @action="emit('create')"
   />
 </template>

@@ -1,4 +1,5 @@
-//! `demi browser`: every operation of the package has its command.
+//! `demi browser`: every operation of the package has its command, but the
+//! user's Stop (`live-view.md` § The tab methods).
 
 use demi_command_package_browser_protocol::browser::{OPERATIONS, PREFIX};
 use demi_plugin_browser::Browser;
@@ -17,7 +18,13 @@ fn every_operation_has_a_command_that_takes_each_operand_from_one_source() {
         let mut line = vec!["browser"];
         line.extend(name.split('.'));
         line.push("--help");
-        assert!(parse(&root, &line, None).unwrap().help, "{operation}");
+        let parsed = parse(&root, &line, None);
+        if name == "stop" {
+            // The agent waits for its commands rather than stopping a load.
+            assert!(parsed.is_err(), "{operation}");
+        } else {
+            assert!(parsed.unwrap().help, "{operation}");
+        }
     }
     for (line, body, field) in [
         (

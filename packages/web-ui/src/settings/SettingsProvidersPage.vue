@@ -85,6 +85,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   retry: []
   retryVendors: []
+  /** The model list's Retry: the catalog loads again, outside the provider's writes. */
+  retryModels: []
   change: [
     provider: SettingsProviderEntry,
     patch: Partial<SettingsProviderEntry>,
@@ -837,7 +839,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     : modelLoad
                 "
                 label="Loading models…"
-                @retry="emit('refresh', selected)"
+                @retry="emit('retryModels')"
               >
                 <SettingsRow
                   v-for="m in visibleModels(selected)"

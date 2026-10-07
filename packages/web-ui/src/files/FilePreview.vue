@@ -120,12 +120,11 @@ const caption = computed(() => {
     <RegionStatus
       v-else
       class="h-full"
-      :busy="state.phase === 'loading'"
-      :failed="state.phase === 'failed'"
+      :status="state.phase"
       :label="state.phase === 'loading' ? 'Reading…' : 'Could not read this file.'"
+      loading-label="Reading…"
       :detail="state.phase === 'failed' ? state.message : null"
-      :action="state.phase === 'failed' ? 'Retry' : undefined"
-      @action="shown.retry"
+      :on-retry="shown.retry"
     />
   </div>
 </template>
