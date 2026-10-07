@@ -13,7 +13,8 @@ import type { SentenceText } from '../ui/ui-text'
  * page's history to itself. It shows the page's address and follows it,
  * except while the user has the field: then it keeps what the user types,
  * and leaving without Enter shows the page's address again. While the page
- * loads, Reload is Stop, in the same place, as in a web browser.
+ * loads, Reload is Stop, in the same place, as in a web browser; Stop is
+ * never unavailable while the page loads.
  */
 const props = withDefaults(
   defineProps<{
@@ -26,12 +27,10 @@ const props = withDefaults(
     canReload?: boolean
     /** The page loads: Reload is Stop meanwhile. */
     loading?: boolean
-    /** Why Stop is unavailable while the page loads, such as a tab still opening. */
-    stopReason?: SentenceText | null
     /** Take focus on mount, the address selected: a new tab waits for where to go. */
     focused?: boolean
   }>(),
-  { backReason: null, forwardReason: null, canReload: true, loading: false, stopReason: null, focused: false },
+  { backReason: null, forwardReason: null, canReload: true, loading: false, focused: false },
 )
 
 const emit = defineEmits<{
@@ -113,15 +112,8 @@ function submit(): void {
       />
       <!-- Reload and Stop share the place and the size, and a click on either shows the other at once:
            Reload turns into Stop rather than turning its icon. -->
-      <Tooltip v-if="loading" content="Stop" :disabled="stopReason !== null" class="inline-flex">
-        <IconButton
-          :icon="X"
-          variant="ghost"
-          aria-label="Stop"
-          :disabled="stopReason !== null"
-          :disabled-reason="stopReason ?? undefined"
-          @click="emit('stop')"
-        />
+      <Tooltip v-if="loading" content="Stop" class="inline-flex">
+        <IconButton :icon="X" variant="ghost" aria-label="Stop" @click="emit('stop')" />
       </Tooltip>
       <Tooltip v-else content="Reload" :disabled="!canReload" class="inline-flex">
         <IconButton
