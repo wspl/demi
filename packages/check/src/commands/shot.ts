@@ -2,6 +2,7 @@
 // pixel ratio and prints its path, for the report to list. `--element`
 // clips to an element, `--region` to an area, `--pad` widens either, and
 // `--zoom` renders the area magnified rather than enlarging its pixels.
+// Animations under way are finished first, so the shot shows where they end.
 import { writeFileSync } from 'node:fs'
 import { CheckFailure, numeric, parse, type Context } from '../command'
 import { launchOptions } from '../browser'
@@ -45,7 +46,9 @@ export async function run(context: Context, argv: string[]): Promise<void> {
     const zoom = numeric(values.zoom, '--zoom')
     writeFileSync(path, await zoomed(page, await context.browser.cdp(), clip, zoom, launchOptions(readState(context.slot).emulation ?? {}).isMobile ?? false))
   } else {
-    await page.screenshot({ path, clip, fullPage: values.full })
+    // A shot shows where the page settles: a menu or a popover still fading in is finished first. The
+    // moments in between are `timeline`'s.
+    await page.screenshot({ path, clip, fullPage: values.full, animations: 'disabled' })
   }
   context.print(`${path}  ${pngSize(path)}`)
 }
