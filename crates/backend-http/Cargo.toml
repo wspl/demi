@@ -57,6 +57,8 @@ object_store.workspace = true
 percent-encoding = "2"
 serde.workspace = true
 serde_json.workspace = true
+# The content ETag of the web app files a page revalidates.
+sha2 = "0.10"
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
