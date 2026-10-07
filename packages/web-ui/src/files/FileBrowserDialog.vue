@@ -23,7 +23,7 @@ const props = defineProps<{
   overlayStore: OverlayStore
   mode: FileBrowserMode
   source: FileBrowserSource
-  /** Defaults to `Open file` or `Select folder`. */
+  /** Defaults to `Open File` or `Select Folder`. */
   title?: HeadlineText
   initialPath?: string
   places?: FileBrowserPlaceGroup[]
@@ -43,7 +43,7 @@ const emit = defineEmits<{
 const showHidden = defineModel<boolean>('showHidden', { default: false })
 
 const title = computed(
-  () => props.title ?? (props.mode === 'file' ? 'Open file' : 'Select folder'),
+  () => props.title ?? (props.mode === 'file' ? 'Open File' : 'Select Folder'),
 )
 </script>
 

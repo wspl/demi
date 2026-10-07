@@ -455,7 +455,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
         title="SwatchPicker"
         note="Colour swatches as a radio group; the chosen one wears a ring in its own colour."
       >
-        <div class="specimen-row">
+        <div class="specimen-row specimen-row-wide">
           <GallerySpecimen variant="accents">
             <SwatchPicker v-model="swatch" :options="PRODUCT_ACCENTS" />
           </GallerySpecimen>
@@ -466,7 +466,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
         title="ChoiceCards"
         note="A few exclusive choices as cards with an icon, a title and a line, for a form that branches on the answer."
       >
-        <div class="specimen-row">
+        <div class="specimen-stack">
           <GallerySpecimen variant="two cards" wide>
             <div class="w-96 max-w-full"><ChoiceCards
                 v-model="choice"
@@ -580,7 +580,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
         title="TokenInput"
         note="A count in thousands or millions; the unit toggles inside the field."
       >
-        <div class="specimen-row">
+        <div class="specimen-row specimen-row-wide">
           <GallerySpecimen variant="empty">
             <TokenInput
               v-model="noTokens"

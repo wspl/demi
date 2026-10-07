@@ -135,7 +135,7 @@ const canSave = computed(() => {
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow v-if="editable" label="Model id">
+          <SettingsRow v-if="editable" label="Model ID">
             <TextInput
               v-model="draft.id"
               placeholder="model-id"
@@ -211,7 +211,7 @@ const canSave = computed(() => {
           </SettingsRow>
           <SettingsRow
             label="Fast tier"
-            :description="editable ? 'Service tier id. Optional' : undefined"
+            :description="editable ? 'Service tier ID. Optional' : undefined"
             :compact="!editable"
           >
             <TextInput
