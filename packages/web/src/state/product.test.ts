@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
 import { waitFor } from '@demicodes/utils'
-import { pageReturned } from '@demicodes/web-ui/transport/liveness'
+import { pageReturned, waitToReconnect } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { onSessionExpired } from '../api/client'
 import { conversationSummary as summary, productState } from '../__tests__/product-state'
@@ -161,6 +161,29 @@ test('a connection whose handshake does not complete within 10 seconds is abando
     expect(channels.opened.length).toBe(count + 1)
     channels.last().connect(productState())
     expect(product.connection).toBeNull()
+  } finally {
+    random.mockRestore()
+  }
+})
+
+// When the channel's snapshot arrives after the backend was away, every
+// other socket of the page that waits to connect connects at once, so no
+// Connecting row outlives the banner (`web-application.md` § Liveness and
+// reconnection). Cost: fake timers, a few milliseconds.
+test('a socket waiting its backoff, as a conversation\'s does, connects as soon as the channel\'s snapshot is back after a restart', () => {
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(1)
+  try {
+    const product = started()
+    channels.last().end(1001, 'backend_closing')
+    // A conversation's socket the restart closed too, waiting 8 seconds after its fifth failed try.
+    const connected: number[] = []
+    const conversation = waitToReconnect(5, () => connected.push(Date.now()))
+    jest.advanceTimersByTime(2_000)
+    channels.last().connect(productState())
+    expect(product.connection).toBeNull()
+    expect(connected).toHaveLength(1)
+    conversation.cancel()
   } finally {
     random.mockRestore()
   }
