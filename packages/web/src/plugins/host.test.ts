@@ -146,6 +146,26 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
   expect(browser.conversation('unknown').installed.value).toEqual([])
 })
 
+test("a conversation's Host is starting while it is the user's Cloud and the Cloud does not run", () => {
+  const laptop = 'b5c6d7e8-0000-4000-8000-000000000001'
+  const cloud = (state: 'off' | 'booting' | 'running') => ({ ...productState().cloud, device: { id: 'c1', name: 'Cloud' }, state })
+  const onDevice = 'e1d2c3b4-0000-4000-8000-000000000002'
+  const connect = (state: 'off' | 'booting' | 'running') => channels.last().connect(productState({
+    cloud: cloud(state),
+    conversations: [
+      conversationSummary(CONVERSATION, 'Work'),
+      conversationSummary(onDevice, 'Laptop', { target: { kind: 'device', deviceId: laptop, path: '/home/ada/work' } }),
+    ],
+  }))
+  connect('booting')
+  const skills = page('skills').plugin
+  expect(skills.conversation(CONVERSATION).hostStarting.value).toBe(true)
+  // A paired device never starts the way a Cloud does: offline is a Host that cannot be reached.
+  expect(skills.conversation(onDevice).hostStarting.value).toBe(false)
+  connect('running')
+  expect(skills.conversation(CONVERSATION).hostStarting.value).toBe(false)
+})
+
 test("a link's tab stands after the tabs its opener opened before, as the backend's panel names them after a reload, and after the others once its opener is gone", async () => {
   // The panel as a reloaded page reads it: `link` was opened from `a` before the reload, by this page or another.
   panelTabs = [

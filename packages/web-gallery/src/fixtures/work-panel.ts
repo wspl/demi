@@ -156,6 +156,7 @@ export function useGalleryWork(
 
   const host = galleryPageHost({ browser: browserPlugin(browser, plugin) }, {
     files,
+    hostStarting: () => browser.hostStarting.value,
     intents: {
       open: (_conversation, request) => openIn(request),
       canOpen: (intent) => intentKind(shown, enabled, intent) !== null,

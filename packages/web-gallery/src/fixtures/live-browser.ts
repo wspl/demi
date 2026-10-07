@@ -18,7 +18,7 @@ import { shallowRef, type ShallowRef } from 'vue'
 import { encodeVideo } from '@demicodes/plugin-browser/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
 import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
-import { BrowserTabsError, type BrowserTabList } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, type BrowserTabList, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
 import type { HostArtifact } from '@demicodes/web-ui/devices/installed'
 import { WORKSPACE_ROOT } from './workspace'
 
@@ -123,6 +123,10 @@ const REQUEST_DELAY_MS = 900
 const LOAD_START_MS = 700
 /** How long a page the gallery's browser loads takes, as a slow page on a far Host does: long enough to stop it. */
 const LOAD_MS = 5000
+/** How long a stopped Cloud takes to start, as a Cloud wakes. */
+const CLOUD_START_MS = 2500
+/** How long the browser takes to start on a Host where it does not run, as Chrome starts. */
+const BROWSER_START_MS = 1500
 /** Each site's icon, drawn once. */
 const siteIcons = new Map<string, string>()
 
@@ -245,7 +249,8 @@ class GalleryBrowserView {
       this.watched = null
       this.restart()
     }
-    this.send({ type: 'state', running: true, list: this.list(), tabs: this.tabs, watched: this.watched })
+    // A browser with no tabs does not run, as the Host's retires with its last tab.
+    this.send({ type: 'state', running: this.tabs.length > 0, list: this.list(), tabs: this.tabs, watched: this.watched })
   }
 
   private tab(): LiveTab | null {
@@ -571,11 +576,27 @@ export interface GalleryBrowser {
   stream: OpenUserStream
   /** What the Host holds of the browser's package. */
   installed(): readonly HostArtifact[]
+  /** Whether the Host is a Cloud that is starting, as the product state says while it wakes. */
+  hostStarting: ShallowRef<boolean>
+  /** The Cloud stops, as an idle Cloud does, and its browser ends with it; the next tab opened or shown starts it again. */
+  stopCloud(): void
+  /** What a held opening waits for, and nothing once `finish` let it go on. */
+  held: ShallowRef<StartingPhase | null>
+  /** An opening held where `held` says goes on, and the next ones do not wait there. */
+  finish(): void
+  /** The next openings wait in `phase` until `finish`. */
+  hold(phase: StartingPhase): void
 }
 
+/**
+ * The gallery's conversation browser. `held` keeps every opening in one
+ * phase before the browser has its tab, for a specimen that shows it, until
+ * `finish`: Starting Cloud… on a Cloud that starts, Starting the browser…
+ * on a Host whose browser has no tabs yet, or Opening the page….
+ */
 export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),
-  { chrome = true, capture = true }: { chrome?: boolean; capture?: boolean } = {},
+  { chrome = true, capture = true, held: holding = null }: { chrome?: boolean; capture?: boolean; held?: StartingPhase | null } = {},
 ): GalleryBrowser {
   const views = new Set<GalleryBrowserView>()
   // The next tab's number, as the conversation gives them: never one given before.
@@ -613,7 +634,7 @@ export function galleryBrowser(
 
   /** The browser a tab needs, which the pinned Chrome for Testing is. */
   const needed = { name: 'Chrome for Testing', version: '153.0.8010.36' }
-  const held: readonly HostArtifact[] = [
+  const artifacts: readonly HostArtifact[] = [
     { package: 'demi.browser', name: 'program', version: '0.1.3' },
     ...(chrome ? [{ package: 'demi.browser', ...needed }] : []),
   ]
@@ -743,6 +764,48 @@ export function galleryBrowser(
   /** Whether the next open is refused. */
   let refuseOpen = false
 
+  const hostStarting = shallowRef(holding === 'cloud')
+  const held = shallowRef<StartingPhase | null>(holding)
+  /** The openings `held` keeps, until `finish`. */
+  const waiting: Array<() => void> = []
+  /** Whether the Cloud stopped, so the next opening starts it first. */
+  let cloudStopped = false
+
+  /** Waits `ms`; the timer ends by itself. */
+  function wait(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+  }
+
+  /**
+   * What an opening waits for before the browser opens its tab: a held
+   * phase until `finish`, a stopped Cloud while it starts, and a browser
+   * with no tabs while it starts, each as the Host takes it.
+   */
+  async function started(): Promise<void> {
+    if (held.value !== null) {
+      await new Promise<void>((resolve) => waiting.push(resolve))
+    }
+    if (cloudStopped) {
+      hostStarting.value = true
+      await wait(CLOUD_START_MS)
+      hostStarting.value = false
+      cloudStopped = false
+    }
+    if (tabs.length === 0) {
+      await wait(BROWSER_START_MS)
+    }
+  }
+
+  /** The browser ends on the device and takes its tabs with it. */
+  function end(): void {
+    for (const timer of loads.values()) {
+      clearTimeout(timer)
+    }
+    loads.clear()
+    tabs.splice(0)
+    changed()
+  }
+
   /** A page opens a tab, as a `target=_blank` link or `window.open` does: it loads beside its opener. */
   function pageOpens(opener: string, url: string): void {
     const tab: LiveTab = {
@@ -759,9 +822,9 @@ export function galleryBrowser(
     load(tab, url)
   }
 
-  return {
-    listed,
-    open: (url) => later(() => {
+  /** The browser opens a tab on `url`, after a Host's moment; refused once `failNextOpen` said so. */
+  function opened(url: string): Promise<BrowserTab> {
+    return later(() => {
       if (refuseOpen) {
         refuseOpen = false
         throw new BrowserTabsError('device_offline', 'The device is offline')
@@ -779,7 +842,15 @@ export function galleryBrowser(
       tabs.push(tab)
       load(tab, url)
       return info(tab)
-    }),
+    })
+  }
+
+  return {
+    listed,
+    open: async (url) => {
+      await started()
+      return opened(url)
+    },
     close: (id) => later(() => remove(id)),
     navigate: (id, url) => later(() => {
       const tab = found(id)
@@ -821,14 +892,7 @@ export function galleryBrowser(
     }),
     closedOnPurpose,
     closeOnDevice: remove,
-    end: () => {
-      for (const timer of loads.values()) {
-        clearTimeout(timer)
-      }
-      loads.clear()
-      tabs.splice(0)
-      changed()
-    },
+    end,
     failNextOpen: () => {
       refuseOpen = true
     },
@@ -860,6 +924,23 @@ export function galleryBrowser(
       }
     },
     stream,
-    installed: () => held,
+    installed: () => artifacts,
+    hostStarting,
+    stopCloud: () => {
+      cloudStopped = true
+      end()
+    },
+    held,
+    finish: () => {
+      held.value = null
+      hostStarting.value = false
+      for (const resolve of waiting.splice(0)) {
+        resolve()
+      }
+    },
+    hold: (phase) => {
+      held.value = phase
+      hostStarting.value = phase === 'cloud'
+    },
   }
 }
