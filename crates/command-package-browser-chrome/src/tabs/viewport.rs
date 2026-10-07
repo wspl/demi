@@ -182,6 +182,18 @@ impl BrowserTab {
         *self.state.loading.borrow()
     }
 
+    /// Which ends of its history the tab is away from.
+    pub fn history(&self) -> crate::tabs::history::HistoryEnds {
+        *self.state.history.borrow()
+    }
+
+    /// The number of the last tab list the Host read before now: a list read
+    /// later is numbered at least this, and higher once anything the browser
+    /// shows changed since (`live-view.md` § The tab methods).
+    pub fn list_number(&self) -> u64 {
+        *self.state.changes.borrow()
+    }
+
     /// The Web viewport the tab last had, which `viewport reset` returns to.
     pub fn web_viewport(&self) -> BrowserViewport {
         self.state.viewport.borrow().web

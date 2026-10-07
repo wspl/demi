@@ -128,13 +128,11 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
         return null
       case 'navigate': {
         const { tab, url } = navigateTabSchema.parse(params)
-        await browser.navigate(tab, url)
-        return null
+        return { list: await browser.navigate(tab, url) }
       }
       case 'history': {
         const { tab, action } = tabHistorySchema.parse(params)
-        await browser.history(tab, action)
-        return null
+        return { list: await browser.history(tab, action) }
       }
     }
     return unknownMethod(method)

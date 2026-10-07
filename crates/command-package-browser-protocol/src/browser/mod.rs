@@ -745,6 +745,12 @@ pub struct BrowserTab {
     /// Whether the browser loads the tab's top-level page.
     #[garde(skip)]
     pub loading: bool,
+    /// Whether the tab's history has a page before the current one.
+    #[garde(skip)]
+    pub can_go_back: bool,
+    /// Whether the tab's history has a page after the current one.
+    #[garde(skip)]
+    pub can_go_forward: bool,
     /// How many times the agent showed the tab to the user; 0 for one never
     /// shown (`live-view.md` § Showing a tab).
     #[garde(range(max = MAX_SAFE_INTEGER))]

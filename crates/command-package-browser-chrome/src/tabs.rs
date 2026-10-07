@@ -9,6 +9,7 @@ use demi_command_package_browser_protocol::browser as protocol;
 pub mod debug;
 pub mod dialog;
 pub mod environment;
+pub mod history;
 pub mod loading;
 pub mod logs;
 pub mod navigation;
