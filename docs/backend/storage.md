@@ -14,6 +14,7 @@ Backend data directory (DEMI_BACKEND_DATA)
 |
 +-- control.sqlite                 deployment-wide product records
 +-- conversations/<id>.sqlite      one agent tree per conversation
++-- search/<userId>.sqlite         each user's search index, derived from the conversations
 +-- blobs/<userId>/<sha256>        user-owned bytes: uploads, media, edit copies, commands' outputs (object store)
 +-- native/                        the published command packages (object store)
 +-- .attributes/                   the local store's object attributes
@@ -38,6 +39,7 @@ conversation's host access; they are not conversation database content.
 |---|---|---|
 | `control.sqlite` | Accounts, auth sessions, preferences, subagent settings, devices, workspaces, conversation index, providers, model catalogs, usage, attachment metadata, operation records, the users' plugin choices, plugin values and Host directories, conversations' permission requests and grants | The control service, on its database thread |
 | Conversation database | Root and subagent nodes, checkpoint state, transcript blocks, command history, the records of commands' outputs | The shard of the user who owns the conversation |
+| Search index | Titles and message text of a user's conversations, derived from them | The backend's indexer, one per user |
 | User blob namespace | Uploaded bytes, transcript media, edit copies, commands' whole outputs and the files plugins keep, addressed by content hash | The upload route, the conversation socket when an uploaded image enters fitted, a session when a tool's medium enters its transcript, and the backend when a command ends |
 
 Both kinds of database are SQLite, reached through rusqlite with SQLite
@@ -139,7 +141,7 @@ input, which the multi-worker control service also relies on
   a new row is. A patch merges the fields it names in one transaction, and
   checks the name's uniqueness in the same one.
 - **Devices and workspaces:** `devices` stores ownership, kind, name,
-  platform, the operating system and architecture its runner last reported, the hash of the device's current token, claim and last-seen
+  platform, the operating system and architecture and the runner release its runner last reported, the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
   holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)).
   The token hash is unique, so a runner's token finds its device
@@ -440,14 +442,46 @@ files are not read. Shutdown releases the storage client.
 
 ## Retention
 
-Demi keeps everything a conversation made for as long as the account exists:
-uploads, conversations and their messages, a tool result's images and videos,
-a command's whole output and its media, edit copies and every other blob.
-Nothing expires and nothing is collected; a conversation can be archived but
-not deleted ([Conversations and projects](../product/product.md#conversations-and-projects)).
-Removing the account is what removes them ([Account deletion](#account-deletion)).
-A blob a failed write leaves without a reference stays too: it costs storage,
-never correctness, since no row names it.
+Demi keeps everything a conversation made for as long as the conversation
+exists: its messages, the files the user sent in it, a tool result's images
+and videos, a command's whole output and its media, edit copies and every
+other blob. Nothing expires. Deleting a conversation removes it and the blobs
+no other record of its user references
+([Deleting a conversation](#deleting-a-conversation)); removing the account
+removes the rest ([Account deletion](#account-deletion)). A blob a failed
+write leaves without a reference costs storage until the next collection of
+its user's namespace, never correctness, since no row names it.
+
+### Deleting a conversation
+
+The user deletes "Fix the login test", which uploaded a screenshot that a
+fork of it also holds. Deletion goes in four steps:
+
+1. One transaction of the control database removes the conversation's
+   record and every record that belongs to it, such as its draft, work
+   panel, attached hosts, permission requests and grants and plugins'
+   conversation values, and records the deletion as pending. From this
+   commit on, no request finds the conversation.
+2. The conversation's Host resources are released as archive releases them,
+   and its tabs in the conversation browser are closed.
+3. Its database file and its rows in the search index are removed.
+4. The pending record is removed.
+
+A start that finds a pending deletion finishes it from the step it reached,
+so a crash in between leaves nothing of the conversation behind. Its
+project's files stay: they belong to the Host, not to the conversation.
+
+Then the user's blob namespace is collected, in the background: a blob that
+no remaining record of the user references, and that was written more than a
+day ago, is removed, and so is an upload record whose blob goes. A record
+references a blob when it names it: a block, an attachment, a command's
+output record or an edit copy in one of the user's conversation databases, a
+draft, or a plugin value's list of blobs. The day keeps a blob whose reference
+is not written yet, since a blob is published before the row that names it:
+an upload the composer holds before its draft is saved, or a tool's image
+before its checkpoint commits. The screenshot stays, because the fork's
+database names it. A user's collections run one at a time; a deletion during
+one starts another after it.
 
 ### Account deletion
 
@@ -457,6 +491,39 @@ remove, besides the account's records and conversation databases, the objects
 nothing else removes: the account's blob namespace, `blobs/<userId>/`. Its
 Cloud's disks belong to the machine manager
 ([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity)).
+
+## Search index
+
+Each user has a search index, `search/<userId>.sqlite`, that
+[Search](../product/web-api.md#search) reads: an SQLite FTS5 table with one
+row per searchable text, a conversation's title or the text of one of its
+root's `user` blocks or answers, each with its conversation's and block's
+ids. Its tokenizer is FTS5's `trigram`, which matches any piece of text of
+three characters or more in every language without splitting words, as
+Chinese needs; a query word of one or two characters is matched by a scan of
+the user's rows instead. Searching a user's conversations without an index
+would open every conversation's database for each query, and one index per
+user follows the users' shards
+([Multi-worker storage placement](#multi-worker-storage-placement)).
+
+The index is derived: everything in it is read from the conversations, so it
+is never migrated, backed up or replicated, and it is the one stored copy of
+data that this document allows to be derived, for speed. Its version is the
+digest of its schema, as for the databases; an index of another version, or
+one that fails to open, is deleted and built again. For each conversation it
+records the transcript version it indexed, the transcript's epoch and
+revision ([Patches and versions](../agent/runtime.md#patches-and-versions)),
+and the title. The backend indexes a conversation again, in one transaction
+that replaces its rows, so a search sees it either as it was or as it is:
+
+- after a checkpoint changes the root's transcript, at most once every two
+  seconds per conversation, and once more when its turn ends;
+- after a title change;
+- at start, for each conversation whose recorded version or title differs,
+  newest first, in the background, so a new index fills while the backend
+  serves.
+
+A deletion removes the conversation's rows.
 
 ## Encodings and digests
 
