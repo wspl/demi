@@ -150,6 +150,23 @@ before resubmission. The sending and uncertain phases lock the content and the
 exit controls; an explicit rejection returns to editing. Successful acceptance
 restores the composer draft.
 
+### Regenerate and the Up Arrow key
+
+Regenerate asks for a new answer to the last message, as Retry does in
+ChatGPT and Claude. It is an edit of the last `user` block with its content
+unchanged: the same operation, admission and result, so the answer and
+everything after the message are replaced by a new turn, while files and the
+other effects of the removed turn stay as they are
+([Commit and idempotency](#commit-and-idempotency)). The page offers it in
+the footer of the last answer, beside Copy and Fork, exactly when it offers
+editing the last message, and sends it at once, without opening the editor
+and without asking.
+
+In the main composer, the Up Arrow key opens the editor on the last message,
+as in Slack and Discord, when the composer is empty and the page offers
+editing that message. Otherwise, and during an IME composition, the key moves
+the caret as usual.
+
 ## Acceptance invariants
 
 Acceptance observes four independently obtained results: the session
