@@ -1,4 +1,4 @@
-// The page's logs as one daemon leaves them and the next goes on from them,
+// The page's logs as one server leaves them and the next goes on from them,
 // in a temporary folder; a few milliseconds.
 import { afterEach, expect, test } from 'bun:test'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -14,7 +14,7 @@ afterEach(() => {
   }
 })
 
-/** The logs a daemon kept of the browser at `browser`, left in a file, and that file. */
+/** The logs a server kept of the browser at `browser`, left in a file, and that file. */
 function leftBehind(browser: string): string {
   const folder = mkdtempSync(join(tmpdir(), 'browse-logs-'))
   folders.push(folder)
@@ -28,13 +28,13 @@ function leftBehind(browser: string): string {
   return path
 }
 
-test('a daemon that starts again with the same browser goes on from the logs and the mark the last one left', () => {
+test('a server that starts again with the same browser goes on from the logs and the mark the last one left', () => {
   const path = leftBehind('http://127.0.0.1:9222')
   const next = new Logs()
   next.restore(path, 'http://127.0.0.1:9222')
   next.add('console', 'log: after the restart')
   const lines = next.read('console', { all: false, modules: false }).map((line) => line.trim().replace(/^\S+ s\s+/, ''))
-  expect([next.since(false), lines]).toEqual(['since the mark reload', ['error: after the mark', 'log: after the restart']])
+  expect(lines).toEqual(['error: after the mark', 'log: after the restart'])
   expect(next.read('console', { all: true, modules: false })).toHaveLength(3)
 })
 
@@ -42,7 +42,8 @@ test('the logs of another browser are not the new browser\'s', () => {
   const path = leftBehind('http://127.0.0.1:9222')
   const next = new Logs()
   next.restore(path, 'http://127.0.0.1:9333')
-  expect([next.read('console', { all: true, modules: false }), next.since(false)]).toEqual([[], 'since the tool attached to the browser'])
+  next.add('console', 'log: the new browser\'s')
+  expect(next.read('console', { all: false, modules: false })).toHaveLength(1)
 })
 
 /** A data channel as the page's peer connection makes one: it sends, and hears the runner's messages. */
@@ -78,7 +79,7 @@ test('operations a page runs on direct channels go with its requests, and a watc
   console.debug = (line: string) => lines.push(line)
   try {
     recordDirectChannels('[browse direct]')
-    // A second install, as by a daemon that attached again, records each once.
+    // A second install, as by a server that attached again, records each once.
     recordDirectChannels('[browse direct]')
     const peer = new FakePeer()
     const text = peer.createDataChannel('text')
@@ -116,4 +117,28 @@ test('operations a page runs on direct channels go with its requests, and a watc
     'received direct watch {"type":"changed","paths":["/w/server.log"],"ignored":["/w/server.log"]}',
   ])
   expect(read('console')).toEqual(['log: the page\'s own line'])
+})
+
+test('a call\'s report names the console errors and the failed requests since it began, a module\'s among them, and nothing earlier', () => {
+  const logs = new Logs()
+  logs.add('console', 'error: before the call')
+  logs.add('network', 'GET 500 http://127.0.0.1:3323/api/sync 3 ms')
+  const since = logs.newest
+  logs.add('console', 'log: fine')
+  logs.add('console', 'warning: not an error')
+  logs.add('console', 'error: Failed to load resource')
+  logs.add('console', 'uncaught: TypeError: x is undefined')
+  logs.add('network', 'GET 200 http://127.0.0.1:3323/api/conversations 8 ms')
+  logs.add('network', 'GET 404 http://127.0.0.1:3323/src/missing.ts 2 ms', true)
+  logs.add('network', 'POST FAILED http://127.0.0.1:3323/api/messages net::ERR_CONNECTION_RESET')
+  logs.add('network', 'direct text ok /w/notes.md 4 ms')
+  logs.add('network', 'direct list forbidden /root 3 ms')
+  expect(logs.problems(since)).toEqual({
+    console: ['error: Failed to load resource', 'uncaught: TypeError: x is undefined'],
+    network: [
+      'GET 404 http://127.0.0.1:3323/src/missing.ts 2 ms',
+      'POST FAILED http://127.0.0.1:3323/api/messages net::ERR_CONNECTION_RESET',
+      'direct list forbidden /root 3 ms',
+    ],
+  })
 })

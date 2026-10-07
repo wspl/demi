@@ -1,14 +1,14 @@
-// `down` on a slot folder in a temporary directory, with no process
+// `demi.down` on a slot folder in a temporary directory, with no process
 // recorded, so it stops nothing; a few milliseconds.
 import { afterEach, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Browser } from './browser'
-import type { Context } from './command'
-import { run } from './commands/down'
+import { down } from './demi/down'
 import { slotPaths, slotPorts, type Slot } from './slot'
 import { readState, updateState } from './state'
+import type { Tool } from './tool'
 
 const folders: string[] = []
 
@@ -34,7 +34,7 @@ function slotWithData(): Slot {
   return slot
 }
 
-function contextOf(slot: Slot): Context & { ended: () => boolean } {
+function toolOf(slot: Slot): Tool & { ended: () => boolean } {
   let ended = false
   return {
     slot,
@@ -42,8 +42,8 @@ function contextOf(slot: Slot): Context & { ended: () => boolean } {
     network: () => Promise.reject(new Error('down needs no network')),
     print: () => undefined,
     env: {},
-    run: () => Promise.reject(new Error('down runs no other command')),
-    endDaemon: () => {
+    wrote: () => undefined,
+    endServer: () => {
       ended = true
     },
     ended: () => ended,
@@ -52,22 +52,22 @@ function contextOf(slot: Slot): Context & { ended: () => boolean } {
 
 test('the backend\'s data and the paired runner outlive down, for the next up to come back to', async () => {
   const slot = slotWithData()
-  const context = contextOf(slot)
-  await run(context, [])
+  const tool = toolOf(slot)
+  await down(tool, [])
   const paths = slotPaths(slot)
   expect([existsSync(join(paths.backendData, 'demi.db')), existsSync(paths.runnerHome), readState(slot).runner?.device]).toEqual([true, true, 'browse-slot-3'])
-  expect(context.ended()).toBe(true)
+  expect(tool.ended()).toBe(true)
 })
 
-test('down --wipe removes the backend\'s data and the runner it paired, and keeps the screenshots', async () => {
+test('down with wipe removes the backend\'s data and the runner it paired, and keeps the screenshots', async () => {
   const slot = slotWithData()
-  await run(contextOf(slot), ['--wipe'])
+  await down(toolOf(slot), [{ wipe: true }])
   const paths = slotPaths(slot)
   expect([existsSync(paths.backendData), existsSync(paths.runnerHome), readState(slot).runner, existsSync(paths.shots)]).toEqual([false, false, undefined, true])
 })
 
-test('down --wipe stops everything, so it takes no server\'s name', async () => {
+test('down with wipe stops everything, so it takes no server\'s name', async () => {
   const slot = slotWithData()
-  await expect(run(contextOf(slot), ['backend', '--wipe'])).rejects.toThrow('--wipe stops everything first')
+  await expect(down(toolOf(slot), ['backend', { wipe: true }])).rejects.toThrow('stops everything first')
   expect(existsSync(slotPaths(slot).backendData)).toBe(true)
 })

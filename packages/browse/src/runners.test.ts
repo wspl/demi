@@ -19,6 +19,8 @@ test('a paired runner is stopped and started again as the same device; only --ne
     ['start', undefined, false, { kind: 'nothing paired' }],
     // A pairing that never ended is started over, not counted as a new runner.
     ['default', pairing, false, { kind: 'pair', generation: 2, stop: false }],
+    // A runner whose pairing failed still runs unpaired: it is paired again, not reported as running.
+    ['default', pairing, true, { kind: 'pair', generation: 2, stop: true }],
     ['start', pairing, false, { kind: 'nothing paired' }],
     // --new stops the running runner and pairs the next generation.
     ['new', paired, true, { kind: 'pair', generation: 2, stop: true }],

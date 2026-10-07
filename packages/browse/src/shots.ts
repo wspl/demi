@@ -1,10 +1,9 @@
 // Where screenshots go: `.cache/browse/shots/<name>.png` in the slot, or the
 // path a name gives when it has a folder in it, such as a report's folder
-// outside the repository; and the parts of a picture a command keeps.
+// outside the repository; and the parts of a picture a helper keeps.
 import { mkdirSync, readFileSync } from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import type { Page } from 'playwright'
-import { CommandFailure, numeric } from './command'
 import { slotPaths, type Slot } from './slot'
 
 export type Clip = { x: number, y: number, width: number, height: number }
@@ -17,16 +16,6 @@ export function shotPath(slot: Slot, name?: string): string {
     : join(slotPaths(slot).shots, file)
   mkdirSync(dirname(path), { recursive: true })
   return path
-}
-
-/** The area `text` gives as x,y,width,height in CSS pixels, for the option `name`. */
-export function region(text: string, name: string): Clip {
-  const parts = text.split(',').map((part) => numeric(part, name))
-  if (parts.length !== 4) {
-    throw new CommandFailure(`${name} takes x,y,width,height, not ${text}`)
-  }
-  const [x, y, width, height] = parts
-  return { x, y, width, height }
 }
 
 /** The pixel size the header of the PNG at `path` gives, as `2880×1800 px`. */

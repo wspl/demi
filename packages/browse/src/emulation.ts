@@ -1,13 +1,13 @@
-// What `emulate` sets (browse.md § Conditions), as the DevTools protocol
+// What `demi.emulate` sets (browse.md § What `demi` adds), as the DevTools protocol
 // applies it to a page as it is, without reloading it: the screen's size,
 // pixel ratio and touch, a phone's user agent, the theme, the locale and the
-// time zone. The daemon's own session with each page holds these overrides,
-// which the browser drops when that session ends; a daemon that attaches to
+// time zone. The server's own session with each page holds these overrides,
+// which the browser drops when that session ends; a server that attaches to
 // a page applies them again.
 import { devices, type CDPSession } from 'playwright'
 import type { Emulation } from './state'
 
-/** The viewport and pixel ratio of a browser no `emulate` changed. */
+/** The viewport and pixel ratio of a browser no `demi.emulate` changed. */
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 }
 const DEFAULT_SCALE = 2
 

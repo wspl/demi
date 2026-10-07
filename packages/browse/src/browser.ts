@@ -1,16 +1,16 @@
 // The slot's browser (browse.md § One browser per slot): Playwright's
 // Chromium with its own profile in the slot's folder, started by the first
-// command that needs it as a process group of its own, which the slot's
-// state records with its DevTools endpoint. The daemon reaches it over the
-// DevTools protocol, so a daemon that ends for changed code leaves the
-// browser, its pages and what was typed in them, and the next daemon
+// call that needs it as a process group of its own, which the slot's
+// state records with its DevTools endpoint. The server reaches it over the
+// DevTools protocol, so a server that ends for changed code leaves the
+// browser, its pages and what was typed in them, and the next server
 // attaches to it again. A browser that crashed or was closed starts again on
-// the next command; `stop`, `down` and the idle timeout stop it.
+// the next call; `demi.stop`, `demi.down` and the idle timeout stop it.
 import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { chromium, type BrowserContext, type CDPSession, type Browser as PlaywrightBrowser, type Page } from 'playwright'
-import { CommandFailure } from './command'
+import { Failure } from './tool'
 import { applyEmulation } from './emulation'
 import { Logs } from './logs'
 import { ownGroupRuns, startGroup, stopGroup } from './processes'
@@ -25,6 +25,10 @@ const START_MS = 30_000
 const STOP_MS = 10_000
 /** How long attaching to a browser only to ask it to quit may take. */
 const QUIT_MS = 5_000
+/** How long a script's action waits for its element by default. */
+const ACTION_MS = 10_000
+/** How long a navigation waits for its page by default, Playwright's own default. */
+const NAVIGATION_MS = 30_000
 
 /**
  * The switches the browser starts with: Playwright's own for its Chromium
@@ -74,7 +78,7 @@ const HEADLESS = [
   '--blink-settings=primaryHoverType=2,availableHoverTypes=2,primaryPointerType=4,availablePointerTypes=4',
 ]
 
-/** The daemon's connection to the browser. */
+/** The server's connection to the browser. */
 interface Connection {
   browser: PlaywrightBrowser
   context: BrowserContext
@@ -86,10 +90,10 @@ interface Connection {
 export class Browser {
   private connected: Promise<Connection> | null = null
   private current: Page | null = null
-  /** The daemon's session with each page, which holds the page's emulation. */
+  /** The server's session with each page, which holds the page's emulation. */
   private readonly sessions = new WeakMap<Page, Promise<CDPSession>>()
   readonly logs = new Logs()
-  /** Whether a command asked for the window, which the browser keeps until it stops. */
+  /** Whether a call asked for the window, which the browser keeps until it stops. */
   private wantsWindow = false
 
   constructor(
@@ -97,14 +101,14 @@ export class Browser {
     private readonly print: (line: string) => void,
   ) {}
 
-  /** Whether the daemon is attached to a browser now. */
+  /** Whether the server is attached to a browser now. */
   get running(): boolean {
     return this.connected !== null
   }
 
   /**
    * Attaches to the slot's browser when one runs, without starting one;
-   * answers whether the daemon is attached. A daemon that starts again
+   * answers whether the server is attached. A server that starts again
    * attaches at once, so that the page's logs go on without a gap.
    */
   async attachRunning(): Promise<boolean> {
@@ -124,7 +128,7 @@ export class Browser {
     this.wantsWindow = true
   }
 
-  /** The browser's context, its browser started or attached to when the daemon has none. */
+  /** The browser's context, its browser started or attached to when the server has none. */
   async context(): Promise<BrowserContext> {
     const connection = await this.connection()
     if (!this.wantsWindow || connection.headed) {
@@ -145,7 +149,7 @@ export class Browser {
     if (!this.connected) {
       const connecting = this.connect()
       this.connected = connecting
-      // A failed start leaves nothing for the next command to reuse.
+      // A failed start leaves nothing for the next call to reuse.
       connecting.catch(() => {
         if (this.connected === connecting) {
           this.connected = null
@@ -166,7 +170,7 @@ export class Browser {
     if (runs && (recorded.headed || !this.wantsWindow)) {
       endpoint = recorded.endpoint
       headed = recorded.headed
-      // The browser as the last daemon left it, whose logs go on.
+      // The browser as the last server left it, whose logs go on.
       this.logs.restore(pageLogs, endpoint)
     } else {
       this.logs.reset()
@@ -180,12 +184,18 @@ export class Browser {
     const browser = await chromium.connectOverCDP(endpoint)
     const context = browser.contexts()[0]
     if (!context) {
-      throw new CommandFailure(`The browser at ${endpoint} has no default context`)
+      throw new Failure(`The browser at ${endpoint} has no default context`)
     }
     const version = await (await browser.newBrowserCDPSession()).send('Browser.getVersion')
     const connection: Connection = { browser, context, headed, userAgent: version.userAgent }
+    // An action whose element never comes fails within seconds, not after
+    // Playwright's half minute; a step that takes longer says so with its
+    // own timeout. Navigations keep Playwright's half minute: the dev
+    // server's first load of the app takes several seconds.
+    context.setDefaultTimeout(ACTION_MS)
+    context.setDefaultNavigationTimeout(NAVIGATION_MS)
     browser.on('disconnected', () => {
-      // A browser that crashed or was closed by hand starts again on the next command.
+      // A browser that crashed or was closed by hand starts again on the next call.
       if (this.current?.context() === context) {
         this.current = null
       }
@@ -195,7 +205,7 @@ export class Browser {
         }
       })
     })
-    // The page's own view of the network follows `net`, which the slot's state keeps until the browser stops.
+    // The page's own view of the network follows `demi.net`, which the slot's state keeps until the browser stops.
     if (state.net?.reach === 'offline') {
       await context.setOffline(true)
     }
@@ -221,7 +231,7 @@ export class Browser {
     rmSync(portFile, { force: true })
     // A browser that was killed or crashed left its tabs to restore; a new
     // browser opens on a blank page instead, since a restored tab that
-    // never loads would keep the daemon from attaching.
+    // never loads would keep the server from attaching.
     rmSync(join(paths.profile, 'Default', 'Sessions'), { recursive: true, force: true })
     const command = [
       chromium.executablePath(),
@@ -254,7 +264,7 @@ export class Browser {
     return endpoint
   }
 
-  /** The daemon's session with `page`, opened with the slot's emulation applied the first time. */
+  /** The server's session with `page`, opened with the slot's emulation applied the first time. */
   private session(page: Page, connection: Connection): Promise<CDPSession> {
     const known = this.sessions.get(page)
     if (known) {
@@ -270,7 +280,7 @@ export class Browser {
     return opening
   }
 
-  /** The page commands act on: the one last used, or the browser's first. */
+  /** The page a call acts on: the one last used, or the browser's first. */
   async page(): Promise<Page> {
     const context = await this.context()
     if (this.current && !this.current.isClosed()) {
@@ -281,13 +291,13 @@ export class Browser {
     return page
   }
 
-  /** The daemon's DevTools protocol session with the page, which holds its emulation. */
+  /** The server's DevTools protocol session with the page, which holds its emulation. */
   async cdp(): Promise<CDPSession> {
     const page = await this.page()
     return this.session(page, await this.connection())
   }
 
-  /** The page when the daemon is attached to a browser, without starting or attaching to one. */
+  /** The page when the server is attached to a browser, without starting or attaching to one. */
   async existingPage(): Promise<Page | null> {
     return this.connected ? this.page() : null
   }
@@ -304,7 +314,7 @@ export class Browser {
   }
 
   /**
-   * A PNG of the page through the daemon's own session, whose emulation
+   * A PNG of the page through the server's own session, whose emulation
    * survives the capture: one taken through another session, as
    * Playwright's screenshots are, drops the pixel ratio the page emulates.
    * `clip` is in CSS pixels of the viewport; `scale` multiplies the page's
@@ -330,9 +340,9 @@ export class Browser {
     return Buffer.from(data, 'base64')
   }
 
-  /** Leaves the browser running for the next daemon, with the page's logs so far. */
+  /** Leaves the browser running for the next server, with the page's logs so far. */
   async leave(): Promise<void> {
-    // A browser the daemon never managed to attach to left it no logs to pass on.
+    // A browser the server never managed to attach to left it no logs to pass on.
     const connection = await this.connected?.catch(() => null)
     const recorded = readState(this.slot).browser
     if (connection && recorded) {
@@ -341,7 +351,7 @@ export class Browser {
   }
 
   /**
-   * Quits the browser and forgets it; the next command starts a new one.
+   * Quits the browser and forgets it; the next call starts a new one.
    * It is asked to quit as a person quits it, which a signal is not on
    * macOS: a browser ended by one restores its tabs when it starts again.
    */
