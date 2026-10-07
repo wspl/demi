@@ -70,16 +70,35 @@ pub struct ProductState {
 }
 
 /// The preview domain and the deployment's namespace at it: a preview's
-/// origin is `<namespace>--<label>.<domain>`, over HTTP when the domain is
-/// under `.localhost` and over HTTPS otherwise (`preview.md` § Addresses and
-/// labels).
+/// origin is `<scheme>://<namespace>--<label>.<domain>` (`preview.md`
+/// § Addresses and labels).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewDomain {
+    /// The scheme the domain is served over, which the backend decides
+    /// from the domain: `http` under `.localhost`, `https` otherwise.
+    pub scheme: PreviewScheme,
     /// `DEMI_PREVIEW_DOMAIN`, with its port if it has one, such as
     /// `demi-preview.dev` or `demi-preview.localhost:8787`.
     pub domain: String,
     pub namespace: PreviewNamespace,
+}
+
+/// The scheme a preview domain is served over.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PreviewScheme {
+    Http,
+    Https,
+}
+
+impl PreviewScheme {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Http => "http",
+            Self::Https => "https",
+        }
+    }
 }
 
 /// A message of the page's synchronization channel, `WS /sync`: the whole
