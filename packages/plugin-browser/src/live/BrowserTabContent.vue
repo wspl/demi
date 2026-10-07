@@ -56,8 +56,6 @@ const choices = computed(() => (viewport.value ? viewportChoices(viewport.value)
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
 /** The tab loads: Stop, the strip's spinner and the progress line show it. */
 const busy = computed(() => props.session.busy(props.tabId, props.data))
-/** Why Stop cannot act yet: the browser tab it would stop is still opening. */
-const stopReason = computed(() => (bound.value === undefined ? 'The page is still opening.' : null))
 /** Back and Forward are unavailable while the browser says the tab has no page that way, or has said nothing yet. */
 const backReason = computed(() => (live.value?.canGoBack ? null : 'No page to go back to'))
 const forwardReason = computed(() => (live.value?.canGoForward ? null : 'No page to go forward to'))
@@ -198,12 +196,21 @@ function history(action: 'back' | 'forward' | 'reload'): void {
   }
 }
 
-/** Stop, on the bound tab; a refusal is reported as any failed request is. */
+/** What a toast names when Stop was refused. */
+const COULD_NOT_STOP = 'Could Not Stop Loading'
+
+/** Stop, on the bound tab, or on the tab still opening once it has its browser tab; a refusal is a toast. */
 function stop(): void {
-  if (bound.value !== undefined) {
-    props.session.stop(bound.value).catch((error: unknown) => errors.report('Could Not Stop Loading', error))
-  }
+  props.session.stopPage(props.tabId, props.data).catch((error: unknown) => errors.report(COULD_NOT_STOP, error))
 }
+
+// A Stop pressed while the tab opened applies once its browser tab exists.
+watch(
+  [() => props.data, opening],
+  () => {
+    props.session.settle(props.tabId, props.data).catch((error: unknown) => errors.report(COULD_NOT_STOP, error))
+  },
+)
 
 /**
  * Retry, and a lost tab shown: the plugin opens a browser tab for this panel
@@ -235,7 +242,6 @@ watch(
       :forward-reason="forwardReason"
       :can-reload="bound !== undefined"
       :loading="busy"
-      :stop-reason="stopReason"
       :focused="fresh"
       @submit="submit"
       @back="history('back')"

@@ -192,6 +192,10 @@ export class BrowserTabsController {
   private readonly requests = shallowReactive(new Map<string, TabRequest>())
   /** The panel tabs the plugin opens a browser tab for again, by id. */
   private readonly binding = shallowReactive(new Map<string, Binding>())
+  /** The browser tabs the page showed a picture of, while the browser has them. */
+  private readonly pictured = shallowReactive(new Set<string>())
+  /** The panel tabs whose user pressed Stop before they had a browser tab to stop. */
+  private readonly stopping = new Set<string>()
   /** The panel the shown tab's content measured, which a view sizes the tab by. */
   private panel: PanelReport | null = null
   /** The browser tab whose content is shown, which the view watches while the page is visible. */
@@ -283,10 +287,11 @@ export class BrowserTabsController {
   /**
    * Whether the panel tab `panelTab`, with `data`, shows its page loading:
    * the one state its strip's spinner, its Stop and its progress line show
-   * (`live-view.md` § A browser tab in the panel). It loads while the plugin
-   * opens a browser tab for it again, and otherwise as its browser tab does;
-   * a tab that could not open, or whose browser tab the browser lost and no
-   * one opened again yet, does not.
+   * (`live-view.md` § A browser tab in the panel). It loads while its browser
+   * tab opens, the first time or again, and otherwise as its browser tab
+   * does; and a shown tab that has no picture yet loads until its first
+   * picture, unless none can come. A tab that could not open, or whose
+   * browser tab the browser lost and no one opened again yet, does not.
    */
   busy(panelTab: string, data: BrowserTabData): boolean {
     if (this.opening(panelTab, data)) {
@@ -295,7 +300,55 @@ export class BrowserTabsController {
     if (data.failure || data.closed) {
       return false
     }
-    return this.loading(data.tab, data.url)
+    if (data.tab === undefined || this.loading(data.tab, data.url)) {
+      return true
+    }
+    return this.awaitsPicture(data.tab)
+  }
+
+  /**
+   * Whether the browser tab `tab` is shown with no picture yet, which the
+   * view will bring: not in a web browser that cannot show the pictures, nor
+   * while the Host says it cannot capture the tab.
+   */
+  private awaitsPicture(tab: string): boolean {
+    return tab === this.shownTab.value
+      && !this.pictured.has(tab)
+      && this.pictures.value !== 'unsupported'
+      && !this.session.value?.state.pictureless
+  }
+
+  /**
+   * The user's Stop on the panel tab `panelTab`, with `data`. A tab whose
+   * browser tab is still opening stops once it has one (`settle`); rejects
+   * with what refused it.
+   */
+  async stopPage(panelTab: string, data: BrowserTabData): Promise<void> {
+    const tab = data.closed ? undefined : data.tab
+    if (tab === undefined || this.opening(panelTab, data)) {
+      this.stopping.add(panelTab)
+      return
+    }
+    await this.stop(tab)
+  }
+
+  /**
+   * The panel tab `panelTab` has `data` now: a Stop its user pressed while it
+   * opened stops its browser tab, once it has one. A tab that could not open
+   * has nothing to stop. Rejects with what refused the Stop.
+   */
+  async settle(panelTab: string, data: BrowserTabData): Promise<void> {
+    if (!this.stopping.has(panelTab) || this.opening(panelTab, data)) {
+      return
+    }
+    const tab = data.closed || data.failure ? undefined : data.tab
+    if (tab === undefined && !data.failure) {
+      return
+    }
+    this.stopping.delete(panelTab)
+    if (tab !== undefined) {
+      await this.stop(tab)
+    }
   }
 
   /**
@@ -477,6 +530,7 @@ export class BrowserTabsController {
     for (const id of [...this.known.keys()]) {
       if (!tabs.some((tab) => tab.id === id)) {
         this.known.delete(id)
+        this.pictured.delete(id)
       }
     }
     for (const tab of tabs) {
@@ -524,6 +578,7 @@ export class BrowserTabsController {
       onTabs: (tabs, list) => this.viewTabs(tabs, list),
       onNotice: (code) => this.notice(code),
       onEnded: () => this.lookForShown(),
+      onPicture: (tab) => this.pictured.add(tab),
       defect: this.errors.defect,
     })
     this.session.value = session
@@ -551,6 +606,8 @@ export class BrowserTabsController {
     this.known.clear()
     this.requests.clear()
     this.binding.clear()
+    this.pictured.clear()
+    this.stopping.clear()
     this.closeView()
   }
 }

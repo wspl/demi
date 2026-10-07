@@ -308,6 +308,9 @@ async function requestHarness() {
       watched: 't1',
     }))
   report(4, false)
+  // The tab shows its picture, as a page that loaded does.
+  opened[0]!.data(framed({ type: 'stream', tab: 't1', generation: 1, width: 1600, height: 1200, viewport: VIEWPORT, scale: 1 }))
+  controller.session.value!.showed(1, 0, 0)
   return { controller, answers, report, opened, end }
 }
 
@@ -444,5 +447,77 @@ test('a refused Back ends the loading at once and rejects with why, and a replac
   answers[1]!.reject(new BrowserTabsError('history_boundary', 'The tab has no page to go to in that direction.'))
   await forward.catch(() => {})
   expect(controller.loading('t1', url)).toBe(true)
+  end()
+})
+
+/** A view open on the shown `t2`, whose module the test speaks for, and the Stops the plugin was asked for. */
+async function openingHarness(bind: () => Promise<string | null>) {
+  const opened: UserStreamHandlers[] = []
+  const stopped: string[] = []
+  const { controller, end } = harness(
+    {
+      bind,
+      stop: async (tab) => {
+        stopped.push(tab)
+        return 9
+      },
+      stream: (handlers) => {
+        opened.push(handlers)
+        return { send: () => {}, close: () => {} }
+      },
+    },
+    { pictures: async () => true },
+  )
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  return { controller, opened, stopped, end }
+}
+
+test('a reopened tab loads until its first picture, though the list already says it stopped loading', async () => {
+  const { controller, opened, end } = await openingHarness(async () => 't2')
+  const reopened = { url: 'https://example.test/', tab: 't2' }
+  await controller.bind('p1')
+  controller.show('t2')
+  opened[0]!.data(framed({
+    type: 'state',
+    running: true,
+    list: 3,
+    tabs: [{ id: 't2', title: 'Example', url: 'https://example.test/', createdBy: { kind: 'user' }, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false }],
+    watched: 't2',
+  }))
+  // No blank tab with Reload: no picture has shown yet.
+  expect(controller.busy('p1', reopened)).toBe(true)
+  opened[0]!.data(framed({ type: 'stream', tab: 't2', generation: 1, width: 1600, height: 1200, viewport: VIEWPORT, scale: 1 }))
+  controller.session.value!.showed(1, 0, 0)
+  expect(controller.busy('p1', reopened)).toBe(false)
+  end()
+})
+
+test('Stop pressed while the tab opens stops its browser tab as soon as it has one', async () => {
+  let answer = (_tab: string | null) => {}
+  const { controller, stopped, end } = await openingHarness(() => new Promise((resolve) => (answer = resolve)))
+  const lost = { url: 'https://example.test/', tab: 't1', closed: true }
+  void controller.bind('p1')
+  await controller.stopPage('p1', lost)
+  // Nothing to stop yet: the lost tab is not the one that opens.
+  expect(stopped).toEqual([])
+  answer('t2')
+  await Promise.resolve()
+  await controller.settle('p1', lost)
+  expect(stopped).toEqual([])
+  await controller.settle('p1', { url: 'https://example.test/', tab: 't2' })
+  expect(stopped).toEqual(['t2'])
+  // The Stop applied once.
+  await controller.settle('p1', { url: 'https://example.test/', tab: 't2' })
+  expect(stopped).toEqual(['t2'])
+  end()
+})
+
+test('Stop pressed on a new tab that then could not open stops nothing', async () => {
+  const { controller, stopped, end } = await openingHarness(async () => null)
+  await controller.stopPage('p1', { url: 'https://example.test/' })
+  await controller.settle('p1', { url: 'https://example.test/', failure: { code: 'device_offline', message: 'Offline' } })
+  await controller.settle('p1', { url: 'https://example.test/', tab: 't3' })
+  expect(stopped).toEqual([])
   end()
 })
