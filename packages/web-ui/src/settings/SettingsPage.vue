@@ -6,7 +6,11 @@ defineProps<{
   description?: SentenceText
   /** Use the whole column: for a list beside its detail. */
   wide?: boolean
-  /** Fill the host's height so a child can scroll on its own instead of the page. */
+  /**
+   * Fill the host's height so a child can scroll on its own instead of the
+   * page; a narrow dialog's page scrolls as a whole, with no scroll region
+   * inside another.
+   */
   fill?: boolean
 }>()
 </script>
@@ -14,7 +18,7 @@ defineProps<{
 <template>
   <div
     class="mx-auto flex w-full flex-col gap-8"
-    :class="[wide ? 'max-w-none' : 'max-w-2xl', fill ? 'h-full min-h-0' : '']"
+    :class="[wide ? 'max-w-none' : 'max-w-2xl', fill ? '@md:h-full @md:min-h-0' : '']"
   >
     <header class="select-none">
       <h2 class="text-[20px] font-medium leading-7 text-fg-emphasis">{{ title }}</h2>

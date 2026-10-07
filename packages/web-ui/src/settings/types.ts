@@ -20,12 +20,26 @@ export interface SettingsRowStatus {
   detail?: SentenceText
 }
 
+/**
+ * One setting a section holds, which the rail filter finds by its label or
+ * its keywords and opens with its row highlighted, as System Settings' search
+ * does.
+ */
+export interface SettingsEntry {
+  /** The label of its row on the section's page, which the highlight finds the row by. */
+  label: SentenceText
+  /** Other words a person may look for it by, such as "dark mode" for Theme. */
+  keywords?: string[]
+}
+
 export interface SettingsNavItem {
   id: SettingsTab
   label: TitleText
   icon: Component
-  /** What the rail filter also matches: names of settings the section holds. */
+  /** What else the rail filter matches the section by, besides its settings. */
   keywords?: string[]
+  /** The settings on the section's page that the rail filter finds one by one. */
+  settings?: SettingsEntry[]
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText

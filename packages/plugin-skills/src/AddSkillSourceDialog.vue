@@ -4,39 +4,59 @@ import type { OverlayStore } from '@demicodes/plugin-sdk'
 import { Button } from '@demicodes/plugin-sdk'
 import { Dialog } from '@demicodes/plugin-sdk'
 import { ExternalLink } from '@demicodes/plugin-sdk'
+import { InlineError } from '@demicodes/plugin-sdk'
 import { TextInput } from '@demicodes/plugin-sdk'
 import { SettingsRow } from '@demicodes/plugin-sdk'
-import type { SettingsSkillDraft } from './types'
+import type { AddSourceAnswer, SettingsSkillDraft } from './types'
 
 /**
  * Adding a skill source: a git repository. Every SKILL.md in it becomes a
- * skill the page can turn on.
+ * skill the page can turn on. The dialog stays open until the source is
+ * added; an origin the plugin refuses is said under the field, which keeps
+ * what was typed.
  */
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
+  addSource: (draft: SettingsSkillDraft) => Promise<AddSourceAnswer>
 }>()
 
 const emit = defineEmits<{
   close: []
-  add: [draft: SettingsSkillDraft]
 }>()
 
 const origin = ref('')
+const busy = ref(false)
+const refusal = ref<string | null>(null)
 
 watch(() => props.isOpen, (open) => {
   if (!open)
     return
   origin.value = ''
+  refusal.value = null
 })
 
-const canAdd = computed(() => origin.value.trim().length > 0)
+// A changed origin is a new attempt: the refusal of the last one no longer applies.
+watch(origin, () => {
+  refusal.value = null
+})
 
-function submit() {
+const canAdd = computed(() => !busy.value && origin.value.trim().length > 0)
+
+async function submit() {
   if (!canAdd.value)
     return
-  emit('add', { origin: origin.value.trim() })
-  emit('close')
+  busy.value = true
+  try {
+    const answer = await props.addSource({ origin: origin.value.trim() })
+    if (answer.kind === 'added') {
+      emit('close')
+    } else if (answer.kind === 'refused') {
+      refusal.value = answer.message
+    }
+  } finally {
+    busy.value = false
+  }
 }
 </script>
 
@@ -63,10 +83,13 @@ function submit() {
             focused
             class="w-72 max-w-full"
             placeholder="vercel-labs/agent-skills"
+            aria-label="Repository"
+            :readonly="busy"
             @keydown.enter="submit"
           />
         </SettingsRow>
       </div>
+      <InlineError v-if="refusal" :message="refusal" />
 
       <div class="flex items-center justify-between gap-3">
         <ExternalLink href="https://skills.sh">Browse skills.sh</ExternalLink>
@@ -74,7 +97,8 @@ function submit() {
           <Button @click="emit('close')">Cancel</Button>
           <Button
             variant="primary"
-            :disabled="!canAdd"
+            :disabled="!canAdd && !busy"
+            :loading="busy"
             @click="submit"
           >Add Source</Button>
         </div>

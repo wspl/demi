@@ -2,8 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
-import type { SettingsSkillDraft, SettingsSkillSource } from './types'
-import { pendingCalls, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
+import type { AddSourceAnswer, SettingsSkillDraft, SettingsSkillSource } from './types'
+import { PluginCallError, pendingCalls, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
   skillsStateSchema,
@@ -64,11 +64,19 @@ function change(
   void calls.run(source, couldNot, () => plugin.call(method, params, z.null()))
 }
 
-async function add(draft: SettingsSkillDraft): Promise<void> {
+/** The refusals that are about the origin typed, which the dialog says under its field (`skills.md` § The page). */
+const ORIGIN_REFUSALS = ['invalid_origin', 'source_exists']
+
+async function add(draft: SettingsSkillDraft): Promise<AddSourceAnswer> {
   try {
     await plugin.call('add_source', { origin: draft.origin } satisfies AddSource, addedSourceSchema)
+    return { kind: 'added' }
   } catch (error) {
+    if (error instanceof PluginCallError && ORIGIN_REFUSALS.includes(error.reason)) {
+      return { kind: 'refused', message: error.message }
+    }
     page.errors.report('Could Not Add the Source', error)
+    return { kind: 'failed' }
   }
 }
 </script>
@@ -79,7 +87,7 @@ async function add(draft: SettingsSkillDraft): Promise<void> {
     :sources="sources"
     :pending="calls.pending.value"
     :overlay-store="page.overlays"
-    @add="add"
+    :add-source="add"
     @update="(source) => change(source, 'update_source', { source }, 'Could Not Update the Source')"
     @remove="(source) => change(source, 'remove_source', { source }, 'Could Not Remove the Source')"
     @switch="(source, skill, enabled) => change(source, 'set_enabled', { source, skill, enabled }, 'Could Not Switch the Skill')"
