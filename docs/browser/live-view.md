@@ -126,9 +126,14 @@ page                         backend (panel, plugin-browser)            Host
   user's request until the tab list says the page stopped loading. The line
   appears in the same frame as the click or the Enter, before the request has
   left the page, since on a far backend the browser may start loading
-  seconds later; only a tab list read after the request's answer can end it,
-  because one read before still describes the page as it was. A refused
-  request ends it at once and the content says why. The
+  seconds later. Only a tab list that describes the page after the request
+  started can end it: the Host numbers the tab lists it produces, the
+  request's answer names the number of the last one before the request
+  started, and a list with a higher number ends the line, in whatever order
+  the answer and the lists reach the page. A refused request ends it at once
+  and the content says why, in the Writing page's words, not the Host's error
+  text. Back and Forward are unavailable while the tab has no page to go
+  back or forward to, as in any browser. The
   address bar follows the page and writes its URL into `url` as it changes.
 - **Showing.** A tab with a browser tab shows it on the page's one view
   (below). A tab shown again, after another tab or after the user's browser
@@ -675,7 +680,10 @@ user waits in the panel, not in a script: for a `user` caller `open`, `goto`,
 `back`, `forward` and `reload` start their work and answer at once, without
 waiting for the page to load, and the tab's content shows the loading. Each
 tab in the tab list and in the view's `state` carries `loading`: whether the
-browser is loading its top-level page.
+browser is loading its top-level page; and `canGoBack` and `canGoForward`:
+whether its history has an entry in that direction. Each tab list carries its
+number in the Host's sequence, and the answer of `goto`, `back`, `forward`
+and `reload` names the number of the last list before the request started.
 
 | State or method | Parameters | Does | A stopped Cloud |
 | --- | --- | --- | --- |
