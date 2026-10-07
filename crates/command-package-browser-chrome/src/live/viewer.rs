@@ -60,6 +60,11 @@ pub trait ViewedBrowser: Send + Sync + 'static {
 
     /// Cancelled when the conversation's release arrives.
     fn released(&self) -> &CancellationToken;
+
+    /// The number of the conversation's latest tab list, which a list sent
+    /// while no browser runs carries: the numbers only grow within the
+    /// conversation (`live-view.md` § A browser tab in the panel).
+    fn list_number(&self) -> u64;
 }
 
 /// Serves one view of `browser`, the invocation of `browser.live` that
@@ -214,8 +219,7 @@ impl<B: ViewedBrowser> Viewer<B> {
             self.writer
                 .control(&LiveModuleMessage::State {
                     running: false,
-                    // No browser runs: no list of its sequence.
-                    list: 0,
+                    list: self.browser.list_number(),
                     tabs: Vec::new(),
                     watched: None,
                 })

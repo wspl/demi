@@ -1026,6 +1026,9 @@ async fn the_users_requests_answer_without_waiting_for_a_page() {
             number > list && row["loading"] == json!(false)
         })
         .await;
+        let last = request(&fixture, "browser.tabs", json!({})).await["list"]
+            .as_u64()
+            .expect("the user's tab list names its number");
 
         let missing = "t999";
         let (code, refused) = user_result(&fixture, "browser.close", json!({"tab": missing})).await;
@@ -1042,6 +1045,17 @@ async fn the_users_requests_answer_without_waiting_for_a_page() {
         // Both were closed on purpose, the last one with its browser, so the
         // work panel removes their tabs rather than open them again.
         assert_eq!(tabs["closed"], json!([other, tab]));
+        // With no browser running the list keeps the conversation's number,
+        // and the next browser numbers its lists after the last browser's, so a
+        // request the old one answered ends on the new one's first list.
+        assert!(tabs["list"].as_u64().unwrap() >= last, "{tabs} went below {last}");
+        let reopened = request(&fixture, "browser.open", json!({"url": "about:blank"})).await;
+        let listed = request(&fixture, "browser.tabs", json!({})).await;
+        assert!(
+            listed["list"].as_u64().unwrap() > last,
+            "the new browser's list {listed} is not numbered after {last}"
+        );
+        request(&fixture, "browser.close", json!({"tab": reopened["tab"]})).await;
         fixture
     })
     .await;
