@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Terminal } from '@lucide/vue'
+import { vendorsInListOrder } from './provider-defaults'
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import FilterDialog from '@demicodes/web-ui/ui/FilterDialog.vue'
@@ -50,14 +51,15 @@ const protocolResults = computed(() =>
     ? protocols.filter((p) => p.label.toLowerCase().includes(q.value))
     : protocols,
 )
+const ordered = computed(() => vendorsInListOrder(props.vendors))
 const results = computed(() =>
   q.value
-    ? props.vendors.filter(
+    ? ordered.value.filter(
         (v) =>
           v.name.toLowerCase().includes(q.value) ||
           v.id.toLowerCase().includes(q.value),
       )
-    : props.vendors,
+    : ordered.value,
 )
 </script>
 

@@ -10,13 +10,22 @@ export class ApiError extends Error {
   readonly code: ErrorCode | null
   /** A plugin's own word for its refusal, with `plugin_refused`. */
   readonly reason: string | null
+  /** How many seconds the answer's `Retry-After` asks to wait, as a locked sign-in's does. */
+  readonly retryAfterSeconds: number | null
 
-  constructor(status: number, code: ErrorCode | null, message: string, reason: string | null = null) {
+  constructor(
+    status: number,
+    code: ErrorCode | null,
+    message: string,
+    reason: string | null = null,
+    retryAfterSeconds: number | null = null,
+  ) {
     super(message)
     this.name = 'ApiError'
     this.status = status
     this.code = code
     this.reason = reason
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
@@ -92,7 +101,7 @@ export async function apiRequest(
     return response
   }
 
-  throw apiError(response.status, await response.text())
+  throw apiError(response.status, await response.text(), response.headers.get('Retry-After'))
 }
 
 /**
@@ -100,7 +109,10 @@ export async function apiRequest(
  * or its status alone when something in front of the backend answered. An
  * expired session is noticed on the way.
  */
-export function apiError(status: number, text: string): ApiError {
+/** `Retry-After` in seconds; its date form is not one the backend sends. */
+const retryAfterSchema = z.coerce.number().int().nonnegative()
+
+export function apiError(status: number, text: string, retryAfter: string | null = null): ApiError {
   let body: unknown
   try {
     body = JSON.parse(text)
@@ -117,6 +129,7 @@ export function apiError(status: number, text: string): ApiError {
     parsed.success ? parsed.data.code : null,
     parsed.success ? parsed.data.message : `Request failed (${status}).`,
     parsed.success ? parsed.data.reason ?? null : null,
+    retryAfter === null ? null : retryAfterSchema.safeParse(retryAfter).data ?? null,
   )
 }
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
@@ -23,20 +23,24 @@ const resources = useResources()
 const product = useProduct()
 const work = useWorkPanel()
 const permissions = usePermissions()
-const route = useRoute()
+/**
+ * The open conversation, from the address the page shows: under open
+ * settings, that is the address they opened over, not the settings' own.
+ */
+const props = defineProps<{ id?: string }>()
 const router = useRouter()
 const conversation = computed(() =>
-  store.items.find((c) => c.id === route.params.id),
+  store.items.find((c) => c.id === props.id),
 )
 const pageKind = computed(() =>
-  !route.params.id && store.listStatus === 'ready'
+  !props.id && store.listStatus === 'ready'
     ? 'none'
     : conversationPageKind(store.listStatus, !!conversation.value),
 )
 watch(
-  () => route.params.id,
+  () => props.id,
   (id) => {
-    void store.activate(typeof id === 'string' ? id : null)
+    void store.activate(id ?? null)
   },
   { immediate: true },
 )
@@ -128,7 +132,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     throw new Error('The source conversation is unavailable.')
   }
   const id = await store.fork(sourceId, request)
-  if (route.params.id === sourceId) {
+  if (props.id === sourceId) {
     await router.push(`/chat/${id}`)
   }
 }

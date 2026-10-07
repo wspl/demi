@@ -51,12 +51,9 @@ export async function run(context: Context, argv: string[]): Promise<void> {
 
   const page = await context.browser.page()
   const back = page.url()
-  if (!back.startsWith(webBase(slot))) {
-    await page.goto(`${webBase(slot)}/`)
-  }
-  await page.keyboard.press('ControlOrMeta+Comma')
-  await (await element(context, 'role=navigation[name="Settings sections"] >> role=button[name="Devices"]', 10_000)).click()
-  await (await element(context, 'role=button[name="Add Device"]')).click()
+  // Settings have addresses of their own (`web-application.md` § Authentication).
+  await page.goto(`${webBase(slot)}/settings/devices`)
+  await (await element(context, 'role=button[name="Add Device"]', 10_000)).click()
   await (await element(context, 'role=dialog[name="Add Device"] >> role=button[name="Continue"]')).click()
   await (await element(context, 'role=dialog[name="Add Device"] >> label=Pairing code')).fill(code)
   await (await element(context, 'role=dialog[name="Add Device"] >> role=button[name="Pair Device"]')).click()
