@@ -13,8 +13,10 @@ import { resetPhaseLabels } from './reset-phases'
 /**
  * The Cloud reset, confirmed and then followed step by step: what it stops,
  * what it keeps, and one status line that is a spinner while a step runs, a
- * check when the Cloud is back, or the failure with Retry Reset. A failed
- * reset stays in the dialog, because the dialog is where it was asked for.
+ * check when the Cloud is back, or the failure with Retry Reset. Reset and
+ * Retry Reset turn into the spinner at once, before the server answers. A
+ * failed reset stays in the dialog, because the dialog is where it was asked
+ * for.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -35,7 +37,7 @@ const emit = defineEmits<{
 
 const failed = computed(() => props.submitted && (props.error !== null || props.phase === 'failed'))
 const running = computed(
-  () => props.submitted && !failed.value && props.phase !== null && props.phase !== 'ready',
+  () => props.submitted && !failed.value && props.phase !== 'ready',
 )
 const ready = computed(() => props.submitted && !failed.value && props.phase === 'ready')
 </script>
@@ -57,13 +59,13 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
         project, remain.
       </p>
       <p
-        v-if="running && phase"
+        v-if="running"
         role="status"
         aria-live="polite"
         class="flex items-center gap-2 text-chrome text-fg-muted"
       >
         <IndeterminateSpinner :size="ICON_PX.in24" />
-        {{ resetPhaseLabels[phase] }}
+        {{ phase ? resetPhaseLabels[phase] : 'Starting the reset…' }}
       </p>
       <p
         v-else-if="ready"

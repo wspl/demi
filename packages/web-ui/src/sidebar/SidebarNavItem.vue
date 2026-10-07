@@ -15,6 +15,9 @@ const props = defineProps<{
   label: TitleText
   shortcut?: string
   pressed?: boolean
+  /** lg takes a finger's height, for a list that is a phone's page of its own. */
+  size?: 'md' | 'lg'
+
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
@@ -38,9 +41,10 @@ const emit = defineEmits<{
       role="button"
       :aria-label="label"
       :aria-disabled="disabled || undefined"
-      class="flex h-7 cursor-default select-none items-center gap-2 rounded-md text-chrome transition-colors duration-200 ease-out"
+      class="flex cursor-default select-none items-center gap-2 rounded-md transition-colors duration-200 ease-out"
       :class="[
         'pl-2.5 pr-2',
+        size === 'lg' ? 'h-10 text-[15px]' : 'h-7 text-chrome',
         disabled
           ? 'cursor-not-allowed text-fg-faint'
           : pressed

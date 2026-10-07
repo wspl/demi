@@ -52,6 +52,10 @@ pub struct ProductState {
     /// build is out of date (`web-application.md` § A page of another
     /// build).
     pub web_build: Option<String>,
+    /// Whether the backend can send account mail, which an email change
+    /// needs for its code (`web-api.md` § Account API); without it the page
+    /// offers no email change.
+    pub mail: bool,
     /// This run of the backend, an id it chooses when it starts. The
     /// revisions it counts in memory, such as a summary's
     /// `permissionsRevision`, compare only within one run: a page holding

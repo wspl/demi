@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import TextInput from './TextInput.vue'
+import type { SentenceText } from './ui-text'
 
 defineOptions({ inheritAttrs: false })
 const props = defineProps<{
@@ -11,8 +12,19 @@ const props = defineProps<{
    * keeps what is stored.
    */
   stored?: boolean
+  /**
+   * What is wrong with a value, said as the fix ("Enter a name."), or null
+   * when it can be committed. A value that cannot is kept in the field, not
+   * reverted, and reported through `problem` until it is fixed or Escape
+   * gives the field back its committed value.
+   */
+  validate?: (value: string) => SentenceText | null
 }>()
-const emit = defineEmits<{ commit: [value: string] }>()
+const emit = defineEmits<{
+  commit: [value: string]
+  /** What is wrong with the value kept in the field; null once nothing is. */
+  problem: [message: SentenceText | null]
+}>()
 const draft = ref(props.modelValue)
 const focused = ref(false)
 
@@ -35,12 +47,18 @@ const shown = computed({
 function commit(): void {
   focused.value = false
   const value = draft.value
+  const problem = props.validate?.(value) ?? null
+  emit('problem', problem)
+  if (problem !== null) {
+    return
+  }
   draft.value = props.modelValue
   if (value !== props.modelValue) {
     emit('commit', value)
   }
 }
 
+/** Enter commits and Escape reverts; either ends the edit, and the dialog around stays open. */
 function finish(event: KeyboardEvent): void {
   event.preventDefault()
   if (event.key === 'Escape') {
