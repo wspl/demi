@@ -1,8 +1,8 @@
-// What `runner` does with the slot's runner (browse.md § The real product's
-// other parts), decided from what the slot's state records of it and
+// What `demi.runner` does with the slot's runner (browse.md § What `demi`
+// adds), decided from what the slot's state records of it and
 // whether its process runs: the slot has at most one runner, paired once
 // and then stopped and started again as a device that goes away and comes
-// back, until `runner --new` pairs a new one in its place.
+// back, until `demi.runner({ fresh: true })` pairs a new one in its place.
 import type { RunnerRecord } from './state'
 
 export type RunnerRequest = 'default' | 'start' | 'stop' | 'new'
@@ -25,16 +25,21 @@ export function runnerStep(request: RunnerRequest, record: RunnerRecord | undefi
     case 'stop':
       return runs ? { kind: 'stop' } : { kind: 'not running' }
     case 'start':
-      if (runs) {
-        return { kind: 'already running' }
+      if (!paired) {
+        return { kind: 'nothing paired' }
       }
-      return paired ? { kind: 'start' } : { kind: 'nothing paired' }
+      return runs ? { kind: 'already running' } : { kind: 'start' }
     case 'default':
-      if (runs) {
+      if (runs && paired) {
         return { kind: 'already running' }
       }
-      // A pairing that did not end is started over in the same generation.
-      return paired ? { kind: 'start' } : { kind: 'pair', generation: record?.generation ?? 1, stop: false }
+      if (paired) {
+        return { kind: 'start' }
+      }
+      // A pairing that did not end, such as one whose Add Device failed, is
+      // started over in the same generation, its runner stopped first when
+      // it still waits to be paired.
+      return { kind: 'pair', generation: record?.generation ?? 1, stop: runs }
     case 'new':
       return { kind: 'pair', generation: (record?.generation ?? 0) + 1, stop: runs }
   }

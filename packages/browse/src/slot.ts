@@ -1,4 +1,4 @@
-// The slot a check runs in (browse.md § What it does): slot n for a
+// The slot a check runs in (browse.md § One browser per slot): slot n for a
 // checkout at `../demi-slots/<n>`, slot 0 for any other, such as the user's
 // own. The slot decides the servers' ports and the folder that holds the
 // slot's browser, state and output, so two slots never share anything.
@@ -12,7 +12,7 @@ export interface SlotPorts {
   /**
    * Where the browser reaches the web app: the slot's network, which passes
    * the page's requests and sockets on to the web server and adds what
-   * `net` sets.
+   * `demi.net` sets.
    */
   network: number
 }
@@ -64,8 +64,12 @@ export function slotPaths(slot: Slot) {
     shots: join(slot.folder, 'shots'),
     logs: join(slot.folder, 'logs'),
     state: join(slot.folder, 'state.json'),
-    /** The page's logs a daemon that ends for changed code leaves for the next one. */
+    /** The page's logs a server that ends for changed code leaves for the next one. */
     pageLogs: join(slot.folder, 'page-logs.json'),
+    /** The `keep` a server that ends for changed code leaves for the next one. */
+    keep: join(slot.folder, 'keep.bin'),
+    /** The modules the calls' scripts run as while they run. */
+    calls: join(slot.folder, 'calls'),
     runnerHome: join(slot.folder, 'runner'),
     /** The development backend's data directory, which outlives the backend until `down --wipe`. */
     backendData: join(slot.folder, 'backend'),
