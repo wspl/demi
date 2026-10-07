@@ -965,6 +965,13 @@ plugin's [conversation state](#conversation-state-of-plugins), as
 order, so turning a plugin on or off changes no summary. What changes in the
 conversation's files is not in the summary: the Host reports it on the
 [file watch](#file-watch).
+`lastTurn` is the root's latest ended turn, `{ id, outcome, answerStart }`,
+or null before the first: `outcome` is `finished`, `failed` or `stopped`, and
+`answerStart` is the first 400 characters of its last answer's Markdown, or
+null when it gave none. A page [notifies](product.md#notifications) when a
+conversation's `lastTurn` names a turn it has not seen end, so a turn that
+starts and ends between two summaries the page receives still notifies, and
+it needs no transcript to say how the answer starts.
 `permissionRequests` counts the conversation's undecided
 [permission requests](#conversation-permissions), which the sidebar shows as
 the needs-you mark, and `permissionsRevision` rises with each change of its

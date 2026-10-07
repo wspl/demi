@@ -362,7 +362,9 @@ on by default:
 A notification shows only while its conversation is not in front of the
 user: the page is hidden or not focused, or it shows another conversation. A
 turn the user stopped notifies nothing, since the user was there. The pages
-learn of these events from their synchronization channel, so notifications
+learn of these events from their synchronization channel, a turn's end from
+the conversation's summary
+([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)), so notifications
 come while any Demi page of the browser is open, and none come when none is,
 which would need push notifications. Each notification is tagged with its
 conversation and turn, or its permission request, so several open pages show
