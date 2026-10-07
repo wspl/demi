@@ -54,6 +54,8 @@ pub enum StreamError {
 pub struct TakenState {
     pub url: String,
     pub title: String,
+    /// The tab shows the page in Mobile.
+    pub mobile: bool,
     pub storage: PageStorage,
 }
 
@@ -489,6 +491,7 @@ fn taken_state(id: u32, taken: TakenState) -> PreviewEngineMessage {
         id,
         url: taken.url,
         title: taken.title,
+        mobile: taken.mobile,
         storage: (!too_large).then_some(taken.storage),
         too_large,
     }

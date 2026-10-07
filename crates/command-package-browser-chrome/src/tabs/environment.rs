@@ -25,7 +25,7 @@ use crate::driver::{
 use demi_command_protocol::{ColorScheme, CommandLocale};
 
 use crate::tabs::{
-    protocol::{BrowserCreatedBy, BrowserViewport, Load, TabId},
+    protocol::{BrowserCreatedBy, BrowserViewport, Load, TabId, ViewportMode},
     registry::{self, Hold, Snapshot, Tabs},
     tab::BrowserTab,
 };
@@ -791,13 +791,14 @@ impl BrowserEnvironment {
         Ok(tab)
     }
 
-    /// The user's new tab on `url`, with `cookies` and `storage` written
-    /// into the browser before its page loads (`preview.md` § Page state).
-    /// A state that could not be written leaves the tab on the address
-    /// alone, and answers why beside it.
+    /// The user's new tab on `url`, in Mobile when `mobile` says, with
+    /// `cookies` and `storage` written into the browser before its page loads
+    /// (`preview.md` § Page state). A state that could not be written leaves
+    /// the tab on the address alone, and answers why beside it.
     pub async fn open_user_seeded(
         &self,
         url: &str,
+        mobile: bool,
         cookies: Vec<crate::page::state::PageCookie>,
         storage: Option<&demi_command_package_browser_protocol::preview::PageStorage>,
         cancellation: &CancellationToken,
@@ -806,6 +807,13 @@ impl BrowserEnvironment {
         crate::tabs::navigation::validate_url(url)?;
         let operation = Operation::until(&self.ended, cancellation, deadline);
         let tab = self.create(BrowserCreatedBy::User {}, &operation).await?;
+        if mobile {
+            // A phone's user agent, touch and size, before the page's first request.
+            let web = tab.web_viewport();
+            let (width, height) = crate::tabs::viewport::PHONE;
+            let phone = BrowserViewport { mode: ViewportMode::Mobile, width, height, device_pixel_ratio: web.device_pixel_ratio };
+            operation.run(tab.set_viewport(phone)).await?;
+        }
         let seeded = operation.run(crate::page::state::seed(&tab, cookies, storage)).await;
         crate::tabs::navigation::visit(&tab, url);
         Ok((tab, seeded))

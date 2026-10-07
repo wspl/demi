@@ -61,6 +61,8 @@ export const browserTabDataSchema = z.object({
    * once the tab opened (`preview.md` § Page state).
    */
   handover: z.string().optional(),
+  /** The tab opens in Mobile, as the tab of the user's browser it was handed over from showed the page; dropped with `handover`. */
+  mobile: z.boolean().optional(),
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 

@@ -24,7 +24,7 @@ import {
   type PreviewHeader,
   type PreviewOpened,
 } from '../generated/plugin'
-import { previewClient } from './client'
+import { mobileClient, previewClient } from './client'
 import type { PreviewConnection, PreviewExchange, PreviewSocket } from './connection'
 import { BOOT_PATH, labelOfOrigin, realAddress } from './labels'
 
@@ -94,6 +94,8 @@ export interface RelayTab {
   place(): PreviewPlace | null
   /** Its frame's window, while its content shows a frame: its top document's window. */
   frameWindow(): unknown
+  /** It shows its pages as a phone does (`preview.md` § Mobile). */
+  mobile(): boolean
   readonly connection: PreviewConnection
   /** Something its documents did. */
   report(event: TabEvent): void
@@ -310,6 +312,11 @@ export class PreviewRelay {
       }
       this.know(place, answered)
     }
+  }
+
+  /** The browser `tab`'s requests describe: the user's, or as a phone in Mobile. */
+  clientOf(tab: RelayTab): PreviewClient {
+    return tab.mobile() ? mobileClient(this.client()) : this.client()
   }
 
   /** The environment of `label`, waiting up to `LABEL_WAIT_MS` for it to be registered; null after. */
@@ -563,7 +570,7 @@ export class PreviewRelay {
         initiator,
         user,
       },
-      this.client(),
+      this.clientOf(binding.tab),
       body ? new Uint8Array(body) : null,
     )
     if (cookieWrite) {
@@ -713,7 +720,7 @@ export class PreviewRelay {
       binding.environment,
       url,
       protocols,
-      this.client(),
+      this.clientOf(binding.tab),
       {
         opened: (protocol, extensions) => reply({ type: 'socket-open', protocol, extensions }),
         message: (data) => {

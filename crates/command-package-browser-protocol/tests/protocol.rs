@@ -216,7 +216,7 @@ fn an_invocation_decodes_to_the_operation_its_name_names() {
         Operation::parse("browser.preview_open", file),
         Err(OperationError::Invalid(_))
     ));
-    let handover = json!({ "url": "http://localhost:5173/", "state": "kept-1" });
+    let handover = json!({ "url": "http://localhost:5173/", "state": "kept-1", "mobile": false });
     assert!(matches!(
         Operation::parse("browser.handover", handover.clone()),
         Ok(Operation::Handover(_))

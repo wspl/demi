@@ -49,6 +49,10 @@ struct TabData {
     /// plugin drops it once the tab opened (`preview.md` § Page state).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     handover: Option<String>,
+    /// The tab opens in Mobile, as the tab of the user's browser it was
+    /// handed over from showed the page; dropped with `handover`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    mobile: Option<bool>,
 }
 
 impl TabData {
@@ -117,7 +121,7 @@ impl Work {
             Ok(tab) => Ok(tab),
             Err(error) => {
                 // A page state opens one tab, once: Retry opens the address alone.
-                let failed = fields([("failure", failure(&error)), ("handover", Value::Null)]);
+                let failed = fields([("failure", failure(&error)), ("handover", Value::Null), ("mobile", Value::Null)]);
                 port.update_panel_tab(id, failed).await?;
                 Ok(None)
             }
@@ -277,7 +281,7 @@ async fn open_for(
     let (tab, at) = match (data.live(), &data.handover) {
         (Some(tab), _) => (tab.to_owned(), None),
         (None, Some(state)) => {
-            let opened = page::handover(port, &data.url, state).await?;
+            let opened = page::handover(port, &data.url, state, data.mobile == Some(true)).await?;
             (opened.id.to_string(), Some(data.url))
         }
         (None, None) => {
@@ -290,6 +294,7 @@ async fn open_for(
         ("closed", Value::Null),
         ("failure", Value::Null),
         ("handover", Value::Null),
+        ("mobile", Value::Null),
     ]);
     port.update_panel_tab(id, bound).await?;
     match data_of(port, id).await? {

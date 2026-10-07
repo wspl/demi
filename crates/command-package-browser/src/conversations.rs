@@ -52,6 +52,8 @@ const HANDOVER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120
 pub(crate) struct TabPageState {
     pub url: String,
     pub title: String,
+    /// The tab shows its page in Mobile.
+    pub mobile: bool,
     /// Its top-level origin's storage; none for a page without a web origin.
     pub storage: Option<demi_command_package_browser_protocol::preview::PageStorage>,
     pub cookies: Vec<state::PageCookie>,
@@ -1527,6 +1529,7 @@ impl Conversations {
             Ok::<_, BrowserError>(TabPageState {
                 url: info.url,
                 title: info.title,
+                mobile: tab.viewport().mode == protocol::ViewportMode::Mobile,
                 storage,
                 cookies,
             })
@@ -1547,6 +1550,7 @@ impl Conversations {
         &self,
         context: InvocationContext,
         url: &str,
+        mobile: bool,
         cookies: Vec<state::PageCookie>,
         storage: Option<&demi_command_package_browser_protocol::preview::PageStorage>,
     ) -> std::result::Result<Completion, ServiceError> {
@@ -1563,7 +1567,7 @@ impl Conversations {
                 .await?
                 .ok_or(BrowserError::TabNotFound)?;
             environment
-                .open_user_seeded(url, cookies, storage, &cancellation, deadline)
+                .open_user_seeded(url, mobile, cookies, storage, &cancellation, deadline)
                 .await
         }
         .await;

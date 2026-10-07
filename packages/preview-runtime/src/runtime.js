@@ -15,6 +15,7 @@ import { installFrameRuntime } from './frame-runtime.js';
 import { installWebSocketRuntime } from './websocket-runtime.js';
 import { installTabRuntime } from './tab-runtime.js';
 import { recordNatives, disguiseReplacements } from './native-runtime.js';
+import { installDevice } from './device-runtime.js';
 import { rewriteCss } from './css-rewrite.js';
 import { on, send } from './document-channel.js';
 
@@ -24,6 +25,8 @@ if (!globalThis.__proxyRuntimeInstalled) {
   const boot = globalThis.__proxyBoot;
   if (!boot) throw new Error('Preview runtime started without boot data');
   const natives = recordNatives();
+  // The page's scripts see the device its requests describe, a phone in Mobile.
+  installDevice(boot.device);
   // The runtime's own globals do not show up where a page lists its window's properties.
   // The rewriter declares the two temporaries with `var`, which keeps an existing property.
   Object.defineProperty(globalThis, '__proxyBoot', { enumerable: false });

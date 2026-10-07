@@ -237,12 +237,13 @@ fn user_tab(opened: OpenResult) -> BrowserTab {
 }
 
 /// A new tab on `url` with the page state the `preview` stream kept under
-/// `state` (`preview.md` § Page state): work the user starts, which wakes a
-/// stopped Cloud.
-pub(crate) async fn handover(port: &PluginPort, url: &str, state: &str) -> Result<BrowserTab, PluginError> {
+/// `state` (`preview.md` § Page state), in Mobile when `mobile` says: work
+/// the user starts, which wakes a stopped Cloud.
+pub(crate) async fn handover(port: &PluginPort, url: &str, state: &str, mobile: bool) -> Result<BrowserTab, PluginError> {
     let input = HandoverInput {
         url: url.to_owned(),
         state: state.to_owned(),
+        mobile,
     };
     let Ok(Value::Object(args)) = serde_json::to_value(&input) else {
         unreachable!("a handover serializes to an object")

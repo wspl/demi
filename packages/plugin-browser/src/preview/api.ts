@@ -7,7 +7,6 @@
 import { PluginCallError, type ConversationPlugin, type PreviewPlace } from '@demicodes/plugin-sdk'
 import { previewOpenedSchema, type PreviewOpenInput } from '../generated/plugin'
 import { refusalSentence } from '../live/tabs'
-import { previewClient } from './client'
 import { PreviewConnection } from './connection'
 import type { PreviewRelay } from './relay'
 import { readState, writeState } from './state-frame'
@@ -100,7 +99,7 @@ export function relayDriver(relay: PreviewRelay): PreviewDriver {
           initiator: environment,
           user: false,
         },
-        previewClient(),
+        relay.clientOf(tab),
         null,
       )
       const head = await exchange.head

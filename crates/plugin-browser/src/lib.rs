@@ -112,6 +112,16 @@ fn live_stream() -> Stream {
             count(live::FileHeader::BYTES),
         )
         .constant(
+            "PHONE_WIDTH",
+            "Mobile's width in CSS pixels, a tab of either browser's.",
+            live::PHONE.0,
+        )
+        .constant(
+            "PHONE_HEIGHT",
+            "Mobile's height in CSS pixels.",
+            live::PHONE.1,
+        )
+        .constant(
             "LIVE_HEARTBEAT_MS",
             "How often the module speaks at least.",
             live::HEARTBEAT_MS,
