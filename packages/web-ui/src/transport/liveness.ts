@@ -191,10 +191,12 @@ export function pageReturned(): void {
 }
 
 /**
- * The page's path to a Host changed, as when a direct channel opened or
- * failed (`direct-channel.md` § Choosing the path): each socket that waits
- * to connect again, such as a view its owner just ended for the move,
- * connects now on the new path. Moving costs no reconnect wait.
+ * Each socket that waits to connect again connects now: the page's path to
+ * a Host changed, as when a direct channel opened or failed
+ * (`direct-channel.md` § Choosing the path), and a view its owner just
+ * ended for the move connects on the new path; or the page reaches the
+ * backend again after it was away, which the synchronization channel
+ * learns first (`web-application.md` § Liveness and reconnection).
  */
 export function reconnectNow(): void {
   connectWaiting()

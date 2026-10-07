@@ -2,7 +2,7 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { browserOnline, openSocket, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { browserOnline, openSocket, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
 import {
@@ -331,9 +331,17 @@ export const useProduct = defineStore('product', () => {
       return
     }
     if (event.type === 'snapshot') {
+      // The backend is back after it was away: each other socket of the page
+      // that waits to connect connects at once, as at the page's return, so
+      // nothing still says it connects once the banner goes (`web-application.md`
+      // § Liveness and reconnection).
+      const returned = failures.value > 0 || restarting.value
       snapshotAt = received
       failures.value = 0
       restarting.value = false
+      if (returned) {
+        reconnectNow()
+      }
       snapshot.value = event.state
       load.value = 'ready'
       // Model discovery never holds the page; it records its own failure.
