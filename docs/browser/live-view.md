@@ -123,7 +123,12 @@ page                         backend (panel, plugin-browser)            Host
   to load it ([The tab methods](#the-tab-methods)). Back, Forward and Reload
   are requests on the bound tab. While the browser loads the tab's page, the
   content shows a progress line over the picture it still shows, from the
-  user's request until the tab list says the page stopped loading. The
+  user's request until the tab list says the page stopped loading. The line
+  appears in the same frame as the click or the Enter, before the request has
+  left the page, since on a far backend the browser may start loading
+  seconds later; only a tab list read after the request's answer can end it,
+  because one read before still describes the page as it was. A refused
+  request ends it at once and the content says why. The
   address bar follows the page and writes its URL into `url` as it changes.
 - **Showing.** A tab with a browser tab shows it on the page's one view
   (below). A tab shown again, after another tab or after the user's browser
