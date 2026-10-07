@@ -1,8 +1,8 @@
 diff --git a/Cargo.toml b/Cargo.toml
-index e266ec1..9763d76 100644
+index e266ec1..d22f086 100644
 --- a/Cargo.toml
 +++ b/Cargo.toml
-@@ -105,3 +105,17 @@ version = "0.2"
+@@ -105,3 +105,18 @@ version = "0.2"
  level = "allow"
  priority = 0
  check-cfg = ["cfg(const_fn)"]
@@ -18,10 +18,11 @@ index e266ec1..9763d76 100644
 +    "The build script names only the library directories the build made, so the linker warns about none missing (Zig's, for every Linux target)",
 +    "Every Windows build, from any build machine, compiles BoringSSL without assembly (OPENSSL_NO_ASM), as upstream already did on a Windows build machine, and takes the C runtime from crt-static even under a CMake toolchain file such as cargo-xwin's: the x86-64 assembly would need NASM, and the toolchain file's early return dropped the runtime choice",
 +    "An MSVC build generates for Ninja, as cargo-xwin's does, so BoringSSL compiles with the build's compiler and the MSVC toolset its environment selected: cmake's default Visual Studio generator compiled with Visual Studio's newest toolset (14.51) instead of the pinned 14.44, whose static C++ library then lacked the ARM64 vectorized algorithms the newer STL headers called (__std_find_trivial_1 and others), so aarch64-pc-windows-msvc failed to link on a Windows runner; disabling _USE_STD_VECTOR_ALGORITHMS would hide that symptom but still link one toolset's objects against an older one's libraries",
++    "CMake configures a fresh build directory on every run of the build script, so a directory an earlier run left with settings CMake cannot change in place (another generator: a cached target directory from before the MSVC builds moved to Ninja) cannot fail the build; every run copies BoringSSL's source anew, so the old directory saved little",
 +    "suspicious_runtime_symbol_definitions is allowed: the bindings declare the C library's malloc and realloc with C's types, which the pinned nightly's lint flags, and nothing calls them",
 +]
 diff --git a/build/main.rs b/build/main.rs
-index 0825ff5..9dcd05d 100644
+index 0825ff5..9d3a00f 100644
 --- a/build/main.rs
 +++ b/build/main.rs
 @@ -212,10 +212,6 @@ fn get_boringssl_cmake_config(config: &Config) -> cmake::Config {
@@ -86,7 +87,27 @@ index 0825ff5..9dcd05d 100644
      if config.features.underscore_wildcards {
          println!("cargo:warning=applying underscore wildcards patch to boringssl");
          apply_patch(config, "underscore-wildcards.patch")?;
-@@ -702,7 +716,11 @@ fn emit_link_directives(config: &Config) {
+@@ -553,6 +567,19 @@ fn build_boringssl_or_get_prebuilt(config: &Config) -> &Path {
+             return path.into();
+         }
+ 
++        // Demi's: CMake configures a fresh build directory every time. One
++        // left by an earlier run may hold settings CMake cannot change in
++        // place, such as another generator, and fails the configure step;
++        // and since every run copies the source anew, an old directory saves
++        // little of the build.
++        let build_dir = config.out_dir.join("build");
++        match fs::remove_dir_all(&build_dir) {
++            Ok(()) => {}
++            // Nothing to remove: the first run in this output directory.
++            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
++            Err(error) => panic!("removing {}: {error}", build_dir.display()),
++        }
++
+         let mut cfg = get_boringssl_cmake_config(config);
+ 
+         let num_jobs = std::env::var("NUM_JOBS").ok().or_else(|| {
+@@ -702,7 +729,11 @@ fn emit_link_directives(config: &Config) {
              .map(|s| dir.join(s))
              .filter(|d| d.exists())
              .unwrap_or(dir);
