@@ -223,10 +223,15 @@ storage ([Preview domain deployment](../delivery/builds-and-releases.md#preview-
   as written.
 - A namespace lives 90 days. The backend registers its namespace when it first
   starts, with the origins it serves its pages on (its public URL, and in
-  development the web dev server's), keeps the namespace and its secret as a
-  control record ([Storage](../backend/storage.md#control-records)), renews it
-  once a day, and replaces its origins when they change. An expired namespace
-  answers 410, and a new one is registered. A namespace is never reused,
+  development the web dev server's, `DEMI_PREVIEW_ORIGINS`), keeps the
+  namespace and its secret as a control record
+  ([Storage](../backend/storage.md#control-records)), renews it a day after
+  its last registration or renewal, and replaces its origins when they
+  change. A namespace the service answers 410, 404 or 401 for is gone, and a
+  new one is registered, as is one whose stored secret no longer opens; any
+  other failure is retried with waits that double, and the backend serves
+  meanwhile, with previews unavailable. `backend-user-shard`'s `preview`
+  module owns this. A namespace is never reused,
   since a browser may still hold its previous owner's storage.
 - Creation is rate-limited by source address. Nothing checks that the origins
   belong to whoever registers them: registering another's origin only lets
@@ -406,18 +411,25 @@ the relay chooses.
 
 | Kind | Sender | Payload |
 | --- | --- | --- |
-| `request` | Relay | `{ id, tab, environment, request, client }`: the receiving environment the relay bound, the forwarder's request with real addresses, and the client description ([Upstream requests](#upstream-requests), [Mobile](#mobile)) |
-| `request_body` | Relay | `id`, then up to 256 KiB of the request's body; an empty one ends it |
+| `hello` | Relay | `{ domain, namespace, host }`: the first message, which labels need, since a user stream takes no arguments |
+| `request` | Relay | `{ id, environment, initiator, user, request, client, body }`: the receiving environment the relay bound, the initiator the relay resolved (an environment, or null when unknown), whether the user started it, the forwarder's request with real addresses, the client description ([Upstream requests](#upstream-requests), [Mobile](#mobile)), and whether body frames follow |
+| `request_body` | Relay | `id`, then up to 256 KiB of the request's body, on the engine's `pull`; an empty one ends it |
 | `response` | Engine | `{ id, status, headers, labels }`: the head of the answer, and the labels its rewriting computed, each with its environment |
-| `pull` | Relay | `{ id }`: send the next chunk |
+| `pull` | Either | `{ id }`: send the next chunk of that body |
 | `chunk` | Engine | `id`, then up to 256 KiB of the body; an empty one ends it |
-| `cancel` | Either | `{ id }`: the browser gave up on the request, or the engine on its body |
-| `failed` | Engine | `{ id, reason }`: the request failed before or during its answer; the forwarder answers a network error |
-| `socket_open` | Relay | `{ id, tab, environment, url, protocols }` |
+| `cancel` | Relay | `{ id }`: the browser gave up on the request |
+| `failed` | Engine | `{ id, reason }`: the request failed before or during its answer, or the engine gave it up; the forwarder answers a network error |
+| `socket_open` | Relay | `{ id, environment, initiator, url, protocols, client }` |
 | `socket_opened` | Engine | `{ id, protocol, extensions }` |
 | `socket_message` | Either | `id`, a text or binary flag, then the message |
-| `socket_close` | Either | `{ id, code, reason }` |
-| `labels` | Relay | `{ labels }`: environments the runtime mapped, for the engine's lookups of initiators |
+| `socket_close` | Either | `{ id, code, reason }`; a socket that could not open closes with 1006 |
+
+The relay, which holds the labels and the kept requests, resolves each
+request's initiator from them ([The preview engine](#the-preview-engine)) and
+maps addresses back, keeping the `__demi_*` parameters the engine reads; the
+engine receives only environments. A socket's messages have no `pull`: a
+WebSocket's upstream is read as fast as it sends, and a slow page then holds
+the whole stream, a limit to lift if pages show it.
 
 The engine sends a body's next chunk only on a `pull`, so a slow page holds
 the Host back rather than filling memory, as the live view's stream does
@@ -439,7 +451,8 @@ The engine is the `command-package-browser-preview` crate, composed into
 nothing per conversation but its open requests.
 
 **Input**: the receiving environment, from the relay's binding of the channel,
-never from the page; the request; and its initiator, taken in order from:
+never from the page; the request; and its initiator, which the relay resolves
+from what it holds, in order:
 
 1. the kept request a token names: the label that started it;
 2. a subresource or a fetch: the receiving environment itself;
@@ -548,7 +561,8 @@ unknown initiator; the engine remembers the document's policy and drops the
 
 A site's CSP and `X-Frame-Options` are removed, and the preview's policy
 replaces them: `default-src https://*.demi-preview.dev data: blob:
-'unsafe-inline' 'unsafe-eval'`, reporting violations. An address the
+'unsafe-inline' 'unsafe-eval'`, with the preview domain's own scheme and
+port. An address the
 rewriting missed, or a request straight to another site, is then blocked
 before it leaves the user's browser.
 
