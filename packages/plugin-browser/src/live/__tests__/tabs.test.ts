@@ -667,6 +667,38 @@ test('before the browser has a tab, the content says what Demi does: connecting,
   end()
 })
 
+test('a new tab nobody sent anywhere is blank at once while the browser starts; an address entered then loads and says what it waits for', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const { controller, list, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true })
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  const blank = { url: 'about:blank' }
+  controller.show('p1', null)
+  // Nothing said yet what the Host does, then the browser does not run: the strip's +, as a browser's new tab.
+  expect(controller.startingPhase('p1', blank)).toBeNull()
+  expect(controller.busy('p1', blank)).toBe(false)
+  const browser = { name: 'Chrome for Testing', version: '153.0.8010.36' }
+  list.value = { tabs: [], browser }
+  views[0]!.handlers.data(framed({ type: 'state', running: false, list: 1, tabs: [], watched: null }))
+  expect(controller.startingPhase('p1', blank)).toBeNull()
+  expect(controller.busy('p1', blank)).toBe(false)
+  // The user enters an address before the browser has the tab: it loads, and says what it waits for.
+  const asked = { url: 'https://example.test/' }
+  expect(controller.startingPhase('p1', asked)).toBe('browser')
+  expect(controller.busy('p1', asked)).toBe(true)
+  // The browser opened the blank tab unseen: shown before its first picture, it still loads nothing.
+  const tab = { id: 't1', title: '', url: 'about:blank', createdBy: { kind: 'user' as const }, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false }
+  views[0]!.handlers.data(framed({ type: 'state', running: true, list: 2, tabs: [tab], watched: null }))
+  controller.show('p1', 't1')
+  const bound = { url: 'about:blank', tab: 't1' }
+  expect(controller.startingPhase('p1', bound)).toBeNull()
+  expect(controller.busy('p1', bound)).toBe(false)
+  // Its Reload is a request of the user's, which loads as any does.
+  void controller.history('t1', 'reload')
+  expect(controller.busy('p1', bound)).toBe(true)
+  end()
+})
+
 test('a tab shown again shows no page until the browser’s list names its tab, which a restart may have lost', async () => {
   const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
   const { controller, list, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true })
