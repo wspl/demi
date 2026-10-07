@@ -115,7 +115,9 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   File view's `file`, has one tab in every conversation's panel, ahead of the
   user's tabs. It is never created, closed, listed or saved; its `data`, such
   as the file it shows and what Back returns to, stays in memory for the
-  page's lifetime. Its id is its kind's id.
+  page's lifetime. Its id is its kind's id. Pinned tabs are tabs of the
+  strip's one tab list, before the others: they select, and the arrow keys,
+  Home and End move across them, as across every tab.
 - **Tabs.** A tab is a fact the backend keeps for the conversation: a tab of
   this kind stands here, with this `data`. The user, from any page, and the
   plugin that owns the kind change the tabs, and the backend orders every
