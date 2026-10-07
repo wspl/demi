@@ -3,7 +3,7 @@
  * draws a page, encodes it as the Host's capture would, and speaks the live
  * protocol, so the view's pictures, input, controls and dialogs show here.
  */
-import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/plugin'
+import { LIVE_CAPTURE_UNAVAILABLE, LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/plugin'
 import type {
   BrowserTab,
   BrowserViewport,
@@ -148,6 +148,8 @@ class GalleryBrowserView {
     private readonly tabs: LiveTab[],
     /** The number of the browser's latest tab list, as the Host numbers them. */
     private readonly list: () => number,
+    /** Whether the Host can capture its tabs; one that cannot says so for each tab watched, as an Apple M4's Linux VM does. */
+    private readonly capture: boolean,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
@@ -155,6 +157,11 @@ class GalleryBrowserView {
 
   private send(value: LiveModuleMessage): void {
     this.handlers.data(message(value))
+  }
+
+  /** Something the Host could not do for this viewer, as the module tells it. */
+  notice(code: string, text: string): void {
+    this.send({ type: 'notice', code, message: text })
   }
 
   /** The tabs changed by a request: every view says so, and a view of a closed tab watches nothing. */
@@ -280,6 +287,10 @@ class GalleryBrowserView {
     this.canvas.height = size.height
     this.send({ type: 'controls', tab: tab.id, controls: [{ ...SELECT, value: this.status }] })
     this.send({ type: 'cursors', tab: tab.id, regions: pageCursors(tab.viewport) })
+    if (!this.capture) {
+      this.notice(LIVE_CAPTURE_UNAVAILABLE, 'this CPU reports SME without SVE, and Chrome cannot capture on it')
+      return
+    }
     // A real Host can report controls before its encoder starts a generation.
     this.send({
       type: 'stream',
@@ -313,7 +324,7 @@ class GalleryBrowserView {
     })
     let frames = 0
     this.painting = setInterval(() => {
-      this.paint(tab.viewport)
+      this.paint(tab)
       const frame = new VideoFrame(this.canvas, {
         timestamp: Math.round((performance.now() - this.started) * 1000),
       })
@@ -326,16 +337,20 @@ class GalleryBrowserView {
     }, 1000 / FPS)
   }
 
-  /** A page worth looking at: a heading, a button, a field and a select. */
-  private paint(viewport: BrowserViewport): void {
+  /** A page worth looking at: a heading, a button, a field and a select; a blank page on `about:blank`, as a new tab is. */
+  private paint(tab: LiveTab): void {
     const context = this.canvas.getContext('2d')
     if (!context) {
       return
     }
+    const viewport = tab.viewport
     const ratio = viewport.devicePixelRatio
     context.setTransform(ratio, 0, 0, ratio, 0, 0)
     context.fillStyle = '#ffffff'
     context.fillRect(0, 0, viewport.width, viewport.height)
+    if (tab.url === 'about:blank') {
+      return
+    }
     context.fillStyle = '#0f172a'
     context.font = '600 22px system-ui, sans-serif'
     context.fillText('Orders', 24, 48)
@@ -402,7 +417,8 @@ class GalleryBrowserView {
  * shows. It starts with the agent's and the user's tab unless a specimen
  * supplies its own list, such as an empty one for a panel whose strip starts
  * empty. Without `chrome`, the Host lacks the browser, which only the agent installs, so the
- * strip offers no new tab and says why.
+ * strip offers no new tab and says why; without `capture`, the Host cannot capture its tabs, so
+ * a view shows no picture and says why.
  */
 export interface GalleryBrowser {
   /** The tab list, as the plugin's conversation state last brought it. */
@@ -419,6 +435,8 @@ export interface GalleryBrowser {
   show(tab: string): void
   /** The agent opens a tab, as `demi browser open` does, and shows it with `show`, as `--show` does. */
   agentOpens(url: string, options: { show: boolean }): void
+  /** The Host fails what a viewer asked, such as its input, and tells every view, as the module's notice does. */
+  fail(code: string, message: string): void
   stream: OpenUserStream
   /** What the Host holds of the browser's package. */
   installed(): readonly HostArtifact[]
@@ -426,7 +444,7 @@ export interface GalleryBrowser {
 
 export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),
-  { chrome = true }: { chrome?: boolean } = {},
+  { chrome = true, capture = true }: { chrome?: boolean; capture?: boolean } = {},
 ): GalleryBrowser {
   const views = new Set<GalleryBrowserView>()
   // The next tab's number, as the conversation gives them: never one given before.
@@ -534,7 +552,7 @@ export function galleryBrowser(
   }
 
   const stream: OpenUserStream = (handlers) => {
-    const browser = new GalleryBrowserView(handlers, tabs, () => lists)
+    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture)
     views.add(browser)
     return {
       send: (bytes) => browser.receive(bytes),
@@ -620,6 +638,11 @@ export function galleryBrowser(
         shows.set(tab.id, 1)
       }
       changed()
+    },
+    fail: (code, message) => {
+      for (const view of views) {
+        view.notice(code, message)
+      }
     },
     stream,
     installed: () => held,
