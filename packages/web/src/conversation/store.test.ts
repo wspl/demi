@@ -3,6 +3,7 @@ import { deferred, waitFor } from '@demicodes/utils'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationRuntime } from '@demicodes/web-ui/agent/conversation-runtime'
 import { toasts } from '@demicodes/web-ui/infra/toast'
+import { pageReturned } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
@@ -580,6 +581,116 @@ test('first send failure preserves the conversation and retries its UUID and mes
   ])
 })
 
+/**
+ * Answers what opening the conversation `id` reads, beside the backend's own
+ * routes, after `intercept` had its look at each request; gives the backend
+ * its routes back when called.
+ */
+function answerOpening(id: string, intercept: (path: string) => void = () => {}): () => void {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    intercept(path)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/transcript')) return Response.json({ blocks: [], subagents: [] })
+    if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
+      return Response.json({ conversation: records.find((item) => item.id === id), results: [] })
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  return () => {
+    globalThis.fetch = originalFetch
+  }
+}
+
+/** The conversation infers with the stub model, which the catalog lists. */
+async function chooseStubModel(conversation: ReturnType<typeof useConversations>['items'][number]): Promise<void> {
+  useProduct().snapshot!.providers.push(stubProvider)
+  await useProduct().loadModels(true)
+  await useConversations().changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
+}
+
+// A message sent while Demi restarts shows as waiting, never as failed, and
+// goes with its id once the page reaches the backend again
+// (`web-application.md` § A page of another build).
+test('a first send while the backend is away waits without failing and goes once with its id when it is back', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  let away = false
+  let refused = 0
+  const restoreFetch = answerOpening(id, (path) => {
+    if (away && path === '/api/conversations') {
+      refused += 1
+      throw new TypeError('Failed to fetch')
+    }
+  })
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  try {
+    await chooseStubModel(conversation)
+    conversation.draft = 'Sent while Demi restarts'
+    away = true
+    channels.last().end(1001, 'backend_closing')
+    expect(useProduct().connection).toBe('restarting')
+    const sending = store.send(conversation)
+    await waitFor(() => refused === 1, () => 'no create request')
+    const messageId = conversation.pendingSend?.id
+    expect(conversation.pendingSend?.error).toBeNull()
+    expect(submit).not.toHaveBeenCalled()
+    away = false
+    // The page connects again at once rather than after its wait, and the channel's snapshot ends the banner.
+    pageReturned()
+    channels.last().connect({ ...backendState(), providers: [stubProvider] })
+    await sending
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(submit.mock.calls[0]?.[1]).toBe(messageId)
+    expect(conversation.pendingSend).toBeNull()
+  } finally {
+    submit.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
+test('Stop pressed while the first message is on its way stops the turn it starts, once the session holds it', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  const restoreFetch = answerOpening(id)
+  const held = deferred<void>()
+  const order: string[] = []
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async () => {
+    await held.promise
+    order.push('submit')
+  })
+  const abort = spyOn(ConversationRuntime.prototype, 'abort').mockImplementation(async () => {
+    order.push('abort')
+  })
+  try {
+    await chooseStubModel(conversation)
+    conversation.draft = 'Write a long poem'
+    const sending = store.send(conversation)
+    const stopping = store.stop(conversation)
+    await waitFor(() => submit.mock.calls.length === 1, () => 'the message was not submitted')
+    expect(order).toEqual([])
+    held.resolve()
+    await sending
+    await stopping
+    await waitFor(() => order.length === 2, () => `order: ${order.join(', ')}`)
+    expect(order).toEqual(['submit', 'abort'])
+  } finally {
+    abort.mockRestore()
+    submit.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
 // The page hides the composer while a conversation loads: had the first send
 // shown the new conversation as loading, the composer the user sent from
 // would have gone, and the focus with it.
@@ -916,6 +1027,20 @@ test('batch partial failure applies only the successful server records', async (
   expect(store.items.find((item) => item.id === FIRST)?.archived).toBe(true)
   expect(store.items.find((item) => item.id === SECOND)?.archived).toBe(false)
   expect(toasts.some((toast) => toast.message?.includes('second: Turn is running'))).toBe(true)
+})
+
+test('archiving says so in a toast whose Undo brings the conversation back', async () => {
+  const store = useConversations()
+  expect(await store.archive([FIRST])).toBe(true)
+  expect(store.items.find((item) => item.id === FIRST)?.archived).toBe(true)
+  const toast = toasts.findLast((item) => item.title === 'Conversation Archived')
+  expect(toast?.action?.label).toBe('Undo')
+  toast!.action!.run()
+  await waitFor(() => store.items.find((item) => item.id === FIRST)?.archived === false, () => 'Undo did not restore it')
+  expect(requests.filter((request) => request.path === '/api/conversations/batch').map((request) => request.body)).toEqual([
+    { items: [{ id: FIRST, patch: { archived: true } }] },
+    { items: [{ id: FIRST, patch: { archived: false } }] },
+  ])
 })
 
 test('read acknowledgements use the observed revision and wait for history', async () => {

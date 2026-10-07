@@ -1,25 +1,26 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import type { ToolMediaSource } from '@demicodes/protocol'
-import { useMediaViewer } from '../../files/media-viewer'
-import { dropSource } from '../../files/preview'
-import { declaredSize, loadedSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize } from '../../files/thumbnail'
-import { useMediaUrl } from '../media-source'
+import type { MediaSource as ContentMediaSource, ToolMediaSource } from '@demicodes/protocol'
+import { useMediaViewer } from '../files/media-viewer'
+import { dropSource } from '../files/preview'
+import { declaredSize, loadedSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize } from '../files/thumbnail'
+import { useMediaUrl } from './media-source'
 
 /**
- * One image or video a tool returned, as a thumbnail that takes its box
+ * One image or video of the conversation, as a thumbnail that takes its box
  * before its bytes arrive, from the size its reference carries, so the
- * transcript does not move when they load (`file-previews.md` § Media a tool
- * returned). It is cropped when its proportions fall outside the
- * thumbnail's; a video's is its first frame with a play mark. A click opens
- * it whole and large, where a video plays. A medium the page cannot show,
- * because it did not load or the web browser cannot decode it, says so in
- * its place.
+ * transcript does not move when they load: one a tool returned
+ * (`file-previews.md` § Media a tool returned), and one the user sent, where
+ * its capsule stands (`product.md` § Attachments). It is cropped when its
+ * proportions fall outside the thumbnail's; a video's is its first frame
+ * with a play mark. A click opens it whole and large, where a video plays. A
+ * medium the page cannot show, because it did not load or the web browser
+ * cannot decode it, says so in its place.
  */
 const props = defineProps<{
   kind: 'image' | 'video'
-  source: ToolMediaSource
-  /** The call's title, which names the medium for the viewer and for a screen reader. */
+  source: ContentMediaSource | ToolMediaSource
+  /** What names the medium for the viewer and for a screen reader: the call's title, or the file's name. */
   name: string
 }>()
 
@@ -29,7 +30,10 @@ const failed = ref(false)
 const element = ref<HTMLImageElement | HTMLVideoElement | null>(null)
 /** The medium's size once its bytes have loaded. */
 const loaded = ref<PixelSize | null>(null)
-const box = computed(() => thumbnailBox(loaded.value ?? declaredSize(props.source), props.kind))
+const box = computed(() => thumbnailBox(
+  loaded.value ?? (props.source.type === 'ref' ? declaredSize(props.source) : null),
+  props.kind,
+))
 watch(src, () => {
   failed.value = false
   loaded.value = null

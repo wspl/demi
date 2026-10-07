@@ -1,17 +1,12 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed } from 'vue'
 import { Archive, Pin, PinOff } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { isTextCut } from '@demicodes/web-ui/ui/truncation'
 import type { SidebarConversation } from './types'
-
-/** Wait before scrolling a hovered title; the row layout has settled by then. */
-const MARQUEE_DELAY_MS = 500
-/** Constant scroll speed and spacing between repeated titles. */
-const MARQUEE_PX_PER_S = 36
-const MARQUEE_GAP_PX = 24
 
 const props = defineProps<{
   conversation: SidebarConversation
@@ -42,8 +37,9 @@ const emit = defineEmits<{
 
 // One quiet mark: yellow while a permission request waits for the user, over every other mark and
 // whether the row is open or read; a breathing dot while running, blue for a result waiting to be
-// read, orange when the conversation failed or was stopped. A settled row keeps a faint ring in
-// the dot's place, so the column under a project's icon is never empty.
+// read, orange when the conversation failed. A turn the user stopped is their own decision, not a
+// failure, and leaves the row settled (`product.md` § Recovering an unfinished turn). A settled
+// row keeps a faint ring in the dot's place, so the column under a project's icon is never empty.
 const SETTLED_DOT = 'border border-fg-faint/60'
 
 const dotClass = computed(() => {
@@ -58,7 +54,7 @@ const dotClass = computed(() => {
   if (props.open || !unread) {
     return SETTLED_DOT
   }
-  if (status === 'error' || status === 'aborted') {
+  if (status === 'error') {
     return 'bg-on-warning'
   }
   if (status === 'done' && unread) {
@@ -78,35 +74,6 @@ const rowClass = computed(() => [
       : 'text-fg-body hover:bg-hover hover:text-fg',
   props.focused ? 'ring-1 ring-inset ring-line-focus' : '',
 ])
-
-// A long title plays as a marquee while hovered instead of staying cut.
-const titleClip = ref<HTMLElement>()
-const titleText = ref<HTMLElement>()
-const marquee = ref<{ ms: number } | null>(null)
-let hoverTimer: ReturnType<typeof setTimeout> | undefined
-
-function startMarquee(): void {
-  clearTimeout(hoverTimer)
-  hoverTimer = setTimeout(() => {
-    const clip = titleClip.value
-    const text = titleText.value
-    if (!clip || !text) {
-      return
-    }
-    const width = text.getBoundingClientRect().width
-    if (width - clip.clientWidth <= 2) {
-      return
-    }
-    marquee.value = { ms: ((width + MARQUEE_GAP_PX) / MARQUEE_PX_PER_S) * 1000 }
-  }, MARQUEE_DELAY_MS)
-}
-
-function stopMarquee(): void {
-  clearTimeout(hoverTimer)
-  marquee.value = null
-}
-
-onBeforeUnmount(() => clearTimeout(hoverTimer))
 </script>
 
 <template>
@@ -116,8 +83,6 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
     :aria-selected="selected"
     @click="emit('click', $event)"
     @contextmenu.prevent="emit('contextmenu', $event)"
-    @mouseenter="startMarquee"
-    @mouseleave="stopMarquee"
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
       <span
@@ -135,17 +100,17 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
       @submit="emit('renameSubmit', $event)"
       @cancel="emit('renameCancel')"
     />
-    <!-- The title has the row until hover; then it yields the end to the actions and, if cut, plays.
-         A cut title fades out at the edge instead of ending in an ellipsis. It is clipped, not
-         hidden: a hidden overflow still scrolls when focus or a scroll-into-view lands inside it,
-         and the row would be left showing the title's tail. -->
-    <span
+    <!-- The title has the row until hover; then it yields the end to the actions. A cut title ends
+         in an ellipsis and shows whole in its tooltip, as Finder and Mail show a long name; it
+         never moves. It is clipped, not hidden: a hidden overflow still scrolls when focus or a
+         scroll-into-view lands inside it, and the row would be left showing the title's tail. -->
+    <Tooltip
       v-else
-      ref="titleClip"
-      @dblclick="emit('renameStart')"
-      class="sidebar-title min-w-0 flex-1 overflow-clip whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
+      :content="conversation.title"
+      :show-if="isTextCut"
+      placement="bottom-start"
+      class="min-w-0 flex-1 overflow-clip text-ellipsis whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
       :class="[
-        marquee ? 'is-playing' : '',
         conversation.unread && !open ? 'text-fg-emphasis' : '',
         menuOpen || pending
           ? 'mr-[50px]'
@@ -153,22 +118,8 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
             ? 'mr-8 group-hover/row:mr-[50px]'
             : 'group-hover/row:mr-[50px]',
       ]"
-    >
-      <span
-        v-if="marquee"
-        class="sidebar-marquee inline-flex w-max"
-        :style="{
-          '--marquee-gap': `${MARQUEE_GAP_PX}px`,
-          '--marquee-ms': `${marquee.ms}ms`,
-        }"
-      >
-        <span class="sidebar-marquee-copy">{{ conversation.title }}</span>
-        <span class="sidebar-marquee-copy" aria-hidden="true">{{
-          conversation.title
-        }}</span>
-      </span>
-      <span v-else ref="titleText">{{ conversation.title }}</span>
-    </span>
+      @dblclick="emit('renameStart')"
+    >{{ conversation.title }}</Tooltip>
     <!-- While renaming the field has the whole row: no actions, no pin glyph over it. -->
     <span
       v-if="!renaming"
@@ -231,66 +182,6 @@ onBeforeUnmount(() => clearTimeout(hoverTimer))
   50% {
     opacity: 1;
     transform: scale(1.15);
-  }
-}
-
-/* One animated value drives both edge fades. */
-@property --sidebar-edge-opacity {
-  syntax: '<number>';
-  inherits: false;
-  initial-value: 1;
-}
-
-.sidebar-title {
-  text-overflow: ellipsis;
-  --sidebar-edge-opacity: 1;
-  mask-image: linear-gradient(
-    to right,
-    rgb(0 0 0 / var(--sidebar-edge-opacity)),
-    black 1rem,
-    black calc(100% - 1rem),
-    rgb(0 0 0 / var(--sidebar-edge-opacity))
-  );
-  transition:
-    margin 80ms ease,
-    --sidebar-edge-opacity 120ms ease;
-}
-
-.sidebar-title.is-playing {
-  --sidebar-edge-opacity: 0;
-}
-
-.sidebar-marquee {
-  will-change: transform;
-  animation: sidebar-marquee var(--marquee-ms) linear infinite;
-}
-
-.sidebar-marquee-copy {
-  flex-shrink: 0;
-  padding-right: var(--marquee-gap);
-}
-
-/* Each half contains the same title and gap, so the loop boundary is seamless. */
-@keyframes sidebar-marquee {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .sidebar-title {
-    transition: none;
-  }
-  .sidebar-breath {
-    animation: none;
-  }
-
-  .sidebar-marquee {
-    animation: none;
-    transform: none;
   }
 }
 </style>

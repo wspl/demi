@@ -67,6 +67,24 @@ export function invalidResponse(error: z.ZodError): Error {
   return new Error(`Invalid server response: ${error.issues[0]?.message ?? 'unknown shape'}`)
 }
 
+/**
+ * Whether a request failed because the backend could not be reached, not
+ * because it refused: no network, no answer in time, or a proxy in front of
+ * the backend saying it is away.
+ */
+export function unreachable(error: unknown): boolean {
+  if (error instanceof TypeError) {
+    // What fetch rejects with when no connection could be made.
+    return true
+  }
+  if (error instanceof DOMException && error.name === 'TimeoutError') {
+    return true
+  }
+  // The backend answers every error with its body; a bare server error is
+  // something in front of it, such as a proxy with no backend behind it.
+  return error instanceof ApiError && error.code === null && error.status >= 500
+}
+
 /** The URL of an API path, for what the web browser loads itself: an image, a player, a download. */
 export function apiUrl(path: string): string {
   return `/api${path}`

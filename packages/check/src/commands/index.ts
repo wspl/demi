@@ -18,8 +18,8 @@ export const COMMANDS: CommandEntry[] = [
   },
   {
     name: 'down',
-    usage: 'down',
-    summary: 'Stop the servers, runner and browser this slot started, and delete the .env up copied',
+    usage: 'down [backend] [web] [gallery] [runner]',
+    summary: 'Stop the servers, runner and browser this slot started, and delete the .env up copied; named servers alone, the rest kept',
     load: () => import('./down'),
   },
   {
@@ -95,9 +95,15 @@ export const COMMANDS: CommandEntry[] = [
     load: () => import('./wait'),
   },
   {
+    name: 'focus',
+    usage: 'focus [--expect <locator>]',
+    summary: 'Print the element that has the keyboard focus, or fail unless it is the one named',
+    load: () => import('./focus'),
+  },
+  {
     name: 'shot',
-    usage: 'shot [name|path.png] [--element <locator>] [--region x,y,w,h] [--pad <px>] [--zoom <n>] [--full]',
-    summary: 'Save a PNG at the page\'s real size and pixel ratio and print its path',
+    usage: 'shot [name|path.png] [--element <locator>] [--region x,y,w,h] [--pad <px>] [--zoom <n>] [--full] [--now]',
+    summary: 'Save a PNG at the page\'s real size and pixel ratio, once its transitions end, and print its path',
     load: () => import('./shot'),
   },
   {
@@ -126,8 +132,8 @@ export const COMMANDS: CommandEntry[] = [
   },
   {
     name: 'net',
-    usage: 'net [offline | online | latency <ms> | bandwidth <kbit/s>|off | cut <pattern> | reset]',
-    summary: 'Take the page offline, add latency, limit bandwidth, or cut its sockets without a close',
+    usage: 'net [offline | unreachable | online | latency <ms> | bandwidth <kbit/s>|off | cut <pattern> | reset]',
+    summary: 'Take the page offline, make the server unreachable, add latency, limit bandwidth, or cut its sockets without a close',
     load: () => import('./net'),
   },
   {

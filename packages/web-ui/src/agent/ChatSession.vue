@@ -140,11 +140,13 @@ watch(
 )
 provideLabelRoom(() => titleRoom.value)
 // Recovery of an unfinished turn needs a provider and a conversation that is
-// neither archived nor being edited.
+// neither archived nor being edited. A message the user sent, still on its
+// way or waiting for the backend, is the other way forward.
 const canRecover = computed(
   () =>
     props.hasProvider &&
     !props.messageEdit &&
+    !props.pendingSubmission &&
     !props.conversation.archived &&
     props.conversation.load !== 'failed',
 )

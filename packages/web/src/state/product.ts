@@ -2,7 +2,8 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { browserOnline, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { connectionProblem } from '@demicodes/web-ui/transport/connection'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse } from '../api/client'
 import {
   modelCatalogSchema,
@@ -136,10 +137,21 @@ export const useProduct = defineStore('product', () => {
   const activeConversationId = ref<string | null>(null)
   /**
    * The backend closed the channel because it shuts down, and has not
-   * brought a snapshot since: the page shows the restart screen
-   * (`web-application.md` § A page of another build).
+   * brought a snapshot since (`web-application.md` § A page of another build).
    */
   const restarting = ref(false)
+  /** Consecutive connections that ended before their snapshot. */
+  const failures = ref(0)
+  /**
+   * Why the page cannot reach the backend, which its connection banner says;
+   * null while it can (`web-application.md` § A page of another build).
+   */
+  const connection = computed(() => connectionProblem({
+    online: browserOnline.value,
+    restarting: restarting.value,
+    failedAttempts: failures.value,
+    hasSnapshot: snapshot.value !== null,
+  }))
   /**
    * The backend serves another build of the web app than this page's, so a
    * reload loads it (`web-application.md` § A page of another build).
@@ -164,8 +176,6 @@ export const useProduct = defineStore('product', () => {
   let retry: ReconnectWait | null = null
   /** The open channel's silence watch (`web-application.md` § Liveness and reconnection). */
   let silence: SilenceWatch | null = null
-  /** Consecutive connections that ended before their snapshot. */
-  let failures = 0
   /** Messages received, which numbers them. */
   let received = 0
   /** The number of the last snapshot, and of each part's last value. */
@@ -189,7 +199,7 @@ export const useProduct = defineStore('product', () => {
   /** Closes the channel and connects again after the wait. */
   function replace(): void {
     dropChannel()?.close()
-    failures += 1
+    failures.value += 1
     scheduleRetry()
   }
 
@@ -206,7 +216,7 @@ export const useProduct = defineStore('product', () => {
       retry = null
       connect()
     }
-    retry = restarting.value ? waitWhileRestarting(again) : waitToReconnect(failures, again)
+    retry = restarting.value ? waitWhileRestarting(again) : waitToReconnect(failures.value, again)
   }
 
   function connect(): void {
@@ -262,7 +272,7 @@ export const useProduct = defineStore('product', () => {
       if (!opened && controller) {
         void apiRequest('/auth/me', { signal: controller.signal }).catch(() => {})
       }
-      failures += 1
+      failures.value += 1
       scheduleRetry()
     }
   }
@@ -274,7 +284,7 @@ export const useProduct = defineStore('product', () => {
     }
     if (event.type === 'snapshot') {
       snapshotAt = received
-      failures = 0
+      failures.value = 0
       restarting.value = false
       snapshot.value = event.state
       load.value = 'ready'
@@ -357,6 +367,46 @@ export const useProduct = defineStore('product', () => {
         }
       })
       signal.addEventListener('abort', aborted, { once: true })
+    })
+  }
+
+  /**
+   * Resolves once the backend is worth asking again after `attempt` requests
+   * that could not reach it: when the connection banner goes, while it shows;
+   * otherwise after the page's reconnect wait for that many failures, cut
+   * short when the page returns. Rejects when `signal` aborts first.
+   */
+  function reachable(attempt: number, signal: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (signal.aborted) {
+        reject(signal.reason)
+        return
+      }
+      let wait: ReconnectWait | null = null
+      let stopWatching: (() => void) | null = null
+      const release = () => {
+        wait?.cancel()
+        stopWatching?.()
+        signal.removeEventListener('abort', aborted)
+      }
+      const aborted = () => {
+        release()
+        reject(signal.reason)
+      }
+      const ready = () => {
+        release()
+        resolve()
+      }
+      signal.addEventListener('abort', aborted, { once: true })
+      if (connection.value === null) {
+        wait = waitToReconnect(attempt, ready)
+        return
+      }
+      stopWatching = watch(connection, (problem) => {
+        if (problem === null) {
+          ready()
+        }
+      })
     })
   }
 
@@ -485,7 +535,7 @@ export const useProduct = defineStore('product', () => {
     controller = null
     clearRetry()
     dropChannel()?.close()
-    failures = 0
+    failures.value = 0
     restarting.value = false
     received = 0
     snapshotAt = 0
@@ -502,7 +552,7 @@ export const useProduct = defineStore('product', () => {
   return {
     snapshot,
     load,
-    restarting,
+    connection,
     outdated,
     catalog,
     vendors,
@@ -512,6 +562,7 @@ export const useProduct = defineStore('product', () => {
     sent,
     answered,
     until,
+    reachable,
     loadModels,
     reloadModels,
     loadVendors,

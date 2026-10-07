@@ -45,6 +45,19 @@ watch(
   { immediate: true },
 )
 onUnmounted(() => void store.activate(null))
+// The chat's own address with no conversation open starts a new one, an
+// immediately typeable draft, as New does (`product.md` § Conversations and
+// projects). Settings opened by a link over that address leave it as it is,
+// since moving the address would close them.
+watch(
+  () => router.currentRoute.value.path === '/chat' && store.listStatus === 'ready',
+  (start) => {
+    if (start) {
+      void router.replace(`/chat/${store.create()}`)
+    }
+  },
+  { immediate: true },
+)
 // A conversation the backend has a record of has permissions to read.
 watch(
   () => conversation.value?.persistence === 'synced' ? conversation.value.id : null,
@@ -158,6 +171,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
               conversation?.files.filter((file) => file.id === id) ?? [],
             ),
             error: conversation.pendingSend.error,
+            waiting: product.connection !== null || conversation.load === 'reconnecting',
           }
         : null
     "
