@@ -80,7 +80,9 @@ conversation's turn to end.
 
 - **The slot's servers.** `demi.up(...servers)` starts `backend`, `web` and
   `gallery`, the first two when none is named, on the slot's ports (slot *n*:
-  backend 33*n*0, web 33*n*1, gallery 33*n*2), waits until each answers, and
+  backend 33*n*0, web 33*n*1, gallery 33*n*2, and the local preview domain
+  service 33*n*4, which the backend registers the web and network ports
+  with), waits until each answers, and
   signs the browser in with the development account, keeping the page it
   shows when the backend still knows its session. `demi.down(...servers)`
   stops exactly the process groups it recorded, never anything found by name,
