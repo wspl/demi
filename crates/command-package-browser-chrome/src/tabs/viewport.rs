@@ -223,13 +223,20 @@ impl BrowserTab {
     /// own chrome, so the page never sees an outer size smaller than its inner
     /// size. Entering or leaving Mobile mode turns the phone's touch and user
     /// agent on or off. While a navigation of the tab is under way, it waits
-    /// for its document to commit (`committed`).
+    /// for its document to commit (`committed`). The page's captures end
+    /// first, and none starts until the new viewport is published
+    /// (`CaptureGate`).
     pub async fn set_viewport(&self, viewport: BrowserViewport) -> Result<()> {
         // Chrome holds the page's metrics while a navigation is under way but
         // resizes the window at once: the page would stand at its old size in
         // a window of the new one, which its capture letterboxes in black, until
         // the navigation ended. So the page takes commands again first.
         self.committed().await;
+        // A tab that ended releases no capture; the commands below fail.
+        let _resizing = tokio::select! {
+            resizing = self.state.capture.resize() => Some(resizing),
+            () = self.ended.cancelled() => None,
+        };
         let mobile = viewport.mode == ViewportMode::Mobile;
         if mobile != (self.viewport().mode == ViewportMode::Mobile) {
             let agent = if mobile {

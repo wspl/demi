@@ -45,6 +45,8 @@ pub struct TabState {
     /// The open dialog and the input it holds back.
     pub dialog: DialogInput,
     pub viewport: watch::Sender<crate::tabs::viewport::Viewports>,
+    /// Keeps the page's captures and its resizes apart.
+    pub capture: crate::driver::capture::CaptureGate,
     /// Where the tab's top-level page is in its loading.
     pub load: watch::Sender<crate::tabs::loading::PageLoad>,
     /// The address a navigation the user started loads, until its document
@@ -97,6 +99,7 @@ impl TabState {
             console,
             dialog,
             viewport: watch::channel(Default::default()).0,
+            capture: Default::default(),
             load,
             requested,
             history,
