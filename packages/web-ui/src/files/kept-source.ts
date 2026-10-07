@@ -10,7 +10,8 @@
  */
 import { reactive } from 'vue'
 import type { HostFiles, KeptSpec, Showing } from './file-cache'
-import { baseName, parentPath } from './paths'
+import { baseName } from '@demicodes/utils'
+import { parentPath } from './paths'
 import type { ChangeSetSource, ChangeSides, WorkingTreeChange } from './changes'
 import type {
   FileBrowserEntry,

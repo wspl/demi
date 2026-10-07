@@ -1,3 +1,5 @@
+import { baseName } from '@demicodes/utils'
+
 /** A failed upload keeps its capsule, which offers Retry; the toast says why it failed. */
 export type AttachmentPhase = 'uploading' | 'ready' | 'failed'
 
@@ -39,11 +41,6 @@ export function isComposerFile(
   item: ComposerAttachment,
 ): item is ComposerFileAttachment {
   return item.kind === 'file'
-}
-
-export function fileNameFromPath(path: string): string {
-  const leaf = path.replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop()
-  return leaf || path
 }
 
 export interface AttachmentUploadUpdate {
@@ -147,7 +144,7 @@ export function composerRemoteAttachment(
   return {
     kind: 'reference',
     id: input.id ?? crypto.randomUUID(),
-    name: input.name ?? fileNameFromPath(input.path),
+    name: input.name ?? baseName(input.path),
     host: input.host,
     path: input.path,
   }
@@ -224,7 +221,7 @@ export function decodeRemoteReference(reference: string): {
       return {
         host,
         path,
-        name: fileNameFromPath(path),
+        name: baseName(path),
       }
     } catch {
       // A malformed file URL is still a reference string; use the leaf name.
@@ -232,7 +229,7 @@ export function decodeRemoteReference(reference: string): {
   }
   return {
     path: reference,
-    name: fileNameFromPath(reference),
+    name: baseName(reference),
   }
 }
 
@@ -259,7 +256,7 @@ export function remoteAttachmentError(
         item.kind === 'reference' && item.path === path && item.host === host,
     )
   ) {
-    return `${fileNameFromPath(path)} is already attached.`
+    return `${baseName(path)} is already attached.`
   }
 }
 
