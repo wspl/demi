@@ -18,7 +18,7 @@
       "@demicodes/*": ["./packages/*/src/index.ts"]
     }
   },
-  "include": ["packages/*/src", "scripts", "crates/command-package-browser-chrome/src/driver/capture"],
+  "include": ["packages/*/src", "packages/preview-runtime/bundle.ts", "scripts", "crates/command-package-browser-chrome/src/driver/capture"],
   "exclude": [
     "packages/browse",
     "packages/web-ui",
