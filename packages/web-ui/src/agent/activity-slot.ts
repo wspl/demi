@@ -37,6 +37,12 @@ const WAITING_TAIL_TYPES: ReadonlySet<MessageListBlock['type']> = new Set([
 
 export interface ActivitySlotInput {
   load: SessionLoad
+  /**
+   * The page cannot reach the backend, and the host's connection banner says
+   * so (`web-application.md` § A page of another build). A conversation whose
+   * socket waits for the same backend leaves that to the banner.
+   */
+  backendAway: boolean
   phase: SessionPhase
   pendingAction: PendingAction
   /**
@@ -53,12 +59,14 @@ export interface ActivitySlotInput {
 
 /**
  * The tail row's kind, or null when the tail is content (streaming thinking or
- * text, an executing tool) or nothing is happening. Connecting wins over
- * everything: a recovery or a turn cannot progress without the socket.
+ * text, an executing tool) or nothing is happening. A lost socket wins over
+ * everything, since a recovery or a turn cannot progress without it: the row
+ * says Connecting while the page still reaches the backend, and nothing while
+ * the connection banner says the backend is away.
  */
 export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null {
   if (input.load === 'reconnecting') {
-    return 'connecting'
+    return input.backendAway ? null : 'connecting'
   }
   if (input.pendingAction === 'resume' || input.startingTurn) {
     return 'requesting'

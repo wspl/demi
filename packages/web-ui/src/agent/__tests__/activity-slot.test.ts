@@ -12,10 +12,11 @@ function kind(
   phase: SessionPhase,
   transcriptBlocks: readonly MessageListBlock[],
   renderBlocks: readonly MessageListBlock[] = transcriptBlocks,
-  options: { load?: SessionLoad; pendingAction?: PendingAction } = {},
+  options: { load?: SessionLoad; backendAway?: boolean; pendingAction?: PendingAction } = {},
 ) {
   return activitySlotKind({
     load: options.load ?? 'ready',
+    backendAway: options.backendAway ?? false,
     phase,
     pendingAction: options.pendingAction ?? null,
     startingTurn: false,
@@ -89,6 +90,15 @@ test('connecting wins over a pending recovery and a running turn', () => {
   expect(kind('running', [thinkingBlock()], undefined, { load: 'reconnecting' })).toBe('connecting')
 })
 
+test('while the connection banner says the backend is away, a reconnecting conversation shows no row of its own', () => {
+  const away = { load: 'reconnecting', backendAway: true } as const
+  expect(kind('idle', [], undefined, away)).toBeNull()
+  expect(kind('running', [userBlock()], undefined, away)).toBeNull()
+  expect(kind('idle', [errorBlock()], [], { ...away, pendingAction: 'resume' })).toBeNull()
+  // Its socket lost while the page still reaches the backend: the row says so.
+  expect(kind('running', [userBlock()], undefined, { load: 'reconnecting' })).toBe('connecting')
+})
+
 /**
  * The tail row as the message list drives it, over a conversation the test
  * changes the way the page's state changes, at a clock the test sets.
@@ -104,6 +114,7 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[]) {
   const { slot } = scope.run(() => useActivitySlot({
     input: () => ({
       load: 'ready',
+      backendAway: false,
       phase: conversation.phase,
       pendingAction: null,
       transcriptBlocks: conversation.blocks,

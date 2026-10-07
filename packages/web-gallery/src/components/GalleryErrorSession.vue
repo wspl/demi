@@ -3,6 +3,8 @@ import { reactive } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import type { ChatSessionState } from '@demicodes/web-ui/agent/types'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
+import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
+import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 import { generationErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
@@ -26,13 +28,17 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * - No history to keep: the status pane replaces the transcript (Retry lives there).
  * - History in memory: the transcript stays; an ErrorNotice at its tail names the failure (Retry lives there).
  * - The failure is a transcript record: the record itself carries Retry; the dock adds nothing.
- * A lost connection is not a failure: the runtime reconnects on its own, and
- * the Connecting tail row is all the reader sees.
+ * A lost connection is not a failure: the runtime reconnects on its own. The
+ * Connecting tail row is all the reader sees when only the conversation's
+ * socket was lost; when the page cannot reach the backend at all, the
+ * connection banner says so and the transcript adds nothing.
  */
 interface SessionCase {
   variant: SentenceText
   note: SentenceText
   session: ChatSessionState
+  /** The app's connection banner shows above the session: the backend is away. */
+  banner?: ConnectionProblem
   composer: 'default' | 'none' | 'noModels' | 'archived'
 }
 
@@ -76,11 +82,21 @@ const cases: SessionCase[] = [
   },
   {
     variant: 'Connection lost · reconnecting on its own',
-    note: 'Not a failure. The transcript, the draft and the composer stay; the “Connecting” tail row is the only signal while the runtime retries with backoff. Nothing to click.',
+    note: 'Not a failure. Only this conversation’s socket was lost while the page still reaches Demi: the transcript, the draft and the composer stay, and the “Connecting” tail row is the only signal while the runtime retries with backoff. Nothing to click.',
     session: state('reconnecting', {
       load: 'reconnecting',
       blocks: shortTranscriptBlocks(),
     }),
+    composer: 'default',
+  },
+  {
+    variant: 'Demi restarting · the banner says it',
+    note: 'Not a failure. The page cannot reach Demi, and the banner across the top of the app is the one place that says so: the conversation, whose socket waits for the same backend, adds no “Connecting” row of its own. The transcript, the draft and the composer stay. Nothing to click.',
+    session: state('backend-away', {
+      load: 'reconnecting',
+      blocks: shortTranscriptBlocks(),
+    }),
+    banner: 'restarting',
     composer: 'default',
   },
   {
@@ -161,9 +177,11 @@ const cases: SessionCase[] = [
             <div
               class="flex h-[26rem] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface-base"
             >
+              <ConnectionBanner v-if="item.banner" :problem="item.banner" />
               <ChatSession
                 :conversation="item.session"
                 has-provider
+                :backend-away="item.banner !== undefined"
                 :fork="forkFromAnswer"
                 @retry="productWould('Resume the Turn')"
                 @retry-load="productWould('Load the Conversation Again')"

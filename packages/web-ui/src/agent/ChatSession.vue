@@ -68,6 +68,12 @@ const props = withDefaults(defineProps<{
   decidingPermission?: boolean
   /** A message to bring into view and mark for a moment, as a search result opened at it asks. */
   revealBlockId?: string | null
+  /**
+   * The host's connection banner says the backend is away
+   * (`web-application.md` § A page of another build): the transcript adds no
+   * Connecting row of its own while the conversation's socket waits for it.
+   */
+  backendAway?: boolean
 }>(), {
   // Vue reads an absent boolean prop as false, which would offer Open panel
   // where there is no panel; absent stays undefined.
@@ -328,6 +334,7 @@ watch(() => props.conversation.id, close)
             :pending-steers="conversation.pendingSteers"
             :phase="conversation.phase"
             :load="conversation.load"
+            :backend-away="backendAway"
             :pending-action="conversation.pendingAction"
             :failures="conversation.failures"
             :load-error="conversation.lastError"
