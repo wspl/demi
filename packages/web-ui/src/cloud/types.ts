@@ -1,3 +1,5 @@
+import type { DeviceReport } from '../devices/report'
+
 /** The two writable filesystems of a Cloud, in bytes: system and home. */
 export interface CloudVolumes {
   systemBytes: number
@@ -19,4 +21,6 @@ export interface CloudState {
   limits: CloudVolumes
   /** The server runs a newer Cloud image than the Cloud's system is on, which a reset moves it to. */
   newerImage: boolean
+  /** What the Cloud's runner last reported; nothing before the Cloud first started. */
+  report: DeviceReport
 }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { demoDeviceInstallation } from '../fixtures/device-installation'
+import { demoDeviceInstallation, demoDeviceReport } from '../fixtures/device-installation'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -45,6 +45,7 @@ const cloud = ref<CloudState>(
     // The server was upgraded since this Cloud's last reset; a reset moves
     // its system to the new image.
     newerImage: true,
+    report: demoDeviceReport('linux'),
   }
 )
 // The request is pending until the server accepts it; every second request is refused, so the failed state has a page.
@@ -211,6 +212,14 @@ function revokeDevice(id: string) {
   s.value.deviceProjects = s.value.deviceProjects.filter((project) => project.deviceId !== id)
 }
 
+/** A renamed device's row takes its new name, as the product's state brings it. */
+function renameDevice(id: string, name: string) {
+  const device = s.value.devices.find((candidate) => candidate.id === id)
+  if (device) {
+    device.name = name
+  }
+}
+
 async function claimDevice(_code: string) {
   await new Promise((resolve) => window.setTimeout(resolve, 900))
   const n = s.value.devices.length + 1
@@ -219,6 +228,7 @@ async function claimDevice(_code: string) {
     name: `host-${n}`,
     state: 'online' as const,
     seen: new Date().toISOString(),
+    ...demoDeviceReport('macos'),
   }
   s.value.devices.push(device)
   return { ok: true as const, device }
@@ -315,7 +325,9 @@ function resetShortcuts() {
     :overlay-store="appOverlayStore"
     :installation="demoDeviceInstallation"
     :claim-device="claimDevice"
+    :name-max-length="64"
     @revoke="revokeDevice"
+    @rename="renameDevice"
   />
 
   <SettingsKeyboard
