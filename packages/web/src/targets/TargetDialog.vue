@@ -7,7 +7,7 @@ import { useResources } from '../state/resources'
 import { useConversationNavigation } from '../conversation/navigation'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import { baseName } from '@demicodes/web-ui/files/paths'
+import { baseName } from '@demicodes/utils'
 import { fileSourceFor, placesFor } from '../devices/files'
 
 const resources = useResources()
