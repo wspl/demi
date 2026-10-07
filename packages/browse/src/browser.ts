@@ -102,6 +102,23 @@ export class Browser {
     return this.connected !== null
   }
 
+  /**
+   * Attaches to the slot's browser when one runs, without starting one;
+   * answers whether the daemon is attached. A daemon that starts again
+   * attaches at once, so that the page's logs go on without a gap.
+   */
+  async attachRunning(): Promise<boolean> {
+    if (this.connected) {
+      return true
+    }
+    const recorded = readState(this.slot).browser
+    if (recorded === undefined || !ownGroupRuns(recorded)) {
+      return false
+    }
+    await this.connection()
+    return true
+  }
+
   /** Asks for the browser's window (`--headed`): a headless browser starts again with one. */
   showWindow(): void {
     this.wantsWindow = true
@@ -140,14 +157,20 @@ export class Browser {
 
   /** Attaches to the slot's browser, started first when none runs or it has no window one is asked for. */
   private async connect(): Promise<Connection> {
-    const recorded = readState(this.slot).browser
+    const state = readState(this.slot)
+    const recorded = state.browser
     const runs = recorded !== undefined && ownGroupRuns(recorded)
+    const pageLogs = slotPaths(this.slot).pageLogs
     let endpoint: string
     let headed: boolean
     if (runs && (recorded.headed || !this.wantsWindow)) {
       endpoint = recorded.endpoint
       headed = recorded.headed
+      // The browser as the last daemon left it, whose logs go on.
+      this.logs.restore(pageLogs, endpoint)
     } else {
+      this.logs.reset()
+      rmSync(pageLogs, { force: true })
       if (runs) {
         await stopGroup(recorded, STOP_MS)
       }
@@ -172,7 +195,10 @@ export class Browser {
         }
       })
     })
-    this.logs.reset()
+    // The page's own view of the network follows `net`, which the slot's state keeps until the browser stops.
+    if (state.net?.reach === 'offline') {
+      await context.setOffline(true)
+    }
     this.logs.watch(context)
     context.on('page', (page) => {
       // A page that closes as it opens, such as a popup, needs no emulation.
@@ -302,6 +328,16 @@ export class Browser {
       captureBeyondViewport: options.full ?? false,
     })
     return Buffer.from(data, 'base64')
+  }
+
+  /** Leaves the browser running for the next daemon, with the page's logs so far. */
+  async leave(): Promise<void> {
+    // A browser the daemon never managed to attach to left it no logs to pass on.
+    const connection = await this.connected?.catch(() => null)
+    const recorded = readState(this.slot).browser
+    if (connection && recorded) {
+      this.logs.save(slotPaths(this.slot).pageLogs, recorded.endpoint)
+    }
   }
 
   /**
