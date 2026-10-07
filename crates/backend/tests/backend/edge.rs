@@ -194,6 +194,76 @@ async fn the_web_app_build_is_served_with_deep_navigation_while_api_misses_stay_
     backend.close().await;
 }
 
+/// A browser's request for `path`, sending back the validators an earlier
+/// answer gave, as a reload does.
+async fn reloaded(url: &str, path: &str, earlier: Option<&Answer>) -> Answer {
+    let mut request = reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .unwrap()
+        .get(format!("{url}{path}"))
+        .header("accept", "text/html");
+    if let Some(earlier) = earlier {
+        if let Some(etag) = earlier.headers.get("etag") {
+            request = request.header("if-none-match", etag);
+        }
+        if let Some(modified) = earlier.headers.get("last-modified") {
+            request = request.header("if-modified-since", modified);
+        }
+    }
+    answer(request.send().await.unwrap()).await
+}
+
+#[tokio::test]
+async fn a_new_build_whose_files_are_older_is_served_to_a_page_that_reloads() {
+    // Cost: two backend starts on a temporary directory; under a second.
+    let harness = Harness::new().with_web(&[
+        ("index.html", "<html>build one</html>"),
+        ("build.json", r#"{ "build": "one" }"#),
+    ]);
+    let (backend, _) = harness.start_set_up().await;
+    let first = reloaded(&backend.url, "/chat/example", None).await;
+    assert_eq!(first.status, StatusCode::OK);
+    assert_eq!(first.headers["cache-control"], "no-cache");
+    let build = reloaded(&backend.url, "/build.json", None).await;
+    assert_eq!(build.headers["cache-control"], "no-cache");
+    // Unchanged, the page is not sent again.
+    let again = reloaded(&backend.url, "/chat/example", Some(&first)).await;
+    assert_eq!(again.status, StatusCode::NOT_MODIFIED);
+    backend.close().await;
+
+    // The server returns to a build made before the one the page holds, as
+    // a rollback does: its files are older.
+    let web = harness.web_dir();
+    let older = std::time::SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(1_000_000_000);
+    for (name, content) in [
+        ("index.html", "<html>build zero</html>"),
+        ("build.json", r#"{ "build": "zero" }"#),
+    ] {
+        std::fs::write(web.join(name), content).unwrap();
+        std::fs::File::options()
+            .write(true)
+            .open(web.join(name))
+            .unwrap()
+            .set_modified(older)
+            .unwrap();
+    }
+    std::fs::create_dir_all(web.join("assets")).unwrap();
+    std::fs::write(web.join("assets/index-zero.js"), "export {}").unwrap();
+    let backend = harness.start().await;
+    // A hashed file never changes: its name does.
+    let script = reloaded(&backend.url, "/assets/index-zero.js", None).await;
+    assert_eq!(script.status, StatusCode::OK);
+    assert!(script.headers["cache-control"].to_str().unwrap().contains("immutable"));
+    let reload = reloaded(&backend.url, "/chat/example", Some(&first)).await;
+    assert_eq!(reload.status, StatusCode::OK);
+    assert_eq!(String::from_utf8_lossy(&reload.body), "<html>build zero</html>");
+    let build = reloaded(&backend.url, "/build.json", Some(&build)).await;
+    assert_eq!(build.status, StatusCode::OK);
+    assert_eq!(String::from_utf8_lossy(&build.body), r#"{ "build": "zero" }"#);
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn a_page_socket_message_over_the_limit_fails_the_socket() {
     let harness = Harness::new();

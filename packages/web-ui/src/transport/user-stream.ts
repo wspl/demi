@@ -4,10 +4,11 @@
  * for it, and the close reason ends the stream.
  */
 import type { OpenUserStream, StreamBytes } from '../plugins/streams'
+import { openSocket } from './liveness'
 
 export function userStreamAt(url: string): OpenUserStream {
   return (handlers) => {
-    const socket = new WebSocket(url)
+    const socket = openSocket(url)
     socket.binaryType = 'arraybuffer'
     const queued: StreamBytes[] = []
     socket.addEventListener('open', () => {

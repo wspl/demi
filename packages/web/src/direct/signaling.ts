@@ -11,6 +11,7 @@
 import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import {
+  openSocket,
   waitToReconnect,
   watchSilence,
   type ReconnectWait,
@@ -78,7 +79,7 @@ export class DeviceSignaling {
   private connect(): void {
     const url = new URL(apiUrl(`/devices/${encodeURIComponent(this.deviceId)}/direct`), window.location.href)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-    const socket = new WebSocket(url)
+    const socket = openSocket(url)
     this.socket = socket
     let opened = false
     socket.addEventListener('open', () => {
