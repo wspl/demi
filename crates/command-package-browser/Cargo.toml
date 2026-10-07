@@ -32,7 +32,6 @@ tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url = "2"
-uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 axum = "0.8"
@@ -44,6 +43,7 @@ regex = "1"
 # The repair tests fetch from their fixture site.
 reqwest = { workspace = true, features = ["rustls", "stream"] }
 tempfile = "3"
+uuid = { version = "1", features = ["v4"] }
 
 # The retirement tests read the process table.
 [target.'cfg(unix)'.dev-dependencies]

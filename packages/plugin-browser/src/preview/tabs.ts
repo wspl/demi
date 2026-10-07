@@ -81,8 +81,8 @@ export interface PreviewDriver {
   readState(tab: PreviewTab): Promise<PageStorage | null>
   /** The real origins of the tab's documents, whose sites' cookies a page state moves with it. */
   origins(tab: PreviewTab): string[]
-  /** Keeps a page state of the tab for the agent's browser; answers its token. */
-  keepState(tab: PreviewTab, place: PreviewPlace, origins: string[], storage: PageStorage | null): Promise<string>
+  /** Keeps a page state of the tab under `token`, for the tab of the agent's browser that opens with it. */
+  keepState(tab: PreviewTab, place: PreviewPlace, token: string, origins: string[], storage: PageStorage | null): Promise<void>
 }
 
 /** What a toast says when a page's storage moved only in part (`preview.md` § Page state). */
@@ -532,9 +532,12 @@ export class PreviewTabs implements PanelSession {
 
   /**
    * Open in Agent's Browser on the tab `id`: a tab of the agent's browser
-   * beside it, selected, with the page's address and its state, kept on the
-   * Host for the tab that opens. What did not move is a toast; the tab
-   * opens on the address either way.
+   * beside it, selected, at once, as a browser's new tab is, which shows the
+   * page opening while the page's state is read here and kept on the Host
+   * under the tab's token; the agent's browser writes it before it loads the
+   * page (`preview.md` § Page state). A state that cannot be read moves
+   * nothing, and the tab opens the address alone; what did not move is a
+   * toast.
    */
   async toAgent(id: string): Promise<void> {
     const tab = this.tabs.get(id)
@@ -543,9 +546,12 @@ export class PreviewTabs implements PanelSession {
     if (!tab || !place || !url) {
       return
     }
-    let handover: string | undefined
+    const handover = crypto.randomUUID()
+    this.api.addAgentTab({ url, openedBy: id, handover }, true)
+    let origins = this.driver.origins(tab)
+    let storage: PageStorage | null = null
     try {
-      let storage = await this.driver.readState(tab)
+      storage = await this.driver.readState(tab)
       if (storage && new TextEncoder().encode(JSON.stringify(storage)).length > PREVIEW_MAX_STORAGE_BYTES) {
         storage = null
         this.api.notify(COOKIES_ONLY, TOO_LARGE)
@@ -554,11 +560,17 @@ export class PreviewTabs implements PanelSession {
       if (skipped) {
         this.api.notify(PART_MOVED, skipped)
       }
-      handover = await this.driver.keepState(tab, place, this.driver.origins(tab), storage)
     } catch (error) {
+      // The tab opens its address alone: no cookies without the storage that goes with them.
+      origins = []
       this.api.notify(NOT_MOVED, failedSentence(error))
     }
-    this.api.addAgentTab({ url, openedBy: id, ...(handover ? { handover } : {}) }, true)
+    try {
+      await this.driver.keepState(tab, place, handover, origins, storage)
+    } catch (error) {
+      // The agent's browser waits a moment for the state, then opens the address alone.
+      this.api.notify(NOT_MOVED, failedSentence(error))
+    }
   }
 
   takeWindow(id: string): OpenedWindow | undefined {
