@@ -32,7 +32,7 @@ what it returns, then the page's state; a call ends after ten minutes unless
     demi.emulate({ viewport, scale, theme, device, locale, timeZone, reset })   without reloading
     demi.grant(permission, { origin })   such as 'clipboard' or 'local-network-access'
     demi.gallery(path)                   open a gallery page, such as '/session?view=blocks'
-    demi.message(text, { wait, timeout })   send in the open conversation and wait for its turn
+    demi.message(text, { wait, timeout })   send in the open conversation and wait for its turn; fails at once, with the page's words, when it is not delivered or the turn fails
     demi.turn({ timeout })               wait for the open conversation's turn to end
     demi.runner({ fresh }) .stop() .start()   the slot's runner, paired through Add Device
     demi.log.console() .network() .sockets() ({ all, modules }), demi.log.mark(name)
