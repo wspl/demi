@@ -1618,9 +1618,12 @@ export const useConversations = defineStore('conversations', () => {
     saveDrafts()
     // A backend out of reach fails nothing: the message waits, and goes with
     // its id once the backend answers again (`web-application.md` § A page of
-    // another build). Only a refusal is a failed delivery.
-    for (let attempt = 1; ; attempt += 1) {
-      try {
+    // another build). Only a refusal is a failed delivery; any failure while
+    // the banner shows, as of a conversation socket the restart closed, waits
+    // too. A message the user replaced meanwhile waits no more.
+    const current = () => conversation.pendingSend?.id === pending.id
+    try {
+      await product.untilReached(async () => {
         await persistConversation(conversation)
         const references = files.map((file): ClientContent => {
           if (!isComposerFile(file)) {
@@ -1634,22 +1637,12 @@ export const useConversations = defineStore('conversations', () => {
         // Each file where its capsule stands in the text.
         const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
         await (await runtimeFor(conversation)).submit(content, pending.id)
-        clearSubmission(conversation, pending.id)
-        break
-      } catch (error) {
-        if (signal.aborted || conversation.pendingSend?.id !== pending.id) {
-          break
-        }
-        if (!unreachable(error) && product.connection === null) {
-          pending.error = error instanceof Error ? error.message : String(error)
-          break
-        }
-        try {
-          await product.reachable(attempt, signal)
-        } catch {
-          // The page let the conversations go, as a sign-out does: nothing waits for the backend any more.
-          break
-        }
+      }, signal, (error) => current() && (unreachable(error) || product.connection !== null))
+      clearSubmission(conversation, pending.id)
+    } catch (error) {
+      // The page let the conversations go, as a sign-out does, or the message is no longer the one to send.
+      if (!signal.aborted && current()) {
+        pending.error = error instanceof Error ? error.message : String(error)
       }
     }
     if (!signal.aborted) {

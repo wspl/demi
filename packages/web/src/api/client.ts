@@ -67,10 +67,17 @@ export function invalidResponse(error: z.ZodError): Error {
   return new Error(`Invalid server response: ${error.issues[0]?.message ?? 'unknown shape'}`)
 }
 
+/** What a proxy in front of the backend answers while no backend runs behind it, as while it restarts. */
+const AWAY_STATUSES = new Set([502, 503, 504])
+
 /**
  * Whether a request failed because the backend could not be reached, not
- * because it refused: no network, no answer in time, or a proxy in front of
- * the backend saying it is away.
+ * because it answered: no answer came (no network, no connection, no answer
+ * in time), a proxy in front of the backend said it is away, or the backend
+ * said it is shutting down and did not do the request (`backend.md`
+ * § Startup and shutdown). Every other answer of the backend's own carries its
+ * `{ code, message }` body, so an error with another code is the backend's
+ * answer, whatever its status.
  */
 export function unreachable(error: unknown): boolean {
   if (error instanceof TypeError) {
@@ -80,9 +87,10 @@ export function unreachable(error: unknown): boolean {
   if (error instanceof DOMException && error.name === 'TimeoutError') {
     return true
   }
-  // The backend answers every error with its body; a bare server error is
-  // something in front of it, such as a proxy with no backend behind it.
-  return error instanceof ApiError && error.code === null && error.status >= 500
+  if (!(error instanceof ApiError)) {
+    return false
+  }
+  return error.code === null ? AWAY_STATUSES.has(error.status) : error.code === 'backend_closing'
 }
 
 /** The URL of an API path, for what the web browser loads itself: an image, a player, a download. */
