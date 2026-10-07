@@ -73,7 +73,7 @@ async function claimDirectDevice(_code: string) {
 const anatomy: [string, string][] = [
   [
     'Shell',
-    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Notifications, Data & privacy. A plugin’s section is on the rail while its plugin is on. On a narrow screen, where the app’s side panes become overlays, the dialog fills the window: square corners, no scrim around it. Below a phone width it reads as iOS Settings: the rail is a list of the sections with rows a finger can hit, and a section opens as a page of its own with a back button to the list. The filter finds single settings by their label or what people call them (dark mode finds Theme), lists them under their section, and opens one with its row highlighted; Escape in the filter clears it before it closes the dialog.'
+    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Data & privacy. A plugin’s section is on the rail while its plugin is on. On a narrow screen, where the app’s side panes become overlays, the dialog fills the window: square corners, no scrim around it. Below a phone width it reads as iOS Settings: the rail is a list of the sections with rows a finger can hit, and a section opens as a page of its own with a back button to the list. The filter finds single settings by their label or what people call them (dark mode finds Theme), lists them under their section, and opens one with its row highlighted; Escape in the filter clears it before it closes the dialog.'
   ],
   [
     'Page',
@@ -123,6 +123,17 @@ const anatomy: [string, string][] = [
 
 const account = { name: 'Zan' }
 const full = createSettingsState()
+/** What the Notifications specimen's stand-in browser answers when asked. */
+const browserAnswers = [
+  { value: 'granted', label: 'Browser Allows' },
+  { value: 'denied', label: 'Browser Blocks' },
+] as const
+/** A new answer is a browser whose site settings were reset: it asks again. */
+function answerAs(answer: 'granted' | 'denied'): void {
+  full.notifications.answer = answer
+  full.notifications.permission = 'default'
+  full.notifications.enabled = false
+}
 /** The account specimen on a server without mail. */
 const noMail = ref({ name: 'Zan' })
 // The plugins' sections reach the fixture's skills plugin, and show while the
@@ -226,8 +237,25 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
       </GallerySection>
 
       <GallerySection
+        title="Notifications"
+        note="Browser notifications are off until turned on, and belong to this browser. Turning them on asks the browser; switch what the stand-in browser answers to see each. Blocked, the switch goes back off and the row says where to allow them again; a browser that already blocks the site answers without asking. The three switches under it choose what notifies, and wait for notifications to be on."
+      >
+        <div class="flex w-full max-w-2xl flex-col gap-4">
+          <Segmented
+            :model-value="full.notifications.answer"
+            :options="browserAnswers"
+            size="sm"
+            @update:model-value="answerAs"
+          />
+          <div class="rounded-xl border border-line bg-surface-dialog p-6">
+            <GallerySettingsFull tab="notifications" :state="full" />
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="Data & Privacy"
-        note="The page behind the rail’s disabled Data & Privacy entry, whose controls are all deferred: share links, export, diagnostics and delete-all."
+        note="The page behind the rail’s disabled Data & Privacy entry, whose controls are all deferred: diagnostics and delete-all. Exporting conversations and share links have no entry."
       >
         <GallerySpecimen variant="Page" wide>
           <div class="w-full max-w-2xl">
