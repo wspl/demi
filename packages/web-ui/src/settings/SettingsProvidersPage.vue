@@ -192,7 +192,11 @@ const providerBadgeLabel = {
   disabled: undefined,
 } as const
 
-/** Editing the connection waits only for a write; a test or a refresh only reads. */
+/**
+ * Editing waits only for a write: a test or a refresh only reads, so the
+ * connection, the model source and the manual models stay editable during
+ * one, and the host saves an edit once it ends.
+ */
 function fieldsLocked(provider: SettingsProviderEntry): boolean {
   const kind = props.operations?.[provider.id]?.kind
   return kind === 'saving' || kind === 'removing'
@@ -506,8 +510,9 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     />
                     <template v-else>
                       <!-- A name that can be changed is also changed by a double-click on it. -->
+                      <!-- On a phone the provider is the page, and its name the page's title. -->
                       <h3
-                        class="min-w-0 text-[15px] font-medium text-fg-emphasis"
+                        class="min-w-0 text-[15px] font-medium text-fg-emphasis @max-md:text-[20px] @max-md:leading-7"
                         @dblclick="selected.kind === 'api_key' && (renaming = true)"
                       >
                         <TruncatedText :text="selected.name" />
@@ -867,7 +872,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     size="sm"
                     v-else-if="selected.vendorId"
                     :model-value="selected.modelSource"
-                    :disabled="!!operations?.[selected.id]"
+                    :disabled="fieldsLocked(selected)"
                     @update:model-value="
                       emit('change', selected, { modelSource: $event })
                     "
@@ -900,7 +905,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     size="sm"
                     :icon="Plus"
                     aria-label="Add model"
-                    :disabled="!!operations?.[selected.id]"
+                    :disabled="fieldsLocked(selected)"
                     @click="openModel('create', null)"
                 /></Tooltip>
                 <Tooltip v-else content="Refresh"
@@ -970,7 +975,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                         size="sm"
                         :icon="SlidersHorizontal"
                         aria-label="Edit"
-                        :disabled="!!operations?.[selected.id]"
+                        :disabled="fieldsLocked(selected)"
                         @click="openModel('edit', m)"
                     /></Tooltip>
                     <Tooltip content="Remove"
