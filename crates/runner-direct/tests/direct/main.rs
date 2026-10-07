@@ -242,10 +242,14 @@ async fn a_watch_carries_the_watch_and_its_paths_and_says_heartbeat_when_quiet()
     // The fake's watch answers a `paths` message with `changed` for them.
     assert_eq!(watch.next().await.json()["paths"][0], "/etc/hosts");
     says.send(FileWatchMessage::Changed {
-        paths: vec!["/work/a.rs".into()],
+        paths: vec!["/work/a.rs".into(), "/work/server.log".into()],
+        ignored: vec!["/work/server.log".into()],
     })
     .unwrap();
-    assert_eq!(watch.next().await.json()["paths"][0], "/work/a.rs");
+    assert_eq!(
+        watch.next().await.json(),
+        json!({ "type": "changed", "paths": ["/work/a.rs", "/work/server.log"], "ignored": ["/work/server.log"] })
+    );
 
     // Thirty quiet seconds, on a paused clock: the peer's own checks go on
     // meanwhile.

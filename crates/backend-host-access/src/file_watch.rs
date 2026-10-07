@@ -139,7 +139,9 @@ impl Relay {
                 Some((source, update)) = self.updates.1.recv() => {
                     let report = match update {
                         WatchUpdate::Ready => WatchReport::Ready,
-                        WatchUpdate::Changed(paths) => WatchReport::Changed(paths),
+                        WatchUpdate::Changed { paths, ignored } => {
+                            WatchReport::Changed { paths, ignored }
+                        }
                         WatchUpdate::Lost => WatchReport::Lost,
                         WatchUpdate::Failed(reason) => WatchReport::Failed(reason),
                         WatchUpdate::Ended => break End::Offline,
