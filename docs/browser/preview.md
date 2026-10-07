@@ -135,7 +135,9 @@ imports between modules work as they are.
   of the document's frame tree; and whether an ancestor of the document's
   frame, the logical top included, is cross-site to it. The label is the
   first 80 bits of the SHA-256 of (namespace, Host, logical origin, top-level
-  site, cross-site ancestor), in lowercase base32. The algorithm is public:
+  site, cross-site ancestor), in lowercase base32hex (`0`–`9`, `a`–`v`). The
+  algorithm never changes between releases, or what the browser stored under
+  a label would be lost. The algorithm is public:
   the engine computes it when it rewrites, and the runtime when it maps
   `img.src = …` synchronously, with no key and no table. One environment
   always gets one label, so what the browser stores for it is there the next
@@ -375,7 +377,8 @@ about 2.4 MB, and every preview document loads it; fetched by each preview
 origin, every new site would cost 2.4 MB more. A rewritten document loads it
 from `/__demi/page/runtime/<release>.js`, naming the release of the engine
 that rewrote it, since the rewriter's output calls the runtime of its own
-release. The forwarder forwards that request as any other, and the relay
+release; the name is the workspace version, without the build metadata a
+development build adds. The forwarder forwards that request as any other, and the relay
 answers it with the runtime the web app's build carries, from the browser's
 cache after the first time. A server release binds its command packages
 exactly ([Bind an exact package](../execution/native-runtime.md#bind-an-exact-package)),
