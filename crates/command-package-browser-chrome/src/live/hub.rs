@@ -128,6 +128,7 @@ impl Hub {
         let owner = Owner {
             operations: operations.clone(),
             captures: environment.captures().clone(),
+            opening: environment.opening.clone(),
             tasks: tasks.clone(),
             order: 0,
             viewers: HashMap::new(),
@@ -147,6 +148,11 @@ impl Hub {
             observers: Mutex::default(),
             downloads: environment.download_directory().to_owned(),
         }
+    }
+
+    /// The environment's tasks, which end with it.
+    pub(crate) fn tasks(&self) -> &TaskTracker {
+        &self.tasks
     }
 
     /// Watches what the browser shows: its tabs and their viewports.
@@ -289,6 +295,8 @@ type Departure = Pin<Box<dyn Future<Output = u64> + Send>>;
 struct Owner {
     operations: Arc<Operations>,
     captures: CaptureChannel,
+    /// Where the hub says what size a tab the user opens takes.
+    opening: watch::Sender<Option<BrowserViewport>>,
     tasks: TaskTracker,
     order: u64,
     viewers: HashMap<u64, Viewer>,
@@ -345,9 +353,18 @@ impl Owner {
                 self.due = false;
                 self.layout().await;
             }
-            // A watched tab is captured only at the size its layout gave it.
-            for stream in self.streams.values() {
-                stream.sized();
+            // A watched tab is captured only at the size its layout gave it:
+            // never one its navigation holds at a size or mode it is about
+            // to replace (`live-view.md` § Delivery).
+            for (tab, stream) in &self.streams {
+                let waits = self
+                    .held
+                    .iter()
+                    .chain(self.modes.iter().map(|request| &request.tab))
+                    .any(|held| held.id() == tab);
+                if !waits {
+                    stream.sized();
+                }
             }
         }
     }
@@ -521,14 +538,34 @@ impl Owner {
                 tabs.push((tab.clone(), panel));
             }
         }
-        // A tab whose navigation is under way keeps its size until its
-        // document commits: Chrome holds its page's commands meanwhile, and the
-        // hub, which waits for them, would hold every viewer's request with
-        // them (`PageLoad::Navigating`). Its picture stays as it was.
-        let (held, tabs): (Vec<_>, Vec<_>) = tabs
+        // A tab the user opens takes the size the driver's panel would give
+        // it; once a panel decided one, a tab keeps it as a tab nobody
+        // watches keeps its last size.
+        if let Some(opening) = self
+            .driver
+            .and_then(|driver| self.viewers.get(&driver))
+            .and_then(|viewer| viewer.panel)
+            .and_then(|panel| fitted(ViewportMode::Web, panel))
+        {
+            self.opening
+                .send_if_modified(|current| current.replace(opening) != Some(opening));
+        }
+        // A tab whose navigation is under way takes no command until its
+        // document commits: Chrome holds its page's commands meanwhile, and
+        // the hub, which waits for them, would hold every viewer's request
+        // with them (`PageLoad::Navigating`). One that has the size its
+        // panel gives it already needs none; another keeps its size until
+        // then, and its picture stays as it was.
+        let (navigating, tabs): (Vec<_>, Vec<_>) = tabs
             .into_iter()
             .partition(|(tab, _)| tab.navigating() && !tab.ended().is_cancelled());
-        self.held = held.into_iter().map(|(tab, _)| tab).collect();
+        self.held = navigating
+            .into_iter()
+            .filter(|(tab, panel)| {
+                fitted(tab.viewport().mode, *panel).is_some_and(|wanted| wanted != tab.viewport())
+            })
+            .map(|(tab, _)| tab)
+            .collect();
         if let Some(desired) = desired
             && self.screen != Some(desired)
             && let Some((tab, _)) = tabs.first()
@@ -626,20 +663,27 @@ async fn any_committed(tabs: &[BrowserTab]) {
     futures_util::future::select_all(tabs.iter().map(|tab| Box::pin(tab.committed()))).await;
 }
 
-/// Gives a Web or Mobile tab the viewport `panel` decides.
-async fn fit(tab: &BrowserTab, mode: ViewportMode, panel: Panel) -> Result<()> {
+/// The viewport `panel` decides for a Web or Mobile tab; none for a Custom
+/// one, which keeps the agent's.
+fn fitted(mode: ViewportMode, panel: Panel) -> Option<BrowserViewport> {
     let (width, height) = match mode {
         ViewportMode::Web => (panel.width, panel.height),
         ViewportMode::Mobile => PHONE,
-        ViewportMode::Custom => return Ok(()),
+        ViewportMode::Custom => return None,
     };
-    let viewport = BrowserViewport {
+    Some(BrowserViewport {
         mode,
         width,
         height,
         device_pixel_ratio: ratio_for(panel.ratio, width, height),
-    };
-    if tab.viewport() != viewport {
+    })
+}
+
+/// Gives a Web or Mobile tab the viewport `panel` decides.
+async fn fit(tab: &BrowserTab, mode: ViewportMode, panel: Panel) -> Result<()> {
+    if let Some(viewport) = fitted(mode, panel)
+        && tab.viewport() != viewport
+    {
         tab.set_viewport(viewport).await?;
     }
     Ok(())

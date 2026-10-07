@@ -23,7 +23,8 @@ import { conversationStates } from './states'
  * drops a plugin the user turned off; its conversation states by revision;
  * its calls over the plugin call routes (`web-api.md` § Plugin calls); its
  * user streams; what a conversation's primary Host holds of its packages,
- * from that device's in the product state;
+ * from that device's in the product state, and whether that Host is a Cloud
+ * that does not run, from the Cloud's state there;
  * and the shell's own services: the conversations' files, intents and panels,
  * and the settings dialog.
  */
@@ -70,6 +71,11 @@ export function productPageHost(): PageHost {
     installed(plugin, conversation) {
       const host = primaryHost(plugin, conversation)
       return host ? packageInstalled(product.snapshot, host.deviceId, host.packages) : []
+    },
+    hostStarting(conversation) {
+      const state = product.snapshot
+      const summary = state?.conversations.find((entry) => entry.id === conversation)
+      return !!state && !!summary && executionFor(summary).kind === 'cloud' && state.cloud.state !== 'running'
     },
     files: conversationFiles,
     intents: {
