@@ -9,6 +9,7 @@ pub mod hub;
 pub mod viewer;
 
 mod commands;
+mod downloads;
 mod frames;
 mod input;
 mod observers;
