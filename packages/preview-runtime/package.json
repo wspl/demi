@@ -1,0 +1,14 @@
+{
+  "name": "@demicodes/preview-runtime",
+  "description": "The web preview's page runtime, one script with the rewriter's WebAssembly inlined, which bun xtask preview-runtime builds (docs/browser/preview.md § The runtime).",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "whatwg-url": "15.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2"
+  },
+  "license": "Apache-2.0"
+}

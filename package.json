@@ -12,6 +12,7 @@
     "packages/plugin-changes",
     "packages/plugin-file-browser",
     "packages/plugin-skills",
+    "packages/preview-runtime",
     "packages/web-gallery",
     "packages/web",
     "packages/browse"
