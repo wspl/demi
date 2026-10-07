@@ -1212,6 +1212,24 @@ test('switching between opened sessions performs no reads or load reset', async 
   expect(first.draft).toBe('Keep this input')
 })
 
+test('output that advances an open conversation\'s revision reads nothing; a host change, which advances its context, reads its hosts again', async () => {
+  serveHistory()
+  const store = useConversations()
+  await store.activate(FIRST)
+  const hostReads = () => requests.filter((item) => item.path === `/api/conversations/${FIRST}/hosts`).length
+  expect(hostReads()).toBe(1)
+  // A background job's turn: each saved step advances the revision.
+  for (const revision of [1, 2, 3]) {
+    records[0]!.revision = revision
+    await changed(FIRST)
+  }
+  expect(hostReads()).toBe(1)
+  // Another page attaches a device.
+  records[0]!.contextVersion += 1
+  await changed(FIRST)
+  await waitFor(() => hostReads() === 2)
+})
+
 test('leaving and returning during history loading shares the pending request', async () => {
   const gate = deferred<void>()
   serveHistory(gate)

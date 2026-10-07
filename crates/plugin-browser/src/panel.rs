@@ -37,6 +37,11 @@ struct TabData {
     /// wrote it; absent while it never did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shows: Option<u64>,
+    /// The panel tab whose page opened it: by Open Link in New Tab, which
+    /// the page writes, or by a link or script of the page, which the plugin
+    /// writes when it adds the tab.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    opened_by: Option<String>,
 }
 
 impl TabData {
@@ -143,7 +148,7 @@ impl Work {
 
     /// Reads the browser's tabs and updates the panel from them: a tab for
     /// each tab the agent or a page opened, a page's beside its opener's
-    /// (`beside_opener`) and the agent's after the others, each bound tab's
+    /// (`after_opened`) and the agent's after the others, each bound tab's
     /// count of the times the agent showed its browser tab when the count rose
     /// (`live-view.md` § Showing a tab), every bound tab whose browser tab
     /// was closed on purpose removed, and every one whose browser tab was
@@ -171,28 +176,29 @@ impl Work {
             .iter()
             .filter_map(|(_, data)| data.tab.as_deref())
             .collect();
-        // The browser tab each panel tab shows, in the panel's order, as this sync leaves it.
-        let mut order: Vec<Option<String>> = panel
-            .tabs
-            .iter()
-            .map(|tab| {
-                let data = (tab.kind == KIND).then(|| TabData::of(tab)).flatten()?;
-                data.live().map(str::to_owned)
-            })
-            .collect();
+        // The panel's tabs in order, as this sync leaves them.
+        let mut order: Vec<Placed> = panel.tabs.iter().map(Placed::of).collect();
         for tab in &listed {
             if tab.created_by == (BrowserCreatedBy::User {}) || shown.contains(tab.id.as_str()) {
                 continue;
             }
-            let index = beside_opener(&order, &listed, tab);
+            let opener = opener_of(&order, tab);
+            let index = opener.map(|at| after_opened(&order, at));
+            let opened_by = opener.map(|at| order[at].id.clone());
+            let id = added_id(tab.id.as_str());
             let create = CreatePanelTab {
-                id: added_id(tab.id.as_str()),
+                id: id.clone(),
                 kind: KIND.into(),
-                data: added(tab),
+                data: added(tab, opened_by.as_deref()),
                 index,
             };
             port.create_panel_tab(create).await?;
-            order.insert(index.unwrap_or(order.len()), Some(tab.id.to_string()));
+            let placed = Placed {
+                id,
+                shows: Some(tab.id.to_string()),
+                opened_by,
+            };
+            order.insert(index.unwrap_or(order.len()), placed);
         }
         let present: HashMap<&str, &BrowserTab> =
             listed.iter().map(|tab| (tab.id.as_str(), tab)).collect();
@@ -219,32 +225,49 @@ impl Work {
     }
 }
 
-/// Where the panel tab for `tab` goes, among the panel tabs that show
-/// `order`'s browser tabs: a tab a page opened goes right after its
-/// opener's, after the tabs the same opener opened before it there, as
-/// Chrome places the tabs a link opens. Any other tab, or one whose opener
-/// the panel does not show, goes after the others (none).
-fn beside_opener(order: &[Option<String>], listed: &[BrowserTab], tab: &BrowserTab) -> Option<usize> {
+/// A panel tab as the sync places others beside it: the browser tab it
+/// shows, while the browser has it, and the panel tab that opened it.
+struct Placed {
+    id: String,
+    shows: Option<String>,
+    opened_by: Option<String>,
+}
+
+impl Placed {
+    fn of(tab: &PanelTab) -> Self {
+        let data = (tab.kind == KIND).then(|| TabData::of(tab)).flatten();
+        Self {
+            id: tab.id.clone(),
+            shows: data.as_ref().and_then(|data| data.live().map(str::to_owned)),
+            opened_by: data.and_then(|data| data.opened_by),
+        }
+    }
+}
+
+/// Where in `order` the panel tab stands that shows the browser tab whose
+/// page opened `tab`; none for a tab no page opened, or whose opener the
+/// panel does not show.
+fn opener_of(order: &[Placed], tab: &BrowserTab) -> Option<usize> {
     let BrowserCreatedBy::Page { opener } = &tab.created_by else {
         return None;
     };
-    let at = order
+    order
         .iter()
-        .position(|shown| shown.as_deref() == Some(opener.as_str()))?;
-    let opened_by_opener = |shown: &Option<String>| {
-        let Some(shown) = shown.as_deref() else {
-            return false;
-        };
-        listed.iter().any(|other| {
-            other.id.as_str() == shown
-                && matches!(&other.created_by, BrowserCreatedBy::Page { opener: theirs } if theirs == opener)
-        })
-    };
+        .position(|placed| placed.shows.as_deref() == Some(opener.as_str()))
+}
+
+/// Where a tab the panel tab at `at` opened goes: right after it, behind the
+/// tabs it opened before that still stand right after it, as Chrome places
+/// the tabs a link opens (`live-view.md` § A browser tab in the panel). The
+/// page places Open Link in New Tab by the same rule, from the same
+/// `openedBy`.
+fn after_opened(order: &[Placed], at: usize) -> usize {
+    let opener = order[at].id.as_str();
     let run = order[at + 1..]
         .iter()
-        .take_while(|shown| opened_by_opener(shown))
+        .take_while(|placed| placed.opened_by.as_deref() == Some(opener))
         .count();
-    Some(at + 1 + run)
+    at + 1 + run
 }
 
 /// Why a browser tab could not be opened, as the tab's content shows it:
@@ -271,9 +294,10 @@ async fn data_of(port: &PluginPort, id: &str) -> Result<Option<TabData>, PortFai
 }
 
 /// The data of the panel tab the plugin adds for the browser's `tab`: its
-/// page's title names it in the strip until a view shows it, and the times
-/// the agent showed it, once it did.
-fn added(tab: &BrowserTab) -> Map<String, Value> {
+/// page's title names it in the strip until a view shows it, the times the
+/// agent showed it, once it did, and the panel tab `opener` whose page
+/// opened it.
+fn added(tab: &BrowserTab, opener: Option<&str>) -> Map<String, Value> {
     let mut data = fields([
         ("url", Value::String(tab.url.clone())),
         ("tab", Value::String(tab.id.to_string())),
@@ -281,6 +305,9 @@ fn added(tab: &BrowserTab) -> Map<String, Value> {
     ]);
     if tab.shows > 0 {
         data.insert("shows".to_owned(), Value::from(tab.shows));
+    }
+    if let Some(opener) = opener {
+        data.insert("openedBy".to_owned(), Value::String(opener.to_owned()));
     }
     data
 }

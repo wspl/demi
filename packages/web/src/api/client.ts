@@ -115,6 +115,14 @@ export async function apiRequest(
     cache: 'no-store',
     signal,
   })
+  if (response.status === 204) {
+    // Chrome counts a request whose answer the page never reads as aborted
+    // (net::ERR_ABORTED), though the backend answered it, and most callers
+    // of an answer without content never read it. It is read to its end
+    // here, and the caller gets the same answer with nothing left to read.
+    await response.arrayBuffer()
+    return new Response(null, { status: 204, statusText: response.statusText, headers: response.headers })
+  }
   if (response.ok || (allowNotModified && response.status === 304)) {
     return response
   }
