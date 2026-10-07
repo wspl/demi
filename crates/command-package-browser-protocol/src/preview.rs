@@ -25,6 +25,16 @@ pub const OPEN_OPERATION: &str = "browser.preview_open";
 /// rewriting meets in one go.
 pub const MAX_LABELS: usize = 256;
 
+/// The page method's operation that opens a tab of the agent's browser on
+/// an address with the page state a `state_keep` kept (`preview.md` § Page
+/// state).
+pub const HANDOVER_OPERATION: &str = "browser.handover";
+
+/// The most bytes of one origin's storage a page state moves: a frame's
+/// most, less room for the message around it. A larger one moves cookies
+/// only (`preview.md` § Page state).
+pub const MAX_STORAGE_BYTES: usize = MAX_FRAME_BYTES - 64 * 1024;
+
 /// The stream's arguments: none; the relay and the engine speak over the
 /// stream.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -55,6 +65,45 @@ fn web_address(value: &str, _: &()) -> garde::Result {
     } else {
         Err(garde::Error::new("is not an http or https address"))
     }
+}
+
+/// `browser.handover`: a tab of the agent's browser on `url`, with the page
+/// state the stream's `state_keep` kept under `state`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(deny_unknown_fields)]
+pub struct HandoverInput {
+    #[garde(length(chars, min = 1, max = MAX_URL_CHARS), custom(web_address))]
+    pub url: String,
+    #[garde(length(chars, min = 1, max = 64))]
+    pub state: String,
+}
+
+/// One origin's storage as the page-state codec reads it from a page and
+/// writes it into another (`preview.md` § Page state): the codec is the
+/// preview domain's `state.js`, which both browsers run.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PageStorage {
+    /// The origin whose storage it is: `http://localhost:5173`.
+    pub origin: String,
+    /// localStorage's items, in its order.
+    pub local: Vec<StorageItem>,
+    /// sessionStorage's items.
+    pub session: Vec<StorageItem>,
+    /// Each IndexedDB database with its stores and records, in the codec's
+    /// tagged encoding of structured-clone values, which only the codec reads.
+    pub databases: Vec<serde_json::Value>,
+    /// The stores, as `<database>/<store>`, with a record the codec could not
+    /// encode, such as a `CryptoKey`, which was left out.
+    pub skipped: Vec<String>,
+}
+
+/// One item of localStorage or sessionStorage.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct StorageItem {
+    pub key: String,
+    pub value: String,
 }
 
 /// What `browser.preview_open` answers: the top-level environment of the
@@ -360,6 +409,27 @@ pub enum PreviewRelayMessage {
         #[garde(length(max = MAX_LABELS), dive)]
         environments: Vec<PreviewEnvironment>,
     },
+    /// Move the page state of the agent's browser tab `tab` into the user's
+    /// browser: its cookies into the jar at once, and its top-level origin's
+    /// storage in the answer, `state` (`preview.md` § Page state).
+    StateTake {
+        #[garde(skip)]
+        id: u32,
+        #[garde(length(chars, min = 1, max = 64))]
+        tab: String,
+    },
+    /// Keep a page state of the user's browser for a tab of the agent's
+    /// browser that `browser.handover` opens: the jar's cookies of `sites`,
+    /// the origins of the tab's documents, and `storage`, its top-level
+    /// origin's, none when it was too large. The answer is `state_kept`.
+    StateKeep {
+        #[garde(skip)]
+        id: u32,
+        #[garde(length(max = MAX_LABELS), inner(length(chars, min = 1, max = 2048)))]
+        sites: Vec<String>,
+        #[garde(skip)]
+        storage: Option<PageStorage>,
+    },
     /// The page closed its socket.
     SocketClose {
         #[garde(skip)]
@@ -408,8 +478,30 @@ pub enum PreviewEngineMessage {
         #[garde(dive)]
         labels: BTreeMap<String, PreviewEnvironment>,
     },
-    /// The request failed before or during its answer; the forwarder answers
-    /// a network error.
+    /// The page state of `state_take`: the tab's address and title, and its
+    /// top-level origin's storage; none when it was larger than
+    /// [`MAX_STORAGE_BYTES`], which `too_large` says.
+    State {
+        #[garde(skip)]
+        id: u32,
+        #[garde(skip)]
+        url: String,
+        #[garde(skip)]
+        title: String,
+        #[garde(skip)]
+        storage: Option<PageStorage>,
+        #[garde(skip)]
+        too_large: bool,
+    },
+    /// `state_keep`'s page state is kept under `token`, for `browser.handover`.
+    StateKept {
+        #[garde(skip)]
+        id: u32,
+        #[garde(skip)]
+        token: String,
+    },
+    /// The request, label or state question failed before or during its
+    /// answer; a request's forwarder answers a network error.
     Failed {
         #[garde(skip)]
         id: u32,

@@ -12,9 +12,11 @@ import type { OpenUserStream, PreviewPlace, UserStream } from '@demicodes/plugin
 import {
   PREVIEW_BODY_CHUNK_BYTES,
   type PreviewClient,
+  type PageStorage,
   type PreviewEngineMessage,
   type PreviewEnvironment,
   type PreviewHeader,
+  type PreviewRelayMessage,
   type PreviewRequest,
 } from '../generated/plugin'
 import { PreviewFrameReader, encodeMessage, encodeRequestBody, encodeSocketMessage, socketText } from './frames'
@@ -49,6 +51,24 @@ export interface PreviewSocket {
   close(code: number, reason: string): void
 }
 
+/** What the engine answers a question of the page with. */
+type Answer = Extract<PreviewEngineMessage, { type: 'labels' | 'state' | 'state_kept' }>
+
+/** A question waiting for the engine. */
+interface Question {
+  answered(answer: Answer): void
+  reject(error: Error): void
+}
+
+/** A page of the agent's browser as a page state moves it into the user's. */
+export interface TakenState {
+  url: string
+  title: string
+  /** Its top-level origin's storage; null when it was too large to move. */
+  storage: PageStorage | null
+  tooLarge: boolean
+}
+
 /** Why requests fail when their stream ends. */
 export class PreviewStreamEnded extends Error {}
 
@@ -77,8 +97,8 @@ export class PreviewConnection {
   private nextId = 1
   private readonly requests = new Map<number, OpenRequest>()
   private readonly sockets = new Map<number, PreviewSocketHandlers>()
-  /** The `labels` questions waiting for the engine's answer. */
-  private readonly labelQuestions = new Map<number, { resolve(labels: Record<string, PreviewEnvironment>): void; reject(error: Error): void }>()
+  /** The questions waiting for the engine's answer: labels and page states. */
+  private readonly questions = new Map<number, Question>()
   /** The place the open stream said hello with. */
   private helloed: PreviewPlace | null = null
 
@@ -144,10 +164,10 @@ export class PreviewConnection {
     this.helloed = null
     const requests = [...this.requests.values()]
     const sockets = [...this.sockets.values()]
-    const questions = [...this.labelQuestions.values()]
+    const questions = [...this.questions.values()]
     this.requests.clear()
     this.sockets.clear()
-    this.labelQuestions.clear()
+    this.questions.clear()
     for (const question of questions) {
       question.reject(error)
     }
@@ -172,10 +192,12 @@ export class PreviewConnection {
       case 'response':
         this.requests.get(message.id)?.answered({ status: message.status, headers: message.headers, labels: message.labels })
         return
-      case 'labels': {
-        const question = this.labelQuestions.get(message.id)
-        this.labelQuestions.delete(message.id)
-        question?.resolve(message.labels)
+      case 'labels':
+      case 'state':
+      case 'state_kept': {
+        const question = this.questions.get(message.id)
+        this.questions.delete(message.id)
+        question?.answered(message)
         return
       }
       case 'pull': {
@@ -188,6 +210,12 @@ export class PreviewConnection {
         return
       }
       case 'failed': {
+        const question = this.questions.get(message.id)
+        if (question) {
+          this.questions.delete(message.id)
+          question.reject(new Error(message.reason))
+          return
+        }
         const request = this.requests.get(message.id)
         if (!request) {
           return
@@ -283,12 +311,47 @@ export class PreviewConnection {
    * The labels of `environments`, as the engine computes them, each with its
    * environment. Rejects when the stream ends first.
    */
-  labels(place: PreviewPlace, environments: PreviewEnvironment[]): Promise<Record<string, PreviewEnvironment>> {
+  async labels(place: PreviewPlace, environments: PreviewEnvironment[]): Promise<Record<string, PreviewEnvironment>> {
+    const answer = await this.ask(place, (id) => ({ type: 'labels', id, environments }))
+    if (answer.type !== 'labels') {
+      throw unexpected(answer)
+    }
+    return answer.labels
+  }
+
+  /**
+   * The page state of the agent's tab `tab` (`preview.md` § Page state): the
+   * engine moved its cookies into the jar, and answers its address, title
+   * and top-level origin's storage. Rejects with why it could not.
+   */
+  async takeState(place: PreviewPlace, tab: string): Promise<TakenState> {
+    const answer = await this.ask(place, (id) => ({ type: 'state_take', id, tab }))
+    if (answer.type !== 'state') {
+      throw unexpected(answer)
+    }
+    return { url: answer.url, title: answer.title, storage: answer.storage, tooLarge: answer.too_large }
+  }
+
+  /**
+   * Keeps a page state of the user's browser for the tab of the agent's
+   * browser that opens with it: the jar's cookies of `sites`, and `storage`.
+   * Answers its token.
+   */
+  async keepState(place: PreviewPlace, sites: string[], storage: PageStorage | null): Promise<string> {
+    const answer = await this.ask(place, (id) => ({ type: 'state_keep', id, sites, storage }))
+    if (answer.type !== 'state_kept') {
+      throw unexpected(answer)
+    }
+    return answer.token
+  }
+
+  /** Asks the engine `message`; rejects when the stream ends first or the engine fails it. */
+  private ask(place: PreviewPlace, message: (id: number) => PreviewRelayMessage): Promise<Answer> {
     const stream = this.ready(place)
     const id = this.nextId++
     return new Promise((resolve, reject) => {
-      this.labelQuestions.set(id, { resolve, reject })
-      stream.send(encodeMessage({ type: 'labels', id, environments }))
+      this.questions.set(id, { answered: resolve, reject })
+      stream.send(encodeMessage(message(id)))
     })
   }
 
@@ -318,6 +381,11 @@ export class PreviewConnection {
       },
     }
   }
+}
+
+/** The engine answered a question with another's answer, which only a defect of either side does. */
+function unexpected(answer: Answer): Error {
+  return new Error(`the preview engine answered ${answer.type} to another question`)
 }
 
 function samePlace(one: PreviewPlace, other: PreviewPlace): boolean {

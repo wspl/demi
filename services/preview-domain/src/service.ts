@@ -23,7 +23,7 @@ const NAMESPACE_BYTES = 5
 const SECRET_BYTES = 32
 const API = /^\/api\/v1\/namespaces(?:\/([^/]+)(?:\/(renew|origins))?)?$/
 // The files of a version, `policy` among them, which the Worker writes.
-const VERSIONED = /^\/__demi\/v([1-9][0-9]*)\/(boot\.html|boot\.js|client\.js|sw\.js|policy)$/
+const VERSIONED = /^\/__demi\/v([1-9][0-9]*)\/(boot\.html|boot\.js|client\.js|sw\.js|state\.html|state\.js|state-frame\.js|policy)$/
 const CONTENT_TYPES: Record<string, string> = {
   html: 'text/html; charset=utf-8',
   js: 'text/javascript; charset=utf-8',

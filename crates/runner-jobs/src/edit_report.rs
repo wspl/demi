@@ -1,20 +1,30 @@
-//! Convert retained edit snapshots to the runner's completed-job report.
+//! Convert retained edit snapshots, and the pages the job's commands
+//! presented, to the runner's completed-job report.
 
-use demi_command_protocol::EDIT_FILE_BYTES;
+use demi_command_protocol::{EDIT_FILE_BYTES, PresentedPage};
 use demi_command_sdk::edits::Recorder;
 use demi_runner_process::file_diff::line_counts;
 use demi_runner_protocol::wire;
 use std::io::Read;
 
-pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobFileChange>, bool) {
+/// What a job's commands reported: the files they changed, whether that list
+/// was cut, and the pages they presented.
+#[derive(Default)]
+pub struct JobReport {
+    pub files: Vec<wire::JobFileChange>,
+    pub files_truncated: bool,
+    pub presented: Vec<PresentedPage>,
+}
+
+pub fn finish(recorder: Option<&Recorder>) -> JobReport {
     let Some(recorder) = recorder else {
-        return (Vec::new(), false);
+        return JobReport::default();
     };
     let journal = match recorder.report() {
         Ok(journal) => journal,
         Err(error) => {
             tracing::warn!("edit report failed: {error}");
-            return (Vec::new(), false);
+            return JobReport::default();
         }
     };
     let files = journal
@@ -54,7 +64,11 @@ pub fn finish(recorder: Option<&Recorder>) -> (Vec<wire::JobFileChange>, bool) {
             }
         })
         .collect();
-    (files, journal.files_truncated)
+    JobReport {
+        files,
+        files_truncated: journal.files_truncated,
+        presented: journal.presented,
+    }
 }
 
 fn read_snapshot(path: &String) -> std::io::Result<Vec<u8>> {
