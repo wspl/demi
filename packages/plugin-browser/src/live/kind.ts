@@ -16,11 +16,14 @@ const BrowserTabMark = defineComponent({
 /**
  * A tab is named by its page's title as the address bar last showed it,
  * which the tab keeps, so the strip names it while no view shows it; until
- * it has one, by its address: a new tab is `about:blank` from the start, and
+ * it has one, by its address: a new tab is New Tab, as in any browser, and
  * a tab its user sent elsewhere is named after where it goes at once, never
  * after the page it leaves.
  */
 function browserTabTitle(data: BrowserTabData): string {
+  if (data.url === NEW_TAB_URL) {
+    return 'New Tab'
+  }
   if (data.title) {
     return data.title
   }

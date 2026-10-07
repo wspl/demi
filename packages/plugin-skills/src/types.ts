@@ -36,3 +36,13 @@ export interface SettingsSkillSource {
 export interface SettingsSkillDraft {
   origin: string
 }
+
+/**
+ * How adding a source ended: added, which closes the dialog; refused for its
+ * input, which the dialog says under the field, keeping what was typed; or
+ * failed for another reason, which the host has already reported.
+ */
+export type AddSourceAnswer =
+  | { kind: 'added' }
+  | { kind: 'refused'; message: string }
+  | { kind: 'failed' }

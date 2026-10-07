@@ -64,6 +64,7 @@ impl Shard {
             plugins,
             plugin_states,
             web_build: services.web_build.clone(),
+            mail: services.email.delivers(),
             run: services.run.clone(),
         })
     }

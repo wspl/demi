@@ -12,7 +12,7 @@ import { clientPlatform } from '@demicodes/utils'
 import { useDocumentVisibility, useDebounceFn } from '@vueuse/core'
 import { computed, shallowReactive, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 import { z } from 'zod'
-import type { BrowserTab, LiveTab, NeededBrowser } from '../generated/plugin'
+import type { BrowserTab, LiveDownload, LiveTab, NeededBrowser } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from './pictures'
 import type { HeadlineText, HostArtifact, OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
@@ -20,6 +20,21 @@ import { LiveSession, type PanelReport } from './session'
 
 /** What a new tab shows before the user goes anywhere. */
 export const NEW_TAB_URL = 'about:blank'
+
+/**
+ * The id of the panel tab the plugin adds for the browser's tab `tab`, one
+ * the agent or a page opened (`live-view.md` § A browser tab in the panel).
+ */
+export function addedPanelTab(tab: string): string {
+  return `browser-${tab}`
+}
+
+/**
+ * How long after the viewer's click or key in a tab a tab that page opens is
+ * the viewer's, which a browser selects: the window in which the Host takes
+ * text the page copies as the viewer's (`live-view.md` § Input).
+ */
+const OPENED_BY_USER_MS = 5000
 
 export const browserTabDataSchema = z.object({
   /** The address the tab shows, or the one its user last asked for while it has no browser tab. */
@@ -100,6 +115,8 @@ export interface BrowserTabsApi {
   bind(panelTab: string): Promise<string | null>
   /** Asks the plugin to read the browser's tabs and bring the panel's up to date. */
   sync(): Promise<void>
+  /** Selects the panel tab `panelTab` and opens the panel, once the panel has it. */
+  select(panelTab: string): void
   /** Starts loading `url`; answers the number of the last tab list before the request started. */
   navigate(tab: string, url: string): Promise<number>
   /** Moves or reloads the tab; answers as `navigate` does. */
@@ -196,6 +213,10 @@ export class BrowserTabsController {
   private readonly pictured = shallowReactive(new Set<string>())
   /** The panel tabs whose user pressed Stop before they had a browser tab to stop. */
   private readonly stopping = new Set<string>()
+  /** The downloads the user started in each browser tab, as a view last reported them, the newest last. */
+  private readonly downloads = shallowReactive(new Map<string, readonly LiveDownload[]>())
+  /** Every browser tab a view listed; null before the first list, whose tabs are not new to the page. */
+  private heard: Set<string> | null = null
   /** The panel the shown tab's content measured, which a view sizes the tab by. */
   private panel: PanelReport | null = null
   /** The browser tab whose content is shown, which the view watches while the page is visible. */
@@ -246,6 +267,11 @@ export class BrowserTabsController {
   /** The browser tab `tab` as a view last reported it, if one did. */
   tab(tab: string | undefined): LiveTab | null {
     return tab === undefined ? null : (this.known.get(tab) ?? null)
+  }
+
+  /** The downloads the user started in the browser tab `tab`, the newest last. */
+  downloadsOf(tab: string | undefined): readonly LiveDownload[] {
+    return tab === undefined ? [] : (this.downloads.get(tab) ?? [])
   }
 
   /**
@@ -555,6 +581,7 @@ export class BrowserTabsController {
    */
   private viewTabs(tabs: readonly LiveTab[], list: number): void {
     this.listed.value = list
+    this.pageOpened(tabs)
     for (const id of [...this.known.keys()]) {
       if (!tabs.some((tab) => tab.id === id)) {
         this.known.delete(id)
@@ -574,6 +601,35 @@ export class BrowserTabsController {
       return
     }
     this.lookForShown()
+  }
+
+  /**
+   * A tab a page opened appears in the strip at once, as in any browser
+   * (`live-view.md` § A browser tab in the panel): the plugin adds it when
+   * asked to read the browser's tabs. One that the page the user watches
+   * opened right after the user's click or key there is the user's, and is
+   * selected, as a browser selects the tab a click opens; one a page opened
+   * by itself is only added.
+   */
+  private pageOpened(tabs: readonly LiveTab[]): void {
+    const heard = this.heard
+    this.heard = new Set([...(heard ?? []), ...tabs.map((tab) => tab.id)])
+    if (heard === null) {
+      return
+    }
+    const opened = tabs.filter((tab) => tab.createdBy.kind === 'page' && !heard.has(tab.id))
+    if (opened.length === 0) {
+      return
+    }
+    this.api.sync().catch((error: unknown) => this.errors.defect('The panel could not add the tabs a page opened', error))
+    const shown = this.shownTab.value
+    const view = this.session.value
+    for (const tab of opened) {
+      const opener = tab.createdBy.kind === 'page' ? tab.createdBy.opener : null
+      if (opener !== null && opener === shown && view?.pressedLately(opener, OPENED_BY_USER_MS)) {
+        this.api.select(addedPanelTab(tab.id))
+      }
+    }
   }
 
   /**
@@ -607,6 +663,7 @@ export class BrowserTabsController {
       onNotice: (code) => this.notice(code),
       onEnded: () => this.lookForShown(),
       onPicture: (tab) => this.pictured.add(tab),
+      onDownloads: (tab, downloads) => this.downloads.set(tab, downloads),
       defect: this.errors.defect,
     })
     this.session.value = session
@@ -636,6 +693,7 @@ export class BrowserTabsController {
     this.binding.clear()
     this.pictured.clear()
     this.stopping.clear()
+    this.downloads.clear()
     this.closeView()
   }
 }
