@@ -81,7 +81,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
         <Button @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
         <Button
           v-if="!submitted || failed"
-          variant="danger"
+          variant="destructive"
           :disabled="busy"
           @click="emit('reset')"
           >{{ submitted ? 'Retry Reset' : 'Reset Environment' }}</Button
