@@ -1,0 +1,40 @@
+# The preview domain service (docs/delivery/builds-and-releases.md § Preview
+# domain deployment). CI deploys it; `bun run dev` runs it locally under
+# demi-preview.localhost, whose subdomains Chrome resolves to the loopback
+# address and treats as secure contexts over plain HTTP.
+name = "demi-preview-domain"
+main = "src/worker.ts"
+compatibility_date = "2026-10-01"
+workers_dev = false
+# The routes, the domain's apex and its proxied wildcard DNS record, are given
+# by the deployment (.github/workflows/preview-domain.yml), not here: with
+# routes configured, `wrangler dev` rewrites every request's host to the first
+# route's, and a preview origin's subdomain would be lost.
+
+[vars]
+PREVIEW_DOMAIN = "demi-preview.dev"
+
+# Wrangler creates the KV namespace on the first deployment and keeps using it.
+[[kv_namespaces]]
+binding = "NAMESPACES"
+
+[[ratelimits]]
+name = "NAMESPACE_CREATION"
+namespace_id = "1001"
+simple = { limit = 5, period = 60 }
+
+[assets]
+directory = "static"
+binding = "ASSETS"
+# Every request reaches the Worker, which adds each namespace's headers and
+# serves only the versioned files; the asset server answers the Worker alone.
+run_worker_first = true
+html_handling = "none"
+not_found_handling = "none"
+
+# The service never logs a preview's paths, queries or bodies.
+[observability]
+enabled = false
+
+[dev]
+ip = "127.0.0.1"

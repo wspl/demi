@@ -1,0 +1,57 @@
+# Deploys the preview domain service, services/preview-domain, to its
+# Cloudflare Worker (docs/delivery/builds-and-releases.md § Preview domain
+# deployment) when a push changes it. A deployment only adds: the files of a
+# version already published under static/__demi/v<N>/ never change and are
+# never removed, since Demi pages built against them may still be open, so
+# the deployment stops if the push changed one.
+name: Preview domain
+
+on:
+  push:
+    branches: [feat/demi-next]
+    paths: ["services/preview-domain/**"]
+
+permissions:
+  contents: read
+
+# One deployment at a time, in push order.
+concurrency:
+  group: preview-domain
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Keep published versions unchanged
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          versions=services/preview-domain/static/__demi
+          # A new branch has no previous commit; its first parent stands in.
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            BEFORE=$(git rev-parse HEAD^)
+          fi
+          changed=0
+          for version in $(git ls-tree --name-only "$BEFORE" "$versions/"); do
+            if ! git diff --quiet "$BEFORE" HEAD -- "$version"; then
+              echo "::error::$version was published and must not change; publish the change as a new version" >&2
+              git diff --stat "$BEFORE" HEAD -- "$version" >&2
+              changed=1
+            fi
+          done
+          exit "$changed"
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile --filter @demicodes/preview-domain
+      - name: Deploy
+        working-directory: services/preview-domain
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        # The routes are given here rather than in wrangler.toml, which
+        # explains why.
+        run: bun run wrangler deploy --route "demi-preview.dev/*" --route "*.demi-preview.dev/*"
