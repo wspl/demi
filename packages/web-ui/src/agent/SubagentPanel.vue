@@ -74,7 +74,7 @@ function closeTab(agent: SubagentRecord): void {
         :is-active="agent.id === active?.id"
         :status="subagentStatus(agent.phase)"
         mark="bot"
-        @pointerdown="activate(agent.id)"
+        @select="activate(agent.id)"
         @close="closeTab(agent)"
       />
     </template>

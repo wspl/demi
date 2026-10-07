@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
-import { cutMarkCover, fadeRoom, revealScroll, tabsChanged, type StripMutation } from '../tab-strip'
+import { applyPanelChange } from '../panel-changes'
+import { cutMarkCover, dragShift, dragTarget, fadeRoom, revealScroll, tabsChanged, type StripMutation } from '../tab-strip'
 
 test('the selected tab is revealed whole and clear of the fades, and where they do not fit the fades give way', () => {
   const view = { scrollLeft: 0, clientWidth: 300, scrollWidth: 900 }
@@ -58,4 +59,25 @@ test('only a tab becoming active, coming or going moves the view, not a render o
   expect(tabsChanged(strip, [change(strip, [{ name: 'text' }], [])], isTab)).toBe(false)
   // A page's title changing inside its tab.
   expect(tabsChanged(strip, [change(tab, [{ name: 'title' }], [{ name: 'title' }])], isTab)).toBe(false)
+})
+
+test('a dragged tab lands where its center passed the others, and they step aside to make room', () => {
+  // Four tabs 100 wide: A B C D, centers at 50, 150, 250, 350. B is dragged.
+  const tabs = ['A', 'B', 'C', 'D'].map((id) => ({ id, kind: 'browser', data: {} }))
+  const centers = [50, 150, 250, 350]
+  const drop = (center: number) => {
+    const to = dragTarget(centers, 1, center)
+    const shifts = centers.map((_, index) => dragShift(index, 1, to))
+    const order = applyPanelChange(tabs, { type: 'move', id: 'B', index: to }).map((tab) => tab.id).join('')
+    return { order, shifts }
+  }
+  // Held where it was, or short of C's center: nothing moves.
+  expect(drop(150)).toEqual({ order: 'ABCD', shifts: [0, 0, 0, 0] })
+  expect(drop(249)).toEqual({ order: 'ABCD', shifts: [0, 0, 0, 0] })
+  // Past C's center: C steps left, and the drop puts B after it.
+  expect(drop(251)).toEqual({ order: 'ACBD', shifts: [0, 0, -1, 0] })
+  // Past the last: both step left, B ends the strip.
+  expect(drop(400)).toEqual({ order: 'ACDB', shifts: [0, 0, -1, -1] })
+  // Back past A's center: A steps right, B leads.
+  expect(drop(10)).toEqual({ order: 'BACD', shifts: [1, 0, 0, 0] })
 })

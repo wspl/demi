@@ -166,6 +166,26 @@ test('a Retry of a read that failed with nothing to show reads again without the
   expect(shown.entry).toMatchObject({ value: undefined, failure: null, reading: true })
 })
 
+test('a read that failed while the Host was away is read again once a watch is live, and nothing else is', async () => {
+  const files = new HostFiles()
+  const { reads, spec, answer, asked } = host()
+  const shown = files.show(spec('text', '/w/a.ts'))
+  const failing = reads.at(-1)!
+  failing.answer.reject(new FileBrowserError('offline', 'The device is offline.'))
+  failing.answered = true
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(shown.entry).toMatchObject({ value: undefined, failure: { kind: 'offline' } })
+  // A file confirmed under another live watch stays as it is.
+  files.cover({ covers: (path) => path === '/w/b.ts' })
+  files.show(spec('text', '/w/b.ts'))
+  await answer('b')
+  // The Host is back: its watch goes live, and the failed read is made again.
+  files.cover(everything)
+  expect(asked()).toEqual(['text /w/a.ts', 'text /w/b.ts', 'text /w/a.ts'])
+  await answer('back')
+  expect(shown.entry).toMatchObject({ value: 'back', failure: null })
+})
+
 test('past the budget the entries shown longest ago go first, and none that shows', async () => {
   const files = new HostFiles(10)
   files.cover(everything)

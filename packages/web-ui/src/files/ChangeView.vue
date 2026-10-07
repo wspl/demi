@@ -11,14 +11,16 @@ import Tooltip from '../ui/Tooltip.vue'
 import ChangeTree from './ChangeTree.vue'
 import { useShowing } from './showing'
 import FilePreview from './FilePreview.vue'
+import FileIcon from './FileIcon.vue'
 import FileSummary from './FileSummary.vue'
+import LineCounts from './LineCounts.vue'
 import ImagePreview from './ImagePreview.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
 import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
 import { TREE_WIDTH } from './file-view'
-import { baseName, resolveHostPath } from './paths'
+import { baseName, relativePath, resolveHostPath } from './paths'
 import { hasSourceView, previewKind, svgImageUrl } from './preview'
 import { FileBrowserError, type FileContents } from './types'
 
@@ -81,6 +83,20 @@ const selectedChange = computed(() => mode.value === 'conversation'
   : workingTree.value.files.find((file) => file.path === selected.value) ?? null)
 const segments = computed(() => call.value?.file.edits ?? [])
 const absolutePath = computed(() => resolveHostPath(props.root, selectedChange.value?.path ?? ''))
+/**
+ * The file the view shows, named over it as a diff's file header names it on
+ * GitHub: its folder from the workspace, its name, and where a renamed file
+ * came from.
+ */
+const heading = computed(() => {
+  const change = selectedChange.value
+  if (!change)
+    return null
+  const shown = relativePath(props.root, absolutePath.value)
+  const folder = shown.slice(0, shown.lastIndexOf('/') + 1)
+  const from = 'from' in change && change.from ? relativePath(props.root, resolveHostPath(props.root, change.from)) : null
+  return { folder, name: baseName(absolutePath.value), from, deleted: change.kind === 'deleted' }
+})
 const treeAvailable = computed(() => mode.value === 'uncommitted' && workingTree.value.unavailable !== 'no-repository')
 const emptyText = computed(() => emptyChangeSetText(workingTree.value))
 const idleText = computed(() => mode.value === 'conversation'
@@ -266,6 +282,22 @@ onBeforeUnmount(() => {
       </div>
     </template>
     <div class="flex h-full min-h-0 flex-col">
+      <div
+        v-if="heading && selectedChange"
+        class="flex h-8 shrink-0 select-none items-center gap-1.5 border-b border-line px-3 text-[12px]"
+      >
+        <FileIcon :name="heading.name" :is-directory="false" :size="14" class="shrink-0" />
+        <span v-if="heading.from" class="min-w-0 truncate text-fg-muted">{{ heading.from }} →</span>
+        <!-- Path and counts use different fonts and sizes: they align on the baseline, as the file pills do. -->
+        <span class="flex min-w-0 items-baseline gap-2.5">
+          <!-- One path: its folders give way from the left, and its name stays whole (the gallery's Writing page). -->
+          <span class="flex min-w-0 items-baseline">
+            <span class="min-w-0 truncate text-fg-muted [direction:rtl]"><bdi>{{ heading.folder }}</bdi></span>
+            <span class="shrink-0" :class="heading.deleted ? 'text-fg-muted line-through' : 'text-fg'">{{ heading.name }}</span>
+          </span>
+          <LineCounts :added="selectedChange.added" :removed="selectedChange.removed" />
+        </span>
+      </div>
       <RegionNote
         v-if="mode === 'uncommitted' && workingTree.watch?.unavailable"
         :icon="History"
