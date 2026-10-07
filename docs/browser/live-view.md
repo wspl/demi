@@ -185,7 +185,9 @@ page                         backend (panel, plugin-browser)            Host
   sign-in or payment pop-up: the new tab appears in the strip at once, as in
   any browser, not when the agent's next job ends. The view's tab list names
   it within the module's state delay, and the page asks the plugin to
-  `sync`, which adds it as it adds the agent's tabs. A tab opened by the
+  `sync`, which adds it right after the tab that opened it, behind the tabs
+  that tab opened before, as Chrome places them; the agent's tabs still go
+  at the end. A tab opened by the
   user's own click or key in the tab they watch is selected, as a browser
   selects the tab a click opens; one a page opened by itself is added without
   being selected.
