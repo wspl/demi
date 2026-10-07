@@ -126,7 +126,7 @@ test('the list holds only saved providers; a vendor added joins it only once sav
   expect(listed()).toEqual(['codex', 'configured'])
 })
 
-test('an edit made while a test runs shows at once and is saved when the test ends', async () => {
+test('an edit or a model made while a test runs shows at once and is saved when the test ends', async () => {
   const settings = useProviderSettings()
   let answerTest!: () => void
   const testing = new Promise<void>((resolve) => {
@@ -157,12 +157,14 @@ test('an edit made while a test runs shows at once and is saved when the test en
 
   settings.change(provider(), { name: 'Renamed' })
   expect(provider().name).toBe('Renamed')
+  // A model saved meanwhile waits for the test too, rather than being refused.
+  const savedModel = settings.saveModel({ ...provider(), models: [gpt] }, { ...gpt, id: 'gpt-mini', name: 'GPT Mini' }, null)
   expect(writes).toBe(0)
 
   answerTest()
+  await savedModel
   await idle()
-  await idle()
-  expect(writes).toBe(1)
+  expect(writes).toBe(2)
   expect(state.providers[0]!.label).toBe('Renamed')
 })
 

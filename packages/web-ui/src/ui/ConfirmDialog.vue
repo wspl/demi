@@ -51,7 +51,7 @@ const emit = defineEmits<{
       </ul>
       <div class="flex justify-end gap-2">
         <Button :disabled="busy" @click="emit('close')">Cancel</Button>
-        <Button variant="danger" :loading="busy" @click="emit('confirm')">{{ action }}</Button>
+        <Button variant="destructive" :loading="busy" @click="emit('confirm')">{{ action }}</Button>
       </div>
     </div>
   </Dialog>
