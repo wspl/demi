@@ -115,7 +115,7 @@ impl Work {
             None => page::close(port, &tab).await,
             // Its user asked for another address while it opened: the last
             // one they asked for is where it goes.
-            Some(now) if now.url != asked => page::navigate(port, &tab, now.url).await,
+            Some(now) if now.url != asked => page::navigate(port, &tab, now.url).await.map(|_| ()),
             Some(_) => Ok(()),
         }
     }

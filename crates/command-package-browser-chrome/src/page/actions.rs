@@ -983,6 +983,7 @@ pub(crate) async fn completed_navigation(tab: &BrowserTab, url: String) -> Navig
         tab: tab.id().clone(),
         url,
         title,
+        list: None,
     }
 }
 

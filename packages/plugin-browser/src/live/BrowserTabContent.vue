@@ -8,10 +8,12 @@ import { Menu } from '@demicodes/plugin-sdk'
 import { MenuItem } from '@demicodes/plugin-sdk'
 import { Popover } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
+import { RegionStatus } from '@demicodes/plugin-sdk'
+import { pendingCalls } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
 import { usePage } from '@demicodes/plugin-sdk'
 import LiveView from './LiveView.vue'
-import { NEW_TAB_URL, asTabsError, type BrowserTabData, type BrowserTabsController, type BrowserTabsError } from './tabs'
+import { NEW_TAB_URL, refusalSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
 import { deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
@@ -35,8 +37,6 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ update: [data: BrowserTabData]; close: [] }>()
 
-/** What Retry or Reload of a tab without its browser tab could not do, until the next one. */
-const rebindRefused = ref<BrowserTabsError | null>(null)
 const address = ref(props.data.url)
 const editing = ref(false)
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
@@ -44,7 +44,12 @@ const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
 const menu = ref(false)
 const anchor = ref<HTMLElement | null>(null)
 
-const { overlays } = usePage()
+const { overlays, errors } = usePage()
+/** Retry and Reload of a tab without its browser tab, which wait for the plugin's answer. */
+const calls = pendingCalls(errors)
+/** The key of that call among the content's pending calls. */
+const BIND = 'bind'
+const rebinding = computed(() => calls.pending.value.includes(BIND))
 const view = computed(() => props.session.session.value)
 /** The browser tab the panel tab shows, while the browser has it. */
 const bound = computed(() => (props.data.closed ? undefined : props.data.tab))
@@ -55,8 +60,9 @@ const choices = computed(() => (viewport.value ? viewportChoices(viewport.value)
 /** A computer, a phone, or a size the agent set. */
 const MODE_ICONS: Record<ViewportChoice['mode'], Component> = { web: Monitor, mobile: Smartphone, custom: Ruler }
 const loading = computed(() => props.session.loading(bound.value, props.data.url))
-/** What a request of this content could not do, until its next one. */
-const refused = computed(() => rebindRefused.value ?? props.session.refusal(bound.value))
+/** Back and Forward are unavailable while the browser says the tab has no page that way, or has said nothing yet. */
+const backReason = computed(() => (live.value?.canGoBack ? null : 'No page to go back to'))
+const forwardReason = computed(() => (live.value?.canGoForward ? null : 'No page to go forward to'))
 
 // A shown tab with its browser tab is watched on the page's view, once its area measured the panel.
 watch(
@@ -180,25 +186,41 @@ function submit(): void {
   const { title: _left, ...data } = props.data
   emit('update', { ...data, url })
   if (bound.value !== undefined) {
-    void props.session.navigate(bound.value, url)
+    props.session.navigate(bound.value, url).catch((error: unknown) => {
+      errors.report('Could Not Open the Address', error)
+      restore()
+    })
   }
 }
 
-/** Back, Forward and Reload, on the bound tab; what they could not do shows above the picture. */
+/** A refused address leaves the tab on the page the browser still shows, with its address and title. */
+function restore(): void {
+  const page = live.value
+  if (!page) {
+    return
+  }
+  // The address bar follows the tab's data.
+  const { title: _left, ...data } = props.data
+  emit('update', page.title ? { ...data, url: page.url, title: page.title } : { ...data, url: page.url })
+}
+
+/** What a toast names when Back, Forward or Reload was refused. */
+const COULD_NOT = {
+  back: 'Could Not Go Back',
+  forward: 'Could Not Go Forward',
+  reload: 'Could Not Reload the Page',
+} as const
+
+/** Back, Forward and Reload, on the bound tab; a refusal is reported as any failed request is. */
 function history(action: 'back' | 'forward' | 'reload'): void {
   if (bound.value !== undefined) {
-    void props.session.history(bound.value, action)
+    props.session.history(bound.value, action).catch((error: unknown) => errors.report(COULD_NOT[action], error))
   }
 }
 
 /** Retry and Reload: the plugin opens a browser tab for this panel tab again. */
-async function rebind(): Promise<void> {
-  rebindRefused.value = null
-  try {
-    await props.session.api.bind(props.tabId)
-  } catch (error) {
-    rebindRefused.value = asTabsError(error)
-  }
+function rebind(): void {
+  void calls.run(BIND, 'Could Not Open the Page', () => props.session.api.bind(props.tabId))
 }
 </script>
 
@@ -206,6 +228,8 @@ async function rebind(): Promise<void> {
   <div class="flex min-h-0 flex-1 flex-col">
     <AddressBar
       :address="address"
+      :back-reason="backReason"
+      :forward-reason="forwardReason"
       :can-reload="bound !== undefined"
       :focused="fresh"
       @update:address="address = $event; editing = true"
@@ -231,23 +255,27 @@ async function rebind(): Promise<void> {
         </Tooltip>
       </template>
     </AddressBar>
-    <!-- What a request of this content, or the view itself, could not do, above a page that still shows. -->
+    <!-- What the view itself could not do, above a page that still shows. -->
     <p
-      v-if="refused || view?.state.notice"
+      v-if="view?.state.notice"
       class="border-t border-line px-3 py-1.5 text-[12px] text-on-danger"
       role="alert"
     >
-      {{ refused?.message ?? view?.state.notice?.message }}
+      {{ view.state.notice.message }}
     </p>
     <div ref="area" class="relative flex min-h-0 flex-1 flex-col border-t border-line">
       <ProgressLine :active="loading && !data.failure && !data.closed" />
-      <div
-        v-if="data.failure"
-        class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-[13px]"
-      >
-        <span class="text-on-danger" role="alert">{{ data.failure.message }}</span>
-        <Button variant="default" size="sm" @click="rebind">Retry</Button>
-      </div>
+      <!-- A tab the plugin could not open cannot be shown at all: Retry returns it to opening. -->
+      <RegionStatus
+        v-if="data.failure || (rebinding && !data.closed)"
+        class="min-h-0 flex-1"
+        :busy="rebinding"
+        :failed="!rebinding"
+        :label="rebinding ? 'Opening the page…' : 'Couldn’t open this page.'"
+        :detail="rebinding ? null : refusalSentence(data.failure?.code ?? null)"
+        :action="rebinding ? undefined : 'Retry'"
+        @action="rebind"
+      />
       <div
         v-else-if="data.closed"
         class="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 px-6 text-center text-[13px] text-fg-faint"
@@ -255,7 +283,7 @@ async function rebind(): Promise<void> {
         <span>This page was closed on the device.</span>
         <span class="flex items-center gap-2">
           <Button variant="default" size="sm" @click="emit('close')">Close Tab</Button>
-          <Button variant="default" size="sm" @click="rebind">Reload</Button>
+          <Button variant="default" size="sm" :disabled="rebinding" @click="rebind">Reload</Button>
         </span>
       </div>
       <div

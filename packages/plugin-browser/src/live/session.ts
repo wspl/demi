@@ -78,8 +78,8 @@ export interface LiveSessionOptions {
   platform: 'mac' | 'windows' | 'linux' | 'other'
   /** Text the watched tab copied, for the viewer's own clipboard. */
   onClipboard?: (text: string) => void
-  /** The conversation browser's tabs, each time the view reports them. */
-  onTabs?: (tabs: LiveTab[]) => void
+  /** The conversation browser's tabs, each time the view reports them, with the list's number in the Host's sequence. */
+  onTabs?: (tabs: LiveTab[], list: number) => void
   /**
    * The view ended; it opens again by itself, since a Host that becomes
    * reachable again, or a conversation browser started later, reaches the
@@ -282,7 +282,7 @@ export class LiveSession {
           this.state.connection = this.state.connection === 'opening' ? 'live' : this.state.connection
           this.state.running = message.running
           this.state.tabs = message.tabs
-          this.options.onTabs?.(message.tabs)
+          this.options.onTabs?.(message.tabs, message.list)
           // The page decides what it watches. The module says otherwise when
           // the tab went away, or when its answer crossed a newer wish on the
           // way: a tab that is still there is asked for again.
