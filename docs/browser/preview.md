@@ -441,7 +441,7 @@ the relay chooses.
 | `socket_message` | Either | `id`, a text or binary flag, then the message |
 | `socket_close` | Either | `{ id, code, reason }`; a socket that could not open closes with 1006 |
 | `state_take` | Relay | `{ id, tab }`: the agent's tab whose state a tab of your browser opens with; the engine answers `state` with its storage, after moving the agent's browser's cookies into the jar |
-| `state_keep` | Relay | `{ id, origins, storage }`: the state of a tab of your browser, with the origins of its documents, for Open in Agent's Browser; the engine answers a token, which the new agent tab's opening carries to `browser.handover` |
+| `state_keep` | Relay | `{ id, token, origins, storage }`: the state of a tab of your browser, with the origins of its documents, for Open in Agent's Browser, under the token the page chose when it created the new agent tab at once; the engine answers `state_kept`, and `browser.handover` waits up to 10 seconds for the state of the token its tab carries, opening the address alone without it |
 
 The relay, which holds the labels and the kept requests, resolves each
 request's initiator from them ([The preview engine](#the-preview-engine)) and
