@@ -1,50 +1,15 @@
 /**
- * Labels and preview addresses as the relay reads them (`preview.md`
- * § Addresses and labels). The label algorithm is public and never changes
- * between releases: the first 80 bits of the SHA-256 of (namespace, Host,
- * logical origin, top-level site, cross-site ancestor), in lowercase
- * base32hex. The rewriter computes it in Rust (`preview-rewrite`), and the
- * relay computes it again here, with the browser's own SHA-256, before it
- * keeps any label it is told of: a label this page keeps always names the
- * environment it was computed from. Both are pinned by the same value.
+ * Preview addresses as the relay reads them (`preview.md` § Addresses and
+ * labels). The relay never computes a label: the engine does, for the
+ * address the user opens, the addresses its answers map, and the
+ * environments a runtime registers. Here the relay only reads a label out
+ * of a preview origin, and a real address out of a preview address.
  */
 import type { PreviewPlace } from '@demicodes/plugin-sdk'
-import type { PreviewEnvironment } from '../generated/plugin'
-
-const ALPHABET = '0123456789abcdefghijklmnopqrstuv'
-const LABEL_BYTES = 10
-const encoder = new TextEncoder()
-
-/** `bytes` in lowercase base32hex, without padding. */
-function base32hex(bytes: Uint8Array): string {
-  let bits = 0
-  let value = 0
-  let output = ''
-  for (const byte of bytes) {
-    value = ((value << 8) | byte) & 0xffff
-    bits += 8
-    while (bits >= 5) {
-      output += ALPHABET[(value >>> (bits - 5)) & 31]
-      bits -= 5
-    }
-  }
-  return bits > 0 ? output + ALPHABET[(value << (5 - bits)) & 31] : output
-}
-
-/** The label of `environment` in `place`'s namespace and Host. */
-export async function labelOf(place: Pick<PreviewPlace, 'namespace' | 'host'>, environment: PreviewEnvironment): Promise<string> {
-  const text = `${place.namespace}\n${place.host}\n${environment.origin}\n${environment.top}\n${environment.cross ? 1 : 0}`
-  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', encoder.encode(text)))
-  return base32hex(digest.subarray(0, LABEL_BYTES))
-}
-
-/** The preview origin of `label`: `<scheme>://<namespace>--<label>.<domain>`. */
-export function previewOrigin(place: PreviewPlace, label: string): string {
-  return `${place.scheme}://${place.namespace}--${label}.${place.domain}`
-}
+import { PREVIEW_FILES_VERSION, type PreviewEnvironment } from '../generated/plugin'
 
 /** The boot page's path, which every preview origin serves. */
-export const BOOT_PATH = '/__demi/v1/boot.html'
+export const BOOT_PATH = `/__demi/v${PREVIEW_FILES_VERSION}/boot.html`
 
 /**
  * The label of a preview origin of `place`'s namespace, or null for any

@@ -8,13 +8,51 @@
  */
 import { shallowRef, type ShallowRef } from 'vue'
 import type { PreviewOpened } from '@demicodes/plugin-browser/generated/plugin'
-import type { RelayBinding, TabPage } from '@demicodes/plugin-browser/preview/relay'
+import type { NavigationType, RelayBinding, TabPage } from '@demicodes/plugin-browser/preview/relay'
 import type { PreviewDriver, PreviewTab } from '@demicodes/plugin-browser/preview/tabs'
 import type { PreviewPlace } from '@demicodes/web-ui/plugins/page'
-import { siteIcon } from './live-browser'
 
 /** How long the gallery's Host takes to answer a page, as a near one does. */
 const BEAT_MS = 600
+
+/** Each site's icon, drawn once. */
+const siteIcons = new Map<string, string>()
+
+/**
+ * A fixture site's icon, 32 pixels square: the first letter of its host on a
+ * color of its own. `plain.test` has none, so its tabs show the generic
+ * mark, as a site without an icon does.
+ */
+function siteIcon(url: string): string | undefined {
+  const parsed = URL.parse(url)
+  if (!parsed || (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || parsed.host === 'plain.test') {
+    return undefined
+  }
+  const known = siteIcons.get(parsed.host)
+  if (known) {
+    return known
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = 32
+  canvas.height = 32
+  const context = canvas.getContext('2d')
+  if (!context) {
+    return undefined
+  }
+  const hue = [...parsed.host].reduce((sum, letter) => sum + letter.charCodeAt(0), 0) % 360
+  context.fillStyle = `hsl(${hue} 60% 45%)`
+  context.beginPath()
+  context.roundRect(0, 0, 32, 32, 7)
+  context.fill()
+  context.fillStyle = '#fff'
+  context.font = 'bold 20px sans-serif'
+  context.textAlign = 'center'
+  context.textBaseline = 'middle'
+  context.fillText(parsed.host.charAt(0).toUpperCase(), 16, 17)
+  const icon = canvas.toDataURL('image/png')
+  siteIcons.set(parsed.host, icon)
+  return icon
+}
 
 /** What the gallery's pages say they are, by path. */
 const PAGES: Record<string, { title: string; text: string }> = {
@@ -46,7 +84,11 @@ document.addEventListener('click', (event) => {
 /** A tab's pages, as a browser's history keeps them. */
 interface History {
   entries: string[]
+  /** Each entry's key, as the Navigation API names an entry. */
+  keys: string[]
   index: number
+  /** How the tab got to the page it loads, which the page reports once loaded. */
+  move: NavigationType
   /** The page each entry shows, while the tab lives. */
   documents: string[]
 }
@@ -89,7 +131,7 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
     return document
   }
 
-  /** What the tab's top page says once it loaded. */
+  /** What the tab's top page says once it loaded: how its history moved there, and what it is. */
   function report(tab: PreviewTab, history: History): void {
     const url = history.entries[history.index]!
     const known = PAGES[new URL(url).pathname]
@@ -97,9 +139,8 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
       url,
       title: known ? `${known.title} — ${new URL(url).host}` : new URL(url).host,
       icon: siteIcon(url) ?? '',
-      canGoBack: history.index > 0,
-      canGoForward: history.index < history.entries.length - 1,
     }
+    tab.report({ type: 'entry', key: history.keys[history.index]!, navigationType: history.move })
     tab.report({ type: 'page', page })
   }
 
@@ -126,7 +167,7 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
       }
     },
     register(tab) {
-      const history: History = { entries: [], index: -1, documents: [] }
+      const history: History = { entries: [], keys: [], index: -1, move: 'push', documents: [] }
       histories.set(tab.id, history)
       // A page's clicks, which it hands its tab as a preview's runtime does.
       const clicked = (event: MessageEvent) => {
@@ -153,7 +194,9 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
     async boot(tab, _place, _opened, navigation) {
       const history = histories.get(tab.id)!
       history.entries = [...history.entries.slice(0, history.index + 1), navigation.url]
+      history.keys = [...history.keys.slice(0, history.index + 1), crypto.randomUUID()]
       history.index = history.entries.length - 1
+      history.move = 'push'
       return show(history, navigation.url)
     },
     command(tab, command) {
@@ -170,6 +213,7 @@ export function galleryPreview(options: { unsupported?: string } = {}): GalleryP
         return true
       }
       history.index = index
+      history.move = command === 'reload' ? 'reload' : 'traverse'
       tab.report({ type: 'leaving' })
       // The page goes there itself, as a page's own history move does.
       frame.postMessage({ galleryPreview: true, go: show(history, history.entries[index]!) }, '*')

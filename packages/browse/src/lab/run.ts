@@ -1,14 +1,12 @@
 /**
  * The web preview's behavior laboratory (`preview.md` § Tests): each of the
- * spike's lab cases runs twice in the slot's Chromium, once on the lab page
- * loaded directly in a context of its own, its baseline, and once in a tab
- * of the user's browser in the product, through the relay, the
- * conversation's `preview` stream and the Host's engine. A case passes when
- * the preview answers as the direct load does, or as its stated deviation
- * says; one the preview declines by design is unsupported. It is a check
- * script's part, not an automated test: it needs the slot's backend, web
- * app and paired runner, and a conversation on that runner open with its
- * panel, as `check.ts` sets them up.
+ * spike's lab cases runs twice in Chrome, once on the lab page loaded
+ * directly in a context of its own, its baseline, and once in a tab of the
+ * user's browser in the product, through the relay, the conversation's
+ * `preview` stream and the Host's engine. A case passes when the preview
+ * answers as the direct load does, or as its stated deviation says; one the
+ * preview declines by design is unsupported. `preview-lab.test.ts` sets up
+ * the product and a conversation on a paired runner, its panel open.
  */
 import { writeFileSync } from 'node:fs'
 import { deepStrictEqual } from 'node:assert'
@@ -141,17 +139,29 @@ export async function previewLab(
       }
       let preview: { result?: unknown; error?: string }
       try {
-        const current = await frame()
+        let current = await frame()
         // And each preview starts with nothing the earlier cases stored in the page's origin.
         // The forwarder's registration stays, as it does across a user's visits.
         await cdp.send('Storage.clearDataForOrigin', {
           origin: new URL(current.url()).origin,
           storageTypes: 'indexeddb,local_storage,cache_storage,file_systems,websql',
         })
-        await fresh(current, async () => {
+        const load = async () => {
           await address.fill(lab)
           await address.press('Enter')
-        })
+        }
+        try {
+          await fresh(current, load)
+        } catch (error) {
+          // Chrome replaced the tab's frame while the lab loaded again (seen once in three
+          // runs, after policy-adapted-csp-multiple): the frame is found again, and the lab
+          // loaded once more.
+          if (!current.isDetached()) {
+            throw error
+          }
+          current = await frame()
+          await fresh(current, load)
+        }
         preview = await runCase(current, specification.id)
       } catch (error) {
         preview = { error: error instanceof Error ? error.message : String(error) }

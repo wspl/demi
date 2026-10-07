@@ -52,9 +52,6 @@ pub const CDP_BYTES: usize = 8 * 1024 * 1024;
 /// The longest locator, URL, path or name an input carries, in Unicode
 /// scalar values.
 pub const LOCATOR_LENGTH: usize = 4096;
-/// The most characters of a tab's icon as a `data:` URL: a 32-pixel PNG
-/// takes a few thousand (`live-view.md` § A browser tab in the panel).
-pub const FAVICON_LENGTH: usize = 16 * 1024;
 
 /// An opaque handle: `prefix`, an underscore and the URL-safe base64 of 16
 /// random bytes, 22 characters.
@@ -758,12 +755,6 @@ pub struct BrowserTab {
     /// shown (`live-view.md` § Showing a tab).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub shows: u64,
-    /// The page's icon, 32 pixels square, as a PNG `data:` URL; absent for a
-    /// page without one, or one the browser could not draw.
-    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
-    #[garde(length(max = FAVICON_LENGTH))]
-    pub favicon: Option<String>,
 }
 
 /// A tab's viewport (`live-view.md` § Modes): its CSS size, the pixel ratio

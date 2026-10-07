@@ -11,15 +11,15 @@ import {
 } from '../../generated/plugin'
 import { PreviewConnection } from '../connection'
 import { PreviewFrameReader, encodeMessage } from '../frames'
-import { labelOf, previewOrigin } from '../labels'
 import { PreviewRelay, type RelayTab, type TabEvent } from '../relay'
 
 // The relay's rules (`preview.md` § The forwarder and the relay) over a
 // scripted engine on its stream and scripted preview windows: which channel
 // it binds to which label and tab, the real addresses and environments it
 // sends, the labels it keeps, the requests it keeps behind tokens, the order
-// of a document's cookie write, and the runtime it delivers. No DOM: windows
-// are objects with a parent. Each test takes a few milliseconds.
+// of a document's cookie write, and the runtime it delivers. Labels are the
+// engine's: the scripted engine names them from a table. No DOM: windows are
+// objects with a parent. Each test takes a few milliseconds.
 
 const PLACE: PreviewPlace = {
   scheme: 'https',
@@ -33,10 +33,15 @@ const OTHER: PreviewEnvironment = { origin: 'https://other.test', top: 'https://
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
-test('a label is the one the rewriter computes', async () => {
-  // The value `preview-rewrite`'s own tests pin, and `demi-browser`'s `browser.preview_open` answers.
-  expect(await labelOf(PLACE, APP)).toBe('selbnt2qp6d94in3')
-})
+/** The labels the scripted engine computes, as the real one would for these environments. */
+const APP_LABEL = 'selbnt2qp6d94in3'
+const OTHER_LABEL = '5h8v0c2kq7m1p3ra'
+const ENGINE_LABELS = new Map([[APP.origin, APP_LABEL], [OTHER.origin, OTHER_LABEL]])
+
+/** The preview origin of `label` in `PLACE`. */
+function origin(label: string): string {
+  return `https://k3f9x2ab--${label}.demi-preview.dev`
+}
 
 /** What the scripted engine received of one request, and how it answers. */
 interface Received {
@@ -127,6 +132,9 @@ function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>
       } else {
         respond(message.id)
       }
+    } else if (message.type === 'labels') {
+      const labels = Object.fromEntries(message.environments.map((environment) => [ENGINE_LABELS.get(environment.origin)!, environment]))
+      send({ type: 'labels', id: message.id, labels })
     } else if (message.type === 'pull') {
       const rest = answers.get(message.id) ?? new Uint8Array(0)
       const chunk = rest.subarray(0, PREVIEW_BODY_CHUNK_BYTES)
@@ -248,28 +256,45 @@ afterEach(() => {
 test('a channel binds to the label of the origin that asked, in the tab whose frame holds the window', async () => {
   const engine = scriptedEngine(() => ({ status: 200 }))
   const { relay, top, nested } = world(engine)
-  const label = await labelOf(PLACE, APP)
-  await relay.learn(PLACE, { [label]: APP })
-  const origin = previewOrigin(PLACE, label)
+  relay.know(PLACE, { [APP_LABEL]: APP })
+  const app = origin(APP_LABEL)
   // The tab's top frame, and a frame inside it.
-  expect(await connect(relay, origin, top)).not.toBeNull()
-  expect(await connect(relay, origin, nested)).not.toBeNull()
+  expect(await connect(relay, app, top)).not.toBeNull()
+  expect(await connect(relay, app, nested)).not.toBeNull()
   // Another namespace's origin, a site's own, and a window no tab holds get nothing.
-  expect(await connect(relay, origin.replace('k3f9x2ab', 'z9z9z9z9'), top)).toBeNull()
+  expect(await connect(relay, app.replace('k3f9x2ab', 'z9z9z9z9'), top)).toBeNull()
   expect(await connect(relay, 'https://evil.test', top)).toBeNull()
-  expect(await connect(relay, origin, { parent: { parent: null } })).toBeNull()
+  expect(await connect(relay, app, { parent: { parent: null } })).toBeNull()
+})
+
+test('a runtime’s registration keeps only the labels the engine names for its environments', async () => {
+  const engine = scriptedEngine(() => ({ status: 200 }))
+  const { relay, top } = world(engine)
+  relay.know(PLACE, { [APP_LABEL]: APP })
+  const port = (await connect(relay, origin(APP_LABEL), top, 'document'))!
+  // The runtime claims a label of its own for the other site; the engine names another.
+  const claimed = '0000000000000000'
+  port.postMessage({ type: 'labels', entries: { [claimed]: OTHER } })
+  await waitUntil(() => engine.said.some((message) => message.type === 'labels'))
+  expect(engine.said.find((message) => message.type === 'labels')).toEqual({ type: 'labels', id: expect.any(Number), environments: [OTHER] })
+  expect(await relay.environmentOf(PLACE, OTHER_LABEL)).toEqual(OTHER)
+  const unknown = await Promise.race([
+    relay.environmentOf(PLACE, claimed),
+    new Promise((resolve) => setTimeout(() => resolve('still waiting'), 20)),
+  ])
+  expect(unknown).toBe('still waiting')
 })
 
 test('requests go with real addresses, the receiving environment the channel is bound to, and its initiator', async () => {
   const engine = scriptedEngine(() => ({ status: 200, headers: [['content-type', 'text/plain']], body: 'hello' }))
   const { relay, top } = world(engine)
-  const app = await labelOf(PLACE, APP)
-  const other = await labelOf(PLACE, OTHER)
-  await relay.learn(PLACE, { [app]: APP, [other]: OTHER })
-  const port = (await connect(relay, previewOrigin(PLACE, app), top))!
-  const own = `${previewOrigin(PLACE, app)}/api/items?__demi_integrity=sha256-x#top`
+  const app = APP_LABEL
+  const other = OTHER_LABEL
+  relay.know(PLACE, { [app]: APP, [other]: OTHER })
+  const port = (await connect(relay, origin(app), top))!
+  const own = `${origin(app)}/api/items?__demi_integrity=sha256-x#top`
   const answered = await exchange(port, fetchMessage(1, own, {
-    referrer: `${previewOrigin(PLACE, app)}/editor`,
+    referrer: `${origin(app)}/editor`,
     // A page's script writes what it wants in its message: the relay takes the channel's label.
     environment: OTHER,
   }))
@@ -283,14 +308,14 @@ test('requests go with real addresses, the receiving environment the channel is 
   expect(sent.request.initiator).toEqual(APP)
   expect(sent.request.user).toBe(false)
   // A navigation names its initiator by its referrer's label; a referrer outside the namespace is unknown.
-  await exchange(port, fetchMessage(2, `${previewOrigin(PLACE, app)}/next`, {
+  await exchange(port, fetchMessage(2, `${origin(app)}/next`, {
     mode: 'navigate',
     destination: 'iframe',
-    referrer: `${previewOrigin(PLACE, other)}/from`,
+    referrer: `${origin(other)}/from`,
   }))
   expect(engine.received[1]!.message.request.initiator).toEqual(OTHER)
   expect(engine.received[1]!.message.request.referrer).toBe('https://other.test/from')
-  await exchange(port, fetchMessage(3, `${previewOrigin(PLACE, app)}/next`, {
+  await exchange(port, fetchMessage(3, `${origin(app)}/next`, {
     mode: 'navigate',
     destination: 'iframe',
     referrer: 'https://evil.test/',
@@ -302,21 +327,19 @@ test('requests go with real addresses, the receiving environment the channel is 
 test('a request whose label is not registered waits for it, and fails as a network error after ten seconds', async () => {
   const engine = scriptedEngine(() => ({ status: 204 }))
   const { relay, top } = world(engine)
-  const app = await labelOf(PLACE, APP)
-  const other = await labelOf(PLACE, OTHER)
-  await relay.learn(PLACE, { [app]: APP })
-  const port = (await connect(relay, previewOrigin(PLACE, app), top))!
-  // An entry whose label is not what its environment computes to is never kept.
-  expect(await relay.learn(PLACE, { [other]: APP })).toEqual([])
-  const waiting = exchange(port, fetchMessage(1, `${previewOrigin(PLACE, other)}/logo.png`))
+  const app = APP_LABEL
+  const other = OTHER_LABEL
+  relay.know(PLACE, { [app]: APP })
+  const port = (await connect(relay, origin(app), top))!
+  const waiting = exchange(port, fetchMessage(1, `${origin(other)}/logo.png`))
   await new Promise((resolve) => setTimeout(resolve, 5))
   expect(engine.received).toHaveLength(0)
-  await relay.learn(PLACE, { [other]: OTHER })
+  relay.know(PLACE, { [other]: OTHER })
   expect((await waiting).head).toEqual(expect.objectContaining({ status: 204, body: false }))
   expect(engine.received[0]!.message.request.url).toBe('https://other.test/logo.png')
 
   jest.useFakeTimers()
-  const unknown = `${previewOrigin(PLACE, other).replace(other, '0000000000000000')}/x`
+  const unknown = `${origin(other).replace(other, '0000000000000000')}/x`
   const failing = exchange(port, fetchMessage(2, unknown))
   // The label's wait starts once the message crossed the channel.
   await Promise.resolve()
@@ -329,9 +352,9 @@ test('a request whose label is not registered waits for it, and fails as a netwo
 test('a kept request goes only to its target label’s channel, with its method, body and initiator', async () => {
   const engine = scriptedEngine(() => ({ status: 200 }))
   const { relay, top } = world(engine)
-  const app = await labelOf(PLACE, APP)
-  const other = await labelOf(PLACE, OTHER)
-  await relay.learn(PLACE, { [app]: APP, [other]: OTHER })
+  const app = APP_LABEL
+  const other = OTHER_LABEL
+  relay.know(PLACE, { [app]: APP, [other]: OTHER })
   // A form on the app's page posts to the other site.
   const reply = new MessageChannel()
   const token = new Promise<string>((resolve) => {
@@ -340,41 +363,41 @@ test('a kept request goes only to its target label’s channel, with its method,
   await relay.receive({
     data: {
       type: 'demi-preview-keep',
-      request: { method: 'POST', url: `${previewOrigin(PLACE, other)}/login`, contentType: 'application/x-www-form-urlencoded', body: encoder.encode('user=a').buffer },
+      request: { method: 'POST', url: `${origin(other)}/login`, contentType: 'application/x-www-form-urlencoded', body: encoder.encode('user=a').buffer },
     },
-    origin: previewOrigin(PLACE, app),
+    origin: origin(app),
     source: top,
     ports: [reply.port2],
   })
   const kept = await token
   // The app's own channel announcing the token takes nothing: its navigation is a GET of its own.
-  const appPort = (await connect(relay, previewOrigin(PLACE, app), top))!
-  await exchange(appPort, fetchMessage(1, `${previewOrigin(PLACE, app)}/login`, { mode: 'navigate', destination: 'iframe', token: kept }))
+  const appPort = (await connect(relay, origin(app), top))!
+  await exchange(appPort, fetchMessage(1, `${origin(app)}/login`, { mode: 'navigate', destination: 'iframe', token: kept }))
   expect(engine.received[0]!.message.request.method).toBe('GET')
   // The target's channel takes it, once.
-  const otherPort = (await connect(relay, previewOrigin(PLACE, other), top))!
-  const navigation = { mode: 'navigate', destination: 'iframe', token: kept, announcedReferrer: `${previewOrigin(PLACE, app)}/form` }
-  await exchange(otherPort, fetchMessage(2, `${previewOrigin(PLACE, other)}/login`, navigation))
+  const otherPort = (await connect(relay, origin(other), top))!
+  const navigation = { mode: 'navigate', destination: 'iframe', token: kept, announcedReferrer: `${origin(app)}/form` }
+  await exchange(otherPort, fetchMessage(2, `${origin(other)}/login`, navigation))
   const posted = engine.received[1]!
   expect(posted.message.request.method).toBe('POST')
   expect(decoder.decode(posted.body)).toBe('user=a')
   expect(posted.message.request.headers).toEqual([{ name: 'content-type', value: 'application/x-www-form-urlencoded' }])
   expect(posted.message.request.initiator).toEqual(APP)
   expect(posted.message.environment).toEqual(OTHER)
-  await exchange(otherPort, fetchMessage(3, `${previewOrigin(PLACE, other)}/login`, navigation))
+  await exchange(otherPort, fetchMessage(3, `${origin(other)}/login`, navigation))
   expect(engine.received[2]!.message.request.method).toBe('GET')
 })
 
 test('the user’s own opening carries no initiator, and its top frame’s failure reaches the tab', async () => {
   const engine = scriptedEngine((received) => (received.message.request.url.endsWith('/down') ? { failed: 'refused: local-network' } : { status: 200 }))
   const { relay, top, events } = world(engine)
-  const app = await labelOf(PLACE, APP)
-  await relay.learn(PLACE, { [app]: APP })
-  const boot = new URL(relay.bootAddress(PLACE, app, { url: 'http://localhost:5173/down', initiator: null }))
+  const app = APP_LABEL
+  relay.know(PLACE, { [app]: APP })
+  const boot = new URL(relay.bootAddress({ label: app, environment: APP, origin: origin(app) }, { url: 'http://localhost:5173/down', initiator: null }))
   const token = decodeURIComponent(/token=([^&]*)/.exec(boot.hash)![1]!)
   expect(boot.pathname).toBe('/__demi/v1/boot.html')
-  const port = (await connect(relay, previewOrigin(PLACE, app), top))!
-  const answered = await exchange(port, fetchMessage(1, `${previewOrigin(PLACE, app)}/down`, { mode: 'navigate', destination: 'iframe', token }))
+  const port = (await connect(relay, origin(app), top))!
+  const answered = await exchange(port, fetchMessage(1, `${origin(app)}/down`, { mode: 'navigate', destination: 'iframe', token }))
   expect(answered.head).toEqual({ type: 'head', id: 1, error: true })
   expect(engine.received[0]!.message.request.user).toBe(true)
   expect(engine.received[0]!.message.request.initiator).toBeNull()
@@ -394,17 +417,17 @@ test('requests after a document’s cookie write wait for its answer', async () 
     return { status: 200, body: 'a=1' }
   })
   const { relay, top } = world(engine)
-  const app = await labelOf(PLACE, APP)
-  await relay.learn(PLACE, { [app]: APP })
-  const port = (await connect(relay, previewOrigin(PLACE, app), top))!
+  const app = APP_LABEL
+  relay.know(PLACE, { [app]: APP })
+  const port = (await connect(relay, origin(app), top))!
   const heads = new Map<number, Record<string, unknown>>()
   port.onmessage = (event) => {
     const data = event.data as Record<string, unknown>
     heads.set(data['id'] as number, data)
   }
-  const cookie = `${previewOrigin(PLACE, app)}/__demi/host/cookie?url=${encodeURIComponent('http://localhost:5173/')}`
+  const cookie = `${origin(app)}/__demi/host/cookie?url=${encodeURIComponent('http://localhost:5173/')}`
   port.postMessage(fetchMessage(1, cookie, { method: 'POST', mode: 'cors', destination: '', body: encoder.encode('a=1').buffer }))
-  port.postMessage(fetchMessage(2, `${previewOrigin(PLACE, app)}/api`, { mode: 'cors', destination: '' }))
+  port.postMessage(fetchMessage(2, `${origin(app)}/api`, { mode: 'cors', destination: '' }))
   await waitUntil(() => engine.received.length === 1)
   // The next request has not left while the write waits.
   await new Promise((resolve) => setTimeout(resolve, 5))
@@ -412,7 +435,7 @@ test('requests after a document’s cookie write wait for its answer', async () 
   release()
   await waitUntil(() => heads.size === 2)
   expect(engine.received.map((entry) => entry.message.request.url)).toEqual([
-    cookie.replace(previewOrigin(PLACE, app), 'http://localhost:5173'),
+    cookie.replace(origin(app), 'http://localhost:5173'),
     'http://localhost:5173/api',
   ])
 })
@@ -424,16 +447,16 @@ test('the runtime of the engine’s release comes from the web app’s build, an
     fetched++
     return encoder.encode('/* runtime */').buffer
   })
-  const app = await labelOf(PLACE, APP)
-  await relay.learn(PLACE, { [app]: APP })
-  const port = (await connect(relay, previewOrigin(PLACE, app), top))!
-  const runtime = `${previewOrigin(PLACE, app)}/__demi/page/runtime/0.1.18.js`
+  const app = APP_LABEL
+  relay.know(PLACE, { [app]: APP })
+  const port = (await connect(relay, origin(app), top))!
+  const runtime = `${origin(app)}/__demi/page/runtime/0.1.18.js`
   const first = await exchange(port, fetchMessage(1, runtime, { destination: 'script' }))
   expect(first.body).toBe('/* runtime */')
   expect(first.head['headers']).toContainEqual(['content-type', 'text/javascript'])
   await exchange(port, fetchMessage(2, runtime, { destination: 'script' }))
   expect(fetched).toBe(1)
-  const other = await exchange(port, fetchMessage(3, `${previewOrigin(PLACE, app)}/__demi/page/runtime/0.1.17.js`, { destination: 'script' }))
+  const other = await exchange(port, fetchMessage(3, `${origin(app)}/__demi/page/runtime/0.1.17.js`, { destination: 'script' }))
   expect(other.head).toEqual({ type: 'head', id: 3, error: true })
   expect(engine.received).toHaveLength(0)
 })

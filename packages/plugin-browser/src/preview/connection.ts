@@ -1,7 +1,8 @@
 /**
  * One conversation's `preview` stream as the relay uses it (`preview.md`
- * § The stream): requests and WebSockets of every tab of the user's browser
- * in that conversation share it, each with an id this side chooses. Bodies
+ * § The stream): requests, WebSockets and label questions of every tab of
+ * the user's browser in that conversation share it, each with an id this
+ * side chooses. Bodies
  * move one chunk per pull both ways. The stream opens with the first
  * request, says `hello` first, and opens again with the next request after
  * it ended: an end, or a frame the protocol refuses, fails every request
@@ -76,6 +77,8 @@ export class PreviewConnection {
   private nextId = 1
   private readonly requests = new Map<number, OpenRequest>()
   private readonly sockets = new Map<number, PreviewSocketHandlers>()
+  /** The `labels` questions waiting for the engine's answer. */
+  private readonly labelQuestions = new Map<number, { resolve(labels: Record<string, PreviewEnvironment>): void; reject(error: Error): void }>()
   /** The place the open stream said hello with. */
   private helloed: PreviewPlace | null = null
 
@@ -141,8 +144,13 @@ export class PreviewConnection {
     this.helloed = null
     const requests = [...this.requests.values()]
     const sockets = [...this.sockets.values()]
+    const questions = [...this.labelQuestions.values()]
     this.requests.clear()
     this.sockets.clear()
+    this.labelQuestions.clear()
+    for (const question of questions) {
+      question.reject(error)
+    }
     for (const request of requests) {
       request.failed(error.message)
       for (const waiting of request.chunks.splice(0)) {
@@ -164,6 +172,12 @@ export class PreviewConnection {
       case 'response':
         this.requests.get(message.id)?.answered({ status: message.status, headers: message.headers, labels: message.labels })
         return
+      case 'labels': {
+        const question = this.labelQuestions.get(message.id)
+        this.labelQuestions.delete(message.id)
+        question?.resolve(message.labels)
+        return
+      }
       case 'pull': {
         const request = this.requests.get(message.id)
         if (request?.body) {
@@ -263,6 +277,19 @@ export class PreviewConnection {
         this.stream?.send(encodeMessage({ type: 'cancel', id }))
       },
     }
+  }
+
+  /**
+   * The labels of `environments`, as the engine computes them, each with its
+   * environment. Rejects when the stream ends first.
+   */
+  labels(place: PreviewPlace, environments: PreviewEnvironment[]): Promise<Record<string, PreviewEnvironment>> {
+    const stream = this.ready(place)
+    const id = this.nextId++
+    return new Promise((resolve, reject) => {
+      this.labelQuestions.set(id, { resolve, reject })
+      stream.send(encodeMessage({ type: 'labels', id, environments }))
+    })
   }
 
   /** Opens a page's WebSocket upstream, from the document `environment` received. */

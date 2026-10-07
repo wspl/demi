@@ -186,6 +186,11 @@ fn preview_stream() -> Stream {
         count(preview::BODY_CHUNK_BYTES),
     )
     .constant(
+        "PREVIEW_MAX_LABELS",
+        "The most environments one labels message names.",
+        count(preview::MAX_LABELS),
+    )
+    .constant(
         "PREVIEW_BODY_HEADER_BYTES",
         "A body frame's header: the request's id, u32 big-endian.",
         count(preview::BodyHeader::BYTES),

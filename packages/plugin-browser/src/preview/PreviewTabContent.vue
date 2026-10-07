@@ -12,6 +12,7 @@ import {
   Tooltip,
   usePage,
 } from '@demicodes/plugin-sdk'
+import { BLANK_PAGE } from '../live/view'
 import type { BrowserPanel } from '../panel'
 import type { PreviewTabData } from './tabs'
 
@@ -48,8 +49,8 @@ onBeforeUnmount(() => tabs.detach(props.tabId))
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
 const fresh = props.data.url === '' && !props.data.window
 const view = tab.view
-const backReason = computed(() => (view.page?.canGoBack ? null : 'No page to go back to'))
-const forwardReason = computed(() => (view.page?.canGoForward ? null : 'No page to go forward to'))
+const backReason = computed(() => (view.canGoBack ? null : 'No page to go back to'))
+const forwardReason = computed(() => (view.canGoForward ? null : 'No page to go forward to'))
 /** Why previews cannot open here, for a tab that shows no page. */
 const unavailable = computed(() => (view.src === null ? tabs.unavailable.value : null))
 
@@ -152,7 +153,7 @@ const anchor = ref<HTMLElement | null>(null)
         :allow="ALLOW"
         @load="tab.loaded()"
       />
-      <div v-if="view.src === null && !unavailable && !view.failure && !view.starting" class="min-h-0 flex-1 bg-white" />
+      <div v-if="view.src === null && !unavailable && !view.failure && !view.starting" class="min-h-0 flex-1" :class="BLANK_PAGE" />
     </div>
     <Popover :overlay-store="overlays" :is-open="menu" :anchor-el="anchor" @close="menu = false">
       <Menu>

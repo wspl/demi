@@ -15,16 +15,18 @@
 import type { PreviewPlace } from '@demicodes/plugin-sdk'
 import { z } from 'zod'
 import {
+  PREVIEW_MAX_LABELS,
   previewCredentialsSchema,
   previewEnvironmentSchema,
   previewModeSchema,
   type PreviewClient,
   type PreviewEnvironment,
   type PreviewHeader,
+  type PreviewOpened,
 } from '../generated/plugin'
 import { previewClient } from './client'
 import type { PreviewConnection, PreviewExchange, PreviewSocket } from './connection'
-import { BOOT_PATH, labelOf, labelOfOrigin, previewOrigin, realAddress } from './labels'
+import { BOOT_PATH, labelOfOrigin, realAddress } from './labels'
 
 /** How long a request waits for its label to be registered, after which it fails as a network error. */
 export const LABEL_WAIT_MS = 10_000
@@ -42,17 +44,21 @@ const tabPageSchema = z.object({
   title: z.string(),
   /** The page's icon's real address; empty for none. */
   icon: z.string(),
-  canGoBack: z.boolean(),
-  canGoForward: z.boolean(),
 })
 export type TabPage = z.infer<typeof tabPageSchema>
 
 /** The labels a runtime registers, each with its environment. */
 const entriesSchema = z.record(z.string(), previewEnvironmentSchema)
 
+/** How a move of a tab's history got to its entry, as the Navigation API names it. */
+const navigationTypeSchema = z.enum(['push', 'replace', 'reload', 'traverse'])
+export type NavigationType = z.infer<typeof navigationTypeSchema>
+
 /** What the relay tells a tab of what its documents do. */
 export type TabEvent =
   | { type: 'page'; page: TabPage }
+  /** The tab's history moved to the entry `key`. */
+  | { type: 'entry'; key: string; navigationType: NavigationType }
   /** The top document is leaving: the tab loads. */
   | { type: 'leaving' }
   /** The top frame's navigation failed: the forwarder answered it a network error. */
@@ -164,6 +170,7 @@ const documentMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('socket-send'), id: z.number(), data: z.union([z.string(), z.instanceof(ArrayBuffer)]) }),
   z.object({ type: z.literal('socket-close'), id: z.number(), code: z.number().default(1000), reason: z.string().default('') }),
   z.object({ type: z.literal('tab-page'), page: tabPageSchema }),
+  z.object({ type: z.literal('tab-entry'), key: z.string(), navigationType: navigationTypeSchema }),
   z.object({ type: z.literal('tab-leaving') }),
   z.object({ type: z.literal('tab-open'), id: z.number(), url: z.string() }),
   z.object({ type: z.literal('tab-navigate'), id: z.number(), url: z.string() }),
@@ -179,7 +186,7 @@ type DocumentMessage = z.infer<typeof documentMessageSchema>
 /** The messages of a document's windows: the tabs it opens, its opener, and its own tab. */
 type WindowMessage = Exclude<
   DocumentMessage,
-  { type: 'labels' | 'label' | 'socket-open' | 'socket-send' | 'socket-close' | 'tab-page' | 'tab-leaving' }
+  { type: 'labels' | 'label' | 'socket-open' | 'socket-send' | 'socket-close' | 'tab-page' | 'tab-entry' | 'tab-leaving' }
 >
 
 /** The key of a label within its namespace and Host. */
@@ -267,29 +274,40 @@ export class PreviewRelay {
   }
 
   /**
-   * Keeps `entries` whose label is the one their environment computes to
-   * in `place`, and wakes the requests waiting for them. Answers the labels
-   * kept.
+   * Keeps `entries`, labels the engine computed with their environments,
+   * and wakes the requests waiting for them. Answers the labels.
    */
-  async learn(place: PreviewPlace, entries: Record<string, PreviewEnvironment>): Promise<string[]> {
-    const kept: string[] = []
+  know(place: PreviewPlace, entries: Record<string, PreviewEnvironment>): string[] {
     for (const [label, environment] of Object.entries(entries)) {
       const key = labelKey(place, label)
       if (this.labels.has(key)) {
-        kept.push(label)
-        continue
-      }
-      if ((await labelOf(place, environment)) !== label) {
         continue
       }
       this.labels.set(key, environment)
-      kept.push(label)
       for (const resolve of this.waiters.get(key) ?? []) {
         resolve(environment)
       }
       this.waiters.delete(key)
     }
-    return kept
+    return Object.keys(entries)
+  }
+
+  /**
+   * Registers the environments a document's runtime names: the engine
+   * computes their labels, and the relay keeps only what it answers. A
+   * question the stream's end fails registers nothing; the requests waiting
+   * for those labels fail as network errors when their wait ends.
+   */
+  private async askLabels(binding: Binding, place: PreviewPlace, environments: PreviewEnvironment[]): Promise<void> {
+    for (let start = 0; start < environments.length; start += PREVIEW_MAX_LABELS) {
+      const answered = await binding.tab.connection
+        .labels(place, environments.slice(start, start + PREVIEW_MAX_LABELS))
+        .catch(() => null)
+      if (answered === null) {
+        return
+      }
+      this.know(place, answered)
+    }
   }
 
   /** The environment of `label`, waiting up to `LABEL_WAIT_MS` for it to be registered; null after. */
@@ -325,20 +343,20 @@ export class PreviewRelay {
   }
 
   /**
-   * The boot page address that opens `navigation` in a tab whose top label
-   * is `label`: the relay keeps the request, and only that label's channel
-   * takes it, by the token in the fragment (`preview.md` § Opening and
-   * navigating).
+   * The boot page address that opens `navigation` in a tab whose top-level
+   * environment the engine `opened`: the relay keeps the request, and only
+   * that label's channel takes it, by the token in the fragment (`preview.md`
+   * § Opening and navigating).
    */
-  bootAddress(place: PreviewPlace, label: string, navigation: Navigation): string {
+  bootAddress(opened: PreviewOpened, navigation: Navigation): string {
     const token = crypto.randomUUID()
     this.kept.set(token, {
       request: { method: 'GET', contentType: null, body: null, user: navigation.initiator === null },
       initiator: navigation.initiator,
-      label,
+      label: opened.label,
     })
     const target = new URL(navigation.url)
-    return `${previewOrigin(place, label)}${BOOT_PATH}#token=${encodeURIComponent(token)}&to=${target.pathname}${target.search}${target.hash}`
+    return `${opened.origin}${BOOT_PATH}#token=${encodeURIComponent(token)}&to=${target.pathname}${target.search}${target.hash}`
   }
 
   /** A channel for the preview document that asks, bound to its origin's label. */
@@ -558,7 +576,7 @@ export class PreviewRelay {
       return false
     }
     // The browser reads these addresses back as soon as it reads the answer.
-    const labels = await this.learn(place, head.labels)
+    const labels = this.know(place, head.labels)
     this.tell(place, binding.label, labels)
     const location = head.headers.find((header) => header.name.toLowerCase() === 'location')?.value
     const hasBody = !EMPTY_STATUSES.includes(head.status) && method !== 'HEAD'
@@ -641,7 +659,8 @@ export class PreviewRelay {
     const top = binding.tab.frameWindow() === binding.source
     switch (message.type) {
       case 'labels':
-        void this.learn(place, message.entries)
+        // What the runtime claims the labels are counts for nothing: the engine names them.
+        void this.askLabels(binding, place, Object.values(message.entries))
         return
       case 'label': {
         const label = message.label
@@ -662,6 +681,11 @@ export class PreviewRelay {
       case 'tab-page':
         if (top) {
           binding.tab.report({ type: 'page', page: message.page })
+        }
+        return
+      case 'tab-entry':
+        if (top) {
+          binding.tab.report({ type: 'entry', key: message.key, navigationType: message.navigationType })
         }
         return
       case 'tab-leaving':
