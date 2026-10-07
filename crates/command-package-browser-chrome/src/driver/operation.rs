@@ -77,6 +77,10 @@ pub enum BrowserError {
     /// The live view's capture could not start (`live-view.md` § Capture).
     #[error("{0}")]
     Capture(String),
+    /// Even recreating the capture extension failed; captures wait until
+    /// the viewer asks again (`live-view.md` § Capture).
+    #[error("{0}")]
+    CaptureStopped(String),
     /// Chrome for Testing or the Chrome runtime could not be installed, or
     /// the Host lacks them.
     #[error("{0}")]
@@ -327,7 +331,11 @@ impl BrowserError {
             Self::InvalidResult(_) => BrowserErrorCode::UnsupportedResult,
             Self::Configuration(_) => BrowserErrorCode::InvalidInput,
             Self::Io(_) => BrowserErrorCode::IoError,
-            Self::Cdp(_) | Self::Events(_) | Self::Task(_) | Self::Capture(_) => {
+            Self::Cdp(_)
+            | Self::Events(_)
+            | Self::Task(_)
+            | Self::Capture(_)
+            | Self::CaptureStopped(_) => {
                 BrowserErrorCode::DriverError
             }
         }

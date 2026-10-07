@@ -284,6 +284,7 @@ async fn what_a_caller_sends_after_an_early_answer_is_not_a_failure() {
 
 fn context() -> CommandContext {
     CommandContext {
+        color_scheme: demi_command_protocol::ColorScheme::Light,
         conversation: "conversation".into(),
         caller: CommandCaller::agent(1),
         locale: CommandLocale {
