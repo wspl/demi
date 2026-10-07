@@ -7,7 +7,7 @@ use std::sync::Weak;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
-use crate::driver::operation::{CONTROL_TIMEOUT, Result};
+use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result};
 use crate::tabs::{environment::BrowserEnvironment, navigation::reload, tab::BrowserTab};
 
 use crate::live::protocol::{TabId, ViewportMode};
@@ -62,7 +62,11 @@ async fn run(
             if let Some(membership) = membership.upgrade() {
                 let tab = find(environment, &tab).await?;
                 let was_phone = tab.viewport().mode == ViewportMode::Mobile;
-                membership.mode(&tab, mode).await?;
+                let applied = membership.mode(&tab, mode).await;
+                // The mode applies once a navigation under way commits: a
+                // viewer that leaves meanwhile leaves at once.
+                drop(membership);
+                applied.await.map_err(|_| BrowserError::Closed)??;
                 // A phone's user agent and touch reach only what loads after
                 // them: the page in the tab was served to the other kind of
                 // device, and lays out as that one until it loads again.

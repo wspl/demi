@@ -569,16 +569,19 @@ impl Session<'_> {
         let tabs = listing
             .tabs
             .iter()
-            .map(|listed| LiveTab {
-                id: listed.tab.id().clone(),
-                title: listed.title.clone(),
-                url: listed.url.clone(),
-                created_by: listed.tab.created_by().clone(),
-                viewport: listed.tab.viewport(),
-                loading: listed.tab.loading(),
-                can_go_back: listed.tab.history().back,
-                can_go_forward: listed.tab.history().forward,
-                favicon: listed.tab.favicon(),
+            .map(|listed| {
+                let (title, url) = listed.shown();
+                LiveTab {
+                    id: listed.tab.id().clone(),
+                    title,
+                    url,
+                    created_by: listed.tab.created_by().clone(),
+                    viewport: listed.tab.viewport(),
+                    loading: listed.tab.loading(),
+                    can_go_back: listed.tab.history().back,
+                    can_go_forward: listed.tab.history().forward,
+                    favicon: listed.tab.favicon(),
+                }
             })
             .collect();
         self.writer

@@ -64,6 +64,15 @@ pub(crate) struct Notice {
     pub message: String,
 }
 
+/// A viewer's choice of a tab's mode, which the hub applies once Chrome
+/// takes the tab's page commands.
+struct ModeRequest {
+    viewer: u64,
+    tab: BrowserTab,
+    mode: ViewportMode,
+    reply: oneshot::Sender<Result<()>>,
+}
+
 enum Request {
     Join {
         notices: mpsc::Sender<Notice>,
@@ -80,12 +89,7 @@ enum Request {
         tab: Option<BrowserTab>,
         reply: oneshot::Sender<Option<StreamView>>,
     },
-    Mode {
-        viewer: u64,
-        tab: BrowserTab,
-        mode: ViewportMode,
-        reply: oneshot::Sender<Result<()>>,
-    },
+    Mode(ModeRequest),
 }
 
 /// A tab's observer, once a viewer watched the tab.
@@ -132,6 +136,7 @@ impl Hub {
             screen: None,
             due: false,
             held: Vec::new(),
+            modes: Vec::new(),
         };
         tasks.spawn(owner.run(received, environment.ended().clone()));
         Self {
@@ -246,17 +251,25 @@ impl Membership {
         answer.await.ok().flatten()
     }
 
-    /// Puts `tab` in Web or Mobile mode, sized for whoever decides it.
-    pub async fn mode(&self, tab: &BrowserTab, mode: ViewportMode) -> Result<()> {
+    /// Asks to put `tab` in Web or Mobile mode, sized for whoever decides
+    /// it, and answers once it is: once a navigation of the tab under way
+    /// commits (`live-view.md` § Modes). The answer needs no membership, so
+    /// a viewer that leaves meanwhile leaves at once and the mode still
+    /// applies.
+    pub async fn mode(
+        &self,
+        tab: &BrowserTab,
+        mode: ViewportMode,
+    ) -> oneshot::Receiver<Result<()>> {
         let (reply, answer) = oneshot::channel();
-        self.tell(Request::Mode {
+        self.tell(Request::Mode(ModeRequest {
             viewer: self.id,
             tab: tab.clone(),
             mode,
             reply,
-        })
+        }))
         .await;
-        answer.await.map_err(|_| BrowserError::Closed)?
+        answer
     }
 }
 
@@ -290,6 +303,9 @@ struct Owner {
     /// navigation of theirs was under way; each one's commit makes a layout
     /// due again.
     held: Vec<BrowserTab>,
+    /// The modes chosen for tabs whose navigation was under way, in the
+    /// order chosen, each applied once its tab's document commits.
+    modes: Vec<ModeRequest>,
 }
 
 impl Owner {
@@ -299,7 +315,12 @@ impl Owner {
         let mut departures = FuturesUnordered::<Departure>::new();
         let operations = self.operations.clone();
         loop {
-            let held = self.held.clone();
+            let held: Vec<BrowserTab> = self
+                .held
+                .iter()
+                .chain(self.modes.iter().map(|request| &request.tab))
+                .cloned()
+                .collect();
             tokio::select! {
                 biased;
                 _ = ended.cancelled() => break,
@@ -319,6 +340,7 @@ impl Owner {
                 self.leave(viewer);
             }
             self.operated();
+            self.apply_modes().await;
             if self.due && !ended.is_cancelled() {
                 self.due = false;
                 self.layout().await;
@@ -395,15 +417,11 @@ impl Owner {
                 // A viewer that left no longer needs its view.
                 let _left = reply.send(view);
             }
-            Request::Mode {
-                viewer,
-                tab,
-                mode,
-                reply,
-            } => {
-                let result = self.mode(viewer, &tab, mode).await;
-                let _left = reply.send(result);
-            }
+            // Applied once the requests at hand are handled, at once unless
+            // its tab navigates: Chrome holds a navigating tab's commands
+            // until its document commits, and the hub would wait for them
+            // with every viewer's request (`PageLoad::Navigating`).
+            Request::Mode(request) => self.modes.push(request),
         }
     }
 
@@ -540,6 +558,27 @@ impl Owner {
                 );
             }
         }
+    }
+
+    /// Applies, in the order chosen, the modes of the tabs that take their
+    /// page's commands; a tab that navigates keeps its modes waiting, and
+    /// those after them on the same tab.
+    async fn apply_modes(&mut self) {
+        let mut waiting = Vec::new();
+        for request in std::mem::take(&mut self.modes) {
+            let navigating = request.tab.navigating() && !request.tab.ended().is_cancelled();
+            let behind = waiting
+                .iter()
+                .any(|earlier: &ModeRequest| earlier.tab.id() == request.tab.id());
+            if navigating || behind {
+                waiting.push(request);
+                continue;
+            }
+            let result = self.mode(request.viewer, &request.tab, request.mode).await;
+            // A viewer whose command runner ended no longer needs the answer.
+            let _left = request.reply.send(result);
+        }
+        self.modes = waiting;
     }
 
     /// Puts `tab` in Web or Mobile mode, sized for whoever decides it.

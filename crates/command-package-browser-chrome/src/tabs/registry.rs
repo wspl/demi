@@ -68,6 +68,19 @@ pub struct Listed {
     pub url: String,
 }
 
+impl Listed {
+    /// The title and address the tab shows, as Chrome's tab and address bar
+    /// show them: while a navigation the user started has not committed,
+    /// no title yet and the address it loads (`TabState::requested`);
+    /// otherwise the page's.
+    pub fn shown(&self) -> (String, String) {
+        match self.tab.state.requested.borrow().clone() {
+            Some(requested) => (String::new(), requested),
+            None => (self.title.clone(), self.url.clone()),
+        }
+    }
+}
+
 /// The registry as its owner last published it.
 pub struct Snapshot {
     /// The live tabs, in the order the browser created them.

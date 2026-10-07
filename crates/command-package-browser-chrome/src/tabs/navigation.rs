@@ -461,6 +461,7 @@ pub async fn steer(
     let url = match command {
         BrowserOperation::Goto(input) => {
             validate_url(&input.url)?;
+            requested(tab, &input.url);
             visit(tab, &input.url);
             input.url.clone()
         }
@@ -472,6 +473,7 @@ pub async fn steer(
         BrowserOperation::Back(_) | BrowserOperation::Forward(_) => {
             let back = matches!(command, BrowserOperation::Back(_));
             let entry = history_step(tab, back, operation).await?;
+            requested(tab, &entry.url);
             detach(tab, NavigateToHistoryEntryParams::new(entry.id));
             entry.url
         }
@@ -487,6 +489,14 @@ pub async fn steer(
         title: None,
         list: Some(list),
     })
+}
+
+/// The tab shows `url` until the user's navigation to it commits or ends
+/// (`TabState::requested`). Nothing counts a change here: the load's start,
+/// which follows, does, and a page's view that opens reads the address. A
+/// reload leaves the address as it is, and the page its title.
+fn requested(tab: &BrowserTab, url: &str) {
+    tab.state.requested.send_replace(Some(url.to_owned()));
 }
 
 /// The user's Stop (`live-view.md` § The tab methods): stops loading the
