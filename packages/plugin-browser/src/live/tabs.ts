@@ -288,12 +288,7 @@ export class BrowserTabsController {
    * the browser last said, so a page that had loaded shows no loading.
    */
   loading(tab: string | undefined, url: string): boolean {
-    const request = tab === undefined ? undefined : this.requests.get(tab)
-    if (request?.status === 'asked') {
-      return true
-    }
-    const listed = this.listed.value
-    if (request?.status === 'answered' && (listed === null || listed <= request.list)) {
+    if (this.requested(tab)) {
       return true
     }
     const live = this.tab(tab)
@@ -308,6 +303,43 @@ export class BrowserTabsController {
       }
     }
     return url !== NEW_TAB_URL
+  }
+
+  /**
+   * Whether a request of the user's on `tab` is under way: sent, or answered
+   * while no tab list numbered after the answer reached the page. Until then
+   * what the browser reports of the tab describes the page the request
+   * leaves.
+   */
+  private requested(tab: string | undefined): boolean {
+    const request = tab === undefined ? undefined : this.requests.get(tab)
+    if (request?.status === 'asked') {
+      return true
+    }
+    const listed = this.listed.value
+    return request?.status === 'answered' && (listed === null || listed <= request.list)
+  }
+
+  /**
+   * The title of the page the panel tab with `data` shows, as the browser
+   * reports it: as a view last reported it, else as the plugin last listed
+   * it, the moment the browser names it, as a web browser's tab takes its
+   * page's title in the background too. None without a browser tab, for a
+   * page without a title, or while the browser still reports the page a
+   * request of the user's leaves: until a list after the request, and while
+   * the browser loads from an address other than the one the tab asks for,
+   * as it does until the new page commits (`live-view.md` § A browser tab in
+   * the panel).
+   */
+  title(data: BrowserTabData): string | null {
+    if (data.tab === undefined || data.closed || data.failure || this.requested(data.tab)) {
+      return null
+    }
+    const reported = this.tab(data.tab) ?? this.list.value?.tabs.find((candidate) => candidate.id === data.tab)
+    if (!reported || (reported.loading && reported.url !== data.url)) {
+      return null
+    }
+    return reported.title || null
   }
 
   /**

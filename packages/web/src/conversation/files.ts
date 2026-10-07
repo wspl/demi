@@ -64,13 +64,17 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       name: target.directory === null ? 'Workspace' : undefined,
     }
   })
+  // The working tree's place, as plain values: a product state that leaves
+  // the Host and the directory as they are keeps the change set, so what
+  // shows it is not shown again, which would read an unconfirmed list anew.
+  const deviceId = computed(() => device.value?.id ?? null)
+  const root = computed(() => execution.value?.path ?? null)
   const changes = computed(() => {
-    const target = execution.value
-    if (!target?.path || !device.value) {
+    if (!root.value || deviceId.value === null) {
       return null
     }
-    return keptChangeSet(workingTreeReads(conversationId), target.path, {
-      files: hostFiles(device.value.id),
+    return keptChangeSet(workingTreeReads(conversationId), root.value, {
+      files: hostFiles(deviceId.value),
       follower: watcher,
     })
   })
@@ -80,7 +84,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       return workspace.value
     },
     get root() {
-      return execution.value?.path ?? null
+      return root.value
     },
     get changes(): ChangeSetSource {
       return changes.value ?? emptyChangeSet

@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { addedPanelTab } from '@demicodes/plugin-browser/live/tabs'
-import { PanelTabs, closePanelTabs, indexAfter, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
+import { PanelTabs, TabOpeners, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
 import {
   openIntent,
   pendingShows,
@@ -88,6 +88,7 @@ export function useGalleryWork(
   tabs.start()
 
   const history = ref<readonly string[]>(selection === null ? [] : [selection])
+  const openers = new TabOpeners()
   const pinned = ref<PinnedTabs>({})
   const panel = computed<PanelState>(() => ({ history: history.value, tabs: tabs.tabs.value }))
 
@@ -162,8 +163,7 @@ export function useGalleryWork(
     panel: {
       tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
       add: (_conversation, kind, data, options = { select: false }) => {
-        const index = options.after === undefined ? undefined : indexAfter(tabs.tabs.value, options.after)
-        add(kind, data, { select: options.select, index })
+        openers.add(tabs.tabs.value, options.after, (index) => add(kind, data, { select: options.select, index }))
       },
       select: (_conversation, _kind, id) => {
         select(id)

@@ -1700,7 +1700,8 @@ impl View {
 /// The user's right clicks open the browser's menu with what lies under
 /// them, unless the page shows its own; the user's downloads are named after
 /// their files in the browser's download directory; and a page Back brings
-/// back from the browser's cache reports its controls again. About 4 s.
+/// back from the browser's cache reports its controls again; a right click
+/// on a link selects nothing. About 4 s.
 #[tokio::test]
 #[ignore = "requires pinned real Chrome for Testing"]
 async fn the_users_menus_downloads_and_returning_pages_reach_the_viewer() {
@@ -1721,12 +1722,14 @@ async fn the_users_menus_downloads_and_returning_pages_reach_the_viewer() {
         })
         .await;
 
-        // A link: the menu names its address.
+        // A link: the menu names its address, and the right click selected
+        // nothing, though Chrome on a Mac Host would select the link.
         view.right_click(&tab, 20.0, 15.0);
         let menu = view.message("menu").await;
         assert_eq!(menu["tab"], json!(tab));
         assert_eq!(menu["menu"]["link"], json!(format!("{base}two")));
         assert_eq!(menu["menu"]["editable"], json!(false));
+        assert_eq!(menu["menu"]["selection"], json!(false), "{menu}");
         // The page's own menu is the page's: the next menu is the field's.
         view.right_click(&tab, 50.0, 125.0);
         view.right_click(&tab, 50.0, 75.0);

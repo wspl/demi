@@ -12,6 +12,7 @@ import {
   type BrowserTabsOptions,
   type PictureSupport,
 } from '../tabs'
+import { browserTabKind } from '../kind'
 
 /** A controller in a panel session's effect scope, over a tab list the test sets; what it reports to the user lands in `reported`. */
 function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {}, reported: Array<[string, unknown]> = []) {
@@ -418,6 +419,39 @@ test('a Reload shows the page loading from the click until a list numbered after
   expect(controller.loading('t1', url)).toBe(true)
   report(7, false)
   expect(controller.loading('t1', url)).toBe(false)
+  end()
+})
+
+test('a tab opened in the background takes its page’s title once the browser names it, and one its user sends elsewhere never the old page’s', async () => {
+  const { controller, answers, opened, end } = await requestHarness()
+  const title = (data: { url: string; tab?: string; title?: string }) => browserTabKind.title(data, { conversation: 'c1', session: controller })
+  const tabs = (list: number, invoice: string, ordersLoading = false) => opened[0]!.data(framed({
+    type: 'state',
+    running: true,
+    list,
+    tabs: [
+      { id: 't1', title: 'Orders', url: 'https://example.test/orders', createdBy: { kind: 'user' }, viewport: VIEWPORT, loading: ordersLoading, canGoBack: true, canGoForward: false },
+      { id: 't2', title: invoice, url: 'https://example.test/invoice', createdBy: { kind: 'user' }, viewport: VIEWPORT, loading: invoice === '', canGoBack: false, canGoForward: false },
+    ],
+    watched: 't1',
+  }))
+  // Open Link in New Tab: the panel tab has its address, then its browser tab, and is never shown.
+  const invoice = { url: 'https://example.test/invoice', tab: 't2' }
+  expect(title(invoice)).toBe('example.test')
+  tabs(5, '')
+  expect(title(invoice)).toBe('example.test')
+  tabs(6, 'Invoice 42')
+  expect(title(invoice)).toBe('Invoice 42')
+  // The user sends the shown tab elsewhere: its tab is named after where it goes, until the browser names that.
+  const navigated = controller.navigate('t1', 'https://example.test/docs')
+  expect(title({ url: 'https://example.test/docs', tab: 't1' })).toBe('example.test')
+  answers[0]!.resolve(6)
+  await navigated
+  tabs(6, 'Invoice 42')
+  expect(title({ url: 'https://example.test/docs', tab: 't1' })).toBe('example.test')
+  // The browser loads, still on the page it leaves until the new one commits.
+  tabs(7, 'Invoice 42', true)
+  expect(title({ url: 'https://example.test/docs', tab: 't1' })).toBe('example.test')
   end()
 })
 

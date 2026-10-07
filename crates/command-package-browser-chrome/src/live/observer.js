@@ -311,6 +311,21 @@
     }, true);
   }
 
+  // A right click selects nothing, as Chrome's does on a link: Chrome on a
+  // Mac Host selects the link or word under it once the menu event has run,
+  // and the viewer's menu would then offer to copy it. A selection the press
+  // starts before its release is refused; one the page already had stays.
+  let rightPress = false;
+  addEventListener('mousedown', event => {
+    rightPress = event.button === 2;
+  }, true);
+  addEventListener('selectstart', event => {
+    if (rightPress) event.preventDefault();
+  }, true);
+  addEventListener('mouseup', () => {
+    rightPress = false;
+  }, true);
+
   // A right click the page leaves to the browser: what lies under it, for the
   // browser's menu the viewer's page builds. The page's own handlers run
   // first, on the element and at the window alike, so the menu is decided

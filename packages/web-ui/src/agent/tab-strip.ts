@@ -86,13 +86,18 @@ export function revealScroll(
 /**
  * How wide each edge fade may be so it never lies over the selected tab:
  * the room between the view's edge and the tab, in the view's coordinates.
- * Without a selected tab in the strip the fades keep their own width.
+ * The fades give way to the selected tab while it shows whole, and while
+ * the strip scrolls to reveal it (`revealing`). One the user scrolled under
+ * an edge is cut there as any tab is, under that edge's fade; without a
+ * selected tab in the strip the fades keep their own width.
  */
 export function fadeRoom(
   clientWidth: number,
   selected: { left: number; right: number } | null,
+  revealing: boolean,
 ): { before: number; after: number } {
-  if (!selected) {
+  const whole = selected !== null && selected.left >= 0 && selected.right <= clientWidth
+  if (!selected || (!whole && !revealing)) {
     return { before: Number.POSITIVE_INFINITY, after: Number.POSITIVE_INFINITY }
   }
   return { before: Math.max(0, selected.left), after: Math.max(0, clientWidth - selected.right) }
