@@ -93,14 +93,19 @@ export interface BrowserTabsApi {
     /** Why the last read failed, until one succeeds. */
     error: Readonly<Ref<BrowserTabsError | null>>
   }
-  /** Asks the plugin to open a browser tab for the panel tab, as Retry and Reload do. */
-  bind(panelTab: string): Promise<void>
+  /**
+   * Asks the plugin to open a browser tab for the panel tab, as Retry does;
+   * answers the browser tab the panel tab shows now, or null when none.
+   */
+  bind(panelTab: string): Promise<string | null>
   /** Asks the plugin to read the browser's tabs and bring the panel's up to date. */
   sync(): Promise<void>
   /** Starts loading `url`; answers the number of the last tab list before the request started. */
   navigate(tab: string, url: string): Promise<number>
   /** Moves or reloads the tab; answers as `navigate` does. */
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<number>
+  /** Stops loading the tab's page; answers as `navigate` does. */
+  stop(tab: string): Promise<number>
   stream: OpenUserStream
   /** What the Host holds of the browser's package, read reactively. */
   installed(): readonly HostArtifact[]
@@ -128,6 +133,14 @@ export interface BrowserTabsOptions {
 type TabRequest =
   | { status: 'asked' }
   | { status: 'answered'; list: number }
+
+/**
+ * The plugin opening a browser tab for a panel tab again: asked, or answered
+ * with the browser tab it opened, until the panel tab's data names that tab.
+ */
+type Binding =
+  | { status: 'asked' }
+  | { status: 'opened'; tab: string }
 
 /** How the page reports failures: to the user in a toast, or a defect of the page to the console. */
 export type PageErrors = PageContext['errors']
@@ -177,11 +190,13 @@ export class BrowserTabsController {
   private readonly listed = shallowRef<number | null>(null)
   /** The user's latest request on each browser tab. */
   private readonly requests = shallowReactive(new Map<string, TabRequest>())
+  /** The panel tabs the plugin opens a browser tab for again, by id. */
+  private readonly binding = shallowReactive(new Map<string, Binding>())
   /** The panel the shown tab's content measured, which a view sizes the tab by. */
   private panel: PanelReport | null = null
   /** The browser tab whose content is shown, which the view watches while the page is visible. */
-  private shown: string | null = null
-  /** The shown tab the view found gone, which the plugin was asked to look for once. */
+  private readonly shownTab = shallowRef<string | null>(null)
+  /** The shown tab the plugin was asked to look for, until a view lists it again. */
   private missed: string | null = null
   private closing: ReturnType<typeof setTimeout> | null = null
   private readonly visibility: Readonly<Ref<DocumentVisibilityState>>
@@ -236,9 +251,10 @@ export class BrowserTabsController {
    * than the one its answer names says otherwise, whichever reaches the page
    * first: on a far backend the browser may start loading well after the
    * answer, and a list numbered no higher describes the page as it was.
-   * Otherwise the page loads while the browser last said it does, or, before
-   * the browser ever reported the tab, as for one whose browser tab is still
-   * opening, while the tab asks for an address. A tab shown again keeps what
+   * Otherwise the page loads while the browser last said it does: in a view,
+   * or, for a tab not shown, in the plugin's tab list. A shown tab no view
+   * reported yet is one whose browser tab is still opening, and it loads
+   * while it asks for an address. A tab shown again keeps what
    * the browser last said, so a page that had loaded shows no loading.
    */
   loading(tab: string | undefined, url: string): boolean {
@@ -251,7 +267,75 @@ export class BrowserTabsController {
       return true
     }
     const live = this.tab(tab)
-    return live ? live.loading : url !== NEW_TAB_URL
+    if (live) {
+      return live.loading
+    }
+    // A tab the strip shows beside the shown one, which no view reported yet, as the plugin last listed it.
+    if (tab !== undefined && tab !== this.shownTab.value) {
+      const row = this.list.value?.tabs.find((candidate) => candidate.id === tab)
+      if (row) {
+        return row.loading
+      }
+    }
+    return url !== NEW_TAB_URL
+  }
+
+  /**
+   * Whether the panel tab `panelTab`, with `data`, shows its page loading:
+   * the one state its strip's spinner, its Stop and its progress line show
+   * (`live-view.md` § A browser tab in the panel). It loads while the plugin
+   * opens a browser tab for it again, and otherwise as its browser tab does;
+   * a tab that could not open, or whose browser tab the browser lost and no
+   * one opened again yet, does not.
+   */
+  busy(panelTab: string, data: BrowserTabData): boolean {
+    if (this.opening(panelTab, data)) {
+      return true
+    }
+    if (data.failure || data.closed) {
+      return false
+    }
+    return this.loading(data.tab, data.url)
+  }
+
+  /**
+   * Whether the plugin opens a browser tab for the panel tab `panelTab`, with
+   * `data`, again: from the ask until its data names the tab the plugin
+   * answered, in whatever order the answer and the data reach the page.
+   */
+  opening(panelTab: string, data: BrowserTabData): boolean {
+    const binding = this.binding.get(panelTab)
+    if (!binding) {
+      return false
+    }
+    return binding.status === 'asked' || data.tab !== binding.tab
+  }
+
+  /**
+   * Asks the plugin to open a browser tab for the panel tab `panelTab` again:
+   * Retry of a tab that could not open, and a tab shown after the browser
+   * lost its browser tab. The tab loads from now on; a second ask while one
+   * is on its way joins it. Rejects with what refused it.
+   */
+  async bind(panelTab: string): Promise<void> {
+    if (this.binding.get(panelTab)?.status === 'asked') {
+      return
+    }
+    const asked: Binding = { status: 'asked' }
+    this.binding.set(panelTab, asked)
+    let tab: string | null
+    try {
+      tab = await this.api.bind(panelTab)
+    } catch (error) {
+      this.binding.delete(panelTab)
+      throw error
+    }
+    // None opened: the panel tab's data says why.
+    if (tab === null) {
+      this.binding.delete(panelTab)
+      return
+    }
+    this.binding.set(panelTab, { status: 'opened', tab })
   }
 
   /** The user's address, loaded in `tab`; rejects with what refused it. */
@@ -262,6 +346,15 @@ export class BrowserTabsController {
   /** The user's Back, Forward or Reload on `tab`; rejects with what refused it. */
   history(tab: string, action: 'back' | 'forward' | 'reload'): Promise<void> {
     return this.request(tab, () => this.api.history(tab, action))
+  }
+
+  /**
+   * The user's Stop on `tab`. The tab loads until a tab list numbered after
+   * the answer says it stopped, as after any request; rejects with what
+   * refused it.
+   */
+  stop(tab: string): Promise<void> {
+    return this.request(tab, () => this.api.stop(tab))
   }
 
   /**
@@ -311,8 +404,8 @@ export class BrowserTabsController {
    * pictures none at all.
    */
   show(tab: string): void {
-    const another = this.shown !== tab
-    this.shown = tab
+    const another = this.shownTab.value !== tab
+    this.shownTab.value = tab
     if (this.closing !== null) {
       clearTimeout(this.closing)
       this.closing = null
@@ -329,16 +422,16 @@ export class BrowserTabsController {
    * followed.
    */
   hide(tab: string): void {
-    if (this.shown !== tab) {
+    if (this.shownTab.value !== tab) {
       return
     }
-    this.shown = null
+    this.shownTab.value = null
     if (this.closing !== null) {
       return
     }
     this.closing = setTimeout(() => {
       this.closing = null
-      if (this.shown === null) {
+      if (this.shownTab.value === null) {
         this.closeView()
       }
     }, 0)
@@ -363,14 +456,14 @@ export class BrowserTabsController {
    */
   private watchShown(): void {
     if (
-      this.shown === null
+      this.shownTab.value === null
       || this.panel === null
       || this.visibility.value !== 'visible'
       || this.pictures.value !== 'supported'
     ) {
       return
     }
-    this.view().watch(this.shown)
+    this.view().watch(this.shownTab.value)
   }
 
   /**
@@ -389,8 +482,28 @@ export class BrowserTabsController {
     for (const tab of tabs) {
       this.known.set(tab.id, tab)
     }
-    const shown = this.shown
-    if (shown === null || tabs.some((tab) => tab.id === shown) || this.missed === shown) {
+    const shown = this.shownTab.value
+    if (shown === null) {
+      return
+    }
+    // A list with the shown tab answers the last look: a later loss is looked for again.
+    if (tabs.some((tab) => tab.id === shown)) {
+      this.missed = null
+      return
+    }
+    this.lookForShown()
+  }
+
+  /**
+   * Asks the plugin, once for the shown tab, to read the browser's tabs: the
+   * plugin removes the panel tab if its browser tab was closed, or marks it
+   * lost, which opens it again at once while it is shown. A view that ends
+   * asks too, since a browser that ended or a Cloud that stopped took the
+   * tab with it, and the view may wait long before it reads a list again.
+   */
+  private lookForShown(): void {
+    const shown = this.shownTab.value
+    if (shown === null || this.missed === shown) {
       return
     }
     this.missed = shown
@@ -410,6 +523,7 @@ export class BrowserTabsController {
       onClipboard: (text) => viewerClipboard.receive(text),
       onTabs: (tabs, list) => this.viewTabs(tabs, list),
       onNotice: (code) => this.notice(code),
+      onEnded: () => this.lookForShown(),
       defect: this.errors.defect,
     })
     this.session.value = session
@@ -433,9 +547,10 @@ export class BrowserTabsController {
       clearTimeout(this.closing)
       this.closing = null
     }
-    this.shown = null
+    this.shownTab.value = null
     this.known.clear()
     this.requests.clear()
+    this.binding.clear()
     this.closeView()
   }
 }

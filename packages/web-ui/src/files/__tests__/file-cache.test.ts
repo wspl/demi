@@ -152,6 +152,20 @@ test('a read that fails keeps what shows and says why; one that finds the path g
   expect(shown.entry).toMatchObject({ value: undefined, failure: { kind: 'not-found' } })
 })
 
+test('a Retry of a read that failed with nothing to show reads again without the failure, at once', async () => {
+  const files = new HostFiles()
+  const { reads, spec } = host()
+  const shown = files.show(spec('text', '/w/a.ts'))
+  const failing = reads.at(-1)!
+  failing.answer.reject(new Error('Host unreachable'))
+  failing.answered = true
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  expect(shown.entry).toMatchObject({ value: undefined, failure: { kind: 'other' } })
+  shown.retry()
+  // The view shows the read, not the failure, while it runs (`RegionStatus`).
+  expect(shown.entry).toMatchObject({ value: undefined, failure: null, reading: true })
+})
+
 test('past the budget the entries shown longest ago go first, and none that shows', async () => {
   const files = new HostFiles(10)
   files.cover(everything)

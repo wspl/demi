@@ -333,12 +333,11 @@ onBeforeUnmount(() => {
       <RegionStatus
         v-else-if="state.phase !== 'unavailable'"
         class="h-full"
-        :busy="state.phase === 'loading'"
-        :failed="state.phase === 'failed'"
+        :status="state.phase === 'loading' || state.phase === 'failed' ? state.phase : 'note'"
         :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : idleText"
+        loading-label="Reading…"
         :detail="state.phase === 'failed' ? state.message : null"
-        :action="state.phase === 'failed' ? 'Retry' : undefined"
-        @action="retry"
+        :on-retry="retry"
       />
       </div>
     </div>

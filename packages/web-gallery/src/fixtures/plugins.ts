@@ -9,7 +9,7 @@ import {
   type PageHost,
   type StateFeed,
 } from '@demicodes/web-ui/plugins/page'
-import { bindTabSchema, navigateTabSchema, syncTabsSchema, tabHistorySchema } from '@demicodes/plugin-browser'
+import { bindTabSchema, navigateTabSchema, stopTabSchema, syncTabsSchema, tabHistorySchema } from '@demicodes/plugin-browser'
 import {
   addSourceSchema,
   checkUpdatesSchema,
@@ -120,8 +120,7 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
   async function call(method: string, params: object): Promise<unknown> {
     switch (method) {
       case 'bind':
-        await panel.bind(bindTabSchema.parse(params).panelTab)
-        return null
+        return { tab: await panel.bind(bindTabSchema.parse(params).panelTab) }
       case 'sync':
         syncTabsSchema.parse(params)
         await panel.sync()
@@ -133,6 +132,10 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
       case 'history': {
         const { tab, action } = tabHistorySchema.parse(params)
         return { list: await browser.history(tab, action) }
+      }
+      case 'stop': {
+        const { tab } = stopTabSchema.parse(params)
+        return { list: await browser.stop(tab) }
       }
     }
     return unknownMethod(method)

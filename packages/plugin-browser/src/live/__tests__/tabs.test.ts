@@ -22,10 +22,11 @@ function harness(api: Partial<BrowserTabsApi>, options: BrowserTabsOptions = {},
   const controller = scope.run(() => new BrowserTabsController(
     {
       tabs: { value: list, error },
-      bind: async () => {},
+      bind: async () => null,
       sync: async () => void (syncs += 1),
       navigate: async () => 0,
       history: async () => 0,
+      stop: async () => 0,
       stream: () => ({ send: () => {}, close: () => {} }),
       installed: () => [],
       ...api,
@@ -290,6 +291,7 @@ async function requestHarness() {
       },
       navigate: answer,
       history: answer,
+      stop: answer,
     },
     { pictures: async () => true },
   )
@@ -306,8 +308,93 @@ async function requestHarness() {
       watched: 't1',
     }))
   report(4, false)
-  return { controller, answers, report, end }
+  return { controller, answers, report, opened, end }
 }
+
+/** The panel tab `p1`, bound to `t1`, as its data says. */
+const ORDERS = { url: 'https://example.test/orders', tab: 't1' }
+
+test('Reload shows the tab loading in the same call, Stop keeps it loading until a list numbered after its answer says it stopped', async () => {
+  const { controller, answers, report, end } = await requestHarness()
+  expect(controller.busy('p1', ORDERS)).toBe(false)
+  void controller.history('t1', 'reload')
+  // Before anything left the page: Stop, the strip's spinner and the line read this one state.
+  expect(controller.busy('p1', ORDERS)).toBe(true)
+  answers[0]!.resolve(4)
+  report(5, true)
+  const stopped = controller.stop('t1')
+  expect(controller.busy('p1', ORDERS)).toBe(true)
+  answers[1]!.resolve(5)
+  await stopped
+  // A list the Host read before the Stop still describes the page loading.
+  report(5, true)
+  expect(controller.busy('p1', ORDERS)).toBe(true)
+  report(6, false)
+  expect(controller.busy('p1', ORDERS)).toBe(false)
+  end()
+})
+
+test('the agent’s navigation shows the tab loading while the tab list says it loads', async () => {
+  const { controller, report, end } = await requestHarness()
+  report(5, true)
+  expect(controller.busy('p1', ORDERS)).toBe(true)
+  report(6, false)
+  expect(controller.busy('p1', ORDERS)).toBe(false)
+  end()
+})
+
+test('Retry of a tab that could not open loads in the same call, and a failure that comes back ends it', async () => {
+  let answer = (_tab: string | null) => {}
+  const { controller, end } = harness({ bind: () => new Promise<string | null>((resolve) => (answer = resolve)) })
+  const failed = { url: 'https://example.test/', failure: { code: 'device_offline', message: 'Offline' } }
+  expect(controller.busy('p1', failed)).toBe(false)
+  const retried = controller.bind('p1')
+  // The failure gives way before the plugin heard of the Retry.
+  expect(controller.opening('p1', failed)).toBe(true)
+  expect(controller.busy('p1', failed)).toBe(true)
+  answer(null)
+  await retried
+  expect(controller.busy('p1', failed)).toBe(false)
+  end()
+})
+
+test('a lost tab shown loads from the ask until its data names the tab the plugin opened, whichever comes first', async () => {
+  let answer = (_tab: string | null) => {}
+  const { controller, end } = harness({ bind: () => new Promise<string | null>((resolve) => (answer = resolve)) })
+  const lost = { url: 'https://example.test/', tab: 't1', closed: true }
+  const reopened = { url: 'https://example.test/', tab: 't2' }
+  expect(controller.busy('p1', lost)).toBe(false)
+  const bound = controller.bind('p1')
+  expect(controller.busy('p1', lost)).toBe(true)
+  // The answer outran the panel's data: the tab still loads.
+  answer('t2')
+  await bound
+  expect(controller.busy('p1', lost)).toBe(true)
+  // Its data names the new tab, which no view reported yet: it opens.
+  controller.show('t2')
+  expect(controller.busy('p1', reopened)).toBe(true)
+  end()
+})
+
+test('a view that ends asks the plugin whether the browser still has the shown tab', async () => {
+  const opened: UserStreamHandlers[] = []
+  const { controller, syncs, end } = harness(
+    {
+      stream: (handlers) => {
+        opened.push(handlers)
+        return { send: () => {}, close: () => {} }
+      },
+    },
+    { pictures: async () => true },
+  )
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('t1')
+  // The Cloud stopped, or the browser ended: the plugin hears of it now, not after the view's waits.
+  opened[0]!.closed('host_stopped')
+  expect(syncs()).toBe(1)
+  end()
+})
 
 test('a Reload shows the page loading from the click until a list numbered after its answer says it stopped', async () => {
   const { controller, answers, report, end } = await requestHarness()
