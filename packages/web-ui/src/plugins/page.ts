@@ -98,7 +98,11 @@ export interface PageHost {
   followState(plugin: string, conversation: string): StateFeed
   /**
    * Calls `method` of `plugin` for the user, or for `conversation`, and
-   * answers its JSON result; a refusal rejects with a `PluginCallError`.
+   * answers its JSON result; a refusal rejects with a `PluginCallError`. A
+   * call that cannot reach the backend, as while it restarts, waits until it
+   * can and goes then, so it never rejects for the connection; one whose
+   * `signal` aborts meanwhile rejects with the abort and is never sent
+   * (`plugin-pages.md` § The page context).
    */
   call(
     plugin: string,
@@ -184,9 +188,9 @@ export interface PageContext {
   readonly panel: PageHost['panel']
   readonly settings: { open(section: string): void }
   readonly errors: {
-    /** An error the user sees. */
+    /** An error the user sees; a call its caller dropped is none. */
     report(message: HeadlineText, error: unknown): void
-    /** A defect of the page itself, which only the console shows. */
+    /** A defect of the page itself, which only the console shows; a call its caller dropped is none. */
     defect(message: string, error: unknown): void
   }
   readonly overlays: OverlayStore
@@ -347,6 +351,11 @@ export function usePageHost(): PageHost {
   return host
 }
 
+/** Whether `error` is the abort of a call whose caller went away. */
+function dropped(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
 /** The context of the page whose component calls it. */
 export function usePage(): PageContext {
   const context = inject(PAGE_CONTEXT, null)
@@ -445,9 +454,19 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       throw new Error(`the page of ${page.plugin} has no kind ${kind}`)
     }
   }
+  // A call its caller dropped, as a panel that closed, failed nothing anyone
+  // waits for: neither a toast nor the console says anything of it.
   const errors: PageContext['errors'] = {
-    report: (message, error) => reportError(message, error, { userVisible: true }),
-    defect: (message, error) => reportError(message, error),
+    report: (message, error) => {
+      if (!dropped(error)) {
+        reportError(message, error, { userVisible: true })
+      }
+    },
+    defect: (message, error) => {
+      if (!dropped(error)) {
+        reportError(message, error)
+      }
+    },
   }
   return {
     plugin: {
