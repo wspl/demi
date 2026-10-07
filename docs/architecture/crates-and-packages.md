@@ -1716,6 +1716,7 @@ A line names a workspace package by its name without the `@demicodes/` scope.
 protocol -> none
 utils -> none
 preview-runtime -> none
+preview-domain -> none
 conversation-client -> protocol, utils
 web-ui -> conversation-client, protocol, utils
 plugin-sdk -> web-ui
