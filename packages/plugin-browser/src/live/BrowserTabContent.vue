@@ -39,8 +39,6 @@ const emit = defineEmits<{ update: [data: BrowserTabData]; close: [] }>()
 const refused = ref<BrowserTabsError | null>(null)
 /** A navigation the user asked for that the browser has not taken up yet. */
 const navigating = ref(false)
-const address = ref(props.data.url)
-const editing = ref(false)
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
 const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
 const menu = ref(false)
@@ -140,16 +138,6 @@ onBeforeUnmount(() => {
   }
 })
 
-// The address follows the tab's data until the viewer edits it.
-watch(
-  () => props.data.url,
-  (url) => {
-    if (!editing.value) {
-      address.value = url
-    }
-  },
-)
-
 // The tab saves where the page went, with the page's title for the strip. A blank page the browser first
 // reports while the tab asks for an address is a browser tab that has not started on it yet, as one opened
 // before its user typed. A title names the address the tab asks for only: a page the user is leaving keeps
@@ -194,15 +182,7 @@ async function request(run: (tab: string) => Promise<unknown>): Promise<void> {
  * loads it now; one without loads it once the plugin opened its browser tab,
  * on the address the user asked for last.
  */
-function submit(): void {
-  const draft = address.value.trim()
-  const candidate = draft.includes('://') ? draft : `https://${draft}`
-  if (!draft || !URL.canParse(candidate)) {
-    return
-  }
-  const url = new URL(candidate).href
-  editing.value = false
-  address.value = url
+function submit(url: string): void {
   // The page it leaves names the tab no more.
   const { title: _left, ...data } = props.data
   emit('update', { ...data, url })
@@ -227,10 +207,9 @@ async function rebind(): Promise<void> {
 <template>
   <div class="flex min-h-0 flex-1 flex-col">
     <AddressBar
-      :address="address"
+      :address="data.url"
       :can-reload="bound !== undefined"
       :focused="fresh"
-      @update:address="address = $event; editing = true"
       @submit="submit"
       @back="history('back')"
       @forward="history('forward')"
