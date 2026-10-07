@@ -40,7 +40,7 @@ pub(crate) enum Migration {
 }
 
 /// The control database's. Its history holds the schema of each published
-/// release before the one that ships the current schema; 0.1.12 and 0.1.13
+/// release before the one that ships the current schema; 0.1.14 and 0.1.15
 /// shipped the last one in it.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
@@ -52,6 +52,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.13.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_13),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.15.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_15),
         },
     ],
 };
@@ -75,11 +79,15 @@ ALTER TABLE conversations DROP COLUMN live_at;
 
 /// From 0.1.13's control schema: Host expose is gone, and its records with
 /// it; a device keeps the operating system its runner reports, which a
-/// device migrated from 0.1.13 learns at its runner's next hello; a
-/// conversation counts the changes of its attached hosts, from 0.
+/// device migrated from 0.1.13 learns at its runner's next hello.
 const CONTROL_FROM_0_1_13: &str = "
 DROP TABLE exposes;
 ALTER TABLE devices ADD COLUMN os TEXT;
+";
+
+/// From 0.1.15's control schema: a conversation counts the changes of its
+/// attached hosts, from 0.
+const CONTROL_FROM_0_1_15: &str = "
 ALTER TABLE conversations ADD COLUMN hosts_revision INTEGER NOT NULL DEFAULT 0 CHECK (hosts_revision >= 0);
 ";
 
