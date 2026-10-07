@@ -229,6 +229,8 @@ class GalleryBrowserView {
     private readonly pageOpens: (opener: string, url: string) => void,
     /** The browser's downloads, which outlive any view, as the Host follows them. */
     private readonly downloads: GalleryDownloads,
+    /** Whether the Host holds back what its browser is doing, so the page has not read it yet. */
+    private readonly unread: () => boolean,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
@@ -245,6 +247,9 @@ class GalleryBrowserView {
 
   /** The tabs changed by a request: every view says so, and a view of a closed tab watches nothing. */
   state(): void {
+    if (this.unread()) {
+      return
+    }
     if (this.watched !== null && !this.tabs.some((tab) => tab.id === this.watched)) {
       this.watched = null
       this.restart()
@@ -591,8 +596,10 @@ export interface GalleryBrowser {
 /**
  * The gallery's conversation browser. `held` keeps every opening in one
  * phase before the browser has its tab, for a specimen that shows it, until
- * `finish`: Starting Cloud… on a Cloud that starts, Starting the browser…
- * on a Host whose browser has no tabs yet, or Opening the page….
+ * `finish`: Connecting… while the page has read neither the plugin's tab
+ * list nor a view's state, Starting Cloud… on a Cloud that starts, Starting
+ * the browser… on a Host whose browser has no tabs yet, or Opening the
+ * page….
  */
 export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),
@@ -739,7 +746,7 @@ export function galleryBrowser(
   }
 
   const stream: OpenUserStream = (handlers) => {
-    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture, pageOpens, downloads)
+    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture, pageOpens, downloads, () => held.value === 'connecting')
     views.add(browser)
     return {
       send: (bytes) => browser.receive(bytes),
@@ -934,6 +941,10 @@ export function galleryBrowser(
     finish: () => {
       held.value = null
       hostStarting.value = false
+      // A view held back while the page connected says what the browser holds now.
+      for (const view of views) {
+        view.state()
+      }
       for (const resolve of waiting.splice(0)) {
         resolve()
       }
@@ -941,6 +952,12 @@ export function galleryBrowser(
     hold: (phase) => {
       held.value = phase
       hostStarting.value = phase === 'cloud'
+      // The page connects again, as after a lost connection, and reads nothing until `finish`.
+      if (phase === 'connecting') {
+        for (const view of [...views]) {
+          view.stop()
+        }
+      }
     },
   }
 }
