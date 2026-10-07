@@ -128,7 +128,7 @@ page                         backend (panel, plugin-browser)            Host
 
   | While | The content says |
   | --- | --- |
-  | The page has not read yet what the Host is doing: the conversation's browser state has not arrived | Connecting… |
+  | The page has not read yet what the Host is doing: the conversation's browser state has not arrived, or it has not listed the tab yet | Connecting… |
   | The Cloud starts | Starting Cloud… |
   | The browser starts on the Host: the conversation's browser has no tabs yet | Starting the browser… |
   | The browser opens the tab | Opening the page… |
@@ -141,8 +141,11 @@ page                         backend (panel, plugin-browser)            Host
   meanwhile, as below; Stop then gives up the address, and the tab opens
   blank, as stopping a page before it shows anything leaves a browser's tab
   blank. A device that is offline is a Host that cannot be reached, below.
-  Once the browser has the tab, the content shows its page loading as a
-  browser does: a blank page under the progress line until the first
+  The browser has the tab once its tab list, from the view or the plugin,
+  names it: a panel tab that names a browser tab is not enough, since the
+  browser may have lost it, as after a restart, and its page would show
+  blank until the list said so. Once the browser has the tab, the content
+  shows its page loading as a browser does: a blank page under the progress line until the first
   picture, which comes at the panel's size: the module never shows a tab
   first at another size ([Delivery](#delivery)).
 - **Navigating.** The user's address writes `url` at once and shows the page
