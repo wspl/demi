@@ -752,7 +752,10 @@ tab in the tab list and in the view's `state` carries `loading`: whether the
 browser is loading its top-level page; `canGoBack` and `canGoForward`:
 whether its history has an entry in that direction; and `favicon`: the page's
 icon, drawn 32 pixels square on the Host each time the page finishes loading,
-at most 16 KiB, which the strip shows as Chrome does, or none. Each tab list carries its
+at most 16 KiB, which the strip shows as Chrome does, or none. While a
+navigation the user started loads, the tab's `url` is the address it loads and
+its `title` is empty, as Chrome's tab shows, until the new page commits or the
+load ends without one; the agent's `demi browser tabs` lists the same. Each tab list carries its
 number in the Host's sequence, and the answer of `goto`, `back`, `forward`
 and `reload` names the number of the last list before the request started.
 
