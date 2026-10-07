@@ -119,6 +119,29 @@ page                         backend (panel, plugin-browser)            Host
   meanwhile, the plugin then loads the address the user last asked for. If
   the user closed the panel tab meanwhile, the plugin closes the browser's
   tab. The first picture replaces the blank page.
+- **Before the browser has the tab.** Opening a tab, or reopening one lost
+  with the browser, can first need the Host and its browser started, which
+  takes seconds on a stopped Cloud or a slow device. Until the browser has
+  the tab, the content shows no page: it says on the panel's own background,
+  centred with a spinner, what Demi is doing, as VS Code says it is
+  connecting to a remote host and Codespaces says it is starting:
+
+  | While | The content says |
+  | --- | --- |
+  | The Cloud starts | Starting Cloud… |
+  | The browser starts on the Host: the conversation's browser has no tabs yet | Starting the browser… |
+  | The browser opens the tab | Opening the page… |
+
+  The words appear only once the wait passes half a second, so a tab opened
+  on a running browser, which takes about a third of a second, never flashes
+  them. The strip's spinner, Stop and the address bar show the tab loading
+  meanwhile, as below; Stop then gives up the address, and the tab opens
+  blank, as stopping a page before it shows anything leaves a browser's tab
+  blank. A device that is offline is a Host that cannot be reached, below.
+  Once the browser has the tab, the content shows its page loading as a
+  browser does: a blank page under the progress line until the first
+  picture, which comes at the panel's size: the module never shows a tab
+  first at another size ([Delivery](#delivery)).
 - **Navigating.** The user's address writes `url` at once and shows the page
   loading; once the tab has a browser tab, the content also asks the browser
   to load it ([The tab methods](#the-tab-methods)). Back, Forward and Reload
