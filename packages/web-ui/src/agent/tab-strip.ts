@@ -169,8 +169,23 @@ function clearWidthLock(tab: HTMLElement): void {
   tab.style.transition = ''
 }
 
+/**
+ * Whether a tab enters whole, in the frame it appears: the one the user is
+ * shown, whose content shows at once, so the strip never lags it; any tab
+ * when motion is reduced. Tabs added behind the shown one grow into place.
+ */
+function entersWhole(tab: HTMLElement): boolean {
+  return tab.getAttribute('aria-selected') === 'true' || prefersReducedMotion()
+}
+
 export function beforeEnterTab(el: Element): void {
   const tab = tabEl(el)
+  if (entersWhole(tab)) {
+    // Over the transition classes the strip's group adds: no fade, no growth.
+    tab.style.transition = 'none'
+    tab.style.opacity = '1'
+    return
+  }
   tab.style.minWidth = '0'
   tab.style.overflow = 'hidden'
   tab.style.opacity = '0'
@@ -178,6 +193,9 @@ export function beforeEnterTab(el: Element): void {
 
 export function enterTab(el: Element): void {
   const tab = tabEl(el)
+  if (entersWhole(tab)) {
+    return
+  }
   const width = measureOpenWidth(tab)
   enterWidths.set(tab, width)
   tab.style.flexShrink = '0'
@@ -202,6 +220,7 @@ export function afterEnterTab(el: Element): void {
   tab.style.overflow = ''
   tab.style.flexShrink = ''
   tab.style.opacity = ''
+  tab.style.transition = ''
 }
 
 function isStyledEl(node: unknown): node is HTMLElement {

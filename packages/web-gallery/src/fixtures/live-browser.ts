@@ -233,6 +233,8 @@ class GalleryBrowserView {
     private readonly downloads: GalleryDownloads,
     /** Whether the Host holds back what its browser is doing, so the page has not read it yet. */
     private readonly unread: () => boolean,
+    /** The viewer asked to capture again, which the Host does for every view. */
+    private readonly recaptured: () => void,
   ) {
     this.heartbeat = setInterval(() => this.send({ type: 'heartbeat' }), 250)
     queueMicrotask(() => this.state())
@@ -245,6 +247,12 @@ class GalleryBrowserView {
   /** Even recreating the capture extension failed: the pictures stop until the viewer's Retry. */
   stopCapture(): void {
     this.stopped = true
+    this.restart()
+  }
+
+  /** The Host recreated its capture extension: the pictures come back. */
+  resumeCapture(): void {
+    this.stopped = false
     this.restart()
   }
 
@@ -396,8 +404,7 @@ class GalleryBrowserView {
         this.restart()
         break
       case 'recapture':
-        this.stopped = false
-        this.restart()
+        this.recaptured()
         break
       default:
         break
@@ -766,9 +773,32 @@ export function galleryBrowser(
     },
   }
 
+  /** Whether the Host stopped capturing, as after a failed recreation of its extension, until a viewer's Retry. */
+  let captureStopped = false
+  /** A viewer's Retry: the Host recreates its extension, and every view's pictures come back. */
+  function recaptured(): void {
+    captureStopped = false
+    for (const view of views) {
+      view.resumeCapture()
+    }
+  }
+
   const stream: OpenUserStream = (handlers) => {
-    const browser = new GalleryBrowserView(handlers, tabs, () => lists, capture, pageOpens, downloads, () => held.value === 'connecting')
+    const browser = new GalleryBrowserView(
+      handlers,
+      tabs,
+      () => lists,
+      capture,
+      pageOpens,
+      downloads,
+      () => held.value === 'connecting',
+      recaptured,
+    )
     views.add(browser)
+    // A Host that stopped capturing says so to a view that opens meanwhile.
+    if (captureStopped) {
+      browser.stopCapture()
+    }
     return {
       send: (bytes) => browser.receive(bytes),
       close: () => {
@@ -952,6 +982,7 @@ export function galleryBrowser(
       }
     },
     stopCapture: () => {
+      captureStopped = true
       for (const view of views) {
         view.stopCapture()
       }
