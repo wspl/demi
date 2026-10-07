@@ -757,7 +757,8 @@ or on another plugin.
   `command-package-browser-protocol` types, every leaf bound to a
   `demi.browser` operation ([Command contract](../browser/browser.md#command-contract));
   the `browser` user stream, bound to `browser.live`, with its messages and
-  frame constants; and the tab list, its conversation state, and the tab
+  frame constants; the `preview` user stream, bound to `browser.preview`
+  ([The stream](../browser/preview.md#the-stream)); and the tab list, its conversation state, and the tab
   methods, which call the browser's operations as package calls
   ([The tab methods](../browser/live-view.md#the-tab-methods)).
 - **Public boundary:** its factory, whose manifest names its page package,
@@ -1213,6 +1214,38 @@ demi-backend (executable: configuration, composition)
   own no tab state, and `page` owns no CDP session; `live` knows nothing of
   how conversations are owned or released.
 
+#### `command-package-browser-preview`
+
+- **Owns:** the [web preview](../browser/preview.md)'s engine: the `preview`
+  stream's requests and WebSockets, mapping preview and real addresses and
+  computing labels, the cookie jar of the Host and its file, the SameSite,
+  CORS, CORP, Referer and local network rules, the response headers it
+  replaces, the rewriting it schedules, the upstream requests with a
+  browser's fingerprint (wreq on the vendored BoringSSL), source maps, and
+  the cookies it lists and takes for [Page state](../browser/preview.md#page-state).
+- **Public boundary:** the engine and its stream handler, which
+  `command-package-browser` composes, with the state it exchanges with the
+  conversation browser for page state.
+- **Must not:** know conversations, tabs of the conversation browser or the
+  live view; hold a label after answering a request.
+
+#### `preview-rewrite`
+
+- **Owns:** the one rewriter of the web preview: preview addresses and labels,
+  JavaScript (oxc, patched in place), CSS, HTML (lol_html), attributes and
+  import maps, boot data and the line that starts the runtime in a worker
+  ([Rewriting](../browser/preview.md#rewriting)).
+- **Public boundary:** the rewriting functions over bytes and the label
+  algorithm.
+- **Must not:** perform I/O; it runs natively in the engine and as
+  WebAssembly in the page.
+
+#### `preview-rewrite-wasm`
+
+- **Owns:** the WebAssembly build of `preview-rewrite` for the runtime, with
+  its `wasm-bindgen` glue.
+- **Must not:** add behavior of its own.
+
 ### Executables
 
 #### `backend` (`demi-backend`)
@@ -1538,6 +1571,27 @@ under `packages/`.
 - **Must not:** be imported by another package. It is a Bun program, so it may
   import Node built-ins.
 
+#### `@demicodes/preview-runtime`
+
+- **Private.** **Owns:** the [web preview](../browser/preview.md#the-runtime)'s
+  runtime, which runs in every preview document before the page's scripts,
+  with the rewriter's WebAssembly from `preview-rewrite-wasm` embedded, bundled
+  by esbuild into one script.
+- **Public boundary:** the bundle, which the web app's build carries as an
+  asset named by the release; nothing imports the package.
+- **Must not:** import a workspace package: it runs inside previewed pages.
+
+#### `@demicodes/preview-domain`
+
+- **Private.** **Owns:** the [preview domain service](../browser/preview.md#the-preview-domain-service),
+  a Cloudflare Worker, at `services/preview-domain`: namespaces in KV,
+  `frame-ancestors`, and the versioned boot page, client script, forwarder
+  and policy, each version kept once published.
+- **Public boundary:** its HTTP interface; CI deploys it
+  ([Preview domain deployment](../delivery/builds-and-releases.md#preview-domain-deployment)).
+- **Must not:** import a workspace package, or log a preview's paths or
+  content.
+
 #### `@demicodes/plugin-<name>`
 
 Each plugin page package is **private** and has the same boundary:
@@ -1554,7 +1608,7 @@ Each plugin page package is **private** and has the same boundary:
 
 | Package | Owns |
 | --- | --- |
-| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its page context, with the plugin's page types and the live view's messages generated into `src/generated/` |
+| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its page context; the `preview` kind, the tabs of the user's browser, and the relay of the web preview ([The forwarder and the relay](../browser/preview.md#the-forwarder-and-the-relay)); with the plugin's page types and the stream messages generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
 | `@demicodes/plugin-file-browser` | The pinned `file` kind, the File view, over the conversation files service ([File previews](../product/file-previews.md)) |
@@ -1647,7 +1701,10 @@ machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runne
 server -> backend-database, machine-manager-protocol, shared-artifacts
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
-command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk
+command-package-browser -> command-package-browser-chrome, command-package-browser-preview, command-package-browser-protocol, command-protocol, command-sdk
+command-package-browser-preview -> command-package-browser-protocol, preview-rewrite, shared-types
+preview-rewrite -> none
+preview-rewrite-wasm -> preview-rewrite
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk
 xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
 ```
@@ -1659,6 +1716,8 @@ A line names a workspace package by its name without the `@demicodes/` scope.
 ```text
 protocol -> none
 utils -> none
+preview-runtime -> none
+preview-domain -> none
 conversation-client -> protocol, utils
 web-ui -> conversation-client, protocol, utils
 plugin-sdk -> web-ui

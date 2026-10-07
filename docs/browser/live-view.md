@@ -101,14 +101,21 @@ page                         backend (panel, plugin-browser)            Host
 - **Availability.** A browser tab needs the browser on the conversation's
   Host. The plugin compares the Host's installed artifacts
   ([Installed artifacts](../execution/native-runtime.md#installed-artifacts))
-  with the version its package pins. When the Host lacks it, the strip's
-  control to create a browser tab is disabled and says why: `No browser on
-  this Host. Ask the agent to run demi browser install.` The user cannot
+  with the version its package pins. When the Host lacks it, Open in Agent's
+  Browser is disabled and says why: `No browser on this Host. Ask the agent
+  to run demi browser install.` The user cannot
   install it from the page; the agent installs it
   ([Browser distribution](browser.md#browser-distribution)). Tabs already
   open stay as they are.
-- **Opening.** The strip's control creates a tab with `url: 'about:blank'`
-  and selects it. Its content shows at once what a new tab is in any browser:
+- **Two kinds of tab.** The strip also holds tabs of the user's own browser,
+  web previews, told apart from these only by their icon; its + opens one of
+  those, and a tab of the agent's browser opens when the agent opens one or
+  the user chooses Open in Agent's Browser on a tab of the user's browser
+  ([Web preview](preview.md#what-the-user-sees)). A tab of the agent's
+  browser offers Open in Your Browser in its menu.
+- **Opening.** Open in Agent's Browser creates a tab with the page's address,
+  and its state as [Page state](preview.md#page-state) says, and selects it;
+  a tab created with `url: 'about:blank'`, as a new tab's, is selected too. Its content shows at once what a new tab is in any browser:
   the strip names it New Tab, the address bar is empty with the focus in it,
   and the page is blank
   ([Responding to the user](../product/web-application.md#responding-to-the-user)).
