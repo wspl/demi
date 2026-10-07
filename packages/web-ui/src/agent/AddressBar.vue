@@ -9,10 +9,13 @@ import type { SentenceText } from '../ui/ui-text'
  * The address bar both kinds of web page tab share
  * (`web-application.md` § Package responsibilities): a `browser` tab of the
  * conversation browser has its own history, a `page` tab keeps a framed
- * page's history to itself.
+ * page's history to itself. It shows the page's address and follows it,
+ * except while the user has the field: then it keeps what the user types,
+ * and leaving without Enter shows the page's address again.
  */
-withDefaults(
+const props = withDefaults(
   defineProps<{
+    /** The page's address. */
     address: string
     /** Why Back is unavailable, when it is, such as a history with no page before this one. */
     backReason?: SentenceText | null
@@ -26,14 +29,16 @@ withDefaults(
 )
 
 const emit = defineEmits<{
-  'update:address': [address: string]
-  submit: []
+  /** Enter on an address, as a whole URL: what the user typed, `https://` before it when it names no scheme. */
+  submit: [url: string]
   back: []
   forward: []
   reload: []
 }>()
 
 const field = ref<InstanceType<typeof TextInput> | null>(null)
+/** What the field holds while the user has it; null while it shows the page's address. */
+const draft = ref<string | null>(null)
 /** The pointer that is giving the field its focus; its release must not drop the selection the focus made. */
 let focusing = false
 
@@ -52,9 +57,30 @@ function pointerUp(event: MouseEvent): void {
   field.value?.select()
 }
 
-// The address is submitted and the field lets go, so keys reach the page again.
+// The page's address stands still while the user has the field, selected whole as a web browser's is.
+function focus(): void {
+  draft.value = props.address
+  field.value?.select()
+}
+
+/** The URL `text` names, `https://` before it when it names no scheme; null when it names none. */
+function urlOf(text: string): string | null {
+  const typed = text.trim()
+  const candidate = typed.includes('://') ? typed : `https://${typed}`
+  if (!typed || !URL.canParse(candidate)) {
+    return null
+  }
+  return new URL(candidate).href
+}
+
+// An address is submitted and the field lets go, so keys reach the page again. Text that names no
+// address stays in the field for the user to correct.
 function submit(): void {
-  emit('submit')
+  const url = urlOf(draft.value ?? props.address)
+  if (url === null) {
+    return
+  }
+  emit('submit', url)
   field.value?.el?.blur()
 }
 </script>
@@ -91,12 +117,13 @@ function submit(): void {
       ref="field"
       class="ml-2 min-w-0 flex-1"
       :focused="focused"
-      :model-value="address"
+      :model-value="draft ?? address"
       placeholder="Enter address"
       aria-label="Browser address"
-      @update:model-value="emit('update:address', $event)"
+      @update:model-value="draft = $event"
       @keydown.enter="submit"
-      @focus="field?.select()"
+      @focus="focus"
+      @blur="draft = null"
       @pointerdown="pointerDown"
       @mouseup="pointerUp"
     />

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, useAttrs, useSlots } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
+import { keepComposition } from '@demicodes/utils'
 import { disabledTooltip } from './disabled'
 import IconButton from './IconButton.vue'
 import Tooltip from './Tooltip.vue'
@@ -126,6 +127,7 @@ defineExpose({
     :class="[attrs['class'] ? '' : 'w-full', bare ? 'self-stretch' : '']"
     :open-delay-ms="80"
   >
+    <!-- An input method's keys stay with the field: a candidate's Enter submits nothing. -->
     <div
       class="flex min-w-0 flex-1 items-center rounded-md ring-1 transition-[box-shadow,background-color] duration-200 ease-out"
       :class="[
@@ -135,6 +137,7 @@ defineExpose({
     ]"
       :data-bare="bare ? true : undefined"
       @click="!disabled && inputRef?.focus()"
+      @keydown.capture="keepComposition"
     >
       <div
         v-if="slots['prefix']"

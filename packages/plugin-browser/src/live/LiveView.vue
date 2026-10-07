@@ -6,7 +6,8 @@ import LiveDialog from './LiveDialog.vue'
 import { CanvasPictures } from './pictures'
 import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
-import { ClickCount, keyMessage, localKey, composingKey, pointerMessage, wheelMessage } from './input'
+import { composingKey } from '@demicodes/utils'
+import { ClickCount, keyMessage, localKey, pointerMessage, wheelMessage } from './input'
 import { cursorAt, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
