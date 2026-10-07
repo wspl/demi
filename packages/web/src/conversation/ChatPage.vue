@@ -178,6 +178,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     v-if="pageKind === 'session' && conversation"
     :conversation="conversation"
     :has-provider="hasProvider"
+    :backend-away="product.connection !== null"
     :fork="fork"
     :select-edit="selectEdit"
     :files="files"
