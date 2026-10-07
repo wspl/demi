@@ -2,10 +2,12 @@
 //! operations): the one way to a conversation's primary or attached Host. An
 //! operation takes the conversation's file gate, so it excludes an archive
 //! or a target switch; the target is resolved, and an archived conversation
-//! or a device that is not bound is refused; a Cloud's admission is taken,
-//! and the file gate is let go while that waits; then the operation runs
-//! once. Each conversation has one slot in its user's shard, with its file
-//! gate, its open transfers and the gate its open user streams hold.
+//! or a device that is not bound is refused; in the grace after the
+//! backend starts, a device its last shutdown disconnected is waited for
+//! (§ Recovery and persistence); a Cloud's admission is taken; the file gate
+//! is let go while either waits; then the operation runs once. Each
+//! conversation has one slot in its user's shard, with its file gate, its
+//! open transfers and the gate its open user streams hold.
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -330,9 +332,17 @@ impl dyn HostShard + '_ {
         let record = self.owned_conversation(id).await?;
         let slot = self.conversations().slot(&record.id);
         let mut cloud: Option<CloudAdmission> = None;
+        let mut waited_for_return = false;
         loop {
             let files = waits.wait(slot.files.enter(Purpose::Demand)).await?;
             let selected = self.select_host(&record.id, device, true).await?;
+            if !waited_for_return && let Some(rest) = self.returning(&selected.device.id) {
+                // As for the Cloud below, the wait holds no file lease.
+                drop(files);
+                waited_for_return = true;
+                waits.wait(self.devices().returned(&selected.device.id, rest)).await?;
+                continue;
+            }
             let admitted = match selected.device.kind {
                 DeviceKind::User => {
                     cloud = None;
@@ -389,8 +399,19 @@ impl dyn HostShard + '_ {
             Attention::Watches | Attention::Operates => Purpose::Demand,
             Attention::Looks => Purpose::Maintenance,
         };
-        let files = waits.wait(slot.files.enter(purpose)).await?;
-        let mut selected = self.select_host(&record.id, None, false).await?;
+        let mut waited_for_return = false;
+        let (files, mut selected) = loop {
+            let files = waits.wait(slot.files.enter(purpose)).await?;
+            let selected = self.select_host(&record.id, None, false).await?;
+            match self.returning(&selected.device.id) {
+                Some(rest) if !waited_for_return => {
+                    drop(files);
+                    waited_for_return = true;
+                    waits.wait(self.devices().returned(&selected.device.id, rest)).await?;
+                }
+                _ => break (files, selected),
+            }
+        };
         if !self.devices().online(&selected.device.id) {
             return Err(match selected.device.kind {
                 DeviceKind::Managed => Refusal::Stopped.into(),
@@ -414,6 +435,17 @@ impl dyn HostShard + '_ {
             open,
             watching,
         })
+    }
+
+    /// How long an operation on `device` waits for its runner first: the
+    /// rest of the grace after the backend started, when the last shutdown
+    /// disconnected the device and its runner is not back yet
+    /// (`sessions-and-targets.md` § Recovery and persistence). The wait
+    /// comes once per admission, before anything answers that the device is
+    /// offline or the Cloud stopped, and holds no file lease, so a
+    /// transition does not wait for it.
+    fn returning(&self, device: &DeviceId) -> Option<std::time::Duration> {
+        self.devices().returning(device, self.clock().now().to_jiff())
     }
 
     /// Takes the Cloud's admission: it wakes a stopped Cloud, joins a boot

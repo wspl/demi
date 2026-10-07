@@ -1,8 +1,9 @@
 import { expect, jest, test } from 'bun:test'
 import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveTab, type LiveViewerMessage } from '../../generated/plugin'
-import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
+import type { ConversationPlugin, UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
-import { effectScope, nextTick, ref, shallowRef } from 'vue'
+import { waitFor } from '@demicodes/utils'
+import { computed, effectScope, nextTick, ref, shallowRef } from 'vue'
 import {
   NO_BROWSER,
   BrowserTabsController,
@@ -13,6 +14,7 @@ import {
   type PictureSupport,
 } from '../tabs'
 import { browserTabKind } from '../kind'
+import { browserTabsApi } from '../../tabs'
 
 /** A controller in a panel session's effect scope, over a tab list the test sets; what it reports to the user lands in `reported`. */
 function harness(
@@ -491,6 +493,36 @@ test('a refused Back ends the loading at once and rejects with why, and a replac
   end()
 })
 
+// After Demi restarts, the runner stops the browser and the tabs are lost
+// with it: a Reload sent then is refused with tab_not_found, and the tab
+// opens again on its address instead (`live-view.md` § A browser tab in the
+// panel).
+test('a request on a tab the browser lost says nothing and asks the plugin to read the list', async () => {
+  const answers: Array<{ reject: (error: unknown) => void }> = []
+  const reported: Array<[string, unknown]> = []
+  const defects: Array<[string, unknown]> = []
+  const { controller, syncs, end } = harness(
+    { history: () => new Promise<number>((_resolve, reject) => void answers.push({ reject })) },
+    { pictures: async () => true },
+    reported,
+    defects,
+  )
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('p-t1', 't1')
+  const reload = controller.history('t1', 'reload')
+  answers[0]!.reject(new BrowserTabsError('tab_not_found', 'This page is no longer open on the device.'))
+  await reload
+  expect(syncs()).toBe(1)
+  // The tab menu's Reload of a tab not shown.
+  controller.reload({ url: 'https://example.test/b', tab: 't2' })
+  answers[1]!.reject(new BrowserTabsError('tab_not_found', 'This page is no longer open on the device.'))
+  await waitFor(() => syncs() === 2, () => `syncs: ${syncs()}`)
+  expect(reported).toEqual([])
+  expect(defects).toEqual([])
+  end()
+})
+
 /** A controller whose plugin binds with `bind`, and the views it opened, whose module the test speaks for. */
 async function openingHarness(bind: () => Promise<string | null>) {
   const opened: UserStreamHandlers[] = []
@@ -712,4 +744,29 @@ test('a tab not shown that was lost with the browser keeps its title and waits, 
   expect(controller.busy('p-t1', orders)).toBe(false)
   expect(browserTabKind.title(orders, { conversation: 'c1', session: controller })).toBe('Orders')
   end()
+})
+
+// `plugin-pages.md` § The page context: a call whose caller goes away, as a
+// panel that closes, is dropped and never sent.
+test('a call still waiting for the backend when the panel session ends is dropped with the abort', async () => {
+  const waiting: AbortSignal[] = []
+  const plugin: ConversationPlugin = {
+    state: () => ({ value: computed(() => null), error: computed(() => null), read: () => {} }),
+    // The shell holds the call while it cannot reach the backend, until its signal aborts.
+    call: (_method, _params, _result, options) =>
+      new Promise((_resolve, reject) => {
+        const signal = options!.signal!
+        waiting.push(signal)
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      }),
+    stream: () => recordingStream([]),
+    installed: computed(() => []),
+    hostStarting: computed(() => false),
+  }
+  const session = effectScope()
+  const api = session.run(() => browserTabsApi(plugin, () => {}))!
+  const reload = api.history('t1', 'reload')
+  expect(waiting.map((signal) => signal.aborted)).toEqual([false])
+  session.stop()
+  await expect(reload).rejects.toMatchObject({ name: 'AbortError' })
 })
