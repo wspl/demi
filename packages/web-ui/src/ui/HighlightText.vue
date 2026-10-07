@@ -3,14 +3,17 @@ import { computed } from 'vue'
 
 /**
  * Text with the parts a search matched marked: every occurrence of `query`,
- * case ignored, or the characters at `indexes`, as a fuzzy match or a typed
- * prefix names them.
+ * case ignored, the characters at `indexes`, as a fuzzy match or a typed
+ * prefix names them, or the pieces `ranges` names, as the backend's search
+ * gives them.
  */
 const props = defineProps<{
   text: string
   query?: string
   /** The matched characters' positions in `text`; given, `query` is not read. */
   indexes?: readonly number[]
+  /** The matched pieces as `[start, end]` positions in `text`, end exclusive; given, `query` is not read. */
+  ranges?: readonly (readonly number[])[]
 }>()
 
 interface Segment {
@@ -60,9 +63,19 @@ function querySegments(text: string, query: string): Segment[] {
   return result
 }
 
-const segments = computed(() => props.indexes
-  ? indexSegments(props.text, props.indexes)
-  : querySegments(props.text, props.query ?? ''))
+/** Every position inside one of `ranges`. */
+function rangeIndexes(ranges: readonly (readonly number[])[]): number[] {
+  return ranges.flatMap(([start = 0, end = 0]) =>
+    Array.from({ length: Math.max(0, end - start) }, (_, offset) => start + offset))
+}
+
+const segments = computed(() => {
+  if (props.ranges)
+    return indexSegments(props.text, rangeIndexes(props.ranges))
+  return props.indexes
+    ? indexSegments(props.text, props.indexes)
+    : querySegments(props.text, props.query ?? '')
+})
 </script>
 
 <template>

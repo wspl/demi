@@ -781,6 +781,53 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
     })
 }
 
+/// Which saved state of the root's transcript a reader saw (`storage.md`
+/// § Search index): its output revision and its block count. Every save
+/// that changes the transcript changes one of them: a save of output, or one
+/// that removes rows, advances the revision, and a save of input alone adds
+/// blocks. The transcript's own version, its epoch and revision
+/// (`runtime.md` § Patches and versions), lives only in the running session.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SavedVersion {
+    pub revision: u64,
+    pub blocks: u64,
+}
+
+/// The saved version of the root's transcript; the empty one, revision 0
+/// with no block, when the tree has no root yet.
+pub fn root_version(connection: &Connection) -> Result<SavedVersion, StorageError> {
+    Ok(saved_root(connection)?.map_or_else(SavedVersion::default, |(_, version)| version))
+}
+
+/// The root's blocks with the saved version they make, read together; none
+/// and the empty version when the tree has no root yet.
+pub fn root_transcript(connection: &Connection) -> Result<(SavedVersion, Vec<Block>), StorageError> {
+    let Some((root, version)) = saved_root(connection)? else {
+        return Ok((SavedVersion::default(), Vec::new()));
+    };
+    let blocks = blocks_of(connection, &root, integer(version.blocks))?;
+    Ok((version, blocks))
+}
+
+/// The root's id and the saved version of its transcript.
+fn saved_root(connection: &Connection) -> Result<Option<(NodeId, SavedVersion)>, StorageError> {
+    let root: Option<(String, i64, i64)> = connection
+        .query_row(
+            "SELECT id, output_revision, block_count FROM nodes WHERE parent_id IS NULL",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .optional()?;
+    let Some((root, revision, blocks)) = root else {
+        return Ok(None);
+    };
+    let version = SavedVersion {
+        revision: decode("nodes", "output_revision", u64::try_from(revision))?,
+        blocks: decode("nodes", "block_count", u64::try_from(blocks))?,
+    };
+    Ok(Some((decode("nodes", "id", NodeId::try_from(root))?, version)))
+}
+
 /// Whether the tree `connection` holds has its root; a Fork's destination
 /// is committed once it does.
 pub fn has_root(connection: &Connection) -> Result<bool, StorageError> {

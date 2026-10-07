@@ -13,7 +13,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useTouchOnly } from '../ui/touch-only'
 import { SETTINGS_SECTIONS } from './sections'
 import { filterSettings, firstMatch } from './settings-filter'
-import { highlightSetting } from './setting-highlight'
+import { highlightFound } from '../ui/found-highlight'
 import { settingsLevelKey, type SettingsLevel } from './navigation'
 import type {
   SettingsAccountInfo,
@@ -100,7 +100,7 @@ function open(id: string, setting: string | null = null): void {
   finding = null
   if (setting && page.value) {
     finding = new AbortController()
-    highlightSetting(page.value, setting, finding.signal)
+    highlightFound(page.value, `[data-setting="${CSS.escape(setting)}"]`, finding.signal)
   }
 }
 

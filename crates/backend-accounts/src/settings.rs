@@ -77,6 +77,7 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
             (shortcuts.new, &mut saved.new),
             (shortcuts.sidebar, &mut saved.sidebar),
             (shortcuts.settings, &mut saved.settings),
+            (shortcuts.search, &mut saved.search),
         ] {
             if let Some(keys) = change {
                 *override_ = keys;

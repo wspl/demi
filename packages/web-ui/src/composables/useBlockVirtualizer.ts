@@ -102,6 +102,24 @@ export function useBlockVirtualizer(
     furthestDistanceSinceDisengage = 0
   }
 
+  /**
+   * Scrolls the block `id` to the middle of the view and stops following the
+   * end, as a search result opened at a message asks; false while the list
+   * has no such block, such as before its history arrives.
+   */
+  function reveal(id: string): boolean {
+    const index = blocks.value.findIndex((block) => block.id === id)
+    if (index < 0)
+      return false
+    // The list is placed: the restore of a saved position no longer applies.
+    isRestored.value = true
+    shouldAutoScroll.value = false
+    isProgrammaticScroll = true
+    virtualizer.value.scrollToIndex(index, { align: 'center' })
+    isProgrammaticScroll = false
+    return true
+  }
+
   function scrollToBottomExplicit() {
     shouldAutoScroll.value = true
     scrollToBottom()
@@ -307,6 +325,7 @@ export function useBlockVirtualizer(
     scrollOffset,
     isAtBottom,
     scrollToBottom: scrollToBottomExplicit,
+    reveal,
     onScroll,
     getPersistedState,
   }

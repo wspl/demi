@@ -19,6 +19,7 @@ use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_resets;
 use demi_backend_database::StorageError;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, web_build};
+use demi_backend_user_shard::conversation::search::index_at_start;
 use demi_backend_user_shard::conversation::{rearm_wakeups, recover_forks};
 use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::services::{
@@ -235,6 +236,16 @@ impl Backend {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
                 "the undelivered permission decisions cannot be listed"
+            );
+        }
+        // Each user's search index catches up with the conversations, in the
+        // background (`storage.md` § Search index). A failure does not stop
+        // the start: a conversation not indexed here is indexed by its next
+        // change.
+        if let Err(error) = index_at_start(&services.control, &shards.shards()).await {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the conversations to index for search cannot be listed"
             );
         }
         let runners = config.runner_releases.clone().map(|releases| {

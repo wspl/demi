@@ -185,7 +185,7 @@ pub fn schema_differs(path: &Path, kind: DatabaseKind) -> Result<bool, StorageEr
 /// The version a database of the schema `sql` records in `user_version`:
 /// the first 31 bits of its SHA-256, never 0, which SQLite gives a database
 /// that records none. Any edit of the SQL is another version.
-fn version_of(sql: &str) -> i32 {
+pub(crate) fn version_of(sql: &str) -> i32 {
     let digest = Sha256::digest(sql.as_bytes());
     let bits = u32::from_be_bytes([digest[0], digest[1], digest[2], digest[3]]) >> 1;
     let version = i32::try_from(bits).expect("31 bits fit");

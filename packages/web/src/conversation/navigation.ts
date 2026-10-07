@@ -5,7 +5,8 @@ import { useConversations } from './store'
 
 /**
  * The page's ways into a conversation, shared by the sidebar, the keyboard
- * shortcuts and the New Project dialog, so each opens one the same way.
+ * shortcuts, the search window and the New Project dialog, so each opens one
+ * the same way.
  */
 export function useConversationNavigation() {
   const router = useRouter()
@@ -16,6 +17,16 @@ export function useConversationNavigation() {
   function open(id: string): void {
     resources.sidebarOpen = false
     void router.push(`/chat/${id}`)
+  }
+
+  /**
+   * Shows the conversation a search found, scrolled to the message that
+   * matched, which is marked for a moment; at its end when only its title
+   * matched.
+   */
+  function openFound(id: string, blockId: string | null): void {
+    conversations.reveal = blockId === null ? null : { conversationId: id, blockId }
+    open(id)
   }
 
   /**
@@ -39,5 +50,5 @@ export function useConversationNavigation() {
     create(await resources.createProject(draft))
   }
 
-  return { open, create, createProject }
+  return { open, openFound, create, createProject }
 }

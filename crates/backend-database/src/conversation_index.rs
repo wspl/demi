@@ -633,6 +633,24 @@ impl ControlService {
         .await
     }
 
+    /// Every user who has a conversation.
+    pub async fn conversation_owners(&self) -> Result<Vec<UserId>, StorageError> {
+        self.call(|connection, _| {
+            let mut statement = connection.prepare("SELECT DISTINCT user_id FROM conversations")?;
+            let mut rows = statement.query([])?;
+            let mut owners = Vec::new();
+            while let Some(row) = rows.next()? {
+                owners.push(decode(
+                    "conversations",
+                    "user_id",
+                    UserId::try_from(row.get::<_, String>(0)?),
+                )?);
+            }
+            Ok(owners)
+        })
+        .await
+    }
+
     /// Records activity in the conversation now. Activity never reorders the
     /// sidebar.
     pub async fn touch_conversation(&self, id: ConversationId) -> Result<(), StorageError> {

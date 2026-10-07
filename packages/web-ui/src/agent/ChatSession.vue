@@ -66,6 +66,8 @@ const props = withDefaults(defineProps<{
   permissionRequests?: readonly PermissionRequestView[]
   /** A decision on a permission request is on its way. */
   decidingPermission?: boolean
+  /** A message to bring into view and mark for a moment, as a search result opened at it asks. */
+  revealBlockId?: string | null
 }>(), {
   // Vue reads an absent boolean prop as false, which would offer Open panel
   // where there is no panel; absent stays undefined.
@@ -93,6 +95,8 @@ const emit = defineEmits<{
   regenerate: [request: MessageEditRequest]
   saveScroll: [id: string, state: PersistedScrollState | null]
   decidePermission: [id: string, decision: PermissionDecision]
+  /** The message `revealBlockId` names is in view. */
+  revealed: []
 }>()
 provideEditSelection(() => props.selectEdit)
 // A running call shows its command's output under it; once the call
@@ -335,6 +339,8 @@ watch(() => props.conversation.id, close)
             @retry-submission="emit('retrySubmission')"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"
+            :reveal-block-id="revealBlockId"
+            @revealed="emit('revealed')"
             @save-scroll-state="(id, state) => emit('saveScroll', id, state ?? null)"
             @delete-queued="(id) => emit('removeQueued', id)"
             @send-queued="(id) => emit('sendQueued', id)"

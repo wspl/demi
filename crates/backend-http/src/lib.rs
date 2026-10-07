@@ -32,6 +32,7 @@ mod providers;
 mod query;
 mod runner_socket;
 mod runners;
+mod search;
 mod settings;
 mod sidebar;
 mod streams;
@@ -239,6 +240,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/users", get(users::list).post(users::create))
         .route("/users/{id}", patch(users::reset_password))
+        .route("/search", get(search::search))
         .route("/usage", get(usage::totals))
         .route("/usage/instance", get(usage::instance))
         .route(

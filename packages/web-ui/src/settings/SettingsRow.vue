@@ -121,17 +121,3 @@ const emit = defineEmits<{
     </div>
   </Tooltip>
 </template>
-
-<style>
-/* The row the settings filter opened, flashed once (`setting-highlight.ts`). */
-.setting-highlight {
-  animation: setting-highlight 1.6s ease-out;
-}
-
-@keyframes setting-highlight {
-  0%,
-  45% {
-    background-color: color-mix(in srgb, var(--surface-current), var(--tint-accent-mix));
-  }
-}
-</style>
