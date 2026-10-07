@@ -49,8 +49,8 @@ pub(crate) struct SessionCore {
     /// The selection current now; every block records the one current when
     /// it was written.
     pub(super) model: ModelSelection,
-    /// The runtime that serves requests; empty while a run holds it.
-    pub(super) provider: Option<Box<dyn ProviderRuntime>>,
+    /// The runtime that serves requests, or what it takes while a run holds it.
+    pub(super) provider: ProviderSlot,
     /// A recorded model switch that has not landed yet.
     pub(super) switch: Option<ModelSwitch>,
     /// A switch that arrived while an edit was being prepared: it waits for
@@ -216,6 +216,27 @@ pub(super) struct Effects {
     pub(super) status: Status,
 }
 
+/// Where a session's provider runtime is. A run takes it out of its slot
+/// for the length of a request, and the session goes on weighing its next
+/// request meanwhile, as when a page opens the conversation while a turn
+/// streams and is told the usage (`compaction.md` § Context estimate): so
+/// the slot keeps what the runtime takes in one request of the current
+/// model, which does not change while the runtime is out.
+pub(super) enum ProviderSlot {
+    Held(Box<dyn ProviderRuntime>),
+    Out(RequestLimits),
+}
+
+impl ProviderSlot {
+    /// The runtime, while it is in its slot.
+    pub(super) fn held(&self) -> Option<&dyn ProviderRuntime> {
+        match self {
+            Self::Held(runtime) => Some(runtime.as_ref()),
+            Self::Out(_) => None,
+        }
+    }
+}
+
 /// What a new or restored session starts with.
 pub(super) struct CoreParts {
     pub(super) id: NodeId,
@@ -240,7 +261,7 @@ impl SessionCore {
             id: parts.id,
             cwd: parts.cwd,
             model: parts.model,
-            provider: Some(parts.provider),
+            provider: ProviderSlot::Held(parts.provider),
             switch: None,
             waiting_switch: None,
             retired: Vec::new(),
@@ -388,7 +409,7 @@ impl SessionCore {
         // The replacement was prepared with the recorded switch; the one
         // that waited for the edit is recorded now, and lands after the
         // replacement's first request.
-        let mut discarded: Vec<_> = self.provider.replace(runtime).into_iter().collect();
+        let mut discarded: Vec<_> = self.place_runtime(runtime).into_iter().collect();
         discarded.extend(self.switch.take().and_then(|switch| switch.runtime));
         discarded.append(&mut self.retired);
         self.switch = self.waiting_switch.take();
@@ -763,7 +784,7 @@ impl SessionCore {
 
     /// Every provider runtime the session holds, for closing.
     pub(super) fn take_runtimes(&mut self) -> Vec<Box<dyn ProviderRuntime>> {
-        let mut runtimes: Vec<_> = self.provider.take().into_iter().collect();
+        let mut runtimes: Vec<_> = self.take_runtime().into_iter().collect();
         runtimes.extend(self.switch.take().and_then(|switch| switch.runtime));
         runtimes.extend(self.waiting_switch.take().and_then(|switch| switch.runtime));
         runtimes.append(&mut self.retired);
@@ -1055,7 +1076,7 @@ impl SessionCore {
         let runtime = switch
             .runtime
             .as_deref()
-            .or(self.provider.as_deref())
+            .or(self.provider.held())
             .expect("the provider runtime is in its slot between runs");
         let limits = runtime.request_limits(&switch.model.model);
         Some((ModelSelection::clone(&switch.model), limits))
@@ -1070,7 +1091,7 @@ impl SessionCore {
         };
         let mut replaced = mem::take(&mut self.retired);
         if let Some(runtime) = switch.runtime {
-            replaced.extend(self.provider.replace(runtime));
+            replaced.extend(self.place_runtime(runtime));
         }
         if self.model != *switch.model {
             self.model = *switch.model;
@@ -1244,13 +1265,33 @@ impl SessionCore {
         }
     }
 
-    /// What the current model's vendor takes in one request, from the
-    /// runtime in its slot (`models.md` § Request limits).
+    /// What the current model's vendor takes in one request
+    /// (`models.md` § Request limits): from the runtime in its slot, or as
+    /// it was read when a run took the runtime.
     pub(super) fn request_limits(&self) -> RequestLimits {
-        self.provider
-            .as_ref()
-            .expect("the provider runtime is in its slot between runs")
-            .request_limits(&self.model.model)
+        match &self.provider {
+            ProviderSlot::Held(runtime) => runtime.request_limits(&self.model.model),
+            ProviderSlot::Out(limits) => *limits,
+        }
+    }
+
+    /// Takes the runtime out of its slot, for a run's request or for
+    /// closing, and leaves what it takes in one request of the current
+    /// model; none when it is out already.
+    pub(super) fn take_runtime(&mut self) -> Option<Box<dyn ProviderRuntime>> {
+        let limits = self.request_limits();
+        match mem::replace(&mut self.provider, ProviderSlot::Out(limits)) {
+            ProviderSlot::Held(runtime) => Some(runtime),
+            ProviderSlot::Out(_) => None,
+        }
+    }
+
+    /// Puts `runtime` in the slot, and returns the runtime it replaced.
+    fn place_runtime(&mut self, runtime: Box<dyn ProviderRuntime>) -> Option<Box<dyn ProviderRuntime>> {
+        match mem::replace(&mut self.provider, ProviderSlot::Held(runtime)) {
+            ProviderSlot::Held(replaced) => Some(replaced),
+            ProviderSlot::Out(_) => None,
+        }
     }
 
     /// A request of the current model over `view`, the model's view of the

@@ -241,8 +241,8 @@ impl Candidate {
         let runtime = core
             .switch
             .as_ref()
-            .and_then(|switch| switch.runtime.as_ref())
-            .or(core.provider.as_ref())
+            .and_then(|switch| switch.runtime.as_deref())
+            .or(core.provider.held())
             .expect("an idle session's runtime is in its slot")
             .fresh();
         let receipt = EditReceipt {

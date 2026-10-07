@@ -184,7 +184,7 @@ async fn stream(
         let model = s.read(|core| core.model.clone());
         let window = cancel.guard(compaction::window_in_use(s, &model)).await?;
         let mut runtime = s
-            .update(|core| core.provider.take())
+            .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
         let read = read(s, cancel, window, runtime.run(request)).await;
         s.return_runtime(runtime);

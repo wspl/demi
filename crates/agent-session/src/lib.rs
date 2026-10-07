@@ -65,7 +65,7 @@ pub use runtime::{
 use self::{
     bus::EventBus,
     cancel::TurnCancel,
-    core::{AbortStep, ActionKind, CoreParts, SessionCore},
+    core::{AbortStep, ActionKind, CoreParts, ProviderSlot, SessionCore},
     input::{InputQueue, Wakeups},
 };
 
@@ -469,7 +469,7 @@ impl SessionShared {
 
     /// Puts a run's runtime back in its slot.
     fn return_runtime(&self, runtime: Box<dyn ProviderRuntime>) {
-        self.update(|core| core.provider = Some(runtime));
+        self.update(|core| core.provider = ProviderSlot::Held(runtime));
         self.runtime_returned.notify_waiters();
     }
 }
@@ -893,7 +893,7 @@ impl AgentSession {
                 if core.model.provider_id != provider_id {
                     return Some(Ok(None));
                 }
-                core.provider.as_ref().map(|runtime| Ok(Some(runtime.fresh())))
+                core.provider.held().map(|runtime| Ok(Some(runtime.fresh())))
             });
             if let Some(fork) = fork {
                 return fork;
