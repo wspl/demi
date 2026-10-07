@@ -320,8 +320,11 @@ the page closes it and connects again. A live view shows a stall after a
 second already, and a stall that ends within the 75 seconds, as when a Cloud
 pauses for a checkpoint, keeps the view.
 
-A socket that closes, is taken as broken, or cannot be made connects again
-after a second, then after twice as long each time, up to 30 seconds, each
+A socket whose opening handshake has not completed within 10 seconds cannot
+be made: the page abandons it, as it does one refused, since a browser waits
+minutes before it gives up on a handshake that a proxy in front of a
+restarting backend holds. A socket that closes, is taken as broken, or cannot
+be made connects again after a second, then after twice as long each time, up to 30 seconds, each
 wait shortened by a random part so that the pages of all users do not return
 at once after a restart. A channel that the backend closed because it shuts
 down is the exception: the page connects again every one to two seconds
@@ -446,7 +449,14 @@ the page shows the banner "Demi is restarting" and connects again
   serves an old `index.html`, does not load again: it shows the error
   "This Page Could Not Be Updated" over the app, with the reason,
   and keeps the build it tried in `sessionStorage` so that it tries once per
-  build.
+  build. The page reads a snapshot's `webBuild` before the rest of it: a
+  snapshot of another build whose other parts this page cannot read, as when
+  the new release added a value the old page does not know, still loads the
+  new build, and never leaves the banner up for good.
+- **What the reload opens.** The page loads itself at the address it shows,
+  and a page that showed a new conversation, which has no record before its
+  first send, opens a new conversation again, never "Conversation not
+  found".
 - **Where the build comes from.** Each `vite build` of `web` names its build
   with a new random id. The page carries the id, and the build writes it
   beside `index.html` as `build.json`, `{ "build": "<id>" }`. A rebuild of the
