@@ -11,7 +11,7 @@ import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import type { AttachedHost, ConversationDraft, ConversationSummary, DraftFile, Preferences } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
-import { productState } from '../__tests__/product-state'
+import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import * as draftStorage from './drafts'
@@ -123,31 +123,7 @@ function draftRoute(id: string, method: string, action: boolean, body: Record<st
 }
 
 function record(id: string, title = id): ConversationSummary {
-  return {
-    id,
-    title,
-    pinned: false,
-    archived: false,
-    readRevision: 0,
-    revision: 0,
-    unread: false,
-    titleCurrent: true,
-    titleGenerating: false,
-    pluginsChanged: false,
-    draftRevision: 0,
-    panelRevision: 0,
-    hostsRevision: 0,
-    pluginRevisions: [],
-    permissionRequests: 0,
-    permissionsRevision: 0,
-    cwd: `/home/demi/sessions/${id}`,
-    target: { kind: 'cloud' },
-    contextVersion: 0,
-    model: null,
-    createdAt: '2026-09-09T00:00:00.000Z',
-    updatedAt: '2026-09-09T00:00:00.000Z',
-    status: 'idle',
-  }
+  return conversationSummary(id, title, { cwd: `/home/demi/sessions/${id}` })
 }
 
 beforeEach(async () => {

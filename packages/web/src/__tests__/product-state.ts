@@ -48,6 +48,6 @@ export function conversationSummary(id: string, title = '', parts: Partial<Conve
     titleCurrent: true, titleGenerating: false, pluginsChanged: false, draftRevision: 0, panelRevision: 0, hostsRevision: 0, pluginRevisions: [],
     permissionRequests: 0, permissionsRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
     contextVersion: 0, model: null, createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
-    status: 'idle', ...parts,
+    status: 'idle', lastTurn: null, ...parts,
   }
 }

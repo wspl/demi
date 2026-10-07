@@ -2,13 +2,11 @@ import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { z } from 'zod'
 import { truncate } from '@demicodes/utils'
-import type { Block } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
 import { categoryAction } from '@demicodes/web-ui/permissions/types'
-import { apiRequest, readResponse } from '../api/client'
 import { readPermissions } from '../api/permissions'
-import { transcriptSchema, type ConversationSummary } from '../api/generated/web-api'
+import type { ConversationSummary, LastTurn } from '../api/generated/web-api'
 import { useProduct } from './product'
 
 /**
@@ -69,61 +67,81 @@ function browserPermission(): BrowserPermission {
 }
 
 /** What a change of a conversation's summary notifies of. */
-export type NotificationCause = 'turnFinished' | 'turnFailed' | 'permission'
+export type NotificationCause =
+  | { kind: 'turnFinished'; turn: LastTurn }
+  | { kind: 'turnFailed'; turn: LastTurn }
+  | { kind: 'permission' }
 
 /**
- * What the change from `previous` to `next` of a conversation's summary
- * notifies of, under `settings`, while `front` is the conversation in front
- * of the user, or null when the page is hidden or not focused. A turn that
- * ended with an answer or an error notifies; one the user stopped does not.
- * A change of the permission requests that leaves some undecided asks for a
- * read of them, to tell the new ones. A conversation the page has seen no
- * summary of before has no change to tell.
+ * What the page holds of a conversation it follows: its latest summary, and
+ * the ended turn it has accounted for, notified or not.
  */
-export function notificationCauses(
-  previous: ConversationSummary | undefined,
+export interface Followed {
+  summary: ConversationSummary
+  endedTurn: string | null
+}
+
+/**
+ * The page's next hold of a conversation, from what it held before and the
+ * conversation's `next` summary, and what that summary notifies of under
+ * `settings`, while `front` is the conversation in front of the user, or
+ * null when the page is hidden or not focused.
+ *
+ * A turn notifies once its conversation's work has settled and the summary
+ * names an ended turn other than the one the page accounted for, so a turn
+ * that starts and ends between two summaries still notifies. While the
+ * conversation runs, its latest ended turn may be an older one, as a retry
+ * or an edit cuts the last one from the history, so the page waits for the
+ * work to settle. A turn that ended with an answer or an error notifies; one
+ * the user stopped does not. A change of the permission requests that leaves
+ * some undecided asks for a read of them, to tell the new ones. A
+ * conversation the page has not followed before has no change to tell.
+ */
+export function follow(
+  previous: Followed | undefined,
   next: ConversationSummary,
   settings: NotificationSettings,
   front: string | null,
-): NotificationCause[] {
-  if (!settings.enabled || !previous || next.id === front) {
-    return []
+): { followed: Followed; causes: NotificationCause[] } {
+  const turn = next.lastTurn
+  if (!previous) {
+    return { followed: { summary: next, endedTurn: turn?.id ?? null }, causes: [] }
+  }
+  const settled = next.status !== 'running' && next.status !== 'compacting'
+  const followed = { summary: next, endedTurn: settled ? (turn?.id ?? null) : previous.endedTurn }
+  if (!settings.enabled || next.id === front) {
+    return { followed, causes: [] }
   }
   const causes: NotificationCause[] = []
-  if (previous.status === 'running' && next.status === 'completed' && settings.turnFinishes) {
-    causes.push('turnFinished')
-  }
-  if (previous.status === 'running' && next.status === 'error' && settings.turnFails) {
-    causes.push('turnFailed')
+  if (settled && turn && turn.id !== previous.endedTurn) {
+    if (turn.outcome === 'finished' && settings.turnFinishes) {
+      causes.push({ kind: 'turnFinished', turn })
+    }
+    if (turn.outcome === 'failed' && settings.turnFails) {
+      causes.push({ kind: 'turnFailed', turn })
+    }
   }
   if (
     settings.needsPermission &&
     next.permissionRequests > 0 &&
-    next.permissionsRevision !== previous.permissionsRevision
+    next.permissionsRevision !== previous.summary.permissionsRevision
   ) {
-    causes.push('permission')
+    causes.push({ kind: 'permission' })
   }
-  return causes
+  return { followed, causes }
 }
 
 /**
- * The start of the answer that ended the last turn, as a notification says
- * it: the last text after the user's last message, in plain text, cut to
- * 120 characters; empty for a turn that ended without one.
+ * The start of a finished turn's answer as a notification says it: in plain
+ * text, cut to 120 characters; empty for a turn that ended without one.
  */
-export function answerStart(blocks: readonly Block[]): string {
-  const asked = blocks.findLastIndex((block) => block.type === 'user')
-  const answer = blocks.slice(asked + 1).findLast((block) => block.type === 'text')
-  return answer?.type === 'text' ? truncate(markdownPlainText(answer.text), ANSWER_START_CHARS) : ''
-}
-
-function byId(summaries: readonly ConversationSummary[] | undefined): Map<string, ConversationSummary> {
-  return new Map((summaries ?? []).map((summary) => [summary.id, summary]))
+export function answerStart(turn: LastTurn): string {
+  return turn.answerStart === null ? '' : truncate(markdownPlainText(turn.answerStart), ANSWER_START_CHARS)
 }
 
 /** The tag of a turn's notification: the same on every page of the browser, which shows it once. */
-function turnTag(summary: ConversationSummary): string {
-  return `turn:${summary.id}:${summary.revision}`
+function turnTag(conversationId: string, turn: LastTurn): string {
+  return `turn:${conversationId}:${turn.id}`
 }
 
 /**
@@ -192,28 +210,12 @@ export const useNotifications = defineStore('notifications', () => {
     if (!signal) {
       return
     }
-    switch (cause) {
-      case 'turnFinished': {
-        // Once the conversation no longer runs, its transcript shows what
-        // the live tree showed (`web-api.md` § Sidebar mutations and read state).
-        let body = ''
-        try {
-          const response = await apiRequest(`/conversations/${encodeURIComponent(summary.id)}/transcript`, { signal })
-          body = answerStart((await readResponse(response, transcriptSchema)).blocks)
-        } catch (error) {
-          if (signal.aborted) {
-            return
-          }
-          // The notification still says that the turn finished, without the answer.
-          reportError('Could Not Read the Answer for a Notification', error)
-        }
-        if (settings.value.turnFinishes) {
-          show(summary.id, summary.title, body, turnTag(summary), open)
-        }
+    switch (cause.kind) {
+      case 'turnFinished':
+        show(summary.id, summary.title, answerStart(cause.turn), turnTag(summary.id, cause.turn), open)
         return
-      }
       case 'turnFailed':
-        show(summary.id, summary.title, 'The turn stopped with an error.', turnTag(summary), open)
+        show(summary.id, summary.title, 'The turn stopped with an error.', turnTag(summary.id, cause.turn), open)
         return
       case 'permission': {
         let requests
@@ -258,19 +260,21 @@ export const useNotifications = defineStore('notifications', () => {
       // A browser without the query keeps the permission it was asked for.
       console.warn('Could not follow the notification permission', error)
     })
-    let previous = byId(product.snapshot?.conversations)
-    stopFollowing = watch(
-      () => product.snapshot?.conversations,
-      (summaries) => {
-        const inFront = front()
-        for (const summary of summaries ?? []) {
-          for (const cause of notificationCauses(previous.get(summary.id), summary, settings.value, inFront)) {
-            void notify(cause, summary, open)
-          }
+    let following = new Map<string, Followed>()
+    const followAll = (summaries: readonly ConversationSummary[] | undefined) => {
+      const inFront = front()
+      const next = new Map<string, Followed>()
+      for (const summary of summaries ?? []) {
+        const { followed, causes } = follow(following.get(summary.id), summary, settings.value, inFront)
+        next.set(summary.id, followed)
+        for (const cause of causes) {
+          void notify(cause, summary, open)
         }
-        previous = byId(summaries)
-      },
-    )
+      }
+      following = next
+    }
+    followAll(product.snapshot?.conversations)
+    stopFollowing = watch(() => product.snapshot?.conversations, followAll)
   }
 
   function stop(): void {
