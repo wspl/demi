@@ -1,11 +1,11 @@
-// What `up`, `down` and `runner` share about the slot's processes: the
+// What `demi.up`, `demi.down` and `demi.runner` share about the slot's processes: the
 // environment they start with, the log each writes, and how the tool waits
 // until one is ready or has failed.
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import net from 'node:net'
 import { dirname, join, resolve } from 'node:path'
 import { parseEnv } from 'node:util'
-import { CommandFailure, type Context } from './command'
+import { Failure, type Tool } from './tool'
 import { ownGroupRuns, type Started } from './processes'
 import { slotPaths, type Slot } from './slot'
 import { readState, type ServerName } from './state'
@@ -16,14 +16,14 @@ import { readState, type ServerName } from './state'
  * `extra`. A runner refuses a `DEMI_*` variable it does not know, and the
  * servers read the slot's `.env` themselves.
  */
-export function childEnv(context: Context, extra: Record<string, string>): Record<string, string | undefined> {
+export function childEnv(tool: Tool, extra: Record<string, string>): Record<string, string | undefined> {
   const env: Record<string, string | undefined> = {}
   for (const [name, value] of Object.entries(process.env)) {
     if (!name.startsWith('DEMI_')) {
       env[name] = value
     }
   }
-  return { ...env, ...context.env, ...extra }
+  return { ...env, ...tool.env, ...extra }
 }
 
 /** The log of the process `name`, emptied for a new start. */
@@ -76,10 +76,10 @@ export async function untilReady<T>(
       return answer
     }
     if (exit !== null) {
-      throw new CommandFailure(`${what} exited with ${exit} before it was ready. Its log, ${started.group.log}, ends:\n${tail(started.group.log)}`)
+      throw new Failure(`${what} exited with ${exit} before it was ready. Its log, ${started.group.log}, ends:\n${tail(started.group.log)}`)
     }
     if (Date.now() >= deadline) {
-      throw new CommandFailure(`${what} was not ready within ${timeoutMs / 1000} s. Its log, ${started.group.log}, ends:\n${tail(started.group.log)}`)
+      throw new Failure(`${what} was not ready within ${timeoutMs / 1000} s. Its log, ${started.group.log}, ends:\n${tail(started.group.log)}`)
     }
     await Bun.sleep(POLL_MS)
   }

@@ -1,10 +1,10 @@
 // What the page logged, requested, and sent or received on its sockets
-// since the tool attached to the browser (browse.md § Watching), kept in the
-// daemon so that `log` finds what happened before anyone asked. A page that
+// since the tool attached to the browser (browse.md § What `demi` adds), kept
+// in the server so that `demi.log` finds what happened before anyone asked. A page that
 // reaches a runner over a direct channel (`direct-channel.md`) runs its file
 // operations and its file watch on data channels, which no network event
 // shows: a script in the page tells the console about them, and they are
-// kept with the requests and the sockets. A daemon
+// kept with the requests and the sockets. A server
 // that ends for changed code leaves them in the slot's folder for the next
 // one, which attaches to the same browser and goes on from them.
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -19,24 +19,30 @@ const entrySchema = z.object({
   /** Milliseconds since the tool attached to the browser. */
   at: z.number(),
   text: z.string(),
-  /** Whether a network entry is the dev server's module traffic, which `log network` leaves out. */
+  /** Whether a network entry is the dev server's module traffic, which `demi.log.network` leaves out. */
   module: z.boolean(),
 })
 type Entry = z.infer<typeof entrySchema>
 
-/** The logs a daemon leaves for the next, with the browser they were kept for. */
+/** The logs a server leaves for the next, with the browser they were kept for. */
 const savedSchema = z.object({
   /** The DevTools endpoint of the browser the logs are of. */
   browser: z.string(),
   started: z.number(),
   sequence: z.number().int(),
   markAt: z.number().int(),
-  markName: z.string().nullable(),
   entries: z.object({ console: z.array(entrySchema), network: z.array(entrySchema), sockets: z.array(entrySchema) }),
 })
 
 /** What starts a console line the page's direct channel script writes, followed by its log kind. */
 const DIRECT_MARK = '[browse direct]'
+
+/**
+ * A network entry of a request that failed or was answered with an error:
+ * `GET 404 …` or `GET FAILED …` over HTTP, and on a direct channel any
+ * answer but `ok` or `answered`, such as `direct list forbidden …`.
+ */
+const FAILED_REQUEST = /^(?:\S+ (?:FAILED|[45]\d\d) |direct \S+ (?!ok |answered )\S+)/
 
 /** How many entries each kind keeps; older ones go. */
 const LIMIT = 20_000
@@ -48,9 +54,8 @@ export class Logs {
   private entries: Record<LogKind, Entry[]> = { console: [], network: [], sockets: [] }
   private sequence = 0
   private started = Date.now()
-  /** The sequence `log mark` set; entries after it are the ones `log` prints. */
+  /** The sequence `demi.log.mark` set; entries after it are the ones `demi.log` answers. */
   private markAt = 0
-  private markName: string | null = null
 
   /** Starts over for a new browser. */
   reset(): void {
@@ -59,24 +64,22 @@ export class Logs {
     }
     this.started = Date.now()
     this.markAt = 0
-    this.markName = null
   }
 
-  /** Leaves the logs of the browser at `browser` in the file `path`, for the next daemon. */
+  /** Leaves the logs of the browser at `browser` in the file `path`, for the next server. */
   save(path: string, browser: string): void {
     const saved: z.infer<typeof savedSchema> = {
       browser,
       started: this.started,
       sequence: this.sequence,
       markAt: this.markAt,
-      markName: this.markName,
       entries: this.entries,
     }
     writeFileSync(path, JSON.stringify(saved))
   }
 
   /**
-   * Goes on from the logs a daemon left in `path` when they are of the
+   * Goes on from the logs a server left in `path` when they are of the
    * browser at `browser`, and starts over otherwise; the file is used once.
    */
   restore(path: string, browser: string): void {
@@ -93,7 +96,6 @@ export class Logs {
     this.started = saved.started
     this.sequence = saved.sequence
     this.markAt = saved.markAt
-    this.markName = saved.markName
   }
 
   add(kind: LogKind, text: string, module = false): void {
@@ -105,26 +107,36 @@ export class Logs {
     }
   }
 
-  mark(name: string | null): string {
-    this.markAt = this.sequence
-    this.markName = name
-    return name ?? `at ${formatAt(Date.now() - this.started)}`
+  /** The sequence of the newest entry, which a call notes as it begins. */
+  get newest(): number {
+    return this.sequence
   }
 
-  /** The entries of `kind` since the mark, or since the daemon attached to the browser when `all`. */
+  /**
+   * What went wrong after the entry `since`, for a call's report: the
+   * page's console errors and uncaught errors, and its requests that failed
+   * or were answered with an error, the dev server's modules among them.
+   */
+  problems(since: number): { console: string[], network: string[] } {
+    const after = (kind: LogKind) => this.entries[kind].filter((entry) => entry.sequence > since).map((entry) => entry.text)
+    return {
+      console: after('console').filter((text) => /^(error|uncaught): /.test(text)),
+      network: after('network').filter((text) => FAILED_REQUEST.test(text)),
+    }
+  }
+
+  /** Starts what `read` answers from now; answers the mark's name, or when it was set. */
+  mark(name: string | null): string {
+    this.markAt = this.sequence
+    return name ?? `at ${formatAt(Date.now() - this.started).trim()}`
+  }
+
+  /** The entries of `kind` since the mark, or since the server attached to the browser when `all`. */
   read(kind: LogKind, options: { all: boolean, modules: boolean }): string[] {
     const since = options.all ? 0 : this.markAt
     return this.entries[kind]
       .filter((entry) => entry.sequence > since && (options.modules || !entry.module))
       .map((entry) => `${formatAt(entry.at)}  ${entry.text}`)
-  }
-
-  /** What the reader sees as the start of `read`'s entries. */
-  since(all: boolean): string {
-    if (all || this.markAt === 0) {
-      return 'since the tool attached to the browser'
-    }
-    return this.markName ? `since the mark ${this.markName}` : 'since the mark'
   }
 
   /** Records what `context` and each of its pages do from now on. */
@@ -133,7 +145,7 @@ export class Logs {
     for (const page of context.pages()) {
       this.watchPage(page)
       // A page open before the tool attached gets the script now; one a
-      // daemon before this one gave it keeps it.
+      // server before this one gave it keeps it.
       await page.evaluate(recordDirectChannels, DIRECT_MARK).catch(() => undefined)
     }
     context.on('page', (page) => this.watchPage(page))
@@ -228,7 +240,7 @@ export function recordDirectChannels(mark: string): void {
       }
       Reflect.apply(send, channel, data)
     }
-    /** The request entry of the channel's operation, as `log network` prints a request's. */
+    /** The request entry of the channel's operation, as `demi.log.network` answers a request's. */
     const request = (answer: string) => {
       const op = header?.op ?? channel.label
       const path = header?.path ? ` ${header.path}` : ''
