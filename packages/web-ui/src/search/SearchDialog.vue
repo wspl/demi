@@ -17,8 +17,11 @@ import { SEARCH_QUERY_MAX, useConversationSearch, type SearchRow, type SearchSou
  * Search in the sidebar open, as ⌘K does in Slack, Linear and ChatGPT: a
  * field, and under it the most recent conversations until the user types,
  * then, once typing pauses, the conversations that match. Each row shows the
- * title, the line of the message that matched with the match marked, when
- * the conversation was last active, and Archived for an archived one. ↑ and
+ * title and the line of the message that matched, the matches marked in
+ * both, when the conversation was last active, and Archived for an archived
+ * one. The window is as tall as its list, up to a limit past which the list
+ * scrolls, and hangs from the top, so the field stays put as the list
+ * changes, as in Spotlight and Raycast. ↑ and
  * ↓ move the selection, Return or a click opens the selected conversation,
  * and Escape closes the window. An input method's Return picks its
  * candidate and opens nothing.
@@ -106,12 +109,14 @@ const emptyLabel = computed(() =>
     :is-open="isOpen"
     :overlay-store="overlayStore"
     size="wide"
+    anchor="top"
     label="Search"
     :scroll-content="false"
     @close="emit('close')"
   >
-    <!-- A stable height the dialog caps to the viewport: results never resize the window. -->
-    <div class="flex h-[30rem] min-h-0 flex-col">
+    <!-- As tall as its list, up to a limit past which the list scrolls; the dialog hangs from
+         the top, so the field stays where it is as the list grows and shrinks. -->
+    <div class="flex max-h-[min(32rem,76vh)] min-h-0 flex-col">
       <!-- The field's 28px row sits 12px from the top, centered on the close button beside it. -->
       <div class="shrink-0 p-3 pr-12">
         <TextInput
@@ -130,7 +135,7 @@ const emptyLabel = computed(() =>
           <template #prefix><Search :size="ICON_PX.in24" /></template>
         </TextInput>
       </div>
-      <ScrollArea class="min-h-0 flex-1 border-t border-line" viewport-class="flex flex-col p-2">
+      <ScrollArea class="min-h-0 border-t border-line" viewport-class="flex flex-col p-2">
         <RegionStatus
           v-if="view.kind === 'failed'"
           status="failed"
@@ -170,7 +175,7 @@ const emptyLabel = computed(() =>
             @click="openRow(row)"
           >
             <div class="flex min-w-0 items-center gap-2">
-              <span class="min-w-0 flex-1 truncate text-chrome text-fg-emphasis">{{ row.title }}</span>
+              <span class="min-w-0 flex-1 truncate text-chrome text-fg-emphasis"><HighlightText :text="row.title" :ranges="row.titleRanges" /></span>
               <Tag v-if="row.archived">Archived</Tag>
               <RelativeTime class="shrink-0 text-[12px] text-fg-subtle" :timestamp="row.lastActiveAt" />
             </div>

@@ -3,7 +3,7 @@ import type { SearchRow, SearchSource } from '@demicodes/web-ui/search/search'
 import { ago } from './time'
 
 /** A conversation a specimen's search reads: its row, and the text of its messages, oldest first. */
-export interface SearchableConversation extends Omit<SearchRow, 'match'> {
+export interface SearchableConversation extends Omit<SearchRow, 'match' | 'titleRanges'> {
   messages: { blockId: string; text: string }[]
 }
 
@@ -108,7 +108,8 @@ export function fixtureSearch(conversations: () => readonly SearchableConversati
             return []
           }
           const match = message ? { blockId: message.blockId, ...matchLine(message.text, words) } : null
-          return [{ byTitle, row: { ...row, match } }]
+          const titleRanges = byTitle ? occurrences(row.title, words) : []
+          return [{ byTitle, row: { ...row, titleRanges, match } }]
         })
         found.sort((a, b) => Number(b.byTitle) - Number(a.byTitle) || b.row.lastActiveAt.localeCompare(a.row.lastActiveAt))
         resolve(found.slice(0, 50).map(({ row }) => row))
