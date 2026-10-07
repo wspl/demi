@@ -185,6 +185,9 @@ async function launchBackend(root: string, socket: string): Promise<Backend> {
       DEMI_INSTANCE_MODE: 'shared',
       DEMI_BACKEND_PUBLIC_URL: origin,
       DEMI_MACHINE_MANAGER_SOCKET: socket,
+      // The suite never reaches the deployed preview domain: nothing listens
+      // on port 9, so the backend serves without a namespace and tries again.
+      DEMI_PREVIEW_DOMAIN: 'demi-preview.localhost:9',
     },
     stdout: 'pipe',
     stderr: 'pipe',

@@ -80,6 +80,8 @@ test('the channel\'s snapshot is the page\'s copy, and each later message replac
   expect(product.snapshot?.preferences.appearance.theme).toBe('dark')
   channel.send({ type: 'user', user: { ...productState().user, nickname: 'Ana' } })
   expect(product.snapshot?.user.nickname).toBe('Ana')
+  channel.send({ type: 'preview', preview: { domain: 'demi-preview.dev', namespace: 'jdoj0t2f' } })
+  expect(product.snapshot?.preview).toEqual({ domain: 'demi-preview.dev', namespace: 'jdoj0t2f' })
   channel.send({ type: 'heartbeat' })
   expect(titles()).toEqual(['Renamed', 'Second'])
   // A later snapshot, as after a reconnect, replaces the whole copy.

@@ -20,6 +20,7 @@ use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_remote_host::testing::{
     NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary,
 };
+use demi_backend_user_shard::preview::PreviewSettings;
 use demi_backend_user_shard::tuning::{
     ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning,
 };
@@ -286,6 +287,9 @@ pub struct Harness {
     /// Whether the backends have the `fixture-panel` plugin and its `page`
     /// kind.
     panel_fixture: bool,
+    /// The preview domain the backends keep their namespace at; without it,
+    /// they register none.
+    pub preview: Option<PreviewSettings>,
 }
 
 impl Harness {
@@ -330,6 +334,7 @@ impl Harness {
             objects: None,
             skill_repos: None,
             panel_fixture: false,
+            preview: None,
         }
     }
 
@@ -557,6 +562,7 @@ impl Harness {
         config.pages = self.pages;
         config.public_url = self.public_url.clone();
         config.object_counts = self.objects.clone();
+        config.preview = self.preview.clone();
         assert!(
             self.release.is_none() || self.server_release.is_none(),
             "a harness loads a workspace package or a server release, not both"
