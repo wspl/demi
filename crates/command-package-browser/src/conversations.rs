@@ -91,6 +91,9 @@ struct ConversationBrowser {
     cancellation: CancellationToken,
     /// The invocations admitted into the conversation.
     commands: TaskTracker,
+    /// The conversation's tab numbers and its tabs closed on purpose, which
+    /// outlast each browser.
+    numbers: TabNumbers,
 }
 
 /// What starts a conversation's browser: the starting caller's locale.
@@ -125,7 +128,7 @@ impl ConversationBrowser {
         let owner = Owner {
             state: State::Absent,
             chrome,
-            numbers,
+            numbers: numbers.clone(),
             published,
             released: cancellation.clone(),
             tasks: tasks.clone(),
@@ -136,6 +139,7 @@ impl ConversationBrowser {
             lifecycle,
             cancellation,
             commands: TaskTracker::new(),
+            numbers,
         })
     }
 
@@ -972,6 +976,15 @@ impl Conversations {
             let installed = self.install(context).await?;
             return Ok(CommandOutput::Json(output::value(installed)?));
         }
+        // Only the user's page reads the tab list's number and its tabs closed
+        // on purpose, and only it stops a load (`live-view.md` § The tab methods).
+        let user = context.request.context.caller.agent_number().is_none();
+        if matches!(command, BrowserOperation::Stop(_)) && !user {
+            // The agent waits for its commands rather than stopping a load.
+            return Err(BrowserError::Configuration(
+                "stop is the user's: an agent's command waits for its page instead".into(),
+            ));
+        }
         let starts = matches!(
             command,
             BrowserOperation::Open(_) | BrowserOperation::ContentFetch(_)
@@ -979,8 +992,6 @@ impl Conversations {
         let starting = starts.then(|| Starting {
             locale: context.request.context.locale.clone(),
         });
-        // Only the user's page reads the tab list's number (`live-view.md` § The tab methods).
-        let user = context.request.context.caller.agent_number().is_none();
         let environment = browser.environment(starting.as_ref(), cancellation).await?;
         let Some(environment) = environment else {
             if matches!(command, BrowserOperation::Tabs(_)) {
@@ -989,6 +1000,7 @@ impl Conversations {
                     list: user.then_some(0),
                     tabs: Vec::new(),
                     truncated: false,
+                    closed: user.then(|| browser.numbers.closed()),
                 })?));
             }
             return Err(BrowserError::TabNotFound);
@@ -1092,6 +1104,7 @@ impl Conversations {
                 list: user.then_some(list),
                 tabs: rows,
                 truncated: listing.tabs.len() > offset.saturating_add(limit),
+                closed: user.then(|| browser.numbers.closed()),
             })?));
         }
         let id = command.tab().ok_or(BrowserError::TabNotFound)?;
@@ -1103,6 +1116,13 @@ impl Conversations {
             return Ok(CommandOutput::Json(output::value(ShowResult {
                 tab: tab.id().clone(),
             })?));
+        }
+        if matches!(command, BrowserOperation::Stop(_)) {
+            let operation = tab.operation(cancellation, deadline);
+            let stopped =
+                demi_command_package_browser_chrome::tabs::navigation::stop(tab, &operation)
+                    .await?;
+            return Ok(CommandOutput::Json(output::value(stopped)?));
         }
         if user
             && matches!(
