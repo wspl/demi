@@ -2,6 +2,7 @@
 import { Copy, Folder, Pencil, Plus, Settings, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
+import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { productWould } from '../product-would'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
@@ -114,6 +115,12 @@ const pinDangerToast = ref(true)
 const pinRejectedToast = ref(true)
 const pinNeutralToast = ref(true)
 const pinCopiedToast = ref(true)
+const pinUndoToast = ref(true)
+/** Undo closes the pinned toast, as an action does, and the product restores the conversation. */
+function undoPinnedArchive(): void {
+  pinUndoToast.value = false
+  productWould('Restore the Conversation')
+}
 
 const paradigmSelected = ref('hairline')
 const densitySelected = ref('compact')
@@ -790,7 +797,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
     <template v-if="view === 'dialogs'">
       <GallerySection
         title="Toast"
-        note="The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, a fact, Copied, and live host."
+        note="The mark follows what happened: a cross for a request that failed, an i for a fact about one that neither worked nor failed, a check for an action that worked where nothing else shows it. A toast may offer one action, which closes it. A failure stays until it is closed; any other closes after six seconds, or ten when it offers an action such as Undo, as Gmail keeps its Undo, paused while the pointer is over the toasts. Danger, a rejected action whose title wraps, a fact, Copied, Undo, and live host."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="danger">
@@ -857,6 +864,24 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               >Show</Button>
             </div>
           </GallerySpecimen>
+          <GallerySpecimen variant="undo">
+            <div class="w-80">
+              <Toast
+                v-if="pinUndoToast"
+                title="Conversation Archived"
+                tone="success"
+                action="Undo"
+                @act="undoPinnedArchive"
+                @dismiss="pinUndoToast = false"
+              />
+              <Button
+                v-else
+                size="md"
+                variant="ghost"
+                @click="pinUndoToast = true"
+              >Show</Button>
+            </div>
+          </GallerySpecimen>
           <GallerySpecimen variant="live">
             <div class="flex flex-wrap gap-2">
               <Button
@@ -868,6 +893,11 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 variant="ghost"
                 @click="showToast({ title: 'Copied', tone: 'success' })"
               >Copy ID</Button>
+              <Button
+                size="md"
+                variant="ghost"
+                @click="showArchived(1, () => productWould('Restore the Conversation'))"
+              >Archive</Button>
             </div>
           </GallerySpecimen>
         </div>
