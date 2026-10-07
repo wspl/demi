@@ -1139,6 +1139,64 @@ test('opening a conversation sends its reads at once and shows the transcript be
   await opened
 })
 
+// A conversation opened while Demi restarts shows it loading under the
+// connection banner, never a failure about the connection, and loads once
+// the page reaches the backend again (`web-application.md` § A page of
+// another build). Cost: one opening, no timer.
+test('a conversation opened while the backend is away loads once it is back, without failing', async () => {
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  let away = true
+  let refused = 0
+  const restoreFetch = answerOpening(FIRST)
+  const served = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (away && String(input).endsWith('/transcript')) {
+      refused += 1
+      // What the development server's proxy answers while no backend runs behind it.
+      return new Response('Bad Gateway', { status: 502 })
+    }
+    return served(input, init)
+  }) as typeof fetch
+  try {
+    channels.last().end(1001, 'backend_closing')
+    expect(useProduct().connection).toBe('restarting')
+    const opened = store.activate(FIRST)
+    await waitFor(() => refused === 1, () => 'no transcript request')
+    expect(first.load).toBe('loading')
+    expect(first.lastError).toBeNull()
+    away = false
+    pageReturned()
+    channels.last().connect(backendState())
+    await opened
+    expect(first.load).toBe('ready')
+    expect(first.lastError).toBeNull()
+  } finally {
+    restoreFetch()
+  }
+})
+
+// Only the backend's own answer shows the failure pane, at once.
+test('a conversation the backend does not have fails to open at once', async () => {
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  const restoreFetch = answerOpening(FIRST)
+  const served = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (String(input).endsWith('/transcript')) {
+      return Response.json({ code: 'conversation_not_found', message: 'Conversation not found' }, { status: 404 })
+    }
+    return served(input, init)
+  }) as typeof fetch
+  try {
+    await store.activate(FIRST)
+    expect(first.load).toBe('failed')
+    expect(first.lastError).toBe('Conversation not found')
+  } finally {
+    restoreFetch()
+  }
+})
+
 test('a conversation that can run makes its socket beside its reads', async () => {
   records[0]!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
   await changed(FIRST)

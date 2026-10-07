@@ -71,14 +71,22 @@ async function forkFromAnswer(): Promise<void> {
   productWould('Fork the conversation from this answer')
 }
 
-const LOAD_ERROR = 'Could not load the transcript: HTTP 502 Bad Gateway'
+/** The backend's own answer to the transcript read: a 500 with its error body, never the connection. */
+const LOAD_ERROR = 'The transcript could not be read: database disk image is malformed'
 
 const cases: SessionCase[] = [
   {
     variant: 'Initial load failed · nothing to keep',
-    note: 'The status pane replaces the transcript and carries the reason and Retry. Nothing else says it; there is no composer.',
+    note: 'The backend answered the transcript read with its own error. The status pane replaces the transcript and carries the reason and Retry. Nothing else says it; there is no composer. A read that cannot reach the backend never ends here: it waits under the banner, as the next specimen shows.',
     session: state('initial', { load: 'failed', lastError: LOAD_ERROR }),
     composer: 'none',
+  },
+  {
+    variant: 'Opened while Demi restarts · loading under the banner',
+    note: 'Not a failure. The user opened a conversation the page had not loaded while it cannot reach Demi: the banner says so, and the conversation shows it loading until the page is back, then loads. Nothing to click.',
+    session: state('opening-away', { load: 'loading' }),
+    banner: 'restarting',
+    composer: 'default',
   },
   {
     variant: 'Connection lost · reconnecting on its own',
