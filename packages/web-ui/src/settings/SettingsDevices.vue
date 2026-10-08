@@ -10,7 +10,7 @@ import type { SentenceText } from '../ui/ui-text'
 import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
-import { directReason, reasonShort, type DeviceRoute } from '../devices/direct'
+import { directReason, type DeviceRoute } from '../devices/direct'
 import type { DeviceInstallation } from '../devices/installation'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
@@ -24,8 +24,9 @@ import type { SettingsDevice } from './types'
 /**
  * Settings → Devices (`direct-channel.md` § What the user sees): the Cloud,
  * then the paired devices, each a row that names it and says in one line
- * its system and how this page reaches it, and opens its own page, which
- * `shown` names; the page is shown in the list's place.
+ * its system and its state, such as how this page reaches it or when an
+ * offline one was last seen, and opens its own page, which `shown` names;
+ * the page is shown in the list's place.
  */
 const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
@@ -61,17 +62,12 @@ const emit = defineEmits<{
   resetCloud: [operationId: string]
 }>()
 
-/** How this page reaches a device, in the few words its row has room for. */
+/** A device's state in its row: how this page reaches it while it is online; the reason waits on its page. */
 function reachedAs(device: SettingsDevice): SentenceText {
   if (device.state !== 'online') {
     return DEVICE_STATE_LABEL[device.state]
   }
-  const reason = directReason(device.direct)
-  if (reason === null) {
-    return 'Connected directly'
-  }
-  const short = reasonShort(reason)
-  return short ? `Through the server, ${short}` : 'Through the server'
+  return directReason(device.direct) === null ? 'Connected directly' : 'Through the server'
 }
 
 const { isOpen, phase, open, close, submit } = useDevicePairing(
@@ -154,9 +150,7 @@ const pageProjects = computed(() =>
           @click="emit('show', device.id)"
         >
           <template #description>
-            <template v-if="device.os">{{ device.os.name }} · </template>
-            <template v-if="device.state === 'offline' && device.seen">Last seen <RelativeTime :timestamp="device.seen" /></template>
-            <template v-else>{{ reachedAs(device) }}</template>
+            <template v-if="device.os">{{ device.os.name }} · </template>{{ reachedAs(device) }}<template v-if="device.state === 'offline' && device.seen"> · Last seen <RelativeTime :timestamp="device.seen" /></template>
           </template>
           <template #leading>
             <span class="relative flex">

@@ -2,6 +2,7 @@
 import { inject, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { ChevronLeft } from '@lucide/vue'
 import Button from '../ui/Button.vue'
+import StatusDot, { type StatusDotTone } from '../ui/StatusDot.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { SentenceText, TitleText } from '../ui/ui-text'
@@ -16,15 +17,18 @@ import { settingsLevelKey, settingsPageKey, type SettingsLevel } from './navigat
  * goes back to it instead, as System Settings and iOS do.
  *
  * A page of one thing says its state in its header, never in rows: an
- * `icon` beside the title, a `status` line under it (a dot and a few
- * words), the `description` sentence that explains it, and `actions` on a
- * line of their own under the text, starting where it starts, as macOS's
- * Network settings head a service's page. A row below is only a setting or
- * a fact.
+ * `icon` beside the title, a `status` line under it (a dot of
+ * `statusTone` and a few words), the `description` that explains it, and
+ * `actions` on a line of their own, as macOS's Network settings head a
+ * service's page. The icon is exactly as tall as the title and status lines
+ * together and centred on them; the description and the actions start where
+ * the title starts. A row below is only a setting or a fact.
  */
 const props = defineProps<{
   title: TitleText
   description?: SentenceText
+  /** The tone of the dot that leads the `status` line; none for a status without a dot. */
+  statusTone?: StatusDotTone
   /** The title of the page this one returns to: Devices. */
   back?: TitleText
   /** Use the whole column: for a list beside its detail. */
@@ -79,24 +83,33 @@ onBeforeUnmount(leaveBar)
           {{ back }}
         </Button>
       </div>
-      <div class="flex flex-wrap items-start gap-x-4 gap-y-3">
-        <div v-if="$slots.icon" class="flex size-10 shrink-0 items-center justify-center rounded-lg bg-surface-float text-fg-muted ring-1 ring-line">
+      <!--
+        The title line is 28px and the status line 20px, so the icon is 48px:
+        it spans both rows and is centred on them, and every other line takes
+        the title's column, the second beside an icon.
+      -->
+      <div class="grid items-start gap-x-4" :class="$slots.icon ? 'grid-cols-[auto_minmax(0,1fr)]' : 'grid-cols-1'">
+        <div
+          v-if="$slots.icon"
+          class="row-span-2 flex size-12 shrink-0 items-center justify-center self-center rounded-xl bg-surface-float text-fg-muted ring-1 ring-line"
+        >
           <slot name="icon" />
         </div>
-        <div class="min-w-60 flex-1">
-          <h2 class="text-[20px] font-medium leading-7 text-fg-emphasis">
-            <TruncatedText :text="title" />
-          </h2>
-          <div v-if="$slots.status" class="mt-0.5 flex items-center gap-1.5 text-[13px] leading-5 text-fg-body">
-            <slot name="status" />
-          </div>
-          <p v-if="description || $slots.description" class="mt-1 text-[13px] leading-5 text-fg-muted">
-            <slot name="description">{{ description }}</slot>
-          </p>
-          <!-- The header's buttons: a line of their own, in every state, so they never move with the text. -->
-          <div v-if="$slots.actions" class="mt-3 flex flex-wrap items-center gap-2">
-            <slot name="actions" />
-          </div>
+        <h2 class="min-w-0 text-[20px] font-medium leading-7 text-fg-emphasis">
+          <TruncatedText :text="title" />
+        </h2>
+        <div v-if="$slots.status" :class="$slots.icon ? 'col-start-2' : ''" class="flex min-w-0 items-start gap-1.5 text-[13px] leading-5 text-fg-body">
+          <!-- The dot sits in a box one line tall, so it is centred on the status's first line. -->
+          <span v-if="statusTone" class="flex h-5 shrink-0 items-center"><StatusDot :tone="statusTone" /></span>
+          <span class="min-w-0"><slot name="status" /></span>
+        </div>
+        <!-- A block, so the explanation may hold more than a sentence, such as a command to copy. -->
+        <div v-if="description || $slots.description" :class="[$slots.icon ? 'col-start-2' : '', $slots.status ? 'mt-2' : 'mt-1']" class="min-w-0 text-[13px] leading-5 text-fg-muted">
+          <slot name="description">{{ description }}</slot>
+        </div>
+        <!-- The header's buttons: a line of their own, in every state, so they never move with the text. -->
+        <div v-if="$slots.actions" :class="$slots.icon ? 'col-start-2' : ''" class="mt-3 flex flex-wrap items-center gap-2">
+          <slot name="actions" />
         </div>
       </div>
     </header>
