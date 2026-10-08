@@ -140,10 +140,6 @@ input, which the multi-worker control service also relies on
   parent's, whether its children may spawn, and whether it is enabled, which
   a new row is. A patch merges the fields it names in one transaction, and
   checks the name's uniqueness in the same one.
-- **Preview namespace:** one row: the deployment's namespace at the
-  [preview domain](../browser/preview.md#the-preview-domain-service), its
-  secret, sealed as a credential is, its expiry, and the origins it was last
-  registered with, so a start knows whether to renew it or replace them.
 - **Devices and workspaces:** `devices` stores ownership, kind, name,
   platform, the operating system and architecture and the runner release its runner last reported, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache

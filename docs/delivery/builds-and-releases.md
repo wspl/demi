@@ -516,58 +516,6 @@ since a change committed before the cached build would be missed. The repository
 50 GB, paid beyond the free 10 GB, and keeps an entry for 90 days after its
 last use, so an entry survives the time between releases.
 
-BoringSSL, a C library of the vendored btls-sys, has a cache entry of its
-own per target: the libraries and headers its build exports
-(`BORING_BSSL_INSTALL_DIR`), which a hit builds against
-(`BORING_BSSL_PATH`) instead of running CMake. The key is the target, the
-contents of `vendor/btls/btls-sys`, BoringSSL's source and patches included,
-the native build's code that sets its flags, the C compiler's and CMake's
-versions, the release profile and the `cc` and `cmake` crates' versions, so
-a change to any of them misses. There is no fallback key: a miss builds in a
-fresh CMake build directory, as every build did before, and only a build
-that produced the libraries is saved. A broken entry stays until its key
-changes; `gh cache delete` removes it.
-
-The image's packages come from GitHub's own Ubuntu mirror,
-`azure.archive.ubuntu.com`: from Ubuntu's archive they took from half a
-minute to five minutes, as its speed varied. The image's own apt sources
-still name Ubuntu's archive.
-
-Each step is a command of the repository that a developer runs too, a
-`bun xtask` command, `bun run build` or the image build script; only
-`bun xtask server-release --publish` differs, naming the command packages
-with the workspace version itself. So the workflow only orders them and
-carries files between jobs, as workflow artifacts kept for one day.
-
-A release has these assets:
-
-| Asset | Contents |
-| --- | --- |
-| `demi-<version>-server-linux-amd64.tar.zst`, `demi-<version>-server-linux-arm64.tar.zst` | The root of each architecture, without `image/`; runsc makes it about 60 MiB larger |
-| `demi-<version>-image-linux-amd64.tar`, `demi-<version>-image-linux-arm64.tar` | `image/` of each architecture |
-| `demi-runner-<target>.zst`, `demi-runner-<target>.exe.zst` on Windows | The release's files: each target's runner executable compressed with zstd, six files; the runner manifest's size and SHA-256 are the decompressed executable's |
-| `<executable>-<target>.zst` | The release's files: each target's compressed copy of each command program, eighteen files |
-| `install.sh`, `demi-server-x86_64-unknown-linux-musl`, `demi-server-aarch64-unknown-linux-musl` | The installer's bootstrap and the program it runs ([Installation](installation.md#the-bootstrap)) |
-| `SHA256SUMS` | The SHA-256 of each asset above |
-
-Unpacking a server archive and the image archive of the same architecture
-into one directory gives that architecture's root as a server runs it. The
-asset names and the format of `SHA256SUMS` never change: a server's
-`demi-server` of an earlier release finds the next release by them
-([What crosses releases](upgrades.md#what-crosses-releases)). The
-image's root filesystem is already compressed, so its archive only collects
-its two files. Every asset stays below GitHub's limit of 2 GiB per file; an
-image's root filesystem is about 700 MiB, and a server archive holds only the
-backend, the manager, the web app and the manifests. A paired device does
-not download from the release: it installs its runner from its backend,
-which takes it from the release the first time.
-
-The macOS and Windows executables are not signed or notarized, and a release
-never will be. Apple's linker gives each macOS executable the ad-hoc signature
-that arm64 requires. The installers download executables with `curl` or
-PowerShell rather than a browser, so the downloads carry no mark that would
-make the system ask before running them.
-
 ## Chrome for Testing
 
 Each Demi release pins one Chrome for Testing version, which `demi-browser`
@@ -657,70 +605,6 @@ A developer's Linux host gets the pinned version the same way, with
 `demi-server runtime`, which fetches it into `/opt/demi/gvisor/<version>/`
 alone.
 
-## Vendored crates
-
-The [web preview](../browser/preview.md#upstream-requests)'s engine requests
-upstream with Chrome's TLS fingerprint, which takes two changes that are not
-upstream yet: wreq with three more TLS options (the trust anchors extension
-and signature algorithm lists that start with values only declared), and
-btls-sys whose BoringSSL carries a 124-line patch listing those algorithms in
-the ClientHello. Both live under `vendor/<upstream>/<crate>`, as
-`vendor/wreq/wreq` and `vendor/btls/btls-sys`, BoringSSL's source included
-(about 29 MB), and the workspace's `[patch.crates-io]` puts them in place of
-the published crates. Each keeps its changes as a patch file beside it
-(`vendor/wreq/wreq.patch`, `vendor/btls/btls-sys.patch`), so a new upstream
-version takes them again, and `bun xtask vendor diff` lists them. The other
-vendored crates, such as the uutils ones, record their changes only in their
-`Cargo.toml`'s `[package.metadata.demi] patches`, which the same command
-lists.
-
-BoringSSL builds with CMake, so every machine that builds the workspace needs
-CMake on its `PATH`, a developer's included (`brew install cmake` on macOS),
-and git, which btls-sys applies its patches with, and libclang for bindgen.
-Every Windows build of BoringSSL uses CMake's Ninja generator, so it compiles
-with the compiler and the MSVC toolset the final link uses: Visual Studio's
-own generator would pick its newest installed toolset, and objects compiled
-with a newer toolset than the link's call library functions the older one
-lacks (on GitHub's Windows ARM runner, 14.51 against 14.44). A build of
-BoringSSL exports its libraries for the release workflow's cache
-([Release workflow](#release-workflow)), `crypto.lib` and `ssl.lib` from an
-MSVC build and `libcrypto.a` and `libssl.a` from the others. Ninja comes with
-Visual Studio's developer environment on Windows, and cross builds with
-cargo-xwin need it installed (`brew install ninja`).
-BoringSSL builds for Windows without its assembly, from any build machine, as
-upstream does on Windows: its x86-64 assembly would need NASM, and the
-emulated cipher order fixes the fingerprint either way, so the cost is only
-slower cryptography on Windows. All six targets have been built this way.
-
-## Preview runtime
-
-The [preview runtime](../browser/preview.md#the-runtime) is one script that
-embeds the rewriter as WebAssembly. `bun xtask preview-runtime` builds it:
-`preview-rewrite-wasm` for `wasm32-unknown-unknown` in the release profile
-with `opt-level = "s"`, `wasm-bindgen` of the version the workspace pins
-(0.2.129, as `wasm-bindgen-cli` must match the crate), then esbuild bundles
-`@demicodes/preview-runtime` with the WebAssembly inlined. The web app's build
-runs it first and carries the result as `runtime/<release>.js`, so a Cargo
-build of any executable needs none of it. The toolchain file lists
-`wasm32-unknown-unknown` beside the six targets.
-
-## Preview domain deployment
-
-The [preview domain service](../browser/preview.md#the-preview-domain-service)
-is one Cloudflare Worker with a KV namespace, in the project's Cloudflare
-account, serving `demi-preview.dev` through a proxied wildcard DNS record and
-Universal SSL. `.github/workflows/preview-domain.yml` deploys
-`services/preview-domain` with Wrangler when a commit on the release branch
-changes it, using the repository secrets `CLOUDFLARE_API_TOKEN` and
-`CLOUDFLARE_ACCOUNT_ID`. A deployment only adds: the files under
-`/__demi/v<N>/` of a published version never change and are never removed,
-since pages built against them may still be open, so a change to them
-publishes `v<N+1>`, while a new file may join a published version and the web app's build names the version it uses. Its entry in the public suffix list is requested once the service
-runs. Development and tests run the same Worker locally with Wrangler's
-development server under `demi-preview.localhost`, whose subdomains Chrome
-resolves to the loopback address and treats as secure contexts over plain
-HTTP, so they need no certificate; they never reach the deployed domain.
-
 ## Stale build products
 
 Cargo never removes a unit it stops building. Each change of `Cargo.lock`, a
@@ -761,7 +645,6 @@ its own copy of every shared dependency.
 | `cargo check --workspace --all-targets --features demi-runner/test-fixtures` | The type check of every crate, test and example |
 | `cargo test --workspace --features demi-runner/test-fixtures` | The Rust tests, the crate boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)); `--test <name>` runs one test target |
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test browser -- --include-ignored --test-threads=1` | The tests that start Chrome, one at a time, with the executable of the pinned Chrome for Testing release, unpacked; on Linux also with `DEMI_TEST_CHROME_RUNTIME=<directory>`, the pinned Chrome runtime unpacked |
-| `DEMI_TEST_CHROME=<chrome> DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts packages/browse/src/lab` | The [web preview's lab](../browser/preview.md#tests): every behavior case loaded directly and through the preview, in Chrome |
 | `DEMI_TEST_CHROME=<chrome> cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored real_browser` | The browser suite's scenario through the backend and a paired device's runner ([Browser suite](scenarios.md#browser-suite)), as an ordinary user with the same executable |
 | `DEMI_TEST_CLAUDE_CODE=<claude> SSL_CERT_FILE=$PWD/crates/backend/tests/backend/claude_code/distribution-ca.pem cargo test --workspace --features demi-runner/test-fixtures --test backend -- --ignored claude_code` | The Claude Code suite, with the executable of the vendor's CLI and the CA of the suite's local distribution |
 | `bun run test` | The TypeScript tests, the package boundary check among them ([Boundary checks](../architecture/crates-and-packages.md#boundary-checks)), and the test of the capture extension's JavaScript, which sits beside the extension in `command-package-browser-chrome`; it first builds the programs the tests start, with the same selection |
