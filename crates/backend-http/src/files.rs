@@ -316,7 +316,7 @@ pub(super) async fn upload(
             // Nothing moved on the connection for the limit.
             peer.control.close();
             Err(ApiError::new(
-                StatusCode::GATEWAY_TIMEOUT,
+                StatusCode::SERVICE_UNAVAILABLE,
                 ErrorCode::HostOperationFailed,
                 "The Host took nothing for too long",
             ))
