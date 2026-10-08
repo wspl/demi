@@ -505,6 +505,10 @@ app only, and signing in goes on to it, as GitHub and Slack do. Settings have ad
 the page they opened from: a link opens a section, Back closes the dialog or
 returns to the previous section, and a reload keeps it open; `/settings`
 alone is the list of sections on a phone and the first section elsewhere.
+A paired device has a page of its own under Devices,
+`/settings/devices/<id>`, which its row in the list opens, as a row of
+macOS's System Settings opens its detail
+([What the user sees](../execution/direct-channel.md#what-the-user-sees)).
 
 On an instance without accounts, the first visitor creates the master account
 on the setup page: a name, which becomes the account's nickname, the email,
