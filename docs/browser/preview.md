@@ -450,10 +450,16 @@ engine receives only environments. A socket's messages have no `pull`: a
 WebSocket's upstream is read as fast as it sends, and a slow page then holds
 the whole stream, a limit to lift if pages show it.
 
-The engine sends a body's next chunk only on a `pull`, so a slow page holds
-the Host back rather than filling memory, as the live view's stream does
-([Backpressure](live-view.md#backpressure)); the relay sends request bodies
-the same way on the engine's `pull`. A frame the protocol refuses ends the
+The engine sends the first four chunks of a body, up to 1 MiB, without
+waiting, and one more for each `pull` the relay sends as the page reads one,
+so an answer up to 768 KiB arrives whole with its head in one round trip,
+which a far relay makes the cost that matters, while a slow page still holds
+the Host back at most 1 MiB ahead, as the live view's stream does
+([Backpressure](live-view.md#backpressure)); the relay keeps chunks that
+arrive before the page reads them. Request bodies go one chunk per `pull`
+from the engine. A tab shows loading from the click of Reload, Back or
+Forward, until the next document loads or the history moves within the
+document, as a browser's does. A frame the protocol refuses ends the
 stream, as on the live view's, and the relay answers every open request with a
 network error and opens the stream again.
 
