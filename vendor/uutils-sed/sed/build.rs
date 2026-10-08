@@ -11,6 +11,12 @@ use std::io::Write;
 use std::path::Path;
 
 pub fn main() {
+    // Demi's: the script reads only what Cargo already fingerprints (the
+    // features, PROFILE and the package's name), so it names itself: without
+    // any rerun-if line, Cargo reruns it whenever any file of the package is
+    // newer than its last run.
+    println!("cargo:rerun-if-changed=build.rs");
+
     const ENV_FEATURE_PREFIX: &str = "CARGO_FEATURE_";
     const FEATURE_PREFIX: &str = "feat_";
 
