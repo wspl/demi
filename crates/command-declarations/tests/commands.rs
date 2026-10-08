@@ -377,6 +377,20 @@ fn a_leaf_runs_one_way_and_names_valid_inputs() {
         declaration(json!({"type": "object", "properties": {"bad name": {"type": "string"}}}))
             .is_err()
     );
+    // Only a named option can skip the stdin field.
+    let skipping = |stdin_unless: Value| {
+        let mut leaf = rpc.clone();
+        leaf["input"] = json!({"type": "object", "properties": {"path": {"type": "string"},
+            "body": {"type": "string"}, "old": {"type": "string"}}});
+        leaf["positionals"] = json!(["path"]);
+        leaf["stdinField"] = json!("body");
+        leaf["stdinUnless"] = stdin_unless;
+        serde_json::from_value::<Node>(leaf).unwrap().validate()
+    };
+    assert!(skipping(json!(["old"])).is_ok());
+    for field in ["path", "body", "absent"] {
+        assert!(skipping(json!([field])).is_err(), "{field}");
+    }
 }
 
 #[test]

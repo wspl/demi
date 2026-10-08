@@ -137,6 +137,7 @@ Each input field has one source:
 | `input` | The JSON Schema of the leaf's argument type. It validates the whole input. |
 | `positionals` | Ordered fields supplied as positional arguments. They have no named-option form. The last may be an array, which takes every positional token left, as `demi attachment upload <path>...` does; usage shows it with `...`. |
 | `stdinField` | A string field populated from finite stdin: a quoted heredoc, a pipe, or input redirection. It has no option or positional form. |
+| `stdinUnless` | Options that, when given, leave the `stdinField` unread and stdin with the calling process, as `file edit` reads no blocks with `--old`. It names only options of the leaf, and only beside a `stdinField`; help shows it on the stdin line: `Stdin body: blocks, not read with --old`. |
 | `restField` | An array receiving raw tokens after `--`. It has no named-option form. |
 | Remaining input fields | Named options such as `--path notes.txt`. Their schemas define values, optionality, boolean flags, enums, and repeated array options. |
 | `output.json` | A schema enabling validated structured output through `--json`. |
@@ -247,7 +248,7 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 | --- | --- | --- | --- |
 | `file read` | path | none | unused |
 | `file create` | path | none | file content |
-| `file edit` | path | old, new, occurrence, context | unused |
+| `file edit` | path | old, new, occurrence or context | SEARCH/REPLACE blocks, read only without `--old` |
 | `file patch` | none | none | unified diff |
 | `agent spawn` | none | profile, description, JSON output | task brief |
 | `agent send`, `resume` | id | JSON output | message |
@@ -259,9 +260,12 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 | `skills add`, `enable`, `disable` | repository | skill, repeated | unused |
 | `skills update`, `remove` | repository | none | unused |
 
-`file edit` has two separate text operands; its old and new values are quoted
-option arguments. Use `file patch` for a multiline change supplied as one
-heredoc. `host shell` takes the script as one quoted argument so its stdin
+`file edit` takes its change in one of two forms, never both: blocks on
+stdin, or `--old` and `--new` for a one-line change, with `--occurrence` or
+`--context`, not both, to choose among several matches. With `--old` it
+reads no stdin, so `… | while read f; do demi file edit "$f" --old a --new b;
+done` leaves the loop's input to the loop, as `git apply` reads stdin only
+when it names no file. `host shell` takes the script as one quoted argument so its stdin
 remains available for the remote program's data. These commands do not claim
 that stdin supplies their script or edit operands.
 
@@ -555,8 +559,10 @@ EOF
 - **Together or not at all.** Several blocks in one call each match the file
   as it was, must not overlap, and are applied together; a failing block
   changes nothing.
-- A text with a line that is exactly a marker cannot be written as a block;
-  `--old` and `--new`, or `demi file patch`, write it.
+- A marker line may carry trailing spaces or tabs. An empty SEARCH is refused:
+  `demi file create` makes a file. A text with a line that is exactly a
+  marker cannot be written as a block; `--old` and `--new`, or
+  `demi file patch`, write it.
 
 `demi file patch` applies a unified diff from stdin, as `git diff` writes it,
 to one or more files. It ignores the line counts of each hunk's header, as
@@ -564,8 +570,13 @@ to one or more files. It ignores the line counts of each hunk's header, as
 miscounts them: a model's diff with a miscounted header failed with `Patch
 hunk line counts do not match header`. It finds each hunk by its context and
 removed lines where they match exactly once, or, where they match several
-times, at the match nearest the header's line. A header without numbers,
-`@@`, is accepted. A hunk that matches nowhere fails the patch, naming its
+times, at the match nearest the header's line; a tie, or several matches
+under a header without numbers, fails and names them. A header without
+numbers, `@@`, is accepted, and so is the text git writes after a header's
+second `@@`. An empty line in a hunk is an empty context line, as
+`git apply` reads it. A `---` and `+++` pair starts another file only when an
+`@@` line follows it, so a removed line `-- x` before an added line `++ y`
+stays in its hunk. A hunk that matches nowhere fails the patch, naming its
 file and hunk, and changes nothing.
 
 `demi file read` prints a file's bytes, and declares `media`: a file of at
