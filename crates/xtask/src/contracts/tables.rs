@@ -136,6 +136,13 @@ pub fn module(header: &str) -> String {
         push_doc(&mut source, Some(description), 0);
         writeln!(source, "export const {name} = {value}").expect("writing to a string");
     }
+    source.push('\n');
+    push_doc(
+        &mut source,
+        Some("The label of a direct channel's probe channel, on which the runner sends back each message (`direct-channel.md` § Measuring the paths)."),
+        0,
+    );
+    writeln!(source, "export const DIRECT_PROBE_LABEL = {:?}", direct::PROBE_LABEL).expect("writing to a string");
 
     source
 }

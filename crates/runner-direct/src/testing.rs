@@ -11,7 +11,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use demi_runner_protocol::direct::Introduction;
 use str0m::change::SdpAnswer;
-use str0m::channel::{ChannelConfig, ChannelId};
+use str0m::channel::{ChannelConfig, ChannelId, Reliability};
 use str0m::net::{Protocol, Receive};
 use str0m::{Candidate, Event, IceConnectionState, Input, Output, Rtc, RtcConfig};
 use tokio::net::UdpSocket;
@@ -44,6 +44,7 @@ impl Heard {
 
 enum Command {
     Open {
+        config: ChannelConfig,
         heard: mpsc::UnboundedSender<Heard>,
         opened: oneshot::Sender<ChannelId>,
     },
@@ -167,16 +168,36 @@ impl Page {
 
     /// Opens a channel and sends `header` as its first message.
     pub async fn open(&self, header: serde_json::Value) -> PageChannel {
+        let config = ChannelConfig {
+            label: "operation".into(),
+            ..Default::default()
+        };
+        let channel = self.channel(config).await;
+        channel.text(&header.to_string());
+        channel
+    }
+
+    /// Opens the probe channel, unordered and never retransmitted, as the
+    /// page's (`direct-channel.md` § Measuring the paths).
+    pub async fn probe(&self) -> PageChannel {
+        self.channel(ChannelConfig {
+            label: demi_runner_protocol::direct::PROBE_LABEL.into(),
+            ordered: false,
+            reliability: Reliability::MaxRetransmits { retransmits: 0 },
+            ..Default::default()
+        })
+        .await
+    }
+
+    async fn channel(&self, config: ChannelConfig) -> PageChannel {
         let (heard, hearing) = mpsc::unbounded_channel();
         let (opened, open) = oneshot::channel();
-        self.commands.send(Command::Open { heard, opened }).unwrap();
-        let channel = PageChannel {
+        self.commands.send(Command::Open { config, heard, opened }).unwrap();
+        PageChannel {
             id: open.await.expect("the channel opens"),
             commands: self.commands.clone(),
             heard: hearing,
-        };
-        channel.text(&header.to_string());
-        channel
+        }
     }
 }
 
@@ -304,11 +325,8 @@ async fn serve(
         tokio::select! {
             command = commands.recv() => {
                 match command {
-                    Some(Command::Open { heard, opened }) => {
-                        let id = rtc.direct_api().create_data_channel(ChannelConfig {
-                            label: "operation".into(),
-                            ..Default::default()
-                        });
+                    Some(Command::Open { config, heard, opened }) => {
+                        let id = rtc.direct_api().create_data_channel(config);
                         channels.insert(id, heard);
                         opening.insert(id, opened);
                     }

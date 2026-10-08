@@ -229,9 +229,9 @@ struct State {
     /// The direct streams open on the device, by the id the runner gave
     /// each.
     direct_streams: HashMap<String, DirectStream>,
-    /// Where the candidates the runner finds for each peer go: to the page
-    /// that offered it, by the peer's id.
-    direct_candidates: HashMap<String, mpsc::UnboundedSender<String>>,
+    /// Where what the runner says of each peer goes: to the page's
+    /// signaling socket, by the peer's id.
+    direct_peers: HashMap<String, mpsc::UnboundedSender<PeerEvent>>,
 }
 
 /// A direct stream the runner reported open: what its close cancels, the
@@ -285,6 +285,16 @@ pub(crate) enum Answer {
     /// The runner's answer to a page's offer.
     Direct(DirectAnswer),
     Done,
+}
+
+/// What the runner says of a page's peer besides its answer
+/// (`direct-channel.md` § Making the channel, § Measuring the paths).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PeerEvent {
+    /// A candidate it found after its answer.
+    Candidate(String),
+    /// Its answer to the page's relay probe.
+    Pong(u32),
 }
 
 /// What a runner said to a page's offer (`direct-channel.md` § Making the
@@ -660,16 +670,26 @@ impl Link {
         }
     }
 
-    /// The candidates the runner finds for peer `peer` from now on, until
-    /// the peer closes or another page's offer takes its id.
-    pub fn direct_candidates(&self, peer: &str) -> mpsc::UnboundedReceiver<String> {
-        let (found, candidates) = mpsc::unbounded_channel();
+    /// What the runner says of peer `peer` from now on, its candidates and
+    /// its answers to the page's probes, until the page's signaling socket
+    /// closes.
+    pub fn direct_peer(&self, peer: &str) -> mpsc::UnboundedReceiver<PeerEvent> {
+        let (said, events) = mpsc::unbounded_channel();
         self.0
             .state
             .borrow_mut()
-            .direct_candidates
-            .insert(peer.to_owned(), found);
-        candidates
+            .direct_peers
+            .insert(peer.to_owned(), said);
+        events
+    }
+
+    /// The page's probe `id` of the relay path, which the runner answers at
+    /// once.
+    pub fn direct_ping(&self, peer: &str, id: u32) {
+        self.post(&Inbound::DirectPing {
+            peer: peer.to_owned(),
+            id,
+        });
     }
 
     /// A candidate the page of peer `peer` found after its offer.
@@ -680,12 +700,31 @@ impl Link {
         });
     }
 
-    /// The page's signaling socket closed: the runner closes peer `peer`.
+    /// The runner closes peer `peer`: its page went, or the introduction
+    /// it was made with is out of date.
     pub fn direct_close(&self, peer: &str) {
-        self.0.state.borrow_mut().direct_candidates.remove(peer);
         self.post(&Inbound::DirectClose {
             peer: peer.to_owned(),
         });
+    }
+
+    /// The page's signaling socket of peer `peer` closed: nothing the
+    /// runner says of the peer has anywhere to go.
+    pub fn direct_forget(&self, peer: &str) {
+        self.0.state.borrow_mut().direct_peers.remove(peer);
+    }
+
+    /// Tells the page of peer `peer` what the runner said of it; a page
+    /// that went has nobody to tell.
+    fn tell_peer(&self, peer: &str, event: PeerEvent) {
+        let mut state = self.0.state.borrow_mut();
+        let gone = state
+            .direct_peers
+            .get(peer)
+            .is_some_and(|page| page.send(event).is_err());
+        if gone {
+            state.direct_peers.remove(peer);
+        }
     }
 
     pub(crate) fn policy(&self) -> &Rc<dyn LinkPolicy> {
@@ -871,16 +910,9 @@ impl Link {
                 open,
             } => self.direct_stream(stream, name, conversation, open),
             Outbound::DirectCandidate { peer, candidate } => {
-                let mut state = self.0.state.borrow_mut();
-                let gone = match state.direct_candidates.get(&peer) {
-                    Some(page) => page.send(candidate).is_err(),
-                    // A peer whose page went has nobody to tell.
-                    None => false,
-                };
-                if gone {
-                    state.direct_candidates.remove(&peer);
-                }
+                self.tell_peer(&peer, PeerEvent::Candidate(candidate));
             }
+            Outbound::DirectPong { peer, id } => self.tell_peer(&peer, PeerEvent::Pong(id)),
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);

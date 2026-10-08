@@ -11,6 +11,7 @@ import {
   revokedDeviceSchema,
   type CloudReset,
   type ChangeDevice,
+  type DeviceRoute,
 } from '../api/generated/web-api'
 
 export const useDeviceSettings = defineStore('device-settings', () => {
@@ -106,9 +107,9 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     return change(id, { name }, renaming, 'Could Not Rename Device')
   }
 
-  /** Turns a paired device's direct connections on or off, which every page of the user's follows. */
-  function setDirect(id: string, direct: boolean): Promise<void> {
-    return change(id, { direct }, changing, direct ? 'Could Not Turn On Direct Connections' : 'Could Not Turn Off Direct Connections')
+  /** Sets a paired device's route, which every page of the user's follows. */
+  function setRoute(id: string, route: DeviceRoute): Promise<void> {
+    return change(id, { route }, changing, 'Could Not Change the Route')
   }
 
   async function resetCloud(operationId: string): Promise<void> {
@@ -163,7 +164,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     renaming,
     rename,
     changing,
-    setDirect,
+    setRoute,
     resetCloud,
   }
 })

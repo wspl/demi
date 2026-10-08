@@ -1,7 +1,7 @@
 //! `/api/devices` (`web-api.md` § Workspaces, devices, and attached hosts,
 //! § Device files and remote references, § Device log): the caller's
-//! devices, pairing, renaming, revocation, browsing a paired device's
-//! directories to choose a target, and a Host's log. Browsing and the log
+//! devices, pairing, renaming and routes, revocation, browsing a paired
+//! device's directories to choose a target, and a Host's log. Browsing and the log
 //! reach the device through device access, which wakes nothing: a device
 //! whose runner is not connected answers 409 `device_offline`.
 
@@ -15,8 +15,8 @@ use demi_backend_runners::codes::{ClaimCode, new_device_token};
 use demi_backend_runners::files::browse_directory;
 use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
 use demi_web_api_protocol::devices::{
-    Claim, DeviceAnswer, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery, Devices,
-    ChangeDevice, RevokedDevice,
+    ChangeDevice, Claim, DeviceAnswer, DeviceKind, DeviceLog, DeviceLogLine, DeviceLogQuery,
+    Devices, RevokedDevice,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
@@ -95,13 +95,13 @@ fn invalid_code() -> ApiError {
     )
 }
 
-/// Renames a paired device, or turns its direct connections on or off; the
-/// Cloud keeps its name and is always reached through the server.
+/// Renames a paired device, or sets its route; the Cloud keeps its name and
+/// is always reached through the server.
 pub(super) async fn change(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-    JsonBody(ChangeDevice { name, direct }): JsonBody<ChangeDevice>,
+    JsonBody(ChangeDevice { name, route }): JsonBody<ChangeDevice>,
 ) -> Result<Json<DeviceAnswer>, ApiError> {
     let device = owned_device(&state, &user.id, &id, None).await?;
     if device.kind == DeviceKind::Managed {
@@ -113,7 +113,7 @@ pub(super) async fn change(
     }
     let change = DeviceChange {
         name: name.map(Trimmed::into_string),
-        direct,
+        route,
     };
     let changed = state
         .shards

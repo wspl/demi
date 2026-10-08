@@ -20,10 +20,12 @@ class Peer implements DirectPeer {
     browser: { local: ['3f2a.local'], public: [] },
     device: { local: ['127.0.0.1'], public: [] },
     pairs: { tried: 1, answered: 1 },
+    pair: null,
     permission: null,
   }
-  roundTrip(): Promise<number | null> {
-    return Promise.resolve(0.2)
+  probe(): void {}
+  onProbe(): () => void {
+    return () => {}
   }
   open(): never {
     throw new Error('the choice opens no channel')
@@ -204,7 +206,7 @@ test('a peer the backend closed is made again at once, in place of an attempt wi
   expect(direct.choice).toBe('direct')
 })
 
-test('turned off, the peer closes and nothing tries again until it is turned on', async () => {
+test('Server Only closes the peer and nothing tries again until the route allows one', async () => {
   const { direct, attempts, timers, choices } = device()
   direct.tryNow()
   const peer = new Peer()
@@ -212,7 +214,7 @@ test('turned off, the peer closes and nothing tries again until it is turned on'
   await flush()
   expect(direct.choice).toBe('direct')
 
-  direct.setEnabled(false)
+  direct.setRoute('server')
   let closed = false
   void peer.closed.then(() => {
     closed = true
@@ -227,14 +229,14 @@ test('turned off, the peer closes and nothing tries again until it is turned on'
   direct.setPermission('granted')
   expect(attempts).toHaveLength(1)
 
-  direct.setEnabled(true)
+  direct.setRoute('automatic')
   expect(attempts).toHaveLength(2)
 })
 
-test('turned off while an attempt runs, its peer is not taken', async () => {
+test('Server Only while an attempt runs leaves its peer unused', async () => {
   const { direct, attempts } = device()
   direct.tryNow()
-  direct.setEnabled(false)
+  direct.setRoute('server')
   const peer = new Peer()
   let closed = false
   void peer.closed.then(() => {
@@ -244,4 +246,24 @@ test('turned off while an attempt runs, its peer is not taken', async () => {
   await flush()
   expect(direct.choice).toBe('relay')
   expect(closed).toBe(true)
+})
+
+test('under Automatic a slower direct path leaves its peer standing but unused; Prefer Direct uses it all the same', async () => {
+  const { direct, attempts, choices } = device()
+  direct.tryNow()
+  const peer = new Peer()
+  attempts[0]!.resolve(peer)
+  await flush()
+  expect(direct.current()).toBe(peer)
+
+  direct.setSlower(true)
+  expect(direct.choice).toBe('relay')
+  expect(direct.current()).toBeNull()
+  expect(direct.connected()).toBe(peer)
+  direct.setRoute('direct')
+  expect(direct.current()).toBe(peer)
+  direct.setRoute('automatic')
+  direct.setSlower(false)
+  expect(direct.current()).toBe(peer)
+  expect(choices).toEqual(['direct', 'relay', 'direct', 'relay', 'direct'])
 })

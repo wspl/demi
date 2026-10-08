@@ -45,7 +45,7 @@ test("a device project's row follows its device online, updating, offline and go
     startCommand: null,
     os: null,
     runnerVersion: null,
-    direct: true,
+    route: 'automatic' as const,
   }
   const cloud = { ...device, id: 'cloud', name: 'Cloud', kind: 'managed' as const }
   const workspace = (id: string, deviceId: string) => ({

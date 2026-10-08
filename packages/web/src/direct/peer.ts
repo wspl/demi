@@ -8,8 +8,8 @@
  * message is the header, the runner's first the answer (§ Operations on the
  * channel).
  */
-import type { z } from 'zod'
-import { DIRECT_CONNECT_MS, DIRECT_MESSAGE_BYTES, DIRECT_QUEUE_BYTES } from '@demicodes/protocol'
+import { z } from 'zod'
+import { DIRECT_CONNECT_MS, DIRECT_MESSAGE_BYTES, DIRECT_PROBE_LABEL, DIRECT_QUEUE_BYTES } from '@demicodes/protocol'
 import type { DirectAddresses, DirectAttempt, DirectPermission, DirectStage } from '@demicodes/web-ui/devices/direct'
 import { channelRefusalSchema, type ChannelErrorCode, type ChannelHeader } from '../api/generated/web-api'
 
@@ -71,8 +71,10 @@ export interface DirectPeer {
   open<T>(header: ChannelHeader, answer: z.ZodType<T>): Promise<OperationChannel<T>>
   /** What the attempt that made the peer saw. */
   readonly attempt: DirectAttempt
-  /** The round trip of the path in use, in milliseconds, as the browser measures it; null while it has none. */
-  roundTrip(): Promise<number | null>
+  /** Sends probe `id` on the probe channel, unordered and never retransmitted; one that cannot go now is lost. */
+  probe(id: number): void
+  /** Calls `listener` with each probe the runner sends back; the answer stops it. */
+  onProbe(listener: (id: number) => void): () => void
   /** Resolves once the connection failed or closed. */
   readonly closed: Promise<void>
   close(): void
@@ -151,6 +153,7 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     browser: { local: [], public: [] },
     device: { local: [], public: [] },
     pairs: { tried: 0, answered: 0 },
+    pair: null,
     permission: options.permission(),
   }
   let iceConnected = false
@@ -217,20 +220,56 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
     signal?.removeEventListener('abort', end)
   }
   attempt.outcome = 'connected'
+  attempt.stage = 'connected'
   attempt.durationMs = Date.now() - started
   await countPairs(connection, attempt)
   connection.addEventListener('connectionstatechange', () => {
     if (connection.connectionState === 'failed' || connection.connectionState === 'closed')
       end()
   })
+  // The probe channel measures the direct path (`direct-channel.md`
+  // § Measuring the paths): a probe lost stays lost, as a video packet would.
+  const probes = connection.createDataChannel(DIRECT_PROBE_LABEL, { ordered: false, maxRetransmits: 0 })
+  const probed = new Set<(id: number) => void>()
+  probes.addEventListener('message', (event: MessageEvent) => {
+    const id = probeId(event.data)
+    if (id === null)
+      return
+    for (const listener of [...probed])
+      listener(id)
+  })
   return {
     open: (header, answer) => openChannel(connection, header, answer),
     attempt,
-    roundTrip: () => roundTrip(connection),
+    probe: (id) => {
+      if (probes.readyState === 'open')
+        probes.send(JSON.stringify({ id }))
+    },
+    onProbe: (listener) => {
+      probed.add(listener)
+      return () => probed.delete(listener)
+    },
     closed: ended.promise,
     close: end,
   }
 }
+
+/** The id of a probe the runner sent back; null for anything else. */
+function probeId(data: unknown): number | null {
+  if (typeof data !== 'string')
+    return null
+  let value: unknown
+  try {
+    value = JSON.parse(data)
+  } catch {
+    // Not a probe: the runner sends back only what the page sent.
+    return null
+  }
+  const parsed = probeSchema.safeParse(value)
+  return parsed.success ? parsed.data.id : null
+}
+
+const probeSchema = z.object({ id: z.number().int().nonnegative() })
 
 /** Where an attempt that did not connect stopped. */
 function failedStage(connection: RTCPeerConnection, attempt: DirectAttempt, iceConnected: boolean): DirectStage {
@@ -243,39 +282,52 @@ function failedStage(connection: RTCPeerConnection, attempt: DirectAttempt, iceC
   return 'checking'
 }
 
-/** Counts the address pairs the browser checked, and those that answered. */
+/** A report of the browser's statistics, as far as the attempt reads it. */
+interface StatsReport {
+  type: string
+  id: string
+  requestsSent?: number
+  responsesReceived?: number
+  nominated?: boolean
+  state?: string
+  localCandidateId?: string
+  remoteCandidateId?: string
+  address?: string
+  port?: number
+  selectedCandidatePairId?: string
+}
+
+/** Counts the address pairs the browser checked and those that answered, and the pair in use. */
 async function countPairs(connection: RTCPeerConnection, attempt: DirectAttempt): Promise<void> {
   try {
     const stats = await connection.getStats()
+    const reports = new Map<string, StatsReport>()
+    stats.forEach((report: StatsReport) => reports.set(report.id, report))
     let tried = 0
     let answered = 0
-    stats.forEach((report: { type: string; responsesReceived?: number; requestsSent?: number }) => {
+    let selected: StatsReport | undefined
+    for (const report of reports.values()) {
+      if (report.type === 'transport' && report.selectedCandidatePairId)
+        selected = reports.get(report.selectedCandidatePairId)
       if (report.type !== 'candidate-pair')
-        return
+        continue
       if ((report.requestsSent ?? 0) > 0)
         tried += 1
       if ((report.responsesReceived ?? 0) > 0)
         answered += 1
-    })
+      if (!selected && report.nominated && report.state === 'succeeded')
+        selected = report
+    }
+    const local = reports.get(selected?.localCandidateId ?? '')
+    const remote = reports.get(selected?.remoteCandidateId ?? '')
+    if (remote?.address) {
+      // A browser may keep its own address from its statistics, as it hides it behind a name.
+      const browser = local?.address ? `${local.address}:${local.port}` : null
+      attempt.pair = { browser, device: `${remote.address}:${remote.port}` }
+    }
     attempt.pairs = { tried, answered }
   } catch {
     // A closed connection has no statistics left; the counts stay as they were.
-  }
-}
-
-/** The round trip of the selected pair, in milliseconds. */
-async function roundTrip(connection: RTCPeerConnection): Promise<number | null> {
-  try {
-    const stats = await connection.getStats()
-    let found: number | null = null
-    stats.forEach((report: { type: string; nominated?: boolean; state?: string; currentRoundTripTime?: number }) => {
-      if (report.type === 'candidate-pair' && report.nominated && report.state === 'succeeded' && report.currentRoundTripTime !== undefined)
-        found = report.currentRoundTripTime * 1000
-    })
-    return found
-  } catch {
-    // A closed connection measures nothing.
-    return null
   }
 }
 

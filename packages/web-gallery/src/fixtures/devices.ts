@@ -1,19 +1,20 @@
 import { onBeforeUnmount, ref } from 'vue'
-import type { DirectAttempt, DirectStatus } from '@demicodes/web-ui/devices/direct'
+import type { DeviceRoute, DirectAttempt, DirectStatus, PathFigures } from '@demicodes/web-ui/devices/direct'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
 import { demoDeviceReport } from './device-installation'
 import { ago } from './time'
 
 /**
- * The paths a demo device's attempts take, one per reason the device's page
- * gives (`direct-channel.md` § What the user sees), and the devices of the
+ * The paths a demo device's attempts take, one per state its page shows
+ * (`direct-channel.md` § What the user sees), and the devices of the
  * Devices specimens, whose controls act on them as the product's do: Try
- * Now runs an attempt that ends as the device's path says, the switch turns
- * direct connections off and on, Rename… and Revoke… change the list.
+ * Again runs an attempt that ends as the device's path says, the route
+ * changes how it is reached, and Rename… and Revoke… change the list.
  */
 export type DirectScenario =
   | 'connected'
-  | 'off'
+  | 'slower'
+  | 'serverOnly'
   | 'blocked'
   | 'unreachable'
   | 'browserNetwork'
@@ -24,7 +25,8 @@ export type DirectScenario =
 
 export const DIRECT_SCENARIOS: readonly { value: DirectScenario; label: string }[] = [
   { value: 'connected', label: 'Direct' },
-  { value: 'off', label: 'Turned Off' },
+  { value: 'slower', label: 'Slower' },
+  { value: 'serverOnly', label: 'Server Only' },
   { value: 'blocked', label: 'Blocked' },
   { value: 'unreachable', label: 'Not Reachable' },
   { value: 'browserNetwork', label: 'This Network' },
@@ -36,19 +38,30 @@ export const DIRECT_SCENARIOS: readonly { value: DirectScenario; label: string }
 
 const minutes = (count: number) => count * 60_000
 
+/** The relay's figures to a server about 230 ms away, as the design measured. */
+const RELAY: PathFigures = { latencyMs: 480, loss: null }
+/** A direct path on one network. */
+const LOCAL: PathFigures = { latencyMs: 1.8, loss: 0 }
+/** A direct path over a congested link, slower than the server's. */
+const CONGESTED: PathFigures = { latencyMs: 620, loss: 0.06 }
+
+/** Whether an attempt of `scenario` connects. */
+const connects = (scenario: DirectScenario) => scenario === 'connected' || scenario === 'slower' || scenario === 'dropped'
+
 /** What an attempt of `scenario` that began at `startedAt` saw. */
 export function demoAttempt(scenario: DirectScenario, startedAt: number): DirectAttempt {
   const browserPublic = scenario === 'browserNetwork' || scenario === 'notOffered' ? [] : ['198.51.100.24']
   const devicePublic = scenario === 'deviceNetwork' || scenario === 'notOffered' ? [] : ['203.0.113.9']
-  const connects = scenario === 'connected' || scenario === 'dropped'
+  const connected = connects(scenario)
   return {
     startedAt: new Date(startedAt).toISOString(),
-    durationMs: connects ? 46 : scenario === 'busy' ? 120 : 10_000,
-    outcome: scenario === 'busy' ? 'busy' : scenario === 'dropped' ? 'dropped' : connects ? 'connected' : 'failed',
-    stage: connects || scenario === 'busy' ? null : scenario === 'blocked' ? 'permission' : 'checking',
-    browser: { local: ['7c1e4a52-9b0d.local'], public: browserPublic },
+    durationMs: connected ? 46 : scenario === 'busy' ? 120 : 10_000,
+    outcome: scenario === 'busy' ? 'busy' : scenario === 'dropped' ? 'dropped' : connected ? 'connected' : 'failed',
+    stage: scenario === 'busy' ? null : connected ? 'connected' : scenario === 'blocked' ? 'permission' : 'checking',
+    browser: { local: ['7c1e4a52-9b0d-4c1e-8e3e-1a2b3c4d5e6f.local'], public: browserPublic },
     device: { local: ['192.168.1.20', '127.0.0.1'], public: devicePublic },
-    pairs: { tried: connects ? 2 : 6, answered: connects ? 2 : 0 },
+    pairs: { tried: connected ? 2 : 6, answered: connected ? 2 : 0 },
+    pair: connected ? { browser: null, device: '192.168.1.20:61204' } : null,
     permission: scenario === 'blocked' ? 'denied' : 'granted',
     ...(scenario === 'dropped' ? { endedAt: new Date(startedAt + minutes(2)).toISOString() } : {}),
   }
@@ -57,19 +70,22 @@ export function demoAttempt(scenario: DirectScenario, startedAt: number): Direct
 /** How a device of `scenario` is reached, its last attempt a few minutes ago. */
 export function demoDirect(scenario: DirectScenario): DirectStatus {
   const now = Date.now()
+  const peer = scenario === 'connected' || scenario === 'slower'
   return {
-    enabled: scenario !== 'off',
+    route: scenario === 'serverOnly' ? 'server' : 'automatic',
     crossing: scenario !== 'notOffered',
     permission: scenario === 'blocked' ? 'denied' : 'granted',
-    connected: scenario === 'connected',
+    peer,
+    chosen: scenario === 'connected',
     trying: false,
-    roundTripMs: null,
-    attempt: scenario === 'off' ? null : demoAttempt(scenario, now - minutes(3)),
-    nextAt: scenario === 'connected' || scenario === 'off' || scenario === 'blocked' ? null : new Date(now + minutes(7)).toISOString(),
+    attempt: scenario === 'serverOnly' ? null : demoAttempt(scenario, now - minutes(3)),
+    nextAt: peer || scenario === 'serverOnly' || scenario === 'blocked' ? null : new Date(now + minutes(7)).toISOString(),
+    figures: {
+      direct: scenario === 'connected' ? LOCAL : scenario === 'slower' ? CONGESTED : null,
+      relay: RELAY,
+    },
   }
 }
-
-const day = minutes(24 * 60)
 
 /** A device of a specimen, and how its attempts end. */
 export interface GalleryDevice {
@@ -77,9 +93,11 @@ export interface GalleryDevice {
   scenario: DirectScenario
 }
 
+const day = minutes(24 * 60)
+
 /** A demo device, paired `paired` ago, reached as `scenario` says. */
 function demoDevice(
-  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen' | 'start'> & { os: SettingsDevice['os']; runnerVersion: string | null },
+  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen'> & { os: SettingsDevice['os']; runnerVersion: string | null },
   scenario: DirectScenario,
   paired: number,
 ): GalleryDevice {
@@ -90,18 +108,18 @@ function demoDevice(
 export const DEMO_RUNNER_RELEASE = '9c1f…release'
 
 /** The paired devices of the Devices specimens. */
-export function galleryDevices(start: (system: 'linux' | 'windows') => SettingsDevice['start']): GalleryDevice[] {
+export function galleryDevices(): GalleryDevice[] {
   const current = (system: 'macos' | 'linux' | 'windows') => demoDeviceReport(system, DEMO_RUNNER_RELEASE)
   return [
     demoDevice({ id: 'mac', name: 'zan-mbp', state: 'online', seen: ago(0), ...current('macos') }, 'connected', 40 * day),
     demoDevice(
-      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), start: start('linux'), ...current('linux') },
+      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), ...current('linux') },
       'unreachable',
       90 * day,
     ),
     demoDevice(
       { id: 'studio', name: 'studio-pc', state: 'online', seen: ago(0), ...demoDeviceReport('windows', 'an-older-release') },
-      'blocked',
+      'unreachable',
       12 * day,
     ),
     demoDevice(
@@ -114,8 +132,7 @@ export function galleryDevices(start: (system: 'linux' | 'windows') => SettingsD
 
 /**
  * The state of a Devices specimen: its devices, the page shown, and what
- * each control does to them. An attempt takes a moment, then ends as the
- * device's path says.
+ * each control does to them. An attempt takes a moment.
  */
 export function useGalleryDevices(initial: () => GalleryDevice[]) {
   const made = initial()
@@ -130,11 +147,19 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
     for (const timer of timers)
       window.clearTimeout(timer)
   })
+  /** Runs `then` after `ms`, unless the specimen goes first. */
+  const later = (ms: number, then: () => void) => {
+    const timer = window.setTimeout(() => {
+      timers.delete(timer)
+      then()
+    }, ms)
+    timers.add(timer)
+  }
 
   const find = (id: string) => devices.value.find((device) => device.id === id)
   const scenarioOf = (device: SettingsDevice): DirectScenario => scenarios.value[device.id] ?? 'connected'
 
-  /** Sets how device `id` is reached, as if its last attempt had gone that way. */
+  /** Sets how device `id` is reached, as if its paths had gone that way. */
   function setScenario(id: string, scenario: DirectScenario) {
     scenarios.value[id] = scenario
     const device = find(id)
@@ -149,32 +174,35 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
     device.direct.trying = true
     device.direct.nextAt = null
     const startedAt = Date.now()
-    const timer = window.setTimeout(() => {
-      timers.delete(timer)
+    later(900, () => {
+      // An attempt that ends as the device's path says; one tried again
+      // after its route allowed it, or after its channel dropped, connects.
       const scenario = scenarioOf(device)
-      // An attempt that ends as the device's path says; one turned on again,
-      // or tried again after its channel dropped, connects.
-      const ends = scenario === 'off' || scenario === 'dropped' ? 'connected' : scenario
-      device.direct.trying = false
-      device.direct.attempt = demoAttempt(ends, startedAt)
-      device.direct.connected = ends === 'connected'
-      device.direct.nextAt = device.direct.connected ? null : new Date(Date.now() + 60_000).toISOString()
-    }, 900)
-    timers.add(timer)
+      const ends = scenario === 'serverOnly' || scenario === 'dropped' ? 'connected' : scenario
+      const status = demoDirect(ends)
+      device.direct = { ...status, route: device.direct.route, attempt: demoAttempt(ends, startedAt) }
+    })
   }
 
-  function setDirect(id: string, enabled: boolean) {
+  function setRoute(id: string, route: DeviceRoute) {
     const device = find(id)
     if (!device)
       return
-    device.direct.enabled = enabled
-    if (enabled) {
-      tryNow(id)
+    device.direct.route = route
+    if (route === 'server') {
+      device.direct.peer = false
+      device.direct.chosen = false
+      device.direct.trying = false
+      device.direct.nextAt = null
+      device.direct.figures = { ...device.direct.figures, direct: null }
       return
     }
-    device.direct.connected = false
-    device.direct.trying = false
-    device.direct.nextAt = null
+    if (device.direct.peer) {
+      // Prefer Direct uses a standing peer whatever Automatic found.
+      device.direct.chosen = route === 'direct' || scenarioOf(device) !== 'slower'
+      return
+    }
+    tryNow(id)
   }
 
   function rename(id: string, name: string) {
@@ -200,18 +228,12 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
       seen: new Date().toISOString(),
       pairedAt: new Date().toISOString(),
       ...demoDeviceReport('macos', DEMO_RUNNER_RELEASE),
-      direct: { ...demoDirect('connected'), connected: false, attempt: null },
+      direct: { ...demoDirect('connected'), peer: false, chosen: false, attempt: null, figures: { direct: null, relay: RELAY } },
     }
     devices.value.push(device)
     tryNow(device.id)
     return { ok: true as const, device }
   }
 
-  /** The shown device's round trip while its channel stands. */
-  const roundTripMs = () => {
-    const device = shown.value ? find(shown.value) : undefined
-    return device?.direct.connected ? 0.4 : null
-  }
-
-  return { devices, shown, scenarios, setScenario, tryNow, setDirect, rename, revoke, claim, roundTripMs }
+  return { devices, shown, scenarios, setScenario, tryNow, setRoute, rename, revoke, claim }
 }

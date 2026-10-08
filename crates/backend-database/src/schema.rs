@@ -140,11 +140,11 @@ CREATE TABLE preview_namespace (
 ) STRICT;
 ";
 
-/// From 0.1.20's control schema: a device says whether pages may reach it
-/// over a direct channel, which every device migrated from 0.1.20 may, as a
-/// new one does (`direct-channel.md` § Choosing the path).
+/// From 0.1.20's control schema: a device keeps how pages reach it, which
+/// is Automatic for every device migrated from 0.1.20, as for a new one
+/// (`direct-channel.md` § Choosing the path).
 const CONTROL_FROM_0_1_20: &str = "
-ALTER TABLE devices ADD COLUMN direct INTEGER NOT NULL DEFAULT 1 CHECK (direct IN (0, 1));
+ALTER TABLE devices ADD COLUMN route TEXT NOT NULL DEFAULT 'automatic' CHECK (route IN ('automatic', 'direct', 'server'));
 ";
 
 /// From 0.1.11's conversation schema. SQLite cannot change a table's CHECK
@@ -384,9 +384,9 @@ CREATE TABLE devices (
   -- Whether the backend's last shutdown ended its runner's connection; the
   -- next start reads it and clears it.
   ended_by_shutdown INTEGER NOT NULL DEFAULT 0 CHECK (ended_by_shutdown IN (0, 1)),
-  -- Whether pages may reach it over a direct channel; the user turns it off
-  -- on the device's page.
-  direct       INTEGER NOT NULL DEFAULT 1 CHECK (direct IN (0, 1))
+  -- How pages reach it: Automatic, Prefer Direct or Server Only, which the
+  -- user picks on the device's page.
+  route        TEXT NOT NULL DEFAULT 'automatic' CHECK (route IN ('automatic', 'direct', 'server'))
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 
