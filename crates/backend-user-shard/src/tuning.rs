@@ -111,27 +111,3 @@ impl Default for RunnerTuning {
         }
     }
 }
-
-/// How the backend keeps its namespace at the preview domain
-/// (`preview.md` § The preview domain service). Tests shorten the times.
-#[derive(Debug, Clone, Copy)]
-pub struct PreviewTuning {
-    /// The longest the registration waits before it reads the clock again
-    /// for a renewal, so a wall clock that jumps is noticed.
-    pub check: Duration,
-    /// The wait before a failed request is tried again, which doubles with
-    /// each failure in a row.
-    pub first_retry: Duration,
-    /// The longest wait between two tries.
-    pub last_retry: Duration,
-}
-
-impl Default for PreviewTuning {
-    fn default() -> Self {
-        Self {
-            check: Duration::from_secs(60 * 60),
-            first_retry: Duration::from_secs(1),
-            last_retry: Duration::from_secs(60 * 60),
-        }
-    }
-}

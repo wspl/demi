@@ -516,7 +516,6 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
         let services = ServiceRegistry::new(
             cache.join("cache"),
             None,
-            root_path.join("data"),
             root_path.clone(),
             BTreeMap::new(),
         )

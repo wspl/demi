@@ -41,7 +41,6 @@ use demi_web_api_protocol::settings::InstanceMode;
 use object_store::ObjectStore;
 
 use crate::conversation::claude_cli::CliInstalls;
-use crate::preview::CurrentPreview;
 use crate::tuning::{ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
@@ -96,8 +95,6 @@ pub struct Services {
     /// The STUN servers pages and runners ask for their public address
     /// (`direct-channel.md` § Making the channel).
     pub stun: Vec<StunUrl>,
-    /// The deployment's namespace at the preview domain, once registered.
-    pub preview: CurrentPreview,
     /// This run of the backend, chosen when the services start: the
     /// revisions counted in memory compare only within one run
     /// (`web-api.md` § Revisions counted in memory).
@@ -337,7 +334,6 @@ impl Services {
             web_build: settings.web_build,
             runner_releases: settings.runner_releases,
             stun: settings.stun,
-            preview: CurrentPreview::default(),
             run: uuid::Uuid::new_v4().to_string(),
             lifecycle: settings.lifecycle,
             sync,

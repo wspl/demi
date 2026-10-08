@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 #[tokio::main]
 async fn main() {
-    let launch = demi_command_sdk::Launch::from_process();
+    demi_command_sdk::Launch::from_process();
     // Diagnostics go to standard error, which the runner drains into the
     // Host's log line by line.
     tracing_subscriber::fmt()
@@ -16,11 +16,7 @@ async fn main() {
         .without_time()
         .with_target(false)
         .init();
-    let mut browser = demi_browser::DemiBrowser::new();
-    if let Some(data) = launch.data() {
-        browser = browser.with_data_directory(data.to_owned());
-    }
-    let browser = Arc::new(browser);
+    let browser = Arc::new(demi_browser::DemiBrowser::new());
     let chrome = browser.chrome().clone();
     let service = demi_command_sdk::serve_stdio(browser);
     // Profiles a service that ended without retiring its browsers left are

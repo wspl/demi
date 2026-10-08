@@ -1,9 +1,8 @@
 //! The `browser` plugin (`plugins.md` § Built-in plugins): the `demi
 //! browser` group, every leaf bound to an operation of the `demi.browser`
 //! command package, which runs it on the Host; the `browser` user stream of
-//! the live view and the `preview` user stream of the web preview; the tab
-//! list and tab methods of the work panel's `browser` kind; and the kind's
-//! tabs on the backend.
+//! the live view; the tab list and tab methods of the work panel's
+//! `browser` kind; and the kind's tabs on the backend.
 
 mod browser;
 pub mod page;
@@ -12,7 +11,7 @@ mod panel;
 use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
-use demi_command_package_browser_protocol::{PACKAGE, live, preview};
+use demi_command_package_browser_protocol::{PACKAGE, live};
 use demi_plugin_interface::{
     CommandPlugin, Manifest, PanelTabChange, Placement, Plugin, PluginError, PluginFactory,
     PluginId, PluginPort, Reply, Request, Scope, Stream, Topic,
@@ -21,8 +20,6 @@ use futures_util::future::LocalBoxFuture;
 
 /// The name of the live view's user stream.
 pub const STREAM: &str = "browser";
-/// The name of the web preview's user stream.
-pub const PREVIEW_STREAM: &str = "preview";
 
 /// The plugin's factory.
 pub struct Browser {
@@ -37,7 +34,7 @@ impl Browser {
             "Gives the agent a browser on the conversation's host, which it drives with demi browser and you watch and use in the work panel.",
         );
         manifest.commands = commands().manifest_commands();
-        manifest.streams = vec![live_stream(), preview_stream()];
+        manifest.streams = vec![live_stream()];
         manifest.page = Some(page::page());
         Self { manifest }
     }
@@ -112,16 +109,6 @@ fn live_stream() -> Stream {
             count(live::FileHeader::BYTES),
         )
         .constant(
-            "PHONE_WIDTH",
-            "Mobile's width in CSS pixels, a tab of either browser's.",
-            live::PHONE.0,
-        )
-        .constant(
-            "PHONE_HEIGHT",
-            "Mobile's height in CSS pixels.",
-            live::PHONE.1,
-        )
-        .constant(
             "LIVE_HEARTBEAT_MS",
             "How often the module speaks at least.",
             live::HEARTBEAT_MS,
@@ -151,80 +138,6 @@ fn live_stream() -> Stream {
             "A notice's code when the Host stopped trying to capture until the viewer asks again.",
             live::CAPTURE_STOPPED,
         )
-}
-
-/// The web preview's user stream (`preview.md` § The stream), with the
-/// frame constants its two ends share.
-fn preview_stream() -> Stream {
-    let operation = NativeOperation {
-        package: PACKAGE.into(),
-        operation: preview::OPERATION.into(),
-    };
-    let count = |bytes: usize| u64::try_from(bytes).expect("a size fits in 64 bits");
-    Stream::new::<preview::PreviewEngineMessage, preview::PreviewRelayMessage>(
-        PREVIEW_STREAM,
-        operation,
-    )
-    .constant(
-        "PREVIEW_CONTROL_FRAME",
-        "A control frame's kind: UTF-8 JSON of one message.",
-        preview::CONTROL_FRAME,
-    )
-    .constant(
-        "PREVIEW_REQUEST_BODY_FRAME",
-        "A request body frame's kind, the relay's: its header, then up to PREVIEW_BODY_CHUNK_BYTES of the body; an empty one ends it.",
-        preview::REQUEST_BODY_FRAME,
-    )
-    .constant(
-        "PREVIEW_CHUNK_FRAME",
-        "A response body frame's kind, the engine's: its header, then up to PREVIEW_BODY_CHUNK_BYTES of the body; an empty one ends it.",
-        preview::CHUNK_FRAME,
-    )
-    .constant(
-        "PREVIEW_SOCKET_MESSAGE_FRAME",
-        "A socket message frame's kind, either side's: its header, then one WebSocket message.",
-        preview::SOCKET_MESSAGE_FRAME,
-    )
-    .constant(
-        "PREVIEW_MAX_FRAME_BYTES",
-        "The largest frame after its length.",
-        count(preview::MAX_FRAME_BYTES),
-    )
-    .constant(
-        "PREVIEW_BODY_CHUNK_BYTES",
-        "The most body bytes one frame carries.",
-        count(preview::BODY_CHUNK_BYTES),
-    )
-    .constant(
-        "PREVIEW_BODY_WINDOW",
-        "The chunks of an answer's body the engine sends before the relay pulls any; each pull lets one more go.",
-        count(preview::BODY_WINDOW),
-    )
-    .constant(
-        "PREVIEW_MAX_STORAGE_BYTES",
-        "The most bytes of one origin's storage a page state moves; a larger one moves cookies only.",
-        count(preview::MAX_STORAGE_BYTES),
-    )
-    .constant(
-        "PREVIEW_MAX_LABELS",
-        "The most environments one labels message names.",
-        count(preview::MAX_LABELS),
-    )
-    .constant(
-        "PREVIEW_BODY_HEADER_BYTES",
-        "A body frame's header: the request's id, u32 big-endian.",
-        count(preview::BodyHeader::BYTES),
-    )
-    .constant(
-        "PREVIEW_SOCKET_HEADER_BYTES",
-        "A socket message frame's header: the socket's id, u32 big-endian, then 1 for binary or 0 for UTF-8 text.",
-        count(preview::SocketHeader::BYTES),
-    )
-    .constant(
-        "PREVIEW_FILES_VERSION",
-        "The version of the preview domain's static files, /__demi/v<N>/, the page and the engine name.",
-        preview::FILES_VERSION,
-    )
 }
 
 /// The plugin's `demi browser` group.
@@ -265,8 +178,6 @@ impl Plugin for Instance {
                 Request::PageCall {
                     conversation: None, ..
                 } => Err(PluginError::undeclared("user method")),
-                // A tab of the user's browser has nothing on the Host to open or close.
-                Request::PanelTab { tab, .. } if tab.kind == panel::PREVIEW_KIND => Ok(Reply::Done),
                 Request::PanelTab {
                     conversation,
                     change,

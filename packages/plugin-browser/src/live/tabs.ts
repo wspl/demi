@@ -55,14 +55,6 @@ export const browserTabDataSchema = z.object({
    * (`live-view.md` § A browser tab in the panel).
    */
   openedBy: z.string().optional(),
-  /**
-   * The page state of the user's browser it opens with, as the `preview`
-   * stream kept it: Open in Agent's Browser writes it, and the plugin drops it
-   * once the tab opened (`preview.md` § Page state).
-   */
-  handover: z.string().optional(),
-  /** The tab opens in Mobile, as the tab of the user's browser it was handed over from showed the page; dropped with `handover`. */
-  mobile: z.boolean().optional(),
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 
@@ -395,18 +387,6 @@ export class BrowserTabsController {
   }
 
   /**
-   * The address of the page the panel tab with `data` shows, as the browser
-   * last reported it; the one its data keeps while nothing reports it.
-   */
-  address(data: BrowserTabData): string {
-    if (data.tab === undefined || data.closed) {
-      return data.url
-    }
-    const reported = this.tab(data.tab) ?? this.list.value?.tabs.find((candidate) => candidate.id === data.tab)
-    return reported?.url || data.url
-  }
-
-  /**
    * The title of the page the panel tab with `data` shows, as the browser
    * reports it: as a view last reported it, else as the plugin last listed
    * it, the moment the browser names it, as a web browser's tab takes its
@@ -426,6 +406,22 @@ export class BrowserTabsController {
       return null
     }
     return reported.title || null
+  }
+
+  /**
+   * The icon of the page the panel tab with `data` shows, as a web
+   * browser's tab shows it: as a view last reported it, else as the plugin
+   * last listed it; null without a browser tab, or for a page without one.
+   */
+  favicon(data: BrowserTabData): string | null {
+    if (data.tab === undefined || data.closed || data.failure) {
+      return null
+    }
+    const live = this.tab(data.tab)
+    if (live) {
+      return live.favicon ?? null
+    }
+    return this.list.value?.tabs.find((candidate) => candidate.id === data.tab)?.favicon ?? null
   }
 
   /**

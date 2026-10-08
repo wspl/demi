@@ -13,7 +13,7 @@ use demi_shared_artifacts::{Mode, Permissions, Publication};
 
 use demi_command_protocol::{
     EDIT_FILE_BYTES, EDIT_JOB_BYTES, EDIT_JOB_FILES, EDIT_JOB_SEGMENTS, EditContext, EditCopies,
-    EditFile, EditJournal, EditKind, PRESENTED_JOB_PAGES, PresentedPage,
+    EditFile, EditJournal, EditKind,
 };
 
 #[derive(Clone)]
@@ -55,21 +55,6 @@ impl Recorder {
         let result = operation();
         drop(recording);
         result
-    }
-
-    /// Records that the job's command presented `page` to the user
-    /// (`preview.md` § Presenting a page): a tab presented again keeps its
-    /// latest page in its first place, and a job keeps at most
-    /// [`PRESENTED_JOB_PAGES`] pages.
-    pub fn present(&self, page: PresentedPage) -> io::Result<()> {
-        let mut recording = self.locked()?;
-        let presented = &mut recording.journal.presented;
-        match presented.iter().position(|known| known.tab == page.tab) {
-            Some(index) => presented[index] = page,
-            None if presented.len() < PRESENTED_JOB_PAGES => presented.push(page),
-            None => return Ok(()),
-        }
-        recording.save()
     }
 
     /// Called after all writers have stopped; contents come only from snapshots.
@@ -121,7 +106,6 @@ impl Recorder {
                 bytes_copied: 0,
                 next_segment: 0,
                 files_truncated: false,
-                presented: Vec::new(),
             },
             Err(error) => return Err(error),
         };
@@ -143,12 +127,6 @@ pub struct Recording {
 }
 
 impl Recording {
-    /// Writes the journal as it stands.
-    fn save(&self) -> io::Result<()> {
-        let bytes = serde_json::to_vec(&self.journal).map_err(io::Error::other)?;
-        publish_file(&self.directory.join("journal.json"), &bytes)
-    }
-
     /// Track before touching the destination, including a backup rename.
     pub fn track(&mut self, path: &Path) {
         let path = normalize(path);
@@ -318,7 +296,10 @@ impl Drop for Recording {
                 }
             }
         }
-        if let Err(error) = self.save() {
+        let result = serde_json::to_vec(&self.journal)
+            .map_err(io::Error::other)
+            .and_then(|bytes| publish_file(&self.directory.join("journal.json"), &bytes));
+        if let Err(error) = result {
             diagnostic(&error);
         }
     }

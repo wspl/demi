@@ -7,10 +7,9 @@ import {
   type ConversationFileService,
   type IntentService,
   type PageHost,
-  type PreviewPlace,
   type StateFeed,
 } from '@demicodes/web-ui/plugins/page'
-import { bindTabSchema, navigateTabSchema, previewOpenInputSchema, stopTabSchema, syncTabsSchema, tabHistorySchema } from '@demicodes/plugin-browser'
+import { bindTabSchema, navigateTabSchema, stopTabSchema, syncTabsSchema, tabHistorySchema } from '@demicodes/plugin-browser'
 import {
   addSourceSchema,
   checkUpdatesSchema,
@@ -23,7 +22,6 @@ import {
 import { productWould } from '../product-would'
 import type { GalleryBrowser } from './live-browser'
 import type { GalleryBrowserPlugin } from './panel'
-import type { GalleryPreview } from './preview'
 
 /**
  * The plugins as the gallery's specimens answer them (`plugins.md` § The
@@ -54,8 +52,6 @@ export interface GalleryShell {
   intents?: IntentService
   /** Whether the specimen's Host is a Cloud that is starting; never, unless the specimen says. */
   hostStarting?(): boolean
-  /** Where the specimen's previews live; none, unless the specimen says. */
-  preview?(): PreviewPlace | null
 }
 
 /** A page host over `plugins` and the specimen's `shell`; a plugin it lacks refuses as the backend would. */
@@ -88,7 +84,6 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
     },
     installed: (plugin) => plugins[plugin]?.installed?.() ?? [],
     hostStarting: () => shell.hostStarting?.() ?? false,
-    preview: () => shell.preview?.() ?? null,
     files: () => {
       if (!shell.files) {
         throw new Error('The specimen shows no conversation files')
@@ -123,10 +118,9 @@ function beat(ms: number): Promise<void> {
 
 /**
  * The conversation browser's plugin over the gallery's `browser`: its tab
- * list, its tab methods, and `panel`, its part in the panel's tabs; and the
- * opening of a tab of the user's browser over the gallery's `preview`.
+ * list, its tab methods, and `panel`, its part in the panel's tabs.
  */
-export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlugin, preview?: GalleryPreview): GalleryPlugin {
+export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlugin): GalleryPlugin {
   async function call(method: string, params: object): Promise<unknown> {
     switch (method) {
       case 'bind':
@@ -147,10 +141,6 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
         const { tab } = stopTabSchema.parse(params)
         return { list: await browser.stop(tab) }
       }
-      case 'preview_open':
-        if (preview) {
-          return preview.open(previewOpenInputSchema.parse(params).url)
-        }
     }
     return unknownMethod(method)
   }
@@ -172,14 +162,7 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
         throw error
       }
     },
-    streams: {
-      browser: browser.stream,
-      // The gallery's previews reach no Host: their pages are its own, and a stream ends at once.
-      preview: (handlers) => {
-        queueMicrotask(() => handlers.closed('The gallery has no Host'))
-        return { send: () => {}, close: () => {} }
-      },
-    },
+    streams: { browser: browser.stream },
     installed: () => browser.installed(),
   }
 }

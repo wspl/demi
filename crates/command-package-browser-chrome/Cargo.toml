@@ -31,10 +31,14 @@ demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
 garde.workspace = true
 getrandom = "0.4"
+# Decode a page's raster icon on the Host (MIT OR Apache-2.0).
+image = { version = "0.25", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "webp"] }
 # Validate page tool schemas and the pinned CDP protocol without fetching external refs (MIT).
 jsonschema = { version = "0.56", default-features = false }
 png = "0.18"
 regex = "1"
+# Draw a page's SVG icon on the Host, without its fonts or embedded images (Apache-2.0 OR MIT).
+resvg = { version = "0.48", default-features = false }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3"

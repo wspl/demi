@@ -61,15 +61,13 @@ pub struct Ended {
 }
 
 impl ResidentService {
-    /// Starts `executable` with `data` as its package's data directory,
-    /// checks that it serves `descriptor`, and opens
+    /// Starts `executable`, checks that it serves `descriptor`, and opens
     /// its numbers stream, whose requests go to `numbers`, and its
     /// artifacts stream, which `artifacts` answers. Cancelling `stop` asks
     /// the service to shut down, also while it starts.
     pub(crate) async fn start(
         executable: &Path,
         descriptor: &PackageDescriptor,
-        data: &Path,
         cwd: &Path,
         env: &BTreeMap<String, String>,
         numbers: Arc<dyn NumberSource>,
@@ -79,8 +77,6 @@ impl ResidentService {
         let mut command = Command::new(executable);
         command
             .arg(demi_command_sdk::COMMAND_SERVICE)
-            .arg(demi_command_sdk::DATA)
-            .arg(data)
             .current_dir(cwd)
             .env_clear()
             .envs(env)

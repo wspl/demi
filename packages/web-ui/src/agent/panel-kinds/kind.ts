@@ -1,7 +1,7 @@
 import type { Component } from 'vue'
 import type { z } from 'zod'
 import type { PanelTab } from '../panel-tabs'
-import type { SentenceText, TitleText } from '../../ui/ui-text'
+import type { TitleText } from '../../ui/ui-text'
 
 /** A command of a tab's menu that its kind offers, such as Reload. */
 export interface TabCommand {
@@ -9,8 +9,6 @@ export interface TabCommand {
   icon?: Component
   /** It cannot run now, and shows disabled. */
   disabled?: boolean
-  /** Why it cannot run, which its row says while it is disabled. */
-  disabledReason?: SentenceText
   run(): void
 }
 
