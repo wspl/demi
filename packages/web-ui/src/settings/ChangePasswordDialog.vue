@@ -108,7 +108,7 @@ function submit() {
     label="Change Password"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">
           Change Password
@@ -132,7 +132,6 @@ function submit() {
               secret
               focused
               class="w-48 max-w-full"
-              @keydown.enter="submit"
             />
           </SettingsRow>
           <SettingsRow
@@ -144,7 +143,6 @@ function submit() {
               aria-label="New password"
               secret
               class="w-48 max-w-full"
-              @keydown.enter="submit"
             />
           </SettingsRow>
           <SettingsRow label="Confirm new password">
@@ -153,7 +151,6 @@ function submit() {
               aria-label="Confirm new password"
               secret
               class="w-48 max-w-full"
-              @keydown.enter="submit"
             />
           </SettingsRow>
         </div>
@@ -173,25 +170,24 @@ function submit() {
         <Check :size="ICON_PX.in28" class="text-on-success" />
         Password changed
       </div>
-
-      <div class="flex justify-end gap-2">
-        <Button
-          v-if="phase.kind === 'done'"
-          variant="primary"
-          @click="emit('close')"
-          >Done</Button
-        >
-        <template v-else>
-          <Button @click="emit('close')">Cancel</Button>
-          <Button
-            variant="primary"
-            :disabled="!canSubmit && !phase.busy"
-            :loading="phase.busy"
-            @click="submit"
-            >Change Password</Button
-          >
-        </template>
-      </div>
     </div>
+    <template #footer>
+      <Button
+        v-if="phase.kind === 'done'"
+        variant="primary"
+        @click="emit('close')"
+        >Done</Button
+      >
+      <template v-else>
+        <Button @click="emit('close')">Cancel</Button>
+        <Button
+          variant="primary"
+          :disabled="!canSubmit && !phase.busy"
+          :loading="phase.busy"
+          @click="submit"
+          >Change Password</Button
+        >
+      </template>
+    </template>
   </Dialog>
 </template>

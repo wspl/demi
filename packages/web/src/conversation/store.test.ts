@@ -1267,6 +1267,51 @@ test('the first load reads the conversation its address names before the channel
   expect(held.arrived.toSorted()).toEqual(['draft', 'hosts', 'transcript'])
 })
 
+test('the list waits for the new conversations this web browser keeps, so a reload finds the one its address names', async () => {
+  useConversations().stopAll()
+  useProduct().stop()
+  const signOut = signIn()
+  // A new conversation, typed in and never sent: only this web browser's storage has it.
+  const draftId = '00000000-0000-4000-8000-000000000003'
+  const listed = deferred<draftStorage.SavedDraft[]>()
+  const read = spyOn(draftStorage, 'readLocalDrafts').mockReturnValue(listed.promise)
+  try {
+    const store = useConversations()
+    const initialized = store.initialize()
+    // The channel's first state arrives before the storage answers.
+    await connect()
+    expect(store.listStatus).toBe('loading')
+    const now = '2026-09-09T00:00:00.000Z'
+    listed.resolve([{
+      messageEdit: null, pendingSend: null, base: null, model: null, files: [], scroll: null,
+      text: 'Fix the login bug',
+      local: {
+        phase: 'draft',
+        conversation: { id: draftId, title: 'New conversation', pinned: false, archived: false, target: { kind: 'cloud' }, createdAt: now, updatedAt: now },
+        hosts: [],
+      },
+    }])
+    await initialized
+    expect(store.listStatus).toBe('ready')
+    expect(store.items.find((item) => item.id === draftId)?.draft).toBe('Fix the login bug')
+  } finally {
+    read.mockRestore()
+    signOut()
+  }
+})
+
+test('the first load at a new conversation\'s address that its history entry marks reads nothing of it', async () => {
+  useConversations().stopAll()
+  useProduct().stop()
+  // An empty new conversation: not even this web browser's storage has it.
+  const draftId = '00000000-0000-4000-8000-000000000004'
+  const store = useConversations()
+  await store.activate(draftId, { newConversation: true })
+  await connect()
+  await settle()
+  expect(requests.filter((request) => request.path.includes(draftId))).toEqual([])
+})
+
 test('switching between opened sessions performs no reads or load reset', async () => {
   serveHistory()
   const store = useConversations()
