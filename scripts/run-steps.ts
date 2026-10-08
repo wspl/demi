@@ -7,10 +7,14 @@
 // process id stops the step that is running.
 import { constants } from 'node:os'
 
-/** One command of a script, and the directory it runs in. */
+/**
+ * One command of a script, the directory it runs in, and its environment
+ * when not this process's.
+ */
 export interface Step {
   command: string[]
   cwd: string
+  env?: Record<string, string | undefined>
 }
 
 /**
@@ -40,7 +44,7 @@ export async function runSteps(steps: Step[]): Promise<never> {
     // variables (DEMI_DEV_PROVIDER_* for `xtask dev`) reach the steps.
     child = Bun.spawn(step.command, {
       cwd: step.cwd,
-      env: process.env,
+      env: step.env ?? process.env,
       stdio: ['inherit', 'inherit', 'inherit'],
     })
     code = await child.exited

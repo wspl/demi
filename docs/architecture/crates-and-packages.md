@@ -1664,9 +1664,9 @@ provider-common -> shared-types, shared-gates
 provider-anthropic-api -> shared-types, provider-common
 provider-openai-api -> shared-types, provider-common
 provider-google -> shared-types, provider-common
-provider-codex -> shared-types, provider-common
+provider-codex -> shared-types, provider-common, shared-artifacts
 provider-grok-build -> shared-types, provider-common
-provider-claude-code -> shared-types, provider-common, host-interface
+provider-claude-code -> shared-types, provider-common, host-interface, shared-artifacts
 host-interface -> command-protocol, command-declarations, shared-types
 agent-store -> conversation-socket-protocol, command-protocol, shared-types, provider-common, host-interface
 agent-transcript -> conversation-socket-protocol, agent-store, shared-types, provider-common
@@ -1706,7 +1706,7 @@ server -> backend-database, machine-manager-protocol, shared-artifacts
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates
 command-package-browser -> command-package-browser-chrome, command-package-browser-preview, command-package-browser-protocol, command-protocol, command-sdk
-command-package-browser-preview -> command-package-browser-protocol, preview-rewrite
+command-package-browser-preview -> command-package-browser-protocol, preview-rewrite, shared-artifacts
 preview-rewrite -> none
 preview-rewrite-wasm -> preview-rewrite
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk

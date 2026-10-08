@@ -20,6 +20,8 @@ testing = []
 [dependencies]
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
+# The workspace version the user agent names.
+demi-shared-artifacts = { path = "../shared-artifacts" }
 async-stream = "0.3"
 bytes.workspace = true
 futures-util.workspace = true
