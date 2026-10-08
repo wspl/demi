@@ -104,8 +104,9 @@ pub trait CredentialPool: Send + Sync {
     /// The secret document of the account `id`, which need not exist yet.
     fn document(&self, id: &str) -> Box<dyn AccountDocument>;
 
-    /// Removes the account and its document; an active selection of it goes
-    /// with it.
+    /// Removes the account and its document. When it was the active
+    /// account, the first remaining one in id order becomes active, or none
+    /// when it was the last (`providers.md` § Login and publication).
     fn remove<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
 }
 
