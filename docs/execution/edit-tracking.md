@@ -238,9 +238,7 @@ parent's own commands changed.
   a regenerate removed says *These changes are no longer in the
   conversation.* Picking another file or edit
   replaces the selection; Back and Forward revisit selections. A file whose
-  every edit is without contents is listed without a diff. Under the list,
-  one line says that files other programs wrote are not here, with a link to
-  Uncommitted mode, which shows everything uncommitted.
+  every edit is without contents is listed without a diff.
 - **What it cannot show.** Edit tracking records only the writes that pass
   through it ([Scope](#scope)): a file `npm install` or `git checkout` wrote
   is not listed. When something outside the request changed a file between
