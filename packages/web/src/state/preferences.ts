@@ -161,10 +161,17 @@ export const usePreferences = defineStore('preferences', () => {
   /** The report in flight, so a second trigger does not repeat it. */
   let reporting: string | null = null
   /**
+   * This page's last report as it sent it and as the backend stored it, in
+   * its canonical spelling: a stored value that is the answer to the page's
+   * own facts is not a difference to report.
+   */
+  let reported: { sent: string; stored: string } | null = null
+  /**
    * Sends the web browser's time zone and languages, and the color scheme the
    * page shows, whichever differ from the stored ones; commands receive them,
    * and the conversation browser starts with them (`web-api.md` § User
-   * preferences).
+   * preferences). The caller calls it when the page's own facts may have
+   * changed, never because the stored ones did.
    */
   async function reportBrowser(): Promise<void> {
     const stored = product.snapshot?.preferences
@@ -172,9 +179,14 @@ export const usePreferences = defineStore('preferences', () => {
       return
     }
     const locale = webBrowserLocale()
+    const sentLocale = locale && JSON.stringify(locale)
+    const storedLocale = JSON.stringify(stored.locale ?? null)
+    // The backend's canonical spelling of what this page sent is the same locale.
+    const sameLocale = sentLocale === storedLocale
+      || (reported !== null && reported.sent === sentLocale && reported.stored === storedLocale)
     const colorScheme = appThemeStore.state.mode
     const patch: PreferencesPatch = {
-      ...(locale && JSON.stringify(locale) !== JSON.stringify(stored.locale ?? null) ? { locale } : {}),
+      ...(locale && !sameLocale ? { locale } : {}),
       ...(colorScheme !== stored.colorScheme ? { colorScheme } : {}),
     }
     const key = JSON.stringify(patch)
@@ -186,6 +198,8 @@ export const usePreferences = defineStore('preferences', () => {
     await writes.run(async () => {
       try {
         await save(patch, current.signal)
+        if (patch.locale)
+          reported = { sent: JSON.stringify(patch.locale), stored: JSON.stringify(product.snapshot?.preferences.locale ?? null) }
       } catch (error) {
         if (!current.signal.aborted) {
           reportError('Could Not Report the Time Zone, Languages and Color Scheme', error)

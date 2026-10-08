@@ -79,3 +79,29 @@ test('the web browser reports its time zone, languages and color scheme once, an
   await preferences.reportBrowser()
   expect(patches.at(-1)).toEqual({ colorScheme: 'light' })
 })
+
+// A fixed bug: a backend that stored the report in another spelling than the
+// page's made the page report again on every change of the stored preferences,
+// requests without end.
+test('a report the backend stored in its own spelling is not sent again', async () => {
+  const fetchAsBefore = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path === '/api/settings/preferences' && init?.method === 'PATCH') {
+      const body = JSON.parse(String(init.body))
+      patches.push(body)
+      // The backend's canonical form differs from the browser's.
+      saved = { ...saved, ...body, ...(body.locale ? { locale: { ...body.locale, languages: ['zh-Hans-CN', 'en'] } } : {}) }
+      return Response.json({ preferences: saved })
+    }
+    return fetchAsBefore(input, init)
+  }) as typeof fetch
+  useProduct().start()
+  channels.last().connect(productState({ preferences: saved }))
+  const preferences = usePreferences()
+  setThemeChoice('dark')
+  await preferences.reportBrowser()
+  await preferences.reportBrowser()
+  await preferences.reportBrowser()
+  expect(patches).toHaveLength(1)
+})
