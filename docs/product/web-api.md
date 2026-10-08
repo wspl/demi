@@ -1471,7 +1471,7 @@ The page sends:
 | --- | --- | --- |
 | `offer` | `sdp` | The page makes a peer: at first, and on each new attempt |
 | `candidate` | `candidate` | The browser found another address for the peer, such as its public one once the STUN server answered |
-| `ping` | `id` | Once a second while the page uses the device, to measure the relay path ([Measuring the paths](../execution/direct-channel.md#measuring-the-paths)) |
+| `ping` | `id` | A probe of a measurement of the relay path ([Measuring the paths](../execution/direct-channel.md#measuring-the-paths)) |
 
 The backend sends:
 
