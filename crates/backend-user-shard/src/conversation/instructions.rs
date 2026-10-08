@@ -9,7 +9,6 @@ use std::collections::HashMap;
 use std::rc::Weak;
 
 use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext};
-use demi_agent_transcript::estimate::text_tokens;
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_plugin_interface::project::{self, join};
@@ -202,9 +201,7 @@ fn render(personal: &str, files: &[ProjectFile]) -> Option<ContextAnswer> {
         text.push_str(&format!(
             "\n\n<personal_instructions>\n{personal}\n</personal_instructions>"
         ));
-        instructions.push(InstructionEntry::Personal {
-            tokens: text_tokens(personal),
-        });
+        instructions.push(InstructionEntry::Personal);
     }
     for file in files {
         match file {
@@ -213,10 +210,7 @@ fn render(personal: &str, files: &[ProjectFile]) -> Option<ContextAnswer> {
                     "\n\n<project_instructions path=\"{}\">\n{file}\n</project_instructions>",
                     xml_escaped(path)
                 ));
-                instructions.push(InstructionEntry::File {
-                    path: path.clone(),
-                    tokens: text_tokens(file),
-                });
+                instructions.push(InstructionEntry::File { path: path.clone() });
             }
             ProjectFile::TooLarge { path } => {
                 text.push_str(&format!(

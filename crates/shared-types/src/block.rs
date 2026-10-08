@@ -167,18 +167,12 @@ pub const INSTRUCTIONS_SOURCE: &str = "instructions";
     deny_unknown_fields
 )]
 pub enum InstructionEntry {
-    /// The user's personal instructions, with their token estimate.
-    Personal {
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        tokens: u64,
-    },
-    /// A project file, by its path on the Host, with the token estimate of
-    /// its text.
+    /// The user's personal instructions.
+    Personal,
+    /// A project file, by its path on the Host.
     File {
         #[garde(skip)]
         path: String,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        tokens: u64,
     },
     /// A project file too large to include, by its path on the Host.
     TooLarge {

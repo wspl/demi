@@ -88,15 +88,9 @@ async fn the_personal_instructions_and_the_projects_files_reach_the_model_whole_
             })
             .collect()
     };
-    let personal = InstructionEntry::Personal { tokens: 5 };
-    let root_entry = InstructionEntry::File {
-        path: root.clone(),
-        tokens: (root_text.len() as u64).div_ceil(4),
-    };
-    let web_entry = InstructionEntry::File {
-        path: nearer.clone(),
-        tokens: 3,
-    };
+    let personal = InstructionEntry::Personal;
+    let root_entry = InstructionEntry::File { path: root.clone() };
+    let web_entry = InstructionEntry::File { path: nearer.clone() };
     assert_eq!(
         listed(&transcript(&backend, &master, FIRST).await.blocks),
         vec![vec![personal, root_entry.clone(), web_entry.clone()]]

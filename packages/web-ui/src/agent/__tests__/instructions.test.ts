@@ -19,23 +19,23 @@ function context(source: string, instructions?: InstructionEntry[]): Block {
 }
 
 test('the card lists the newest instructions block, and nothing before the first or once nothing is left', () => {
-  const root: InstructionEntry = { kind: 'file', path: '/repo/AGENTS.md', tokens: 10 }
-  const web: InstructionEntry = { kind: 'file', path: '/repo/web/CLAUDE.md', tokens: 3 }
+  const root: InstructionEntry = { kind: 'file', path: '/repo/AGENTS.md' }
+  const web: InstructionEntry = { kind: 'file', path: '/repo/web/CLAUDE.md' }
   expect(loadedInstructions([context('execution')])).toEqual([])
   const blocks = [context('instructions', [root]), context('execution'), context('instructions', [root, web])]
   expect(loadedInstructions(blocks)).toEqual([root, web])
   expect(loadedInstructions([...blocks, context('instructions')])).toEqual([])
 })
 
-test('each file is named from the outermost file’s directory, and a file too large has no estimate', () => {
+test('each file is named from the outermost file’s directory, and a file too large is marked', () => {
   const rows = instructionRows([
-    { kind: 'personal', tokens: 5 },
-    { kind: 'file', path: '/repo/AGENTS.md', tokens: 10 },
+    { kind: 'personal' },
+    { kind: 'file', path: '/repo/AGENTS.md' },
     { kind: 'too_large', path: '/repo/web/AGENTS.md' },
   ])
-  expect(rows.map(({ label, path, tokens }) => ({ label, path, tokens }))).toEqual([
-    { label: 'Personal instructions', path: null, tokens: 5 },
-    { label: 'AGENTS.md', path: '/repo/AGENTS.md', tokens: 10 },
-    { label: 'web/AGENTS.md', path: '/repo/web/AGENTS.md', tokens: null },
+  expect(rows.map(({ label, path, tooLarge }) => ({ label, path, tooLarge }))).toEqual([
+    { label: 'Personal instructions', path: null, tooLarge: false },
+    { label: 'AGENTS.md', path: '/repo/AGENTS.md', tooLarge: false },
+    { label: 'web/AGENTS.md', path: '/repo/web/AGENTS.md', tooLarge: true },
   ])
 })

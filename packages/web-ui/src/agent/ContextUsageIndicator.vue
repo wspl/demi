@@ -34,7 +34,6 @@ const emit = defineEmits<{
 }>()
 
 const rows = computed(() => instructionRows(props.instructions ?? []))
-const instructionTokens = computed(() => rows.value.reduce((sum, row) => sum + (row.tokens ?? 0), 0))
 
 function openRow(entry: InstructionEntry, close: () => void): void {
   close()
@@ -113,10 +112,7 @@ const ringColor = computed(() => {
       </Button>
     </template>
     <template v-if="instructions" #details="{ close }">
-      <div class="flex items-center justify-between gap-6 px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">
-        <span>Instructions</span>
-        <span v-if="rows.length" class="tabular-nums">{{ formatTokens(instructionTokens) }}</span>
-      </div>
+      <div class="px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">Instructions</div>
       <ul v-if="rows.length" class="px-1 pb-1">
         <li v-for="row in rows" :key="row.path ?? 'personal'">
           <button
@@ -128,8 +124,7 @@ const ringColor = computed(() => {
             <UserRound v-if="row.path === null" :size="14" class="shrink-0 text-fg-subtle" />
             <FileText v-else :size="14" class="shrink-0 text-fg-subtle" />
             <span class="min-w-0 flex-1 truncate text-fg-body">{{ row.label }}</span>
-            <span v-if="row.tokens === null" class="shrink-0 text-on-warning">Too large</span>
-            <span v-else class="shrink-0 tabular-nums text-fg-subtle">{{ formatTokens(row.tokens) }}</span>
+            <span v-if="row.tooLarge" class="shrink-0 text-on-warning">Too large</span>
           </button>
         </li>
       </ul>

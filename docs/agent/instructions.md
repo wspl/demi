@@ -64,7 +64,7 @@ repository, only the working directory is searched.
 Nothing is cut: a file up to 256 KiB is sent whole, and the replay bound does
 not apply to the instructions block
 ([Text bounds](compaction.md#text-bounds)). A large file costs its size in
-every request, which the card shows next to it.
+every request, which the context usage above the card's list includes.
 
 Files in directories below the working directory are not read. Home
 directories are not read either: `~/.claude/CLAUDE.md` or `~/.codex/AGENTS.md`
@@ -106,23 +106,23 @@ directory, a subagent too, a profile's included.
 
 The composer's context card lists what the newest instructions block of the
 root node holds, below the usage and Compact, under the heading
-Instructions with the total of their token estimates. Each entry is one row
-in the block's order:
+Instructions. Each entry is one row in the block's order:
 
 | Entry | Shows | A click |
 | --- | --- | --- |
 | Personal instructions | `Personal instructions` | Opens Settings › Instructions |
 | A project file | Its path from the directory of the block's outermost file, as `AGENTS.md` and `web/CLAUDE.md`; its full path as a tip | Shows the file in the work panel, through the `file` intent ([Files named in messages](../product/file-previews.md#files-named-in-messages)) |
-| A file too large | As a project file, marked `Too large` instead of an estimate | As a project file |
+| A file too large | As a project file, marked `Too large` | As a project file |
 
-Each estimate is the token estimate of the entry's text
-([Units](compaction.md#units)). A click closes the card. Before the root's
+The card shows no token count for an entry: Demi has no tokenizer of the
+model, and an estimate, which can be off by a large part for Chinese text or
+code, would read as a measurement. A click closes the card. Before the root's
 first request, and when the newest block says there is nothing, the card
 says `No personal instructions, AGENTS.md or CLAUDE.md`.
 
 The card reads the transcript the page already holds: the instructions block
 carries, beside its text, the list of its entries (`instructions`, each
-`{ kind: "personal", tokens }`, `{ kind: "file", path, tokens }` or
+`{ kind: "personal" }`, `{ kind: "file", path }` or
 `{ kind: "too_large", path }`), so the page never parses the model's text and
 never asks the backend for anything more. The block itself stays hidden from
 the transcript, as every context block is.
@@ -142,6 +142,6 @@ the transcript, as every context block is.
   above the project; OpenCode does outside a repository.
 - **No cut.** Codex cuts the files at 32 KiB in total, and the others send
   them whole. A cut that drops the end of a project's rules without telling
-  anyone is worse than a large request the card shows. The 256 KiB bound only
+  anyone is worse than a large request the context usage shows. The 256 KiB bound only
   keeps a mistaken file, such as a generated one, out of every request, as
   Claude Code skips a file over its own bound.
