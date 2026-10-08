@@ -1840,6 +1840,41 @@ async fn a_one_shot_call_learns_its_exit_and_the_host_log_keeps_the_streams_word
     fixture.stop().await;
 }
 
+/// A call whose runner goes away while it runs fails because the device is
+/// offline, not because a pipe broke: the runner's leaving fails every pipe
+/// it held, and the caller says what happened (`live-view.md` § A browser tab
+/// in the panel shows it to the user).
+#[tokio::test(flavor = "local")]
+async fn a_call_whose_runner_goes_away_fails_as_the_device_offline() {
+    let native = NativeFixture::load();
+    let (sender, mut tap) = Tap::new();
+    let fixture = RunnerFixture::start(FixtureOptions {
+        tap: Some(sender),
+        ..FixtureOptions::default()
+    })
+    .await;
+    let host = fixture.host();
+    // `stalled` answers only once released, so the call is still running.
+    let call = host.call_service(
+        service(&fixture, &native, "stalled", None),
+        Bytes::new(),
+        64 * 1024,
+    );
+    let leave = async {
+        tap.find("the stream opened", |message| {
+            matches!(message, Outbound::ServiceOpened { .. })
+        })
+        .await;
+        fixture.link().await.disconnect("runner went away");
+    };
+    let (called, ()) = tokio::join!(call, leave);
+    match called {
+        Err(ServiceCallError::Host(error)) => assert_eq!(error.kind, HostErrorKind::Offline, "{error}"),
+        other => panic!("expected the device offline, got {other:?}"),
+    }
+    fixture.stop().await;
+}
+
 /// The Host log from its start, once `done` holds for it: a read waits for
 /// no queued line, so it asks until the writer has put the lines `done`
 /// looks for in the files, and with them every line written before.
