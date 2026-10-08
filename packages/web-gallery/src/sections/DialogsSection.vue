@@ -486,7 +486,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product’s preference does. Switching between existing projects is the sidebar’s “Move To” and the header’s workspace control, not a dialog. The directory completes from the device’s folders as it is typed: the folder before the caret lists under the field, filtered fuzzily by what follows its last slash; ↓ and ↑ highlight a row, Tab or Enter completes it and the menu goes on into it, Escape puts the menu away.">
+      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product’s preference does. Switching between existing projects is the sidebar’s “Move To” and the header’s workspace control, not a dialog. The directory completes from the device’s folders as it is typed: the folder before the caret lists under the field, filtered fuzzily by what follows its last slash; ↓ and ↑ highlight a row, Tab or Enter completes it and the menu goes on into it, Escape or a click anywhere outside it puts the menu away and leaves the focus where the click put it. The button says Add Project for a directory that exists and Create Project for one Demi will make, as the device’s folders tell; Projects/demi exists, Projects/weather-app does not.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(form, index) in projectForms" :key="form.variant" wide :variant="form.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -500,7 +500,7 @@ const resetPhases: {
                 :source-for="sourceFor"
                 :places-for="placesFor"
                 @close="close"
-                @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Create the Project at ${draft.path} and Open a New Conversation in It`)"
+                @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Set Up the Project at ${draft.path} and Open a New Conversation in It`)"
                 @choose="(choice) => (projectLastHosts[index] = choice)"
                 @connect-device="productWould('Add Device')"
                 @retry="productWould('Load the Devices Again')"

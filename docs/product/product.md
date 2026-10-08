@@ -106,7 +106,12 @@ chosen. The dialog never goes back to Cloud on its own. Every explicit
 choice of a kind or a device saves it, whether or not a project is then
 created, as a backend user preference
 ([User preferences](web-api.md#user-preferences)), so every browser of the
-user starts the same way. The directory and the name are not remembered.
+user starts the same way. The directory and the name are not remembered. For
+a device, the dialog's button says what it will do with the directory typed:
+*Add Project* when it exists, *Create Project* when Demi will create it, as
+the directory field's completion has already learned which. The field's
+completion list closes when the user clicks anywhere outside it, and a click
+elsewhere in the dialog never moves the focus back into the field.
 Creating the project opens a new conversation in it, as the project's own New
 Conversation does: an immediately typeable draft, which the first send makes a
 conversation, so a project the user only wanted to set up leaves no empty

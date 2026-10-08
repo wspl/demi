@@ -146,6 +146,7 @@ defineExpose({
       :model-value="draft ?? address"
       placeholder="Enter address"
       aria-label="Browser address"
+      literal
       @update:model-value="draft = $event"
       @keydown.enter="submit"
       @keydown.esc.stop.prevent="revert"

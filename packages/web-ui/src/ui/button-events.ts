@@ -15,3 +15,13 @@ export function blockUnavailableButtonEvent(
   event.preventDefault()
   event.stopImmediatePropagation()
 }
+
+/** Return and Space press the button-like element that has the focus, as they press a native button. */
+export function pressOnKey(event: KeyboardEvent): void {
+  const target = event.currentTarget
+  if (event.target !== target || !(target instanceof HTMLElement) || (event.key !== 'Enter' && event.key !== ' ')) {
+    return
+  }
+  event.preventDefault()
+  target.click()
+}

@@ -139,6 +139,7 @@ const canSave = computed(() => {
             <TextInput
               v-model="draft.id"
               placeholder="model-id"
+              literal
               class="w-64 max-w-full font-mono"
               :readonly="mode === 'edit'"
             />
@@ -218,6 +219,7 @@ const canSave = computed(() => {
               v-if="editable"
               :model-value="draft.fastTier ?? ''"
               placeholder="fast"
+              literal
               class="w-32"
               @update:model-value="(v) => (draft.fastTier = v.trim() || null)"
             />

@@ -104,6 +104,7 @@ function submit() {
               focused
               aria-label="Pairing code"
               placeholder="Paste code"
+              literal
               class="w-60 max-w-full font-mono"
               :disabled="phase.kind === 'pairing'"
               @keydown.enter="submit"

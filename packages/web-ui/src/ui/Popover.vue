@@ -14,6 +14,7 @@ import { onClickOutside, onKeyStroke } from '@vueuse/core'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlayTarget } from '../overlay/overlayContainer'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
+import { useFocusReturn } from '../overlay/focusReturn'
 import { useOverlay } from '../composables/useOverlay'
 
 const props = withDefaults(defineProps<{
@@ -187,6 +188,39 @@ watch(floatingRef, (el, _prev, onCleanup) => {
   onCleanup(family.register(el))
 })
 
+/**
+ * A panel that held the focus gives it back to its opener when it closes, by
+ * a choice, Escape or a click outside on nothing that takes the focus
+ * (`useFocusReturn`); a panel that never held it, such as a hover card, gives
+ * none back. A submenu gives the keys back to its own menu (MenuItem).
+ */
+const focusReturn = useFocusReturn(inFamily)
+let heldFocus = false
+
+function inFamily(el: EventTarget | null): boolean {
+  return el instanceof Node && family.panels.some((panel) => panel.contains(el))
+}
+
+function panelFocusIn(): void {
+  heldFocus = true
+}
+
+function panelFocusOut(event: FocusEvent): void {
+  // Focus that moved to a control outside the tree stays there; into a submenu or to nothing, it was still the panel's.
+  if (event.relatedTarget !== null && !inFamily(event.relatedTarget))
+    heldFocus = false
+}
+
+// Immediate: a panel can mount already open, as a context menu keyed to each opening does.
+watch(() => props.isOpen, (open) => {
+  if (open) {
+    focusReturn.open()
+  } else {
+    focusReturn.close(!nested && heldFocus)
+  }
+  heldFocus = false
+}, { flush: 'sync', immediate: true })
+
 onClickOutside(floatingRef, () => {
   if (props.isOpen)
     emit('close')
@@ -238,6 +272,8 @@ const overlayMotion = {
         class="popover-floating z-50 w-max"
         :style="{ ...floatingStyles, transformOrigin: transformOrigin }"
         @keydown="closeOnEscape"
+        @focusin="panelFocusIn"
+        @focusout="panelFocusOut"
       >
         <slot />
       </div>

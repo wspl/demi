@@ -165,7 +165,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               message="Could not create the project. The selected device is offline."
               @choose="failedProjectHost = $event"
               @close="close"
-              @create="(draft) => productWould(draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name}` : `Create the Project at ${draft.path}`)"
+              @create="(draft) => productWould(draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name}` : `Set Up the Project at ${draft.path}`)"
               @connect-device="productWould('Add Device')"
               @retry="productWould('Load the Devices Again')"
             />
