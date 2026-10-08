@@ -342,7 +342,7 @@ The route answers before the upgrade:
 | 409 `device_offline` | A paired device has no live runner |
 | 409 `host_stopped` | The Cloud is stopped; a user stream never wakes it |
 | 409 `conversation_busy` | An archive, a target change or a detach is ending the conversation's streams |
-| 502 `stream_failed` | The Host could not open the stream: its service failed to start, or refused it |
+| 503 `stream_failed` | The Host could not open the stream: its service failed to start, or refused it |
 
 Admission follows [Host operations](../execution/sessions-and-targets.md#host-operations).
 After the upgrade, binary messages carry the stream's bytes both ways, in
@@ -742,7 +742,7 @@ successful inference test.
 
 `GET /api/providers/:id/status` returns auth/runtime state, account metadata,
 active account, capabilities and quota. An entry whose provider cannot be built
-or read answers 502 `provider_status_failed` with the reason, the message its
+or read answers 503 `provider_status_failed` with the reason, the message its
 `failed` details carry in the sync state. Each account carries its own `quota`,
 the last real snapshot kept for it; the top-level `quota` is the active
 account's. `quotaCapability` is `{ type: "none" }` for a family without quota,
@@ -753,8 +753,8 @@ key/token material or raw vendor quota envelopes.
 refreshes that account's free quota probe (the active account's without one);
 cancelling the request stops the probe. An unknown account is
 `account_not_found`. A provider requiring inference for a probe returns
-`quota_requires_inference`, and a probe the vendor fails answers 502
-`quota_unavailable`; a family that cannot probe answers the kept snapshot, and
+`quota_requires_inference`, and a probe the vendor fails answers 503
+`quota_unavailable`, with the vendor's reason; a family that cannot probe answers the kept snapshot, and
 no data returns null, not a fabricated percentage
 ([Vendor quota](../providers/usage-and-quota.md#vendor-quota)). Reading status
 never invokes inference.
@@ -1391,7 +1391,7 @@ a stopped Cloud wakes for it, a paired device without a live runner answers
 409 `device_offline`, and a Cloud that cannot wake answers 503 with the
 lifecycle's code. A request beyond the runner's working-tree capacity waits
 for a slot ([Load](../execution/runner.md#load)); the runner's timeout answers
-504 `changes_timeout`, and the page then keeps its previous list and says
+503 `changes_timeout`, and the page then keeps its previous list and says
 the refresh failed.
 
 `GET /api/conversations/:id/changes/file?path=...` returns `{ original,
