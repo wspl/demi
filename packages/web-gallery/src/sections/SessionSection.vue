@@ -4,6 +4,10 @@ import { Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
 import { agentReceiptMessages, editedFile, permissionReceiptMessages } from '../fixtures/blocks'
+import { HELPER, helperBlocks, helperParentBlocks, signInRequestBlocks, standaloneRequest, uncopiedRequestBlocks } from '../fixtures/request-changes'
+import { useGalleryTranscripts } from '../fixtures/transcripts'
+import GalleryTranscript from '../components/GalleryTranscript.vue'
+import GalleryEditSelection from '../components/GalleryEditSelection.vue'
 import PermissionCard from '@demicodes/web-ui/permissions/PermissionCard.vue'
 import { afterDecision, type PermissionDecision, type PermissionRequestView } from '@demicodes/web-ui/permissions/types'
 import { queuedRequests, rootRequest, subagentRequest } from '../fixtures/permissions'
@@ -19,11 +23,12 @@ import { providePageOpening } from '@demicodes/web-ui/agent/page-opening'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { galleryFiles, useGalleryWork, type GalleryWork } from '../fixtures/work-panel'
-import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, showChange } from '@demicodes/plugin-changes/data'
+import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, showChange, showEdit, showRequestEdit } from '@demicodes/plugin-changes/data'
 import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { NEW_TAB_URL, STARTING_LABELS, browserTabDataSchema, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
-import { callChangeSource, type CallEditSelection, type ChangeMode, type ChangeSources } from '@demicodes/web-ui/files/changes'
+import type { ChangeMode, ChangeSetSource, ChangeSources } from '@demicodes/web-ui/files/changes'
+import { transcriptRequests, type RequestChangeSource, type RequestEditRef, type RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace, gallerySides } from '../fixtures/workspace'
@@ -304,9 +309,18 @@ const previewFiles = [
   'README.md', 'assets/logo.svg', 'assets/photo.png', 'assets/demo.mp4',
   'assets/tone.m4a', 'docs/guide.pdf', 'dist/app.zip', 'src/auth/cookie.ts', 'server.log',
 ]
-/** One Change view on its own, stepped the way the `change` kind steps it: for the Change view specimens. */
-function useChangeTab(mode: ChangeMode, path: string | null, changes: ChangeSources) {
-  const tab = ref(showChange(firstChangeData(), mode, path, { call: changes.conversation, edit: 0 }))
+/**
+ * One Change view on its own, stepped the way the `change` kind steps it:
+ * for the Change view specimens. `request` opens a request of the
+ * conversation, as its line or a pill would, whose files `conversation` holds.
+ */
+function useChangeTab(
+  mode: ChangeMode,
+  path: string | null,
+  changes: { uncommitted: ChangeSetSource; conversation: RequestChangeSource | null },
+  request: RequestEditSelection | null = null,
+) {
+  const tab = ref(request ? showRequestEdit(firstChangeData(), request) : showChange(firstChangeData(), mode, path))
   /** The file the view holds in its mode, else the first there is. */
   const selected = computed(() => changePath(tab.value, tab.value.mode, changes.uncommitted.files))
   function show(mode: ChangeMode, path: string | null) {
@@ -317,12 +331,12 @@ function useChangeTab(mode: ChangeMode, path: string | null, changes: ChangeSour
     selected,
     changes: computed<ChangeSources>(() => ({
       uncommitted: changes.uncommitted,
-      conversation: tab.value.call && changes.conversation
-        ? { ...tab.value.call, read: changes.conversation.read }
-        : null,
+      conversation: tab.value.request ? changes.conversation : null,
     })),
+    edit: computed(() => tab.value.request?.edit ?? null),
     setMode: (mode: ChangeMode) => show(mode, changePath(tab.value, mode)),
     select: (path: string | null) => show(tab.value.mode, path),
+    setEdit: (edit: RequestEditRef | null) => (tab.value = showEdit(tab.value, edit)),
     back: () => (tab.value = changeBack(tab.value)),
     forward: () => (tab.value = changeForward(tab.value)),
   }
@@ -376,20 +390,29 @@ provideEditSelection(() => editWork.selectEdit)
 // A presented page's card stands alone among the blocks, with no panel to open it in: its Open says what the product does.
 providePageOpening(() => (page) => productWould(`Open ${page.title} in Your Browser`))
 const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null })
-const changePicked = useChangeTab('conversation', 'src/auth/cookie.ts', {
+/** The sign-in request, its login.ts edited three times, as the Change view's specimens read it. */
+const signInChanges = transcriptRequests(signInRequestBlocks('change-view')).requests[0]!
+const signInLogin = signInChanges.files[0]!
+const changeRequest = useChangeTab('conversation', null, {
   uncommitted: workspace.changes,
-  conversation: callChangeSource({
-    commandId: 'gallery-cookie-edit',
-    file: editedFile({ path: 'src/auth/cookie.ts', kind: 'modified', added: 1, removed: 1 }),
-  }, readGalleryEdit),
-})
-const changeDocument = useChangeTab('conversation', 'README.md', {
+  conversation: { files: signInChanges.files, read: readGalleryEdit },
+}, { node: null, request: signInChanges.id, file: signInLogin.path, edit: null })
+const changeRequestEdit = useChangeTab('conversation', null, {
   uncommitted: workspace.changes,
-  conversation: callChangeSource({
-    commandId: 'gallery-readme-edit',
-    file: editedFile({ path: 'README.md', kind: 'modified', added: 0, removed: 1 }),
-  }, () => gallerySides('README.md')),
-})
+  conversation: { files: signInChanges.files, read: readGalleryEdit },
+}, { node: null, request: signInChanges.id, file: signInLogin.path, edit: signInLogin.edits[2]! })
+/** A request that changed the README once, whose two sides are the workspace's Markdown. */
+const readmeChange = editedFile({ path: 'README.md', kind: 'modified', added: 0, removed: 1 })
+const changeDocument = useChangeTab('conversation', null, {
+  uncommitted: workspace.changes,
+  conversation: {
+    files: [{
+      ...readmeChange,
+      edits: [{ call: 'gallery-readme-edit', title: 'Tidy the readme', segment: 0, created: false, copies: readmeChange.edits[0]!.copies }],
+    }],
+    read: () => gallerySides('README.md'),
+  },
+}, { node: null, request: 'gallery-readme', file: 'README.md', edit: null })
 const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: workspace.changes })
 const changeNoRepository = useChangeTab('uncommitted', null, {
   conversation: null,
@@ -564,6 +587,16 @@ provideLiveCalls((toolUseId) =>
   callTerminal([...terminals, ...turnFlow.state.terminals], undefined, toolUseId),
 )
 const changesFlow = useTurnFlow({ id: 'gallery-changes', title: 'Cookie rename', blocks: changesDemoBlocks() })
+useGalleryTranscripts(() => ({ blocks: changesFlow.state.blocks, subagents: [] }))
+/** The requests of the Request’s Changes specimens, which the panel under them reads as the product reads a conversation. */
+const signInBlocks = signInRequestBlocks('sign-in')
+const signInOffBlocks = signInRequestBlocks('sign-in-off')
+const uncopiedBlocks = uncopiedRequestBlocks()
+const parentBlocks = helperParentBlocks()
+const childBlocks = helperBlocks()
+useGalleryTranscripts(() => ({ blocks: signInBlocks, subagents: [] }))
+useGalleryTranscripts(() => ({ blocks: uncopiedBlocks, subagents: [] }))
+useGalleryTranscripts(() => ({ blocks: parentBlocks, subagents: [{ id: HELPER, blocks: childBlocks }] }))
 const changesSurface = ref<{ dockHeight: number }>()
 const changesList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
 const turnSurface = ref<{ dockHeight: number }>()
@@ -1576,12 +1609,14 @@ onBeforeUnmount(() => {
               variant="shell · changed files"
               wide
             >
-              <ToolShellBlock
-                v-model:open="functionalShellFiles"
-                :block="editingShellTool"
-                :input="parseToolInput(editingShellTool.input)"
-                :is-streaming="false"
-              />
+              <GalleryTranscript :blocks="standaloneRequest(editingShellTool)">
+                <ToolShellBlock
+                  v-model:open="functionalShellFiles"
+                  :block="editingShellTool"
+                  :input="parseToolInput(editingShellTool.input)"
+                  :is-streaming="false"
+                />
+              </GalleryTranscript>
             </GallerySpecimen>
             <GallerySpecimen
               variant="shell · presented a page"
@@ -1717,12 +1752,95 @@ onBeforeUnmount(() => {
           </SessionSurface>
         </div>
       </GallerySection>
+      <GallerySection
+        title="Request’s Changes"
+        note="A request is what one message of the user asked for: from that message to the agent’s next one, through the build it waited for, the yield that woke it and the steers it took. At the end of its reply, once one of its calls changed a file, one line says how many files and the lines added and removed, and grows as later calls end. It opens the Change view in the panel below on the request’s first file, All Changes; a file pill opens its file at that call’s first edit. A file whose every edit kept no contents is listed without a diff. A subagent’s changes show in its own transcript, under its own request, and never in its parent’s. With the changes plugin off, the line and the pills are no controls."
+      >
+        <GallerySpecimen variant="two files, login.ts edited three times across a yield" wide>
+          <div class="gallery-frame h-[30rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-request-sign-in"
+              :blocks="signInBlocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="an edit without contents" wide>
+          <div class="gallery-frame h-[22rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-request-uncopied"
+              :blocks="uncopiedBlocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="a subagent’s own request, beside its parent’s, which changed nothing" wide>
+          <div class="grid grid-cols-2 gap-3">
+            <div class="gallery-frame h-[22rem] bg-surface">
+              <AgentMessageList
+                class="h-full"
+                conversation-id="gallery-request-parent"
+                :blocks="parentBlocks"
+                :pending-steers="[]"
+                :queue="[]"
+                phase="idle"
+                :bottom-offset="0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+            <div class="gallery-frame h-[22rem] bg-surface">
+              <AgentMessageList
+                class="h-full"
+                conversation-id="gallery-request-helper"
+                :node="HELPER"
+                :blocks="childBlocks"
+                :pending-steers="[]"
+                :queue="[]"
+                phase="idle"
+                :bottom-offset="0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="the changes plugin off · the line and the pills are no controls" wide>
+          <GalleryEditSelection>
+            <div class="gallery-frame h-[30rem] bg-surface">
+              <AgentMessageList
+                class="h-full"
+                conversation-id="gallery-request-off"
+                :blocks="signInOffBlocks"
+                :pending-steers="[]"
+                :queue="[]"
+                phase="idle"
+                :bottom-offset="0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+          </GalleryEditSelection>
+        </GallerySpecimen>
+      </GallerySection>
       <div class="h-[480px] overflow-hidden rounded-lg border border-line">
         <GalleryWorkPanel :work="editWork" />
       </div>
       <GallerySection
         title="Changed Files"
-        note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green dot. Pick a file to show that call’s edits in the panel; unavailable contents leave the diff blank. Past three rows the rest fold into +N files. The row folds the command and output on its own; the pills do not move."
+        note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green dot. Pick a file to show it in the panel among the request’s changes, at that call’s first edit; unavailable contents leave the diff blank. Past three rows the rest fold into +N files. The row folds the command and output on its own; the pills do not move."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -1732,12 +1850,14 @@ onBeforeUnmount(() => {
               :variant="item.variant"
               wide
             >
-              <ToolShellBlock
-                v-model:open="changeCaseOpen[item.block.id]"
-                :block="item.block"
-                :input="parseToolInput(item.block.input)"
-                :is-streaming="false"
-              />
+              <GalleryTranscript :blocks="standaloneRequest(item.block)">
+                <ToolShellBlock
+                  v-model:open="changeCaseOpen[item.block.id]"
+                  :block="item.block"
+                  :input="parseToolInput(item.block.input)"
+                  :is-streaming="false"
+                />
+              </GalleryTranscript>
             </GallerySpecimen>
           </div>
         </div>
@@ -2379,7 +2499,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Change View"
-        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree’s instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree”, or “Before” and “After” in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code’s Git marks it with, by VS Code’s own rules from git’s two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code’s colors and with VS Code’s words as the tooltip; where git has a letter for both the index and the working tree, the working tree’s shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree’s caption. Conversation shows only the file picked under a shell call, without a file tree or a list source. It shows that file’s retained edits, with a segment control when other calls wrote between them. Missing contents leave the diff blank. Back and Forward walk what the view has shown, across modes. The header also opens the selected file itself. Only Uncommitted offers a tree toggle, and in a narrow view its tree hides and shows over the diff the way the File view’s does; its tree’s caption lists the changes again, its control turning while the list is on its way. A header over the diff names the file shown, in either mode, as GitHub’s diff header does: its icon, its folder from the workspace, its name, where a renamed file came from, and its line counts. Picking a file pill opens Conversation; the Change tab picked again shows the view as it was left; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows no file tree or toggle, only “Not a git repository.” It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory’s name, as the product does for the Cloud’s own session directory. The tree takes the keyboard as the File View’s does: typing a name moves to the first row shown that starts with it, and Enter selects a file."
+        note="Diffs from one of two sources, the switch in the header picks. A changed image, video, audio file or PDF shows its committed version beside the working tree’s instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree”, or “Before” and “After” in Conversation. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code’s Git marks it with, by VS Code’s own rules from git’s two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code’s colors and with VS Code’s words as the tooltip; where git has a letter for both the index and the working tree, the working tree’s shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree’s caption. Conversation shows one request of the conversation: its files in a sidebar in the order the request first changed them, each row its name, its folder after it and its line counts, and under them a line saying files other programs wrote aren’t listed, whose Show Uncommitted switches the mode. A file shows All Changes, from before the request’s first edit of it to after its last; when the request edited it more than once, the header steps through each edit, Edit 2 of 3, and its menu names every edit by its call’s title, which the diff’s header also shows. Missing contents leave the diff blank. Back and Forward walk what the view has shown, across modes, files and edits. The header also opens the selected file itself. Either sidebar has a toggle, and in a narrow view it hides and shows over the diff the way the File view’s tree does; its tree’s caption lists the changes again, its control turning while the list is on its way. A header over the diff names the file shown, in either mode, as GitHub’s diff header does: its icon, its folder from the workspace, its name, where a renamed file came from, and its line counts. A request’s line opens Conversation on its first file’s All Changes, and a file pill on its file at that call’s first edit; the Change tab picked again shows the view as it was left; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows no file tree or toggle, only “Not a git repository.” It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory’s name, as the product does for the Cloud’s own session directory. The tree takes the keyboard as the File View’s does: typing a name moves to the first row shown that starts with it, and Enter selects a file."
       >
         <GallerySpecimen
           v-for="specimen in [
@@ -2387,7 +2507,8 @@ onBeforeUnmount(() => {
             { variant: 'uncommitted · narrow, the tree hides, its control shows it over the diff', work: changeUncommitted, rootName: undefined, narrow: true },
             { variant: 'uncommitted · not a repository, named Workspace', work: changeNoRepository, rootName: 'Workspace', narrow: false },
             { variant: 'uncommitted · listing failed, cut short', work: changeStale, rootName: undefined, narrow: false },
-            { variant: 'conversation · picked', work: changePicked, rootName: undefined, narrow: false },
+            { variant: 'conversation · a request, All Changes of its first file', work: changeRequest, rootName: undefined, narrow: false },
+            { variant: 'conversation · a pill’s edit, the third of three', work: changeRequestEdit, rootName: undefined, narrow: false },
             { variant: 'conversation · a Markdown file picked', work: changeDocument, rootName: undefined, narrow: false },
             { variant: 'conversation · nothing picked', work: changeEmpty, rootName: undefined, narrow: false },
           ]"
@@ -2407,6 +2528,7 @@ onBeforeUnmount(() => {
               :contents="workspace.source.contents"
               :mode="specimen.work.tab.value.mode"
               :selected="specimen.work.selected.value"
+              :edit="specimen.work.edit.value"
               :changes="specimen.work.changes.value"
               :root="workspace.root"
               :root-name="specimen.rootName"
@@ -2414,8 +2536,11 @@ onBeforeUnmount(() => {
               :can-forward="specimen.work.tab.value.forward.length > 0"
               @update:mode="specimen.work.setMode"
               @update:selected="specimen.work.select"
+              @update:edit="specimen.work.setEdit"
               @back="specimen.work.back"
               @forward="specimen.work.forward"
+              opens
+              @open="(path: string) => productWould(`Open ${path} in File`)"
             />
           </div>
         </GallerySpecimen>

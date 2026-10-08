@@ -102,6 +102,7 @@ function closeTab(agent: SubagentRecord): void {
     <AgentMessageList
       v-if="active"
       :conversation-id="active.id"
+      :node="active.id"
       :blocks="active.blocks"
       :failures="active.failures"
       :pending-steers="[]"
