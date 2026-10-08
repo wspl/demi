@@ -25,7 +25,7 @@ use tokio_util::sync::CancellationToken;
 
 pub use addresses::{Addresses, offered};
 pub use operation::{
-    speed_bytes, Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamActivity,
+    Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamActivity,
     StreamRequest, WatchStream,
 };
 

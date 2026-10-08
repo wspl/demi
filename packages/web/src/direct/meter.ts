@@ -2,11 +2,9 @@
  * The measuring of one device's paths while the page uses it
  * (`direct-channel.md` § Measuring the paths): a probe on each path once a
  * second, their figures for the device's page, Automatic's finding for the
- * choice of path, and Test Speed when the user asks.
+ * choice of path.
  */
-import { z } from 'zod'
-import type { DeviceRoute, PathFigures, SpeedResult } from '@demicodes/web-ui/devices/direct'
-import { apiRequest } from '../api/client'
+import type { DeviceRoute, PathFigures } from '@demicodes/web-ui/devices/direct'
 import type { DeviceDirect } from './device'
 import { AutomaticChoice, PathProbes, directWorse } from './measure'
 import type { DirectPeer } from './peer'
@@ -14,18 +12,14 @@ import type { DeviceSignaling } from './signaling'
 
 /** How often each path is probed. */
 const PROBE_EVERY_MS = 1000
-/** What one speed test downloads over each path: 8 MiB. */
-export const SPEED_BYTES = 8 * 1024 * 1024
-const MIB = 1024 * 1024
 
 /** What the views show of a device's measured paths. */
 export interface MeterState {
   figures: { direct: PathFigures | null; relay: PathFigures | null }
-  speed: SpeedResult
 }
 
 export function meterState(): MeterState {
-  return { figures: { direct: null, relay: null }, speed: { direct: null, relay: null, testing: false } }
+  return { figures: { direct: null, relay: null } }
 }
 
 export class DeviceMeter {
@@ -71,24 +65,6 @@ export class DeviceMeter {
     this.stop()
   }
 
-  /**
-   * Test Speed: 8 MiB over each path in turn, direct first when there is a
-   * peer, as MiB/s. One test runs at a time.
-   */
-  async testSpeed(): Promise<void> {
-    const speed = this.state.speed
-    if (speed.testing)
-      return
-    speed.testing = true
-    try {
-      const peer = this.choice.connected()
-      speed.direct = peer ? await timed(() => directBytes(peer)) : null
-      speed.relay = await timed(() => relayBytes(this.deviceId))
-    } finally {
-      speed.testing = false
-    }
-  }
-
   private start(): void {
     this.stopPongs = this.signaling.onPong((id) => this.relay.answered(id, performance.now()))
     this.timer = setInterval(() => this.tick(), PROBE_EVERY_MS)
@@ -124,49 +100,5 @@ export class DeviceMeter {
     this.state.figures = { direct: peer ? this.direct.figures() : null, relay: this.relay.figures() }
     if (peer && this.route() === 'automatic')
       this.choice.setSlower(this.automatic.update(now, directWorse(this.direct.recent(now), this.relay.recent(now))))
-  }
-}
-
-/** The MiB/s of the bytes `read` reads; null when it fails. */
-async function timed(read: () => Promise<number>): Promise<number | null> {
-  const started = performance.now()
-  try {
-    const bytes = await read()
-    const seconds = (performance.now() - started) / 1000
-    return seconds > 0 ? bytes / MIB / seconds : null
-  } catch {
-    // A path that failed under the test has no speed to show; the page says so with a dash.
-    return null
-  }
-}
-
-const speedAnswerSchema = z.object({ ok: z.literal(true) })
-
-/** Downloads a speed test's bytes over the peer's `speed` channel; answers how many came. */
-async function directBytes(peer: DirectPeer): Promise<number> {
-  const channel = await peer.open({ op: 'speed', bytes: SPEED_BYTES }, speedAnswerSchema)
-  await channel.answer()
-  let bytes = 0
-  for (;;) {
-    const message = await channel.next()
-    if (message === null)
-      return bytes
-    if (message.kind === 'bytes')
-      bytes += message.bytes.length
-  }
-}
-
-/** Downloads a speed test's bytes through the server; answers how many came. */
-async function relayBytes(deviceId: string): Promise<number> {
-  const response = await apiRequest(`/devices/${encodeURIComponent(deviceId)}/speed?bytes=${SPEED_BYTES}`, { waits: false })
-  if (!response.ok || !response.body)
-    throw new Error(`The speed route answered ${response.status}`)
-  let bytes = 0
-  const reader = response.body.getReader()
-  for (;;) {
-    const { done, value } = await reader.read()
-    if (done)
-      return bytes
-    bytes += value.length
   }
 }

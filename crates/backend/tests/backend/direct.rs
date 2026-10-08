@@ -1,6 +1,7 @@
 //! A direct channel's signaling socket (`web-api.md` § Direct channel):
 //! the backend introduces a page to its paired device's real runner, which
-//! answers the page's offer; the socket's close closes the runner's peer;
+//! answers the page's offer; the page's probes and candidates do not wait
+//! behind that answer; the socket's close closes the runner's peer;
 //! the Cloud and an offline device are refused; a quiet socket hears a
 //! heartbeat, and the runner's connection ending closes it. A page in
 //! process opens the user's streams on the channel: one installs its service
@@ -22,9 +23,11 @@ use demi_command_package_browser_chrome::driver::numbers::TabNumbers;
 use demi_command_protocol::CommandLocale;
 use demi_command_sdk::testing::counting_numbers;
 use demi_runner_direct::testing::{Heard, Page};
+use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use reqwest::StatusCode;
 use tokio_util::sync::CancellationToken;
 
+use crate::runners::{RawRunner, hello};
 use crate::streams::{CONVERSATION, conversation};
 use crate::support::{EXTRA, Harness, Paired, Session, TestBackend};
 use demi_command_protocol::host_target;
@@ -177,10 +180,9 @@ async fn the_runner_answers_offers_and_a_closed_socket_frees_its_peer() {
     backend.close().await;
 }
 
-// Under a second: a paired device's real runner answers each probe and
-// sends the bytes a speed test asks for.
+// Under a second: a paired device's real runner answers each probe.
 #[tokio::test]
-async fn the_relay_path_answers_each_probe_and_the_speed_route_sends_the_bytes_asked_for() {
+async fn the_relay_path_answers_each_probe() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let paired = backend.pair(&master, "laptop").await;
@@ -192,19 +194,70 @@ async fn the_relay_path_answers_each_probe_and_the_speed_route_sends_the_bytes_a
         socket.send(Message::Text(ping.into())).await.unwrap();
         assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "pong", "id": id }));
     }
+    backend.close().await;
+}
 
-    let speed = async |bytes: u64| {
-        let path = format!("/api/devices/{}/speed?bytes={bytes}", paired.id());
-        backend.get(&path, Some(&master)).await
+// Under a second: the test speaks the device's runner and answers the offer
+// only after the probe, so a backend that waited for the answer before
+// reading the page's next message would relay neither in time.
+#[tokio::test]
+async fn a_probe_and_a_candidate_do_not_wait_behind_an_offers_answer() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut paired = backend.pair(&master, "laptop").await;
+    let token = paired.token().await;
+    let id = paired.id().to_owned();
+    paired.runner.stop().await;
+    backend.until_online(&master, &id, false).await;
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    assert!(matches!(runner.next().await, Some(Inbound::HelloOk { .. })));
+    backend.until_online(&master, &id, true).await;
+
+    // The runner holds the page's offer while the page trickles a
+    // candidate and probes the relay path.
+    let mut socket = signaling(&backend, &master, &paired).await;
+    send_offer(&mut socket).await;
+    let (offer, peer) = loop {
+        match runner.next().await {
+            Some(Inbound::DirectOffer { id, peer, .. }) => break (id, peer),
+            Some(_) => {}
+            None => panic!("the backend closed the runner's connection"),
+        }
     };
-    let answer = speed(300_000).await;
-    assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
-    assert_eq!(answer.body.len(), 300_000);
-    let distinct = answer.body.iter().collect::<std::collections::HashSet<_>>().len();
-    assert!(distinct > 200, "random bytes, which no proxy compresses: {distinct}");
-    for refused in [0, 64 * 1024 * 1024 + 1] {
-        assert_eq!(speed(refused).await.status, StatusCode::BAD_REQUEST);
-    }
+    let candidate = "candidate:1 1 udp 2122260223 192.0.2.7 50000 typ host";
+    let trickled = json!({ "type": "candidate", "candidate": candidate }).to_string();
+    socket.send(Message::Text(trickled.into())).await.unwrap();
+    let ping = json!({ "type": "ping", "id": 9 }).to_string();
+    socket.send(Message::Text(ping.into())).await.unwrap();
+
+    // The probe reaches the runner and its answer the page; the candidate
+    // waits for the peer the answer makes.
+    let probe = loop {
+        match runner.next().await {
+            Some(Inbound::DirectPing { peer: of, id }) => break (of, id),
+            Some(Inbound::DirectCandidate { .. }) => panic!("a candidate before its peer's answer"),
+            Some(_) => {}
+            None => panic!("the backend closed the runner's connection"),
+        }
+    };
+    assert_eq!(probe, (peer.clone(), 9));
+    runner.send(&Outbound::DirectPong { peer: peer.clone(), id: 9 }).await;
+    assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "pong", "id": 9 }));
+
+    runner.send(&Outbound::DirectAnswer { id: offer, sdp: "v=0\r\n".into() }).await;
+    assert_eq!(
+        next(&mut socket).await.unwrap(),
+        json!({ "type": "answer", "sdp": "v=0\r\n" })
+    );
+    let relayed = loop {
+        match runner.next().await {
+            Some(Inbound::DirectCandidate { peer: of, candidate }) => break (of, candidate),
+            Some(_) => {}
+            None => panic!("the backend closed the runner's connection"),
+        }
+    };
+    assert_eq!(relayed, (peer, candidate.to_owned()));
     backend.close().await;
 }
 
@@ -223,11 +276,6 @@ async fn the_cloud_and_a_device_without_its_runner_are_refused() {
         .unwrap();
     let (status, body) = refused(&backend, &master, cloud).await;
     assert_eq!((status, body["code"].as_str()), (409, Some("not_a_paired_device")));
-    let speed = async |device: &str| {
-        let path = format!("/api/devices/{device}/speed?bytes=1");
-        backend.get(&path, Some(&master)).await
-    };
-    assert_eq!(speed(cloud).await.refusal().1, demi_web_api_protocol::error::ErrorCode::NotAPairedDevice);
 
     let mut paired = backend.pair(&master, "laptop").await;
     let id = paired.id().to_owned();
@@ -235,7 +283,6 @@ async fn the_cloud_and_a_device_without_its_runner_are_refused() {
     backend.until_online(&master, &id, false).await;
     let (status, body) = refused(&backend, &master, &id).await;
     assert_eq!((status, body["code"].as_str()), (409, Some("device_offline")));
-    assert_eq!(speed(&id).await.refusal().1, demi_web_api_protocol::error::ErrorCode::DeviceOffline);
     backend.close().await;
 }
 

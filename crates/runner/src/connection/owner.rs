@@ -623,19 +623,6 @@ impl Owner<'_> {
                     Work::Done
                 });
             }
-            Inbound::Speed { id, bytes, output } => {
-                let control = self.handle.control.clone();
-                let closed = self.handle.closed().clone();
-                let pipes = self.registered.pipes.clone();
-                self.work.spawn(async move {
-                    if send_control(&control, &closed, &wire::Outbound::SpeedStarted { id }).await {
-                        let body = demi_runner_direct::speed_bytes(bytes);
-                        let result = pipes.put(&output.url, body, &closed).await;
-                        report_pipe(&control, output.id, result, &closed).await;
-                    }
-                    Work::Done
-                });
-            }
             Inbound::LogRead {
                 id,
                 since,

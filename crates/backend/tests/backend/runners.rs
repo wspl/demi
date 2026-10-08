@@ -153,19 +153,19 @@ async fn a_waiting_runners_code_changes_while_it_waits_and_claims_are_limited() 
 }
 
 /// A runner's side of the socket, spoken by the test.
-struct RawRunner(
+pub(crate) struct RawRunner(
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>,
 );
 
 impl RawRunner {
-    async fn connect(backend: &TestBackend) -> Self {
+    pub(crate) async fn connect(backend: &TestBackend) -> Self {
         let (socket, _) = tokio_tungstenite::connect_async(backend.ws_url("/api/runner"))
             .await
             .unwrap();
         Self(socket)
     }
 
-    async fn send(&mut self, message: &Outbound) {
+    pub(crate) async fn send(&mut self, message: &Outbound) {
         let frame = wire::encode(message).unwrap().into_bytes();
         self.0.send(Message::Binary(frame.into())).await.unwrap();
     }
@@ -201,7 +201,7 @@ impl RawRunner {
     }
 
     /// The next message the backend sends; none once it closed the socket.
-    async fn next(&mut self) -> Option<Inbound> {
+    pub(crate) async fn next(&mut self) -> Option<Inbound> {
         loop {
             match tokio::time::timeout(Duration::from_secs(10), self.0.next())
                 .await
@@ -216,7 +216,7 @@ impl RawRunner {
     }
 }
 
-fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -> Outbound {
+pub(crate) fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -> Outbound {
     Outbound::Hello {
         protocol,
         device_token: token.map(|token| DeviceToken::try_from(token.to_owned()).unwrap()),

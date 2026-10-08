@@ -77,15 +77,7 @@ export interface DirectAttempt {
  */
 export interface PathFigures {
   latencyMs: number
-  jitterMs: number
   loss: number | null
-}
-
-/** Test Speed's result for each path, in MiB/s, and whether a test runs. */
-export interface SpeedResult {
-  direct: number | null
-  relay: number | null
-  testing: boolean
 }
 
 /** What the device's page knows of the paths to it. */
@@ -106,7 +98,6 @@ export interface DirectStatus {
   nextAt: string | null
   /** Each path's figures, null before its first probes are answered. */
   figures: { direct: PathFigures | null; relay: PathFigures | null }
-  speed: SpeedResult
 }
 
 /** Why the page reaches a device through the server. */
@@ -188,18 +179,44 @@ export function reasonShort(reason: DirectReason): SentenceText {
   }
 }
 
-/** A latency as a person reads it: "0.4 ms", "48 ms". */
-export function formatLatency(ms: number): string {
-  if (ms < 0.1) {
-    return 'under 0.1 ms'
-  }
-  return ms < 10 ? `${ms.toFixed(1)} ms` : `${Math.round(ms)} ms`
+/** A figure in whole units, with one decimal only under one: 0.4, 2, 48. */
+function wholeUnlessSmall(value: number): string {
+  const tenths = Math.round(value * 10) / 10
+  return tenths > 0 && tenths < 1 ? String(tenths) : String(Math.round(value))
 }
 
-/** A share lost as a person reads it: "0 %", "3.3 %". */
+/** A latency as a person reads it: "0.4 ms", "2 ms", "48 ms". */
+export function formatLatency(ms: number): string {
+  return ms < 0.05 ? 'under 0.1 ms' : `${wholeUnlessSmall(ms)} ms`
+}
+
+/** A share lost as a person reads it: "0%", "0.5%", "6%". */
 export function formatLoss(loss: number): string {
-  const percent = loss * 100
-  return percent === 0 || percent >= 10 ? `${Math.round(percent)} %` : `${percent.toFixed(1)} %`
+  return `${wholeUnlessSmall(loss * 100)}%`
+}
+
+/**
+ * The footnote under the Connection group, which compares the two paths'
+ * latency from this browser: "From this browser: directly 2 ms, through the
+ * server 480 ms." A direct path that loses probes says how many, and one
+ * with no peer says there is no direct connection. Null before either path
+ * has figures.
+ */
+export function pathsFootnote(status: DirectStatus): SentenceText | null {
+  const { direct, relay } = status.figures
+  const parts: string[] = []
+  if (status.peer && direct) {
+    const lost = direct.loss ? ` with ${formatLoss(direct.loss)} lost` : ''
+    parts.push(`directly ${formatLatency(direct.latencyMs)}${lost}`)
+  }
+  if (relay) {
+    parts.push(`through the server ${formatLatency(relay.latencyMs)}`)
+  }
+  if (parts.length === 0) {
+    return null
+  }
+  const none = status.peer ? '' : '; no direct connection'
+  return `From this browser: ${parts.join(', ')}${none}.`
 }
 
 /** What makes the direct path worse, for the sentence that says so. */
