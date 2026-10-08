@@ -60,7 +60,6 @@ mod linux {
             let network = CloudNetwork::new(
                 config.subnet,
                 config.dns.clone(),
-                config.backend_url.clone(),
                 tools.path(crate::tools::Tool::Nft).to_owned(),
             );
             Self {

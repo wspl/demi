@@ -124,4 +124,6 @@ demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
 # The Claude Code scenarios install a scripted CLI in a Cloud runner's
 # artifact cache, as the runner installs a download.
 demi-runner-command-packages = { path = "../runner-command-packages" }
+# The way a Cloud's runner reaches the backend, through its runner socket.
+demi-runner-process = { path = "../runner-process" }
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
