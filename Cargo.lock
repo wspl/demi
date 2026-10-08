@@ -2534,6 +2534,7 @@ dependencies = [
  "demi-shared-types",
  "regex",
  "serde_json",
+ "similar",
  "strsim",
  "tempfile",
  "thiserror",

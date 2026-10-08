@@ -14,6 +14,11 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
         json!({"path": "a", "old": "x", "new": "y", "context": null}),
         json!({"path": "a", "old": "x"}),
         json!({"path": "a", "old": "x", "new": "y", "occurrence": 1, "context": 2}),
+        // --old changes the path argument's file.
+        json!({"old": "x", "new": "y"}),
+        // A path argument and path lines together; a block with no file.
+        json!({"path": "a", "blocks": "b\n<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n"}),
+        json!({"blocks": "<<<<<<< SEARCH\nx\n=======\ny\n>>>>>>> REPLACE\n"}),
     ] {
         assert!(
             matches!(edit(invalid.clone()), Err(OperationError::Invalid(_))),
@@ -32,7 +37,7 @@ fn file_arguments_refuse_empty_old_text_and_zero_positions() {
 fn the_listed_operations_are_the_ones_the_package_decodes() {
     assert_eq!(
         OPERATIONS,
-        ["file.read", "file.create", "file.edit", "file.patch"]
+        ["file.read", "file.edit", "file.patch"]
     );
     for name in OPERATIONS {
         assert!(
