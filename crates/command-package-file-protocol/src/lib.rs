@@ -45,19 +45,42 @@ pub struct CreateArgs {
     pub content: String,
 }
 
-/// `file.edit`: replaces one occurrence of exact text in an existing file.
+/// `file.edit` as the command line gives it: SEARCH/REPLACE blocks on
+/// stdin, or `--old` and `--new` for a one-line change. It decodes into
+/// [`Edit`].
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct EditArgs {
     /// Target file path
     #[garde(skip)]
     pub path: String,
-    /// Exact text to replace
-    #[garde(length(min = 1))]
-    pub old: String,
-    /// Replacement text
+    /// SEARCH/REPLACE blocks
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
     #[garde(skip)]
-    pub new: String,
+    pub blocks: Option<String>,
+    /// Exact text to replace
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(length(min = 1))]
+    pub old: Option<String>,
+    /// Replacement text
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub new: Option<String>,
     /// 1-based occurrence to replace
     #[serde(
         default,
@@ -76,6 +99,183 @@ pub struct EditArgs {
     #[schemars(with = "usize")]
     #[garde(range(min = 1))]
     pub context: Option<usize>,
+}
+
+/// `file.edit`, decoded: the file and the change made to it
+/// (`commands.md` § File commands).
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, garde::Validate)]
+#[serde(try_from = "EditArgs")]
+pub struct Edit {
+    #[garde(skip)]
+    pub path: String,
+    #[garde(skip)]
+    pub change: Change,
+}
+
+/// What an edit replaces.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Change {
+    /// Whole lines, each block's SEARCH found exactly once in the file as
+    /// it was; the blocks apply together.
+    Blocks(Vec<Block>),
+    /// Exact text anywhere in the file, at the match `choice` names.
+    Text {
+        old: String,
+        new: String,
+        choice: Choice,
+    },
+}
+
+/// Which match of `--old` an edit replaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    /// The only one.
+    Only,
+    /// The nth, 1-based (`--occurrence`).
+    Occurrence(usize),
+    /// The one nearest this 1-based line (`--context`).
+    Context(usize),
+}
+
+/// One SEARCH/REPLACE block: its lines, without their line endings.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Block {
+    pub search: Vec<String>,
+    pub replace: Vec<String>,
+}
+
+/// The marker line that opens a block's SEARCH.
+pub const SEARCH_MARKER: &str = "<<<<<<< SEARCH";
+/// The marker line between a block's SEARCH and its REPLACE.
+pub const DIVIDER_MARKER: &str = "=======";
+/// The marker line that closes a block.
+pub const REPLACE_MARKER: &str = ">>>>>>> REPLACE";
+
+/// Why an edit's arguments are refused; its message is what the agent reads.
+#[derive(Debug, thiserror::Error)]
+pub enum EditArgsError {
+    #[error(transparent)]
+    Invalid(#[from] garde::Report),
+    #[error(
+        "Give the edit either as SEARCH/REPLACE blocks on stdin or as --old and --new, not both"
+    )]
+    BlocksAndText,
+    #[error("--occurrence and --context choose among the matches of --old; blocks take neither")]
+    BlocksAndChoice,
+    #[error("Give SEARCH/REPLACE blocks on stdin, or --old and --new")]
+    Nothing,
+    #[error("Give --occurrence or --context, not both")]
+    OccurrenceAndContext,
+    #[error("--old needs --new")]
+    OldWithoutNew,
+    #[error("--new needs --old")]
+    NewWithoutOld,
+    #[error(
+        "Line {line} of stdin is outside a SEARCH/REPLACE block; a block starts with the line {SEARCH_MARKER}"
+    )]
+    OutsideBlock { line: usize },
+    #[error("Line {line} of stdin, {marker}, is out of place in block {block}")]
+    MarkerOutOfPlace {
+        line: usize,
+        marker: &'static str,
+        block: usize,
+    },
+    #[error("Block {block} ends before its {REPLACE_MARKER} line")]
+    Unclosed { block: usize },
+    #[error("Block {block} has an empty SEARCH; it must name the lines it replaces")]
+    EmptySearch { block: usize },
+}
+
+impl TryFrom<EditArgs> for Edit {
+    type Error = EditArgsError;
+
+    fn try_from(args: EditArgs) -> Result<Self, EditArgsError> {
+        garde::Validate::validate(&args)?;
+        let choice = match (args.occurrence, args.context) {
+            (Some(_), Some(_)) => return Err(EditArgsError::OccurrenceAndContext),
+            (Some(occurrence), None) => Some(Choice::Occurrence(occurrence)),
+            (None, Some(context)) => Some(Choice::Context(context)),
+            (None, None) => None,
+        };
+        let blocks = args.blocks.as_deref().map(parse_blocks).transpose()?;
+        let change = match (blocks.filter(|blocks| !blocks.is_empty()), args.old, args.new) {
+            (Some(_), Some(_), _) | (Some(_), _, Some(_)) => {
+                return Err(EditArgsError::BlocksAndText);
+            }
+            (Some(_), None, None) if choice.is_some() => {
+                return Err(EditArgsError::BlocksAndChoice);
+            }
+            (Some(blocks), None, None) => Change::Blocks(blocks),
+            (None, Some(old), Some(new)) => Change::Text {
+                old,
+                new,
+                choice: choice.unwrap_or(Choice::Only),
+            },
+            (None, Some(_), None) => return Err(EditArgsError::OldWithoutNew),
+            (None, None, Some(_)) => return Err(EditArgsError::NewWithoutOld),
+            (None, None, None) => return Err(EditArgsError::Nothing),
+        };
+        Ok(Self {
+            path: args.path,
+            change,
+        })
+    }
+}
+
+/// The SEARCH/REPLACE blocks of `text`, whose markers are whole lines that
+/// may carry trailing spaces; blank lines may stand between blocks, and
+/// nothing else.
+fn parse_blocks(text: &str) -> Result<Vec<Block>, EditArgsError> {
+    enum Part {
+        Outside,
+        Search(Vec<String>),
+        Replace(Vec<String>, Vec<String>),
+    }
+    let mut blocks = Vec::new();
+    let mut part = Part::Outside;
+    for (index, line) in text.lines().enumerate() {
+        let number = index + 1;
+        let block = blocks.len() + 1;
+        let marker = [SEARCH_MARKER, DIVIDER_MARKER, REPLACE_MARKER]
+            .into_iter()
+            .find(|marker| *marker == line.trim_end_matches([' ', '\t']));
+        part = match (part, marker) {
+            (Part::Outside, Some(SEARCH_MARKER)) => Part::Search(Vec::new()),
+            (Part::Outside, None) if line.trim().is_empty() => Part::Outside,
+            (Part::Outside, _) => return Err(EditArgsError::OutsideBlock { line: number }),
+            (Part::Search(search), Some(DIVIDER_MARKER)) => {
+                if search.is_empty() {
+                    return Err(EditArgsError::EmptySearch { block });
+                }
+                Part::Replace(search, Vec::new())
+            }
+            (Part::Replace(search, replace), Some(REPLACE_MARKER)) => {
+                blocks.push(Block { search, replace });
+                Part::Outside
+            }
+            (Part::Search(_) | Part::Replace(..), Some(marker)) => {
+                return Err(EditArgsError::MarkerOutOfPlace {
+                    line: number,
+                    marker,
+                    block,
+                });
+            }
+            (Part::Search(mut search), None) => {
+                search.push(line.to_owned());
+                Part::Search(search)
+            }
+            (Part::Replace(search, mut replace), None) => {
+                replace.push(line.to_owned());
+                Part::Replace(search, replace)
+            }
+        };
+    }
+    if !matches!(part, Part::Outside) {
+        return Err(EditArgsError::Unclosed {
+            block: blocks.len() + 1,
+        });
+    }
+    Ok(blocks)
 }
 
 /// `file.patch`: applies a unified diff to one or more files.
@@ -115,6 +315,6 @@ macro_rules! operations {
 operations! {
     "file.read" => Read(ReadArgs),
     "file.create" => Create(CreateArgs),
-    "file.edit" => Edit(EditArgs),
+    "file.edit" => Edit(Edit),
     "file.patch" => Patch(PatchArgs),
 }

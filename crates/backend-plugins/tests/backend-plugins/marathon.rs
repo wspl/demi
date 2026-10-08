@@ -102,7 +102,7 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
             "Capabilities:",
             "demi agent\nRuns helper agents",
             "Operations: spawn, send, abort, resume, list, show, profiles\n",
-            "demi file\nReads, creates, edits and patches files precisely",
+            "demi file\nEdits, patches and creates the task's files exactly",
             "Operations: read, create, edit, patch\n",
             "Details: demi file --help; one operation: demi file <operation> --help",
         ] {

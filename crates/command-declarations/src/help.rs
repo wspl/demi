@@ -153,8 +153,20 @@ impl<B> Node<B> {
                     }
                 }
                 if let Some(field) = &leaf.stdin_field {
+                    let unless = if leaf.stdin_unless.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            ", not read with {}",
+                            leaf.stdin_unless
+                                .iter()
+                                .map(|option| format!("--{option}"))
+                                .collect::<Vec<_>>()
+                                .join(" or ")
+                        )
+                    };
                     lines.push(format!(
-                        "    Stdin body: {field}{}",
+                        "    Stdin body: {field}{unless}{}",
                         description(&properties[field])
                     ));
                 }
