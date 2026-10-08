@@ -2,6 +2,7 @@ import { afterEach, expect, jest, test } from 'bun:test'
 import type { PreviewPlace, UserStreamHandlers } from '@demicodes/plugin-sdk'
 import {
   PREVIEW_BODY_CHUNK_BYTES,
+  PREVIEW_BODY_WINDOW,
   PREVIEW_CHUNK_FRAME,
   PREVIEW_CONTROL_FRAME,
   PREVIEW_REQUEST_BODY_FRAME,
@@ -49,7 +50,7 @@ interface Received {
   body: Uint8Array
 }
 
-/** An engine on the stream: it answers each request as `answer` says, its body one chunk per pull. */
+/** An engine on the stream: it answers each request as `answer` says, its body a window ahead of the pulls. */
 type Answer = { status: number; headers?: [string, string][]; labels?: Record<string, PreviewEnvironment>; body?: string } | { failed: string }
 
 function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>) {
@@ -122,6 +123,26 @@ function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>
       headers: (answered.headers ?? []).map(([name, value]) => ({ name, value })),
       labels: answered.labels ?? {},
     })
+    for (let sent = 0; sent < PREVIEW_BODY_WINDOW; sent++) {
+      if (!sendChunk(id)) {
+        break
+      }
+    }
+  }
+  /** The answer's next chunk; false once its end went. */
+  function sendChunk(id: number): boolean {
+    const rest = answers.get(id)
+    if (rest === undefined) {
+      return false
+    }
+    const chunk = rest.subarray(0, PREVIEW_BODY_CHUNK_BYTES)
+    if (chunk.length === 0) {
+      answers.delete(id)
+    } else {
+      answers.set(id, rest.subarray(chunk.length))
+    }
+    handlers?.data(encodeChunk(id, chunk))
+    return chunk.length > 0
   }
   function control(message: PreviewRelayMessage) {
     said.push(message)
@@ -144,10 +165,7 @@ function scriptedEngine(answer: (received: Received) => Answer | Promise<Answer>
       const labels = Object.fromEntries(message.environments.map((environment) => [ENGINE_LABELS.get(environment.origin)!, environment]))
       send({ type: 'labels', id: message.id, labels })
     } else if (message.type === 'pull') {
-      const rest = answers.get(message.id) ?? new Uint8Array(0)
-      const chunk = rest.subarray(0, PREVIEW_BODY_CHUNK_BYTES)
-      answers.set(message.id, rest.subarray(chunk.length))
-      handlers?.data(encodeChunk(message.id, chunk))
+      sendChunk(message.id)
     }
   }
   return { open, received, said, kept }
@@ -525,6 +543,23 @@ test('page states are questions on the stream: the engine’s answer, or why it 
   const waiting = silent.keepState(PLACE, 'kept-2', [], null)
   silent.close()
   await expect(waiting).rejects.toThrow('the panel closed')
+})
+
+test('a small answer arrives whole with its head, in one round trip: no read waits for a pull', async () => {
+  // The engine sends a window of chunks ahead of any pull, so a page's request over a far relay takes
+  // one round trip rather than one per chunk and one more for the end.
+  const body = 'small page'
+  const engine = scriptedEngine(() => ({ status: 200, body }))
+  const connection = new PreviewConnection(engine.open)
+  const exchange = connection.request(PLACE, APP, request('http://localhost:5173/'), client(), null)
+  await exchange.head
+  const pulls = () => engine.said.filter((message) => message.type === 'pull').length
+  expect(pulls()).toBe(0)
+  const first = await exchange.pull()
+  expect(decoder.decode(first!)).toBe(body)
+  expect(await exchange.pull()).toBeNull()
+  // Each chunk read lets the engine send one more, so the window stays as wide: one pull, for the one chunk.
+  expect(pulls()).toBe(1)
 })
 
 test('pulls made before their chunks arrive get the body in order, as a stream’s reads do', async () => {
