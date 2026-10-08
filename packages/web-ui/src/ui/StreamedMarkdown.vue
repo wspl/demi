@@ -58,7 +58,7 @@ function wrapFrontier(el: HTMLElement, charCount: number): void {
   if (charCount <= 0)
     return
   const last = el.lastElementChild
-  if (last?.matches('.code-block, table'))
+  if (last?.matches('.code-block, .table-scroll'))
     return
 
   let remaining = charCount
