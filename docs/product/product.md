@@ -138,9 +138,10 @@ level, as a Wi-Fi menu lists networks:
 
 ```text
 Run On
-  ☁ Cloud
-  🖥• MacBook Pro          ✓
-  🖥• Studio PC      Offline   (cannot be chosen)
+  ☁ Cloud                 Relay
+  🖥• MacBook Pro   This Computer  ✓
+  🖥• Studio PC     Local Network
+  🖥• Old Laptop          Offline   (cannot be chosen)
   + Add Device…
 ─────────
 Attached
@@ -150,6 +151,16 @@ Attached
 - **Run On** lists the Cloud and every paired device with its state; the
   primary Host is checked, and an offline device cannot be chosen. **Add
   Device…** pairs a new one.
+- **How this browser reaches each one.** An online device's row ends with
+  the path the page uses for it, *This Computer*, *Local Network*,
+  *Internet* or *Relay*
+  ([Where the P2P path runs](../execution/direct-channel.md#what-the-user-sees)),
+  as Wi-Fi menus show each network's security; the Cloud's always reads
+  *Relay*, and an offline device's *Offline*. The page knows the path of a
+  device it has connected to, as it does while it shows a conversation on
+  it or its page, and keeps the last it found until the page closes; a
+  device it has not tried this time shows no path, since opening a menu
+  connects to nothing.
 - **Choosing a Host.** In a conversation outside a project, a click moves it
   there at once: to the device's home directory, or the Cloud's directory of
   the conversation. In a project, each Host but the checked one reads
