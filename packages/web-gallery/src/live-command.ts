@@ -26,15 +26,15 @@ export function printLive(terminal: TerminalRecord, text: string): void {
 /**
  * Plays the gallery's live command among `terminals`: a line a frame, and
  * now and then a burst longer than a frame's tail, which the page shows
- * anew. It stops when the command ends, as a page's stop ends it, and when
- * the component unmounts.
+ * anew. It prints nothing while the command is not running, as after a
+ * page's stop, until the gallery runs it again, and stops when the component
+ * unmounts.
  */
 export function useLiveGalleryCommand(terminals: readonly TerminalRecord[]): void {
   let frame = 0
   const timer = window.setInterval(() => {
     const terminal = terminals.find((entry) => entry.id === LIVE_TERMINAL_ID)
     if (terminal?.phase !== 'running') {
-      window.clearInterval(timer)
       return
     }
     frame += 1

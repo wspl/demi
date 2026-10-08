@@ -23,8 +23,12 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
  * goes down, so a drag the strip starts there carries the selected tab; a
  * middle click closes it; it takes the keyboard's focus, where Enter and
  * Space select it and the strip's arrows move between tabs (`TabStrip`).
+ * A right-click asks for its menu, as do the Menu key and Shift+F10 while it
+ * has the focus, with the menu at its lower left. A tab that is not
+ * `closable` has no close control and no middle-click close: a click only
+ * selects it, and closing is in its menu.
  */
-defineProps<{
+const props = withDefaults(defineProps<{
   title: string
   isActive: boolean
   /** The dot on the mark; none without it. */
@@ -35,7 +39,10 @@ defineProps<{
   busy?: boolean
   /** A picture in place of the mark, such as a web page's icon, by its URL. */
   icon?: string | null
-}>()
+  closable?: boolean
+}>(), {
+  closable: true,
+})
 
 const emit = defineEmits<{
   select: []
@@ -51,9 +58,29 @@ function onPointerdown(event: PointerEvent): void {
 
 // A middle click closes the tab once it is released over it, as a browser's tab does.
 function onAuxclick(event: MouseEvent): void {
-  if (event.button === 1) {
+  if (event.button === 1 && props.closable) {
     emit('close')
   }
+}
+
+/**
+ * The Menu key or Shift+F10 asks for the tab's menu as a right-click does,
+ * through the same event, placed at the tab's lower left; a browser that
+ * sends its own for the key finds it already handled.
+ */
+function onMenuKey(event: KeyboardEvent): void {
+  if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) {
+    return
+  }
+  event.preventDefault()
+  const tab = event.currentTarget as HTMLElement
+  const rect = tab.getBoundingClientRect()
+  tab.dispatchEvent(new MouseEvent('contextmenu', {
+    bubbles: true,
+    cancelable: true,
+    clientX: rect.left,
+    clientY: rect.bottom,
+  }))
 }
 </script>
 
@@ -71,6 +98,7 @@ function onAuxclick(event: MouseEvent): void {
     @auxclick="onAuxclick"
     @keydown.enter.self="emit('select')"
     @keydown.space.self.prevent="emit('select')"
+    @keydown.self="onMenuKey"
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
     <!-- The tooltip covers the whole tab; the tab itself stays a plain element so the strip can transition it. -->
@@ -104,15 +132,15 @@ function onAuxclick(event: MouseEvent): void {
     </span>
     <!-- While the close control hides, the title runs on over its slot, as a browser's tab's does;
          the slot stays, so the tab keeps its width when the control shows. -->
-    <span class="min-w-0 flex-1 pl-1.5 pr-1">
+    <span class="min-w-0 flex-1 pl-1.5" :class="closable ? 'pr-1' : 'pr-2'">
       <span
         class="block w-max truncate whitespace-nowrap"
-        :class="isActive ? 'max-w-full' : 'max-w-[calc(100%_+_var(--spacing-hit-xs))] group-hover:max-w-full'"
+        :class="isActive || !closable ? 'max-w-full' : 'max-w-[calc(100%_+_var(--spacing-hit-xs))] group-hover:max-w-full'"
       >{{ title }}</span>
     </span>
     <!-- The close control's own slot: the title ends before it, and it sits as far from the
          tab's right edge as centering puts it from the top and bottom. -->
-    <span class="flex shrink-0 items-center mr-[calc((var(--tab-h)_-_var(--spacing-hit-xs))/2)]">
+    <span v-if="closable" class="flex shrink-0 items-center mr-[calc((var(--tab-h)_-_var(--spacing-hit-xs))/2)]">
       <IconButton
         :icon="X"
         size="xs"

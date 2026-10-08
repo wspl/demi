@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { CircleStop, X } from '@lucide/vue'
+import MenuDivider from '../ui/MenuDivider.vue'
+import MenuItem from '../ui/MenuItem.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import TabItem from './TabItem.vue'
 import XtermView from './XtermView.vue'
@@ -16,7 +19,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{
-  /** The close on a running tab: stop that command. */
+  /** End Command in a running tab's menu: stop that command. */
   abort: [id: string]
 }>()
 const activeId = defineModel<string | null>('activeId', { required: true })
@@ -35,13 +38,13 @@ function closePanel(): void {
   activeId.value = null
 }
 
-// Closing a running tab stops the command; closing an exited one puts it away.
-function closeTab(terminal: TerminalRecord): void {
-  if (terminal.phase === 'running') {
-    emit('abort', terminal.id)
-    return
-  }
-  activeId.value = tabs.value.filter((tab) => tab.id !== terminal.id).at(-1)?.id ?? null
+function terminalOf(id: string): TerminalRecord | undefined {
+  return tabs.value.find((terminal) => terminal.id === id)
+}
+
+// An ended command's tab puts it away; a running one's stays until the command is ended.
+function closeTab(id: string): void {
+  activeId.value = tabs.value.filter((tab) => tab.id !== id).at(-1)?.id ?? null
 }
 </script>
 
@@ -51,7 +54,7 @@ function closeTab(terminal: TerminalRecord): void {
     :dismiss-outside="dismissOutside"
     @close="closePanel"
   >
-    <template #tabs>
+    <template #tabs="{ openTabMenu }">
       <TabItem
         v-for="terminal in tabs"
         :key="terminal.id"
@@ -59,8 +62,24 @@ function closeTab(terminal: TerminalRecord): void {
         :is-active="terminal.id === active?.id"
         :status="terminalStatus(terminal.phase)"
         mark="terminal"
+        :closable="false"
         @select="activate(terminal.id)"
-        @close="closeTab(terminal)"
+        @contextmenu="openTabMenu($event, terminal.id)"
+      />
+    </template>
+    <template #tabMenu="{ id }">
+      <MenuItem
+        :icon="CircleStop"
+        label="End Command"
+        :disabled="terminalOf(id)?.phase !== 'running'"
+        @select="emit('abort', id)"
+      />
+      <MenuDivider />
+      <MenuItem
+        :icon="X"
+        label="Close Tab"
+        :disabled="terminalOf(id)?.phase === 'running'"
+        @select="closeTab(id)"
       />
     </template>
     <XtermView
