@@ -47,25 +47,26 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
     within(async {
         let (fixture, results) = run(
             &[
-                "demi file create note.txt <<'EOF'\nhello world\nEOF",
+                "demi file edit <<'EOF'\nnote.txt\n<<<<<<< SEARCH\n=======\nhello world\n>>>>>>> REPLACE\nEOF",
                 "demi file read note.txt",
-                "demi file create note.txt <<'EOF'\nagain\nEOF",
-                "demi file create src/foo.txt <<'EOF'\nhello\nEOF\ncat src/foo.txt",
-                "demi file create \"$(cd .. && pwd)/absolute.txt\" <<'EOF'\nnope\nEOF",
-                "demi file create ../relative.txt <<'EOF'\nnope\nEOF",
+                "demi file edit <<'EOF'\nnote.txt\n<<<<<<< SEARCH\n=======\nagain\n>>>>>>> REPLACE\nEOF",
+                "demi file edit <<'EOF'\nsrc/foo.txt\n<<<<<<< SEARCH\n=======\nhello\n>>>>>>> REPLACE\nEOF\ncat src/foo.txt",
+                // An unquoted heredoc expands the path line.
+                "demi file edit <<EOF\n$(cd .. && pwd)/absolute.txt\n<<<<<<< SEARCH\n=======\nnope\n>>>>>>> REPLACE\nEOF",
+                "demi file edit <<'EOF'\n../relative.txt\n<<<<<<< SEARCH\n=======\nnope\n>>>>>>> REPLACE\nEOF",
                 "demi file read shot.png",
                 "demi file read shot.png | wc -c",
-                "demi file --help && demi file create --help",
+                "demi file --help && demi file edit --help",
             ],
             |workspace| std::fs::write(format!("{workspace}/shot.png"), PNG).unwrap(),
         )
         .await;
         assert_exit(&results[0], "0");
-        assert_eq!(shown_output(&results[0]), "Created note.txt\n");
+        assert_eq!(shown_output(&results[0]), "Created note.txt (1 line)\n");
         assert_eq!(shown_output(&results[1]), "hello world\n");
         // An existing file stays as it is.
         assert_exit(&results[2], "1");
-        assert_eq!(shown_output(&results[3]), "Created src/foo.txt\nhello\n");
+        assert_eq!(shown_output(&results[3]), "Created src/foo.txt (1 line)\nhello\n");
         for result in &results[4..6] {
             assert_exit(result, "0");
         }
@@ -80,8 +81,8 @@ async fn demi_file_reads_and_creates_files_in_and_beyond_the_workspace() {
         assert_shows(
             &results[8],
             &[
-                "demi file create",
-                "Success output: writes \"Created <path>\" to stdout",
+                "demi file edit",
+                "Created <path> (<n> lines)",
                 "shown to you as viewable media",
             ],
         );
@@ -114,19 +115,20 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
                 "demi file edit context.txt --old target --new changed --context 2",
                 "cat context.txt && demi file edit context.txt --old target --new changed --context 3 && cat context.txt",
                 "demi file edit empty-old.txt --old \"\" --new changed",
-                // Blocks in a quoted heredoc pass quotes, `$` and
-                // backslashes as they are, and a REPLACE's last empty line.
+                // Blocks for two files in one quoted heredoc pass quotes, `$`
+                // and backslashes as they are, and a REPLACE's last empty
+                // line; the command after `&&` runs once both are written.
                 QUOTED_EDIT,
                 // With --old, an edit reads no stdin: the loop keeps its
                 // input for its next turn.
                 "printf 'loop-a.txt\\nloop-b.txt\\n' | while read f; do demi file edit \"$f\" --old one --new two; done; cat loop-a.txt loop-b.txt",
                 // Patches apply whole unified diffs.
-                "demi file create patch.txt <<'EOF'\none\ntwo\nEOF\ndemi file patch <<'PATCH' && cat patch.txt\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
-                "demi file create timed.txt <<'EOF'\nold\nEOF\ndemi file patch <<'PATCH' && cat timed.txt\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
-                "demi file create existing.txt <<'EOF'\none\nEOF\ndemi file patch <<'PATCH' && cat existing.txt nested/new.txt\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
-                "demi file create doomed.txt <<'EOF'\nremove\nEOF\ndemi file patch <<'PATCH' && test ! -e doomed.txt && echo gone\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
+                "cat > patch.txt <<'EOF'\none\ntwo\nEOF\ndemi file patch <<'PATCH' && cat patch.txt\n--- a/patch.txt\n+++ b/patch.txt\n@@ -1,2 +1,2 @@\n one\n-two\n+three\nPATCH",
+                "cat > timed.txt <<'EOF'\nold\nEOF\ndemi file patch <<'PATCH' && cat timed.txt\n--- a/timed.txt 2026-06-17 00:00:00.000000000 +0800\n+++ b/timed.txt 2026-06-17 00:00:01.000000000 +0800\n@@ -1 +1 @@\n-old\n+new\nPATCH",
+                "cat > existing.txt <<'EOF'\none\nEOF\ndemi file patch <<'PATCH' && cat existing.txt nested/new.txt\n--- a/existing.txt\n+++ b/existing.txt\n@@ -1 +1 @@\n-one\n+changed\n--- /dev/null\n+++ b/nested/new.txt\n@@ -0,0 +1,2 @@\n+new\n+file\nPATCH",
+                "cat > doomed.txt <<'EOF'\nremove\nEOF\ndemi file patch <<'PATCH' && test ! -e doomed.txt && echo gone\n--- a/doomed.txt\n+++ /dev/null\n@@ -1 +0,0 @@\n-remove\nPATCH",
                 "demi file patch <<'PATCH'\n--- a/first.txt\n+++ b/first.txt\n@@ -1 +1 @@\n-first\n+changed\n--- a/second.txt\n+++ b/second.txt\n@@ -1 +1 @@\n-wrong\n+changed\nPATCH",
-                "demi file create inside.txt <<'EOF'\ninside\nEOF\noutside=\"$(cd .. && pwd)/outside.txt\"\ndemi file patch <<PATCH && cat inside.txt\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ $outside\n@@ -0,0 +1 @@\n+outside\nPATCH",
+                "cat > inside.txt <<'EOF'\ninside\nEOF\noutside=\"$(cd .. && pwd)/outside.txt\"\ndemi file patch <<PATCH && cat inside.txt\n--- a/inside.txt\n+++ b/inside.txt\n@@ -1 +1 @@\n-inside\n+changed\n--- /dev/null\n+++ $outside\n@@ -0,0 +1 @@\n+outside\nPATCH",
             ],
             |workspace| {
                 for (name, content) in [
@@ -147,7 +149,7 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
         let read = |name: &str| std::fs::read_to_string(format!("{}/{name}", fixture.workspace)).unwrap();
         assert_exit(&results[0], "1");
         assert_shows(&results[0], &["Multiple matches in file.txt; specify --occurrence or --context"]);
-        assert_eq!(shown_output(&results[1]), "Edited file.txt\none\ntwo\nchanged\n");
+        assert_eq!(shown_output(&results[1]), "Edited file.txt (+1 \u{2212}1)\n   2  two\n   3  changed\none\ntwo\nchanged\n");
         assert_exit(&results[2], "1");
         assert_shows(
             &results[2],
@@ -155,30 +157,31 @@ async fn demi_file_edit_and_patch_change_what_they_name_whole_or_not_at_all() {
         );
         assert_eq!(
             shown_output(&results[3]),
-            "target\nmiddle\ntarget\nEdited context.txt\ntarget\nmiddle\nchanged\n"
+            "target\nmiddle\ntarget\nEdited context.txt (+1 \u{2212}1)\n   2  middle\n   3  changed\ntarget\nmiddle\nchanged\n"
         );
         assert_exit(&results[4], "1");
         assert_shows(&results[4], &["Invalid command arguments: \"old\" is shorter than 1 character"]);
         assert_eq!(read("empty-old.txt"), "content\n");
-        assert_eq!(shown_output(&results[5]), "Edited quoted.js\n");
+        assert_eq!(shown_output(&results[5]), QUOTED_SHOWN);
         assert_eq!(read("quoted.js"), QUOTED_AFTER);
+        assert_eq!(read("notes/new.md"), QUOTED_CREATED);
         assert_eq!(
             shown_output(&results[6]),
-            "Edited loop-a.txt\nEdited loop-b.txt\ntwo\ntwo\n"
+            "Edited loop-a.txt (+1 \u{2212}1)\n   1  two\nEdited loop-b.txt (+1 \u{2212}1)\n   1  two\ntwo\ntwo\n"
         );
 
-        assert_eq!(shown_output(&results[7]), "Created patch.txt\nPatched 1 file(s)\none\nthree\n");
-        assert_eq!(shown_output(&results[8]), "Created timed.txt\nPatched 1 file(s)\nnew\n");
+        assert_eq!(shown_output(&results[7]), "Patched 1 file(s)\none\nthree\n");
+        assert_eq!(shown_output(&results[8]), "Patched 1 file(s)\nnew\n");
         assert_eq!(
             shown_output(&results[9]),
-            "Created existing.txt\nPatched 2 file(s)\nchanged\nnew\nfile\n"
+            "Patched 2 file(s)\nchanged\nnew\nfile\n"
         );
-        assert_eq!(shown_output(&results[10]), "Created doomed.txt\nPatched 1 file(s)\ngone\n");
+        assert_eq!(shown_output(&results[10]), "Patched 1 file(s)\ngone\n");
         // One file that does not apply leaves every file as it was.
         assert_exit(&results[11], "1");
         assert_shows(&results[11], &["Patch does not apply to second.txt"]);
         assert_eq!(read("first.txt"), "first\n");
-        assert_eq!(shown_output(&results[12]), "Created inside.txt\nPatched 2 file(s)\nchanged\n");
+        assert_eq!(shown_output(&results[12]), "Patched 2 file(s)\nchanged\n");
         assert_eq!(
             std::fs::read_to_string(format!("{}/outside.txt", fixture.runner.home())).unwrap(),
             "outside\n"
@@ -196,8 +199,9 @@ const path = 'C:\temp';
 // tail
 "#;
 
-/// The edit of [`QUOTED_BEFORE`], as the model writes it.
-const QUOTED_EDIT: &str = r#"demi file edit quoted.js <<'EOF'
+/// The edit of [`QUOTED_BEFORE`] and a new file, as the model writes it.
+const QUOTED_EDIT: &str = r#"demi file edit <<'EOF' && cat notes/new.md
+quoted.js
 <<<<<<< SEARCH
 const greeting = "hello";
 const path = 'C:\temp';
@@ -205,6 +209,12 @@ const path = 'C:\temp';
 const greeting = "it's $HOME, \"quoted\"";
 const path = 'C:\new\temp';
 
+>>>>>>> REPLACE
+
+notes/new.md
+<<<<<<< SEARCH
+=======
+It's $HOME's \"note\"
 >>>>>>> REPLACE
 EOF"#;
 
@@ -214,3 +224,19 @@ const path = 'C:\new\temp';
 
 // tail
 "#;
+
+const QUOTED_CREATED: &str = r#"It's $HOME's \"note\"
+"#;
+
+/// What [`QUOTED_EDIT`] shows: each change as the file now reads, then the
+/// new file the command after it prints.
+const QUOTED_SHOWN: &str = concat!(
+    "Edited quoted.js (+3 \u{2212}2)\n",
+    "   1  // head\n",
+    "   2  const greeting = \"it's $HOME, \\\"quoted\\\"\";\n",
+    "   3  const path = 'C:\\new\\temp';\n",
+    "   4\n",
+    "   5  // tail\n",
+    "Created notes/new.md (1 line)\n",
+    "It's $HOME's \\\"note\\\"\n",
+);
