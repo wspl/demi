@@ -1,5 +1,5 @@
 import { readonly, shallowRef } from 'vue'
-import { createHighlighter, getTokenStyleObject, stringifyTokenStyle, type Highlighter } from 'shiki'
+import { bundledLanguagesInfo, createHighlighter, getTokenStyleObject, stringifyTokenStyle, type Highlighter } from 'shiki'
 import { reportError } from '../infra/errors'
 import { appThemeStore } from '../theme/appTheme'
 import { codeTheme } from '../theme/codeTheme'
@@ -70,6 +70,28 @@ export function codeToHtml(code: string, lang: string): string {
       },
     }],
   })
+}
+
+/**
+ * A language's full name, as Shiki knows it by its id or any of its short
+ * names (`ts` is TypeScript); one Shiki does not know is shown as the fence
+ * wrote it.
+ */
+function languageName(lang: string): string {
+  const key = lang.toLowerCase()
+  const info = bundledLanguagesInfo.find((each) => each.id === key || each.aliases?.includes(key))
+  return info?.name ?? lang
+}
+
+/**
+ * A fenced block as a message or a document shows it: highlighted, under the
+ * full name of the language its fence names, when it names one. The frame is
+ * where the page puts its Copy (`CodeBlockCopy.vue`), level with the language.
+ */
+export function codeBlockHtml(code: string, lang: string): string {
+  const fence = lang.trim().split(/\s/, 1)[0] ?? ''
+  const label = fence ? `<div class="code-block-lang">${escapeHtml(languageName(fence))}</div>` : ''
+  return `<div class="code-block">${label}${codeToHtml(code, fence)}</div>`
 }
 
 /**

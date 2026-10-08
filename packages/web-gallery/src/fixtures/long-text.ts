@@ -29,7 +29,20 @@ export async function retry<T>(run: () => Promise<T>, attempts = 3): Promise<T> 
     }
   }
 }
+\`\`\`
+
+\`\`\`
+[sync] heartbeat late by 5.2 s, closing socket 7f3a
+[sync] reconnecting (attempt 1, waiting 500 ms)
+[sync] connected; replaying from revision 18342
 \`\`\``
+
+// A table far wider than the column, which scrolls on its own.
+const wide = `| Region | Endpoint | p50 | p95 | p99 | Reconnects / h | Late pongs / h | Last incident | Notes |
+| --- | --- | --: | --: | --: | --: | --: | --- | --- |
+| eu-central-1 | \`wss://eu1.sync.example.com/v2/socket\` | 38 ms | 112 ms | 340 ms | 1.2 | 0.4 | 2026-09-14 03:12 UTC | Load balancer drains idle sockets after 350 s |
+| us-east-1 | \`wss://us1.sync.example.com/v2/socket\` | 41 ms | 128 ms | 410 ms | 2.8 | 1.1 | 2026-09-30 17:45 UTC | Corporate proxies cut WebSockets after 60 s of silence |
+| ap-southeast-1 | \`wss://ap1.sync.example.com/v2/socket\` | 66 ms | 240 ms | 910 ms | 5.3 | 3.7 | 2026-10-02 08:20 UTC | Mobile networks switch towers often |`
 
 export const LONG_TEXT: Record<LongTextLanguage, string> = {
   en: `# Why the sync stalls after a laptop wakes up
@@ -65,6 +78,8 @@ ${code}
 | Laptop wakes from sleep | Frozen for up to 2 min | Recovers in about 1 s |
 | Wi-Fi switches networks | Frozen until the next write fails | Recovers on the next missed pong |
 | Server restarts | Recovers on close | Unchanged |
+
+${wide}
 
 - [x] Detect a late pong and reconnect
 - [x] Ping when the page becomes visible
@@ -108,6 +123,8 @@ ${code}
 | Wi-Fi 切换网络 | 卡到下一次写入失败为止 | 下一次 pong 迟到时恢复 |
 | 服务器重启 | 收到关闭事件后恢复 | 不变 |
 
+${wide}
+
 - [x] 检测迟到的 pong 并重连
 - [x] 页面可见时发送 ping
 - [ ] 在状态栏显示页面已离线多久
@@ -149,6 +166,8 @@ ${code}
 | スリープからの復帰 | 最大 2 分間固まる | 約 1 秒で回復 |
 | Wi-Fi のネットワーク切り替え | 次の書き込みが失敗するまで固まる | 次の pong の遅れで回復 |
 | サーバーの再起動 | 切断イベントで回復 | 変わらず |
+
+${wide}
 
 - [x] 遅れた pong を検出して再接続する
 - [x] ページ表示時に ping を送る
@@ -192,6 +211,8 @@ ${code}
 | Wi-Fi 네트워크 전환 | 다음 쓰기가 실패할 때까지 멈춤 | 다음 pong 지연 시 복구 |
 | 서버 재시작 | 종료 이벤트로 복구 | 변화 없음 |
 
+${wide}
+
 - [x] 늦은 pong을 감지하고 다시 연결하기
 - [x] 페이지가 보일 때 ping 보내기
 - [ ] 오프라인이었던 시간을 상태 표시줄에 보여 주기
@@ -233,6 +254,8 @@ ${code}
 | Ноутбук выходит из сна | Зависание до 2 минут | Восстановление примерно за 1 с |
 | Wi-Fi переключает сеть | Зависание до сбоя следующей записи | Восстановление при следующем опоздании pong |
 | Перезапуск сервера | Восстановление по закрытию | Без изменений |
+
+${wide}
 
 - [x] Обнаруживать опоздавший pong и переподключаться
 - [x] Отправлять ping, когда страница становится видимой
@@ -276,6 +299,8 @@ ${code}
 | WLAN wechselt das Netz | Eingefroren, bis der nächste Schreibvorgang scheitert | Erholt sich beim nächsten verspäteten Pong |
 | Serverneustart | Erholt sich beim Schließen | Unverändert |
 
+${wide}
+
 - [x] Verspätetes Pong erkennen und neu verbinden
 - [x] Ping senden, wenn die Seite sichtbar wird
 - [ ] In der Statuszeile anzeigen, wie lange die Seite offline war
@@ -317,6 +342,8 @@ ${code}
 | Máy thức dậy sau khi ngủ | Đơ tới 2 phút | Phục hồi trong khoảng 1 giây |
 | Wi-Fi chuyển mạng | Đơ cho đến khi lần ghi tiếp theo thất bại | Phục hồi ở lần pong trễ tiếp theo |
 | Máy chủ khởi động lại | Phục hồi khi đóng | Không đổi |
+
+${wide}
 
 - [x] Phát hiện pong trễ và kết nối lại
 - [x] Gửi ping khi trang hiện lại

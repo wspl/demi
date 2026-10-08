@@ -956,7 +956,9 @@ html[data-theme="light"] {
 .markdown-body code {
   font-family: var(--font-mono);
   font-size: 0.85em;
-  background: color-mix(in srgb, var(--surface-current), var(--well-mix));
+  /* A tint of the text's own color, so a span of code stands out from the
+     text around it on any surface, as GitHub's does. */
+  background: color-mix(in srgb, var(--color-overlay) 10%, transparent);
   padding: 0.15em 0.35em;
   border-radius: 4px;
 }
@@ -994,6 +996,29 @@ html[data-theme="light"] {
   padding-block: var(--code-block-pad-y);
 }
 
+/* The language the fence names, on the first row of the block, level with
+   Copy at the other end: a row as tall as a line of code, in smaller, quieter
+   text. The code starts half a padding below it. A block whose fence names
+   no language has no such row. */
+.markdown-body .code-block-lang {
+  position: absolute;
+  /* The block's padding and the code's inset (0.75em and 1em of the block),
+     measured in this row's smaller em. */
+  top: calc(0.75em / 0.75);
+  left: calc(1em / 0.75);
+  /* Over the pre, which its scrollbar makes a positioned box painted later. */
+  z-index: 1;
+  font-size: 0.75em;
+  /* One line of code, measured in this row's smaller em. */
+  line-height: calc(0.85 * 1.6 / 0.75);
+  color: var(--fg-muted);
+  pointer-events: none;
+}
+
+.markdown-body .code-block:has(> .code-block-lang) > pre {
+  padding-top: calc(1.5 * var(--code-block-pad-y) + var(--code-block-line));
+}
+
 .code-block-copy {
   position: absolute;
   top: calc((var(--code-block-line) + 2 * var(--code-block-pad-y) - var(--spacing-hit-sm)) / 2);
@@ -1001,22 +1026,10 @@ html[data-theme="light"] {
   display: flex;
   line-height: 0;
   border-radius: 6px;
-  /* Over the code it covers, on the page's own surface. */
-  background: var(--surface-current);
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-
-.code-block:hover .code-block-copy,
-.code-block-copy:focus-within {
-  opacity: 1;
-}
-
-/* A touch screen has no hover to show it. */
-@media (hover: none) {
-  .code-block-copy {
-    opacity: 1;
-  }
+  /* Over the code it covers, on the block's own well. Always shown, as a
+     block's language is: a reader finds it without pointing at the block. */
+  z-index: 1;
+  background: color-mix(in srgb, var(--surface-current), var(--well-mix));
 }
 
 .markdown-body ul,
@@ -1064,15 +1077,15 @@ html[data-theme="light"] {
 }
 
 .markdown-body h1 {
-  font-size: 1.75em;
-}
-
-.markdown-body h2 {
   font-size: 1.4em;
 }
 
-.markdown-body h3 {
+.markdown-body h2 {
   font-size: 1.2em;
+}
+
+.markdown-body h3 {
+  font-size: 1.1em;
 }
 
 .markdown-body h4 {
@@ -1096,13 +1109,20 @@ html[data-theme="light"] {
   border-radius: 4px;
 }
 
-.markdown-body table {
-  display: block;
-  width: max-content;
+/* A table stands in its own scroller (`markdown/table.ts`) at its natural
+   width: a short cell keeps to one line, a long one wraps at a readable
+   measure, and a table wider than the text scrolls sideways. A scroller, not
+   the table, scrolls, so it takes the overlay scrollbar a div can hold. */
+.markdown-body .table-scroll {
   max-width: 100%;
-  overflow: auto;
-  border-collapse: collapse;
+  overflow-x: auto;
+  overflow-y: hidden;
   margin: var(--markdown-block-gap) 0;
+}
+
+.markdown-body table {
+  width: max-content;
+  border-collapse: collapse;
 }
 
 .markdown-body .katex-display {
@@ -1115,16 +1135,17 @@ html[data-theme="light"] {
    overflows. `useContentScrollers` gives it an overlay scrollbar when the pointer
    first comes onto it; until then, as OverlayScrollbars does for an element it is
    about to take over, the native bar is hidden. */
-.markdown-body :is(pre, table, .katex-display):not([data-overlayscrollbars]) {
+.markdown-body :is(pre, .table-scroll, .katex-display):not([data-overlayscrollbars]) {
   scrollbar-width: none;
 }
 
-.markdown-body :is(pre, table, .katex-display):not([data-overlayscrollbars])::-webkit-scrollbar {
+.markdown-body :is(pre, .table-scroll, .katex-display):not([data-overlayscrollbars])::-webkit-scrollbar {
   display: none;
 }
 
 .markdown-body th,
 .markdown-body td {
+  max-width: 24em;
   padding: 0.4em 0.75em;
   border: 1px solid color-mix(in srgb, var(--color-overlay) 12%, transparent);
 }
@@ -1358,9 +1379,9 @@ html[data-theme="light"] {
 }
 
 /* A Markdown file shown as a document sets its text as a reply does
-   (`.markdown-body`), with what belongs to a repository file's page: a ruled
-   title and sections, a finished task that stays readable, and images at
-   their own size. */
+   (`.markdown-body`), with what belongs to a repository file's page: larger,
+   ruled title and sections, a finished task that stays readable, and images
+   at their own size. A reply's headings stay a step smaller, inside a turn. */
 .markdown-document details {
   margin: var(--markdown-block-gap) 0;
 }
@@ -1369,6 +1390,18 @@ html[data-theme="light"] {
 .markdown-document h2 {
   padding-bottom: 0.3em;
   border-bottom: 1px solid color-mix(in srgb, var(--color-overlay) 10%, transparent);
+}
+
+.markdown-document h1 {
+  font-size: 1.75em;
+}
+
+.markdown-document h2 {
+  font-size: 1.4em;
+}
+
+.markdown-document h3 {
+  font-size: 1.2em;
 }
 
 .markdown-document li:has(> input[type="checkbox"]:checked) {

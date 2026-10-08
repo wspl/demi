@@ -1,9 +1,10 @@
 import { Marked, type RendererObject, type Token, type Tokens } from 'marked'
 import type { MarkdownRenderOptions, MessageAttachment } from './types'
-import { codeToHtml } from './highlight'
+import { codeBlockHtml } from './highlight'
 import { attachmentId, isHttpUrl, messageHostPath, messageImage } from './filePath'
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
+import { scrollingTable } from './table'
 import { declaredSize, THUMBNAIL_HEIGHT, thumbnailBox, type PixelSize, type ThumbnailKind } from '../files/thumbnail'
 
 // Parsing is synchronous, so the renderers read the options of the parse in flight instead of
@@ -154,9 +155,8 @@ const messageRenderer: RendererObject = {
   html({ text }) {
     return escapeHtml(text)
   },
-  // The block's frame, where the page puts its Copy (`CodeBlockCopy.vue`).
   code({ text, lang }) {
-    return `<div class="code-block">${codeToHtml(text, lang ?? '')}</div>`
+    return codeBlockHtml(text, lang ?? '')
   },
   link(token) {
     openLinks += 1
@@ -262,7 +262,7 @@ function groupMediaRuns(blocks: Token[]): void {
   }
 }
 
-const agentMarked = new Marked({ gfm: true, breaks: true, renderer: messageRenderer })
+const agentMarked = new Marked({ gfm: true, breaks: true, renderer: messageRenderer }, scrollingTable)
 // LaTeX math, rendered to self-contained HTML (KaTeX CSS is loaded by web-ui's base
 // stylesheet); `throwOnError` keeps malformed math from blowing up the whole message.
 agentMarked.use({ extensions: mathExtensions({ throwOnError: false, output: 'html' }) })
