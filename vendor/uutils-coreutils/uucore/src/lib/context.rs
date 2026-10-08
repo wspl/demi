@@ -64,15 +64,33 @@ pub fn duplicate(file: &File) -> std::io::Result<File> {
     }
 }
 
+fn is_cancelled() -> bool {
+    control().is_some_and(|control| control.check().is_err())
+}
+
+/// Unwinds a cancelled invocation, unless it is unwinding already: a
+/// destructor that runs meanwhile, such as a buffered writer's flush, must
+/// not unwind again, which would abort the whole embedding process.
 pub fn check_cancelled() {
-    if control().is_some_and(|control| control.check().is_err()) {
+    if is_cancelled() && !std::thread::panicking() {
         std::panic::resume_unwind(Box::new(Cancelled));
     }
 }
 
+/// [`check_cancelled`] for IO, which fails instead while the invocation
+/// unwinds.
+fn check_io() -> std::io::Result<()> {
+    check_cancelled();
+    if std::thread::panicking() && is_cancelled() {
+        // Not `Interrupted`, which a writer retries.
+        return Err(std::io::Error::other("shell job cancelled"));
+    }
+    Ok(())
+}
+
 pub fn read(file: &File, bytes: &mut [u8]) -> std::io::Result<usize> {
     use std::io::Read;
-    check_cancelled();
+    check_io()?;
     match control() {
         Some(control) => control.read(file, bytes),
         None => (&*file).read(bytes),
@@ -81,7 +99,7 @@ pub fn read(file: &File, bytes: &mut [u8]) -> std::io::Result<usize> {
 
 pub fn write(file: &File, bytes: &[u8]) -> std::io::Result<usize> {
     use std::io::Write;
-    check_cancelled();
+    check_io()?;
     match control() {
         Some(control) => control.write(file, bytes),
         None => (&*file).write(bytes),
@@ -400,6 +418,8 @@ pub fn exit(code: i32) -> ! {
     std::panic::resume_unwind(Box::new(ExitRequest(code)))
 }
 
+/// Prints `arguments`; a failure ends the invocation, except while it
+/// unwinds already, when ending it again would abort the embedding process.
 pub fn print(arguments: std::fmt::Arguments<'_>, stderr: bool) {
     use std::io::Write;
     let result = if stderr {
@@ -407,7 +427,9 @@ pub fn print(arguments: std::fmt::Arguments<'_>, stderr: bool) {
     } else {
         io::stdout().write_fmt(arguments)
     };
-    if let Err(error) = result {
+    if let Err(error) = result
+        && !std::thread::panicking()
+    {
         exit(if error.kind() == std::io::ErrorKind::BrokenPipe {
             141
         } else {
@@ -463,7 +485,7 @@ pub mod thread {
 
     pub fn sleep(duration: std::time::Duration) {
         if let Some(control) = super::control() {
-            if control.sleep(duration).is_err() {
+            if control.sleep(duration).is_err() && !std::thread::panicking() {
                 std::panic::resume_unwind(Box::new(super::Cancelled));
             }
         } else {

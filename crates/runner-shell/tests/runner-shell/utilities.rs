@@ -284,3 +284,54 @@ fn ripgrep_searches_and_filters_local_files_with_upstream_options() {
     let (code, _, _) = invoke(root.path(), "rg", &["[", "tree"]);
     assert_eq!(code, 2);
 }
+
+/// A fixed bug: a cancelled utility unwinds, and a buffered writer it held
+/// flushes on the way out; that write found the invocation cancelled and
+/// unwound again inside the destructor, which aborted the whole runner. The
+/// flush now fails, and only the invocation ends.
+#[test]
+fn a_cancelled_utility_unwinds_through_a_buffered_writer_without_aborting() {
+    struct Cancelled;
+    impl uucore::context::Control for Cancelled {
+        fn check(&self) -> std::io::Result<()> {
+            Err(std::io::ErrorKind::Interrupted.into())
+        }
+        fn read(&self, _: &std::fs::File, _: &mut [u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("cancelled"))
+        }
+        fn write(&self, _: &std::fs::File, _: &[u8]) -> std::io::Result<usize> {
+            Err(std::io::Error::other("cancelled"))
+        }
+        fn sleep(&self, _: std::time::Duration) -> std::io::Result<()> {
+            Err(std::io::ErrorKind::Interrupted.into())
+        }
+        fn resolve(&self, path: &Path, cwd: &Path) -> std::path::PathBuf {
+            cwd.join(path)
+        }
+        fn task_guard(&self) -> Box<dyn Send + Sync> {
+            Box::new(())
+        }
+    }
+    let root = tempfile::tempdir().unwrap();
+    let context = Context {
+        control: Some(Arc::new(Cancelled)),
+        descriptors: BTreeMap::new(),
+        live_input: false,
+        umask: 0o022,
+        name: "cat",
+        cwd: root.path().into(),
+        env: BTreeMap::new(),
+        stdin: Arc::new(tempfile::tempfile().unwrap()),
+        stdout: Arc::new(tempfile::tempfile().unwrap()),
+        stderr: Arc::new(tempfile::tempfile().unwrap()),
+    };
+    let unwound = uucore::context::with(context, || {
+        std::panic::catch_unwind(|| {
+            use std::io::Write;
+            let mut output = std::io::BufWriter::new(uucore::context::io::stdout());
+            output.write_all(b"held until the writer drops").unwrap();
+            uucore::context::check_cancelled();
+        })
+    });
+    assert!(unwound.unwrap_err().is::<uucore::context::Cancelled>());
+}
