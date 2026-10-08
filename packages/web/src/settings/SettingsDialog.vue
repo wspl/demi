@@ -406,6 +406,7 @@ function resetShortcuts(): void {
     :account="{ name: resources.username, email: resources.email }"
     :sections="sections"
     @close="address.close"
+    @reselect="address.show($event)"
   >
     <SettingsGeneral
       v-if="section === 'general'"

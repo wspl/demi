@@ -570,32 +570,48 @@ impl Owner<'_> {
                 peer,
                 sdp,
                 introduction,
+                stun,
             } => {
                 let direct = self.direct.clone();
                 let control = self.handle.control.clone();
                 let closed = self.handle.closed().clone();
                 self.work.spawn(async move {
-                    let reply = match direct.offer(peer, sdp, introduction).await {
-                        Ok(sdp) => wire::Outbound::DirectAnswer { id, sdp },
-                        Err(refused) => wire::Outbound::DirectRefused {
-                            id,
-                            code: refused.code,
-                            message: refused.message,
-                        },
-                    };
-                    match wire::encode(&reply) {
-                        Ok(reply) => {
-                            tokio::select! {
-                                _ = closed.cancelled() => {},
-                                // A disconnected backend no longer waits for the answer.
-                                _ = control.send(reply) => {},
-                            }
+                    // The answer goes first; the candidates the peer finds
+                    // after it follow until the peer ends.
+                    let (reply, mut candidates) =
+                        match direct.offer(peer.clone(), sdp, introduction, stun).await {
+                            Ok(answered) => (
+                                wire::Outbound::DirectAnswer { id, sdp: answered.sdp },
+                                Some(answered.candidates),
+                            ),
+                            Err(refused) => (
+                                wire::Outbound::DirectRefused {
+                                    id,
+                                    code: refused.code,
+                                    message: refused.message,
+                                },
+                                None,
+                            ),
+                        };
+                    if !send_control(&control, &closed, &reply).await {
+                        return Work::Done;
+                    }
+                    while let Some(candidate) = match &mut candidates {
+                        Some(candidates) => candidates.recv().await,
+                        None => None,
+                    } {
+                        let found = wire::Outbound::DirectCandidate {
+                            peer: peer.clone(),
+                            candidate,
+                        };
+                        if !send_control(&control, &closed, &found).await {
+                            break;
                         }
-                        Err(error) => tracing::warn!("direct answer encoding failed: {error}"),
                     }
                     Work::Done
                 });
             }
+            Inbound::DirectCandidate { peer, candidate } => self.direct.candidate(&peer, candidate),
             Inbound::DirectClose { peer } => self.direct.close(&peer),
             Inbound::LogRead {
                 id,
@@ -887,4 +903,26 @@ async fn read_job(
         Err(error) => Err(error),
     };
     report_pipe(&control, pipe.id, result, &closed).await;
+}
+
+/// Sends `message` to the backend; false once the connection closed, which
+/// takes nothing more.
+async fn send_control(
+    control: &mpsc::Sender<wire::Frame>,
+    closed: &CancellationToken,
+    message: &wire::Outbound,
+) -> bool {
+    let frame = match wire::encode(message) {
+        Ok(frame) => frame,
+        Err(error) => {
+            // The runner's own messages always encode; one that does not is
+            // not sent, and the page falls back to the relay.
+            tracing::warn!("a direct message's encoding failed: {error}");
+            return true;
+        }
+    };
+    tokio::select! {
+        _ = closed.cancelled() => false,
+        sent = control.send(frame) => sent.is_ok(),
+    }
 }

@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import { DeviceDirect, RETRY_MS, type Choice } from './device'
+import type { DirectAttempt } from '@demicodes/web-ui/devices/direct'
 import type { DirectPeer } from './peer'
 
 // The page's choice of path to a device (`direct-channel.md` § Choosing the
@@ -11,6 +12,19 @@ import type { DirectPeer } from './peer'
 class Peer implements DirectPeer {
   readonly ended = Promise.withResolvers<void>()
   readonly closed = this.ended.promise
+  readonly attempt: DirectAttempt = {
+    startedAt: '2026-10-08T09:00:00.000Z',
+    durationMs: 20,
+    outcome: 'connected',
+    stage: null,
+    browser: { local: ['3f2a.local'], public: [] },
+    device: { local: ['127.0.0.1'], public: [] },
+    pairs: { tried: 1, answered: 1 },
+    permission: null,
+  }
+  roundTrip(): Promise<number | null> {
+    return Promise.resolve(0.2)
+  }
   open(): never {
     throw new Error('the choice opens no channel')
   }
@@ -188,4 +202,46 @@ test('a peer the backend closed is made again at once, in place of an attempt wi
   attempts[2]!.resolve(new Peer())
   await flush()
   expect(direct.choice).toBe('direct')
+})
+
+test('turned off, the peer closes and nothing tries again until it is turned on', async () => {
+  const { direct, attempts, timers, choices } = device()
+  direct.tryNow()
+  const peer = new Peer()
+  attempts[0]!.resolve(peer)
+  await flush()
+  expect(direct.choice).toBe('direct')
+
+  direct.setEnabled(false)
+  let closed = false
+  void peer.closed.then(() => {
+    closed = true
+  })
+  await flush()
+  expect(closed).toBe(true)
+  expect(direct.choice).toBe('relay')
+  expect(choices).toEqual(['direct', 'relay'])
+  // No wait runs, and no reason to try makes a peer.
+  expect(timers.filter((timer) => !timer.cancelled)).toEqual([])
+  direct.tryNow()
+  direct.setPermission('granted')
+  expect(attempts).toHaveLength(1)
+
+  direct.setEnabled(true)
+  expect(attempts).toHaveLength(2)
+})
+
+test('turned off while an attempt runs, its peer is not taken', async () => {
+  const { direct, attempts } = device()
+  direct.tryNow()
+  direct.setEnabled(false)
+  const peer = new Peer()
+  let closed = false
+  void peer.closed.then(() => {
+    closed = true
+  })
+  attempts[0]!.resolve(peer)
+  await flush()
+  expect(direct.choice).toBe('relay')
+  expect(closed).toBe(true)
 })

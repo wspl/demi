@@ -1,13 +1,16 @@
 /**
  * The page's peer of a direct channel (`direct-channel.md` § Making the
- * channel): an `RTCPeerConnection` with no ICE servers, whose offer goes at
- * once, before its own candidates, since the runner learns the page's
- * addresses from the checks the page sends it. Each operation opens a data
- * channel of its own, reliable and ordered; its first message is the
- * header, the runner's first the answer (§ Operations on the channel).
+ * channel): an `RTCPeerConnection` with the STUN servers the backend names,
+ * whose offer goes at once; its candidates follow as the browser finds them,
+ * the public one once a STUN server answers, and the runner's come the
+ * other way. Each attempt records what it saw, for the device's page. Each
+ * operation opens a data channel of its own, reliable and ordered; its first
+ * message is the header, the runner's first the answer (§ Operations on the
+ * channel).
  */
 import type { z } from 'zod'
 import { DIRECT_CONNECT_MS, DIRECT_MESSAGE_BYTES, DIRECT_QUEUE_BYTES } from '@demicodes/protocol'
+import type { DirectAddresses, DirectAttempt, DirectPermission, DirectStage } from '@demicodes/web-ui/devices/direct'
 import { channelRefusalSchema, type ChannelErrorCode, type ChannelHeader } from '../api/generated/web-api'
 
 /**
@@ -66,26 +69,123 @@ export interface OperationChannel<T> {
 export interface DirectPeer {
   /** Opens an operation's channel and sends its header; the runner's answer is checked against `answer`. */
   open<T>(header: ChannelHeader, answer: z.ZodType<T>): Promise<OperationChannel<T>>
+  /** What the attempt that made the peer saw. */
+  readonly attempt: DirectAttempt
+  /** The round trip of the path in use, in milliseconds, as the browser measures it; null while it has none. */
+  roundTrip(): Promise<number | null>
   /** Resolves once the connection failed or closed. */
   readonly closed: Promise<void>
   close(): void
 }
 
-/** Sends an offer to the runner through the backend and answers its answer. */
-export type Offer = (sdp: string) => Promise<string>
+/** An attempt that made no peer, with what it saw. */
+export class AttemptFailed extends ChannelFailed {
+  constructor(
+    message: string,
+    readonly attempt: DirectAttempt,
+  ) {
+    super(message)
+    this.name = 'AttemptFailed'
+  }
+}
+
+/** The page's side of a device's signaling, as one attempt uses it. */
+export interface PeerSignaling {
+  /** Sends the offer and answers the runner's answer; a refusal fails it, `busy` saying so. */
+  offer(sdp: string): Promise<string>
+  /** Sends a candidate the browser found after the offer. */
+  candidate(candidate: string): void
+  /** Calls `listener` with each candidate the runner finds after its answer; the answer stops it. */
+  candidates(listener: (candidate: string) => void): () => void
+}
+
+/** What a peer is made with. */
+export interface PeerOptions {
+  signaling: PeerSignaling
+  /** The STUN servers the backend names; none keeps the peer to one network. */
+  stunUrls: readonly string[]
+  /** The browser's local network permission as the attempt runs. */
+  permission: () => DirectPermission | null
+  /** Whether a refusal of the offer is the runner's `busy`. */
+  busy: (error: unknown) => boolean
+  signal?: AbortSignal
+}
+
+/** A candidate line's type and address: `candidate:F 1 udp P <address> <port> typ <type> ...`. */
+export function candidateOf(line: string): { type: string; address: string } | null {
+  const fields = line.replace(/^a=/, '').split(' ')
+  const typed = fields.indexOf('typ')
+  const address = fields[4]
+  const type = typed > 0 ? fields[typed + 1] : undefined
+  if (!line.replace(/^a=/, '').startsWith('candidate:') || !address || !type)
+    return null
+  return { type, address }
+}
+
+/** Adds a candidate's address to the side's addresses it belongs to, each once. */
+function note(addresses: DirectAddresses, line: string): void {
+  const candidate = candidateOf(line)
+  if (!candidate)
+    return
+  const kind = candidate.type === 'host' ? addresses.local : candidate.type === 'srflx' || candidate.type === 'prflx' ? addresses.public : null
+  if (kind && !kind.includes(candidate.address))
+    kind.push(candidate.address)
+}
 
 /**
- * Makes a peer: its offer goes through `offer` at once, and it waits up to
- * the connect limit for the connection, which then stands until it fails
- * or closes.
+ * Makes a peer: its offer goes at once, its candidates follow, and it waits
+ * up to the connect limit for the connection, which then stands until it
+ * fails or closes. A failure throws `AttemptFailed` with what it saw.
  */
-export async function connectPeer(offer: Offer, signal?: AbortSignal): Promise<DirectPeer> {
-  const connection = new RTCPeerConnection({ iceServers: [] })
+export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
+  const { signaling, signal } = options
+  const connection = new RTCPeerConnection({
+    iceServers: options.stunUrls.length ? [{ urls: [...options.stunUrls] }] : [],
+  })
+  const started = Date.now()
+  const attempt: DirectAttempt = {
+    startedAt: new Date(started).toISOString(),
+    durationMs: 0,
+    outcome: 'failed',
+    stage: null,
+    browser: { local: [], public: [] },
+    device: { local: [], public: [] },
+    pairs: { tried: 0, answered: 0 },
+    permission: options.permission(),
+  }
+  let iceConnected = false
   const ended = Promise.withResolvers<void>()
   const end = () => {
+    stopCandidates()
     connection.close()
     ended.resolve()
   }
+  // The runner's candidates may come before its answer: they wait for it.
+  let described = false
+  const waiting: string[] = []
+  const add = (candidate: string) => {
+    note(attempt.device, candidate)
+    connection.addIceCandidate({ candidate, sdpMLineIndex: 0 }).catch(() => {
+      // A candidate the browser cannot use is passed over; the others may connect.
+    })
+  }
+  const stopCandidates = signaling.candidates((candidate) => {
+    if (described)
+      add(candidate)
+    else
+      waiting.push(candidate)
+  })
+  connection.addEventListener('icecandidate', (event: RTCPeerConnectionIceEvent) => {
+    const line = event.candidate?.candidate
+    if (!line)
+      return
+    note(attempt.browser, line)
+    signaling.candidate(line)
+  })
+  connection.addEventListener('iceconnectionstatechange', () => {
+    if (connection.iceConnectionState === 'connected' || connection.iceConnectionState === 'completed')
+      iceConnected = true
+  })
   signal?.addEventListener('abort', end, { once: true })
   try {
     // A first channel, so that the offer carries the data channels' section.
@@ -94,23 +194,88 @@ export async function connectPeer(offer: Offer, signal?: AbortSignal): Promise<D
     const sdp = connection.localDescription?.sdp
     if (!sdp)
       throw new ChannelFailed('The browser made no offer')
-    const answer = await offer(sdp)
+    const answer = await options.signaling.offer(sdp)
+    for (const line of answer.split(/\r?\n/))
+      note(attempt.device, line)
     await connection.setRemoteDescription({ type: 'answer', sdp: answer })
+    described = true
+    for (const candidate of waiting.splice(0))
+      add(candidate)
     await connected(connection)
   } catch (error) {
+    attempt.permission = options.permission()
+    attempt.durationMs = Date.now() - started
+    if (options.busy(error)) {
+      attempt.outcome = 'busy'
+    } else {
+      attempt.stage = failedStage(connection, attempt, iceConnected)
+      await countPairs(connection, attempt)
+    }
     end()
-    throw error
+    throw new AttemptFailed(error instanceof Error ? error.message : String(error), attempt)
   } finally {
     signal?.removeEventListener('abort', end)
   }
+  attempt.outcome = 'connected'
+  attempt.durationMs = Date.now() - started
+  await countPairs(connection, attempt)
   connection.addEventListener('connectionstatechange', () => {
     if (connection.connectionState === 'failed' || connection.connectionState === 'closed')
       end()
   })
   return {
     open: (header, answer) => openChannel(connection, header, answer),
+    attempt,
+    roundTrip: () => roundTrip(connection),
     closed: ended.promise,
     close: end,
+  }
+}
+
+/** Where an attempt that did not connect stopped. */
+function failedStage(connection: RTCPeerConnection, attempt: DirectAttempt, iceConnected: boolean): DirectStage {
+  if (attempt.permission === 'denied')
+    return 'permission'
+  if (iceConnected)
+    return connection.sctp?.transport.state === 'connected' ? 'channel' : 'handshake'
+  if (attempt.browser.local.length === 0 && attempt.browser.public.length === 0)
+    return 'gathering'
+  return 'checking'
+}
+
+/** Counts the address pairs the browser checked, and those that answered. */
+async function countPairs(connection: RTCPeerConnection, attempt: DirectAttempt): Promise<void> {
+  try {
+    const stats = await connection.getStats()
+    let tried = 0
+    let answered = 0
+    stats.forEach((report: { type: string; responsesReceived?: number; requestsSent?: number }) => {
+      if (report.type !== 'candidate-pair')
+        return
+      if ((report.requestsSent ?? 0) > 0)
+        tried += 1
+      if ((report.responsesReceived ?? 0) > 0)
+        answered += 1
+    })
+    attempt.pairs = { tried, answered }
+  } catch {
+    // A closed connection has no statistics left; the counts stay as they were.
+  }
+}
+
+/** The round trip of the selected pair, in milliseconds. */
+async function roundTrip(connection: RTCPeerConnection): Promise<number | null> {
+  try {
+    const stats = await connection.getStats()
+    let found: number | null = null
+    stats.forEach((report: { type: string; nominated?: boolean; state?: string; currentRoundTripTime?: number }) => {
+      if (report.type === 'candidate-pair' && report.nominated && report.state === 'succeeded' && report.currentRoundTripTime !== undefined)
+        found = report.currentRoundTripTime * 1000
+    })
+    return found
+  } catch {
+    // A closed connection measures nothing.
+    return null
   }
 }
 
