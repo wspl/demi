@@ -6,6 +6,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import {
   applyParadigm,
+  FONT_IDS,
   galleryState,
   PARADIGMS,
   type ParadigmId,
@@ -57,6 +58,14 @@ function setMode(mode: 'light' | 'dark') {
           <AccentPicker
             :model-value="galleryState.accent"
             @update:model-value="galleryState.accent = $event"
+          />
+          <!-- On trial: the product's face is still being chosen. -->
+          <AxisPicker
+            label="Font"
+            :values="FONT_IDS"
+            :names="{ system: 'System', inter: 'Inter', geist: 'Geist' }"
+            :model-value="galleryState.font"
+            @update:model-value="galleryState.font = $event"
           />
         </ScrollArea>
       </div>

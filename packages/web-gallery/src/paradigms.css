@@ -92,15 +92,23 @@ html[data-theme="light"][data-shadow="flat"] {
   --shadow-btn-hover: 0 0 0 0.5px oklch(20% 0.005 95 / 0.26);
 }
 
-/* ── Flat's type and marks ────────────────────────────────────────────
-   Text keeps the platform's default smoothing, which draws stems a touch
-   fuller than grayscale antialiasing on macOS, and icons a 2px stroke, so
-   type and marks hold their weight on the quiet surfaces. */
+/* ── Flat's marks ─────────────────────────────────────────────────────
+   Icons take a 2px stroke, so marks hold their weight on the quiet surfaces. */
 
-html[data-tone="paper"],
-html[data-tone="paper"] body,
-html[data-tone="paper"] #app {
-  -webkit-font-smoothing: auto;
-  -moz-osx-font-smoothing: auto;
+html[data-tone="paper"] {
   --icon-stroke-width: 2;
+}
+
+/* ── fonts on trial ───────────────────────────────────────────────────
+   Inter and Geist (both OFL) beside the system face, in any theme. Scripts
+   they lack, Chinese among them, fall back to the system's faces. Geist
+   brings its mono for code; "Code Arabic" stays first there (base.css). */
+
+html[data-font="inter"] {
+  --font-sans: "Inter Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
+}
+
+html[data-font="geist"] {
+  --font-sans: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
+  --font-mono: "Code Arabic", "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
