@@ -137,7 +137,7 @@ function resend() {
     label="Change Email"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Change Email</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
@@ -163,7 +163,6 @@ function resend() {
               focused
               :placeholder="phase.currentEmail"
               class="w-48 max-w-full"
-              @keydown.enter="submit"
             />
           </SettingsRow>
           <SettingsRow
@@ -175,7 +174,6 @@ function resend() {
               aria-label="Current password"
               secret
               class="w-48 max-w-full"
-              @keydown.enter="submit"
             />
           </SettingsRow>
         </div>
@@ -197,7 +195,6 @@ function resend() {
               focused
               placeholder="000000"
               class="w-32 font-mono"
-              @keydown.enter="verify"
             />
           </SettingsRow>
         </div>
@@ -224,34 +221,33 @@ function resend() {
         <Check :size="ICON_PX.in28" class="text-on-success" />
         {{ phase.email }}
       </div>
-
-      <div class="flex justify-end gap-2">
-        <Button
-          v-if="phase.kind === 'done'"
-          variant="primary"
-          @click="emit('close')"
-          >Done</Button
-        >
-        <template v-else>
-          <Button @click="emit('close')">Cancel</Button>
-          <Button
-            v-if="phase.kind === 'form'"
-            variant="primary"
-            :disabled="!canSubmit && !phase.busy"
-            :loading="phase.busy"
-            @click="submit"
-            >Continue</Button
-          >
-          <Button
-            v-else
-            variant="primary"
-            :disabled="!canVerify && !phase.busy"
-            :loading="phase.busy"
-            @click="verify"
-            >Verify</Button
-          >
-        </template>
-      </div>
     </div>
+    <template #footer>
+      <Button
+        v-if="phase.kind === 'done'"
+        variant="primary"
+        @click="emit('close')"
+        >Done</Button
+      >
+      <template v-else>
+        <Button @click="emit('close')">Cancel</Button>
+        <Button
+          v-if="phase.kind === 'form'"
+          variant="primary"
+          :disabled="!canSubmit && !phase.busy"
+          :loading="phase.busy"
+          @click="submit"
+          >Continue</Button
+        >
+        <Button
+          v-else
+          variant="primary"
+          :disabled="!canVerify && !phase.busy"
+          :loading="phase.busy"
+          @click="verify"
+          >Verify</Button
+        >
+      </template>
+    </template>
   </Dialog>
 </template>

@@ -90,7 +90,13 @@ export const useConversations = defineStore('conversations', () => {
    */
   const deleted = reactive(new Set<string>())
   const pendingChanges = ref<string[]>([])
-  const listStatus = computed(() => product.load)
+  /**
+   * This web browser's own drafts, new conversations before their first
+   * send, are on their way back from IndexedDB (`restoreLocalDrafts`): the
+   * list is not whole, and an address may name one of them.
+   */
+  const restoringLocalDrafts = ref(false)
+  const listStatus = computed(() => restoringLocalDrafts.value ? 'loading' : product.load)
   const writes = new SerialQueue()
   const restored = new Set<string>()
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
@@ -342,10 +348,7 @@ export const useConversations = defineStore('conversations', () => {
           earlyReads.delete(id)
         }
       }
-      const active = next.find((item) => item.id === product.activeConversationId)
-      if (active && active.load !== 'failed' && !cache.get(active.id)) {
-        void activate(active.id)
-      }
+      openListed()
     },
     { flush: 'sync' },
   )
@@ -552,9 +555,25 @@ export const useConversations = defineStore('conversations', () => {
 
   async function initialize(): Promise<void> {
     const signal = lifetime.signal
+    restoringLocalDrafts.value = true
     await restoreLocalDrafts()
-    if (!signal.aborted) {
-      product.start()
+    if (signal.aborted) {
+      return
+    }
+    restoringLocalDrafts.value = false
+    product.start()
+    // The address may name one of them, shown before they were back.
+    openListed()
+  }
+
+  /**
+   * Opens the conversation the address names once the list has it, unless
+   * its opening failed, which waits for Retry.
+   */
+  function openListed(): void {
+    const active = items.value.find((item) => item.id === product.activeConversationId)
+    if (active && active.load !== 'failed' && !cache.get(active.id)) {
+      void activate(active.id)
     }
   }
 
@@ -702,7 +721,12 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  async function activate(id: string | null): Promise<void> {
+  /**
+   * Shows the conversation `id`, or none. `newConversation`: the address is
+   * a new conversation's, as its history entry says, so it has no record to
+   * read before its first send.
+   */
+  async function activate(id: string | null, options: { newConversation?: boolean } = {}): Promise<void> {
     const previous = items.value.find(
       (item) => item.id === product.activeConversationId,
     )
@@ -724,8 +748,9 @@ export const useConversations = defineStore('conversations', () => {
     if (!conversation) {
       // The first load opens the conversation its address names by its id,
       // before the channel's first state names it (`web-application.md`
-      // § Requests for one action).
-      if (id && !product.snapshot && !earlyReads.has(id)) {
+      // § Requests for one action), but not a new conversation's, which has
+      // no record before its first send.
+      if (id && !options.newConversation && !product.snapshot && !earlyReads.has(id)) {
         earlyReads.set(id, openingReads(id, lifetime.signal))
       }
       return
@@ -1719,6 +1744,7 @@ export const useConversations = defineStore('conversations', () => {
     pendingChanges.value = []
     cache.clear()
     earlyReads.clear()
+    restoringLocalDrafts.value = false
     madeHere.clear()
     sending.clear()
     draftSync.stop()

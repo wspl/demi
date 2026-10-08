@@ -289,16 +289,16 @@ const canSave = computed(() => {
         </div>
       </ScrollArea>
       <InlineError v-if="error" class="px-5 pt-3" :message="error" />
-      <div v-if="editable" class="flex justify-end gap-2 p-5 pt-4">
-        <Button @click="emit('close')">Cancel</Button>
-        <Button
-          variant="primary"
-          :disabled="!canSave"
-          :loading="pending"
-          @click="emit('save', clone(draft))"
-          >{{ mode === 'create' ? 'Add Model' : 'Save' }}</Button
-        >
-      </div>
     </div>
+    <template v-if="editable" #footer>
+      <Button @click="emit('close')">Cancel</Button>
+      <Button
+        variant="primary"
+        :disabled="!canSave"
+        :loading="pending"
+        @click="emit('save', clone(draft))"
+        >{{ mode === 'create' ? 'Add Model' : 'Save' }}</Button
+      >
+    </template>
   </Dialog>
 </template>

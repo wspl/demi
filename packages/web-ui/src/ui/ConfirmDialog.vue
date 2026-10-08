@@ -36,7 +36,7 @@ const emit = defineEmits<{
     :label="title"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 p-5">
+    <div class="flex flex-col gap-4 px-5 pt-5">
       <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
       <div class="flex flex-col gap-3 text-[13px] leading-5 text-fg-muted">
         <slot />
@@ -49,10 +49,10 @@ const emit = defineEmits<{
           {{ entry }}
         </li>
       </ul>
-      <div class="flex justify-end gap-2">
-        <Button :disabled="busy" @click="emit('close')">Cancel</Button>
-        <Button variant="destructive" :loading="busy" @click="emit('confirm')">{{ action }}</Button>
-      </div>
     </div>
+    <template #footer>
+      <Button :disabled="busy" @click="emit('close')">Cancel</Button>
+      <Button variant="destructive" :loading="busy" @click="emit('confirm')">{{ action }}</Button>
+    </template>
   </Dialog>
 </template>

@@ -122,6 +122,24 @@ test('New on the empty draft already shown gives it back with the focus asked fo
   expect(conversations.composerFocusRequests).toBe(1)
 })
 
+test('a new conversation opened from the list shows on an entry that says so, as New\'s does', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/chat/:id?', component: defineComponent({ render: () => null }) }],
+  })
+  const app = createApp({})
+  app.use(pinia)
+  app.use(router)
+  const navigation = app.runWithContext(() => useConversationNavigation())
+  const id = useConversations().create(null)
+  useConversations().items.find((item) => item.id === id)!.draft = 'Fix the login bug'
+  await router.push('/chat')
+  expect(navigation.showsNewConversation()).toBe(false)
+  navigation.open(id)
+  await waitFor(() => router.currentRoute.value.params.id === id, () => router.currentRoute.value.fullPath)
+  expect(navigation.showsNewConversation()).toBe(true)
+})
+
 test('a reload of a new conversation, which has no record yet, opens a new conversation again, and an unknown address stays not found', async () => {
   const router = createRouter({
     history: createMemoryHistory(),

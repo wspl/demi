@@ -41,10 +41,11 @@ const pageKind = computed(() =>
     ? 'none'
     : conversationPageKind(store.listStatus, !!conversation.value),
 )
+// A new conversation's address, as a reload of it shows, has nothing to read.
 watch(
   () => props.id,
   (id) => {
-    void store.activate(id ?? null)
+    void store.activate(id ?? null, { newConversation: navigation.showsNewConversation() })
   },
   { immediate: true },
 )

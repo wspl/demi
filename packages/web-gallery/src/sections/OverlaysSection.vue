@@ -935,7 +935,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Dialog"
-        note="Modal confirm. The pinned one starts open. Show Toast keeps the live dialog open: the notification stays above its scrim and can be dismissed without closing the dialog."
+        note="Modal confirm. The footer holds the actions the macOS way: Cancel, then the default button last and rightmost; what stands apart, a link or Delete beside Save, sits at the leading edge. Return presses the default button from anywhere in the panel but a button, a link or a multi-line field; Escape cancels. A destructive answer (Remove, Revoke, Replace) is the default and keeps its red. The footer stays in place while the content scrolls. The pinned one starts open. Show Toast keeps the live dialog open: the notification stays above its scrim and can be dismissed without closing the dialog."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="open">
@@ -954,24 +954,16 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               :overlay-store="appOverlayStore"
               @close="inlineDialogOpen = false"
             >
-              <div class="space-y-3 p-4">
+              <div class="space-y-3 px-5 pt-5">
                 <h3 class="text-[15px] font-medium text-fg-emphasis">Keep this queued follow-up?</h3>
                 <p class="text-[13px] leading-5 text-fg-muted">
-              The expired-cookie case can wait. Keep the queued message for the next turn?
+                  The expired-cookie case can wait. Keep the queued message for the next turn?
                 </p>
-                <div class="flex justify-end gap-2">
-                  <Button
-                    size="md"
-                    variant="ghost"
-                    @click="inlineDialogOpen = false"
-                  >Cancel</Button>
-                  <Button
-                    size="md"
-                    variant="primary"
-                    @click="inlineDialogOpen = false"
-                  >Keep</Button>
-                </div>
               </div>
+              <template #footer>
+                <Button @click="inlineDialogOpen = false">Cancel</Button>
+                <Button variant="primary" @click="inlineDialogOpen = false">Keep</Button>
+              </template>
             </Dialog>
           </GallerySpecimen>
         </GalleryOverlayWell>
@@ -1053,29 +1045,22 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
           :overlay-store="appOverlayStore"
           @close="dialogOpen = false"
         >
-          <div class="space-y-3 p-4">
+          <div class="space-y-3 px-5 pt-5">
             <h3 class="text-[15px] font-medium text-fg-emphasis">Keep this queued follow-up?</h3>
             <p class="text-[13px] leading-5 text-fg-muted">
-            The expired-cookie case can wait. Keep the queued message for the next turn?
+              The expired-cookie case can wait. Keep the queued message for the next turn?
             </p>
+          </div>
+          <template #footer-leading>
             <Button
-              size="md"
               variant="ghost"
               @click="showToast({ title: 'Could Not Refresh Usage', message: 'The provider is temporarily unavailable.', tone: 'danger' })"
             >Show Toast</Button>
-            <div class="flex justify-end gap-2">
-              <Button
-                size="md"
-                variant="ghost"
-                @click="dialogOpen = false"
-              >Cancel</Button>
-              <Button
-                size="md"
-                variant="primary"
-                @click="dialogOpen = false"
-              >Keep</Button>
-            </div>
-          </div>
+          </template>
+          <template #footer>
+            <Button @click="dialogOpen = false">Cancel</Button>
+            <Button variant="primary" @click="dialogOpen = false">Keep</Button>
+          </template>
         </Dialog>
       </GallerySection>
     </template>
