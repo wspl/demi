@@ -31,6 +31,10 @@ pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// relay's watch does.
 pub const WATCH_HEARTBEAT: Duration = Duration::from_secs(30);
 
+/// The label of a peer's probe channel, unordered and never retransmitted,
+/// on which the runner sends back each message as it arrives.
+pub const PROBE_LABEL: &str = "probe";
+
 /// The most STUN servers a backend names.
 pub const MAX_STUN_URLS: usize = 8;
 /// The most characters of a candidate a page or a runner trickles.

@@ -613,6 +613,16 @@ impl Owner<'_> {
             }
             Inbound::DirectCandidate { peer, candidate } => self.direct.candidate(&peer, candidate),
             Inbound::DirectClose { peer } => self.direct.close(&peer),
+            // The relay probe is answered at once, ahead of the connection's
+            // bulk output, so its round trip is the path's own.
+            Inbound::DirectPing { peer, id } => {
+                let control = self.handle.control.clone();
+                let closed = self.handle.closed().clone();
+                self.work.spawn(async move {
+                    send_control(&control, &closed, &wire::Outbound::DirectPong { peer, id }).await;
+                    Work::Done
+                });
+            }
             Inbound::LogRead {
                 id,
                 since,

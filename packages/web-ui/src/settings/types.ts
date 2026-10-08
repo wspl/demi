@@ -4,7 +4,6 @@ import type { Component } from 'vue'
 import type { ModelSettings } from '../agent/model-selection'
 import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
-import type { DeviceStart } from '../devices/installation'
 import type { DeviceState } from '../devices/state'
 import type { DirectStatus } from '../devices/direct'
 import type { DeviceReport } from '../devices/report'
@@ -67,8 +66,6 @@ export interface SettingsDevice extends DeviceReport {
   state: DeviceState
   /** When the host was last seen, as an ISO 8601 timestamp; shown while it is offline. */
   seen?: string
-  /** How to start its runner again; shown while it is offline. */
-  start?: DeviceStart | null
   /** When it was paired, as an ISO 8601 timestamp. */
   pairedAt: string
   /** How this page reaches it (`direct-channel.md` § What the user sees). */

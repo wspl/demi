@@ -216,7 +216,7 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
       startCommand: null,
       os: null,
       runnerVersion: null,
-      direct: true,
+      route: 'automatic',
     }],
     conversations: [
       conversationSummary(CONVERSATION, 'Work', { target: { kind: 'device', deviceId: laptop, path: '/home/ada/work' } }),
