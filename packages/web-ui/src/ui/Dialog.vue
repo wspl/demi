@@ -42,15 +42,15 @@ import type { HeadlineText } from './ui-text'
  * last and rightmost; `footer-leading` holds what stands apart at the leading
  * edge, a link or a Delete beside Save. The footer stays in place while the
  * content scrolls, and the content above it ends without its own bottom
- * padding. Return presses the default button (the footer's primary one, or
- * one marked `defaultAction`) from anywhere in the panel, except where the
- * focus is on a control Return acts on itself: a button, a link, a
- * multi-line field, or a field's open completion; a dialog without a field
- * opens with the focus on it. A destructive button is never the default, as
- * Apple's guidelines have it: in a confirmation whose action destroys
- * something the default is Cancel, so neither Return nor the opening focus
- * destroys; the red button takes a click, or Tab and Space. Escape cancels,
- * as the close control does.
+ * padding. Return presses the default button, the footer's primary one,
+ * from anywhere in the panel, except where the focus is on a control Return
+ * acts on itself: a button, a link, a multi-line field, or a field's open
+ * completion; a dialog without a field opens with the focus on it. An
+ * action that destroys is never the default, as Apple's guidelines and
+ * NSAlert have it: in a confirmation of one, Cancel is the primary button,
+ * so neither Return nor the opening focus destroys, and the action is a
+ * danger button, red with no fill, that takes a click. Escape cancels, as
+ * the close control does.
  */
 const props = defineProps<{
   isOpen: boolean

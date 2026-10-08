@@ -81,7 +81,7 @@ const body = computed(() => {
     <template #footer>
       <Button @click="emit('skip')">Skip</Button>
       <Button v-if="merges" @click="emit('merge')">Merge</Button>
-      <Button variant="destructive" @click="emit('replace')">Replace</Button>
+      <Button variant="danger" @click="emit('replace')">Replace</Button>
     </template>
   </Dialog>
 </template>
