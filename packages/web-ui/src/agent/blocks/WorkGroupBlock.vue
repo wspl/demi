@@ -17,6 +17,7 @@ import { pendingCallTitle, toolRenderKind } from '../tool-rendering'
 import { thinkingFaceLabel } from '../thinking-label'
 import { stepKey, workRunning, workSummary, type WorkGroupBlock, type WorkStep } from '../work-groups'
 import { useEditSelection, useTranscript } from '../edit-selection'
+import { useCommandReferences } from '../command-references'
 import { callFiles, pillSelection } from '../../files/request-changes'
 import type { ChangeFile } from '../../files/changes'
 import { useFileLineCounts } from '../useFileLineCounts'
@@ -57,13 +58,15 @@ const loneElapsed = useElapsedTime(
   },
 )
 const loneText = computed(() => lone.value?.text.trim() ?? '')
+const references = useCommandReferences()
 
 function stepTitle(step: WorkStep): string {
   switch (step.type) {
     case 'thinking':
       return 'Thinking'
     case 'tool_call':
-      return toolCallTitle(step)
+      // As the step's own row names it, a referred command by its title.
+      return toolCallTitle(step, (commandId) => references(commandId)?.title)
     case 'pending_call':
       return pendingCallTitle(step.call)
   }

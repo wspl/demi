@@ -49,9 +49,14 @@ export function parseToolCallInput(block: ToolCallBlock): Record<string, unknown
 }
 
 /** A tool call's title, as its row in the transcript names it. */
-export function toolCallTitle(block: ToolCallBlock): string {
+/**
+ * A call's row title. A call that refers to a command names it by `title`,
+ * the referred command's own title, as the call's row shows it; without it,
+ * by number.
+ */
+export function toolCallTitle(block: ToolCallBlock, title?: (commandId: string) => string | undefined): string {
   return isStandardToolName(block.toolName)
-    ? standardToolTitle(block.toolName, parseToolCallInput(block))
+    ? standardToolTitle(block.toolName, parseToolCallInput(block), title)
     : block.toolName
 }
 
