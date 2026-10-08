@@ -295,7 +295,7 @@ async fn a_fork_reads_the_edits_its_history_made_from_the_same_blobs_and_writes_
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
     source.open().await;
-    let script = "printf 'hello\\n' | demi file create notes.txt";
+    let script = "demi file edit <<'EOF'\nnotes.txt\n<<<<<<< SEARCH\n=======\nhello\n>>>>>>> REPLACE\nEOF";
     vendor.respond(tool_use(
         "toolu_1",
         "shell_exec",

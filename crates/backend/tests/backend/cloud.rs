@@ -1097,12 +1097,12 @@ async fn the_clouds_files_and_the_usage_ledger_survive_a_backend_restart() {
     let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
     create(&backend, &master, FIRST).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/a").await;
-    let script = "demi file create notes.md <<'EOF'\nkeep me\nEOF";
+    let script = "demi file edit <<'EOF'\nnotes.md\n<<<<<<< SEARCH\n=======\nkeep me\n>>>>>>> REPLACE\nEOF";
     let stored = work
         .turn(vec![shell("t1", script, 20_000), say("stored")])
         .await;
     assert!(
-        stored.received[0].contains("Created notes.md"),
+        stored.received[0].contains("Created notes.md (1 line)"),
         "{}",
         stored.received[0]
     );

@@ -21,7 +21,7 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
     within(async {
         let (turns, recorded) = scripts(&[
             &[
-                "demi file create src/app.ts <<'EOF'\nexport const value = 1\nEOF",
+                "demi file edit <<'EOF'\nsrc/app.ts\n<<<<<<< SEARCH\n=======\nexport const value = 1\n>>>>>>> REPLACE\nEOF",
                 "grep -q 'value = 2' src/app.ts",
                 "demi file edit src/app.ts --old \"1\" --new \"2\" && cd src",
                 "grep -q 'value = 2' app.ts && echo passed",
@@ -44,10 +44,13 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
             assert!(result.starts_with("status: exited\n"), "{result}");
         }
         assert_eq!(field(&results[0], "exitCode"), "0");
-        assert_eq!(shown_output(&results[0]), "Created src/app.ts\n");
+        assert_eq!(shown_output(&results[0]), "Created src/app.ts (1 line)\n");
         // The failing check, then the fix and the passing one.
         assert_eq!(field(&results[1], "exitCode"), "1");
-        assert_eq!(shown_output(&results[2]), "Edited src/app.ts\n");
+        assert_eq!(
+            shown_output(&results[2]),
+            "Edited src/app.ts (+1 \u{2212}1)\n   1  export const value = 2\n"
+        );
         assert_eq!(shown_output(&results[3]), "passed\n");
         assert_eq!(
             fixture.kinds(),
@@ -102,13 +105,13 @@ async fn a_coding_workflow_edits_files_and_keeps_its_shell_across_messages() {
             "Capabilities:",
             "demi agent\nRuns helper agents",
             "Operations: spawn, send, abort, resume, list, show, profiles\n",
-            "demi file\nEdits, patches and creates the task's files exactly",
-            "Operations: read, create, edit, patch\n",
+            "demi file\nUse it whenever you change the task's files",
+            "Operations: read, edit, patch\n",
             "Details: demi file --help; one operation: demi file <operation> --help",
         ] {
             assert!(prompt.contains(taught), "{taught}");
         }
-        for absent in ["Usage:", "Stdin body:", "demi file create <path>", "--content"] {
+        for absent in ["Usage:", "Stdin body:", "demi file edit [<path>]", "--content"] {
             assert!(!prompt.contains(absent), "{absent}");
         }
         assert!(

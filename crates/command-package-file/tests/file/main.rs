@@ -83,10 +83,11 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
         let pid = service.id().unwrap();
         let client = service.client();
         assert!(client.info().await.unwrap().operations.contains(&"file.read".into()));
-        let (result, output, _) = call(client, cwd, "file.create", serde_json::json!({"path":"nested/a.txt", "content":"alpha\nbeta\n"})).await;
+        let create = |content: &str| serde_json::json!({"blocks": format!("nested/a.txt\n<<<<<<< SEARCH\n=======\n{content}>>>>>>> REPLACE\n")});
+        let (result, output, _) = call(client, cwd, "file.edit", create("alpha\nbeta\n")).await;
         assert_eq!(result.exit_code, 0);
-        assert_eq!(output, b"Created nested/a.txt\n");
-        let (result, _, _) = call(client, cwd, "file.create", serde_json::json!({"path":"nested/a.txt", "content":"overwrite"})).await;
+        assert_eq!(output, b"Created nested/a.txt (2 lines)\n");
+        let (result, _, _) = call(client, cwd, "file.edit", create("overwrite\n")).await;
         assert_eq!(result.exit_code, 1);
         let (result, _, _) = call(client, cwd, "file.edit", serde_json::json!({"path":"nested/a.txt", "old":"beta", "new":"gamma"})).await;
         assert_eq!(result.exit_code, 0);
@@ -109,7 +110,7 @@ async fn the_resident_program_serves_every_file_operation_and_records_its_edits(
         let large = root.path().join("large.txt");
         std::fs::write(&large, "x".repeat(demi_command_protocol::EDIT_FILE_BYTES + 1)).unwrap();
         for (operation, args) in [
-            ("file.create", serde_json::json!({"path":"large.txt", "content":"overwrite"})),
+            ("file.edit", serde_json::json!({"path":"large.txt", "blocks":"<<<<<<< SEARCH\n=======\noverwrite\n>>>>>>> REPLACE\n"})),
             ("file.edit", serde_json::json!({"path":"large.txt", "old":"absent", "new":"replacement"})),
             ("file.patch", serde_json::json!({"patch":"--- a/large.txt\n+++ b/large.txt\n@@ -1 +1 @@\n-absent\n+replacement\n"})),
         ] {
@@ -173,7 +174,7 @@ async fn search_replace_blocks_replace_lines_found_once_all_together() {
         // A SEARCH that matches two places names both, and changes nothing.
         let (result, _, _) = edit("twice.txt", "<<<<<<< SEARCH\nrepeat\n=======\nonce\n>>>>>>> REPLACE\n").await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).contains("Block 1's SEARCH matches twice.txt at line 2 and line 4"), "{}", message(&result));
+        assert!(message(&result).contains("twice.txt, block 1: its SEARCH matches at line 2 and line 4"), "{}", message(&result));
         assert_eq!(read("twice.txt"), "start\nrepeat\nmiddle\nrepeat\nend\n");
 
         // A second block that matches nowhere names itself and the closest
@@ -181,7 +182,7 @@ async fn search_replace_blocks_replace_lines_found_once_all_together() {
         let failing = "<<<<<<< SEARCH\nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n\n<<<<<<< SEARCH\ngamma\ndelto\n=======\n>>>>>>> REPLACE\n";
         let (result, _, _) = edit("two.txt", failing).await;
         assert_eq!(result.exit_code, 1);
-        assert!(message(&result).contains("Block 2's SEARCH matches no lines of two.txt"), "{}", message(&result));
+        assert!(message(&result).contains("two.txt, block 2: its SEARCH matches no lines"), "{}", message(&result));
         assert!(message(&result).contains("lines 3-4:\n3: gamma\n4: delta"), "{}", message(&result));
         assert_eq!(read("two.txt"), "alpha\nbeta\ngamma\ndelta\n");
 
@@ -191,7 +192,7 @@ async fn search_replace_blocks_replace_lines_found_once_all_together() {
         let both = "<<<<<<< SEARCH  \nalpha\n=======\nALPHA\n>>>>>>> REPLACE\n<<<<<<< SEARCH\ngamma\ndelta\n======= \n>>>>>>> REPLACE \n";
         let (result, output, _) = edit("two.txt", both).await;
         assert_eq!(result.exit_code, 0, "{result:?}");
-        assert_eq!(output, b"Edited two.txt\n");
+        assert_eq!(String::from_utf8(output).unwrap(), "Edited two.txt (+1 \u{2212}3)\n   1  ALPHA\n   2  beta\n");
         assert_eq!(read("two.txt"), "ALPHA\nbeta\n");
 
         // A file with CRLF line endings keeps them, though the blocks come
@@ -199,6 +200,172 @@ async fn search_replace_blocks_replace_lines_found_once_all_together() {
         let (result, _, _) = edit("crlf.txt", "<<<<<<< SEARCH\ntwo\n=======\n2a\n2b\n>>>>>>> REPLACE\n").await;
         assert_eq!(result.exit_code, 0, "{result:?}");
         assert_eq!(read("crlf.txt"), "one\r\n2a\r\n2b\r\nthree\r\n");
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
+/// One call creates a file, edits another and replaces a section of a
+/// third, all together: a block that fails in the last file leaves the
+/// first two as they were, and the result shows each change as the file
+/// now reads.
+#[tokio::test]
+async fn one_edit_changes_several_files_together_or_none() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let (root, service) = service_with(&[
+            ("b.txt", "one\n"),
+            ("c.rs", "fn other() {\n    send();\n}\n\nfn serve() {\n    let a = 1;\n    let b = 2;\n    send();\n}\n"),
+        ])
+        .await;
+        let cwd = root.path().to_str().unwrap();
+        let read = |name: &str| std::fs::read_to_string(root.path().join(name)).ok();
+        let edit = |blocks: String| {
+            call(service.client(), cwd, "file.edit", serde_json::json!({"blocks": blocks}))
+        };
+        let three = |serve_last_line: &str| {
+            format!(
+                "a.txt\n<<<<<<< SEARCH\n=======\nnew file\n>>>>>>> REPLACE\n\n\
+                 b.txt\n<<<<<<< SEARCH\none\n=======\none\ntwo\n>>>>>>> REPLACE\n\n\
+                 c.rs\n<<<<<<< SEARCH\nfn serve() {{\n.......\n    {serve_last_line}\n}}\n=======\n\
+                 fn serve() {{\n.......\n    stream::send();\n}}\n>>>>>>> REPLACE\n"
+            )
+        };
+
+        // The third file's block matches nowhere: no file changes, and the
+        // message names the file and its block.
+        let (result, _, _) = edit(three("absent();")).await;
+        assert_eq!(result.exit_code, 1);
+        assert!(message(&result).starts_with("c.rs, block 1: its SEARCH matches no lines."), "{}", message(&result));
+        assert_eq!(read("a.txt"), None);
+        assert_eq!(read("b.txt").unwrap(), "one\n");
+
+        // Applied together: the section's body is kept.
+        let (result, output, _) = edit(three("send();")).await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Created a.txt (1 line)\n\
+             Edited b.txt (+1)\n   1  one\n   2  two\n\
+             Edited c.rs (+1 \u{2212}1)\n   7      let b = 2;\n   8      stream::send();\n   9  }\n"
+        );
+        assert_eq!(read("a.txt").unwrap(), "new file\n");
+        assert_eq!(read("b.txt").unwrap(), "one\ntwo\n");
+        assert_eq!(
+            read("c.rs").unwrap(),
+            "fn other() {\n    send();\n}\n\nfn serve() {\n    let a = 1;\n    let b = 2;\n    stream::send();\n}\n"
+        );
+
+        // An empty SEARCH never overwrites a file that exists.
+        let (result, _, _) = edit("b.txt\n<<<<<<< SEARCH\n=======\nreplaced\n>>>>>>> REPLACE\n".into()).await;
+        assert_eq!(result.exit_code, 1);
+        assert!(message(&result).starts_with("b.txt, block 1: the file exists"), "{}", message(&result));
+        assert_eq!(read("b.txt").unwrap(), "one\ntwo\n");
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
+/// A section's REPLACE keeps its lines only with as many seven-dot lines as
+/// its SEARCH; a section that matches two places names both.
+#[tokio::test]
+async fn a_section_keeps_its_lines_and_matches_one_place() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let twice = "fn a() {\n    x();\n}\nfn a() {\n    y();\n}\n";
+        let (root, service) = service_with(&[("twice.rs", twice)]).await;
+        let cwd = root.path().to_str().unwrap();
+        let edit = |blocks: &str| {
+            call(service.client(), cwd, "file.edit", serde_json::json!({"path": "twice.rs", "blocks": blocks}))
+        };
+        let (result, _, _) = edit("<<<<<<< SEARCH\nfn a() {\n.......\n}\n=======\nfn b() {\n.......\n.......\n}\n>>>>>>> REPLACE\n").await;
+        assert_eq!(result.exit_code, 1);
+        assert_eq!(
+            message(&result),
+            "twice.rs, block 1: its REPLACE has 2 ....... line(s); it needs none, to replace the whole match, or 1, one for each in its SEARCH"
+        );
+        let (result, _, _) = edit("<<<<<<< SEARCH\nfn a() {\n.......\n}\n=======\nfn b() {\n.......\n}\n>>>>>>> REPLACE\n").await;
+        assert_eq!(result.exit_code, 1);
+        assert!(message(&result).contains("matches at lines 1-3 and lines 4-6"), "{}", message(&result));
+        assert_eq!(std::fs::read_to_string(root.path().join("twice.rs")).unwrap(), twice);
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
+/// The result shows at most 60 numbered lines, then how to read the rest.
+#[tokio::test]
+async fn a_long_change_shows_its_first_60_lines_and_how_to_read_the_rest() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let before: String = (1..=200).map(|line| format!("l{line:03}\n")).collect();
+        let (root, service) = service_with(&[("big.txt", &before)]).await;
+        let replace: String = (50..=150).map(|line| format!("n{line:03}\n")).collect();
+        let blocks = format!("<<<<<<< SEARCH\nl050\n.......\nl150\n=======\n{replace}>>>>>>> REPLACE\n");
+        let (result, output, _) = call(
+            service.client(),
+            root.path().to_str().unwrap(),
+            "file.edit",
+            serde_json::json!({"path": "big.txt", "blocks": blocks}),
+        )
+        .await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        let shown: String = (49..=108)
+            .map(|line| {
+                let text = if (50..=150).contains(&line) { format!("n{line:03}") } else { format!("l{line:03}") };
+                format!("{line:>4}  {text}\n")
+            })
+            .collect();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!(
+                "Edited big.txt (+101 \u{2212}101)\n{shown}[\u{2026} 43 more lines changed; read them: sed -n 109,151p big.txt]\n"
+            )
+        );
+        assert!(service.shutdown().await.unwrap().success());
+    })
+    .await
+    .unwrap();
+}
+
+/// Changes within two lines of each other show as one piece; farther ones
+/// are set apart by `--`, and a blank line shows as its number alone.
+#[tokio::test]
+async fn nearby_changes_show_as_one_piece_and_pieces_are_set_apart() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let before: String = (1..=20).map(|line| if line == 9 { "\n".to_owned() } else { format!("l{line:02}\n") }).collect();
+        let (root, service) = service_with(&[("pieces.txt", &before)]).await;
+        // Lines 3 and 7 change: their shown lines, 2-4 and 6-8, lie one
+        // line apart, so lines 2-8 are one piece. Line 15 is another.
+        let blocks = "<<<<<<< SEARCH\nl03\n=======\nL03\n>>>>>>> REPLACE\n\
+                      <<<<<<< SEARCH\nl07\n=======\nL07\n>>>>>>> REPLACE\n\
+                      <<<<<<< SEARCH\nl15\n=======\nL15\n>>>>>>> REPLACE\n";
+        let (result, output, _) = call(
+            service.client(),
+            root.path().to_str().unwrap(),
+            "file.edit",
+            serde_json::json!({"path": "pieces.txt", "blocks": blocks}),
+        )
+        .await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Edited pieces.txt (+3 \u{2212}3)\n   2  l02\n   3  L03\n   4  l04\n   5  l05\n   6  l06\n   7  L07\n   8  l08\n\
+             --\n  14  l14\n  15  L15\n  16  l16\n"
+        );
+        // A blank line next to a change shows as its number alone.
+        let (result, output, _) = call(
+            service.client(),
+            root.path().to_str().unwrap(),
+            "file.edit",
+            serde_json::json!({"path": "pieces.txt", "blocks": "<<<<<<< SEARCH\nl10\n=======\nL10\n>>>>>>> REPLACE\n"}),
+        )
+        .await;
+        assert_eq!(result.exit_code, 0, "{result:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Edited pieces.txt (+1 \u{2212}1)\n   9\n  10  L10\n  11  l11\n"
+        );
         assert!(service.shutdown().await.unwrap().success());
     })
     .await

@@ -354,7 +354,10 @@ When a command ends, the backend stores its whole output, as its Host kept it
 within 16 MiB, as a blob in the conversation owner's namespace
 ([The whole output](../agent/runtime.md#the-whole-output)), and records it in
 the conversation's `command_outputs` table, one row per command, keyed by the
-command's id. The row holds when the command ended and one of two states:
+command's id. The row holds when the command ended and how: its exit code,
+or that it was stopped or ended with its Host's connection, which a yield's
+wakeup names ([Yield wakeups](../agent/runtime.md#yield-wakeups)); and one
+of two states:
 
 | State | Holds | `demi shell output` prints |
 |---|---|---|
