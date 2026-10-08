@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Archive, Laptop, Pin, PinOff } from '@lucide/vue'
-import CornerDot from '@demicodes/web-ui/ui/CornerDot.vue'
+import { Archive, Pin, PinOff } from '@lucide/vue'
+import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
-import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices/state'
+import { DEVICE_STATE_LABEL } from '@demicodes/web-ui/devices/state'
 import type { SidebarConversation } from './types'
 
 const props = defineProps<{
@@ -185,21 +185,11 @@ const rowClass = computed(() => [
       v-if="restMarks && !menuOpen && !pending && !renaming"
       class="pointer-events-none absolute inset-y-0 right-0.5 flex items-center gap-0.5 text-fg-faint transition-opacity group-hover/row:opacity-0"
     >
-      <span
-        v-if="deviceLabel"
-        role="img"
-        :aria-label="deviceLabel"
-        class="flex size-6 items-center justify-center"
-      >
-        <span class="relative flex">
-          <Laptop :size="ICON_PX.in20" aria-hidden="true" />
-          <CornerDot
-            v-if="conversation.device?.kind === 'paired'"
-            corner="bottom-right"
-            size="xs"
-            :tone="DEVICE_STATE_TONE[conversation.device.state]"
-          />
-        </span>
+      <span v-if="deviceLabel" class="flex size-6 items-center justify-center">
+        <DeviceIcon
+          :state="conversation.device?.kind === 'paired' ? conversation.device.state : null"
+          :label="deviceLabel"
+        />
       </span>
       <span v-if="conversation.pinned" class="flex size-6 items-center justify-center">
         <Pin :size="ICON_PX.in20" />
