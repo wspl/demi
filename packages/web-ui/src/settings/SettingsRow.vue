@@ -91,10 +91,10 @@ const emit = defineEmits<{
     >
     <!-- Wraps under @sm, where the controls drop under the text, and always with `below`, whose line is its own. -->
     <div
-      class="flex min-w-0 flex-1 items-center gap-y-2"
+      class="flex min-w-0 flex-1 items-center"
       :class="[
-      inset ? 'min-h-9 gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? 'min-h-10 gap-x-3 px-3 py-1.5' : 'min-h-14 gap-x-4 px-4 py-3',
-      below ? 'flex-wrap' : inset ? 'flex-nowrap' : 'flex-wrap @sm:flex-nowrap',
+      inset ? 'min-h-9 gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? (below ? 'gap-x-3 px-3 py-3' : 'min-h-10 gap-x-3 px-3 py-1.5') : 'min-h-14 gap-x-4 px-4 py-3',
+      below ? 'flex-wrap gap-y-3' : inset ? 'flex-nowrap gap-y-2' : 'flex-wrap gap-y-2 @sm:flex-nowrap',
       accessory ? 'pr-0!' : '',
     ]"
     >
