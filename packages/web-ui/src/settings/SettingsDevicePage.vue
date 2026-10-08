@@ -125,10 +125,14 @@ const explanation = computed<SentenceText | null>(() => {
   return retries ? `${sentence} Demi tries again ${nextIn.value}.` : sentence
 })
 
-/** Try Again is there only while the route allows a peer and the page is not connected directly. */
+/**
+ * Try Again is there only while the route allows a peer and the page is not
+ * connected directly; a peer that stands but is slower right now needs no new
+ * attempt, so it has none to offer.
+ */
 const canTryAgain = computed(() => {
   const status = direct.value
-  return !!status && online.value && status.route !== 'server' && !status.chosen
+  return !!status && online.value && status.route !== 'server' && !status.chosen && !status.peer
 })
 
 const columns = [
