@@ -1443,8 +1443,13 @@ Run the test suite*. Clicking the underlined title scrolls the transcript to
 that command's call and highlights it for a moment, as a chat app jumps to a
 quoted message; a command of another agent's transcript is named the same
 way, without the underline or the jump. A title too long for its row is cut
-at the end with an ellipsis. A look shows the command's state
-as it found it, `aborted` included. Component structure, expansion, icons, typography, motion and the
+at the end with an ellipsis. Every shell row, a run or a look,
+marks how its command ended the same way, as VS Code marks a terminal
+command: one that exited with a code other than 0 shows a small red cross
+after its title, one that was stopped a grey square, each with its words in
+a tooltip, *Exit code 1*, *Stopped*; one that succeeded shows nothing, and
+one that runs shimmers. The expanded row says the end in words above the
+output. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
 ### Tool descriptions
