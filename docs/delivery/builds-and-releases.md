@@ -502,7 +502,17 @@ starts from its entry of the previous release
 dependencies that changed compile again. The workspace's own crates are left
 out, since every release changes their version and none would be reused; the
 vendored crates in `vendor/`, which are path dependencies, are kept. A job
-that fails keeps what it compiled too. The repository's cache holds up to
+that fails keeps what it compiled too. A restored entry is reused for every
+dependency whose sources are unchanged, although a fresh checkout gives every
+file a new modification time: the release jobs set Cargo's checksum freshness
+(`CARGO_UNSTABLE_CHECKSUM_FRESHNESS` and `CARGO_BUILD_FINGERPRINT=content`)
+in the workflow, which compares contents instead of times; a developer's
+`.cargo/config.toml` does not, so local builds keep comparing times. A build
+script's `rerun-if-changed` files are still compared by time, so a vendored
+crate's build script watches no file of the repository: it names its inputs
+as compiled sources (`include_str!`, `include!`), or watches environment
+variables, as uucore and sed do. Restoring times from commits was rejected,
+since a change committed before the cached build would be missed. The repository's cache holds up to
 50 GB, paid beyond the free 10 GB, and keeps an entry for 90 days after its
 last use, so an entry survives the time between releases.
 
@@ -659,7 +669,10 @@ the ClientHello. Both live under `vendor/<upstream>/<crate>`, as
 (about 29 MB), and the workspace's `[patch.crates-io]` puts them in place of
 the published crates. Each keeps its changes as a patch file beside it
 (`vendor/wreq/wreq.patch`, `vendor/btls/btls-sys.patch`), so a new upstream
-version takes them again, and `bun xtask vendor diff` lists them.
+version takes them again, and `bun xtask vendor diff` lists them. The other
+vendored crates, such as the uutils ones, record their changes only in their
+`Cargo.toml`'s `[package.metadata.demi] patches`, which the same command
+lists.
 
 BoringSSL builds with CMake, so every machine that builds the workspace needs
 CMake on its `PATH`, a developer's included (`brew install cmake` on macOS),
