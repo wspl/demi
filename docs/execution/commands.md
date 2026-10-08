@@ -628,10 +628,21 @@ Edited crates/backend/src/conversation/socket.rs (+1 −1)
   `Edited <path> (+<added> −<removed>)`, in the order of stdin, and under an
   edited file each change as the file now reads, numbered as `cat -n`
   numbers, with one line of context on each side, as Claude Code's Edit
-  shows its result. Changes that would print more than 60 lines in all
-  print their first 60 and one line saying how to read the rest:
-  `[… 140 more lines changed; read them: sed -n 120,260p <path>]`. The agent
-  sees its result without reading the file again.
+  shows its result. Changes whose shown lines would touch or lie within two
+  lines of each other print as one piece, as `diff` joins hunks; other
+  pieces of a file are separated by a line `--`, as `grep -C` separates its
+  groups, so no gap in the numbering goes unmarked. Changes that would
+  print more than 60 lines in all print their first 60 and, for each file
+  cut, one line saying how to read the rest:
+  `[… 140 more lines changed; read them: sed -n 120,260p <path>]`. A blank
+  line prints as its number alone. An edit that changes nothing prints
+  `Edited <path> (no change)` and writes nothing. The agent sees its result
+  without reading the file again.
+- **What stdin may hold.** Outside the blocks, a line names a file and must
+  be followed by a block; a block needs a file before it, from a path line
+  or the argument; a file that a block creates has no other block in the
+  call. A path line is the whole line, so stray prose before the blocks
+  fails as a file that does not exist, naming the line.
 - A text with a line that is exactly a marker, or a line of seven dots,
   cannot be written as a block; `--old` and `--new`, or `demi file patch`,
   write it.
