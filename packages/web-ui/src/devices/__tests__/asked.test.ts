@@ -1,8 +1,8 @@
 import { expect, test } from 'bun:test'
 import { effectScope, nextTick, ref } from 'vue'
-import { useTryAgain } from '../useTryAgain'
+import { useAsked } from '../useAsked'
 
-// Try Again shows only the attempt the user asked for
+// Try Again and Measure show only the work the user asked for
 // (`direct-channel.md` § What the user sees). The host here starts an
 // attempt synchronously, as the product's and the gallery's do. Pure; no
 // timers.
@@ -12,7 +12,7 @@ function host(starts = true) {
   let started = 0
   const scope = effectScope()
   const button = scope.run(() =>
-    useTryAgain(
+    useAsked(
       () => trying.value,
       () => {
         if (!starts)

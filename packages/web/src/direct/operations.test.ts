@@ -82,7 +82,7 @@ class ScriptedPeer implements DirectPeer {
 
 /** A device whose choice is direct over `peer`. */
 async function directOver(peer: DirectPeer): Promise<DirectRoute> {
-  const device = new DeviceDirect({ ready: () => true, connect: async () => peer, after: () => () => {} })
+  const device = new DeviceDirect({ ready: () => true, connect: async () => peer, after: () => () => {}, connected: () => {} })
   device.tryNow()
   await Promise.resolve()
   await Promise.resolve()

@@ -198,7 +198,6 @@ export interface SettingsProviderEntry {
   /** Where the model list comes from: the vendor catalog, or ids the user typed. */
   modelSource: 'catalog' | 'manual'
   catalogFetched: string | null
-  stale: boolean
   state: SettingsProviderState
   /**
    * What went wrong, from the last test or request: the provider's own words,

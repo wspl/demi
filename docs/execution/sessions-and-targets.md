@@ -138,7 +138,7 @@ the switch as the conversation's **pending move** and answers at once; the
 backend makes it, as above, when the tree is next idle, before it admits
 anything else, so the next turn, the user's or a wakeup's, runs in the new
 place and reads it from its block. A newer pending move replaces an older
-one; an archive drops it. A pending move is stored with the conversation
+one; an archive drops it, and an agent's pending detaches with it. A pending move is stored with the conversation
 ([Storage](../backend/storage.md#control-records)), so a restart does not
 lose it. Making it checks what any switch checks, not whether the device is
 online, as the user's own switch does not: a move to an offline device is
