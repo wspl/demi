@@ -529,8 +529,6 @@ the same flag.
 | `DEMI_STORAGE` | `local` or `s3`: where the one object store lives. Default `local`. With `s3`, the `DEMI_S3_*` settings name the bucket. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
-| `DEMI_PREVIEW_DOMAIN` | The [preview domain](../browser/preview.md#the-preview-domain-service) the backend registers its namespace with and the page embeds previews from. Default `demi-preview.dev`. | [Web preview](../browser/preview.md#the-preview-domain-service) |
-| `DEMI_PREVIEW_ORIGINS` | More origins the backend registers as allowed to embed its previews, comma-separated, each a secure-context origin, besides its public URL's; development names the web dev server's this way. A public URL that is not a secure context, such as `http://192.168.1.20`, is left out, and with no origin left nothing is registered. | [Web preview](../browser/preview.md#the-preview-domain-service) |
 | `DEMI_STUN_URLS` | The STUN servers pages and runners ask for their public address so a [direct channel](../execution/direct-channel.md) can cross networks, comma-separated `stun:` URLs. Default `stun:stun.cloudflare.com:3478`; empty keeps direct channels to one network. | [Direct channel](../execution/direct-channel.md#making-the-channel) |
 | `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
 
@@ -665,12 +663,6 @@ and in the order the
 [web app contract suite](../delivery/scenarios.md#web-app-contract-suite)
 uses:
 
-- The local [preview domain service](../browser/preview.md#the-preview-domain-service),
-  Wrangler's development server run under Node on `--preview-port` (8787 by
-  default), which the backend registers with as
-  `DEMI_PREVIEW_DOMAIN=demi-preview.localhost:<port>`, naming the
-  `--web-origin` origins; it starts before the backend and stops after it on
-  every path.
 - A fresh temporary data directory, removed when the command ends, unless
   `--keep` keeps it; or, with `--data <dir>`, that directory, kept between
   runs, whose account and models are seeded on its first run only, so a

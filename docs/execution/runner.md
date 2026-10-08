@@ -226,8 +226,8 @@ the default execution policy does not refuse it).
    nor the root of a filesystem: a runner that ran with a mistaken
    `DEMI_HOME`, such as the home directory, has written its state there, and
    still never removes it. In such a directory `uninstall` removes only the
-   files the runner wrote, its state files, `releases/`, `log/`, `data/` and
-   its own artifact cache, and says what it left. A directory that holds no
+   files the runner wrote, its state files, `releases/`, `log/` and its own
+   artifact cache, and says what it left. A directory that holds no
    installation is never touched, and `uninstall` says why. It removes the
    directory with the device token, the
    releases, the log and the artifact cache when the cache is the

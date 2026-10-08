@@ -322,8 +322,7 @@ Host handle while the Cloud was changing state
 [user stream](../execution/native-runtime.md#user-streams) `name` on the
 conversation's primary Host. A plugin declares each stream
 ([Calling its command package](../architecture/plugins.md#calling-its-command-package)):
-`plugin-browser`'s `browser` is the [live browser view](../browser/live-view.md),
-and its `preview` the [web preview](../browser/preview.md#the-stream). The upgrade requires the session
+`plugin-browser`'s `browser` is the [live browser view](../browser/live-view.md). The upgrade requires the session
 cookie and a conversation the user owns, and is refused from a page that is
 not the product's ([Authentication](#authentication)), which matters all the
 more here since the stream operates the conversation browser, which is signed in
@@ -1063,7 +1062,6 @@ later one is the current value of one part of it that changed:
 | Message | Carries | Sent when |
 | --- | --- | --- |
 | `snapshot` | `state`, the product state below | First, on every connection |
-| `preview` | `preview`, as the product state carries it | The backend registered its preview namespace, or a new one in place of one the service no longer knows |
 | `conversation` | `conversation`, the conversation's summary as the conversation lists carry it | Its record changes: a patch or a batch item, an archive, a restore or a target switch once it completes, a read acknowledgement, a draft saved, restored or dismissed, a message sent, a title requested or written. It is created or forked. Its tree saves a checkpoint, starts or stops working, or is disposed. A permission request is raised, decided, replaced or withdrawn |
 | `conversation_deleted` | `id`, the conversation's id | It is deleted ([Deleting a conversation](../backend/storage.md#deleting-a-conversation)) |
 | `conversation_order` | `ids`, the id of every conversation, in the product state's order | A conversation is created, forked, moved, pinned or unpinned, archived or restored |
@@ -1096,11 +1094,7 @@ STUN servers a page's direct channel asks (`DEMI_STUN_URLS`), `runnerRelease`,
 the runner release this backend serves, which a device's page compares with
 the device's `runnerVersion` to say whether it is up to date, `webBuild`, the
 build of the web app the backend serves, or null when it serves none
-([A page of another build](web-application.md#a-page-of-another-build)),
-`preview`, `{ scheme, domain, namespace }` of the
-[web preview](../browser/preview.md#the-preview-domain-service), or null
-until the backend has registered its namespace, with the scheme the backend
-decided for the domain so the page never derives it, and
+([A page of another build](web-application.md#a-page-of-another-build)), and
 `run`, the id of this run of the backend
 ([Revisions counted in memory](#revisions-counted-in-memory)). Each provider entry carries its
 `details`: `{ type: "read", ... }` with what `GET /api/providers/:id/status`
