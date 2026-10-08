@@ -362,7 +362,9 @@ Device
 
 - **The header.** The icon is exactly as tall as the name and status lines
   together and centred on them, as macOS's account and device headers are;
-  the status dot is centred on the status text. The status carries no
+  the status dot is centred on the status text and has the colour of the
+  device's state, as the devices list's dot does: green while it is online,
+  whichever path the page takes, since the words say the path. The status carries no
   figure, since the footnote under Connection gives both paths'. Under them,
   starting where the name starts, the reason, only when there is one, and
   then the buttons on a line of their own. **Details…** opens the sheet

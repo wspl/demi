@@ -26,7 +26,7 @@ import {
   type DirectPermission,
 } from '../devices/direct'
 import { RUNNER_STATE_LABEL, runnerState, systemName, type DeviceReport } from '../devices/report'
-import { DEVICE_STATE_LABEL } from '../devices/state'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
@@ -79,21 +79,21 @@ const online = computed(() => device.value?.state === 'online')
 const reason = computed(() => (direct.value && online.value ? directReason(direct.value) : null))
 const attempt = computed(() => direct.value?.attempt ?? null)
 
-/** The header's dot and its words: how this page reaches the device now. */
+/**
+ * The header's dot and its words. The dot is the device's state, as the
+ * devices list's dot is, so an online device is green whichever path this
+ * page takes; the words say the path.
+ */
 const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
   const shown = device.value
   if (!shown) {
     return { tone: 'muted', words: 'Through the server' }
   }
-  if (shown.state === 'updating') {
-    return { tone: 'warning', words: DEVICE_STATE_LABEL.updating }
+  const tone = DEVICE_STATE_TONE[shown.state]
+  if (shown.state !== 'online') {
+    return { tone, words: DEVICE_STATE_LABEL[shown.state] }
   }
-  if (shown.state === 'offline') {
-    return { tone: 'muted', words: DEVICE_STATE_LABEL.offline }
-  }
-  return reason.value === null
-    ? { tone: 'success', words: 'Connected directly' }
-    : { tone: 'muted', words: 'Through the server' }
+  return { tone, words: reason.value === null ? 'Connected directly' : 'Through the server' }
 })
 
 /** How to start the runner again, which the header gives while the device is offline. */
