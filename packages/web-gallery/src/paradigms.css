@@ -104,9 +104,3 @@ html[data-tone="paper"] #app {
   -moz-osx-font-smoothing: auto;
   --icon-stroke-width: 2;
 }
-
-/* A humanist face on trial for Flat, Figtree (OFL), in place of the system
-   face; Chinese and other scripts it lacks fall back to the system's. */
-html[data-tone="paper"] {
-  --font-sans: "Figtree Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Noto Sans", sans-serif;
-}
