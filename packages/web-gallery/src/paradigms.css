@@ -2,8 +2,9 @@
    names; a theme only remaps values via html[data-*]. */
 
 /* ── tone: paper (Flat — near-neutral layers with a warm tint) ────────
-   Dark values are measured from the host's design tokens: four layers from
-   #0b0b0b to #20201f, white hairlines at 10, 20 and 40%, hover and selected
+   Dark values start from the host's measured design tokens, four layers from
+   #0b0b0b, with the raised and floating layers lifted to #222221 and #282827
+   so a message bubble or a card reads on the page, white hairlines at 10, 20 and 40%, hover and selected
    washes at 7.5 and 15%, and warm secondary text. Flat's light mode takes
    Ink's colours (gallery-state.ts), so paper has no light values. */
 
@@ -12,8 +13,8 @@ html[data-theme="dark"][data-tone="paper"] {
   --surface-base: #0b0b0b;
   --surface: #151515;
   --surface-editor: #121212;
-  --surface-raised: #1a1a19;
-  --surface-float: #20201f;
+  --surface-raised: #222221;
+  --surface-float: #282827;
   --elevation-step: 3%;
   --overlay: white;
   --fg-emphasis: #f0efec;
@@ -25,6 +26,7 @@ html[data-theme="dark"][data-tone="paper"] {
   --fg-ghost: #3a3a38;
   --hover-mix: rgb(255 255 255) 7.5%;
   --active-mix: rgb(255 255 255) 10%;
+  --well-mix: rgb(255 255 255) 7%;
   --line-subtle: rgb(255 255 255 / 0.06);
   --line: rgb(255 255 255 / 0.1);
   --line-strong: rgb(255 255 255 / 0.2);
