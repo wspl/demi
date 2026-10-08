@@ -311,9 +311,9 @@ const brevityRules: readonly TextRule[] = [
 const longTextRules: readonly TextRule[] = [
   {
     title: 'The name gives way last',
-    rule: 'The text that tells items apart (an account’s email, a file’s name, a model’s or a conversation’s name) keeps its width. What sits beside it gives way first: tags, counts, sizes, times.',
-    right: ['zan@work.example  Pro  Limit reached'],
-    wrong: ['zan@wor…  Pro  Limit reached'],
+    rule: 'The text that tells items apart (an account’s email, a file’s name, a model’s or a conversation’s name) keeps its width. What sits beside it gives way first: tags, counts, sizes, times. A second name beside it, such as the device a project is on, takes its own width up to half of the line and is cut at that half; the first name takes the rest and is cut only when the rest is too short.',
+    right: ['zan@work.example  Pro  Limit reached', 'ledable-app  ZandeMacBo…'],
+    wrong: ['zan@wor…  Pro  Limit reached', 'ledable-app  Zande…', 'ledabl…  ZandeMacBook-Pro.local'],
     source: 'GitHub issue list, Linear, macOS Finder list view',
   },
   {
@@ -339,7 +339,7 @@ const longTextRules: readonly TextRule[] = [
   },
   {
     title: 'A cut text shows itself whole on hover',
-    rule: 'TruncatedText gives a cut line a tooltip with the whole text, and only while it is cut: text that fits has none. Not the title attribute, which comes late, ignores the theme and shows when nothing is cut. A control that gives up its label for an icon names itself in its tooltip instead. The sidebar is the one exception to the ellipsis: a cut conversation title fades at the edge and plays whole on hover.',
+    rule: 'TruncatedText gives a cut line a tooltip with the whole text, and only while it is cut: text that fits has none. Not the title attribute, which comes late, ignores the theme and shows when nothing is cut. A control that gives up its label for an icon names itself in its tooltip instead.',
     right: ['Tooltip: release-automation@platform-infrastructure.example.com'],
     wrong: ['A cut name with no tooltip', 'A tooltip repeating a name that fits'],
     source: 'macOS expansion tooltips, VS Code, Linear',
