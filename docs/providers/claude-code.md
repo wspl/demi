@@ -296,7 +296,13 @@ CLI's arguments, environment and token stay the provider's. The backend
 implements the placement by the rules above: it holds the Cloud's admission
 only while the process starts, since the process is retained, and a failure to
 wake the Cloud, to install the CLI or to start it fails the request with its
-reason ([What the user sees](#what-the-user-sees)).
+reason ([What the user sees](#what-the-user-sees)). Such a failure, and a
+process whose machine went away, as when the Host's runner reconnects, is a
+request that got no answer: `overloaded`, which the agent retries
+([Failures and recovery](../agent/failures-and-recovery.md)). For example, a
+subagent's CLI on a Cloud whose runner missed a ping and reconnected starts
+again on the new connection, and an install that failed a DNS lookup is
+tried again a second later.
 
 The backend's provider family builds the runtime from the same arguments it
 builds the provider from, plus the placement, so no code downcasts a provider
