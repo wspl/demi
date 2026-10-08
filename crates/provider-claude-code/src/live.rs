@@ -200,7 +200,10 @@ impl LiveCli {
         let Placed { process, config } = placement
             .start(&spawn)
             .await
-            .map_err(|error| failure(error.0))?;
+            // The machine could not be reached or readied, as when its
+            // connection is being replaced or its network fails a lookup:
+            // the agent's retry starts the process again.
+            .map_err(|error| ProviderFailure::no_answer(error.0))?;
         let Process {
             output,
             control,
@@ -325,9 +328,10 @@ impl LiveCli {
                 }
                 Next::End => {
                     let reason = self.exit_message().await;
-                    return Err(failure(format!(
-                        "Claude Code exited before SDK MCP initialization completed: {reason}"
-                    )));
+                    return Err(ended(
+                        &self.exit.clone().await,
+                        format!("Claude Code exited before SDK MCP initialization completed: {reason}"),
+                    ));
                 }
                 Next::Broken(failure) => return Err(failure),
                 // Only the run's reading watches its token.
@@ -594,6 +598,9 @@ impl LiveCli {
         if let Some(config) = self.config.take() {
             config.remove().await;
         }
+        if matches!(exit, ProcessEnd::Lost(_)) {
+            return Some(ended(&exit, exit_message(&exit)));
+        }
         if !unasked.is_empty() {
             return Some(failure(format!(
                 "Claude Code exited before requesting SDK MCP tool result for {}",
@@ -721,6 +728,16 @@ fn failure(message: String) -> ProviderFailure {
         code: None,
         diagnostics: None,
         retry_after: None,
+    }
+}
+
+/// The failure of a process that ended as `end` says: one whose machine went
+/// away, as when the Host's runner reconnected, had no answer and is
+/// retried; any other end is the CLI's own failure.
+fn ended(end: &ProcessEnd, message: String) -> ProviderFailure {
+    match end {
+        ProcessEnd::Lost(_) => ProviderFailure::no_answer(message),
+        _ => failure(message),
     }
 }
 
