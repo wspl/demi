@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { directReason, pathsFootnote, shownAddress, type DirectAttempt, type DirectReason, type DirectStatus } from '../direct'
 
-// The reason a device's page gives for going through the server, from its
+// The reason a device's page gives for going via the relay, from its
 // route, its peer and what the last attempt saw (`direct-channel.md`
 // § What the user sees), and the footnote that compares the two paths.
 // Pure; milliseconds.
@@ -35,11 +35,11 @@ const relay = { latencyMs: 30, loss: null }
 
 const cases: { scenario: string; status: DirectStatus; reason: DirectReason | null }[] = [
   {
-    scenario: 'connected directly',
+    scenario: 'connected via P2P',
     status: { ...status, peer: true, chosen: true, attempt: { ...failed, outcome: 'connected', stage: 'connected' } },
     reason: null,
   },
-  { scenario: 'Server Only, even with a peer', status: { ...status, route: 'server', peer: true, chosen: true }, reason: { kind: 'serverOnly' } },
+  { scenario: 'Relay Only, even with a peer', status: { ...status, route: 'server', peer: true, chosen: true }, reason: { kind: 'serverOnly' } },
   {
     scenario: 'a peer stands but Automatic finds it slower',
     status: { ...status, peer: true, figures: { direct: slow, relay } },
@@ -83,22 +83,22 @@ const footnotes: { scenario: string; status: DirectStatus; footnote: string | nu
   {
     scenario: 'both paths measured',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 1.8, loss: 0 }, relay: { latencyMs: 480.4, loss: null } } },
-    footnote: 'Direct 2 ms · Server 480 ms',
+    footnote: 'P2P 2 ms · Relay 480 ms',
   },
   {
     scenario: 'the direct path loses probes',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 620, loss: 0.06 }, relay } },
-    footnote: 'Direct 620 ms, 6% lost · Server 30 ms',
+    footnote: 'P2P 620 ms, 6% lost · Relay 30 ms',
   },
   {
     scenario: 'a direct path on a local network loses one probe in two hundred',
     status: { ...status, peer: true, figures: { direct: { latencyMs: 0.42, loss: 0.005 }, relay } },
-    footnote: 'Direct 0.4 ms, 0.5% lost · Server 30 ms',
+    footnote: 'P2P 0.4 ms, 0.5% lost · Relay 30 ms',
   },
   {
     scenario: 'there is no peer',
     status: { ...status, figures: { direct: null, relay: { latencyMs: 480, loss: null } } },
-    footnote: 'Server 480 ms',
+    footnote: 'Relay 480 ms',
   },
   { scenario: 'nothing is measured yet', status, footnote: null },
 ]

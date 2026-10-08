@@ -67,7 +67,7 @@ function reachedAs(device: SettingsDevice): SentenceText {
   if (device.state !== 'online') {
     return DEVICE_STATE_LABEL[device.state]
   }
-  return directReason(device.direct) === null ? 'Connected directly' : 'Through the server'
+  return directReason(device.direct) === null ? 'Connected via P2P' : 'Connected via relay'
 }
 
 const { isOpen, phase, open, close, submit } = useDevicePairing(
@@ -128,14 +128,9 @@ const pageProjects = computed(() =>
       @reset="emit('resetCloud', $event)"
       @open="cloud.deviceId && emit('show', cloud.deviceId)"
     />
-    <SettingsGroup>
-      <template #header>
-        <header class="flex items-center justify-between gap-3">
-          <h3 class="text-[15px] font-medium leading-5 text-fg-emphasis">
-            Your Devices
-          </h3>
-          <Button size="sm" @click="open()">Add Device…</Button>
-        </header>
+    <SettingsGroup title="Your Devices">
+      <template #actions>
+        <Button size="sm" @click="open()">Add Device…</Button>
       </template>
       <AsyncRegion
         :state="load"
