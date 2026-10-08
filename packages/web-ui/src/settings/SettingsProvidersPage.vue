@@ -661,6 +661,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     :disabled="fieldsLocked(selected)"
                     :model-value="selected.baseUrl"
                     aria-label="Base URL"
+                    literal
                     class="w-72 max-w-full"
                     @commit="emit('change', selected, { baseUrl: $event })"
                   />
