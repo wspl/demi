@@ -136,6 +136,11 @@ pub const SOCKET_MESSAGE_FRAME: u8 = 4;
 pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 /// The most body bytes one frame carries.
 pub const BODY_CHUNK_BYTES: usize = 256 * 1024;
+/// The chunks of an answer's body the engine sends before the relay pulls
+/// any: each pull lets one more go. An answer of up to three chunks thus
+/// arrives whole with its head, in one round trip, and a slow page still
+/// holds the Host back, at this many chunks ahead.
+pub const BODY_WINDOW: usize = 4;
 /// The version of the preview domain's static files the page and the
 /// engine name, `/__demi/v<N>/` (`preview.md` § The preview domain service).
 pub const FILES_VERSION: u32 = 1;
