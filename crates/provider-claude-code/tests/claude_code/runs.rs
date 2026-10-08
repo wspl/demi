@@ -510,6 +510,26 @@ async fn a_run_whose_machine_went_away_got_no_answer_and_is_retried() {
     assert_eq!(lost.code, Some(ErrorCode::Overloaded));
 }
 
+// A fixed bug: the machine went away while the CLI wrote a long line, and
+// the half of it that arrived failed the run as a line Demi cannot read.
+#[tokio::test(flavor = "local")]
+async fn output_cut_in_the_middle_of_a_line_by_a_machine_that_went_away_is_retried() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (events, ()) = tokio::join!(
+        all_events(runtime.run(request_without_tools(vec![user("hi")]))),
+        async {
+            let mut cli = starts.next().await;
+            cli.read().await;
+            cli.say_text(r#"{"type":"user","message":{"content":[{"type":"text","text":"iVBORw0KGgo"#);
+            cli.exit(ProcessEnd::Lost("replaced by a new connection of the device's runner".into()));
+        }
+    );
+    let lost = failure(&events[0]);
+    assert_eq!(lost.code, Some(ErrorCode::Overloaded), "{}", lost.message);
+}
+
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_cancelled_run_closes_its_process_and_ends_without_an_event() {
     let provider = provider().await;
