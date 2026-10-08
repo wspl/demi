@@ -532,6 +532,9 @@ export async function finishShellToolResult<State>(
 
 export function shellCommandHandleRequired(result: ShellCommandStatus, budgetTokens: number): boolean {
   if (result.status === 'running') return true
+  // Binary streams are shown only as a pointer to their .bin file; releasing
+  // the command would delete the bytes the result tells the model to read.
+  if (result.status === 'exited' && (result.binaryStdout || result.binaryStderr)) return true
   const preview = boundedPreview(result.output.text, budgetTokens)
   const maxChars = Math.max(0, Math.floor(budgetTokens * APPROX_CHARS_PER_TOKEN))
   return (

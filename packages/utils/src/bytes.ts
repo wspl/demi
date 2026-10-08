@@ -42,6 +42,20 @@ export function decodeUtf8Strict(bytes: Uint8Array): string | null {
   }
 }
 
+/**
+ * Strictly decodes UTF-8 that may end in the middle of a character (as when a
+ * stream is cut at a byte count). Returns the text before the incomplete tail
+ * and how many tail bytes were dropped; null when any earlier byte is invalid.
+ */
+export function decodeUtf8CutTail(bytes: Uint8Array): { text: string; droppedBytes: number } | null {
+  try {
+    const text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes, { stream: true })
+    return { text, droppedBytes: bytes.byteLength - encoder.encode(text).byteLength }
+  } catch {
+    return null
+  }
+}
+
 /** Slices a string by UTF-8 byte offsets, returning the decoded substring. */
 export function utf8Slice(text: string, start: number, end: number): string {
   if (start <= 0 && end >= utf8Bytes(text)) return text
