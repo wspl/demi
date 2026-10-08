@@ -430,7 +430,7 @@ the relay chooses.
 | `hello` | Relay | `{ scheme, domain, namespace, host }`: the first message, which labels need, since a user stream takes no arguments; the scheme is the one the product state carries |
 | `request` | Relay | `{ id, environment, request, client }`: the receiving environment the relay bound; the forwarder's request with real addresses, which also holds the initiator the relay resolved (an environment, or null when unknown), whether the user started it, and whether body frames follow; and the client description ([Upstream requests](#upstream-requests), [Mobile](#mobile)) |
 | `labels` | Relay | `{ id, environments }`: at most 256 environments the runtime mapped itself, for the engine to compute their labels; the engine answers `labels` with `{ id, labels }`, and the relay keeps only what the engine computed, so labels have one implementation |
-| `request_body` | Relay | `id`, then up to 256 KiB of the request's body, on the engine's `pull`; an empty one ends it |
+| `request_body` | Relay | `id`, then up to 256 KiB of the request's body, a window ahead of the engine's `pull`s; an empty one ends it |
 | `response` | Engine | `{ id, status, headers, labels }`: the head of the answer, and the labels its rewriting computed, each with its environment |
 | `pull` | Either | `{ id }`: send the next chunk of that body |
 | `chunk` | Engine | `id`, then up to 256 KiB of the body; an empty one ends it |
@@ -450,14 +450,18 @@ engine receives only environments. A socket's messages have no `pull`: a
 WebSocket's upstream is read as fast as it sends, and a slow page then holds
 the whole stream, a limit to lift if pages show it.
 
-The engine sends the first four chunks of a body, up to 1 MiB, without
-waiting, and one more for each `pull` the relay sends as the page reads one,
-so an answer up to 768 KiB arrives whole with its head in one round trip,
+Both bodies run the same window. The engine sends the first four chunks of
+an answer's body, up to 1 MiB, without waiting, and one more for each `pull`
+the relay sends as the page reads one, so an answer up to 768 KiB arrives
+whole with its head in one round trip,
 which a far relay makes the cost that matters, while a slow page still holds
 the Host back at most 1 MiB ahead, as the live view's stream does
 ([Backpressure](live-view.md#backpressure)); the relay keeps chunks that
-arrive before the page reads them. Request bodies go one chunk per `pull`
-from the engine. A tab shows loading from the click of Reload, Back or
+arrive before the page reads them. The relay likewise sends a request's
+first four body frames, its end among them when it fits, with the request,
+and one more for each `pull` the engine sends as it takes one, so a small
+body, such as each `document.cookie` write a page makes, costs no round
+trip beyond its answer's. A body frame past the window ends the stream. A tab shows loading from the click of Reload, Back or
 Forward, until the next document loads or the history moves within the
 document, as a browser's does. A frame the protocol refuses ends the
 stream, as on the live view's, and the relay answers every open request with a
