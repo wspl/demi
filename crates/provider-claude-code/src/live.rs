@@ -7,7 +7,7 @@
 //! waiting, and its configuration directory goes once it ended;
 //! [`LiveCli::close`] ends it, removes the directory and waits.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::io;
 use std::rc::Rc;
@@ -56,7 +56,36 @@ const MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
 
 /// The CLI's output, line by line.
 type Lines =
-    FramedRead<StreamReader<mpsc::UnboundedReceiver<io::Result<Bytes>>, Bytes>, LinesCodec>;
+    FramedRead<StreamReader<mpsc::UnboundedReceiver<io::Result<Bytes>>, Bytes>, CliLines>;
+
+/// Lines as `LinesCodec` reads them, but output that ends in the middle of a
+/// line, as when the process's machine went away while it wrote, is not a
+/// line: the rest is dropped and `cut` says so, so the end is read by how
+/// the process ended rather than as a line Demi cannot read.
+struct CliLines {
+    lines: LinesCodec,
+    cut: Rc<Cell<bool>>,
+}
+
+impl tokio_util::codec::Decoder for CliLines {
+    type Item = String;
+    type Error = LinesCodecError;
+
+    fn decode(&mut self, buf: &mut bytes::BytesMut) -> Result<Option<String>, LinesCodecError> {
+        self.lines.decode(buf)
+    }
+
+    fn decode_eof(&mut self, buf: &mut bytes::BytesMut) -> Result<Option<String>, LinesCodecError> {
+        if let Some(line) = self.lines.decode(buf)? {
+            return Ok(Some(line));
+        }
+        if !buf.is_empty() {
+            buf.clear();
+            self.cut.set(true);
+        }
+        Ok(None)
+    }
+}
 
 /// What a process was started for: another session, model or thinking
 /// setting needs a new process, since each is fixed per process.
@@ -147,6 +176,8 @@ pub(crate) struct LiveCli {
     /// How the process ended, awaited as often as needed.
     exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,
     lines: Lines,
+    /// The output ended in the middle of a line (`CliLines`).
+    cut: Rc<Cell<bool>>,
     /// Lines read while the process was being set up, which come first.
     pending: VecDeque<(String, Option<Line>)>,
     stderr: Rc<RefCell<Tail>>,
@@ -213,6 +244,7 @@ impl LiveCli {
         let stderr = Rc::new(RefCell::new(Tail::default()));
         let drain = tokio::task::spawn_local(drain(output, stdout, stderr.clone()));
         let mcp = (!request.tools.is_empty()).then(|| Mcp::start(request.tools.clone()));
+        let cut = Rc::new(Cell::new(false));
         Ok(Self {
             shared: shared.clone(),
             key: ProcessKey::of(request),
@@ -223,8 +255,12 @@ impl LiveCli {
             exit: exit.shared(),
             lines: FramedRead::new(
                 StreamReader::new(lines),
-                LinesCodec::new_with_max_length(MAX_LINE_BYTES),
+                CliLines {
+                    lines: LinesCodec::new_with_max_length(MAX_LINE_BYTES),
+                    cut: cut.clone(),
+                },
             ),
+            cut,
             pending: VecDeque::new(),
             stderr,
             _drain: AbortOnDropHandle::new(drain),
@@ -600,6 +636,12 @@ impl LiveCli {
         }
         if matches!(exit, ProcessEnd::Lost(_)) {
             return Some(ended(&exit, exit_message(&exit)));
+        }
+        if self.cut.get() {
+            return Some(failure(format!(
+                "Claude Code's output ended in the middle of a line: {}",
+                exit_message(&exit)
+            )));
         }
         if !unasked.is_empty() {
             return Some(failure(format!(
