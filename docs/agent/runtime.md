@@ -983,8 +983,10 @@ What keeps the output coming, and where each part is released:
 - A round's calls run in steps, in the order the model requested them:
   consecutive `shell_exec` calls are one step and start together; each other
   call is a step of its own. A step ends when each of its calls has returned,
-  and the next starts then. Results are recorded in the order of the calls,
-  not of their ends. Waiting input is written after each step
+  and the next starts then. Each result is recorded as its call returns, in
+  its call's block, so the page shows a call's end and its changed files
+  while the step's other calls run; the model still reads the results in the
+  order of the calls. Waiting input is written after each step
   ([Input](#input)). For example, `shell_status 17`, `shell_exec A`,
   `shell_exec B`, `yield` runs the look, then A and B together, then the
   yield.
@@ -1459,6 +1461,41 @@ commands, until its end arrives. The expanded row says the end in words above th
 output. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
+### Calls being written
+
+A model writes a call's input before Demi can run it, and a command with a
+long script takes seconds to write. For example, the model writes "Let me
+write a categorizer." and then a `shell_exec` whose script is a 200-line
+file. For the 14 seconds the model spends writing the script, the page shows
+a shimmering *Write the categorizer* row under that sentence; when the call
+is whole, the row becomes the call's block, and the command runs.
+
+- The session keeps, live only, the calls of the running request that the
+  provider has opened (Tool call start, [A run](../providers/providers.md#a-run))
+  and not yet handed over whole. Each has its tool-use ID, its tool's name
+  and its `description` once the model has written that string whole; the
+  session reads it from the input written so far with a parser that accepts
+  an unfinished JSON document. Nothing of a call being written is stored,
+  replayed to the model or saved in the checkpoint: until it is whole, it is
+  not a call.
+- The server sends `pending_calls` with the complete list whenever it changes:
+  a call opens, its description is read, or it leaves. A call leaves the list
+  in the same step that adds its `tool_call` block, so a page never shows the
+  call twice or not at all; the request's end, failure or cancellation empties
+  the list. A page that opens the conversation receives the list after
+  `pending_steers`.
+- The page shows each call after the transcript's last block as its tool's
+  row, shimmering, titled by its `description`. Until that is written the
+  title is by tool: *Preparing a command…* for `shell_exec`, *Checking a
+  command…* for `shell_status` and *Waiting…* for `yield`. A page drops a
+  pending call whose `toolUseId` it already holds as a block.
+- A call's start completes the text before it
+  ([Eligibility](conversation-fork.md#eligibility)).
+
+A vendor that sends calls only whole has no calls being written: between its
+text and its call, the tail row says Requesting
+([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+
 ### Tool descriptions
 
 Every tool's input takes a `description`: a short title, shown to
@@ -1506,7 +1543,7 @@ client                               server
 open ------------------------------> attach to the live tree
                 <------------------- opened
                 <------------------- transcript_reset { blocks, version: { epoch, revision: r } }
-                <------------------- phase, queue, pending_steers
+                <------------------- phase, queue, pending_steers, pending_calls
                 <------------------- subagent started + subagent_transcript_reset,
                                      for each live subagent, depth first
                 <------------------- shell_output, for each live command
@@ -1570,6 +1607,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
 | `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `shellId`, the `commandId`, the `toolUseId` of the `shell_exec` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
 | `shell_write_result` | The command id |
+| `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |
 | `error` | A message, a code and diagnostics: a failed turn, a refused frame, or a failed save |
 | `rejected` | The refused command and the reason |
@@ -1621,7 +1659,7 @@ ended while no page watched shows as ended.
   it and opens the conversation again
   ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
 - The open handshake is one step: nothing can happen to the session between
-  `opened` and `pending_steers`, so the snapshot frames agree with each other.
+  `opened` and `pending_calls`, so the snapshot frames agree with each other.
 - Each `transcript_patch` carries the revision one past the previous frame's.
   The client applies a patch whose revision is one past its own, ignores one
   whose revision is not greater than its own, and sends `sync_transcript` when
