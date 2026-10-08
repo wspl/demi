@@ -874,7 +874,7 @@ async fn an_entry_whose_provider_cannot_be_built_answers_its_status_with_the_rea
             Some(&master),
         )
         .await;
-    assert_eq!(status.status, StatusCode::BAD_GATEWAY);
+    assert_eq!(status.status, StatusCode::SERVICE_UNAVAILABLE);
     let body: Value = status.json();
     assert_eq!(body["code"], "provider_status_failed");
     assert_eq!(body["message"], "the scripted family refuses");
