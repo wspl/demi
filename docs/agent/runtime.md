@@ -1437,9 +1437,14 @@ A patch replaces a block at its index, and renderers key blocks by their id,
 so an update never shows a second record. Renderers tell shell execution,
 a look at a command, with or without input, and waiting apart by tool
 name and input. A look or a wait without a `description` takes the title of
-the command it names, quoted: *Check “Run the test suite”*, *Wait for “Run
-the test suite”*, never a bare number; a look shows the command's state as
-it found it, `aborted` included. Component structure, expansion, icons, typography, motion and the
+the command it names, never a bare number: *Check* or *Wait for* and then
+the command's title with a dotted underline, as a reference, *Check
+Run the test suite*. Clicking the underlined title scrolls the transcript to
+that command's call and highlights it for a moment, as a chat app jumps to a
+quoted message; a command of another agent's transcript is named the same
+way, without the underline or the jump. A title too long for its row is cut
+at the end with an ellipsis. A look shows the command's state
+as it found it, `aborted` included. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
 ### Tool descriptions
