@@ -1378,10 +1378,16 @@ work panel, including waking an attached Cloud. They do not read file contents;
 the selected path becomes a remote reference when the message is sent.
 
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
-conversation's execution directory as `{ root, repository, head, files,
-truncated, watched }`, the runner's reply
+conversation's execution directory as `{ root, repository, gitDir, head,
+files, truncated, watched }`, the runner's reply
 ([Runner](../execution/runner.md#working-tree)) plus `root`, the directory the
-paths are relative to. The request reaches the host the way every conversation
+paths are relative to. `gitDir` is the absolute path of the repository's git
+directory, null outside a repository; the page reads the reports under it by
+[what each entry depends on](../architecture/plugin-pages.md#what-the-service-keeps).
+The answer carries an ETag of its content, and a request whose
+`If-None-Match` names it answers 304 without the list: the runner still
+computes the list, which costs it little once its watch runs, but the page
+receives nothing when nothing changed. The request reaches the host the way every conversation
 file operation does
 ([Sessions and targets](../execution/sessions-and-targets.md#host-operations)):
 a stopped Cloud wakes for it, a paired device without a live runner answers
@@ -1394,7 +1400,8 @@ the refresh failed.
 `GET /api/conversations/:id/changes/file?path=...` returns `{ original,
 modified }` for one changed file: `original` as the last commit has it (empty
 for an added file), `modified` as the working tree has it (empty for a deleted
-one), under the text limits of the file route.
+one), under the text limits of the file route. It carries an ETag of its
+content and answers a matching `If-None-Match` with 304, as the list does.
 
 `GET /api/conversations/:id/changes/raw?path=...` streams one file as the last
 commit has it, the committed side of a previewed change, with the headers,
@@ -1404,11 +1411,11 @@ not have answers 404, and a file over 8 MiB answers 413 `file_too_large`,
 since git's copy is decoded whole before it is sent
 ([Runner](../execution/runner.md#working-tree)).
 
-The page lists the working tree again when the [file watch](#file-watch)
-reports a path in it that git does not ignore, or one under its repository's
-`.git`, and on its Refresh
-control ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
-It never polls.
+The page reads the list and a file's sides again only when the
+[file watch](#file-watch) reports a path they depend on, when a view showing
+them comes on screen, and on its Refresh control, as
+[What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)
+says. It never polls.
 
 ### File watch
 
@@ -1434,7 +1441,7 @@ The backend sends:
 | Message | Carries | Sent when |
 | --- | --- | --- |
 | `state` | `state`: `live`, `lost`, `unavailable` or `offline`, and for `unavailable` the Host's `reason` | `live` once the Host's watches run, so what is read from then on is covered, and again once the watches of each `paths` message run, so the page trusts a path outside the working tree only after the `live` that answers the message naming it; `lost` when a watch lost reports, so nothing read before is confirmed, followed by `live` again; `unavailable` when the Host cannot watch, after which the socket sends no other state; `offline` while the Host is out of reach or a stopped Cloud |
-| `changed` | `paths`, absolute paths on the Host that changed, and `ignored`, those of them git ignores in the working tree's repository | The Host reports them, at most every 100 ms, a path once per message. More than 1,000 paths at once come as `lost`. An ignored path, such as a build output or a log a process appends to, changes what the File view shows but not the working tree's changes, as VS Code's Source Control ignores it |
+| `changed` | `paths`, absolute paths on the Host that changed; `entries`, those of them that came, went or were renamed, so a folder's listing reads again only for them; and `ignored`, those git ignores in the working tree's repository | The Host reports them, at most every 100 ms, a path once per message. More than 1,000 paths at once come as `lost`. An ignored path, such as a build output or a log a process appends to, changes what the File view shows but not the working tree's changes, as VS Code's Source Control ignores it |
 | `heartbeat` | Nothing | 30 seconds pass without another message, so the page tells a quiet watch from a dead one ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
 
 The backend closes the socket with the user streams' codes: 1011
