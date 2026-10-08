@@ -62,8 +62,6 @@ The model still sees:
 ```text
 shell_exec
 shell_status
-shell_write
-shell_abort
 yield
 ```
 
