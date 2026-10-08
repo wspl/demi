@@ -93,9 +93,9 @@ other inherited file descriptors.
 
 A temporary-file replacement records the destination before any backup rename
 or Windows replacement removal, and the final destination afterwards. Temporary
-names and backup moves are not edits. Native `file.create`, `file.edit`, and
-`file.patch` use this same recording operation for publishing their temporary
-files and restoring earlier contents after a failed patch. A patch that fully
+names and backup moves are not edits. Native `file.edit` and `file.patch` use this
+same recording operation for publishing their temporary files and restoring
+earlier contents after a failed write. A patch that fully
 rolls back leaves no edit; failed rollback preserves the changes still present.
 The runner supplies `EditContext` from the authenticated live execution context,
 not from command arguments or an external forwarding client's metadata.
