@@ -70,8 +70,10 @@ The sidebar's Conversations list holds every conversation outside a project,
 on the Cloud and on a device alike. One that runs on a paired device shows
 that device at its row's end, a computer with a dot for the device's state,
 as a project's row shows its device, so a row without the mark runs on the
-Cloud. The mark names the device and its state in its tooltip; for a device
-since removed, it has no dot and says *Removed device*. A row in a project
+Cloud. For a device since removed, the mark has no dot. Like the project
+row's mark, it gives its place to the row's buttons on hover, so it has no
+tooltip; its accessible label names the device and its state, *MacBook Pro ·
+Online*, or says *Removed device*. A row in a project
 shows no mark: its project's row already shows where it runs.
 
 ```text
