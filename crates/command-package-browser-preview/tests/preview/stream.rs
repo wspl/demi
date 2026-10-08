@@ -1,5 +1,5 @@
-//! The stream itself (`preview.md` § The stream): bodies move one chunk per
-//! pull both ways, the browser's cancellation reaches upstream, the engine
+//! The stream itself (`preview.md` § The stream): a request's body moves
+//! one chunk per pull and an answer's runs a window ahead, the browser's cancellation reaches upstream, the engine
 //! names the labels a runtime registers, page states move, and a frame the
 //! protocol refuses ends the stream.
 
@@ -9,7 +9,7 @@ use std::time::Duration;
 use bytes::{BufMut, BytesMut};
 use demi_command_package_browser_preview::{PageStates, StreamError, TakenState};
 use demi_command_package_browser_protocol::preview::{
-    BODY_CHUNK_BYTES, CHUNK_FRAME, CONTROL_FRAME, MAX_STORAGE_BYTES, PageStorage, PreviewEngineMessage, StorageItem, PreviewMode,
+    BODY_CHUNK_BYTES, BODY_WINDOW, CHUNK_FRAME, CONTROL_FRAME, MAX_STORAGE_BYTES, PageStorage, PreviewEngineMessage, StorageItem, PreviewMode,
     PreviewOpenInput, PreviewRelayMessage, PreviewRequest, PreviewScheme, SOCKET_MESSAGE_FRAME,
 };
 use tokio::io::AsyncReadExt;
@@ -18,7 +18,7 @@ use tokio::net::TcpListener;
 use crate::support::{DOMAIN, Frame, HOST, NAMESPACE, Relay, Site, client, echoed_header, engine, opening, request, top};
 
 #[tokio::test]
-async fn bodies_move_one_chunk_per_pull() {
+async fn a_request_body_moves_one_chunk_per_pull_and_an_answer_runs_a_window_ahead() {
     let directory = tempfile::tempdir().unwrap();
     let site = Site::start().await;
     let mut relay = Relay::open(engine(&directory));
@@ -57,10 +57,21 @@ async fn bodies_move_one_chunk_per_pull() {
         }
     };
     assert_eq!(answered, 5, "{head:?}");
-    // The answer, as long as the body echoed, comes one chunk per pull: a
-    // chunk the relay did not ask for would arrive before the other
-    // request's answer.
+    // The answer, as long as the body echoed, comes a window ahead of the
+    // pulls: its first chunks with no pull, so a small answer takes one
+    // round trip, then one more per pull. A chunk the window did not let go
+    // would arrive before the other request's answer.
     let mut received = Vec::new();
+    for _ in 0..BODY_WINDOW {
+        match relay.next().await {
+            Frame::Chunk { id: chunked, data } if chunked == id && !data.is_empty() => {
+                assert!(data.len() <= BODY_CHUNK_BYTES);
+                received.extend_from_slice(&data);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    relay.fetch(page.clone(), opening(&site.https("www.site.test", "/echo"))).await.unwrap();
     loop {
         relay.send(&PreviewRelayMessage::Pull { id });
         let data = match relay.next().await {
@@ -70,9 +81,6 @@ async fn bodies_move_one_chunk_per_pull() {
         assert!(data.len() <= BODY_CHUNK_BYTES);
         if data.is_empty() {
             break;
-        }
-        if received.is_empty() {
-            relay.fetch(page.clone(), opening(&site.https("www.site.test", "/echo"))).await.unwrap();
         }
         received.extend_from_slice(&data);
     }

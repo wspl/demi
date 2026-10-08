@@ -376,7 +376,13 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             refuse_while_closing,
         ))
         .merge(pipes)
-        .layer(TraceLayer::new_for_http())
+        // A request's failure names its method and path, without the query,
+        // which can carry a file's path or a token.
+        .layer(TraceLayer::new_for_http().make_span_with(
+            |request: &axum::http::Request<axum::body::Body>| {
+                tracing::info_span!("request", method = %request.method(), path = request.uri().path())
+            },
+        ))
         .with_state(state)
 }
 

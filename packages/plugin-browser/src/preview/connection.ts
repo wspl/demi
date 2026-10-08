@@ -2,8 +2,9 @@
  * One conversation's `preview` stream as the relay uses it (`preview.md`
  * § The stream): requests, WebSockets and label questions of every tab of
  * the user's browser in that conversation share it, each with an id this
- * side chooses. Bodies
- * move one chunk per pull both ways. The stream opens with the first
+ * side chooses. A request's body moves one chunk per the engine's pull; an
+ * answer's comes a window ahead of this side's pulls, each pull sent as a
+ * chunk is read, so a small answer takes one round trip. The stream opens with the first
  * request, says `hello` first, and opens again with the next request after
  * it ended: an end, or a frame the protocol refuses, fails every request
  * and socket it carried, as a network error.
@@ -83,13 +84,17 @@ interface OpenRequest {
   answered(head: PreviewHead): void
   failed(reason: string): void
   /**
-   * The pulls waiting for their chunks, oldest first: a reader may pull
+   * The reads waiting for their chunks, oldest first: a reader may read
    * again before a chunk arrives, as a stream does while a read waits, and
-   * each pull gets the next chunk in order.
+   * each read gets the next chunk in order.
    */
   chunks: { resolve(data: Uint8Array<ArrayBuffer> | null): void; reject(error: Error): void }[]
+  /** Chunks that came ahead of a read, oldest first; null for the body's end. */
+  arrived: (Uint8Array<ArrayBuffer> | null)[]
   /** The body ended or failed: no pull waits any more. */
   done: boolean
+  /** Why the answer failed after its head, which a later read hears too. */
+  broken: Error | null
 }
 
 /** The stream of one conversation, opened as the relay needs it. */
@@ -175,6 +180,8 @@ export class PreviewConnection {
     }
     for (const request of requests) {
       request.failed(error.message)
+      request.broken = error
+      request.arrived = []
       for (const waiting of request.chunks.splice(0)) {
         waiting.reject(error)
       }
@@ -224,6 +231,8 @@ export class PreviewConnection {
         }
         this.requests.delete(message.id)
         request.failed(message.reason)
+        request.broken = new Error(message.reason)
+        request.arrived = []
         for (const waiting of request.chunks.splice(0)) {
           waiting.reject(new Error(message.reason))
         }
@@ -243,20 +252,38 @@ export class PreviewConnection {
 
   private chunk(id: number, data: Uint8Array): void {
     const request = this.requests.get(id)
-    const waiting = request?.chunks.shift()
-    if (!request || !waiting) {
+    if (!request) {
       return
     }
-    if (data.length === 0) {
-      request.done = true
-      this.requests.delete(id)
-      // The body ended: every pull still waiting gets its end.
-      for (const pull of [waiting, ...request.chunks.splice(0)]) {
-        pull.resolve(null)
+    // The frame's bytes are the stream's buffer, which the next frame reuses.
+    const chunk = data.length === 0 ? null : data.slice()
+    const waiting = request.chunks.shift()
+    if (!waiting) {
+      request.arrived.push(chunk)
+      return
+    }
+    if (chunk === null) {
+      this.finished(id, request)
+      // The body ended: every read still waiting gets its end.
+      for (const read of [waiting, ...request.chunks.splice(0)]) {
+        read.resolve(null)
       }
-    } else {
-      // The frame's bytes are the stream's buffer, which the next frame reuses.
-      waiting.resolve(data.slice())
+      return
+    }
+    this.consumed(id)
+    waiting.resolve(chunk)
+  }
+
+  /** A chunk of request `id`'s answer was read: the engine may send one more. */
+  private consumed(id: number): void {
+    this.stream?.send(encodeMessage({ type: 'pull', id }))
+  }
+
+  /** The answer's body was read to its end. */
+  private finished(id: number, request: OpenRequest): void {
+    request.done = true
+    if (this.requests.get(id) === request) {
+      this.requests.delete(id)
     }
   }
 
@@ -281,18 +308,29 @@ export class PreviewConnection {
     })
     // A request nobody reads the head of still fails quietly.
     head.catch(() => {})
-    const open: OpenRequest = { body: body && body.length > 0 ? body : null, sent: 0, answered, failed, chunks: [], done: false }
+    const open: OpenRequest = { body: body && body.length > 0 ? body : null, sent: 0, answered, failed, chunks: [], arrived: [], done: false, broken: null }
     this.requests.set(id, open)
     stream.send(encodeMessage({ type: 'request', id, environment, request: { ...request, body: open.body !== null }, client }))
     return {
       head,
       pull: () => {
+        if (open.broken) {
+          return Promise.reject(open.broken)
+        }
+        if (open.arrived.length > 0) {
+          const chunk = open.arrived.shift() ?? null
+          if (chunk === null) {
+            this.finished(id, open)
+          } else {
+            this.consumed(id)
+          }
+          return Promise.resolve(chunk)
+        }
         if (open.done || this.requests.get(id) !== open) {
           return Promise.resolve(null)
         }
         return new Promise<Uint8Array<ArrayBuffer> | null>((resolve, reject) => {
           open.chunks.push({ resolve, reject })
-          this.stream?.send(encodeMessage({ type: 'pull', id }))
         })
       },
       cancel: () => {
